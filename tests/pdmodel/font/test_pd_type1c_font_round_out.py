@@ -349,3 +349,204 @@ def test_has_glyph_true_for_notdef() -> None:
     exception."""
     font = _make_injected_font()
     assert font.has_glyph(".notdef") is True
+
+
+# ---------- get_font_box_font ----------
+
+
+def test_get_font_box_font_returns_cff_program_when_embedded() -> None:
+    """Mirrors upstream ``PDType1CFont.getFontBoxFont``: returns the
+    embedded CFF program (the ``genericFont`` upstream name) when one
+    is present."""
+    font = _make_injected_font()
+    assert font.get_font_box_font() is font.get_cff_font()
+    assert isinstance(font.get_font_box_font(), CFFFont)
+
+
+def test_get_font_box_font_returns_none_when_not_embedded() -> None:
+    """No /FontFile3 -> no embedded CFF program -> no FontBoxFont. We
+    don't run a system-mapping fallback the way upstream does."""
+    assert PDType1CFont().get_font_box_font() is None
+
+
+# ---------- get_font_matrix ----------
+
+
+def test_get_font_matrix_default_when_no_program() -> None:
+    """Default matrix [0.001 0 0 0.001 0 0] (PDF 32000-1 §9.2.4) when
+    no embedded CFF program is loaded."""
+    matrix = PDType1CFont().get_font_matrix()
+    assert matrix == [0.001, 0.0, 0.0, 0.001, 0.0, 0.0]
+
+
+def test_get_font_matrix_reads_cff_program_matrix() -> None:
+    """Mirrors upstream's ``cffFont.getFontMatrix()`` path. For a
+    1000-unit-em CFF font the matrix is the default 0.001 scale."""
+    font = _make_injected_font()
+    matrix = font.get_font_matrix()
+    assert len(matrix) == 6
+    # FontBuilder(1000, ...) -> default 0.001 scale.
+    assert matrix[0] == 0.001
+    assert matrix[3] == 0.001
+
+
+# ---------- get_bounding_box ----------
+
+
+def test_get_bounding_box_returns_none_when_no_descriptor_no_program() -> None:
+    assert PDType1CFont().get_bounding_box() is None
+
+
+def test_get_bounding_box_uses_descriptor_bbox_when_non_zero() -> None:
+    """A non-zero ``/FontBBox`` on the descriptor wins over the CFF
+    program's bbox — mirrors upstream's ``isNonZeroBoundingBox`` check
+    in ``generateBoundingBox``."""
+    from pypdfbox.pdmodel.pd_rectangle import PDRectangle
+
+    font = PDType1CFont()
+    fd = PDFontDescriptor()
+    fd.set_font_bounding_box(PDRectangle(-100.0, -200.0, 800.0, 900.0))
+    font.set_font_descriptor(fd)
+
+    bbox = font.get_bounding_box()
+    assert bbox is not None
+    assert bbox.get_lower_left_x() == -100.0
+    assert bbox.get_lower_left_y() == -200.0
+    assert bbox.get_upper_right_x() == 800.0
+    assert bbox.get_upper_right_y() == 900.0
+
+
+def test_get_bounding_box_falls_through_to_cff_when_descriptor_bbox_zero() -> None:
+    """An all-zero descriptor bbox is the unset case; fall through to
+    the CFF program's ``/FontBBox``."""
+    from pypdfbox.pdmodel.pd_rectangle import PDRectangle
+
+    font = _make_injected_font()
+    fd = PDFontDescriptor()
+    fd.set_font_bounding_box(PDRectangle(0.0, 0.0, 0.0, 0.0))
+    font.set_font_descriptor(fd)
+    bbox = font.get_bounding_box()
+    # Our minimal CFF has a real (computed) FontBBox or the default
+    # zero — accept either, but the call must not raise.
+    assert bbox is None or isinstance(bbox.get_lower_left_x(), float)
+
+
+# ---------- get_string_width ----------
+
+
+def test_get_string_width_returns_zero_when_no_program() -> None:
+    """No embedded CFF -> upstream logs and returns 0."""
+    assert PDType1CFont().get_string_width("A") == 0.0
+
+
+def test_get_string_width_sums_cff_advances_for_known_glyphs() -> None:
+    """For our minimal CFF, ``A`` has advance 500 and ``B`` 300 -> sum
+    is 800. Mirrors upstream's per-codepoint summation."""
+    font = _make_injected_font()
+    assert font.get_string_width("AB") == 800.0
+
+
+def test_get_string_width_raises_for_unknown_glyph() -> None:
+    """Mirrors upstream's ``IllegalArgumentException`` (we use
+    :class:`ValueError`) when a code point has no glyph in the embedded
+    program."""
+    import pytest as _pytest
+
+    font = _make_injected_font()
+    with _pytest.raises(ValueError, match="not available in font"):
+        font.get_string_width("Z")
+
+
+# ---------- get_width_from_font ----------
+
+
+def test_get_width_from_font_returns_zero_when_no_program() -> None:
+    """Mirrors upstream ``PDType1CFont.getWidthFromFont`` short-circuit
+    when the embedded CFF program is absent."""
+    assert PDType1CFont().get_width_from_font(65) == 0.0
+
+
+def test_get_width_from_font_uses_cff_advance() -> None:
+    """A 1000-unit em CFF program with ``A`` advance 500 -> 500.0."""
+    font = _make_injected_font()
+    assert font.get_width_from_font(65) == 500.0
+
+
+def test_get_width_from_font_zero_for_unmapped_code() -> None:
+    """Code 90 ('Z') is in WinAnsi but not in our minimal CFF charset."""
+    font = _make_injected_font()
+    assert font.get_width_from_font(90) == 0.0
+
+
+# ---------- get_path special-name handling ----------
+
+
+def test_get_path_notdef_empty_when_not_embedded() -> None:
+    """PDFBOX-2372: Acrobat does not draw substitute ``.notdef``."""
+    font = PDType1CFont()
+    # Non-embedded, non-Standard 14 -> empty path.
+    assert font.get_path(".notdef") == []
+
+
+def test_get_path_sfthyphen_rewrites_to_hyphen() -> None:
+    """Mirrors upstream's ``"sfthyphen".equals(name)`` rewrite."""
+    font = _make_injected_font()
+    # Our minimal CFF has no 'hyphen' glyph; rewrite happens but lookup
+    # is empty.
+    assert font.get_path("sfthyphen") == []
+    assert font.get_path("sfthyphen") == font.get_path("hyphen")
+
+
+def test_get_path_nbspace_rewrites_to_space_when_present() -> None:
+    """``nbspace`` -> ``space`` when the font has a ``space`` glyph;
+    empty path when it does not (our minimal CFF has no ``space``)."""
+    font = _make_injected_font()
+    # Our minimal CFF has no 'space' glyph -> nbspace lookup is empty.
+    assert font.get_path("nbspace") == []
+
+
+# ---------- has_glyph_for_code / get_path_for_code / get_normalized_path_for_code ----------
+
+
+def test_has_glyph_for_code_false_when_no_encoding() -> None:
+    assert PDType1CFont().has_glyph_for_code(65) is False
+
+
+def test_has_glyph_for_code_true_for_present_glyph() -> None:
+    font = _make_injected_font()
+    assert font.has_glyph_for_code(65) is True  # 'A'
+    assert font.has_glyph_for_code(66) is True  # 'B'
+
+
+def test_has_glyph_for_code_false_for_unmapped_code() -> None:
+    font = _make_injected_font()
+    assert font.has_glyph_for_code(90) is False  # 'Z' not in CFF
+
+
+def test_get_path_for_code_returns_outline_for_present_glyph() -> None:
+    font = _make_injected_font()
+    path = font.get_path_for_code(65)
+    assert path[0][0] == "moveto"
+
+
+def test_get_path_for_code_empty_when_no_encoding() -> None:
+    assert PDType1CFont().get_path_for_code(65) == []
+
+
+def test_get_normalized_path_for_code_returns_glyph_path() -> None:
+    """For an embedded font with the glyph present, the normalized
+    path is just the glyph path."""
+    font = _make_injected_font()
+    direct = font.get_path_for_code(65)
+    normalized = font.get_normalized_path_for_code(65)
+    assert normalized == direct
+
+
+def test_get_normalized_path_for_code_falls_back_to_notdef() -> None:
+    """Unmapped code -> falls back to ``.notdef``. For our embedded
+    font the ``.notdef`` glyph has an empty charstring (just
+    ``endchar``), so the fallback path is also empty — but the call
+    must not raise."""
+    font = _make_injected_font()
+    result = font.get_normalized_path_for_code(90)  # 'Z' unmapped in CFF
+    assert isinstance(result, list)

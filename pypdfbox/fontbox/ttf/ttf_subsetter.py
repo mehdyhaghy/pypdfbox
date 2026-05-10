@@ -255,6 +255,30 @@ class TTFSubsetter:
     # ---------- helpers ---------------------------------------------------
 
     @staticmethod
+    def should_copy_name_record(record: Any) -> bool:
+        """Return ``True`` if ``record`` belongs in a subset's ``name`` table.
+
+        Mirrors upstream's private ``shouldCopyNameRecord(NameRecord)``
+        helper (``TTFSubsetter.java`` line 301 in PDFBox 3.0). Only
+        Windows / Unicode-BMP / English-US records with name IDs in the
+        range ``[0, 6]`` are kept — everything else is dropped to keep
+        the subset minimal and PDF-friendly.
+        """
+        try:
+            platform_id = record.platformID
+            encoding_id = record.platEncID
+            language_id = record.langID
+            name_id = record.nameID
+        except AttributeError:
+            return False
+        return (
+            platform_id == 3  # NameRecord.PLATFORM_WINDOWS
+            and encoding_id == 1  # NameRecord.ENCODING_WINDOWS_UNICODE_BMP
+            and language_id == 0x0409  # NameRecord.LANGUAGE_WINDOWS_EN_US
+            and 0 <= name_id < 7
+        )
+
+    @staticmethod
     def _apply_invisible(tt: Any, codepoints: set[int]) -> None:
         """Replace the glyph for each codepoint in ``codepoints`` with
         a zero-width, contour-free glyph in the *subset* font ``tt``.
@@ -316,19 +340,18 @@ class TTFSubsetter:
         """Rewrite the subset's ``name`` table records to prepend the
         six-letter PDF subset tag (per PDF 32000-1 §9.6.4).
 
-        Upstream applies the prefix to nameID 6 (PostScript name); we
-        also touch nameID 4 (full name) so PDF readers' font-pickers
-        show the tagged name consistently. nameID 1 (family) and nameID
-        16/17 (typographic family/subfamily) intentionally stay
-        un-prefixed — they describe the font *family*, which the subset
-        still belongs to.
+        Upstream's ``buildNameTable`` (``TTFSubsetter.java`` line 359)
+        applies the prefix only to nameID 6 (PostScript name); other
+        records are kept verbatim. We match that exactly — touching
+        nameID 4 (full name) etc. would diverge from PDFBox-emitted
+        subset fonts byte-for-byte in the ``name`` table.
         """
         if "name" not in tt:
             return
         name_table = tt["name"]
-        targets = (4, 6)  # full name, PostScript name
         for record in list(name_table.names):
-            if record.nameID not in targets:
+            # Upstream only prepends the tag to nameID 6 (PostScript name).
+            if record.nameID != 6:
                 continue
             current = record.toUnicode()
             if not current:

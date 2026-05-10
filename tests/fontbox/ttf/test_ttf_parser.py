@@ -20,6 +20,8 @@ from pypdfbox.fontbox.ttf import (
     TrueTypeFont,
     TTFParser,
 )
+from pypdfbox.fontbox.ttf.ttf_parser import FontHeaders
+from pypdfbox.fontbox.ttf.ttf_table import TTFTable
 from pypdfbox.io.random_access_read_buffer import RandomAccessReadBuffer
 
 FIXTURE = (
@@ -201,3 +203,102 @@ def test_allow_cff_true_in_otf_subclass() -> None:
 
     parser = OTFParser()
     assert parser._allow_cff() is True  # noqa: SLF001
+
+
+# ---------- _read_table hook (upstream readTable(String)) ------------------
+
+
+def test_read_table_returns_generic_ttftable() -> None:
+    """Default ``_read_table`` produces a bare :class:`TTFTable` for
+    unknown tags — mirrors upstream ``TTFParser.readTable``."""
+    parser = TTFParser()
+    table = parser._read_table("zzzz")  # noqa: SLF001
+    assert isinstance(table, TTFTable)
+
+
+# ---------- parse_table_headers fast path ----------------------------------
+
+
+def test_parse_table_headers_populates_summary(ttf_bytes: bytes) -> None:
+    parser = TTFParser()
+    headers = parser.parse_table_headers(ttf_bytes)
+
+    assert isinstance(headers, FontHeaders)
+    assert headers.get_error() is None
+    assert headers.get_name() is not None
+    assert headers.get_font_family() is not None
+    assert headers.get_header_mac_style() is not None
+    assert headers.get_os2_windows() is not None
+    assert headers.is_open_type_post_script() is False
+
+
+def test_parse_table_headers_from_path(ttf_bytes: bytes) -> None:  # noqa: ARG001
+    parser = TTFParser()
+    headers = parser.parse_table_headers(FIXTURE)
+    assert headers.get_error() is None
+
+
+def test_parse_table_headers_truncated_sets_error() -> None:
+    parser = TTFParser()
+    headers = parser.parse_table_headers(b"\x00\x01")
+    assert headers.get_error() is not None
+    assert "too short" in headers.get_error()
+
+
+def test_parse_table_headers_otto_sets_error() -> None:
+    """A bare TTF parser must surface a ``setError`` for an OTTO
+    stream rather than raising. Mirrors upstream's
+    ``outHeaders.setError("True Type fonts using CFF outlines ..."`` path."""
+    parser = TTFParser()
+    fake_otf = b"OTTO" + b"\x00" * 200
+    headers = parser.parse_table_headers(fake_otf)
+    assert headers.get_error() is not None
+    assert "CFF" in headers.get_error()
+
+
+def test_parse_table_headers_unknown_scaler_sets_error() -> None:
+    parser = TTFParser()
+    headers = parser.parse_table_headers(b"XXXX" + b"\x00" * 200)
+    assert headers.get_error() is not None
+
+
+# ---------- FontHeaders surface --------------------------------------------
+
+
+def test_font_headers_setters_round_trip() -> None:
+    headers = FontHeaders()
+
+    headers.set_error("oops")
+    headers.set_name("MyFont")
+    headers.set_header_mac_style(2)
+    headers.set_font_family("Family", "Sub")
+    headers.set_non_otf_gcid_142(b"\x00" * 142)
+    headers.set_is_otf_and_post_script(True)
+    headers.set_otf_ros("Adobe", "Japan1", 6)
+
+    assert headers.get_error() == "oops"
+    assert headers.get_name() == "MyFont"
+    assert headers.get_header_mac_style() == 2
+    assert headers.get_font_family() == "Family"
+    assert headers.get_font_sub_family() == "Sub"
+    assert headers.get_non_otf_table_gcid_142() == b"\x00" * 142
+    assert headers.is_open_type_post_script() is True
+    assert headers.get_otf_registry() == "Adobe"
+    assert headers.get_otf_ordering() == "Japan1"
+    assert headers.get_otf_supplement() == 6
+
+
+def test_font_headers_defaults() -> None:
+    headers = FontHeaders()
+    assert headers.get_error() is None
+    assert headers.get_name() is None
+    assert headers.get_header_mac_style() is None
+    assert headers.get_os2_windows() is None
+    assert headers.get_font_family() is None
+    assert headers.get_font_sub_family() is None
+    assert headers.get_non_otf_table_gcid_142() is None
+    assert headers.is_open_type_post_script() is False
+    assert headers.get_otf_registry() is None
+    assert headers.get_otf_ordering() is None
+    assert headers.get_otf_supplement() == 0
+    assert FontHeaders.BYTES_GCID == 142

@@ -589,6 +589,7 @@ PDFBox 3.0 does not provide focused unit-test classes for each lightweight actio
 |---|---|
 | `tests/fontbox/ttf/upstream/test_wgl4_names.py` | `fontbox/src/test/java/org/apache/fontbox/ttf/WGL4NamesTest.java` |
 | `tests/fontbox/ttf/upstream/test_random_access_read_buffer_data_stream.py` | `fontbox/src/test/java/org/apache/fontbox/ttf/RandomAccessReadBufferDataStreamTest.java` |
+| `tests/fontbox/ttf/upstream/test_ttf_parser.py` | `fontbox/src/test/java/org/apache/fontbox/ttf/TestTTFParser.java` |
 
 Not yet ported (need `TTFParser` / `TrueTypeCollection` / `TTFSubsetter` — fontbox clusters #2+): `TestTTFParser`, `TestCMapSubtable`, `GlyfCompositeDescriptTest`, `TrueTypeFontCollectionTest`, `TTFSubsetterTest`, `GlyphSubstitutionTable*`.
 

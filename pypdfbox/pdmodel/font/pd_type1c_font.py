@@ -1,16 +1,25 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from pypdfbox.cos import COSDictionary
 from pypdfbox.fontbox.cff.cff_font import CFFFont
 
 from .pd_type1_font import PDType1Font
 
+if TYPE_CHECKING:
+    from pypdfbox.pdmodel.pd_rectangle import PDRectangle
+
 _LOG = logging.getLogger(__name__)
 
 # CFF defaults to a 1000-unit em (font matrix [0.001 0 0 0.001 0 0]).
 _CFF_DEFAULT_UNITS_PER_EM: int = 1000
+# Default CFF font matrix from Adobe Technote #5176 §15 — also the
+# PDFBox ``PDFont.DEFAULT_FONT_MATRIX``.
+_DEFAULT_FONT_MATRIX: tuple[float, float, float, float, float, float] = (
+    0.001, 0.0, 0.0, 0.001, 0.0, 0.0,
+)
 type GlyphPath = list[tuple[object, ...]]
 
 
@@ -171,7 +180,26 @@ class PDType1CFont(PDType1Font):
         operates on a glyph *name* (not a character code; see
         :meth:`get_glyph_path` for the code-keyed variant). Returns
         ``[]`` when the font has no embedded program or the glyph is
-        missing."""
+        missing.
+
+        Special-name handling matches upstream:
+
+        * ``.notdef`` is suppressed for non-embedded, non-Standard 14
+          fonts (PDFBOX-2372 — Acrobat does not draw substitute
+          ``.notdef``).
+        * ``sfthyphen`` is rewritten to ``hyphen`` (legacy Mac
+          ``softhyphen`` glyph spelling).
+        * ``nbspace`` (non-breaking space) is rewritten to ``space``
+          when the font carries a ``space`` glyph; otherwise empty.
+        """
+        if name == ".notdef" and not self.is_embedded() and not self.is_standard14():
+            return []
+        if name == "sfthyphen":
+            return self.get_path("hyphen")
+        if name == "nbspace":
+            if not self.has_glyph("space"):
+                return []
+            return self.get_path("space")
         program = self._get_cff_font()
         if program is None:
             return []
@@ -186,6 +214,70 @@ class PDType1CFont(PDType1Font):
         if program is None:
             return False
         return program.has_glyph(name)
+
+    def has_glyph_for_code(self, code: int) -> bool:
+        """``True`` iff the embedded CFF program carries a glyph for
+        ``code`` after ``/Encoding`` resolution.
+
+        Mirrors upstream ``PDType1CFont.hasGlyph(int code)``: resolves
+        the code through ``/Encoding`` and applies the same
+        ``sfthyphen`` -> ``hyphen`` and ``nbspace`` -> ``space``
+        re-spellings as :meth:`get_path`. Returns ``False`` when the
+        font has no embedded CFF program.
+        """
+        name = self._code_to_glyph_name(code)
+        if name is None:
+            return False
+        if name == "sfthyphen":
+            return self.has_glyph("hyphen")
+        if name == "nbspace":
+            return self.has_glyph("space")
+        return self.has_glyph(name)
+
+    def get_path_for_code(self, code: int) -> GlyphPath:
+        """Glyph outline for ``code``, looked up via the font's
+        ``/Encoding``. Mirrors upstream ``PDType1CFont.getPath(int code)``.
+
+        Honours the same ``sfthyphen`` / ``nbspace`` rewrites as
+        :meth:`get_path` and returns ``[]`` when the font has no
+        ``/Encoding`` or the code does not resolve to a known glyph.
+        """
+        name = self._code_to_glyph_name(code)
+        if name is None:
+            return []
+        if name == "sfthyphen":
+            return self.get_path("hyphen")
+        if name == "nbspace":
+            if not self.has_glyph("space"):
+                return []
+            return self.get_path("space")
+        return self.get_path(name)
+
+    def get_normalized_path_for_code(self, code: int) -> GlyphPath:
+        """Glyph outline for ``code``, falling back to ``.notdef`` when
+        the primary lookup yields an empty path.
+
+        Mirrors upstream ``PDType1CFont.getNormalizedPath(int code)`` —
+        applies the ``sfthyphen`` / ``nbspace`` rewrites first, then
+        returns the resolved outline; if the resolved name has no path,
+        falls back to ``.notdef``.
+        """
+        name = self._code_to_glyph_name(code)
+        if name is None:
+            # No /Encoding mapping at all -> no fallback either; mirrors
+            # upstream returning the empty path for missing codes when
+            # ``.notdef`` is also unavailable (non-embedded fonts).
+            return self.get_path(".notdef")
+        if name == "nbspace":
+            if not self.has_glyph("space"):
+                return []
+            name = "space"
+        elif name == "sfthyphen":
+            name = "hyphen"
+        path = self.get_path(name)
+        if not path:
+            return self.get_path(".notdef")
+        return path
 
     # ---------- code → glyph name / GID ----------
 
@@ -273,6 +365,128 @@ class PDType1CFont(PDType1Font):
         height = (max(ys) - min(ys)) if ys else 0.0
         self._glyph_heights[name] = height
         return height
+
+    def get_font_matrix(self) -> list[float]:
+        """Return the 6-element font matrix that maps glyph space to
+        text space for this font.
+
+        Mirrors upstream ``PDType1CFont.getFontMatrix`` — reads the
+        matrix from the embedded CFF Top DICT (``CFFFont.getFontMatrix``)
+        when an embedded program is present and well-formed, otherwise
+        falls back to the PDF default ``[0.001 0 0 0.001 0 0]``
+        (PDF 32000-1:2008 §9.2.4).
+        """
+        program = self._get_cff_font()
+        if program is None:
+            return list(_DEFAULT_FONT_MATRIX)
+        try:
+            matrix = program.get_font_matrix()
+        except Exception:  # noqa: BLE001
+            return list(_DEFAULT_FONT_MATRIX)
+        if matrix and len(matrix) == 6:
+            return [float(v) for v in matrix]
+        return list(_DEFAULT_FONT_MATRIX)
+
+    def get_font_box_font(self) -> CFFFont | None:
+        """Return the underlying :class:`CFFFont` font program for
+        rendering, or ``None`` when the font is not embedded and no
+        substitute is available.
+
+        Mirrors upstream ``PDType1CFont.getFontBoxFont`` (declared on
+        :class:`PDFontLike`). Upstream returns ``genericFont`` which can
+        be the embedded CFF program *or* a system substitute; we do not
+        run a system font-mapping fallback so this returns the embedded
+        program when present and ``None`` otherwise.
+        """
+        return self._get_cff_font()
+
+    def get_bounding_box(self) -> PDRectangle | None:
+        """Return the font's bounding box.
+
+        Mirrors upstream ``PDType1CFont.getBoundingBox`` /
+        ``generateBoundingBox``: prefer the descriptor's ``/FontBBox``
+        when it is non-zero (a real bbox is recorded), otherwise
+        synthesise one from the embedded CFF program's ``/FontBBox``.
+        Returns ``None`` when neither source yields a usable rectangle.
+        """
+        from pypdfbox.pdmodel.pd_rectangle import PDRectangle  # noqa: PLC0415
+
+        descriptor = self.get_font_descriptor()
+        if descriptor is not None:
+            bbox = descriptor.get_font_bounding_box()
+            if self.is_non_zero_bounding_box(bbox):
+                return bbox
+        program = self._get_cff_font()
+        if program is None:
+            return None
+        try:
+            cff_bbox = program.get_font_bbox()
+        except Exception:  # noqa: BLE001
+            return None
+        if not cff_bbox or len(cff_bbox) != 4:
+            return None
+        return PDRectangle(
+            float(cff_bbox[0]),
+            float(cff_bbox[1]),
+            float(cff_bbox[2]),
+            float(cff_bbox[3]),
+        )
+
+    def get_string_width(self, text: str) -> float:
+        """Return the total advance of ``text`` in font units.
+
+        Mirrors upstream ``PDType1CFont.getStringWidth``: walks the
+        string code-point by code-point, mapping each through the
+        glyph-list to a PostScript name and summing the embedded CFF
+        program's advances. Returns ``0.0`` when no embedded program is
+        available — upstream logs and returns 0 in the same case.
+
+        Raises :class:`ValueError` when the text contains a code point
+        for which the embedded CFF program has no glyph (mirrors
+        upstream's ``IllegalArgumentException``).
+        """
+        program = self._get_cff_font()
+        if program is None:
+            _LOG.warning("No embedded CFF font, returning 0")
+            return 0.0
+        glyph_list = self.get_glyph_list()
+        width = 0.0
+        for ch in text:
+            code_point = ord(ch)
+            name = glyph_list.code_point_to_name(code_point)
+            if not program.has_glyph(name):
+                msg = (
+                    f"U+{code_point:04X} ({name!r}) is not available in font "
+                    f"{self.get_name()}"
+                )
+                raise ValueError(msg)
+            width += program.get_width(name)
+        return width
+
+    def get_width_from_font(self, code: int) -> float:
+        """Return the embedded CFF program's advance for ``code`` in
+        1/1000 em — bypassing the ``/Widths`` array.
+
+        Mirrors upstream ``PDType1CFont.getWidthFromFont``: reads the
+        glyph advance from the CFF program and rescales it to 1/1000
+        em via the font matrix (CFF default 1000-unit em -> identity
+        rescale; non-default ems get the proper linear remap). Returns
+        ``0.0`` when no embedded program is available or the glyph is
+        absent.
+        """
+        program = self._get_cff_font()
+        if program is None:
+            return 0.0
+        name = self._code_to_glyph_name(code)
+        if name is None or not program.has_glyph(name):
+            return 0.0
+        units_per_em = program.units_per_em
+        if units_per_em <= 0:
+            units_per_em = _CFF_DEFAULT_UNITS_PER_EM
+        advance = program.get_width(name)
+        if advance <= 0.0:
+            return 0.0
+        return advance * 1000.0 / units_per_em
 
     def get_average_font_width(self) -> float:
         """Mean glyph advance for this font in 1/1000 em.

@@ -25,6 +25,7 @@ validation. Those are tracked in ``CHANGES.md``.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import logging
 import os
 import struct
@@ -249,7 +250,14 @@ class StandardSecurityHandler(SecurityHandler):
         key_len_bytes: int,
         encrypt_metadata: bool = True,
     ) -> bytes:
-        """Algorithm 4/5 — derive the /U entry. Public alias."""
+        """Algorithm 4/5 — derive the /U entry. Public alias.
+
+        Mirrors Java L857-903: r5/r6 have no recoverable plaintext user
+        password (file key is wrapped, not derived) so an empty byte
+        sequence is returned for parity.
+        """
+        if int(revision) >= 5:
+            return b""
         return cls._compute_user_password_r2_r4(
             password,
             owner_entry,
@@ -267,7 +275,13 @@ class StandardSecurityHandler(SecurityHandler):
         revision: int,
         key_len_bytes: int,
     ) -> bytes:
-        """Algorithm 3 — derive the /O entry. Public alias."""
+        """Algorithm 3 — derive the /O entry. Public alias.
+
+        Raises ``OSError`` for r2 with key length != 5 bytes, mirroring Java
+        L920-923 (``new IOException("Expected length=5 actual=" + length)``).
+        """
+        if int(revision) == 2 and int(key_len_bytes) != 5:
+            raise OSError(f"Expected length=5 actual={key_len_bytes}")
         return cls._compute_owner_password_r2_r4(
             owner_password, user_password, revision, key_len_bytes
         )
@@ -277,21 +291,75 @@ class StandardSecurityHandler(SecurityHandler):
         cls,
         password: bytes,
         o: bytes,
-        permissions: int,
-        document_id: bytes,
-        revision: int,
-        key_len_bytes: int,
-        encrypt_metadata: bool = True,
+        permissions_or_u: int | bytes,
+        document_id_or_oe: bytes,
+        revision_or_ue: int | bytes,
+        key_len_bytes_or_perms: int,
+        encrypt_metadata_or_id: bool | bytes = True,
+        enc_revision: int | None = None,
+        key_length_in_bytes: int | None = None,
+        encrypt_metadata: bool | None = None,
+        is_owner_password: bool | None = None,
     ) -> bytes:
-        """Algorithm 2 — derive the file encryption key. Public alias."""
+        """Algorithm 2 — derive the file encryption key.
+
+        Two call shapes are accepted, mirroring the two upstream
+        signatures:
+
+        * **Compact (r2-r4 only)** —
+          ``compute_encrypted_key(password, o, permissions, document_id,
+          revision, key_len_bytes, encrypt_metadata=True)``. This is the
+          short form pypdfbox callers have been using.
+        * **Full (PDFBox parity, supports r5/r6)** —
+          ``compute_encrypted_key(password, o, u, oe, ue, permissions,
+          document_id, encRevision, keyLengthInBytes, encryptMetadata,
+          isOwnerPassword)``. Mirrors ``StandardSecurityHandler#computeEncryptedKey``
+          (Java L725) byte-for-byte.
+
+        Dispatch is by argument shape: when the third positional is
+        ``bytes`` we take the full form, otherwise the compact form.
+        """
+        # Full upstream form: third arg is /U entry as bytes.
+        if isinstance(permissions_or_u, (bytes, bytearray, memoryview)):
+            u = bytes(permissions_or_u)
+            oe = bytes(document_id_or_oe)
+            ue = bytes(revision_or_ue) if isinstance(
+                revision_or_ue, (bytes, bytearray, memoryview)
+            ) else b""
+            permissions = int(key_len_bytes_or_perms)
+            document_id = bytes(encrypt_metadata_or_id) if isinstance(
+                encrypt_metadata_or_id, (bytes, bytearray, memoryview)
+            ) else b""
+            revision = int(enc_revision) if enc_revision is not None else 0
+            key_len = (
+                int(key_length_in_bytes) if key_length_in_bytes is not None else 0
+            )
+            enc_meta = (
+                bool(encrypt_metadata) if encrypt_metadata is not None else True
+            )
+            is_owner = bool(is_owner_password) if is_owner_password is not None else False
+            if revision >= 5:
+                return cls._compute_encryption_key_rev_5_6(
+                    password, is_owner, bytes(o), u, oe, ue, revision
+                )
+            return cls._compute_encryption_key(
+                password,
+                bytes(o),
+                permissions,
+                document_id,
+                revision,
+                key_len,
+                enc_meta,
+            )
+        # Compact form preserved for existing pypdfbox callers.
         return cls._compute_encryption_key(
             password,
-            o,
-            permissions,
-            document_id,
-            revision,
-            key_len_bytes,
-            encrypt_metadata,
+            bytes(o),
+            int(permissions_or_u),
+            bytes(document_id_or_oe),
+            int(revision_or_ue),
+            int(key_len_bytes_or_perms),
+            bool(encrypt_metadata_or_id),
         )
 
     @classmethod
@@ -330,88 +398,293 @@ class StandardSecurityHandler(SecurityHandler):
     def is_user_password(
         cls,
         password: bytes | str,
-        encryption: PDEncryption,
-        document_id: bytes,
+        *args: object,
     ) -> bool:
         """Return True if ``password`` validates as the user password.
 
-        Mirrors PDFBox ``isUserPassword``. Supports r2-r4 via the legacy
-        validation path and r5/r6 via the SHA-256 / hardened-hash path.
-        Charset selection follows upstream: UTF-8 for r5/r6 (PDFBOX-4155),
-        Latin-1 (ISO-8859-1) for r2-r4.
+        Two call shapes — both the convenience pypdfbox form *and* the
+        upstream byte[]-args parity form (PDFBox L1013 / L1086):
+
+        * **Convenience** — ``is_user_password(password, encryption, document_id)``
+          where ``encryption`` is a :class:`PDEncryption`. This is the
+          original pypdfbox shape and stays supported for callers that
+          already have the encryption dictionary parsed.
+        * **Upstream parity** —
+          ``is_user_password(password, user, owner, permissions, id,
+          enc_revision, key_length_in_bytes, encrypt_metadata)``. Mirrors
+          ``StandardSecurityHandler#isUserPassword`` byte-for-byte.
+
+        Charset selection mirrors upstream: UTF-8 for r5/r6 (PDFBOX-4155),
+        Latin-1 for r2-r4.
         """
-        revision = int(encryption.get_revision())
-        if isinstance(password, str):
-            charset = "utf-8" if revision >= 5 else "latin-1"
-            pw = password.encode(charset, errors="replace")
-        else:
-            pw = bytes(password or b"")
-        if revision >= 5:
-            u = encryption.get_u() or b""
-            if len(u) < 40:
-                return False
-            user_validation_salt = u[32:40]
-            return cls._compute_hash_r5_r6(
-                pw[:127] + user_validation_salt, pw[:127], b"", revision
-            ) == u[:32]
-        key_length_bits = int(
-            encryption.get_length() or (40 if revision < 3 else 128)
+        if len(args) == 2:
+            encryption, document_id = args
+            return cls._is_user_password_via_encryption(
+                password, encryption, bytes(document_id or b"")  # type: ignore[arg-type]
+            )
+        if len(args) == 7:
+            (
+                user,
+                owner,
+                permissions,
+                id_bytes,
+                enc_revision,
+                key_length_in_bytes,
+                encrypt_metadata,
+            ) = args
+            return cls._is_user_password_explicit(
+                password,
+                bytes(user),  # type: ignore[arg-type]
+                bytes(owner),  # type: ignore[arg-type]
+                int(permissions),  # type: ignore[arg-type]
+                bytes(id_bytes),  # type: ignore[arg-type]
+                int(enc_revision),  # type: ignore[arg-type]
+                int(key_length_in_bytes),  # type: ignore[arg-type]
+                bool(encrypt_metadata),
+            )
+        raise TypeError(
+            "is_user_password takes either (password, encryption, "
+            "document_id) or the upstream 8-arg explicit-byte form"
         )
-        key_len_bytes = key_length_bits // 8
-        encrypt_metadata = bool(encryption.is_encrypt_meta_data())
-        return cls._compute_encryption_key_via_user_password(
-            pw,
-            encryption.get_o() or b"",
-            encryption.get_u() or b"",
-            int(encryption.get_p()),
-            document_id,
-            revision,
-            key_len_bytes,
-            encrypt_metadata,
-        ) is not None
 
     @classmethod
     def is_owner_password(
         cls,
         password: bytes | str,
-        encryption: PDEncryption,
-        document_id: bytes,
+        *args: object,
     ) -> bool:
         """Return True if ``password`` validates as the owner password.
 
-        Mirrors PDFBox ``isOwnerPassword``. Charset selection mirrors
-        ``is_user_password`` — UTF-8 for r5/r6, Latin-1 for r2-r4.
+        Two call shapes:
+
+        * **Convenience** —
+          ``is_owner_password(password, encryption, document_id)``
+        * **Upstream parity** —
+          ``is_owner_password(password, user, owner, permissions, id,
+          enc_revision, key_length_in_bytes, encrypt_metadata)``. Mirrors
+          ``StandardSecurityHandler#isOwnerPassword`` byte-for-byte
+          (Java L592 / L1118).
         """
+        if len(args) == 2:
+            encryption, document_id = args
+            return cls._is_owner_password_via_encryption(
+                password, encryption, bytes(document_id or b"")  # type: ignore[arg-type]
+            )
+        if len(args) == 7:
+            (
+                user,
+                owner,
+                permissions,
+                id_bytes,
+                enc_revision,
+                key_length_in_bytes,
+                encrypt_metadata,
+            ) = args
+            return cls._is_owner_password_explicit(
+                password,
+                bytes(user),  # type: ignore[arg-type]
+                bytes(owner),  # type: ignore[arg-type]
+                int(permissions),  # type: ignore[arg-type]
+                bytes(id_bytes),  # type: ignore[arg-type]
+                int(enc_revision),  # type: ignore[arg-type]
+                int(key_length_in_bytes),  # type: ignore[arg-type]
+                bool(encrypt_metadata),
+            )
+        raise TypeError(
+            "is_owner_password takes either (password, encryption, "
+            "document_id) or the upstream 8-arg explicit-byte form"
+        )
+
+    # -- Convenience overload: single-encryption-dict shape kept for callers
+    # that already have a ``PDEncryption`` parsed.
+    @classmethod
+    def _is_user_password_via_encryption(
+        cls,
+        password: bytes | str,
+        encryption: PDEncryption,
+        document_id: bytes,
+    ) -> bool:
         revision = int(encryption.get_revision())
         if isinstance(password, str):
             charset = "utf-8" if revision >= 5 else "latin-1"
             pw = password.encode(charset, errors="replace")
         else:
             pw = bytes(password or b"")
-        if revision >= 5:
-            o = encryption.get_o() or b""
-            u = encryption.get_u() or b""
-            if len(o) < 40 or len(u) < 48:
-                return False
-            owner_validation_salt = o[32:40]
-            return cls._compute_hash_r5_r6(
-                pw[:127] + owner_validation_salt + u[:48], pw[:127], u[:48], revision
-            ) == o[:32]
         key_length_bits = int(
             encryption.get_length() or (40 if revision < 3 else 128)
         )
-        key_len_bytes = key_length_bits // 8
-        encrypt_metadata = bool(encryption.is_encrypt_meta_data())
-        return cls._compute_encryption_key_via_owner_password(
+        return cls._is_user_password_explicit(
             pw,
-            encryption.get_o() or b"",
             encryption.get_u() or b"",
+            encryption.get_o() or b"",
             int(encryption.get_p()),
             document_id,
             revision,
-            key_len_bytes,
-            encrypt_metadata,
-        ) is not None
+            key_length_bits // 8,
+            bool(encryption.is_encrypt_meta_data()),
+        )
+
+    @classmethod
+    def _is_owner_password_via_encryption(
+        cls,
+        password: bytes | str,
+        encryption: PDEncryption,
+        document_id: bytes,
+    ) -> bool:
+        revision = int(encryption.get_revision())
+        if isinstance(password, str):
+            charset = "utf-8" if revision >= 5 else "latin-1"
+            pw = password.encode(charset, errors="replace")
+        else:
+            pw = bytes(password or b"")
+        key_length_bits = int(
+            encryption.get_length() or (40 if revision < 3 else 128)
+        )
+        # The convenience overload swallows the upstream "too short" / "bad
+        # /UE" / "bad /OE" OSErrors and returns False so the higher-level
+        # caller can use the cheap "is this password valid?" probe without
+        # try/except plumbing. The explicit upstream-shape form still
+        # raises so byte-for-byte parity callers get the upstream behaviour.
+        try:
+            return cls._is_owner_password_explicit(
+                pw,
+                encryption.get_u() or b"",
+                encryption.get_o() or b"",
+                int(encryption.get_p()),
+                document_id,
+                revision,
+                key_length_bits // 8,
+                bool(encryption.is_encrypt_meta_data()),
+            )
+        except OSError:
+            return False
+
+    # -- Upstream-parity explicit form: matches Java L1013 / L592 byte-for-byte.
+    @classmethod
+    def _is_user_password_explicit(
+        cls,
+        password: bytes | str,
+        user: bytes,
+        owner: bytes,
+        permissions: int,
+        id_bytes: bytes,
+        enc_revision: int,
+        key_length_in_bytes: int,
+        encrypt_metadata: bool,
+    ) -> bool:
+        if isinstance(password, str):
+            charset = "utf-8" if enc_revision >= 5 else "latin-1"
+            pw = password.encode(charset, errors="replace")
+        else:
+            pw = bytes(password or b"")
+        if enc_revision in (2, 3, 4):
+            return cls._is_user_password_2_3_4(
+                pw, user, owner, permissions, id_bytes, enc_revision,
+                key_length_in_bytes, encrypt_metadata,
+            )
+        if enc_revision in (5, 6):
+            return cls._is_user_password_5_6(pw, user, enc_revision)
+        raise OSError(f"Unknown Encryption Revision {enc_revision}")
+
+    @classmethod
+    def _is_owner_password_explicit(
+        cls,
+        password: bytes | str,
+        user: bytes,
+        owner: bytes,
+        permissions: int,
+        id_bytes: bytes,
+        enc_revision: int,
+        key_length_in_bytes: int,
+        encrypt_metadata: bool,
+    ) -> bool:
+        if isinstance(password, str):
+            charset = "utf-8" if enc_revision >= 5 else "latin-1"
+            pw = password.encode(charset, errors="replace")
+        else:
+            pw = bytes(password or b"")
+        if enc_revision in (2, 3, 4):
+            return cls._is_owner_password_2_3_4(
+                pw, user, owner, permissions, id_bytes, enc_revision,
+                key_length_in_bytes, encrypt_metadata,
+            )
+        if enc_revision in (5, 6):
+            return cls._is_owner_password_5_6(pw, user, owner, enc_revision)
+        raise OSError(f"Unknown Encryption Revision {enc_revision}")
+
+    # -- Per-revision validators mirroring the Java ``isOwnerPassword234`` etc.
+    @classmethod
+    def _is_user_password_2_3_4(
+        cls,
+        password: bytes,
+        user: bytes,
+        owner: bytes,
+        permissions: int,
+        id_bytes: bytes,
+        enc_revision: int,
+        key_length_in_bytes: int,
+        encrypt_metadata: bool,
+    ) -> bool:
+        password_bytes = cls.compute_user_password(
+            password, owner, permissions, id_bytes, enc_revision,
+            key_length_in_bytes, encrypt_metadata,
+        )
+        if enc_revision == 2:
+            return hmac.compare_digest(bytes(user), bytes(password_bytes))
+        # r3, r4: only first 16 bytes are compared (matches Java L1045).
+        return hmac.compare_digest(bytes(user[:16]), bytes(password_bytes[:16]))
+
+    @classmethod
+    def _is_user_password_5_6(
+        cls, password: bytes, user: bytes, enc_revision: int
+    ) -> bool:
+        if len(user) < 40:
+            return False
+        truncated = cls.truncate_127(password)
+        u_hash = bytes(user[:32])
+        u_validation_salt = bytes(user[32:40])
+        if enc_revision == 5:
+            computed = cls.compute_sha_256(truncated, u_validation_salt, b"")
+        else:
+            computed = cls.compute_hash_2a(truncated, u_validation_salt, b"")
+        return hmac.compare_digest(computed, u_hash)
+
+    @classmethod
+    def _is_owner_password_2_3_4(
+        cls,
+        password: bytes,
+        user: bytes,
+        owner: bytes,
+        permissions: int,
+        id_bytes: bytes,
+        enc_revision: int,
+        key_length_in_bytes: int,
+        encrypt_metadata: bool,
+    ) -> bool:
+        # Algorithm 7: recover candidate user password from owner.
+        recovered_user = cls.get_user_password(
+            password, owner, enc_revision, key_length_in_bytes
+        )
+        return cls._is_user_password_2_3_4(
+            recovered_user, user, owner, permissions, id_bytes, enc_revision,
+            key_length_in_bytes, encrypt_metadata,
+        )
+
+    @classmethod
+    def _is_owner_password_5_6(
+        cls, password: bytes, user: bytes, owner: bytes, enc_revision: int
+    ) -> bool:
+        # Java L625 — owner.length must be >= 40.
+        if len(owner) < 40:
+            raise OSError("Owner password is too short")
+        truncated = cls.truncate_127(password)
+        o_hash = bytes(owner[:32])
+        o_validation_salt = bytes(owner[32:40])
+        if enc_revision == 5:
+            computed = cls.compute_sha_256(truncated, o_validation_salt, user)
+        else:
+            computed = cls.compute_hash_2a(truncated, o_validation_salt, user)
+        return hmac.compare_digest(computed, o_hash)
 
     # ------------------------------------------------- /CF dispatch helpers
 
@@ -590,13 +863,18 @@ class StandardSecurityHandler(SecurityHandler):
     def prepare_for_decryption(
         self,
         encryption: PDEncryption,
-        document_id: bytes,
+        document_id: object,
         decryption_material: object,
     ) -> None:
         if not isinstance(decryption_material, StandardDecryptionMaterial):
             raise TypeError(
                 "StandardSecurityHandler requires StandardDecryptionMaterial"
             )
+
+        # Upstream takes a ``COSArray`` for ``documentIDArray`` and pulls
+        # bytes from element 0; pypdfbox callers usually pass raw bytes
+        # already. Accept both shapes so the parity surface lines up.
+        document_id = self._get_document_id_bytes(document_id)
 
         revision = int(encryption.get_revision())
         version = int(encryption.get_v())
@@ -867,6 +1145,38 @@ class StandardSecurityHandler(SecurityHandler):
         encryption.set_str_f("StdCF")
 
     @staticmethod
+    def _get_document_id_bytes(document_id: object) -> bytes:
+        """Mirror upstream ``getDocumentIDBytes(COSArray)``.
+
+        Accepts either a raw ``bytes`` (the pypdfbox shape) or a ``COSArray``
+        whose first element is a ``COSString`` (the upstream shape). Returns
+        an empty ``bytes`` for ``None`` / empty array — matching Java L309's
+        ``new byte[0]`` fallback used by the
+        ``test/encryption/encrypted_doc_no_id.pdf`` corpus case.
+        """
+        if document_id is None:
+            return b""
+        if isinstance(document_id, (bytes, bytearray, memoryview)):
+            return bytes(document_id)
+        # Treat as COSArray-like — duck-type ``size`` + ``get``/``getObject``.
+        size_attr = getattr(document_id, "size", None)
+        if callable(size_attr):
+            try:
+                if size_attr() < 1:
+                    return b""
+            except (TypeError, ValueError):
+                return b""
+            getter = getattr(document_id, "get", None) or getattr(
+                document_id, "get_object", None
+            )
+            if callable(getter):
+                first = getter(0)
+                get_bytes = getattr(first, "get_bytes", None)
+                if callable(get_bytes):
+                    return bytes(get_bytes())
+        return b""
+
+    @staticmethod
     def _extract_document_id(document: object, default: bytes) -> bytes:
         """Return ``/ID[0]`` from the document's trailer as raw bytes.
 
@@ -1064,6 +1374,191 @@ class StandardSecurityHandler(SecurityHandler):
         )
 
     # ============================================================ r5-r6 ===
+
+    # ------------------------------------------------- upstream-named helpers
+    # Public-facing snake_case mirrors of PDFBox's private static helpers,
+    # surfaced so parity tests can drive them directly. These are pure
+    # algorithmic helpers — no I/O, no global state — so exposing them costs
+    # nothing and matches the upstream contract.
+
+    @staticmethod
+    def truncate_127(value: bytes) -> bytes:
+        """Mirror upstream ``truncate127``: r5/r6 password truncation."""
+        if value is None:
+            return b""
+        return bytes(value[:127])
+
+    @classmethod
+    def truncate_or_pad(cls, password: bytes) -> bytes:
+        """Mirror upstream ``truncateOrPad``: r2-r4 password padding."""
+        return cls._pad_password(password)
+
+    @staticmethod
+    def adjust_user_key(u: bytes | None) -> bytes:
+        """Mirror upstream ``adjustUserKey``.
+
+        Returns the first 48 bytes of /U for r5/r6 owner-password hashing.
+        Empty bytes are treated as null-equivalent (returns ``b""``) since
+        pypdfbox callers commonly pass ``encryption.get_u() or b""``; an
+        explicit short-but-non-empty /U still raises ``OSError`` to mirror
+        Java L1226's ``new IOException("Bad U length")``.
+        """
+        if u is None or len(u) == 0:
+            return b""
+        if len(u) < 48:
+            raise OSError("Bad U length")
+        if len(u) > 48:
+            return bytes(u[:48])
+        return bytes(u)
+
+    @classmethod
+    def compute_sha_256(
+        cls, password: bytes, salt: bytes, user_key: bytes | None
+    ) -> bytes:
+        """Mirror upstream ``computeSHA256`` (r5 hash).
+
+        Builds SHA-256(password || salt || adjustUserKey(user_key)).
+        """
+        md = hashlib.sha256()
+        md.update(bytes(password))
+        md.update(bytes(salt))
+        md.update(cls.adjust_user_key(user_key))
+        return md.digest()
+
+    @classmethod
+    def compute_hash_2a(
+        cls, password: bytes, salt: bytes, u: bytes | None
+    ) -> bytes:
+        """Mirror upstream ``computeHash2A`` (Algorithm 2.A from ISO 32000-1).
+
+        ``input = truncate127(password) || salt || adjustUserKey(u)`` →
+        ``computeHash2B(input, truncate127(password), adjustUserKey(u))``.
+        """
+        user_key = cls.adjust_user_key(u)
+        truncated = cls.truncate_127(password)
+        input_bytes = truncated + bytes(salt) + user_key
+        return cls.compute_hash_2b(input_bytes, truncated, user_key)
+
+    @classmethod
+    def compute_hash_2b(
+        cls, input_data: bytes, password: bytes, user_key: bytes | None
+    ) -> bytes:
+        """Mirror upstream ``computeHash2B`` (Algorithm 2.B from ISO 32000-2).
+
+        Snake-case alias over :meth:`_compute_hash_r5_r6` so callers using
+        the upstream name resolve to the same r6 hardened-hash routine.
+        ``user_key`` may be ``None`` (treated as empty per upstream).
+        """
+        uk = bytes(user_key) if user_key is not None else b""
+        return cls._compute_hash_r5_r6(bytes(input_data), bytes(password), uk, 6)
+
+    @classmethod
+    def compute_rc_4_key(
+        cls, owner_password: bytes, enc_revision: int, length: int
+    ) -> bytes:
+        """Mirror upstream ``computeRC4key`` — steps (a)-(d) of Algorithm 3.
+
+        MD5 of the padded owner password, optionally re-hashed 50 times for
+        r3/r4, then truncated to ``length`` bytes. Used as the RC4 key in
+        algorithms 3 and 7.
+        """
+        try:
+            digest = hashlib.md5(
+                cls._pad_password(owner_password), usedforsecurity=False
+            ).digest()
+            if enc_revision in (3, 4):
+                for _ in range(50):
+                    digest = hashlib.md5(
+                        digest[:length], usedforsecurity=False
+                    ).digest()
+            return digest[:length]
+        except ValueError as exc:
+            # Mirror Java's PDFBOX-6115 catch: illegal key length.
+            raise OSError(str(exc)) from exc
+
+    def validate_perms(
+        self,
+        encryption: PDEncryption,
+        dic_permissions: int,
+        encrypt_metadata: bool,
+    ) -> None:
+        """Mirror upstream ``validatePerms`` — Algorithm 13 read-side check.
+
+        Decrypts ``/Perms`` (AES-256 ECB under the file encryption key) and
+        warns on mismatched permissions / metadata flag without raising,
+        matching upstream's relaxed treatment of buggy producers. The file
+        encryption key must already be set on this handler — call after
+        :meth:`prepare_for_decryption` succeeds. Unknown perms are tolerated
+        to mirror Java L317 behaviour exactly.
+        """
+        file_key = self.get_encryption_key() or b""
+        perms = encryption.get_perms()
+        if perms is None or len(perms) != 16:
+            return
+        plain = self._decrypt_perms_r5_r6(file_key, perms)
+        if len(plain) != 16:
+            _LOG.warning("Verification of permissions failed (cannot decrypt)")
+            return
+        if plain[9] != ord("a") or plain[10] != ord("d") or plain[11] != ord("b"):
+            _LOG.warning("Verification of permissions failed (constant)")
+        perms_p = (
+            plain[0]
+            | (plain[1] << 8)
+            | (plain[2] << 16)
+            | (plain[3] << 24)
+        )
+        if perms_p & 0x80000000:
+            perms_p -= 0x100000000
+        if perms_p != _signed32(dic_permissions):
+            _LOG.warning(
+                "Verification of permissions failed (%08X != %08X)",
+                perms_p & 0xFFFFFFFF,
+                dic_permissions & 0xFFFFFFFF,
+            )
+        expected = ord("T") if encrypt_metadata else ord("F")
+        if plain[8] != expected:
+            _LOG.warning("Verification of permissions failed (EncryptMetadata)")
+
+    @classmethod
+    def _compute_encryption_key_rev_5_6(
+        cls,
+        password: bytes,
+        is_owner_password: bool,
+        o: bytes,
+        u: bytes,
+        oe: bytes,
+        ue: bytes,
+        enc_revision: int,
+    ) -> bytes:
+        """Mirror upstream ``computeEncryptedKeyRev56`` (Java L783).
+
+        Given a password presumed to be owner or user (per ``is_owner_password``),
+        recover the file encryption key by AES-256-CBC unwrapping ``oe`` or
+        ``ue`` under the SHA-256 (r5) or hardened-hash (r6) of
+        ``password || keySalt [|| U[:48]]``.
+        """
+        truncated = cls.truncate_127(password)
+        if is_owner_password:
+            if oe is None:
+                raise OSError("/Encrypt/OE entry is missing")
+            o_key_salt = bytes(o[40:48])
+            if enc_revision == 5:
+                hash_value = cls.compute_sha_256(truncated, o_key_salt, u)
+            else:
+                hash_value = cls.compute_hash_2a(truncated, o_key_salt, u)
+            file_key_enc = oe
+        else:
+            if ue is None:
+                raise OSError("/Encrypt/UE entry is missing")
+            u_key_salt = bytes(u[40:48])
+            if enc_revision == 5:
+                hash_value = cls.compute_sha_256(truncated, u_key_salt, None)
+            else:
+                hash_value = cls.compute_hash_2a(truncated, u_key_salt, None)
+            file_key_enc = ue
+        return _aes_cbc_no_padding_decrypt(
+            hash_value, b"\x00" * 16, bytes(file_key_enc)
+        )
 
     @classmethod
     def _compute_encryption_key_r5_r6(

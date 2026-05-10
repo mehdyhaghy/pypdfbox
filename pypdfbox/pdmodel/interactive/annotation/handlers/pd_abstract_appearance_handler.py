@@ -1,18 +1,24 @@
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
 
 from pypdfbox.cos import COSName, COSStream
 
+from ..pd_annotation_line import PDAnnotationLine
 from ..pd_appearance_content_stream import PDAppearanceContentStream
 from ..pd_appearance_dictionary import PDAppearanceDictionary
+from ..pd_appearance_entry import PDAppearanceEntry
 from ..pd_appearance_stream import PDAppearanceStream
 from .pd_appearance_handler import PDAppearanceHandler
 
 if TYPE_CHECKING:
+    from pypdfbox.cos import COSArray
+
     from ....pd_document import PDDocument
     from ....pd_rectangle import PDRectangle
     from ..pd_annotation import PDAnnotation
+    from ..pd_annotation_square_circle import PDAnnotationSquareCircle
 
 
 _TYPE: COSName = COSName.get_pdf_name("Type")
@@ -31,16 +37,50 @@ class PDAbstractAppearanceHandler(PDAppearanceHandler):
     optionally rollover/down). The base provides the appearance-stream
     plumbing (allocate the Form XObject body, ensure ``/AP`` is wired,
     open a writer) plus a few small geometry helpers that get reused
-    across handlers.
-
-    Lite scope: ``draw_style`` (line endings), ``CloudyBorder`` and
-    ``setOpacity`` (via ``/ExtGState``) are not ported; the lite
-    appearance stream surface doesn't yet extend ``PDFormXObject`` (see
-    :class:`PDAppearanceStream`) so the upstream ``setGraphicsStateParameters``
-    helper would have nowhere to register the GS dictionary. ``CHANGES.md``
-    tracks the deviation. Constant opacity is therefore burned into the
-    color at write time by the concrete handlers when needed.
+    across handlers — line-ending shape primitives, rectangle padding,
+    and a shared border-box helper for square/circle annotations.
     """
+
+    #: Half-arrowhead angle in radians (Adobe matches roughly 30 degrees).
+    #: Mirrors upstream ``ARROW_ANGLE`` (PDAbstractAppearanceHandler.java:61).
+    ARROW_ANGLE: float = math.radians(30)
+
+    #: Line ending styles where the line has to be drawn shorter
+    #: (minus line width). Mirrors upstream ``SHORT_STYLES``.
+    SHORT_STYLES: frozenset[str] = frozenset(
+        {
+            PDAnnotationLine.LE_OPEN_ARROW,
+            PDAnnotationLine.LE_CLOSED_ARROW,
+            PDAnnotationLine.LE_SQUARE,
+            PDAnnotationLine.LE_CIRCLE,
+            PDAnnotationLine.LE_DIAMOND,
+        }
+    )
+
+    #: Line ending styles where there is an interior color. Mirrors
+    #: upstream ``INTERIOR_COLOR_STYLES``.
+    INTERIOR_COLOR_STYLES: frozenset[str] = frozenset(
+        {
+            PDAnnotationLine.LE_CLOSED_ARROW,
+            PDAnnotationLine.LE_CIRCLE,
+            PDAnnotationLine.LE_DIAMOND,
+            PDAnnotationLine.LE_R_CLOSED_ARROW,
+            PDAnnotationLine.LE_SQUARE,
+        }
+    )
+
+    #: Line ending styles where the shape changes its angle, e.g. arrows.
+    #: Mirrors upstream ``ANGLED_STYLES``.
+    ANGLED_STYLES: frozenset[str] = frozenset(
+        {
+            PDAnnotationLine.LE_CLOSED_ARROW,
+            PDAnnotationLine.LE_OPEN_ARROW,
+            PDAnnotationLine.LE_R_CLOSED_ARROW,
+            PDAnnotationLine.LE_R_OPEN_ARROW,
+            PDAnnotationLine.LE_BUTT,
+            PDAnnotationLine.LE_SLASH,
+        }
+    )
 
     def __init__(
         self,
@@ -49,6 +89,7 @@ class PDAbstractAppearanceHandler(PDAppearanceHandler):
     ) -> None:
         self._annotation = annotation
         self._document = document
+        self._default_font: object | None = None  # PDFont, lazily built
 
     # ---------- accessors ----------
 
@@ -58,8 +99,38 @@ class PDAbstractAppearanceHandler(PDAppearanceHandler):
     def get_document(self) -> PDDocument | None:
         return self._document
 
+    def get_color(self) -> COSArray | None:
+        """Return the annotation's stroke color (``/C``).
+
+        Mirrors upstream ``PDAbstractAppearanceHandler.getColor()`` —
+        package-private in Java; here it's exposed for parity since
+        handlers live in the same package.
+
+        Lite surface: this returns the raw ``COSArray`` of color
+        components rather than a typed :class:`PDColor` because
+        :meth:`PDAnnotation.get_color` itself does — the typed wrapper
+        lands with the rendering cluster (PRD §6.12). See ``CHANGES.md``.
+        """
+        return self._annotation.get_color()
+
     def get_rectangle(self) -> PDRectangle | None:
         return self._annotation.get_rectangle()
+
+    def get_default_font(self) -> object:
+        """Return a lazily-constructed Helvetica :class:`PDType1Font` for
+        appearance text. Mirrors upstream ``getDefaultFont()`` — used by
+        text-bearing handlers (free-text, widget) that need *some* usable
+        font without forcing the caller to build a font dictionary.
+
+        Constructed via :meth:`PDFontFactory.create_default_font` so the
+        font dictionary carries the right ``/Subtype`` and ``/BaseFont``
+        for embedding-free Standard 14 use.
+        """
+        if self._default_font is None:
+            from ....font.pd_font_factory import PDFontFactory
+
+            self._default_font = PDFontFactory.create_default_font()
+        return self._default_font
 
     # ---------- appearance allocation ----------
 
@@ -89,14 +160,29 @@ class PDAbstractAppearanceHandler(PDAppearanceHandler):
         self._annotation.set_appearance_dictionary(ap)
         return ap
 
+    def get_normal_appearance(self) -> PDAppearanceEntry:
+        """Return the ``/AP /N`` appearance entry, creating a fresh single
+        stream when ``/N`` is absent or is a state subdictionary.
+
+        Mirrors upstream's private ``getNormalAppearance()`` (returns the
+        entry, not the stream). Exposed in the port because helper
+        callers in the same package use it.
+        """
+        appearance = self.get_appearance()
+        normal_entry = appearance.get_normal_appearance()
+        if normal_entry is None or normal_entry.is_sub_dictionary():
+            new_entry = PDAppearanceEntry(self.create_cos_stream())
+            appearance.set_normal_appearance(new_entry)
+            return new_entry
+        return normal_entry
+
     def get_normal_appearance_stream(self) -> PDAppearanceStream:
         """Return the (single-stream) ``/AP /N`` appearance, creating a
         fresh one when ``/N`` is absent or is a state subdictionary.
 
         The returned stream has ``/Type /XObject /Subtype /Form
         /FormType 1 /BBox <annotation rect>`` set so it is a valid Form
-        XObject even before the lite-scope ``PDAppearanceStream`` grows
-        full ``PDFormXObject`` support.
+        XObject.
         """
         ap = self.get_appearance()
         entry = ap.get_normal_appearance()
@@ -123,7 +209,56 @@ class PDAbstractAppearanceHandler(PDAppearanceHandler):
         """Open a writer over the ``/AP /N`` appearance stream. Caller is
         responsible for ``close()`` (use ``with``)."""
         appearance = self.get_normal_appearance_stream()
+        self._set_transformation_matrix(appearance)
+        # Ensure there are resources, mirroring upstream's
+        # getAppearanceEntryAsContentStream guard.
+        if appearance.get_resources() is None:
+            from ....pd_resources import PDResources
+
+            appearance.set_resources(PDResources())
         return PDAppearanceContentStream(appearance, compress=compress)
+
+    def get_down_appearance(self) -> PDAppearanceEntry:
+        """Return the ``/AP /D`` appearance entry, creating a fresh single
+        stream when ``/D`` is a state subdictionary. Mirrors upstream's
+        ``getDownAppearance()``.
+        """
+        appearance = self.get_appearance()
+        down = appearance.get_down_appearance()
+        if down is None or down.is_sub_dictionary():
+            new_entry = PDAppearanceEntry(self.create_cos_stream())
+            appearance.set_down_appearance(new_entry)
+            return new_entry
+        return down
+
+    def get_rollover_appearance(self) -> PDAppearanceEntry:
+        """Return the ``/AP /R`` appearance entry, creating a fresh single
+        stream when ``/R`` is a state subdictionary. Mirrors upstream's
+        ``getRolloverAppearance()``.
+        """
+        appearance = self.get_appearance()
+        rollover = appearance.get_rollover_appearance()
+        if rollover is None or rollover.is_sub_dictionary():
+            new_entry = PDAppearanceEntry(self.create_cos_stream())
+            appearance.set_rollover_appearance(new_entry)
+            return new_entry
+        return rollover
+
+    def _set_transformation_matrix(
+        self, appearance_stream: PDAppearanceStream
+    ) -> None:
+        """Set the appearance ``/BBox`` to the annotation rectangle and
+        ``/Matrix`` to a translation that moves the rectangle's
+        lower-left corner to the origin. Mirrors upstream's private
+        ``setTransformationMatrix``.
+        """
+        bbox = self.get_rectangle()
+        if bbox is None:
+            return
+        appearance_stream.set_bbox(bbox)
+        appearance_stream.set_matrix(
+            [1.0, 0.0, 0.0, 1.0, -bbox.get_lower_left_x(), -bbox.get_lower_left_y()]
+        )
 
     # ---------- geometry helpers ----------
 
@@ -133,7 +268,12 @@ class PDAbstractAppearanceHandler(PDAppearanceHandler):
     ) -> PDRectangle:
         from ....pd_rectangle import PDRectangle
 
-        return PDRectangle(
+        # Note: upstream constructs ``new PDRectangle(x, y, w, h)`` whose Java
+        # 4-arg form is ``(x, y, width, height)``. The Python ``PDRectangle``
+        # 4-arg constructor takes ``(lower_left_x, lower_left_y, upper_right_x,
+        # upper_right_y)`` instead, so we use the explicit ``from_xywh``
+        # factory to get the same semantics as upstream.
+        return PDRectangle.from_xywh(
             rectangle.get_lower_left_x() + padding,
             rectangle.get_lower_left_y() + padding,
             rectangle.get_width() - 2 * padding,
@@ -148,7 +288,7 @@ class PDAbstractAppearanceHandler(PDAppearanceHandler):
             return rectangle
         from ....pd_rectangle import PDRectangle
 
-        return PDRectangle(
+        return PDRectangle.from_xywh(
             rectangle.get_lower_left_x() - differences[0],
             rectangle.get_lower_left_y() - differences[1],
             rectangle.get_width() + differences[0] + differences[2],
@@ -163,12 +303,225 @@ class PDAbstractAppearanceHandler(PDAppearanceHandler):
             return rectangle
         from ....pd_rectangle import PDRectangle
 
-        return PDRectangle(
+        return PDRectangle.from_xywh(
             rectangle.get_lower_left_x() + differences[0],
             rectangle.get_lower_left_y() + differences[1],
             rectangle.get_width() - differences[0] - differences[2],
             rectangle.get_height() - differences[1] - differences[3],
         )
+
+    def handle_border_box(
+        self,
+        annotation: PDAnnotationSquareCircle,
+        line_width: float,
+    ) -> PDRectangle:
+        """Compute the border box for a square / circle annotation.
+
+        Mirrors upstream's ``handleBorderBox(PDAnnotationSquareCircle,
+        float)`` — implementation-specific to Adobe Reader, not part of
+        the PDF specification:
+
+        * If ``/RD`` is unset, the border box is the ``/Rect`` entry inset
+          by half the line width. ``/RD`` is then seeded with the line
+          width and ``/Rect`` is enlarged by the new ``/RD`` so the
+          appearance bbox/matrix stay in sync.
+        * If ``/RD`` is set, the border box is the ``/Rect`` with ``/RD``
+          applied per side, then padded inward by half the line width.
+        """
+        rect_differences = annotation.get_rect_differences()
+        if not rect_differences:
+            border_box = self.get_padded_rectangle(
+                self.get_rectangle(), line_width / 2
+            )
+            annotation.set_rect_differences(line_width / 2)
+            annotation.set_rectangle(
+                self.add_rect_differences(
+                    self.get_rectangle(), annotation.get_rect_differences()
+                )
+            )
+            # When the normal appearance stream was generated, BBox/Matrix
+            # were set to the values of the original /Rect. Since /Rect
+            # changed, adjust them too.
+            rect = self.get_rectangle()
+            appearance_stream = annotation.get_normal_appearance_stream()
+            if appearance_stream is not None and rect is not None:
+                appearance_stream.set_bbox(rect)
+                appearance_stream.set_matrix(
+                    [
+                        1.0,
+                        0.0,
+                        0.0,
+                        1.0,
+                        -rect.get_lower_left_x(),
+                        -rect.get_lower_left_y(),
+                    ]
+                )
+            return border_box
+        border_box = self.apply_rect_differences(
+            self.get_rectangle(), rect_differences
+        )
+        return self.get_padded_rectangle(border_box, line_width / 2)
+
+    # ---------- opacity / extended graphics state ----------
+
+    @staticmethod
+    def set_opacity(
+        content_stream: PDAppearanceContentStream, opacity: float
+    ) -> None:
+        """Apply a constant stroking + non-stroking alpha via an
+        ``/ExtGState``. No-op when ``opacity`` is ``>= 1`` (matches
+        upstream behaviour).
+
+        Mirrors upstream's package-private ``setOpacity`` — exposed here
+        for handlers in the same package.
+        """
+        if opacity >= 1:
+            return
+        from ....graphics.state.pd_extended_graphics_state import (
+            PDExtendedGraphicsState,
+        )
+
+        gs = PDExtendedGraphicsState()
+        gs.set_stroking_alpha_constant(opacity)
+        gs.set_non_stroking_alpha_constant(opacity)
+        content_stream.set_graphics_state_parameters(gs)
+
+    # ---------- line-ending shape primitives ----------
+
+    def draw_style(
+        self,
+        style: str,
+        cs: PDAppearanceContentStream,
+        x: float,
+        y: float,
+        width: float,
+        has_stroke: bool,
+        has_background: bool,
+        ending: bool,
+    ) -> None:
+        """Emit the path for a line-ending style at ``(x, y)``.
+
+        Mirrors upstream's ``drawStyle``. ``ending`` is ``False`` for the
+        left side of an imagined horizontal line, ``True`` for the
+        right side (important for arrow direction).
+        """
+        sign = -1 if ending else 1
+        if style in (
+            PDAnnotationLine.LE_OPEN_ARROW,
+            PDAnnotationLine.LE_CLOSED_ARROW,
+        ):
+            self.draw_arrow(cs, x + sign * width, y, sign * width * 9)
+        elif style == PDAnnotationLine.LE_BUTT:
+            cs.move_to(x, y - width * 3)
+            cs.line_to(x, y + width * 3)
+        elif style == PDAnnotationLine.LE_DIAMOND:
+            self.draw_diamond(cs, x, y, width * 3)
+        elif style == PDAnnotationLine.LE_SQUARE:
+            cs.add_rect(x - width * 3, y - width * 3, width * 6, width * 6)
+        elif style == PDAnnotationLine.LE_CIRCLE:
+            self.draw_circle(cs, x, y, width * 3)
+        elif style in (
+            PDAnnotationLine.LE_R_OPEN_ARROW,
+            PDAnnotationLine.LE_R_CLOSED_ARROW,
+        ):
+            self.draw_arrow(cs, x + (-sign) * width, y, (-sign) * width * 9)
+        elif style == PDAnnotationLine.LE_SLASH:
+            width9 = width * 9
+            # 18 x linewidth at an angle of 60 degrees
+            cs.move_to(
+                x + math.cos(math.radians(60)) * width9,
+                y + math.sin(math.radians(60)) * width9,
+            )
+            cs.line_to(
+                x + math.cos(math.radians(240)) * width9,
+                y + math.sin(math.radians(240)) * width9,
+            )
+        else:
+            return
+        if style in (
+            PDAnnotationLine.LE_R_CLOSED_ARROW,
+            PDAnnotationLine.LE_CLOSED_ARROW,
+        ):
+            cs.close_path()
+        # Only paint a background color (/IC) for interior-color styles,
+        # even when /IC is set.
+        cs.draw_shape(
+            width,
+            has_stroke,
+            style in self.INTERIOR_COLOR_STYLES and has_background,
+        )
+
+    def draw_arrow(
+        self,
+        cs: PDAppearanceContentStream,
+        x: float,
+        y: float,
+        length: float,
+    ) -> None:
+        """Add the two arms of a horizontal arrow to the path. Positive
+        ``length`` extends to the right, negative to the left. Mirrors
+        upstream ``drawArrow``.
+        """
+        # angle 30 degrees, arm length = 9 * line width
+        arm_x = x + math.cos(self.ARROW_ANGLE) * length
+        arm_y_delta = math.sin(self.ARROW_ANGLE) * length
+        cs.move_to(arm_x, y + arm_y_delta)
+        cs.line_to(x, y)
+        cs.line_to(arm_x, y - arm_y_delta)
+
+    def draw_diamond(
+        self,
+        cs: PDAppearanceContentStream,
+        x: float,
+        y: float,
+        r: float,
+    ) -> None:
+        """Add a square diamond shape (corner on top) to the path. ``r``
+        is the radius to a corner. Mirrors upstream ``drawDiamond``.
+        """
+        cs.move_to(x - r, y)
+        cs.line_to(x, y + r)
+        cs.line_to(x + r, y)
+        cs.line_to(x, y - r)
+        cs.close_path()
+
+    def draw_circle(
+        self,
+        cs: PDAppearanceContentStream,
+        x: float,
+        y: float,
+        r: float,
+    ) -> None:
+        """Add a circle to the path in clockwise direction. Mirrors
+        upstream ``drawCircle`` — uses the well-known Bezier
+        ``0.551784`` control offset (http://stackoverflow.com/a/2007782).
+        """
+        magic = r * 0.551784
+        cs.move_to(x, y + r)
+        cs.curve_to(x + magic, y + r, x + r, y + magic, x + r, y)
+        cs.curve_to(x + r, y - magic, x + magic, y - r, x, y - r)
+        cs.curve_to(x - magic, y - r, x - r, y - magic, x - r, y)
+        cs.curve_to(x - r, y + magic, x - magic, y + r, x, y + r)
+        cs.close_path()
+
+    def draw_circle2(
+        self,
+        cs: PDAppearanceContentStream,
+        x: float,
+        y: float,
+        r: float,
+    ) -> None:
+        """Add a circle to the path in counterclockwise direction —
+        useful for doughnut shapes (nonzero winding). Mirrors upstream
+        ``drawCircle2``.
+        """
+        magic = r * 0.551784
+        cs.move_to(x, y + r)
+        cs.curve_to(x - magic, y + r, x - r, y + magic, x - r, y)
+        cs.curve_to(x - r, y - magic, x - magic, y - r, x, y - r)
+        cs.curve_to(x + magic, y - r, x + r, y - magic, x + r, y)
+        cs.curve_to(x + r, y + magic, x + magic, y + r, x, y + r)
+        cs.close_path()
 
     # ---------- color helper ----------
 
@@ -177,7 +530,12 @@ class PDAbstractAppearanceHandler(PDAppearanceHandler):
         annotation: PDAnnotation,
     ) -> list[float] | None:
         """Read /C off the annotation as raw float components. Returns
-        ``None`` when /C is absent or empty."""
+        ``None`` when /C is absent or empty.
+
+        Note: ``PDAnnotation.get_color()`` in the lite surface still
+        returns the raw ``COSArray`` rather than a typed :class:`PDColor`.
+        See ``CHANGES.md``.
+        """
         color = annotation.get_color()
         if color is None or color.size() == 0:
             return None

@@ -21,7 +21,6 @@ from pypdfbox.pdmodel.encryption.standard_security_handler import (
     StandardSecurityHandler,
 )
 
-
 # -------------------------------------------------------------- helpers
 
 
@@ -289,3 +288,284 @@ def test_prepare_document_for_encryption_alias_runs_prepare_document() -> None:
     assert doc.encryption_dictionary.get_filter() == "Standard"
     assert doc.encryption_dictionary.get_revision() == 3
     assert doc.encryption_dictionary.get_v() == 2
+
+
+# --------------------------- upstream byte[]-args parity overloads ---------
+
+
+def test_is_user_password_explicit_byte_args_form_validates_correct_password() -> None:
+    """Upstream Java ``isUserPassword(byte[] password, byte[] user, byte[]
+    owner, int permissions, byte[] id, int encRevision, int keyLengthInBytes,
+    boolean encryptMetadata)`` shape — pypdfbox accepts the same 8-positional
+    form for byte-for-byte parity with PDFBox L1013."""
+    document_id = b"\x00" * 16
+    user_bytes = b"user"
+    owner_bytes = b"owner"
+    permissions = -3904
+    o = StandardSecurityHandler.compute_owner_password(
+        owner_bytes, user_bytes, 3, 16
+    )
+    u = StandardSecurityHandler.compute_user_password(
+        user_bytes, o, permissions, document_id, 3, 16
+    )
+    assert (
+        StandardSecurityHandler.is_user_password(
+            user_bytes, u, o, permissions, document_id, 3, 16, True
+        )
+        is True
+    )
+    assert (
+        StandardSecurityHandler.is_user_password(
+            b"wrong", u, o, permissions, document_id, 3, 16, True
+        )
+        is False
+    )
+
+
+def test_is_owner_password_explicit_byte_args_form_validates_correct_password() -> None:
+    """Same shape for ``isOwnerPassword(byte[]…)`` — Java L592 byte-for-byte."""
+    document_id = b"\x00" * 16
+    user_bytes = b"user"
+    owner_bytes = b"owner"
+    permissions = -3904
+    o = StandardSecurityHandler.compute_owner_password(
+        owner_bytes, user_bytes, 3, 16
+    )
+    u = StandardSecurityHandler.compute_user_password(
+        user_bytes, o, permissions, document_id, 3, 16
+    )
+    assert (
+        StandardSecurityHandler.is_owner_password(
+            owner_bytes, u, o, permissions, document_id, 3, 16, True
+        )
+        is True
+    )
+    assert (
+        StandardSecurityHandler.is_owner_password(
+            b"wrong", u, o, permissions, document_id, 3, 16, True
+        )
+        is False
+    )
+
+
+def test_is_user_password_explicit_form_unknown_revision_raises() -> None:
+    """Java L1028 throws ``IOException("Unknown Encryption Revision …")``
+    for an unsupported revision; pypdfbox raises ``OSError`` (the
+    documented Python parity for ``IOException``)."""
+    import pytest
+
+    with pytest.raises(OSError, match="Unknown Encryption Revision"):
+        StandardSecurityHandler.is_user_password(
+            b"pw", b"u" * 32, b"o" * 32, -3904, b"\x00" * 16, 99, 16, True
+        )
+
+
+def test_is_owner_password_explicit_form_unknown_revision_raises() -> None:
+    import pytest
+
+    with pytest.raises(OSError, match="Unknown Encryption Revision"):
+        StandardSecurityHandler.is_owner_password(
+            b"pw", b"u" * 32, b"o" * 32, -3904, b"\x00" * 16, 99, 16, True
+        )
+
+
+def test_compute_owner_password_revision2_with_wrong_length_raises() -> None:
+    """Java L920-922 throws when r2 is paired with key length != 5 bytes."""
+    import pytest
+
+    with pytest.raises(OSError, match="Expected length=5"):
+        StandardSecurityHandler.compute_owner_password(b"o", b"u", 2, 16)
+
+
+def test_compute_user_password_returns_empty_for_revision_5_and_6() -> None:
+    """Java L862-865 — r5/r6 has no recoverable plaintext /U; mirror the
+    empty-byte return value."""
+    assert (
+        StandardSecurityHandler.compute_user_password(
+            b"pw", b"o" * 32, -3904, b"\x00" * 16, 5, 32
+        )
+        == b""
+    )
+    assert (
+        StandardSecurityHandler.compute_user_password(
+            b"pw", b"o" * 32, -3904, b"\x00" * 16, 6, 32
+        )
+        == b""
+    )
+
+
+def test_truncate_127_caps_long_input() -> None:
+    """Mirror upstream ``truncate127`` (Java L1255): inputs longer than
+    127 bytes are truncated, shorter inputs returned as-is."""
+    assert StandardSecurityHandler.truncate_127(b"x" * 200) == b"x" * 127
+    assert StandardSecurityHandler.truncate_127(b"short") == b"short"
+    assert StandardSecurityHandler.truncate_127(b"") == b""
+
+
+def test_adjust_user_key_truncates_to_48_bytes() -> None:
+    """Mirror upstream ``adjustUserKey`` (Java L1218): >48 truncates,
+    exactly 48 returns unchanged, empty/null returns empty, short raises."""
+    assert StandardSecurityHandler.adjust_user_key(b"x" * 60) == b"x" * 48
+    assert StandardSecurityHandler.adjust_user_key(b"x" * 48) == b"x" * 48
+    assert StandardSecurityHandler.adjust_user_key(None) == b""
+    assert StandardSecurityHandler.adjust_user_key(b"") == b""
+
+    import pytest
+
+    with pytest.raises(OSError, match="Bad U length"):
+        StandardSecurityHandler.adjust_user_key(b"too-short")
+
+
+def test_compute_sha_256_matches_explicit_construction() -> None:
+    """``computeSHA256`` (Java L1210) is sha256(input || password ||
+    adjustUserKey(userKey)) — verify the helper builds the same digest."""
+    import hashlib
+
+    pw = b"hello"
+    salt = b"\x01" * 8
+    user_key = b"u" * 48
+    expected = hashlib.sha256(pw + salt + user_key).digest()
+    assert StandardSecurityHandler.compute_sha_256(pw, salt, user_key) == expected
+    # And empty/null user_key → sha256(input || password).
+    assert (
+        StandardSecurityHandler.compute_sha_256(pw, salt, None)
+        == hashlib.sha256(pw + salt).digest()
+    )
+
+
+def test_compute_rc_4_key_round_trip_for_revision_3() -> None:
+    """``computeRC4key`` (Java L951) is the MD5+50-iteration helper used
+    by /O and /U recovery. r2 omits the 50-rep loop; r3/r4 includes it."""
+    pw = b"owner-password"
+    r2 = StandardSecurityHandler.compute_rc_4_key(pw, 2, 5)
+    r3 = StandardSecurityHandler.compute_rc_4_key(pw, 3, 16)
+    assert len(r2) == 5
+    assert len(r3) == 16
+    # r2 and r3 must yield different keys — proving the iteration loop runs.
+    assert r2 != r3[:5]
+
+
+def test_compute_encrypted_key_full_form_dispatches_to_rev234() -> None:
+    """The 11-arg upstream form must produce the same r3 file key as the
+    7-arg compact form when both are passed equivalent inputs."""
+    document_id = b"\x00" * 16
+    pw = b"user"
+    owner_bytes = b"owner"
+    permissions = -3904
+    o = StandardSecurityHandler.compute_owner_password(owner_bytes, pw, 3, 16)
+    u = StandardSecurityHandler.compute_user_password(
+        pw, o, permissions, document_id, 3, 16
+    )
+    compact = StandardSecurityHandler.compute_encrypted_key(
+        pw, o, permissions, document_id, 3, 16, True
+    )
+    full = StandardSecurityHandler.compute_encrypted_key(
+        pw, o, u, b"", b"", permissions, document_id, 3, 16, True, False
+    )
+    assert compact == full
+
+
+def test_compute_encrypted_key_full_form_dispatches_to_rev6() -> None:
+    """For r6 the full 11-arg form must invoke the AES-256 key-unwrap
+    path — exercise it via ``_build_r6_dictionary`` round-trip."""
+    handler = StandardSecurityHandler()
+    handler.set_revision(6)
+    handler.set_version(5)
+    handler.set_key_length(256)
+    handler.set_aes(True)
+
+    import os as _os
+
+    handler.set_encryption_key(_os.urandom(32))
+    o, oe, u, ue, _perms = handler._build_r6_dictionary(  # noqa: SLF001
+        b"owner", b"user", -3904
+    )
+
+    # Recover the file key via the user-password form.
+    file_key_via_user = StandardSecurityHandler.compute_encrypted_key(
+        b"user", o, u, oe, ue, -3904, b"", 6, 32, True, False
+    )
+    # And via the owner-password form.
+    file_key_via_owner = StandardSecurityHandler.compute_encrypted_key(
+        b"owner", o, u, oe, ue, -3904, b"", 6, 32, True, True
+    )
+    assert file_key_via_user == handler.get_encryption_key()
+    assert file_key_via_owner == handler.get_encryption_key()
+
+
+def test_get_document_id_bytes_handles_cos_array_or_bytes() -> None:
+    """``prepareForDecryption`` (Java L150) takes a ``COSArray`` for the
+    document ID; pypdfbox accepts both ``COSArray`` and raw bytes via the
+    ``getDocumentIDBytes`` upstream helper."""
+    from pypdfbox.cos import COSArray, COSString
+
+    # bytes input pass-through
+    assert (
+        StandardSecurityHandler._get_document_id_bytes(b"abc")  # noqa: SLF001
+        == b"abc"
+    )
+    # None / empty
+    assert StandardSecurityHandler._get_document_id_bytes(None) == b""  # noqa: SLF001
+
+    # COSArray with COSString[0] returns its raw bytes
+    arr = COSArray()
+    arr.add(COSString(b"\x01\x02\x03"))
+    assert (
+        StandardSecurityHandler._get_document_id_bytes(arr)  # noqa: SLF001
+        == b"\x01\x02\x03"
+    )
+    # Empty COSArray returns b"" (matches Java L309's ``new byte[0]``).
+    empty = COSArray()
+    assert StandardSecurityHandler._get_document_id_bytes(empty) == b""  # noqa: SLF001
+
+
+def test_validate_perms_warns_on_corrupted_perms_block(
+    caplog,
+) -> None:
+    """Mirror upstream ``validatePerms`` (Java L317): the helper logs
+    warnings on permission mismatches *without* raising, to tolerate
+    buggy producers."""
+    import logging
+    import os as _os
+
+    handler = StandardSecurityHandler()
+    handler.set_revision(6)
+    handler.set_version(5)
+    handler.set_key_length(256)
+    handler.set_aes(True)
+    handler.set_encryption_key(_os.urandom(32))
+
+    _o, _oe, _u, _ue, perms = handler._build_r6_dictionary(  # noqa: SLF001
+        b"owner", b"user", -3904
+    )
+    encryption = PDEncryption()
+    encryption.set_v(5)
+    encryption.set_revision(6)
+    # Corrupt the permission integer so byte-0 mismatches /P.
+    bad_perms = bytearray(perms)
+    bad_perms[0] ^= 0xFF
+    encryption.set_perms(bytes(bad_perms))
+
+    with caplog.at_level(logging.WARNING):
+        # Must NOT raise — upstream is intentionally permissive here.
+        handler.validate_perms(encryption, -3904, True)
+    assert any(
+        "permissions" in rec.message.lower() for rec in caplog.records
+    )
+
+
+def test_compute_hash_2a_matches_compute_hash_2b_pipeline() -> None:
+    """Algorithm 2.A is just 2.B with ``input = password || salt ||
+    adjustUserKey(u)`` and ``user_key = adjustUserKey(u)`` — verify both
+    helpers compose equivalently."""
+    pw = b"pw" * 32  # > 127 truncated to 127
+    salt = b"\xAA" * 8
+    u = b"u" * 48
+
+    direct = StandardSecurityHandler.compute_hash_2a(pw, salt, u)
+    truncated = StandardSecurityHandler.truncate_127(pw)
+    user_key = StandardSecurityHandler.adjust_user_key(u)
+    composed = StandardSecurityHandler.compute_hash_2b(
+        truncated + salt + user_key, truncated, user_key
+    )
+    assert direct == composed
