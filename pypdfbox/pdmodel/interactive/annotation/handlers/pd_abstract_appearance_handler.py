@@ -45,6 +45,55 @@ class PDAbstractAppearanceHandler(PDAppearanceHandler):
     #: Mirrors upstream ``ARROW_ANGLE`` (PDAbstractAppearanceHandler.java:61).
     ARROW_ANGLE: float = math.radians(30)
 
+    @staticmethod
+    def create_short_styles() -> frozenset[str]:
+        """Build the immutable set of line-ending styles where the line
+        has to be drawn shorter (minus line width). Mirrors upstream's
+        private static ``createShortStyles`` (PDAbstractAppearanceHandler.java:436).
+        """
+        return frozenset(
+            {
+                PDAnnotationLine.LE_OPEN_ARROW,
+                PDAnnotationLine.LE_CLOSED_ARROW,
+                PDAnnotationLine.LE_SQUARE,
+                PDAnnotationLine.LE_CIRCLE,
+                PDAnnotationLine.LE_DIAMOND,
+            }
+        )
+
+    @staticmethod
+    def create_interior_color_styles() -> frozenset[str]:
+        """Build the immutable set of line-ending styles where there is
+        an interior color. Mirrors upstream's private static
+        ``createInteriorColorStyles`` (PDAbstractAppearanceHandler.java:447).
+        """
+        return frozenset(
+            {
+                PDAnnotationLine.LE_CLOSED_ARROW,
+                PDAnnotationLine.LE_CIRCLE,
+                PDAnnotationLine.LE_DIAMOND,
+                PDAnnotationLine.LE_R_CLOSED_ARROW,
+                PDAnnotationLine.LE_SQUARE,
+            }
+        )
+
+    @staticmethod
+    def create_angled_styles() -> frozenset[str]:
+        """Build the immutable set of line-ending styles where the shape
+        changes its angle (e.g. arrows). Mirrors upstream's private static
+        ``createAngledStyles`` (PDAbstractAppearanceHandler.java:458).
+        """
+        return frozenset(
+            {
+                PDAnnotationLine.LE_CLOSED_ARROW,
+                PDAnnotationLine.LE_OPEN_ARROW,
+                PDAnnotationLine.LE_R_CLOSED_ARROW,
+                PDAnnotationLine.LE_R_OPEN_ARROW,
+                PDAnnotationLine.LE_BUTT,
+                PDAnnotationLine.LE_SLASH,
+            }
+        )
+
     #: Line ending styles where the line has to be drawn shorter
     #: (minus line width). Mirrors upstream ``SHORT_STYLES``.
     SHORT_STYLES: frozenset[str] = frozenset(
@@ -207,11 +256,40 @@ class PDAbstractAppearanceHandler(PDAppearanceHandler):
         self, compress: bool = False
     ) -> PDAppearanceContentStream:
         """Open a writer over the ``/AP /N`` appearance stream. Caller is
-        responsible for ``close()`` (use ``with``)."""
-        appearance = self.get_normal_appearance_stream()
-        self._set_transformation_matrix(appearance)
-        # Ensure there are resources, mirroring upstream's
-        # getAppearanceEntryAsContentStream guard.
+        responsible for ``close()`` (use ``with``).
+
+        Mirrors upstream's overloaded ``getNormalAppearanceAsContentStream``
+        (lines 143 / 159). Both Java overloads route through
+        :meth:`get_appearance_entry_as_content_stream` after fetching the
+        normal entry; we follow the same dispatch.
+        """
+        appearance_entry = self.get_normal_appearance()
+        return self.get_appearance_entry_as_content_stream(
+            appearance_entry, compress
+        )
+
+    def get_appearance_entry_as_content_stream(
+        self,
+        appearance_entry: PDAppearanceEntry,
+        compress: bool = False,
+    ) -> PDAppearanceContentStream:
+        """Open a writer over an arbitrary appearance entry, applying the
+        annotation's transformation matrix and seeding ``/Resources`` if
+        absent.
+
+        Mirrors upstream's private
+        ``getAppearanceEntryAsContentStream(PDAppearanceEntry, boolean)``
+        (PDAbstractAppearanceHandler.java:494). Java keeps it private; the
+        Python port exposes it because handlers in the same package are
+        free functions / methods rather than nested classes — direct
+        package access does not exist.
+        """
+        appearance = appearance_entry.get_appearance_stream()
+        if appearance is None:
+            # Fall back to the always-allocated single-stream form when the
+            # entry doesn't yet point at a real appearance stream.
+            appearance = self.get_normal_appearance_stream()
+        self.set_transformation_matrix(appearance)
         if appearance.get_resources() is None:
             from ....pd_resources import PDResources
 
@@ -244,13 +322,17 @@ class PDAbstractAppearanceHandler(PDAppearanceHandler):
             return new_entry
         return rollover
 
-    def _set_transformation_matrix(
+    def set_transformation_matrix(
         self, appearance_stream: PDAppearanceStream
     ) -> None:
         """Set the appearance ``/BBox`` to the annotation rectangle and
         ``/Matrix`` to a translation that moves the rectangle's
         lower-left corner to the origin. Mirrors upstream's private
-        ``setTransformationMatrix``.
+        ``setTransformationMatrix`` (PDAbstractAppearanceHandler.java:511).
+
+        Java keeps this private; Python exposes it because helper callers
+        in the same package — concrete handler subclasses, the parity
+        tests — invoke it directly without going through reflection.
         """
         bbox = self.get_rectangle()
         if bbox is None:
@@ -259,6 +341,9 @@ class PDAbstractAppearanceHandler(PDAppearanceHandler):
         appearance_stream.set_matrix(
             [1.0, 0.0, 0.0, 1.0, -bbox.get_lower_left_x(), -bbox.get_lower_left_y()]
         )
+
+    # Back-compat alias used by earlier-wave call sites and tests.
+    _set_transformation_matrix = set_transformation_matrix
 
     # ---------- geometry helpers ----------
 

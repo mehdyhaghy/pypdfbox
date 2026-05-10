@@ -247,3 +247,44 @@ def test_create_object_from_dic_returns_none_for_unknown_type() -> None:
     weird = COSDictionary()
     weird.set_name(_TYPE, "NotAStructureKind")
     assert node.create_object_from_dic(weird) is None
+
+
+# ---------- COSObject indirection (Java insertBefore lines 260-264, removeKid 340-344) ----------
+
+
+def test_remove_kid_through_cos_object_indirection_single_kid() -> None:
+    """Upstream's ``removeKid(COSBase)`` (Java line 339-344) treats a single
+    indirect-reference ``/K`` as equal to the dereferenced kid. Mirrors the
+    ``onlyKid = kObj.equals(object)`` branch.
+    """
+    from pypdfbox.cos import COSObject
+
+    node = PDStructureNode("StructElem")
+    target = COSDictionary()
+    target.set_name(_TYPE, PDStructureElement.TYPE)
+    indirect = COSObject(1, 0, resolved=target)
+    node.get_cos_object().set_item(_K, indirect)
+
+    assert node.remove_kid(target) is True
+    assert node.get_cos_object().get_dictionary_object(_K) is None
+
+
+def test_insert_before_through_cos_object_indirection_single_kid() -> None:
+    """Upstream's ``insertBefore`` (Java line 257-271) handles the single-kid
+    indirect-reference case via ``kObj.equals(refKidBase)``.
+    """
+    from pypdfbox.cos import COSObject
+
+    node = PDStructureNode("StructElem")
+    target = COSDictionary()
+    target.set_name(_TYPE, PDStructureElement.TYPE)
+    indirect = COSObject(2, 0, resolved=target)
+    node.get_cos_object().set_item(_K, indirect)
+
+    new_kid = COSDictionary()
+    new_kid.set_name(_TYPE, PDStructureElement.TYPE)
+    assert node.insert_before(new_kid, target) is True
+
+    raw_k = node.get_cos_object().get_dictionary_object(_K)
+    assert isinstance(raw_k, COSArray)
+    assert raw_k.get_object(0) is new_kid

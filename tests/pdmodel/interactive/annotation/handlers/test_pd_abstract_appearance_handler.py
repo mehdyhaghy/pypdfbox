@@ -458,6 +458,121 @@ def test_components_to_rgb_dispatches_on_arity() -> None:
     )
 
 
+# ----------------------------------------------------------------------
+# Wave 1257: parity round-out — private static factories,
+# get_appearance_entry_as_content_stream, set_transformation_matrix.
+# ----------------------------------------------------------------------
+
+
+def test_create_short_styles_returns_immutable_membership_set() -> None:
+    s = PDAbstractAppearanceHandler.create_short_styles()
+    assert isinstance(s, frozenset)
+    assert PDAnnotationLine.LE_OPEN_ARROW in s
+    assert PDAnnotationLine.LE_CLOSED_ARROW in s
+    assert PDAnnotationLine.LE_SQUARE in s
+    assert PDAnnotationLine.LE_CIRCLE in s
+    assert PDAnnotationLine.LE_DIAMOND in s
+    # Same content as the class-level constant.
+    assert s == PDAbstractAppearanceHandler.SHORT_STYLES
+
+
+def test_create_interior_color_styles_returns_immutable_membership_set() -> None:
+    s = PDAbstractAppearanceHandler.create_interior_color_styles()
+    assert isinstance(s, frozenset)
+    assert PDAnnotationLine.LE_CLOSED_ARROW in s
+    assert PDAnnotationLine.LE_CIRCLE in s
+    assert PDAnnotationLine.LE_DIAMOND in s
+    assert PDAnnotationLine.LE_R_CLOSED_ARROW in s
+    assert PDAnnotationLine.LE_SQUARE in s
+    assert s == PDAbstractAppearanceHandler.INTERIOR_COLOR_STYLES
+
+
+def test_create_angled_styles_returns_immutable_membership_set() -> None:
+    s = PDAbstractAppearanceHandler.create_angled_styles()
+    assert isinstance(s, frozenset)
+    assert PDAnnotationLine.LE_CLOSED_ARROW in s
+    assert PDAnnotationLine.LE_OPEN_ARROW in s
+    assert PDAnnotationLine.LE_R_CLOSED_ARROW in s
+    assert PDAnnotationLine.LE_R_OPEN_ARROW in s
+    assert PDAnnotationLine.LE_BUTT in s
+    assert PDAnnotationLine.LE_SLASH in s
+    assert s == PDAbstractAppearanceHandler.ANGLED_STYLES
+
+
+def test_set_transformation_matrix_sets_bbox_and_translation() -> None:
+    annotation = PDAnnotation()
+    annotation.set_rectangle(PDRectangle(20.0, 30.0, 120.0, 130.0))
+    handler = _ConcreteHandler(annotation)
+    appearance_stream = handler.get_normal_appearance_stream()
+    # Reset to a known state then call the public method.
+    handler.set_transformation_matrix(appearance_stream)
+    bbox = appearance_stream.get_bbox()
+    assert bbox is not None
+    assert bbox.get_lower_left_x() == 20.0
+    assert bbox.get_upper_right_y() == 130.0
+    matrix = appearance_stream.get_matrix()
+    assert matrix == [1.0, 0.0, 0.0, 1.0, -20.0, -30.0]
+
+
+def test_set_transformation_matrix_no_op_when_rectangle_absent() -> None:
+    # Allocate a stream-bearing entry without giving the annotation a rect;
+    # the helper must short-circuit instead of writing /BBox or /Matrix.
+    annotation_with_rect = PDAnnotation()
+    annotation_with_rect.set_rectangle(PDRectangle(0.0, 0.0, 100.0, 100.0))
+    seed_handler = _ConcreteHandler(annotation_with_rect)
+    appearance_stream = seed_handler.get_normal_appearance_stream()
+    # Now build a fresh handler whose annotation has no rect and verify
+    # set_transformation_matrix is a no-op (does not raise).
+    handler = _ConcreteHandler(PDAnnotation())
+    handler.set_transformation_matrix(appearance_stream)
+
+
+def test_set_transformation_matrix_alias_preserved_for_back_compat() -> None:
+    # Existing call sites use the underscore-prefixed form; assert the alias
+    # is still resolvable to the public method.
+    assert (
+        PDAbstractAppearanceHandler._set_transformation_matrix
+        is PDAbstractAppearanceHandler.set_transformation_matrix
+    )
+
+
+def test_get_appearance_entry_as_content_stream_seeds_resources() -> None:
+    annotation = PDAnnotation()
+    annotation.set_rectangle(PDRectangle(0.0, 0.0, 100.0, 50.0))
+    handler = _ConcreteHandler(annotation)
+    entry = handler.get_normal_appearance()
+    cs = handler.get_appearance_entry_as_content_stream(entry, compress=False)
+    try:
+        assert isinstance(cs, PDAppearanceContentStream)
+        appearance_stream = entry.get_appearance_stream()
+        assert appearance_stream is not None
+        assert appearance_stream.get_resources() is not None
+        # BBox/Matrix are set per the annotation rectangle.
+        bbox = appearance_stream.get_bbox()
+        assert bbox is not None
+        assert bbox.get_lower_left_x() == 0.0
+        assert appearance_stream.get_matrix() == [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+    finally:
+        cs.close()
+
+
+def test_get_appearance_entry_as_content_stream_routes_for_normal() -> None:
+    # The two-arg public form should produce the same wiring as the
+    # convenience get_normal_appearance_as_content_stream wrapper.
+    annotation = PDAnnotation()
+    annotation.set_rectangle(PDRectangle(5.0, 6.0, 50.0, 60.0))
+    handler = _ConcreteHandler(annotation)
+    cs = handler.get_normal_appearance_as_content_stream()
+    try:
+        appearance_stream = handler.get_normal_appearance_stream()
+        bbox = appearance_stream.get_bbox()
+        assert bbox is not None
+        assert bbox.get_lower_left_x() == 5.0
+        assert appearance_stream.get_matrix() == [1.0, 0.0, 0.0, 1.0, -5.0, -6.0]
+    finally:
+        cs.close()
+
+
 # Silence unused-import warnings for COSFloat (kept as a documented helper
 # reference that future tests can pick up without re-importing).
 _ = COSFloat

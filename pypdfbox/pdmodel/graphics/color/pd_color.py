@@ -249,6 +249,24 @@ class PDColor:
         """
         self._components = [float(v) for v in values]
 
+    def init_components(self, array: COSArray) -> None:
+        """Populate this color's components from a ``COSArray`` of numeric
+        entries. Mirrors upstream ``PDColor.initComponents(COSArray)`` (a
+        private helper in Java; surfaced here under the same name for
+        parity).
+
+        Iterates the supplied array and pulls ``COSNumber`` entries into
+        ``components`` in order; non-numeric entries are skipped with a
+        warning, matching upstream's ``LOG.warn("color component i ...
+        isn't a number, ignored")`` behaviour. The trailing pattern name
+        (when present) is *not* consumed here — upstream sizes
+        ``components`` in the constructor before calling this helper, so
+        the pattern slot is excluded by length; we replicate that by
+        delegating to :meth:`_parse_cos_array`.
+        """
+        components, _pattern = self._parse_cos_array(array)
+        self._components = components
+
     def get_color_space(self) -> PDColorSpace:
         return self._color_space
 
@@ -656,13 +674,17 @@ class PDColor:
             )
         )
 
-    def __str__(self) -> str:
-        # Match upstream ``PDColor.toString()`` shape so debug output
-        # diffs cleanly against Java logs:
-        # ``PDColor{components=[...], patternName=..., colorSpace=...}``
-        # Java's ``Arrays.toString(float[])`` formats with a leading
-        # space after commas and always renders integral floats with a
-        # trailing ".0".
+    def to_string(self) -> str:
+        """Return the human-readable representation. Mirrors upstream
+        ``PDColor.toString()`` exactly so debug output diffs cleanly
+        against Java logs:
+        ``PDColor{components=[...], patternName=..., colorSpace=...}``.
+
+        Java's ``Arrays.toString(float[])`` formats with a leading space
+        after commas and always renders integral floats with a trailing
+        ``.0``; we match both. ``__str__`` delegates here so ``str(c)``
+        and ``c.to_string()`` agree.
+        """
         formatted = ", ".join(
             self._format_component(v) for v in self._components
         )
@@ -671,6 +693,9 @@ class PDColor:
             f"patternName={self._pattern_name}, "
             f"colorSpace={self._color_space}}}"
         )
+
+    def __str__(self) -> str:
+        return self.to_string()
 
     @staticmethod
     def _format_component(value: float) -> str:

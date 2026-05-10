@@ -136,3 +136,59 @@ def test_get_java_color_matches_to_rgb() -> None:
     # Upstream returns ``java.awt.Color``; we return a tuple of floats.
     color = PDColor([0.2, 0.4, 0.6], PDDeviceRGB.INSTANCE)
     assert color.get_java_color() == color.to_rgb()
+
+
+# ---------- to_string (upstream PDColor.toString parity) ----------
+
+
+def test_to_string_shape_matches_upstream() -> None:
+    # Java's ``PDColor.toString()`` renders as
+    # ``PDColor{components=[...], patternName=..., colorSpace=...}``
+    # with a trailing ``.0`` on integral floats (Java
+    # ``Float.toString``) and a leading space after commas
+    # (``Arrays.toString``). We mirror both.
+    color = PDColor([0.0, 1.0, 0.5], PDDeviceRGB.INSTANCE)
+    s = color.to_string()
+    assert s.startswith("PDColor{components=[0.0, 1.0, 0.5], ")
+    assert "patternName=None" in s
+    assert "colorSpace=" in s
+    # str() delegates to to_string() — they must agree.
+    assert str(color) == s
+
+
+def test_to_string_includes_pattern_name() -> None:
+    name = COSName.get_pdf_name("P1")
+    color = PDColor([0.5, 0.25], name, PDPattern())
+    s = color.to_string()
+    assert "components=[0.5, 0.25]" in s
+    # COSName renders as its own __str__; we just need it referenced.
+    assert "patternName=" in s
+    assert "P1" in s
+
+
+# ---------- init_components (upstream PDColor.initComponents parity) ----------
+
+
+def test_init_components_from_cos_array_replaces_components() -> None:
+    color = PDColor([0.0, 0.0, 0.0], PDDeviceRGB.INSTANCE)
+    array = COSArray()
+    array.add(COSFloat(0.125))
+    array.add(COSFloat(0.25))
+    array.add(COSFloat(0.5))
+    color.init_components(array)
+    assert color.get_components() == [0.125, 0.25, 0.5]
+
+
+def test_init_components_skips_trailing_pattern_name() -> None:
+    # Upstream private helper ``initComponents`` runs over an array sized
+    # (length-1) when the trailing entry is a pattern name; here we
+    # delegate to the parser, which already excludes the trailing name.
+    # Use a Pattern color space so ``get_components`` returns the raw
+    # internal list without padding to the cs arity.
+    color = PDColor([0.0, 0.0], COSName.get_pdf_name("P1"), PDPattern())
+    array = COSArray()
+    array.add(COSFloat(0.5))
+    array.add(COSFloat(0.25))
+    array.add(COSName.get_pdf_name("P2"))
+    color.init_components(array)
+    assert color.get_components() == [0.5, 0.25]

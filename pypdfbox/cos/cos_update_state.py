@@ -1,9 +1,25 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 
 from .cos_base import COSBase
 from .cos_document_state import COSDocumentState
+
+
+class COSIncrement:
+    """Minimal increment collector mirroring upstream ``COSIncrement``.
+
+    Upstream's ``COSIncrement`` is a sizable traversal helper used by the
+    incremental writer. The pypdfbox port only models the public surface
+    needed by ``COSUpdateState.to_increment()``: an iterable seeded with
+    the managed update-info object. Full traversal lives in the writer.
+    """
+
+    def __init__(self, base: COSBase) -> None:
+        self._objects: list[COSBase] = [base] if base is not None else []
+
+    def __iter__(self) -> Iterator[COSBase]:
+        return iter(self._objects)
 
 
 class COSUpdateState:
@@ -32,17 +48,8 @@ class COSUpdateState:
             self.update()
         self._propagate_origin_to_children(dereferencing=dereferencing)
 
-    def setOriginDocumentState(  # noqa: N802 - upstream Java name
-        self,
-        origin_document_state: COSDocumentState | None,
-    ) -> None:
-        self.set_origin_document_state(origin_document_state)
-
     def get_origin_document_state(self) -> COSDocumentState | None:
         return self._origin_document_state
-
-    def getOriginDocumentState(self) -> COSDocumentState | None:  # noqa: N802
-        return self.get_origin_document_state()
 
     def is_accepting_updates(self) -> bool:
         return (
@@ -50,14 +57,8 @@ class COSUpdateState:
             and self._origin_document_state.is_accepting_updates()
         )
 
-    def isAcceptingUpdates(self) -> bool:  # noqa: N802
-        return self.is_accepting_updates()
-
     def is_updated(self) -> bool:
         return self._updated
-
-    def isUpdated(self) -> bool:  # noqa: N802
-        return self.is_updated()
 
     def update(
         self,
@@ -85,8 +86,12 @@ class COSUpdateState:
             dereferencing=True,
         )
 
-    def dereferenceChild(self, child: COSBase | None) -> None:  # noqa: N802
-        self.dereference_child(child)
+    def to_increment(self) -> COSIncrement:
+        """Create a :class:`COSIncrement` seeded with the managed update-info.
+
+        Mirrors upstream ``COSUpdateState#toIncrement()`` (Java line 254).
+        """
+        return COSIncrement(self._update_info)
 
     def _link_child(self, child: COSBase) -> None:
         state = getattr(child, "get_update_state", None)

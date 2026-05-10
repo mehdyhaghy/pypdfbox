@@ -275,3 +275,36 @@ def test_encode_winansi_codepoints(char: str, expected_byte: int) -> None:
     )
     encoded = font.encode(char)
     assert encoded == bytes([expected_byte])
+
+
+# ---------- get_name override (PDType1Font line 550) ----------
+
+
+def test_get_name_returns_base_font_value() -> None:
+    """``PDType1Font.getName`` is overridden in upstream to return
+    ``getBaseFont()`` (line 550). Both methods read the dict's
+    ``/BaseFont`` entry."""
+    font = PDType1Font()
+    font.get_cos_object().set_name(_BASE_FONT, "Helvetica-Bold")
+    assert font.get_name() == "Helvetica-Bold"
+    assert font.get_name() == font.get_base_font()
+
+
+# ---------- encode cache parity (codeToBytesMap, PDType1Font line 96) ----------
+
+
+def test_encode_uses_per_codepoint_cache() -> None:
+    """Upstream caches the encoded byte for each unicode in
+    ``codeToBytesMap`` so repeated encode calls don't re-walk the
+    encoding's name->code inverse table. The Python port mirrors this
+    exactly via ``_code_to_bytes``."""
+    font = PDType1Font()
+    font.get_cos_object().set_name(_BASE_FONT, "Helvetica")
+    font.get_cos_object().set_item(
+        COSName.get_pdf_name("Encoding"), COSName.get_pdf_name("WinAnsiEncoding")
+    )
+    # Exercise the cache; second call should pull from `_code_to_bytes`.
+    a1 = font.encode("A")
+    assert ord("A") in font._code_to_bytes
+    a2 = font.encode("A")
+    assert a1 == a2 == b"A"

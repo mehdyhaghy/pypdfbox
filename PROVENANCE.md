@@ -1108,6 +1108,7 @@ Original work (no PROVENANCE row needed; listed here for clarity):
 | `tests/fontbox/ttf/upstream/test_glyph_data.py` | 3.0.x | placeholder — upstream has no dedicated `GlyphDataTest.java`; behaviour mirror anchored to `GlyphData.java` source line numbers |
 | `tests/pdmodel/interactive/form/upstream/test_pd_variable_text.py` | 3.0.x | placeholder — no upstream `PDVariableTextTest.java` (behaviour pinned via `PDTextField`/`PDListBox`/`PDComboBox` suites) |
 | `tests/filter/upstream/test_filter.py` | 3.0.x | derived from `pdfbox/src/test/java/org/apache/pdfbox/filter/TestFilters.java` (`testEmptyFilterList` plus chain semantics not directly testable in upstream's `TestFilters` surface) |
+| `tests/cos/upstream/test_cos_update_state.py` | 3.0.x | placeholder — upstream has no dedicated `COSUpdateStateTest.java`; behaviour pinned via contract tests against `COSUpdateState.java` (PDFBox 3.0.x) |
 | `tests/pdmodel/font/upstream/test_pd_type1_font.py` | 3.0.x | placeholder — upstream has no dedicated `PDType1FontTest.java`; coverage derived from `PDFontTest.java` factory subset + upstream `PDType1Font.java` private helpers |
 | `tests/pdmodel/encryption/upstream/test_security_handler.py` | 3.0.x | placeholder — upstream has no dedicated `SecurityHandlerTest.java`; surface inferred from `SecurityHandler.java` (PDFBox 3.0.x) |
 | `tests/pdfwriter/upstream/test_cos_writer.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdfwriter/COSWriterTest.java` (2 ports active, 2 skipped pending fixture support) |

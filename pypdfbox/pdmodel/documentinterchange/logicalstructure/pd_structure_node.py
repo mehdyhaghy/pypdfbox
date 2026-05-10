@@ -404,7 +404,22 @@ def _same_kid(left: Any, right: Any) -> bool:
         return left.value == right
     if isinstance(left, int) and not isinstance(left, bool) and isinstance(right, COSInteger):
         return left == right.value
-    return bool(left == right)
+    if left == right:
+        return True
+    # Mirror upstream insertBefore / removeKid: also peek through a COSObject
+    # indirection so an indirect-reference kid compares equal to the dereferenced
+    # COSBase the caller passed in (Java lines 260-264, 340-344).
+    from pypdfbox.cos import COSObject
+
+    if isinstance(left, COSObject):
+        inner = left.get_object()
+        if inner is not None and inner == right:
+            return True
+    if isinstance(right, COSObject):
+        inner = right.get_object()
+        if inner is not None and left == inner:
+            return True
+    return False
 
 
 def _set_parent_if_structure_element(kid: Any, parent: PDStructureNode) -> None:

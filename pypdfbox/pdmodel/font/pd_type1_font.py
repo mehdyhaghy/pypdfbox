@@ -4,12 +4,17 @@ import io
 import logging
 from typing import TYPE_CHECKING, BinaryIO
 
-from pypdfbox.cos import COSDictionary
+from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.fontbox.type1.type1_font import Type1Font
 
 from .afm_loader import AfmMetrics
 from .pd_simple_font import PDSimpleFont
 from .standard14_fonts import Standard14Fonts
+
+# Cached COSName for the ``/BaseFont`` dict key — mirrors upstream
+# ``COSName.BASE_FONT`` and avoids re-allocating the name on every
+# :meth:`PDType1Font.get_name` call.
+_BASE_FONT_KEY = COSName.get_pdf_name("BaseFont")
 
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.pd_rectangle import PDRectangle
@@ -102,6 +107,10 @@ class PDType1Font(PDSimpleFont):
         # / :meth:`get_font_matrix`.
         self._bbox_cache: PDRectangle | None = None
         self._font_matrix_cache: list[float] | None = None
+        # Mirrors upstream ``codeToBytesMap`` — caches per-codepoint
+        # encoded bytes so repeated :meth:`encode` calls for the same
+        # unicode value don't re-walk the encoding's name->code table.
+        self._code_to_bytes: dict[int, bytes] = {}
 
     # ---------- Type 1 program access ----------
 
@@ -261,6 +270,41 @@ class PDType1Font(PDSimpleFont):
             return None
         return advance * 1000.0 / units_per_em
 
+    # ---------- text -> bytes ----------
+
+    def encode(self, text: str) -> bytes:
+        """Encode a Python string to the font's raw byte representation.
+
+        Mirrors upstream ``PDType1Font.encode``: a Type-1-specific
+        override that adds (a) a per-codepoint cache identical to
+        upstream's ``codeToBytesMap`` field, and (b) ``ALT_NAMES``
+        ligature spelling fallback so a writer asking for ``ff`` still
+        round-trips to a glyph the embedded program can render. Calls
+        for which the cache misses delegate to
+        :meth:`PDSimpleFont.encode`, which honours pypdfbox's documented
+        divergence from upstream's throw-on-unmapped behaviour
+        (CHANGES.md: simple-font writers fall back to ``b'?'`` rather
+        than raising ``IllegalArgumentException`` — the round-trip
+        contract that pypdfbox guarantees).
+        """
+        if not text:
+            return b""
+        out = bytearray()
+        for ch in text:
+            unicode_value = ord(ch)
+            cached = self._code_to_bytes.get(unicode_value)
+            if cached is not None:
+                out.extend(cached)
+                continue
+            piece = super().encode(ch)
+            # Cache the very first byte produced — Type-1 single-byte
+            # encodings always yield exactly one byte per codepoint per
+            # PDF 32000-1 §9.6.6.4. Mirrors upstream's ``new byte[] { code }``
+            # cache shape.
+            self._code_to_bytes[unicode_value] = bytes(piece)
+            out.extend(piece)
+        return bytes(out)
+
     # ---------- glyph paths ----------
 
     def get_glyph_path(self, code: int) -> list[tuple]:
@@ -305,7 +349,20 @@ class PDType1Font(PDSimpleFont):
     def get_base_font(self) -> str | None:
         """``/BaseFont`` — alias of :meth:`PDFont.get_name`. Mirrors
         upstream ``PDType1Font.getBaseFont``."""
-        return self.get_name()
+        return self._dict.get_name(_BASE_FONT_KEY)
+
+    def get_name(self) -> str | None:
+        """The font's lookup name (``/BaseFont``). Mirrors upstream
+        ``PDType1Font.getName`` which is overridden to delegate to
+        ``getBaseFont()`` — the two are effectively the same for Type 1
+        fonts because the dictionary's ``/Name`` slot is purely a
+        deprecated PDF 1.0 field while ``/BaseFont`` is the canonical
+        PostScript identity. We read ``/BaseFont`` directly (rather than
+        chaining through :meth:`get_base_font`) so subclasses that
+        override one method but not the other don't end up in mutual
+        recursion.
+        """
+        return self._dict.get_name(_BASE_FONT_KEY)
 
     def get_font_program(self) -> Type1Font | None:
         """Return the parsed embedded Type 1 program, or ``None`` when the
@@ -406,11 +463,25 @@ class PDType1Font(PDSimpleFont):
     def get_height(self, code: int) -> float:
         """Return the height of the glyph at ``code`` in font units.
 
-        Computed from the glyph outline's bounding box (max-y minus
-        min-y) when an embedded Type 1 program is available; otherwise
-        ``0.0``. Mirrors upstream ``PDSimpleFont.getHeight`` for
-        Type 1.
+        Mirrors upstream ``PDType1Font.getHeight``:
+
+        1. When the font is one of the Standard 14 (an AFM is bundled),
+           consult the AFM's ``getCharacterHeight`` for the glyph name
+           resolved through the typed encoding.
+        2. Otherwise fall back to the glyph outline's bounding box height
+           (max-y minus min-y) read from the embedded Type 1 program.
+        3. ``0.0`` when neither source is resolvable.
         """
+        afm = self.get_standard_14_font_metrics()
+        if afm is not None:
+            encoding = self.get_encoding_typed()
+            if encoding is not None:
+                glyph_name = encoding.get_name(code)
+                # Upstream queries the AFM with whatever name the encoding
+                # returns — including ``.notdef``. The AFM transparently
+                # returns 0 for unknown names.
+                return afm.get_character_height(glyph_name)
+            return 0.0
         program = self._get_type1_font()
         if program is None:
             return 0.0
