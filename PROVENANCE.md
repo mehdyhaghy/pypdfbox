@@ -1457,3 +1457,50 @@ New `type4` subpackage ported from upstream `org.apache.pdfbox.pdmodel.common.fu
 | `tests/pdmodel/common/function/type4/upstream/test_conditional_operators.py` | 3.0.x | derived from `TestOperators.java` (testIf / testIfElse) |
 | `tests/pdmodel/common/function/type4/upstream/test_relational_operators.py` | 3.0.x | derived from `TestOperators.java` (testEq / Ne / Lt / Le / Gt / Ge) |
 | `tests/pdmodel/common/function/type4/upstream/test_stack_operators.py` | 3.0.x | derived from `TestOperators.java` (testCopy / Dup / Exch / Index / Pop / Roll) |
+
+### Wave 1278 additions
+
+`fontbox.cff` package ported in 39 new modules. fontTools-backed where applicable (standard/expert encodings, ISOAdobe/Expert/ExpertSubset charsets, CFF binary decompile, char-string operator dictionaries). Upstream PDFBox 3.0.x; Java paths under `fontbox/src/main/java/org/apache/fontbox/cff/`:
+
+| pypdfbox path | upstream Java path |
+|---|---|
+| `pypdfbox/fontbox/cff/cff_encoding.py` | `CFFEncoding.java` |
+| `pypdfbox/fontbox/cff/cff_built_in_encoding.py` | `CFFParser.java` (inner `CFFBuiltInEncoding` + `Supplement`) |
+| `pypdfbox/fontbox/cff/cff_standard_encoding.py` | `CFFStandardEncoding.java` |
+| `pypdfbox/fontbox/cff/cff_expert_encoding.py` | `CFFExpertEncoding.java` |
+| `pypdfbox/fontbox/cff/format0_encoding.py` | `CFFParser.java` (inner `Format0Encoding`) |
+| `pypdfbox/fontbox/cff/format1_encoding.py` | `CFFParser.java` (inner `Format1Encoding` + `Range3`) |
+| `pypdfbox/fontbox/cff/cff_charset.py` | `CFFCharset.java` |
+| `pypdfbox/fontbox/cff/cff_charset_cid.py` | `CFFCharsetCID.java` |
+| `pypdfbox/fontbox/cff/cff_charset_type1.py` | `CFFCharsetType1.java` |
+| `pypdfbox/fontbox/cff/cff_iso_adobe_charset.py` | `CFFISOAdobeCharset.java` |
+| `pypdfbox/fontbox/cff/cff_expert_charset.py` | `CFFExpertCharset.java` |
+| `pypdfbox/fontbox/cff/cff_expert_subset_charset.py` | `CFFExpertSubsetCharset.java` |
+| `pypdfbox/fontbox/cff/embedded_charset.py` | `EmbeddedCharset.java` |
+| `pypdfbox/fontbox/cff/empty_charset_cid.py` | `CFFParser.java` (inner `EmptyCharsetCID`) |
+| `pypdfbox/fontbox/cff/empty_charset_type1.py` | `CFFParser.java` (inner `EmptyCharsetType1`) |
+| `pypdfbox/fontbox/cff/format1_charset.py` | `CFFParser.java` (inner `Format1Charset`) |
+| `pypdfbox/fontbox/cff/format2_charset.py` | `CFFParser.java` (inner `Format2Charset`) |
+| `pypdfbox/fontbox/cff/range_mapping.py` | `CFFParser.java` (inner `RangeMapping`) |
+| `pypdfbox/fontbox/cff/byte_source.py` | `CFFParser.java` (inner `ByteSource` interface) |
+| `pypdfbox/fontbox/cff/cff_byte_source.py` | `CFFParser.java` (inner `CFFBytesource`, lowercase `s` preserved) |
+| `pypdfbox/fontbox/cff/data_input.py` | `DataInput.java` |
+| `pypdfbox/fontbox/cff/data_input_byte_array.py` | `DataInputByteArray.java` |
+| `pypdfbox/fontbox/cff/data_input_random_access_read.py` | `DataInputRandomAccessRead.java` |
+| `pypdfbox/fontbox/cff/cff_parser.py` | `CFFParser.java` (top-level orchestrator, 37 methods) |
+| `pypdfbox/fontbox/cff/header.py` | `CFFParser.java` (inner `Header`) |
+| `pypdfbox/fontbox/cff/dict_data.py` | `CFFParser.java` (inner `DictData` + `Entry` + `Key`) |
+| `pypdfbox/fontbox/cff/cff_standard_string.py` | `CFFStandardString.java` |
+| `pypdfbox/fontbox/cff/cff_operator.py` | `CFFOperator.java` |
+| `pypdfbox/fontbox/cff/char_string_command.py` | `CharStringCommand.java` |
+| `pypdfbox/fontbox/cff/type1_keyword.py` | `CharStringCommand.java` (inner `Type1KeyWord` enum) |
+| `pypdfbox/fontbox/cff/type2_keyword.py` | `CharStringCommand.java` (inner `Type2KeyWord` enum) |
+| `pypdfbox/fontbox/cff/type1_char_string_parser.py` | `Type1CharStringParser.java` |
+| `pypdfbox/fontbox/cff/type2_char_string_parser.py` | `Type2CharStringParser.java` |
+| `pypdfbox/fontbox/cff/cid_keyed_type2_char_string.py` | `CIDKeyedType2CharString.java` |
+| `pypdfbox/fontbox/cff/private_type1_char_string_reader.py` | (`PrivateType1CharStringReader` inner of `CFFCIDFont.java` + `Type1CharStringReader.java`) |
+| `tests/fontbox/cff/upstream/test_cff_encoding.py` | `CFFEncodingTest.java` |
+| `tests/fontbox/cff/upstream/test_data_input.py` | `DataInputTest.java` |
+| `tests/fontbox/cff/upstream/test_data_input_random_access.py` | `DataInputRandomAccessTest.java` |
+| `tests/fontbox/cff/upstream/test_cff_parser.py` | `CFFParserTest.java` |
+| `tests/fontbox/cff/upstream/test_char_string_command.py` | `CharStringCommandTest.java` |
