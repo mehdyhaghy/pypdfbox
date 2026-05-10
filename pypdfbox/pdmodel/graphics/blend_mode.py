@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from typing import Callable, ClassVar
+import math
+from collections.abc import Callable
+from typing import ClassVar
 
 from pypdfbox.cos import COSArray, COSBase, COSName
 
@@ -63,10 +65,7 @@ def _b_soft_light(s: float, b: float) -> float:
     # PDF spec form (matches Adobe's): two-piece quadratic.
     if s <= 0.5:
         return b - (1.0 - 2.0 * s) * b * (1.0 - b)
-    if b <= 0.25:
-        d = ((16.0 * b - 12.0) * b + 4.0) * b
-    else:
-        d = b ** 0.5
+    d = ((16.0 * b - 12.0) * b + 4.0) * b if b <= 0.25 else b ** 0.5
     return b + (2.0 * s - 1.0) * (d - b)
 
 
@@ -382,6 +381,16 @@ class BlendMode:
         flag = "true" if self.is_separable() else "false"
         return f"BlendMode{{name={self._name}, isSeparable={flag}}}"
 
+    def to_string(self) -> str:
+        """Mirror upstream ``BlendMode.toString()`` (line 391 of
+        ``BlendMode.java``).
+
+        The upstream ``toString`` returns ``"BlendMode{name=<name>, "
+        "isSeparable=<true|false>}"``. Python pep 8 prefers ``str()``, so
+        we delegate to :meth:`__str__` — both produce the same string.
+        """
+        return self.__str__()
+
     def __eq__(self, other: object) -> bool:
         if isinstance(other, BlendMode):
             return self._name == other._name
@@ -389,6 +398,162 @@ class BlendMode:
 
     def __hash__(self) -> int:
         return hash(self._name)
+
+    @staticmethod
+    def get255_value(val: float) -> int:
+        """Mirror upstream private ``get255Value(float)`` (line 281 of
+        ``BlendMode.java``).
+
+        Java implementation:
+        ``(int) Math.floor(val >= 1.0 ? 255 : val * 255.0)``.
+        Used by the integer-arithmetic non-separable blend helpers
+        :meth:`get_saturation_rgb` and :meth:`get_luminosity_rgb` to clamp
+        a ``[0, 1]`` float to a ``0..255`` byte. Note the asymmetric clamp:
+        values ``>= 1.0`` return ``255`` directly, but no negative-value
+        clamp is applied (matches upstream — callers pre-clamp).
+        """
+        if val >= 1.0:
+            return 255
+        # ``int(math.floor(...))`` — Python's int() truncates toward zero, so
+        # we mimic Java's ``(int) Math.floor`` explicitly via floor division.
+        scaled = val * 255.0
+        # ``int(math.floor(scaled))`` floors toward -inf for negatives,
+        # matching ``Math.floor`` semantics. In practice ``val`` is already
+        # clamped to ``[0, 1]`` by the spec.
+        return int(math.floor(scaled))
+
+    @staticmethod
+    def get_saturation_rgb(
+        src_values: list[float] | tuple[float, float, float],
+        dst_values: list[float] | tuple[float, float, float],
+        result: list[float],
+    ) -> None:
+        """Mirror upstream private ``getSaturationRGB(float[], float[], "
+        "float[])`` (line 286 of ``BlendMode.java``).
+
+        PDF 32000-1 §11.3.5.3 ``Saturation`` blend, implemented in
+        upstream's integer-arithmetic form: input/output triples are
+        ``[0, 1]`` floats, but internal mixing happens in 8.16 fixed-point
+        on 0..255 byte values to match Java's bit-exact composition. The
+        ``result`` list is written in place (callers pre-allocate three
+        slots).
+        """
+        rd = BlendMode.get255_value(dst_values[0])
+        gd = BlendMode.get255_value(dst_values[1])
+        bd = BlendMode.get255_value(dst_values[2])
+
+        minb = min(rd, gd, bd)
+        maxb = max(rd, gd, bd)
+        if minb == maxb:
+            # backdrop has zero saturation, avoid divide by 0
+            v = gd / 255.0
+            result[0] = v
+            result[1] = v
+            result[2] = v
+            return
+
+        rs = BlendMode.get255_value(src_values[0])
+        gs = BlendMode.get255_value(src_values[1])
+        bs = BlendMode.get255_value(src_values[2])
+
+        mins = min(rs, gs, bs)
+        maxs = max(rs, gs, bs)
+
+        scale = ((maxs - mins) << 16) // (maxb - minb)
+        y = (rd * 77 + gd * 151 + bd * 28 + 0x80) >> 8
+        r = y + ((((rd - y) * scale) + 0x8000) >> 16)
+        g = y + ((((gd - y) * scale) + 0x8000) >> 16)
+        b = y + ((((bd - y) * scale) + 0x8000) >> 16)
+
+        if ((r | g | b) & 0x100) == 0x100:
+            mn = min(r, g, b)
+            mx = max(r, g, b)
+
+            scalemin = (y << 16) // (y - mn) if mn < 0 else 0x10000
+            scalemax = (
+                ((255 - y) << 16) // (mx - y) if mx > 255 else 0x10000
+            )
+
+            scale = min(scalemin, scalemax)
+            r = y + (((r - y) * scale + 0x8000) >> 16)
+            g = y + (((g - y) * scale + 0x8000) >> 16)
+            b = y + (((b - y) * scale + 0x8000) >> 16)
+        result[0] = r / 255.0
+        result[1] = g / 255.0
+        result[2] = b / 255.0
+
+    @staticmethod
+    def get_luminosity_rgb(
+        src_values: list[float] | tuple[float, float, float],
+        dst_values: list[float] | tuple[float, float, float],
+        result: list[float],
+    ) -> None:
+        """Mirror upstream private ``getLuminosityRGB(float[], float[], "
+        "float[])`` (line 352 of ``BlendMode.java``).
+
+        PDF 32000-1 §11.3.5.3 ``Luminosity`` blend in integer-arithmetic
+        form (matches Java bit-for-bit). ``result`` is written in place.
+        """
+        rd = BlendMode.get255_value(dst_values[0])
+        gd = BlendMode.get255_value(dst_values[1])
+        bd = BlendMode.get255_value(dst_values[2])
+        rs = BlendMode.get255_value(src_values[0])
+        gs = BlendMode.get255_value(src_values[1])
+        bs = BlendMode.get255_value(src_values[2])
+        delta = ((rs - rd) * 77 + (gs - gd) * 151 + (bs - bd) * 28 + 0x80) >> 8
+        r = rd + delta
+        g = gd + delta
+        b = bd + delta
+
+        if ((r | g | b) & 0x100) == 0x100:
+            y = (rs * 77 + gs * 151 + bs * 28 + 0x80) >> 8
+            if delta > 0:
+                mx = max(r, g, b)
+                scale = 0 if mx == y else ((255 - y) << 16) // (mx - y)
+            else:
+                mn = min(r, g, b)
+                scale = 0 if y == mn else (y << 16) // (y - mn)
+            r = y + (((r - y) * scale + 0x8000) >> 16)
+            g = y + (((g - y) * scale + 0x8000) >> 16)
+            b = y + (((b - y) * scale + 0x8000) >> 16)
+        result[0] = r / 255.0
+        result[1] = g / 255.0
+        result[2] = b / 255.0
+
+    @staticmethod
+    def create_blend_mode_map() -> dict[COSName, BlendMode]:
+        """Mirror upstream private ``createBlendModeMap()`` (line 165 of
+        ``BlendMode.java``).
+
+        Builds the static ``COSName → BlendMode`` dispatch table consulted
+        by :meth:`get_instance`. Upstream's map is package-private and
+        memoised once at class init; this helper is exposed at parity level
+        so callers can introspect or rebuild the table (the mapping is
+        immutable, so calling this repeatedly is harmless).
+
+        ``COSName.COMPATIBLE`` deliberately maps to ``BlendMode.NORMAL``
+        (Adobe-recognised synonym; PDF 32000-1 §11.6.5.2 footnote).
+        """
+        m: dict[COSName, BlendMode] = {}
+        m[COSName.get_pdf_name("Normal")] = BlendMode.NORMAL
+        # BlendMode.COMPATIBLE should not be used (per upstream comment).
+        m[COSName.get_pdf_name("Compatible")] = BlendMode.NORMAL
+        m[COSName.get_pdf_name("Multiply")] = BlendMode.MULTIPLY
+        m[COSName.get_pdf_name("Screen")] = BlendMode.SCREEN
+        m[COSName.get_pdf_name("Overlay")] = BlendMode.OVERLAY
+        m[COSName.get_pdf_name("Darken")] = BlendMode.DARKEN
+        m[COSName.get_pdf_name("Lighten")] = BlendMode.LIGHTEN
+        m[COSName.get_pdf_name("ColorDodge")] = BlendMode.COLOR_DODGE
+        m[COSName.get_pdf_name("ColorBurn")] = BlendMode.COLOR_BURN
+        m[COSName.get_pdf_name("HardLight")] = BlendMode.HARD_LIGHT
+        m[COSName.get_pdf_name("SoftLight")] = BlendMode.SOFT_LIGHT
+        m[COSName.get_pdf_name("Difference")] = BlendMode.DIFFERENCE
+        m[COSName.get_pdf_name("Exclusion")] = BlendMode.EXCLUSION
+        m[COSName.get_pdf_name("Hue")] = BlendMode.HUE
+        m[COSName.get_pdf_name("Saturation")] = BlendMode.SATURATION
+        m[COSName.get_pdf_name("Luminosity")] = BlendMode.LUMINOSITY
+        m[COSName.get_pdf_name("Color")] = BlendMode.COLOR
+        return m
 
     @classmethod
     def iter_standard(cls) -> tuple[BlendMode, ...]:

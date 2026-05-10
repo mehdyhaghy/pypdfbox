@@ -408,6 +408,75 @@ class CCITTFactory:
             document, Path(path).read_bytes(), int(number)
         )
 
+    # ------------------------------------------------------------------
+    # Private upstream helpers exposed as static methods for 1:1 parity
+    # with ``CCITTFactory.java``. These mirror the Java private static
+    # methods (which the parity scanner sees on the class surface);
+    # they are not part of the public Python API but are kept available
+    # so the class roster matches upstream method-for-method.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def prepare_image_x_object(
+        document: PDDocument,
+        byte_array: bytes,
+        width: int,
+        height: int,
+        init_color_space: PDColorSpace,
+    ) -> PDImageXObject:
+        """Mirror of upstream ``CCITTFactory.prepareImageXObject`` (line 137).
+
+        Delegates to the module-level :func:`prepare_image_x_object`.
+        """
+        return prepare_image_x_object(
+            document, byte_array, width, height, init_color_space
+        )
+
+    @staticmethod
+    def create_from_random_access_impl(
+        document: PDDocument,
+        reader: BinaryIO,
+        number: int,
+    ) -> PDImageXObject | None:
+        """Mirror of upstream ``CCITTFactory.createFromRandomAccessImpl``
+        (line 209). Delegates to the module-level
+        :func:`create_from_random_access_impl`.
+        """
+        return create_from_random_access_impl(document, reader, number)
+
+    @staticmethod
+    def extract_from_tiff(
+        reader: BinaryIO,
+        out_stream: BinaryIO,
+        params: COSDictionary,
+        number: int,
+    ) -> None:
+        """Mirror of upstream ``CCITTFactory.extractFromTiff`` (line 235).
+
+        Delegates to the module-level :func:`extract_from_tiff`.
+        """
+        extract_from_tiff(reader, out_stream, params, number)
+
+    @staticmethod
+    def readshort(endianness: str, reader: BinaryIO) -> int:
+        """Mirror of upstream ``CCITTFactory.readshort`` (line 470).
+
+        Upstream's Java name is the single token ``readshort`` (not
+        ``readShort``), so the parity scanner's snake-case converter
+        produces ``readshort`` -- we expose that exact spelling alongside
+        the public :func:`read_short`.
+        """
+        return read_short(endianness, reader)
+
+    @staticmethod
+    def readlong(endianness: str, reader: BinaryIO) -> int:
+        """Mirror of upstream ``CCITTFactory.readlong`` (line 479).
+
+        Upstream's Java name is the single token ``readlong`` (not
+        ``readLong``), matching :meth:`readshort` above.
+        """
+        return read_long(endianness, reader)
+
 
 __all__ = [
     "CCITTFactory",

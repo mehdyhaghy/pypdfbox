@@ -274,7 +274,7 @@ class TTFParser:
             return out
 
         scaler = int.from_bytes(raw[:4], "big", signed=False)
-        if scaler == _TAG_OPEN_TYPE_CFF and not self._allow_cff():
+        if scaler == _TAG_OPEN_TYPE_CFF and not self.allow_cff():
             out.set_error("True Type fonts using CFF outlines are not supported")
             return out
         if scaler not in (
@@ -287,7 +287,7 @@ class TTFParser:
             return out
 
         try:
-            font = self._new_font(data)
+            font = self.new_font(data)
         except Exception as exc:  # noqa: BLE001
             out.set_error(f"could not load font: {exc}")
             return out
@@ -351,40 +351,174 @@ class TTFParser:
 
         return out
 
-    # ---------- factory hook for OTF subclass --------------------------
+    # ---------- factory hooks (mirror upstream package-private hooks) ----
 
-    def _new_font(self, data: TTFDataStream) -> TrueTypeFont:
+    def new_font(self, data: TTFDataStream) -> TrueTypeFont:
         """Produce the concrete font instance.
 
-        Overridden by :class:`OTFParser` to return :class:`OpenTypeFont`.
+        Mirrors upstream ``TrueTypeFont newFont(TTFDataStream)``
+        (TTFParser.java L169-L172). Overridden by :class:`OTFParser`
+        to return :class:`OpenTypeFont`.
         """
         return TrueTypeFont(data)
 
-    def _read_table(self, tag: str) -> TTFTable:  # noqa: ARG002 — tag kept for parity
+    def read_table(self, tag: str) -> TTFTable:  # noqa: ARG002 — tag kept for parity
         """Factory hook for unknown tables encountered in the SFNT
         directory.
 
-        Mirrors upstream ``TTFParser.readTable(String)`` (protected,
-        TTFParser.java L403-L407): when a tag does not match any of the
-        well-known cases in ``readTableDirectory``, upstream calls this
-        to produce a generic :class:`TTFTable`. Subclasses can override
-        to return a specialised table type for tags they care about.
+        Mirrors upstream ``protected TTFTable readTable(String)``
+        (TTFParser.java L403-L407): when a tag does not match any of
+        the well-known cases in ``readTableDirectory``, upstream calls
+        this to produce a generic :class:`TTFTable`. Subclasses can
+        override to return a specialised table type for tags they
+        care about.
         """
         return TTFTable()
 
-    def _allow_cff(self) -> bool:
+    def allow_cff(self) -> bool:
         """Whether CFF outlines (an ``OTTO``-flavoured SFNT) are
         acceptable inputs to this parser.
 
-        Mirrors upstream ``TTFParser.allowCFF()`` (a protected
-        no-arg hook). The base ``TTFParser`` rejects CFF; the
-        :class:`OTFParser` subclass overrides this to return
-        ``True``. Kept as a hook so future code paths that need to
-        gate on the setting (e.g. when a generic SFNT loader has to
-        decide between TTF/OTF parsers) stay parity-compatible with
-        upstream code.
+        Mirrors upstream ``protected boolean allowCFF()``
+        (TTFParser.java L326-L329). The base ``TTFParser`` rejects
+        CFF; the :class:`OTFParser` subclass overrides this to
+        return ``True``.
         """
         return False
+
+    # ---------- legacy underscored aliases -----------------------------
+    # Earlier waves shipped these helpers as ``_new_font`` / ``_read_table``
+    # / ``_allow_cff``. The public names above are the parity-canonical
+    # spellings; the underscored variants forward so any in-repo callers
+    # that already imported them keep working without churn.
+
+    def _new_font(self, data: TTFDataStream) -> TrueTypeFont:
+        return self.new_font(data)
+
+    def _read_table(self, tag: str) -> TTFTable:
+        return self.read_table(tag)
+
+    def _allow_cff(self) -> bool:
+        return self.allow_cff()
+
+    # ---------- create_font_with_tables / parse_tables / read_table_directory ----
+    # Upstream exposes three internal helpers wired together by ``parse``:
+    #
+    # * ``createFontWithTables(TTFDataStream)`` (TTFParser.java L130-L160)
+    #   — walks the SFNT directory, builds a fresh ``TrueTypeFont``, and
+    #   registers each directory entry on it.
+    # * ``readTableDirectory(TTFDataStream)`` (TTFParser.java L331-L401)
+    #   — reads one 16-byte directory entry and returns the right
+    #   :class:`TTFTable` subclass for the tag.
+    # * ``parseTables(TrueTypeFont)`` (TTFParser.java L180-L249) —
+    #   forces every directory entry to load and validates the
+    #   mandatory-tables presence.
+    #
+    # The fontTools backend already does the directory walk + per-table
+    # decode internally when :class:`TrueTypeFont` constructs its
+    # underlying ``TTFont``, so these methods become thin wrappers over
+    # the resulting ``TrueTypeFont`` (driven by ``get_table_map``). Behaviour
+    # observable to PDFBox-shaped callers is preserved.
+
+    def create_font_with_tables(self, raf: TTFDataStream) -> TrueTypeFont:
+        """Build a :class:`TrueTypeFont` and register every directory entry.
+
+        Mirrors upstream ``TrueTypeFont createFontWithTables(TTFDataStream)``
+        (TTFParser.java L130-L160). The fontTools backend has already
+        decoded the SFNT directory by the time :meth:`new_font` returns,
+        so this method projects the resulting ``reader.tables`` map back
+        into typed :class:`TTFTable` entries via :meth:`read_table_directory`
+        and registers them on the font.
+        """
+        font = self.new_font(raf)
+        # SFNT scaler-type fixed-point version (1.0 for TrueType, the
+        # ``OTTO``/``true``/``typ1`` floats for legacy magics). Upstream
+        # reads it from the stream after newFont(); we already know the
+        # 32-bit scaler from the magic check, so encode it as a fixed.
+        raw = raf.get_original_data()
+        if len(raw) >= 4:
+            scaler = int.from_bytes(raw[:4], "big", signed=False)
+            # 16.16 fixed → float.
+            font.set_version(((scaler >> 16) & 0xFFFF) + (scaler & 0xFFFF) / 65536.0)
+        # Walk fontTools' SFNTReader and project each entry back through
+        # ``read_table_directory`` so subclass overrides of
+        # :meth:`read_table` see every tag, just like the upstream loop.
+        reader = getattr(font, "_tt", None)
+        reader = getattr(reader, "reader", None) if reader is not None else None
+        if reader is None:
+            return font
+        for tag in reader.tables:
+            entry = reader.tables[tag]
+            table = self._build_directory_entry(
+                tag,
+                int(entry.checkSum),
+                int(entry.offset),
+                int(entry.length),
+            )
+            if table is None:
+                continue
+            # Upstream PDFBox-5285 guard: skip tables whose offset+length
+            # walks past the file size.
+            if table.get_offset() + table.get_length() > font.get_original_data_size():
+                continue
+            font.add_table(table)
+        return font
+
+    def read_table_directory(self, raf: TTFDataStream) -> TTFTable | None:
+        """Read one 16-byte SFNT directory entry from ``raf``.
+
+        Mirrors upstream ``TTFTable readTableDirectory(TTFDataStream)``
+        (TTFParser.java L331-L401). Each entry is a fixed-layout record:
+        4-byte tag + 4-byte checksum + 4-byte offset + 4-byte length.
+        Returns ``None`` for zero-length tables (except ``glyf``), per
+        upstream's L394-L398 guard.
+        """
+        tag = raf.read_string(4)
+        check_sum = raf.read_unsigned_int()
+        offset = raf.read_unsigned_int()
+        length = raf.read_unsigned_int()
+        return self._build_directory_entry(tag, check_sum, offset, length)
+
+    def _build_directory_entry(
+        self,
+        tag: str,
+        check_sum: int,
+        offset: int,
+        length: int,
+    ) -> TTFTable | None:
+        """Shared back-end for :meth:`read_table_directory` and
+        :meth:`create_font_with_tables`.
+
+        Resolves the tag through :meth:`read_table` so subclass
+        overrides (e.g. :class:`OTFParser`) see every tag, then
+        applies the zero-length guard from upstream L394-L398.
+        """
+        table = self.read_table(tag)
+        table.set_tag(tag)
+        table.set_check_sum(check_sum)
+        table.set_offset(offset)
+        table.set_length(length)
+        # Upstream skips zero-length tables except ``glyf`` (which is
+        # legal at length 0 for all-empty fonts).
+        if length == 0 and tag != "glyf":
+            return None
+        return table
+
+    def parse_tables(self, font: TrueTypeFont) -> None:
+        """Force every directory entry to load and validate presence.
+
+        Mirrors upstream ``void parseTables(TrueTypeFont)``
+        (TTFParser.java L180-L249). The fontTools backend has already
+        decoded the recognised tables by this point, so the per-table
+        load amounts to flipping the ``initialized`` flag; the bulk of
+        this method is the mandatory-tables check, which mirrors
+        :meth:`_check_tables` for the TTF case (and :class:`OTFParser`
+        layers the OTF/CFF rule on top via super().parse_tables).
+        """
+        for table in font.get_tables():
+            if not table.get_initialized():
+                font.read_table(table)
+        self._check_tables(font)
 
     # ---------- internals ----------------------------------------------
 
@@ -432,7 +566,7 @@ class TTFParser:
         # position so fontTools sees the file from offset 0.
         scaler = int.from_bytes(raw[:4], "big", signed=False)
         self._check_scaler_type(scaler)
-        return self._new_font(data)
+        return self.new_font(data)
 
     def _check_scaler_type(self, scaler: int) -> None:
         """Reject a stream whose SFNT magic is not a TTF flavour.

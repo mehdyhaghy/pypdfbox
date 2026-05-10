@@ -379,3 +379,60 @@ def test_prepare_image_x_object_encodes_packed_bits_as_group4() -> None:
     assert decode_parms.get_int("Columns", 0) == 32
     assert decode_parms.get_int("Rows", 0) == 8
     assert image_x.get_filter() == COSName.get_pdf_name("CCITTFaxDecode")
+
+
+# ---------------------------------------------------------------------------
+# Class-surface mirrors of upstream private statics (parity-only roster)
+# ---------------------------------------------------------------------------
+
+
+def test_class_readshort_alias_mirrors_module_function() -> None:
+    """``CCITTFactory.readshort`` mirrors the Java private static (line 470)
+    spelling and must read the same bytes as :func:`read_short`."""
+    assert CCITTFactory.readshort("I", io.BytesIO(b"\x2a\x00")) == 42
+    assert CCITTFactory.readshort("M", io.BytesIO(b"\x00\x2a")) == 42
+
+
+def test_class_readlong_alias_mirrors_module_function() -> None:
+    """``CCITTFactory.readlong`` mirrors the Java private static (line 479)
+    spelling and must read the same bytes as :func:`read_long`."""
+    assert CCITTFactory.readlong("I", io.BytesIO(b"\x78\x56\x34\x12")) == 0x12345678
+    assert CCITTFactory.readlong("M", io.BytesIO(b"\x12\x34\x56\x78")) == 0x12345678
+
+
+def test_class_extract_from_tiff_alias_delegates() -> None:
+    """``CCITTFactory.extractFromTiff`` (Java line 235) -- class-surface
+    static delegating to the module function."""
+    tiff = _tiff_bytes(_pattern_image(), "group4")
+    params = COSDictionary()
+    out = io.BytesIO()
+    CCITTFactory.extract_from_tiff(io.BytesIO(tiff), out, params, 0)
+
+    assert params.get_int("Columns", 0) == 17
+    assert out.getvalue() == _single_strip(tiff)
+
+
+def test_class_prepare_image_x_object_alias_delegates() -> None:
+    """``CCITTFactory.prepareImageXObject`` (Java line 137) -- class-surface
+    static delegating to the module function."""
+    document = PDDocument()
+    src = Image.new("1", (16, 8), color=1)
+    image_x = CCITTFactory.prepare_image_x_object(
+        document, src.tobytes(), 16, 8, PDDeviceGray.INSTANCE
+    )
+    assert isinstance(image_x, PDImageXObject)
+    assert image_x.get_width() == 16
+    assert image_x.get_height() == 8
+
+
+def test_class_create_from_random_access_impl_alias_delegates() -> None:
+    """``CCITTFactory.createFromRandomAccessImpl`` (Java line 209) --
+    class-surface static delegating to the module function."""
+    document = PDDocument()
+    tiff = _tiff_bytes(_pattern_image(), "group4")
+    image_x = CCITTFactory.create_from_random_access_impl(
+        document, io.BytesIO(tiff), 0
+    )
+    assert image_x is not None
+    assert image_x.get_width() == 17
+    assert image_x.get_height() == 9

@@ -773,3 +773,101 @@ def test_input_pdf_alone_still_works_when_no_filename_set() -> None:
     result = overlay.overlay({})
     assert result is base
     assert result.get_number_of_pages() == 2
+
+
+# ---------- public 1:1 upstream-named delegates ----------
+
+
+def test_overlay_public_float2_string_matches_internal() -> None:
+    """``Overlay.float2_string`` is a public mirror of upstream's
+    ``float2String``; semantics must match the internal helper exactly."""
+    for v in (0.0, 1.5, -3.25, 100.0, 0.1):
+        assert Overlay.float2_string(v) == Overlay._float_to_string(v)  # noqa: SLF001
+
+
+def test_overlay_public_create_content_stream_list_handles_array_and_indirect() -> None:
+    """``Overlay.create_content_stream_list`` is a public mirror of upstream's
+    ``createContentStreamList`` — accepts a stream / array / indirect ref
+    and returns a flat ``list[COSStream]``."""
+    base = _build_base_doc(num_pages=1)
+    page = base.get_page(0)
+    contents = page.get_cos_object().get_dictionary_object(_CONTENTS)
+    out = Overlay.create_content_stream_list(contents)
+    assert all(isinstance(s, COSStream) for s in out)
+    assert Overlay.create_content_stream_list(None) == []
+
+
+def test_overlay_public_load_pdf_round_trip(tmp_path: Path) -> None:
+    """``Overlay.load_pdf`` mirrors upstream's static ``loadPDF`` — opens
+    a PDF on disk and returns a fresh :class:`PDDocument`."""
+    src = _build_base_doc(num_pages=1)
+    path = tmp_path / "src.pdf"
+    src.save(path)
+    src.close()
+    doc = Overlay.load_pdf(path)
+    try:
+        assert doc.get_number_of_pages() == 1
+    finally:
+        doc.close()
+
+
+def test_overlay_public_pipeline_helpers_drive_full_render() -> None:
+    """End-to-end exercise of the public 1:1 pipeline: ``load_pd_fs`` →
+    ``create_layout_page_from_document`` → ``process_pages``. Confirms
+    the public delegates compose into a working overlay."""
+    base = _build_base_doc(num_pages=2)
+    overlay_doc = _build_overlay_doc()
+    overlay = Overlay()
+    overlay.set_input_pdf(base)
+    overlay.set_default_overlay_pdf(overlay_doc)
+    overlay.load_pd_fs()
+    layout = overlay.create_layout_page_from_document(overlay_doc)
+    assert layout.overlay_media_box.get_width() == 200.0
+    overlay.process_pages(base)
+    # The overlaid page's /Contents is now an array — at minimum it has
+    # the form-XObject Do command appended.
+    contents = base.get_page(0).get_cos_object().get_dictionary_object(_CONTENTS)
+    assert isinstance(contents, COSArray)
+
+
+def test_overlay_public_create_layout_page_and_map() -> None:
+    """``create_layout_page`` and ``create_page_overlay_layout_page_map``
+    are public mirrors of upstream's ``createLayoutPage(PDPage)`` and
+    ``createPageOverlayLayoutPageMap(PDDocument)``."""
+    base = _build_base_doc(num_pages=1)
+    multi = _build_multi_page_overlay_doc(3)
+    overlay = Overlay()
+    overlay.set_input_pdf(base)
+    overlay.load_pd_fs()
+    layout = overlay.create_layout_page(multi.get_page(0))
+    assert layout.overlay_media_box.get_width() == 200.0
+    layout_map = overlay.create_page_overlay_layout_page_map(multi)
+    assert set(layout_map.keys()) == {0, 1, 2}
+
+
+def test_overlay_public_add_original_content_appends_streams() -> None:
+    """``add_original_content`` is a public mirror of upstream's
+    ``addOriginalContent`` — accepts ``None``, a single COSStream, or a
+    COSArray of streams."""
+    array = COSArray()
+    Overlay.add_original_content(None, array)
+    assert len(array) == 0
+    base = _build_base_doc(num_pages=1)
+    page_contents = (
+        base.get_page(0).get_cos_object().get_dictionary_object(_CONTENTS)
+    )
+    Overlay.add_original_content(page_contents, array)
+    assert len(array) >= 1
+
+
+def test_overlay_public_create_stream_round_trips_content() -> None:
+    """``create_stream`` is a public mirror of upstream's ``createStream``
+    — wraps a raw content-stream string in a :class:`COSStream`."""
+    base = _build_base_doc(num_pages=1)
+    overlay = Overlay()
+    overlay.set_input_pdf(base)
+    overlay.load_pd_fs()
+    stream = overlay.create_stream("q\nQ\n")
+    assert isinstance(stream, COSStream)
+    with stream.create_input_stream() as src:
+        assert src.read() == b"q\nQ\n"

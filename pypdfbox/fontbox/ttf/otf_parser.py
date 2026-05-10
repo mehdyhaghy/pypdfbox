@@ -96,7 +96,7 @@ class OTFParser(TTFParser):
             table = TTFTable()
             table._tag = tag  # noqa: SLF001 — mirrors upstream constructor
             return table
-        return super()._read_table(tag)
+        return super().read_table(tag)
 
     def allow_cff(self) -> bool:
         """OTF parsers accept CFF outlines (``OTTO`` scaler type).

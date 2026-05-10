@@ -657,6 +657,123 @@ class Overlay:
             out.write(content.encode("latin-1"))
         return stream
 
+    # ---------- public 1:1 upstream delegates ----------
+    #
+    # These mirror the upstream ``Overlay`` private/protected helpers
+    # under their direct snake_case-translated names so the parity script
+    # (which scores ``camelCase`` → ``snake_case``) credits them. They
+    # delegate to the equivalent leading-underscore implementations to
+    # keep call sites stable. Java line refs noted per method.
+    #
+    # Upstream helpers are package-private in Java; in Python we expose
+    # them as plain methods for the same testability + override surface.
+
+    def load_pd_fs(self) -> None:
+        """Load all configured input/overlay PDFs (Java ``loadPDFs`` —
+        ``Overlay.java:213``)."""
+        self._load_pdfs()
+
+    @staticmethod
+    def load_pdf(pdf_name: str | os.PathLike[str]) -> PDDocument:
+        """Open a PDF by path (Java ``loadPDF`` — ``Overlay.java:282``)."""
+        return Overlay._load_pdf(pdf_name)
+
+    def create_layout_page_from_document(self, doc: PDDocument) -> _LayoutPage:
+        """Build a ``LayoutPage`` from the first page of ``doc``
+        (Java ``createLayoutPageFromDocument`` — ``Overlay.java:313``)."""
+        return self._create_layout_page_from_document(doc)
+
+    def create_layout_page(self, page: PDPage) -> _LayoutPage:
+        """Build a ``LayoutPage`` from a single :class:`PDPage`
+        (Java ``createLayoutPage`` — ``Overlay.java:324``)."""
+        return self._create_layout_page(page)
+
+    def create_page_overlay_layout_page_map(
+        self, doc: PDDocument
+    ) -> dict[int, _LayoutPage]:
+        """Build a 0-based ``LayoutPage`` map for all pages of ``doc``
+        (Java ``createPageOverlayLayoutPageMap`` — ``Overlay.java:336``)."""
+        return self._create_page_overlay_layout_map(doc)
+
+    def create_combined_content_stream(self, contents: COSBase | None) -> COSStream:
+        """Concatenate page ``/Contents`` into a single FlateDecode stream
+        (Java ``createCombinedContentStream`` — ``Overlay.java:349``)."""
+        return self._create_combined_content_stream(contents)
+
+    @staticmethod
+    def create_content_stream_list(contents: COSBase | None) -> list[COSStream]:
+        """Flatten ``/Contents`` (stream / array / indirect) to a list
+        (Java ``createContentStreamList`` — ``Overlay.java:369``)."""
+        return Overlay._create_content_stream_list(contents)
+
+    def process_pages(self, document: PDDocument) -> None:
+        """Walk ``document`` and apply the configured overlays
+        (Java ``processPages`` — ``Overlay.java:399``)."""
+        self._process_pages(document)
+
+    @staticmethod
+    def add_original_content(
+        contents: COSBase | None, content_array: COSArray
+    ) -> None:
+        """Append the page's pre-existing ``/Contents`` to ``content_array``
+        (Java ``addOriginalContent`` — ``Overlay.java:440``)."""
+        Overlay._add_original_content(contents, content_array)
+
+    def overlay_page(
+        self,
+        page: PDPage,
+        layout_page: _LayoutPage,
+        array: COSArray,
+        cloner: Any,
+    ) -> None:
+        """Append the overlay form-XObject draw to ``array`` for ``page``
+        (Java ``overlayPage`` — ``Overlay.java:461``)."""
+        self._overlay_page(page, layout_page, array, cloner)
+
+    def get_layout_page(
+        self, page_number: int, number_of_pages: int
+    ) -> _LayoutPage | None:
+        """Resolve which overlay LayoutPage applies to a given page number
+        (Java ``getLayoutPage`` — ``Overlay.java:476``)."""
+        return self._get_layout_page(page_number, number_of_pages)
+
+    def create_adjusted_layout_page(self, rotation: int) -> _LayoutPage:
+        """Build a rotated copy of the default overlay (PDFBOX-6049)
+        (Java ``createAdjustedLayoutPage`` — ``Overlay.java:524``)."""
+        return self._create_adjusted_layout_page(rotation)
+
+    def create_overlay_form_x_object(
+        self, layout_page: _LayoutPage, cloner: Any
+    ) -> PDFormXObject:
+        """Wrap a LayoutPage's content stream in a form XObject
+        (Java ``createOverlayFormXObject`` — ``Overlay.java:538``).
+
+        Uses ``createRetranslatedRectangle()`` for the BBox per
+        PDFBOX-6048 — diverges from upstream 3.0.x's (0,0) assumption."""
+        return self._create_overlay_form_x_object(layout_page, cloner)
+
+    def create_overlay_stream(
+        self,
+        page: PDPage,
+        layout_page: _LayoutPage,
+        x_object_id: COSName,
+    ) -> COSStream:
+        """Build the small content stream that places the overlay form
+        XObject (Java ``createOverlayStream`` — ``Overlay.java:568``)."""
+        return self._create_overlay_stream(page, layout_page, x_object_id)
+
+    @staticmethod
+    def float2_string(value: float) -> str:
+        """Compact decimal string for content-stream emission
+        (Java ``float2String`` — ``Overlay.java:626``)."""
+        return Overlay._float_to_string(value)
+
+    def create_stream(self, content: str) -> COSStream:
+        """Pack a short content-stream string into a COSStream — only
+        flate-encoded when worthwhile (Java ``createStream`` —
+        ``Overlay.java:643``)."""
+        return self._create_stream(content)
+
     # ---------- setters ----------
 
     def set_overlay_position(self, overlay_position: Position) -> None:

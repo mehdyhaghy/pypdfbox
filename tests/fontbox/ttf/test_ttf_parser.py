@@ -186,14 +186,14 @@ def test_parse_embedded_tolerates_partial_table_set() -> None:
     assert font.has_table("head")
 
 
-# ---------- _allow_cff hook (upstream allowCFF()) -------------------------
+# ---------- allow_cff hook (upstream allowCFF()) --------------------------
 
 
 def test_allow_cff_default_false() -> None:
     """Plain ``TTFParser`` rejects CFF outlines — matches upstream
     ``TTFParser.allowCFF()`` returning false."""
     parser = TTFParser()
-    assert parser._allow_cff() is False  # noqa: SLF001
+    assert parser.allow_cff() is False
 
 
 def test_allow_cff_true_in_otf_subclass() -> None:
@@ -202,18 +202,127 @@ def test_allow_cff_true_in_otf_subclass() -> None:
     from pypdfbox.fontbox.ttf import OTFParser  # noqa: PLC0415
 
     parser = OTFParser()
-    assert parser._allow_cff() is True  # noqa: SLF001
+    assert parser.allow_cff() is True
 
 
-# ---------- _read_table hook (upstream readTable(String)) ------------------
+def test_allow_cff_underscored_alias_still_works() -> None:
+    """Earlier waves shipped ``_allow_cff``; the underscored alias must
+    keep forwarding to :meth:`allow_cff` for back-compat."""
+    parser = TTFParser()
+    assert parser._allow_cff() is False  # noqa: SLF001
+
+
+# ---------- read_table hook (upstream readTable(String)) ------------------
 
 
 def test_read_table_returns_generic_ttftable() -> None:
-    """Default ``_read_table`` produces a bare :class:`TTFTable` for
+    """Default ``read_table`` produces a bare :class:`TTFTable` for
     unknown tags — mirrors upstream ``TTFParser.readTable``."""
+    parser = TTFParser()
+    table = parser.read_table("zzzz")
+    assert isinstance(table, TTFTable)
+
+
+def test_read_table_underscored_alias_still_works() -> None:
+    """The pre-promotion ``_read_table`` spelling forwards to the
+    public name."""
     parser = TTFParser()
     table = parser._read_table("zzzz")  # noqa: SLF001
     assert isinstance(table, TTFTable)
+
+
+# ---------- new_font factory hook (upstream newFont(TTFDataStream)) -------
+
+
+def test_new_font_returns_truetypefont(ttf_bytes: bytes) -> None:
+    """``TTFParser.new_font`` is the factory hook the parse pipeline
+    uses to instantiate the concrete font; the base class returns a
+    :class:`TrueTypeFont`. Mirrors upstream ``newFont(TTFDataStream)``
+    (TTFParser.java L169-L172)."""
+    parser = TTFParser()
+    stream = MemoryTTFDataStream(ttf_bytes)
+    font = parser.new_font(stream)
+    assert type(font) is TrueTypeFont
+    assert not isinstance(font, OpenTypeFont)
+
+
+def test_new_font_underscored_alias_still_works(ttf_bytes: bytes) -> None:
+    parser = TTFParser()
+    stream = MemoryTTFDataStream(ttf_bytes)
+    font = parser._new_font(stream)  # noqa: SLF001
+    assert isinstance(font, TrueTypeFont)
+
+
+# ---------- create_font_with_tables / read_table_directory / parse_tables ----
+
+
+def test_create_font_with_tables_registers_directory(ttf_bytes: bytes) -> None:
+    """``create_font_with_tables`` builds a font and seeds it with one
+    :class:`TTFTable` per directory entry. Mirrors upstream
+    ``createFontWithTables`` (TTFParser.java L130-L160)."""
+    parser = TTFParser()
+    stream = MemoryTTFDataStream(ttf_bytes)
+    font = parser.create_font_with_tables(stream)
+    assert isinstance(font, TrueTypeFont)
+    # Every well-known SFNT table must have a directory entry.
+    table_map = font.get_table_map()
+    for tag in ("head", "hhea", "maxp", "hmtx", "name", "cmap", "post"):
+        assert tag in table_map, f"missing directory entry for {tag!r}"
+        assert table_map[tag].get_length() > 0
+
+
+def test_read_table_directory_returns_typed_entry() -> None:
+    """``read_table_directory`` reads a 16-byte SFNT directory record
+    and returns a :class:`TTFTable` with tag/checksum/offset/length set.
+    Mirrors upstream ``readTableDirectory`` (TTFParser.java L331-L401)."""
+    parser = TTFParser()
+    # A synthetic record: tag='head', checksum=0xDEADBEEF, offset=0x100,
+    # length=54 (the head table size).
+    record = b"head" + (0xDEADBEEF).to_bytes(4, "big") + (0x100).to_bytes(
+        4, "big"
+    ) + (54).to_bytes(4, "big")
+    stream = MemoryTTFDataStream(record)
+    table = parser.read_table_directory(stream)
+    assert table is not None
+    assert table.get_tag() == "head"
+    assert table.get_check_sum() == 0xDEADBEEF
+    assert table.get_offset() == 0x100
+    assert table.get_length() == 54
+
+
+def test_read_table_directory_skips_zero_length_non_glyf() -> None:
+    """Upstream's L394-L398 guard: a zero-length entry for a non-glyf
+    tag is dropped (returns ``None``)."""
+    parser = TTFParser()
+    record = b"DSIG" + b"\x00" * 12  # checksum/offset/length all zero
+    stream = MemoryTTFDataStream(record)
+    assert parser.read_table_directory(stream) is None
+
+
+def test_read_table_directory_keeps_zero_length_glyf() -> None:
+    """A zero-length ``glyf`` entry is legal (all-empty fonts) and
+    must NOT be dropped — mirrors upstream's ``!tag.equals(GlyphTable.TAG)``
+    branch."""
+    parser = TTFParser()
+    record = b"glyf" + b"\x00" * 12
+    stream = MemoryTTFDataStream(record)
+    table = parser.read_table_directory(stream)
+    assert table is not None
+    assert table.get_tag() == "glyf"
+    assert table.get_length() == 0
+
+
+def test_parse_tables_validates_required_tables(ttf_bytes: bytes) -> None:
+    """``parse_tables`` forces every directory entry to load and
+    validates the mandatory-tables presence. Mirrors upstream
+    ``parseTables`` (TTFParser.java L180-L249) — for a fully-formed
+    font the call must succeed silently."""
+    parser = TTFParser()
+    font = parser.parse(ttf_bytes)
+    # Exercise the public method directly.
+    parser.parse_tables(font)
+    for table in font.get_tables():
+        assert table.get_initialized() is True
 
 
 # ---------- parse_table_headers fast path ----------------------------------

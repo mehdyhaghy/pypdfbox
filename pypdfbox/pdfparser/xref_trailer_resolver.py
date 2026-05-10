@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from enum import Enum
 
 from pypdfbox.cos import COSDictionary, COSObjectKey
+
+_LOG = logging.getLogger(__name__)
 
 
 class XrefType(Enum):
@@ -37,6 +40,10 @@ class _Section:
     # Byte offset of the ``xref`` keyword (or the xref-stream object) so
     # we can detect cycles when walking ``/Prev``.
     start_offset: int = -1
+    # Origin type (TABLE vs STREAM) — mirrors upstream's per-XrefTrailerObj
+    # ``xrefType`` field. Defaults to TABLE to match upstream's
+    # ``XrefTrailerObj()`` constructor.
+    xref_type: XrefType = XrefType.TABLE
 
 
 class XrefTrailerResolver:
@@ -61,6 +68,13 @@ class XrefTrailerResolver:
         self._current: _Section | None = None
         # Cycle detection for /Prev walking — populated by the parser.
         self._visited_offsets: set[int] = set()
+        # Resolved view (only populated by ``set_startxref``). Mirrors
+        # upstream's ``resolvedXrefTrailer`` — separate from the per-section
+        # storage so it can be re-built when the parser calls
+        # ``set_startxref`` after all sections are collected.
+        self._resolved_trailer: COSDictionary | None = None
+        self._resolved_xref_table: dict[COSObjectKey, XrefEntry] | None = None
+        self._resolved_xref_type: XrefType | None = None
 
     # ---------- section lifecycle ----------
 
@@ -77,6 +91,18 @@ class XrefTrailerResolver:
     def has_visited(self, offset: int) -> bool:
         return offset in self._visited_offsets
 
+    def next_xref_obj(self, start_byte_pos: int, type_: XrefType) -> None:
+        """Signal that a new xref object (table or stream) starts at the
+        given byte position with the given type. Upstream-name parity
+        wrapper around :meth:`begin_section` — mirrors PDFBox
+        ``XrefTrailerResolver.nextXrefObj(long, XRefType)`` (Java line 152).
+        Records ``type_`` on the section so ``get_xref_type()`` can read it
+        back from the resolved trailer."""
+        self.begin_section(start_byte_pos)
+        # The section we just started is now ``self._current``.
+        if self._current is not None:
+            self._current.xref_type = type_
+
     # ---------- entry / trailer setters (operate on current section) ----------
 
     def set_entry(self, key: COSObjectKey, entry: XrefEntry) -> None:
@@ -86,6 +112,32 @@ class XrefTrailerResolver:
         # — matches PDFBox behavior where the parser may overwrite an
         # earlier subsection entry if the file is malformed.
         self._current.entries[key] = entry
+
+    def set_x_ref(self, obj_key: COSObjectKey, offset: int) -> None:
+        """Add a single xref entry for the current section. Upstream-name
+        parity wrapper around :meth:`set_entry` — mirrors PDFBox
+        ``XrefTrailerResolver.setXRef(COSObjectKey, long)`` (Java line 175).
+
+        Behavior matches upstream PDFBOX-3506: if an entry already exists
+        for ``obj_key`` in the current section it is **not** overwritten —
+        this protects table entries from being clobbered by obsolete
+        ``/XRefStm`` entries in hybrid files. Logs a warning and silently
+        returns if no section has been started (upstream also warns and
+        returns rather than raising)."""
+        if self._current is None:
+            # Upstream logs and returns instead of raising.
+            _LOG.warning(
+                "Cannot add XRef entry for '%s' because XRef start was not signalled.",
+                obj_key.object_number,
+            )
+            return
+        if obj_key in self._current.entries:
+            return
+        # Default-type entry — upstream stores raw byte offsets without a
+        # type tag because the section's xref_type already qualifies them.
+        self._current.entries[obj_key] = XrefEntry(
+            type=self._current.xref_type, offset=offset
+        )
 
     def set_trailer(self, trailer: COSDictionary) -> None:
         if self._current is None:
@@ -166,6 +218,119 @@ class XrefTrailerResolver:
         ranked.sort(key=lambda s: s.start_offset)
         return ranked[-1].trailer
 
+    # ---------- resolved view (set_startxref + getters) ----------
+
+    def set_startxref(self, startxref_byte_pos_value: int) -> None:
+        """Set the byte position of the latest startxref so the resolver
+        can build the chain of active xref/trailer objects. Mirrors PDFBox
+        ``XrefTrailerResolver.setStartxref(long)`` (Java line 232).
+
+        The resolved trailer/xref are exposed through
+        :meth:`get_xref_type` and :meth:`get_contained_object_numbers`.
+        Walks ``/Prev`` from the section at ``startxref_byte_pos_value``
+        backwards. If no section is registered at that offset, falls back
+        to merging every section in byte-position order (upstream's
+        recovery behavior). Pass ``-1`` to opt into this fallback for
+        documents with a missing startxref."""
+        if self._resolved_trailer is not None:
+            _LOG.warning(
+                "Method must be called only ones with last startxref value."
+            )
+            return
+
+        # Build a byte-pos → section map. Upstream uses ``HashMap<Long,
+        # XrefTrailerObj>`` keyed by start offset; we walk our list
+        # because sections were appended in arrival order.
+        byte_pos_map: dict[int, _Section] = {
+            s.start_offset: s for s in self._sections if s.start_offset >= 0
+        }
+
+        resolved_trailer = COSDictionary()
+        resolved_table: dict[COSObjectKey, XrefEntry] = {}
+        resolved_type: XrefType = XrefType.TABLE
+
+        cur_obj = byte_pos_map.get(startxref_byte_pos_value)
+        xref_seq_byte_pos: list[int] = []
+
+        if cur_obj is None:
+            _LOG.warning(
+                "Did not found XRef object at specified startxref position %s",
+                startxref_byte_pos_value,
+            )
+            # Use all objects in byte position order — last entries
+            # overwrite previous ones (upstream lines 252-253).
+            xref_seq_byte_pos = sorted(byte_pos_map.keys())
+        else:
+            resolved_type = cur_obj.xref_type
+            xref_seq_byte_pos.append(startxref_byte_pos_value)
+            while cur_obj.trailer is not None:
+                prev_byte_pos = cur_obj.trailer.get_long("Prev", -1)
+                if prev_byte_pos == -1:
+                    break
+                next_obj = byte_pos_map.get(prev_byte_pos)
+                if next_obj is None:
+                    _LOG.warning(
+                        "Did not found XRef object pointed to by 'Prev' "
+                        "key at position %s",
+                        prev_byte_pos,
+                    )
+                    break
+                cur_obj = next_obj
+                xref_seq_byte_pos.append(prev_byte_pos)
+                # Prevent infinite loops (upstream lines 278-282).
+                if len(xref_seq_byte_pos) >= len(byte_pos_map):
+                    break
+            # Reverse so newer entries overwrite older ones.
+            xref_seq_byte_pos.reverse()
+
+        # Merge in the resolved order.
+        for b_pos in xref_seq_byte_pos:
+            section = byte_pos_map.get(b_pos)
+            if section is None:
+                continue
+            if section.trailer is not None:
+                # COSDictionary.add_all merges keys without overwriting
+                # existing ones in upstream PDFBox; replicate by only
+                # setting keys not already present so newer trailer wins.
+                # Actually upstream uses ``addAll`` which DOES overwrite —
+                # see COSDictionary.addAll. We follow that behavior.
+                for key, value in section.trailer.entry_set():
+                    resolved_trailer.set_item(key, value)
+            resolved_table.update(section.entries)
+
+        self._resolved_trailer = resolved_trailer
+        self._resolved_xref_table = resolved_table
+        self._resolved_xref_type = resolved_type
+
+    def get_xref_type(self) -> XrefType | None:
+        """Return the resolved trailer's xref type, or ``None`` if
+        :meth:`set_startxref` has not been called. Mirrors PDFBox
+        ``XrefTrailerResolver.getXrefType()`` (Java line 164)."""
+        return self._resolved_xref_type
+
+    def get_contained_object_numbers(self, objstm_obj_nr: int) -> set[int] | None:
+        """Return the object numbers contained within the object stream
+        whose object number is ``objstm_obj_nr``. Mirrors PDFBox
+        ``XrefTrailerResolver.getContainedObjectNumbers(int)`` (Java line
+        336).
+
+        In upstream's encoding, compressed-object xref entries store the
+        object stream's number negated as the offset value. We use a
+        typed encoding instead — :class:`XrefEntry` with
+        ``type=XrefType.COMPRESSED`` and ``offset=objstm_obj_nr`` — so
+        the comparison is on (type, offset) rather than a sign trick.
+
+        Returns ``None`` (not an empty set) if :meth:`set_startxref` has
+        not yet been called, matching upstream which returns ``null``
+        when ``resolvedXrefTrailer`` is ``null``."""
+        if self._resolved_xref_table is None:
+            return None
+        result: set[int] = set()
+        for key, entry in self._resolved_xref_table.items():
+            if entry.type is XrefType.COMPRESSED and entry.offset == objstm_obj_nr:
+                result.add(key.object_number)
+        return result
+
     def reset(self) -> None:
         """Clear every section's entry map and forget the current
         section so the resolver can be re-driven by a recovery pass.
@@ -178,3 +343,8 @@ class XrefTrailerResolver:
             section.entries.clear()
         self._current = None
         self._visited_offsets.clear()
+        # Also drop any resolved view — set_startxref must be called
+        # again after a reparse pass.
+        self._resolved_trailer = None
+        self._resolved_xref_table = None
+        self._resolved_xref_type = None
