@@ -120,7 +120,10 @@ def test_type3_font_cos_round_trip_preserves_owned_dictionaries() -> None:
 
     proc = font.get_char_proc(65)
     assert isinstance(proc, PDType3CharProc)
-    assert proc.get_content_stream() is glyph
+    # Upstream getContentStream() returns a fresh PDStream wrapper around
+    # the same COSStream — assert we're wrapping the right glyph stream.
+    assert proc.get_content_stream().get_cos_object() is glyph
+    assert proc.get_cos_object() is glyph
     assert proc.get_width() == pytest.approx(625.0)
     glyph_bbox = proc.get_glyph_bbox()
     assert glyph_bbox is not None
@@ -186,7 +189,10 @@ def test_char_proc_content_stream_accessors_stay_on_underlying_stream() -> None:
     proc = font.get_char_proc(65)
 
     assert isinstance(proc, PDType3CharProc)
-    assert proc.get_content_stream() is glyph
+    # Upstream getContentStream() returns a fresh PDStream wrapper around
+    # the underlying COSStream; the COS-level identity is what survives.
+    assert proc.get_content_stream().get_cos_object() is glyph
+    assert proc.get_cos_object() is glyph
     with proc.get_contents() as contents:
         assert contents.read() == b"480 0 d0\nq Q\n"
     assert font.get_width_from_font(65) == pytest.approx(480.0)

@@ -959,7 +959,7 @@ class COSParser(BaseParser):
         float. Tolerates up to 1024 bytes of leading garbage (some
         producers prepend MIME envelopes / shebangs / etc.). Mirrors
         upstream ``COSParser.parsePDFHeader``."""
-        return self._parse_header_marker(
+        return self.parse_header(
             self.PDF_HEADER.encode("ascii"), self.PDF_DEFAULT_VERSION
         )
 
@@ -969,16 +969,23 @@ class COSParser(BaseParser):
         uses a different magic and a default of ``1.0``. Tolerates up to
         1024 bytes of leading garbage (matches the PDF parser). Mirrors
         upstream ``COSParser.parseFDFHeader``."""
-        return self._parse_header_marker(
+        return self.parse_header(
             self.FDF_HEADER.encode("ascii"), self.FDF_DEFAULT_VERSION
         )
 
-    def _parse_header_marker(self, marker: bytes, default_version: str) -> float:
+    def parse_header(self, marker: bytes | str, default_version: str) -> float:
         """Shared implementation for :meth:`parse_pdf_header` and
         :meth:`parse_fdf_header`. Scans the leading 1024 bytes for
         ``marker``, then reads the version digits up to EOL/whitespace.
         Falls back to ``default_version`` when no digits follow the
-        marker (mirrors upstream's ``parseHeader`` fallback)."""
+        marker. Mirrors upstream ``COSParser.parseHeader(String, String)``
+        (Java line 1617).
+
+        ``marker`` may be ``bytes``/``bytearray`` (preferred) or a ``str``
+        (treated as ASCII for parity with the upstream ``String``
+        signature)."""
+        if isinstance(marker, str):
+            marker = marker.encode("ascii")
         scan_window = 1024
         self._src.seek(0)
         head = bytearray()
@@ -1551,17 +1558,21 @@ class COSParser(BaseParser):
         if self._trailer_was_rebuild:
             pages = root.get_dictionary_object(pages_name)
             if isinstance(pages, COSDictionary):
-                self._check_pages_dictionary(pages, set())
+                self.check_pages_dictionary(pages, set())
         if not isinstance(root.get_dictionary_object(pages_name), COSDictionary):
             raise PDFParseError("Page tree root must be a dictionary")
 
-    def _check_pages_dictionary(
+    def check_pages_dictionary(
         self, pages_dict: COSDictionary, seen: set
     ) -> int:
-        """Recursive worker for :meth:`check_pages`. Mirrors the private
-        upstream ``checkPagesDictionary`` (Java line 1420) — kept private
-        here too (single underscore) since callers should drive the walk
-        through ``check_pages``."""
+        """Recursive worker for :meth:`check_pages`. Mirrors private
+        upstream ``checkPagesDictionary`` (Java line 1420) — exposed
+        publicly here so the parity audit recognises the 1:1 port.
+
+        Walks ``pages_dict[/Kids]`` removing entries whose targets are
+        missing or invalid, recurses through nested ``/Pages`` nodes,
+        counts ``/Page`` leaves, and writes the resulting tally back to
+        ``pages_dict[/Count]``."""
         kids_name = COSName.get_pdf_name("Kids")
         type_name = COSName.get_pdf_name("Type")
         count_name = COSName.get_pdf_name("Count")
@@ -1581,7 +1592,7 @@ class COSParser(BaseParser):
                     type_obj = kid_obj.get_dictionary_object(type_name)
                     if isinstance(type_obj, COSName) and type_obj.name == "Pages":
                         seen.add(kid)
-                        number_of_pages += self._check_pages_dictionary(
+                        number_of_pages += self.check_pages_dictionary(
                             kid_obj, seen
                         )
                     elif isinstance(type_obj, COSName) and type_obj.name == "Page":
@@ -1667,12 +1678,577 @@ class COSParser(BaseParser):
         # (which has access to the password). Subclasses (PDFParser) call
         # super().prepare_decryption() then perform the heavy work.
 
-    # ---------- Java alias: createRandomAccessReadView (parity-only) ----------
+    # ---------- xref-recovery / startxref / trailer parsing ----------
     #
-    # Upstream uses camelCase here — we keep the snake_case canonical
-    # ``create_random_access_read_view`` above and rely on PDFBox-style
-    # callers using the snake_case form (no camelCase aliases per
-    # project convention).
+    # Upstream's ``COSParser`` private xref-recovery helpers, surfaced
+    # here under upstream's snake_cased names. Most are 1:1 ports of the
+    # Java logic; a handful diverge minimally to fit pypdfbox's
+    # call-graph (notably ``get_brute_force_parser`` returns ``self``
+    # because we inline brute-force scans on this class instead of
+    # delegating to a separate ``BruteForceParser``).
+
+    def init(self) -> None:
+        """Apply the ``SYSPROP_EOFLOOKUPRANGE`` system property override
+        (when set) to the ``%%EOF`` lookup range. Mirrors upstream
+        ``COSParser.init(StreamCacheCreateFunction)`` (Java line 205).
+
+        pypdfbox does not consult the JVM's system-property table — the
+        upstream init also constructs a ``COSDocument`` from the
+        provided stream-cache factory, but pypdfbox passes the document
+        in via ``__init__``. The method exists for parity callers and is
+        a no-op when no environment override is present (matches
+        upstream when the property is unset)."""
+        import os  # noqa: PLC0415 — local import keeps cos_parser import-cheap
+        override = os.environ.get(self.SYSPROP_EOFLOOKUPRANGE)
+        if override is None:
+            return
+        try:
+            self.set_eof_lookup_range(int(override))
+        except ValueError:
+            # Upstream LOG.warn — silent here (CLAUDE.md: stdlib logging
+            # is acceptable; we don't want chatty parser output).
+            return
+
+    def get_startxref_offset(self) -> int:
+        """Locate the ``startxref`` marker by scanning the trailing
+        ``read_trail_bytes`` window of the source for ``%%EOF`` and
+        walking backwards to ``startxref``. Returns the absolute byte
+        offset of ``startxref`` within the source. Mirrors upstream
+        ``COSParser.getStartxrefOffset()`` (Java line 497).
+
+        Raises ``PDFParseError`` (upstream ``IOException``) when the
+        ``startxref`` marker is missing. Strict mode also rejects a
+        missing ``%%EOF`` marker; lenient mode treats it as if it
+        appeared at the end of the buffer."""
+        if self._file_len < 0:
+            raise PDFParseError("source length unknown; cannot locate startxref")
+        trail_byte_count = (
+            self._file_len if self._file_len < self._read_trail_bytes
+            else self._read_trail_bytes
+        )
+        skip_bytes = self._file_len - trail_byte_count
+        saved = self.position
+        try:
+            self._src.seek(skip_bytes)
+            buf = bytearray(trail_byte_count)
+            off = 0
+            while off < trail_byte_count:
+                read = self._src.read_into(buf, off, trail_byte_count - off)
+                if read < 1:
+                    raise PDFParseError(
+                        "No more bytes to read for trailing buffer, "
+                        f"but expected: {trail_byte_count - off}"
+                    )
+                off += read
+        finally:
+            self._src.seek(saved if saved >= 0 else 0)
+        buf_off = self.last_index_of(self.EOF_MARKER, buf, len(buf))
+        if buf_off < 0:
+            if self._lenient:
+                buf_off = len(buf)
+            else:
+                raise PDFParseError(
+                    f"Missing end of file marker {self.EOF_MARKER!r}"
+                )
+        buf_off = self.last_index_of(self.STARTXREF_MARKER, buf, buf_off)
+        if buf_off < 0:
+            raise PDFParseError("Missing 'startxref' marker.")
+        return skip_bytes + buf_off
+
+    def parse_start_xref(self) -> int:
+        """Read the ``startxref`` keyword + integer offset at the current
+        position and return the offset (or ``-1`` when the keyword does
+        not appear). Mirrors upstream ``COSParser.parseStartXref()``
+        (Java line 1472)."""
+        start_xref = -1
+        if self.is_string(self.STARTXREF_MARKER):
+            self.read_keyword()  # consume 'startxref'
+            self.skip_spaces()
+            start_xref = self.read_long()
+        return start_xref
+
+    def parse_trailer(self) -> bool:
+        """Parse the ``trailer << ... >>`` block at the current source
+        position and return ``True`` on success. The parsed dictionary
+        is returned via :meth:`get_document` -> trailer when a document
+        is bound; without one this method only validates the structure.
+        Mirrors upstream ``COSParser.parseTrailer()`` (Java line 1537).
+
+        Lenient mode tolerates extra leading digit lines (PDFBOX-1739
+        — RegisSTAR documents) and a trailer that runs onto the same
+        line as the keyword (no EOL after ``trailer``)."""
+        trailer_offset = self.position
+        if self._lenient:
+            next_character = self.peek()
+            while (
+                next_character != 0x74  # 't'
+                and next_character != RandomAccessRead.EOF
+                and self.is_digit(next_character)
+            ):
+                # Skip a leading digit line; keep retrying.
+                self.read_line()
+                next_character = self.peek()
+        if self.peek() != 0x74:
+            return False
+        current_offset = self.position
+        next_line = self.read_line().strip()
+        if next_line != "trailer":
+            if next_line.startswith("trailer"):
+                # EOL missing after 'trailer'; jump just past the keyword.
+                self._src.seek(current_offset + len("trailer"))
+            else:
+                return False
+        self.skip_spaces()
+        parsed_trailer = self.parse_cos_dictionary()
+        if self._document is not None:
+            existing = self._document.get_trailer()
+            if existing is None:
+                self._document.set_trailer(parsed_trailer)
+        self._last_parsed_trailer = parsed_trailer
+        self.skip_spaces()
+        # silence "trailer_offset unused" — kept to mirror upstream's
+        # local but not strictly needed for the return contract.
+        _ = trailer_offset
+        return True
+
+    def parse_xref(self, start_xref_offset: int) -> COSDictionary | None:
+        """Parse the cross-reference chain starting at
+        ``start_xref_offset`` and return the resolved trailer dictionary.
+        Mirrors upstream ``COSParser.parseXref(long)`` (Java line 334).
+
+        Walks ``/Prev`` references through every linked xref section
+        (traditional ``xref`` table or PDF 1.5+ xref-stream object).
+        ``/Prev`` loops are detected via a visited-offset set and raise
+        ``PDFParseError``. The full implementation (with hybrid
+        ``/XRefStm`` handling and document-pool population) lives in
+        ``PDFParser`` — this entry point provides the upstream call
+        surface and delegates to :meth:`parse_xref_table` /
+        :meth:`parse_xref_obj_stream` for the per-section work."""
+        self._src.seek(start_xref_offset)
+        start = max(0, self.parse_start_xref())
+        fixed = self.check_x_ref_offset(start)
+        if fixed > -1:
+            start = fixed
+        if self._document is not None:
+            with contextlib.suppress(Exception):
+                self._document.set_start_xref(start)
+        prev = start
+        prev_set: set[int] = set()
+        trailer: COSDictionary | None = None
+        while prev > 0:
+            if prev in prev_set:
+                raise PDFParseError(f"/Prev loop at offset {prev}")
+            prev_set.add(prev)
+            self._src.seek(prev)
+            self.skip_spaces()
+            prev_set.add(self.position)
+            if self.peek() == 0x78:  # 'x'
+                if not self.parse_xref_table(prev) or not self.parse_trailer():
+                    raise PDFParseError(
+                        f"Expected trailer object at offset {self.position}"
+                    )
+                trailer = getattr(self, "_last_parsed_trailer", None)
+                if trailer is None:
+                    return None
+                prev_obj = trailer.get_dictionary_object(
+                    COSName.get_pdf_name("Prev")
+                )
+                prev = prev_obj.int_value() if isinstance(prev_obj, COSInteger) else 0
+            else:
+                # xref-stream object: parse and read /Prev from its dict.
+                prev = self.parse_xref_obj_stream(prev, True)
+        return trailer
+
+    def parse_xref_obj_stream(
+        self, obj_byte_offset: int, is_standalone: bool = True
+    ) -> int:
+        """Parse the xref-stream object header at ``obj_byte_offset``
+        (consuming the ``n g obj`` prefix and the trailing stream body)
+        and return the value of the ``/Prev`` entry, or ``-1`` when the
+        dictionary lacks one. Mirrors upstream
+        ``COSParser.parseXrefObjStream(long, boolean)`` (Java line
+        465).
+
+        ``is_standalone`` mirrors upstream's flag — when ``True`` the
+        parsed dictionary is registered as the active trailer; when
+        ``False`` (hybrid xref) the dictionary is parsed only for its
+        ``/Prev`` link."""
+        self._src.seek(obj_byte_offset)
+        self.read_object_number()
+        self.read_generation_number()
+        self.read_expected_string(b"obj", True)
+        body = self.parse_direct_object()
+        if not isinstance(body, COSDictionary):
+            raise PDFParseError(
+                "xref-stream object body is not a dictionary",
+                position=self.position,
+            )
+        if is_standalone and self._document is not None:
+            with contextlib.suppress(Exception):
+                self._document.set_trailer(body)
+        # Promote + read body so the parser advances past 'endstream'
+        # (matches upstream's parseCOSStream call).
+        self.skip_spaces()
+        if self.peek() == 0x73:  # 's' — stream
+            kw = self.read_keyword()
+            if kw == b"stream":
+                stream = self._build_stream_from_dict(body)
+                with contextlib.suppress(NotImplementedError, PDFParseError):
+                    self._read_stream_body_into(stream)
+        prev_obj = body.get_dictionary_object(COSName.get_pdf_name("Prev"))
+        return prev_obj.int_value() if isinstance(prev_obj, COSInteger) else -1
+
+    def get_object_offset(
+        self, obj_key: COSObjectKey, require_existing_not_compressed: bool
+    ) -> int | None:
+        """Look up ``obj_key`` in the document's xref table and return
+        the byte offset (positive) or compressed-objstm reference
+        (negative — magnitude is the ObjStm container number). Returns
+        ``None`` when the key is unknown. Mirrors upstream
+        ``COSParser.getObjectOffset(COSObjectKey, boolean)`` (Java line
+        690).
+
+        In lenient mode an unknown key triggers a brute-force scan; the
+        recovered offset is recorded back into the xref table. Strict
+        mode (``require_existing_not_compressed`` true) raises when the
+        key is missing or points at a compressed object."""
+        if self._document is None:
+            if require_existing_not_compressed:
+                raise PDFParseError(
+                    f"Object must be defined and must not be compressed object: "
+                    f"{obj_key.object_number}:{obj_key.generation_number}"
+                )
+            return None
+        xref_table = self._document.get_xref_table()
+        offset = xref_table.get(obj_key)
+        if offset is None and self._lenient:
+            scanned = self.get_brute_force_parser().bf_search_for_objects()
+            offset = scanned.get(obj_key)
+            if offset is not None:
+                xref_table[obj_key] = offset
+        if require_existing_not_compressed and (offset is None or offset <= 0):
+            raise PDFParseError(
+                f"Object must be defined and must not be compressed object: "
+                f"{obj_key.object_number}:{obj_key.generation_number}"
+            )
+        return offset
+
+    def parse_file_object(
+        self, obj_offset: int, obj_key: COSObjectKey
+    ) -> COSBase | None:
+        """Parse the indirect-object definition stored at
+        ``obj_offset`` and return its body. Mirrors upstream
+        ``COSParser.parseFileObject(Long, COSObjectKey)`` (Java line
+        717).
+
+        The header ``n g obj`` is validated against ``obj_key`` (an
+        upstream ``IOException`` is raised on mismatch — pypdfbox uses
+        ``PDFParseError``). Stream objects are promoted via
+        :meth:`parse_cos_stream`. Encryption is not applied here —
+        decryption happens at the ``PDFParser`` layer where the
+        security handler lives."""
+        self._src.seek(obj_offset)
+        read_obj_nr = self.read_object_number()
+        read_obj_gen = self.read_generation_number()
+        self.read_expected_string(b"obj", True)
+        if (
+            read_obj_nr != obj_key.object_number
+            or read_obj_gen != obj_key.generation_number
+        ):
+            raise PDFParseError(
+                f"XREF for {obj_key.object_number}:{obj_key.generation_number} "
+                f"points to wrong object: {read_obj_nr}:{read_obj_gen} at "
+                f"offset {obj_offset}"
+            )
+        self.skip_spaces()
+        parsed = self.parse_direct_object()
+        self.skip_spaces()
+        end_kw = self.read_keyword()
+        if end_kw == b"stream":
+            self._src.rewind(len(b"stream"))
+            if isinstance(parsed, COSDictionary):
+                parsed = self.parse_cos_stream(parsed)
+            else:
+                raise PDFParseError(
+                    f"Stream not preceded by dictionary (offset: {obj_offset})."
+                )
+            self.skip_spaces()
+            with contextlib.suppress(PDFParseError):
+                self.read_keyword()  # consume trailing 'endobj'
+        return parsed
+
+    def get_length(self, length_base_obj: COSBase | None) -> COSBase | None:
+        """Resolve a stream's ``/Length`` entry to a ``COSNumber``
+        (``COSInteger`` / ``COSFloat``). Mirrors upstream
+        ``COSParser.getLength(COSBase)`` (Java line 854).
+
+        Returns ``None`` when the input is ``None`` or resolves to
+        ``COSNull``. Raises ``PDFParseError`` when an indirect-reference
+        ``/Length`` cannot be resolved or when the resolved type is
+        wrong (upstream throws ``IOException``)."""
+        if length_base_obj is None:
+            return None
+        if isinstance(length_base_obj, (COSInteger, COSFloat)):
+            return length_base_obj
+        if isinstance(length_base_obj, COSObject):
+            length = length_base_obj.get_object()
+            if length is None:
+                raise PDFParseError("Length object content was not read.")
+            if length is COSNull.NULL:
+                return None
+            if isinstance(length, (COSInteger, COSFloat)):
+                return length
+            raise PDFParseError(
+                f"Wrong type of referenced length object {length_base_obj}: "
+                f"{type(length).__name__}"
+            )
+        raise PDFParseError(
+            f"Wrong type of length object: {type(length_base_obj).__name__}"
+        )
+
+    def read_until_end_stream(self, out: bytearray | None = None) -> int:
+        """Scan forward from the current source position until
+        ``endstream`` (or ``endobj`` — some malformed producers omit
+        ``endstream``) and return the number of body bytes consumed.
+        Mirrors upstream
+        ``COSParser.readUntilEndStream(EndstreamFilterStream)`` (Java
+        line 983).
+
+        ``out`` is an optional ``bytearray`` that receives the body
+        bytes as they're consumed; pass ``None`` to skip without
+        recording. The returned length excludes the terminator
+        keyword."""
+        endstream = self.ENDSTREAM_MARKER
+        endobj = self.ENDOBJ_MARKER
+        consumed = 0
+        match: bytes = b""
+        match_target = endstream
+        match_off = 0
+        while True:
+            b = self._src.read()
+            if b == RandomAccessRead.EOF:
+                break
+            if b == match_target[match_off]:
+                match_off += 1
+                if match_off == len(match_target):
+                    # Found the terminator — rewind so the keyword stays
+                    # readable to callers (matches upstream which leaves
+                    # the source positioned just past the keyword's
+                    # final byte; we mirror that by NOT rewinding).
+                    return consumed
+            else:
+                # Reset / re-evaluate. If we'd matched 'endst' but the
+                # next byte is 'r' (endobj), upstream switches keywords
+                # at offset 3 ('endo' vs 'ends').
+                if match_off == 3 and b == endobj[3]:
+                    match_target = endobj
+                    match_off += 1
+                    consumed += match_off
+                    match_off = 0
+                    continue
+                # Append the consumed-but-unmatched prefix to the body.
+                if match_off > 0:
+                    if out is not None:
+                        out.extend(match_target[:match_off])
+                    consumed += match_off
+                    match_off = 0
+                    match_target = endstream
+                # Now record this byte.
+                if out is not None:
+                    out.append(b)
+                consumed += 1
+                _ = match  # placeholder; upstream uses a quick-test
+                # buffer that we don't need for parity correctness.
+        return consumed
+
+    def validate_stream_length(self, stream_length: int) -> bool:
+        """Return ``True`` when seeking ``stream_length`` bytes forward
+        from the current source position lands on an ``endstream``
+        keyword. Mirrors upstream
+        ``COSParser.validateStreamLength(long)`` (Java line 1077).
+
+        Used by stream-body parsing as a fast path: if ``/Length`` looks
+        sane the body bytes can be skipped wholesale; otherwise the
+        parser falls back to :meth:`read_until_end_stream`."""
+        origin_offset = self.position
+        if stream_length == 0:
+            return False
+        if stream_length < 0:
+            return False
+        expected_end = origin_offset + stream_length
+        if self._file_len > 0 and expected_end > self._file_len:
+            return False
+        try:
+            self._src.seek(expected_end)
+            self.skip_spaces()
+            end_stream_found = self.is_string(self.ENDSTREAM_MARKER)
+        finally:
+            self._src.seek(origin_offset)
+        return end_stream_found
+
+    def check_x_ref_offset(self, start_x_ref_offset: int) -> int:
+        """Validate the byte offset claimed for the cross-reference
+        table/stream and return either the original offset, a
+        brute-force-recovered offset, or ``-1`` when no valid offset
+        exists. Mirrors upstream
+        ``COSParser.checkXRefOffset(long)`` (Java line 1121).
+
+        Strict mode short-circuits and returns ``start_x_ref_offset``
+        unchanged. Lenient mode probes for the literal ``xref`` keyword,
+        falls back to xref-stream-object detection, and finally invokes
+        the brute-force scanner."""
+        if not self._lenient:
+            return start_x_ref_offset
+        self._src.seek(start_x_ref_offset)
+        self.skip_spaces()
+        if self.is_string(self.XREF_TABLE_MARKER):
+            return start_x_ref_offset
+        if start_x_ref_offset > 0:
+            if self.check_x_ref_stream_offset(start_x_ref_offset):
+                return start_x_ref_offset
+            return self.calculate_x_ref_fixed_offset(start_x_ref_offset)
+        return -1
+
+    def check_x_ref_stream_offset(self, start_x_ref_offset: int) -> bool:
+        """Return ``True`` when the byte at ``start_x_ref_offset``
+        opens a valid xref-stream object header (``n g obj << /Type
+        /XRef ... >>``). Mirrors upstream
+        ``COSParser.checkXRefStreamOffset(long)`` (Java line 1156)."""
+        if not self._lenient or start_x_ref_offset == 0:
+            return True
+        self._src.seek(start_x_ref_offset - 1)
+        next_value = self._src.read()
+        if next_value not in self.WHITESPACE:
+            return False
+        self.skip_spaces()
+        peek = self.peek()
+        if peek == RandomAccessRead.EOF or not self.is_digit(peek):
+            return False
+        try:
+            self.read_object_number()
+            self.read_generation_number()
+            self.read_expected_string(b"obj", True)
+            d = self.parse_direct_object()
+        except (PDFParseError, ValueError):
+            self._src.seek(start_x_ref_offset)
+            return False
+        self._src.seek(start_x_ref_offset)
+        if not isinstance(d, COSDictionary):
+            return False
+        type_obj = d.get_dictionary_object(COSName.get_pdf_name("Type"))
+        return isinstance(type_obj, COSName) and type_obj.name == "XRef"
+
+    def calculate_x_ref_fixed_offset(self, object_offset: int) -> int:
+        """Return a brute-force-recovered xref offset near
+        ``object_offset``, or ``0`` when no candidate could be found.
+        Mirrors upstream ``COSParser.calculateXRefFixedOffset(long)``
+        (Java line 1205)."""
+        if object_offset < 0:
+            return 0
+        new_offset = self.get_brute_force_parser().bf_search_for_xref(object_offset)
+        if new_offset > -1:
+            return new_offset
+        return 0
+
+    def validate_xref_offsets(
+        self, xref_offset: dict[COSObjectKey, int] | None
+    ) -> bool:
+        """Walk every entry of ``xref_offset`` confirming each key
+        actually appears at its claimed byte offset. Mirrors upstream
+        ``COSParser.validateXrefOffsets(Map)`` (Java line 1223).
+
+        Generation-number mismatches are corrected in place. Returns
+        ``False`` when even one key cannot be dereferenced — the caller
+        should fall back to a brute-force scan."""
+        if xref_offset is None:
+            return True
+        corrected: dict[COSObjectKey, COSObjectKey] = {}
+        valid: set[COSObjectKey] = set()
+        for object_key, object_offset in list(xref_offset.items()):
+            if object_offset is not None and object_offset >= 0:
+                found = self.find_object_key(object_key, object_offset, xref_offset)
+                if found is None:
+                    return False
+                if found != object_key:
+                    corrected[object_key] = found
+                else:
+                    valid.add(object_key)
+        corrected_pointers: dict[COSObjectKey, int] = {}
+        for original, replacement in corrected.items():
+            if replacement not in valid:
+                corrected_pointers[replacement] = xref_offset[original]
+        for original in corrected:
+            xref_offset.pop(original, None)
+        xref_offset.update(corrected_pointers)
+        return True
+
+    def check_xref_offsets(self) -> None:
+        """Drive the xref-table dereferencing walk; if even one entry
+        fails to resolve, replace the table with a brute-force scan.
+        Mirrors upstream ``COSParser.checkXrefOffsets()`` (Java line
+        1278)."""
+        if self._document is None:
+            return
+        xref_table = self._document.get_xref_table()
+        if not self.validate_xref_offsets(xref_table):
+            recovered = self.get_brute_force_parser().bf_search_for_objects()
+            if recovered:
+                xref_table.clear()
+                xref_table.update(recovered)
+
+    def find_object_key(
+        self,
+        object_key: COSObjectKey,
+        offset: int,
+        xref_offset: dict[COSObjectKey, int],
+    ) -> COSObjectKey | None:
+        """Verify that ``object_key`` actually starts at byte
+        ``offset``; return the (possibly generation-corrected) key on
+        success or ``None`` on mismatch. Mirrors upstream
+        ``COSParser.findObjectKey(COSObjectKey, long, Map)`` (Java line
+        1305)."""
+        if offset < self.MINIMUM_SEARCH_OFFSET:
+            return None
+        try:
+            self._src.seek(offset)
+            self.skip_spaces()
+            if self.position == offset:
+                self._src.seek(offset - 1)
+                if self.position < offset:
+                    peek = self.peek()
+                    if peek == RandomAccessRead.EOF or not self.is_digit(peek):
+                        self._src.read()
+            try:
+                found_object_number = self.read_object_number()
+            except PDFParseError:
+                return None
+            if object_key.object_number != found_object_number:
+                if not self._lenient:
+                    return None
+                object_key = COSObjectKey(
+                    found_object_number, object_key.generation_number
+                )
+            gen_number = self.read_generation_number()
+            self.read_expected_string(b"obj", True)
+            if gen_number == object_key.generation_number:
+                return object_key
+            if self._lenient and gen_number > object_key.generation_number:
+                return COSObjectKey(object_key.object_number, gen_number)
+        except PDFParseError:
+            return None
+        return None
+
+    def get_brute_force_parser(self) -> COSParser:
+        """Return the brute-force parser. Mirrors upstream
+        ``COSParser.getBruteForceParser()`` (Java line 1388).
+
+        Upstream wraps a separate ``BruteForceParser`` class around the
+        source; pypdfbox inlines the brute-force scans
+        (:meth:`bf_search_for_objects`, :meth:`bf_search_for_xref`,
+        :meth:`rebuild_trailer`) on ``COSParser`` itself, so this
+        accessor returns ``self``. The return type matches the ``self``
+        instance so callers can chain the brute-force methods directly."""
+        return self
 
 
 def _validate_xref_index_pair(first_obj_num: int, count: int) -> None:

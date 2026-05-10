@@ -77,13 +77,17 @@ def test_to_rgb_image_falls_back_when_decode_array_is_too_short() -> None:
 
 
 def test_to_raw_image_uses_native_modes_for_gray_and_cmyk() -> None:
+    # PDDeviceGray inherits the base ``to_raw_image`` which returns the
+    # raster as a Pillow ``L`` image. PDDeviceCMYK explicitly overrides
+    # to return ``None`` — upstream PDDeviceCMYK.java line 148 does the
+    # same: "Device CMYK is not specified, as its the colors of whatever
+    # device you use. The user should fallback to the RGB image."
     gray = PDDeviceGray.INSTANCE.to_raw_image(bytes([17]), 1, 1)
     cmyk = PDDeviceCMYK.INSTANCE.to_raw_image(bytes([1, 2, 3, 4]), 1, 1)
 
     assert gray.mode == "L"
     assert gray.getpixel((0, 0)) == 17
-    assert cmyk.mode == "CMYK"
-    assert cmyk.getpixel((0, 0)) == (1, 2, 3, 4)
+    assert cmyk is None
 
 
 def test_to_raw_image_falls_back_to_rgb_conversion_for_indexed_space() -> None:

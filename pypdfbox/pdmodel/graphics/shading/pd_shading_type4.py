@@ -139,5 +139,62 @@ class PDShadingType4(PDShading):
             f"or None; got {type(value).__name__}"
         )
 
+    # ---------- rendering hooks (lite-surface stubs) ----------
+
+    def to_paint(self, matrix: Any = None) -> Any:
+        """Return a Paint-equivalent for this free-form Gouraud-shaded
+        triangle-mesh shading. Mirrors upstream
+        ``PDShadingType4.toPaint(Matrix)`` (line 86), which constructs a
+        ``Type4ShadingPaint(this, matrix)``.
+
+        The pypdfbox renderer is Pillow-based, so the AWT ``Paint`` contract
+        does not apply. Returning ``None`` matches the lite-surface
+        convention used by the other shading types in this package: callers
+        in the rendering cluster are expected to dispatch on
+        ``get_shading_type()`` and materialize triangles via
+        ``collect_triangles`` rather than via a Paint object."""
+        return None
+
+    def collect_triangles(
+        self, xform: Any = None, matrix: Any = None
+    ) -> list[Any]:
+        """Decode the free-form mesh stream into a list of shaded triangles.
+        Mirrors upstream ``PDShadingType4.collectTriangles`` (line 92).
+
+        Free-form Gouraud (PDF 32000-1 §8.7.4.5.5): each vertex is preceded
+        by a flag of ``/BitsPerFlag`` bits whose two least-significant bits
+        select the topology. Flag ``0`` starts a new triangle (three fresh
+        vertices follow); flags ``1`` and ``2`` extend the previous triangle
+        by sharing two of its corners with the next vertex; any other value
+        is treated as end-of-stream. Bits-per-flag must be 2, 4, or 8 per
+        the spec, but upstream only masks the low two bits.
+
+        The pypdfbox renderer is Pillow-based, so this lite-surface stub
+        validates the prerequisite ``/Decode`` entries and returns an empty
+        list — full mesh decoding is deferred until the rendering cluster
+        lands. Returning an empty list is the same fallback upstream uses
+        for missing/degenerate input."""
+        # Backing object must be a stream — upstream returns
+        # Collections.emptyList() when the dictionary isn't a COSStream
+        # (line 99).
+        if not isinstance(self._dict, COSStream):
+            return []
+        range_x = self.get_decode_for_parameter(0)
+        range_y = self.get_decode_for_parameter(1)
+        if range_x is None or range_y is None:
+            return []
+        if range_x[0] == range_x[1] or range_y[0] == range_y[1]:
+            return []
+        n = self.get_number_of_color_components()
+        for i in range(n):
+            if self.get_decode_for_parameter(2 + i) is None:
+                # Upstream raises IOException("Range missing in shading
+                # /Decode entry") at line 115; we mirror that contract by
+                # raising OSError per the project's IOException -> OSError
+                # convention.
+                raise OSError("Range missing in shading /Decode entry")
+        # Mesh decoding deferred to rendering cluster.
+        return []
+
 
 __all__ = ["PDShadingType4"]

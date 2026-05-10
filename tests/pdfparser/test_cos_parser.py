@@ -694,3 +694,265 @@ def test_prepare_decryption_no_document_is_noop() -> None:
 def test_prepare_decryption_unencrypted_document_is_noop() -> None:
     doc = COSDocument()
     parser(b"", document=doc).prepare_decryption()  # no raise
+
+
+# ---------- wave 1243: 1:1 parity surface for COSParser ----------
+
+
+def test_init_without_env_override_is_noop() -> None:
+    # init() consults SYSPROP_EOFLOOKUPRANGE; with no override it should
+    # leave the lookup range at its DEFAULT value.
+    p = parser(b"")
+    p.init()
+    assert p.get_eof_lookup_range() == COSParser.DEFAULT_TRAIL_BYTECOUNT
+
+
+def test_init_applies_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(COSParser.SYSPROP_EOFLOOKUPRANGE, "4096")
+    p = parser(b"")
+    p.init()
+    assert p.get_eof_lookup_range() == 4096
+
+
+def test_init_ignores_non_integer_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(COSParser.SYSPROP_EOFLOOKUPRANGE, "not-a-number")
+    p = parser(b"")
+    p.init()
+    assert p.get_eof_lookup_range() == COSParser.DEFAULT_TRAIL_BYTECOUNT
+
+
+def test_get_startxref_offset_basic() -> None:
+    pdf = b"%PDF-1.4\n... body ...\nstartxref\n123\n%%EOF\n"
+    p = parser(pdf)
+    off = p.get_startxref_offset()
+    # The marker should land on the literal 'startxref' bytes.
+    assert pdf[off:off + 9] == b"startxref"
+
+
+def test_get_startxref_offset_missing_eof_strict_raises() -> None:
+    p = parser(b"... body without EOF marker ...startxref\n55\n")
+    p.set_lenient(False)
+    # In strict mode the missing %%EOF triggers an error.
+    with pytest.raises(PDFParseError):
+        p.get_startxref_offset()
+
+
+def test_get_startxref_offset_missing_startxref_raises() -> None:
+    p = parser(b"%PDF-1.4\nbody\n%%EOF\n")
+    with pytest.raises(PDFParseError):
+        p.get_startxref_offset()
+
+
+def test_parse_start_xref_reads_offset() -> None:
+    p = parser(b"startxref\n12345\n")
+    assert p.parse_start_xref() == 12345
+
+
+def test_parse_start_xref_returns_negative_when_keyword_missing() -> None:
+    p = parser(b"trailer\n<< >>\n")
+    assert p.parse_start_xref() == -1
+
+
+def test_parse_trailer_basic() -> None:
+    p = parser(b"trailer\n<< /Size 5 /Root 1 0 R >>\n")
+    assert p.parse_trailer() is True
+    last = p._last_parsed_trailer  # noqa: SLF001 — surface latched by parse
+    assert last.get_dictionary_object(COSName.get_pdf_name("Size")).int_value() == 5
+
+
+def test_parse_trailer_returns_false_when_keyword_missing() -> None:
+    p = parser(b"<< /Size 5 >>\n")
+    assert p.parse_trailer() is False
+
+
+def test_get_length_direct_integer_returns_input() -> None:
+    p = parser(b"")
+    n = COSInteger.get(42)
+    assert p.get_length(n) is n
+
+
+def test_get_length_none_returns_none() -> None:
+    p = parser(b"")
+    assert p.get_length(None) is None
+
+
+def test_get_length_indirect_reference_resolved() -> None:
+    p = parser(b"")
+    obj = COSObject(7, 0, resolved=COSInteger.get(99))
+    out = p.get_length(obj)
+    assert isinstance(out, COSInteger)
+    assert out.int_value() == 99
+
+
+def test_get_length_indirect_reference_to_null_returns_none() -> None:
+    p = parser(b"")
+    obj = COSObject(7, 0, resolved=COSNull.NULL)
+    assert p.get_length(obj) is None
+
+
+def test_get_length_wrong_type_raises() -> None:
+    p = parser(b"")
+    bad = COSDictionary()  # not a number
+    with pytest.raises(PDFParseError):
+        p.get_length(bad)
+
+
+def test_validate_stream_length_returns_false_for_zero() -> None:
+    p = parser(b"some body bytes\nendstream\n")
+    assert p.validate_stream_length(0) is False
+
+
+def test_validate_stream_length_returns_false_for_negative() -> None:
+    p = parser(b"some body bytes\nendstream\n")
+    assert p.validate_stream_length(-1) is False
+
+
+def test_validate_stream_length_returns_true_when_endstream_aligns() -> None:
+    body = b"hello world"
+    pdf = body + b"\nendstream\n"
+    p = parser(pdf)
+    assert p.validate_stream_length(len(body)) is True
+
+
+def test_validate_stream_length_returns_false_when_endstream_missing() -> None:
+    body = b"hello world"
+    pdf = body + b"\nNOTendstream\n"
+    p = parser(pdf)
+    assert p.validate_stream_length(len(body)) is False
+
+
+def test_check_x_ref_offset_strict_returns_input() -> None:
+    p = parser(b"xref\n0 1\n")
+    p.set_lenient(False)
+    assert p.check_x_ref_offset(0) == 0
+
+
+def test_check_x_ref_offset_lenient_locates_xref_keyword() -> None:
+    p = parser(b"xref\n0 1\n0000000000 65535 f \n")
+    assert p.check_x_ref_offset(0) == 0
+
+
+def test_check_x_ref_offset_lenient_minus_one_when_no_table() -> None:
+    p = parser(b"")
+    assert p.check_x_ref_offset(0) == -1
+
+
+def test_check_x_ref_stream_offset_strict_returns_true() -> None:
+    p = parser(b"")
+    p.set_lenient(False)
+    assert p.check_x_ref_stream_offset(0) is True
+
+
+def test_check_x_ref_stream_offset_zero_offset_returns_true() -> None:
+    p = parser(b"")
+    assert p.check_x_ref_stream_offset(0) is True
+
+
+def test_calculate_x_ref_fixed_offset_negative_returns_zero() -> None:
+    p = parser(b"")
+    assert p.calculate_x_ref_fixed_offset(-1) == 0
+
+
+def test_calculate_x_ref_fixed_offset_returns_recovered_offset() -> None:
+    pdf = b"\n\n\nxref\n0 1\n0000000000 65535 f \n"
+    p = parser(pdf)
+    fixed = p.calculate_x_ref_fixed_offset(2)
+    # Should recover the 'xref' keyword offset.
+    assert fixed == pdf.find(b"xref")
+
+
+def test_validate_xref_offsets_none_returns_true() -> None:
+    p = parser(b"")
+    assert p.validate_xref_offsets(None) is True
+
+
+def test_validate_xref_offsets_empty_dict_returns_true() -> None:
+    p = parser(b"")
+    assert p.validate_xref_offsets({}) is True
+
+
+def test_check_xref_offsets_without_document_is_noop() -> None:
+    parser(b"").check_xref_offsets()  # no raise
+
+
+def test_get_brute_force_parser_returns_self() -> None:
+    p = parser(b"")
+    assert p.get_brute_force_parser() is p
+
+
+def test_check_pages_dictionary_counts_kids() -> None:
+    # Build a /Pages dictionary with two /Page kids and one nested
+    # /Pages with one kid — total 3 pages.
+    p = parser(b"")
+    type_name = COSName.get_pdf_name("Type")
+    page_name = COSName.get_pdf_name("Page")
+    pages_name = COSName.get_pdf_name("Pages")
+    kids_name = COSName.get_pdf_name("Kids")
+    count_name = COSName.get_pdf_name("Count")
+
+    leaf1 = COSDictionary()
+    leaf1.set_item(type_name, page_name)
+    leaf2 = COSDictionary()
+    leaf2.set_item(type_name, page_name)
+    leaf3 = COSDictionary()
+    leaf3.set_item(type_name, page_name)
+    inner = COSDictionary()
+    inner.set_item(type_name, pages_name)
+    inner_kids = COSArray([COSObject(3, 0, resolved=leaf3)])
+    inner.set_item(kids_name, inner_kids)
+
+    root = COSDictionary()
+    root.set_item(type_name, pages_name)
+    root.set_item(
+        kids_name,
+        COSArray(
+            [
+                COSObject(1, 0, resolved=leaf1),
+                COSObject(2, 0, resolved=leaf2),
+                COSObject(4, 0, resolved=inner),
+            ]
+        ),
+    )
+    total = p.check_pages_dictionary(root, set())
+    assert total == 3
+    assert root.get_dictionary_object(count_name).int_value() == 3
+
+
+def test_parse_header_via_public_alias() -> None:
+    # parse_header is the renamed shared marker scanner; both
+    # parse_pdf_header and parse_fdf_header route through it.
+    p = parser(b"%PDF-2.0\n")
+    assert p.parse_header(b"%PDF-", "1.4") == 2.0
+
+
+def test_parse_header_falls_back_to_default_when_no_digits() -> None:
+    p = parser(b"%PDF-\n")  # no version digits
+    assert p.parse_header(b"%PDF-", "1.4") == 1.4
+
+
+def test_get_object_offset_without_document_raises_in_strict() -> None:
+    p = parser(b"")
+    with pytest.raises(PDFParseError):
+        p.get_object_offset(COSObjectKey(1, 0), True)
+
+
+def test_get_object_offset_unknown_returns_none() -> None:
+    doc = COSDocument()
+    p = parser(b"", document=doc)
+    assert p.get_object_offset(COSObjectKey(99, 0), False) is None
+
+
+def test_parse_file_object_validates_object_key_mismatch() -> None:
+    pdf = b"3 0 obj\n42\nendobj\n"
+    p = parser(pdf, document=COSDocument())
+    with pytest.raises(PDFParseError):
+        # claim object 5 lives at offset 0 — header says 3 — must reject.
+        p.parse_file_object(0, COSObjectKey(5, 0))
+
+
+def test_parse_file_object_returns_direct_object() -> None:
+    pdf = b"3 0 obj\n42\nendobj\n"
+    p = parser(pdf, document=COSDocument())
+    out = p.parse_file_object(0, COSObjectKey(3, 0))
+    assert isinstance(out, COSInteger)
+    assert out.int_value() == 42

@@ -39,9 +39,17 @@ def test_get_cos_object_returns_underlying_stream() -> None:
     assert isinstance(proc.get_cos_object(), COSStream)
 
 
-def test_get_content_stream_alias_matches() -> None:
+def test_get_content_stream_returns_pd_stream_wrapper() -> None:
+    """Upstream ``getContentStream()`` returns ``new PDStream(charStream)``
+    on every call — a fresh wrapper, not the underlying COSStream itself.
+    """
+    from pypdfbox.pdmodel.common.pd_stream import PDStream
+
     font, proc = _font_and_proc(b"500 0 d0\n")
-    assert proc.get_content_stream() is proc.get_cos_object()
+    pd_stream = proc.get_content_stream()
+    assert isinstance(pd_stream, PDStream)
+    # The wrapper exposes the same underlying COSStream.
+    assert pd_stream.get_cos_object() is proc.get_cos_object()
 
 
 # ---------- PDContentStream surface ----------
@@ -394,3 +402,99 @@ def test_round_trip_via_pd_type3_font_get_char_proc() -> None:
     assert glyph_bbox is not None
     assert glyph_bbox.get_lower_left_x() == pytest.approx(50.0)
     assert glyph_bbox.get_upper_right_x() == pytest.approx(450.0)
+
+
+# ---------- get_b_box / get_glyph_b_box parity-name accessors ----------
+
+
+def test_get_b_box_matches_get_bbox() -> None:
+    """``get_b_box`` is the parity-tracker name for ``getBBox`` (the
+    consecutive-caps run is split). It must return the exact same value
+    as the idiomatic ``get_bbox`` alias."""
+    font = PDType3Font()
+    font.set_font_bbox(PDRectangle(0.0, 0.0, 1000.0, 1000.0))
+    glyph = _glyph_with_body(b"600 0 d0\n")
+    proc = PDType3CharProc(font, glyph)
+    assert proc.get_b_box() == proc.get_bbox()
+    # And the underlying numeric corners line up.
+    assert proc.get_b_box().get_upper_right_x() == pytest.approx(1000.0)
+
+
+def test_get_glyph_b_box_matches_get_glyph_bbox() -> None:
+    """``get_glyph_b_box`` is the parity-tracker name for
+    ``getGlyphBBox``. It must return the same ``PDRectangle`` (corner-
+    by-corner) as the idiomatic ``get_glyph_bbox`` alias."""
+    body = b"600 0 50 -10 550 700 d1\n"
+    _, proc = _font_and_proc(body)
+    a = proc.get_glyph_b_box()
+    b = proc.get_glyph_bbox()
+    assert a is not None and b is not None
+    assert a.get_lower_left_x() == b.get_lower_left_x()
+    assert a.get_lower_left_y() == b.get_lower_left_y()
+    assert a.get_upper_right_x() == b.get_upper_right_x()
+    assert a.get_upper_right_y() == b.get_upper_right_y()
+
+
+def test_get_glyph_b_box_returns_none_for_d0() -> None:
+    """``get_glyph_b_box`` mirrors upstream ``getGlyphBBox()`` — when
+    the leading metric operator is ``d0`` (no bbox declared), it must
+    return ``None``."""
+    _, proc = _font_and_proc(b"600 0 d0\n")
+    assert proc.get_glyph_b_box() is None
+
+
+# ---------- get_cos_object override ----------
+
+
+def test_get_cos_object_returns_underlying_cos_stream_directly() -> None:
+    """Upstream ``getCOSObject()`` returns the wrapped ``COSStream``
+    instance directly (not a fresh wrapper). Same identity on every
+    call."""
+    font, proc = _font_and_proc(b"500 0 d0\n")
+    s1 = proc.get_cos_object()
+    s2 = proc.get_cos_object()
+    assert isinstance(s1, COSStream)
+    assert s1 is s2
+
+
+# ---------- parse_width (exposed helper, mirrors upstream parseWidth) ----------
+
+
+def test_parse_width_reads_first_operand_for_d0() -> None:
+    """``parse_width`` is upstream's private helper used by
+    ``getWidth()``. Given ``d0`` and the operand list ``[wx, wy]``, it
+    returns ``wx`` as a ``float``."""
+    _, proc = _font_and_proc(b"")
+    assert proc.parse_width(b"d0", [b"600", b"0"]) == pytest.approx(600.0)
+
+
+def test_parse_width_reads_first_operand_for_d1() -> None:
+    """``d1`` carries six operands ``wx wy llx lly urx ury`` —
+    ``parse_width`` returns the leading ``wx`` regardless."""
+    _, proc = _font_and_proc(b"")
+    assert proc.parse_width(
+        b"d1", [b"720", b"0", b"50", b"-10", b"550", b"700"]
+    ) == pytest.approx(720.0)
+
+
+def test_parse_width_zero_for_unknown_operator() -> None:
+    """``parse_width`` returns ``0.0`` (instead of raising — see the
+    documented divergence) when the operator is anything other than
+    ``d0`` / ``d1``."""
+    _, proc = _font_and_proc(b"")
+    assert proc.parse_width(b"cm", [b"1", b"0", b"0", b"1", b"0", b"0"]) == 0.0
+
+
+def test_parse_width_zero_for_empty_operand_list() -> None:
+    """A ``d0`` / ``d1`` with no preceding numeric operands at all
+    should yield ``0.0`` rather than indexing into an empty list."""
+    _, proc = _font_and_proc(b"")
+    assert proc.parse_width(b"d0", []) == 0.0
+
+
+def test_parse_width_zero_for_non_numeric_first_operand() -> None:
+    """A non-numeric first operand (e.g. an operator name parsed as the
+    zeroth ``arguments`` slot) must surface ``0.0`` rather than blow up
+    on ``float()``."""
+    _, proc = _font_and_proc(b"")
+    assert proc.parse_width(b"d0", [b"notanumber"]) == 0.0

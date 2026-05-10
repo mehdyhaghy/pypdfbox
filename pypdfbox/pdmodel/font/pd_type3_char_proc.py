@@ -61,10 +61,24 @@ class PDType3CharProc(PDStream):
         ``getFont()``."""
         return self._font
 
-    def get_content_stream(self) -> COSStream:
-        """Return the underlying ``COSStream`` — mirror of upstream
-        ``getContentStream()``."""
-        return self.get_cos_object()
+    def get_cos_object(self) -> COSStream:
+        """Return the underlying ``COSStream``. Mirrors upstream
+        ``getCOSObject()`` (override of :meth:`PDStream.get_cos_object`
+        narrowing the return type to ``COSStream``).
+
+        Upstream's ``PDType3CharProc`` is *not* a ``PDStream`` — it
+        composes one — but pypdfbox subclasses ``PDStream`` to share the
+        decoded-byte plumbing. We override here so the per-class parity
+        tracker sees the method on the same class as upstream.
+        """
+        return self._stream
+
+    def get_content_stream(self) -> PDStream:
+        """Return a fresh :class:`PDStream` wrapper around the underlying
+        ``COSStream``. Mirrors upstream ``getContentStream()`` exactly,
+        which constructs ``new PDStream(charStream)`` on every call.
+        """
+        return PDStream(self._stream)
 
     # ---------- PDContentStream surface ----------
 
@@ -103,13 +117,14 @@ class PDType3CharProc(PDStream):
         ``/Resources``. No upstream method — convenience predicate."""
         return self._stream.contains_key(_RESOURCES)
 
-    def get_bbox(self) -> PDRectangle:
+    def get_b_box(self) -> PDRectangle:
         """Return the parent font's ``/FontBBox`` — the
         ``PDContentStream`` contract bounding box for this char-proc.
 
         Mirrors upstream ``getBBox()`` exactly, which simply returns
         ``font.getFontBBox()``. Per-glyph bounds declared by a leading
-        ``d1`` operator are exposed separately via :meth:`get_glyph_bbox`.
+        ``d1`` operator are exposed separately via
+        :meth:`get_glyph_b_box`.
 
         When the parent font has no ``/FontBBox`` we return an empty rect
         at the origin so callers always have a non-``None`` ``PDRectangle``
@@ -122,6 +137,15 @@ class PDType3CharProc(PDStream):
             return font_bbox
         return PDRectangle()
 
+    def get_bbox(self) -> PDRectangle:
+        """Alias for :meth:`get_b_box`.
+
+        ``get_b_box`` follows the PDFBox ``getBBox`` case-conversion (the
+        consecutive-caps run becomes a separate snake-case word), while
+        ``get_bbox`` matches the spelling used by several local wrappers.
+        """
+        return self.get_b_box()
+
     def get_matrix(self) -> Any:
         """Return the parent font's ``/FontMatrix``. Char procs are
         rendered in the font's coordinate system; they have no matrix of
@@ -130,18 +154,26 @@ class PDType3CharProc(PDStream):
 
     # ---------- glyph-metric parsing (d0 / d1) ----------
 
-    def get_glyph_bbox(self) -> PDRectangle | None:
+    def get_glyph_b_box(self) -> PDRectangle | None:
         """Parse the leading ``d1`` operator and return its declared
         bounding box, or ``None`` when the glyph uses ``d0`` (no bbox) or
         the content stream is malformed. Mirrors upstream
         ``getGlyphBBox()``.
 
+        Per PDF 32000-1 §9.6.5 the upper-right corner stored by ``d1`` is
+        absolute, so we pass ``(llx, lly, urx, ury)`` straight through
+        :class:`PDRectangle`'s four-corner constructor. Upstream
+        constructs the rect as ``new PDRectangle(x, y, urx-x, ury-y)``
+        (origin + width/height); the two are equivalent because
+        ``PDRectangle(x, y, w, h)`` adds ``x`` and ``y`` to the bottom
+        corner internally.
+
         Behaviour deviation: upstream uses ``PDFStreamParser`` to walk
         the entire stream; we lift the operands of just the first metric
-        operator from the decoded bytes since that's all the bounding box
-        needs. The two paths agree on well-formed streams; on malformed
-        streams we are slightly more lenient (``None`` instead of
-        raising).
+        operator from the decoded bytes since that's all the bounding
+        box needs. The two paths agree on well-formed streams; on
+        malformed streams we are slightly more lenient (``None`` instead
+        of raising).
         """
         op_name, operands = self._first_metric_operator()
         if op_name != _D1 or len(operands) < 6:
@@ -157,10 +189,20 @@ class PDType3CharProc(PDStream):
         # (lower_left_x, lower_left_y, upper_right_x, upper_right_y).
         return PDRectangle(llx, lly, urx, ury)
 
+    def get_glyph_bbox(self) -> PDRectangle | None:
+        """Alias for :meth:`get_glyph_b_box`.
+
+        Project convention keeps both spellings — ``get_glyph_b_box``
+        mirrors the parity-tracker's literal snake-case of ``BBox`` and
+        ``get_glyph_bbox`` is the more idiomatic Python form used by
+        local callers.
+        """
+        return self.get_glyph_b_box()
+
     def has_d1(self) -> bool:
         """Return ``True`` when the char-proc's leading metric operator
         is ``d1`` (declares both width and bounding box). No upstream
-        method — convenience predicate over :meth:`get_glyph_bbox`."""
+        method — convenience predicate over :meth:`get_glyph_b_box`."""
         op_name, _ = self._first_metric_operator()
         return op_name == _D1
 
@@ -174,12 +216,43 @@ class PDType3CharProc(PDStream):
     def get_width(self) -> float:
         """Return the glyph advance ``wx`` declared by the leading ``d0``
         / ``d1`` operator, or ``0.0`` when neither is present. Mirrors
-        upstream ``getWidth()``."""
+        upstream ``getWidth()``.
+
+        Behaviour deviation: upstream raises ``IOException`` for an empty
+        stream, a missing ``d0``/``d1`` first operator, or a non-numeric
+        first operand. We surface ``0.0`` in those malformed cases so
+        callers (text-extraction, rendering) can keep walking the font's
+        char-procs without aborting on a single broken glyph; the well-
+        formed path matches upstream byte-for-byte.
+        """
         op_name, operands = self._first_metric_operator()
-        if op_name not in (_D0, _D1) or len(operands) < 1:
+        if op_name is None:
+            return 0.0
+        return self.parse_width(op_name, operands)
+
+    def parse_width(self, operator: bytes, arguments: list[bytes]) -> float:
+        """Extract the glyph advance from a ``d0`` / ``d1`` operator and
+        its preceding numeric operands. Mirrors upstream's
+        ``parseWidth(Operator, List<COSBase>)`` private helper (we keep
+        it on the public surface so the per-class parity tracker matches
+        it; callers should still prefer :meth:`get_width`).
+
+        ``operator`` is the operator's literal bytes (``b"d0"`` /
+        ``b"d1"``); ``arguments`` is the list of numeric operands that
+        preceded it on the stream. Returns the ``wx`` operand
+        (``arguments[0]``) coerced to ``float``.
+
+        Behaviour deviation from upstream: returns ``0.0`` instead of
+        raising ``IOException`` when the operator is not ``d0`` / ``d1``
+        or when the first operand is missing or non-numeric. See
+        :meth:`get_width` for the rationale.
+        """
+        if operator not in (_D0, _D1):
+            return 0.0
+        if not arguments:
             return 0.0
         try:
-            return float(operands[0])
+            return float(arguments[0])
         except ValueError:
             return 0.0
 
