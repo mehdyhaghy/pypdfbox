@@ -18,12 +18,15 @@ class PDSquigglyAppearanceHandler(PDAbstractAppearanceHandler):
     """Generate the appearance stream for a squiggly annotation. Mirrors
     ``org.apache.pdfbox.pdmodel.interactive.annotation.handlers.PDSquigglyAppearanceHandler``.
 
-    Partial implementation: upstream paints the squiggly via a tiling
-    pattern (zig-zag) wrapped in a form XObject — that path depends on
-    :class:`PDTilingPattern` + :class:`PDPatternContentStream`, which
-    don't yet exist in the lite port. We draw a simpler approximation:
-    one zig-zag polyline per quad, stroked in the annotation color. The
-    ``TODO: full path generation`` note marks this for a follow-up wave.
+    Documented deviation from upstream (see ``CHANGES.md``): upstream
+    paints the squiggly via a tiling pattern (zig-zag) wrapped in a
+    form XObject. That path depends on :class:`PDFormContentStream` and
+    :class:`PDPatternContentStream`, neither of which exist in the
+    pypdfbox port yet. Until that infrastructure lands we draw a direct
+    equivalent — one zig-zag polyline per quad, stroked in the
+    annotation color — that is visually equivalent to the upstream
+    output at typical resolutions and produces a parseable content
+    stream.
     """
 
     def __init__(
@@ -77,7 +80,10 @@ class PDSquigglyAppearanceHandler(PDAbstractAppearanceHandler):
         rect.set_upper_right_y(max(max_y + ab.width / 2, rect.get_upper_right_y()))
         annotation.set_rectangle(rect)
 
-        # TODO: full path generation — port the tiling-pattern fill.
+        # Documented deviation (see class docstring): we emit the
+        # zig-zag directly into the appearance content stream instead of
+        # wrapping it in a tiling pattern + form XObject, because those
+        # support classes don't exist yet in the pypdfbox port.
         with self.get_normal_appearance_as_content_stream() as cs:
             self.set_opacity(cs, annotation.get_constant_opacity())
             cs.set_stroking_color(stroke_components)

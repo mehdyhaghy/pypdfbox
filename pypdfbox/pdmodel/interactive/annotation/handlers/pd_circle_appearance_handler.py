@@ -61,8 +61,6 @@ class PDCircleAppearanceHandler(PDAbstractAppearanceHandler):
                 and border_effect.get_style()
                 == PDBorderEffectDictionary.STYLE_CLOUDY
             ):
-                # TODO: full path generation — fall back to the plain
-                # ellipse until CloudyBorder lands the curl arcs.
                 cloudy = CloudyBorder(
                     cs,
                     border_effect.get_intensity(),
@@ -70,7 +68,14 @@ class PDCircleAppearanceHandler(PDAbstractAppearanceHandler):
                     self.get_rectangle(),
                 )
                 cloudy.create_cloudy_ellipse(annotation.get_rect_difference())
-                self._emit_ellipse(cs, annotation, line_width)
+                annotation.set_rectangle(cloudy.get_rectangle())
+                if hasattr(annotation, "set_rect_difference"):
+                    annotation.set_rect_difference(cloudy.get_rect_difference())
+                appearance_stream = annotation.get_normal_appearance_stream()
+                if appearance_stream is not None:
+                    appearance_stream.set_bbox(cloudy.get_bbox())
+                    if hasattr(appearance_stream, "set_matrix"):
+                        appearance_stream.set_matrix(cloudy.get_matrix())
             else:
                 self._emit_ellipse(cs, annotation, line_width)
             cs.draw_shape(line_width, has_stroke, has_background)
@@ -93,11 +98,13 @@ class PDCircleAppearanceHandler(PDAbstractAppearanceHandler):
         cs.close_path()
 
     def generate_rollover_appearance(self) -> None:
-        # TODO to be implemented (PDCircleAppearanceHandler.java:122)
+        # No rollover appearance generated upstream
+        # (PDCircleAppearanceHandler.java:122).
         return None
 
     def generate_down_appearance(self) -> None:
-        # TODO to be implemented (PDCircleAppearanceHandler.java:128)
+        # No down appearance generated upstream
+        # (PDCircleAppearanceHandler.java:128).
         return None
 
     def get_line_width(self) -> float:

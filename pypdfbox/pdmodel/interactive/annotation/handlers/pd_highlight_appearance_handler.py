@@ -14,13 +14,12 @@ class PDHighlightAppearanceHandler(PDAbstractAppearanceHandler):
     """Generate the appearance stream for a highlight annotation. Mirrors
     ``org.apache.pdfbox.pdmodel.interactive.annotation.handlers.PDHighlightAppearanceHandler``.
 
-    Partial implementation: upstream uses a two-form-XObject transparency
-    group with a Multiply blend mode (``BlendMode.MULTIPLY``) so the
-    highlight visually multiplies over the underlying text. The lite
-    port emits the filled quad shape directly into the appearance stream
-    and applies the constant opacity through an ExtGState — visually
-    close, but without the multiply blend. See
-    ``TODO: full path generation`` below.
+    Upstream wraps the quad-fill in a two-form-XObject transparency
+    group with a Multiply blend mode so the highlight visually
+    multiplies over the underlying text. PDFormXObject does not exist in
+    pypdfbox yet, so this lite port applies the same alpha + Multiply
+    blend ExtGState directly to the appearance content stream — the
+    visible result is equivalent for single-quad highlights.
     """
 
     def __init__(
@@ -80,24 +79,109 @@ class PDHighlightAppearanceHandler(PDAbstractAppearanceHandler):
         rect.set_upper_right_y(max(max_y + ab.width + max_delta, rect.get_upper_right_y()))
         annotation.set_rectangle(rect)
 
-        # TODO: full path generation — render via a multiply-blend
-        # transparency group of two form XObjects (PDFormXObject +
-        # PDTransparencyGroupAttributes). The lite port emits the quad
-        # fill directly.
         with self.get_normal_appearance_as_content_stream() as cs:
-            self.set_opacity(cs, annotation.get_constant_opacity())
+            # Emit the alpha + Multiply blend mode via ExtGState; this
+            # mirrors the two ExtGStates upstream sets on the outer
+            # content stream (r0 = alpha constants, r1 = Multiply blend).
+            self._apply_highlight_extgstate(cs, annotation.get_constant_opacity())
             cs.set_non_stroking_color(fill_components)
             offset = 0
             while offset + 7 < len(paths_array):
                 # Correct quadpoint ordering: 4,5 0,1 2,3 6,7
                 # (PDHighlightAppearanceHandler.java:140).
+                # Compute Bezier control delta for the "curvy" rounded
+                # ends — upstream uses ~1/4 of the quad height/width
+                # depending on orientation.
+                delta = 0.0
+                if (
+                    paths_array[offset + 0] == paths_array[offset + 4]
+                    and paths_array[offset + 1] == paths_array[offset + 3]
+                    and paths_array[offset + 2] == paths_array[offset + 6]
+                    and paths_array[offset + 5] == paths_array[offset + 7]
+                ):
+                    # Horizontal highlight.
+                    delta = (paths_array[offset + 1] - paths_array[offset + 5]) / 4
+                elif (
+                    paths_array[offset + 1] == paths_array[offset + 5]
+                    and paths_array[offset + 0] == paths_array[offset + 2]
+                    and paths_array[offset + 3] == paths_array[offset + 7]
+                    and paths_array[offset + 4] == paths_array[offset + 6]
+                ):
+                    # Vertical highlight.
+                    delta = (paths_array[offset + 0] - paths_array[offset + 4]) / 4
+
                 cs.move_to(paths_array[offset + 4], paths_array[offset + 5])
-                cs.line_to(paths_array[offset + 0], paths_array[offset + 1])
+                if paths_array[offset + 0] == paths_array[offset + 4]:
+                    cs.curve_to(
+                        paths_array[offset + 4] - delta,
+                        paths_array[offset + 5] + delta,
+                        paths_array[offset + 0] - delta,
+                        paths_array[offset + 1] - delta,
+                        paths_array[offset + 0],
+                        paths_array[offset + 1],
+                    )
+                elif paths_array[offset + 5] == paths_array[offset + 1]:
+                    cs.curve_to(
+                        paths_array[offset + 4] + delta,
+                        paths_array[offset + 5] + delta,
+                        paths_array[offset + 0] - delta,
+                        paths_array[offset + 1] + delta,
+                        paths_array[offset + 0],
+                        paths_array[offset + 1],
+                    )
+                else:
+                    cs.line_to(paths_array[offset + 0], paths_array[offset + 1])
+
                 cs.line_to(paths_array[offset + 2], paths_array[offset + 3])
-                cs.line_to(paths_array[offset + 6], paths_array[offset + 7])
-                cs.close_path()
+
+                if paths_array[offset + 2] == paths_array[offset + 6]:
+                    cs.curve_to(
+                        paths_array[offset + 2] + delta,
+                        paths_array[offset + 3] - delta,
+                        paths_array[offset + 6] + delta,
+                        paths_array[offset + 7] + delta,
+                        paths_array[offset + 6],
+                        paths_array[offset + 7],
+                    )
+                elif paths_array[offset + 3] == paths_array[offset + 7]:
+                    cs.curve_to(
+                        paths_array[offset + 2] - delta,
+                        paths_array[offset + 3] - delta,
+                        paths_array[offset + 6] + delta,
+                        paths_array[offset + 7] - delta,
+                        paths_array[offset + 6],
+                        paths_array[offset + 7],
+                    )
+                else:
+                    cs.line_to(paths_array[offset + 6], paths_array[offset + 7])
+
                 cs.fill()
                 offset += 8
+
+    @staticmethod
+    def _apply_highlight_extgstate(cs, constant_opacity: float) -> None:
+        """Emit the two upstream ExtGStates as a single combined state.
+
+        Upstream allocates two PDExtendedGraphicsState objects (alpha
+        constants on r0, Multiply blend on r1) and applies them in
+        sequence. The lite port collapses them so that the highlight
+        path renders with the correct alpha + blend mode.
+        """
+        from pypdfbox.pdmodel.graphics.blend_mode import BlendMode
+        from pypdfbox.pdmodel.graphics.state.pd_extended_graphics_state import (
+            PDExtendedGraphicsState,
+        )
+
+        r0 = PDExtendedGraphicsState()
+        r0.set_alpha_source_flag(False)
+        r0.set_stroking_alpha_constant(constant_opacity)
+        r0.set_non_stroking_alpha_constant(constant_opacity)
+        cs.set_graphics_state_parameters(r0)
+
+        r1 = PDExtendedGraphicsState()
+        r1.set_alpha_source_flag(False)
+        r1.set_blend_mode(BlendMode.MULTIPLY)
+        cs.set_graphics_state_parameters(r1)
 
     def generate_rollover_appearance(self) -> None:
         # No rollover appearance (PDHighlightAppearanceHandler.java:216)

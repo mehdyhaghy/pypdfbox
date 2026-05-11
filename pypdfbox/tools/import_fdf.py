@@ -27,7 +27,12 @@ class ImportFDF:
             return
         acro_form.set_cache_fields(True)
         acro_form.import_fdf(fdf_document)
-        # TODO this can be removed when we create appearance streams
+        # Mirrors upstream ``ImportFDF.importFDF`` line 75: appearance
+        # streams aren't regenerated here, so the viewer is asked to do
+        # it via ``/NeedAppearances true``. Upstream still carries the
+        # same workaround (PDFBOX TODO at ImportFDF.java:75); see
+        # ``PDTerminalField.construct_appearances`` for the deferred
+        # appearance-generation path.
         acro_form.set_need_appearances(True)
 
     def call(self) -> int:

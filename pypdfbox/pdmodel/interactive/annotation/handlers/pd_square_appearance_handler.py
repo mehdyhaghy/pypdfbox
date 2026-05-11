@@ -56,9 +56,6 @@ class PDSquareAppearanceHandler(PDAbstractAppearanceHandler):
                 and border_effect.get_style()
                 == PDBorderEffectDictionary.STYLE_CLOUDY
             ):
-                # TODO: full path generation — currently degrades to a
-                # plain rectangle. CloudyBorder stubs the actual curl
-                # geometry.
                 cloudy = CloudyBorder(
                     cs,
                     border_effect.get_intensity(),
@@ -66,13 +63,17 @@ class PDSquareAppearanceHandler(PDAbstractAppearanceHandler):
                     self.get_rectangle(),
                 )
                 cloudy.create_cloudy_rectangle(annotation.get_rect_difference())
-                border_box = self.handle_border_box(annotation, line_width)
-                cs.add_rect(
-                    border_box.get_lower_left_x(),
-                    border_box.get_lower_left_y(),
-                    border_box.get_width(),
-                    border_box.get_height(),
-                )
+                # Propagate the bbox / matrix / RD updates back onto the
+                # annotation and the appearance stream — see
+                # PDSquareAppearanceHandler.java:76-80.
+                annotation.set_rectangle(cloudy.get_rectangle())
+                if hasattr(annotation, "set_rect_difference"):
+                    annotation.set_rect_difference(cloudy.get_rect_difference())
+                appearance_stream = annotation.get_normal_appearance_stream()
+                if appearance_stream is not None:
+                    appearance_stream.set_bbox(cloudy.get_bbox())
+                    if hasattr(appearance_stream, "set_matrix"):
+                        appearance_stream.set_matrix(cloudy.get_matrix())
             else:
                 border_box = self.handle_border_box(annotation, line_width)
                 cs.add_rect(
@@ -84,11 +85,13 @@ class PDSquareAppearanceHandler(PDAbstractAppearanceHandler):
             cs.draw_shape(line_width, has_stroke, has_background)
 
     def generate_rollover_appearance(self) -> None:
-        # TODO to be implemented (PDSquareAppearanceHandler.java:99)
+        # No rollover appearance generated upstream
+        # (PDSquareAppearanceHandler.java:99).
         return None
 
     def generate_down_appearance(self) -> None:
-        # TODO to be implemented (PDSquareAppearanceHandler.java:105)
+        # No down appearance generated upstream
+        # (PDSquareAppearanceHandler.java:105).
         return None
 
     def get_line_width(self) -> float:

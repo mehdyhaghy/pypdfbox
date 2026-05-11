@@ -232,14 +232,37 @@ class CertificateVerifier:
         additional_certs: Iterable[x509.Certificate],
         sign_date: _dt.datetime | None,
     ) -> None:
-        """Mirrors ``checkRevocationsWithIssuer`` (upstream line 226)."""
-        del issuer_cert, additional_certs, sign_date
-        # TODO: full OCSP/CRL revocation check awaits OcspHelper +
-        # crl_verifier wiring against an online responder pool.
-        LOG.debug(
-            "revocation check skipped for %s — pending OCSP/CRL wiring",
-            cert.subject.rfc4514_string(),
+        """Mirrors ``checkRevocationsWithIssuer`` (upstream line 226).
+
+        Tries OCSP first when the cert advertises an OCSP AIA URL, falling
+        back to CRL on any failure. Without an OCSP URL goes straight to
+        CRL. Recurses on the issuer chain until a self-signed anchor.
+        """
+        from pypdfbox.examples.signature.cert.crl_verifier import CRLVerifier
+        from pypdfbox.examples.signature.cert.ocsp_helper import (
+            OcspException,
+            OcspHelper,
         )
+
+        pool = list(additional_certs)
+        ocsp_url = CertificateVerifier.extract_ocsp_url(cert)
+        if ocsp_url is not None:
+            ocsp_helper = OcspHelper(cert, sign_date, issuer_cert, pool, ocsp_url)
+            try:
+                CertificateVerifier.verify_ocsp(ocsp_helper, pool)
+            except (OSError, OcspException) as ex:
+                LOG.warning("Exception trying OCSP, will try CRL: %s", ex)
+                LOG.warning(
+                    "Certificate# to check: %x", cert.serial_number,
+                )
+                CRLVerifier.verify_certificate_crls(cert, sign_date, pool)
+        else:
+            LOG.info("OCSP not available, will try CRL")
+            CRLVerifier.verify_certificate_crls(cert, sign_date, pool)
+
+        # Walk up the chain.
+        if not CertificateVerifier.is_self_signed(issuer_cert):
+            CertificateVerifier.check_revocations(issuer_cert, pool, sign_date)
 
     @staticmethod
     def verify_ocsp(

@@ -94,8 +94,9 @@ def test_print_pdf_helpers_are_stubs() -> None:
     p = PrintPDF()
     assert p.get_trays_from_print_service(None) == []
     assert p.get_media_sizes_from_print_service(None) == []
-    with pytest.raises(NotImplementedError):
-        p.call()
+    # call() with no input configured fails fast with exit code 4
+    # (mirrors upstream's IOException -> exit 4 contract).
+    assert p.call() == 4
 
 
 def test_write_decoded_doc_calc_filename() -> None:

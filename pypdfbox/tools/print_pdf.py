@@ -4,19 +4,32 @@ Upstream Java reference:
     pdfbox/tools/src/main/java/org/apache/pdfbox/tools/PrintPDF.java
     (lines 58-372)
 
-Upstream uses ``java.awt.print.PrinterJob`` / ``javax.print``. Python has
-no portable system-printer API in stdlib — the ``call``, dialog, tray, and
-media-size methods raise ``NotImplementedError("GUI tool")``. The
-``Duplex`` enum, ``createPrintRequestAttributeSet``, and the helper
-listing methods are still ported so the surface matches upstream for
-parity counting and unit tests of the pure-Python helpers.
+Upstream uses ``java.awt.print.PrinterJob`` / ``javax.print`` — a full
+in-process print pipeline with a GUI dialog. Python's stdlib does not
+expose a portable system-printer API, so the pypdfbox port instead
+delegates to the OS print spooler:
+
+* macOS / Linux — ``lpr(1)`` (CUPS), if available on ``$PATH``.
+* Windows — ``os.startfile(path, "print")`` (uses the default app).
+
+The Java print dialog has no equivalent here, so the ``-silentPrint``
+flag is honoured by default; the non-silent case falls back to silent
+with a logged warning. The ``Duplex`` enum,
+``create_print_request_attribute_set``, and helper listing methods are
+still ported so the surface matches upstream for parity counting.
 """
 from __future__ import annotations
 
 import argparse
 import enum
+import logging
+import os
+import shutil
+import subprocess
 import sys
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class Duplex(enum.Enum):
@@ -99,14 +112,110 @@ class PrintPDF:
         """Mirror of ``getMediaSizesFromPrintService`` — empty on Python."""
         return []
 
-    # --- GUI-only entry points -----------------------------------------
+    # --- entry points ---------------------------------------------------
     def call(self) -> int:
-        """``call()`` requires a system printer subsystem — not portable.
+        """Send the configured PDF to the system print spooler.
 
-        Mirrors the upstream signature; raises ``NotImplementedError``
-        so the parity test surface still matches.
+        Returns the exit code (0 on success, 4 on failure) — mirrors the
+        upstream ``Integer call()`` contract.
+
+        Deviations from upstream:
+
+        * Python stdlib has no in-process printer API. We shell out to
+          ``lpr`` (POSIX, CUPS) or ``os.startfile(..., "print")``
+          (Windows) instead of building a ``PrinterJob``.
+        * Upstream pops a ``PrinterJob.printDialog`` when ``silentPrint``
+          is false. Python has no equivalent dialog, so a non-silent
+          request is logged and falls through to the silent code path.
+        * ``-dpi`` / ``-border`` / ``-noCenter`` / ``-noColorOpt`` apply
+          only to the upstream in-process rasterising path; with the
+          OS spooler the underlying app / driver decides. We keep the
+          attributes on the instance so callers / subclasses can inspect
+          them, but they don't influence the spawned command.
         """
-        raise NotImplementedError("GUI tool: PrintPDF.call requires a system printer")
+        if self.infile is None:
+            sys.stderr.write("PrintPDF: no input file configured\n")
+            return 4
+        pdf_path = Path(self.infile)
+        if not pdf_path.exists():
+            sys.stderr.write(f"PrintPDF: file not found: {pdf_path}\n")
+            return 4
+
+        # Optional sanity check — upstream calls Loader.loadPDF and
+        # consults ``can_print`` on the access permission. We do the same
+        # so an encrypted/permission-restricted PDF fails fast rather
+        # than handing protected bytes to the spooler.
+        try:
+            from pypdfbox.loader import Loader  # noqa: PLC0415
+
+            with Loader.load_pdf(pdf_path, self.password or "") as document:
+                ap = document.get_current_access_permission()
+                if ap is not None and not ap.can_print():
+                    sys.stderr.write("You do not have permission to print\n")
+                    return 4
+        except (OSError, AttributeError) as exc:
+            # AttributeError covers COSDocument vs PDDocument surface
+            # mismatch — the spooler can still print the bytes even when
+            # the lite access-permission probe isn't wired up.
+            logger.debug("permission probe skipped: %s", exc)
+
+        if not self.silent_print:
+            logger.warning(
+                "PrintPDF: non-silent print dialog not supported on Python; "
+                "falling through to silent print",
+            )
+
+        if sys.platform.startswith("win"):
+            try:
+                os.startfile(str(pdf_path), "print")  # type: ignore[attr-defined]  # noqa: S606
+            except OSError as exc:
+                sys.stderr.write(f"Error printing document [OSError]: {exc}\n")
+                return 4
+            return 0
+
+        lpr = shutil.which("lpr")
+        if lpr is None:
+            sys.stderr.write(
+                "Error printing document [RuntimeError]: 'lpr' not found on PATH\n",
+            )
+            return 4
+
+        cmd: list[str] = [lpr]
+        if self.printer_name:
+            cmd += ["-P", self.printer_name]
+        if self.orientation and self.orientation.upper() != "AUTO":
+            # CUPS expects integer orientation-requested values (3=portrait,
+            # 4=landscape, 5=reverse-landscape, 6=reverse-portrait). Map by
+            # name and pass the integer; unknown names are forwarded as-is.
+            mapping = {
+                "PORTRAIT": "3",
+                "LANDSCAPE": "4",
+                "REVERSE_LANDSCAPE": "5",
+                "REVERSE_PORTRAIT": "6",
+            }
+            value = mapping.get(self.orientation.upper(), self.orientation)
+            cmd += ["-o", f"orientation-requested={value}"]
+        side = self.duplex.to_sides()
+        if side == "DUPLEX":
+            cmd += ["-o", "sides=two-sided-long-edge"]
+        elif side == "TUMBLE":
+            cmd += ["-o", "sides=two-sided-short-edge"]
+        elif side == "ONE_SIDED":
+            cmd += ["-o", "sides=one-sided"]
+        if self.tray:
+            cmd += ["-o", f"media={self.tray}"]
+        if self.media_size:
+            cmd += ["-o", f"media={self.media_size}"]
+        cmd.append(str(pdf_path))
+
+        try:
+            subprocess.run(cmd, check=True)  # noqa: S603
+        except (subprocess.CalledProcessError, OSError) as exc:
+            sys.stderr.write(
+                f"Error printing document [{type(exc).__name__}]: {exc}\n",
+            )
+            return 4
+        return 0
 
     @staticmethod
     def main(args: list[str] | None = None) -> int:
@@ -139,11 +248,7 @@ class PrintPDF:
         runner.no_center = ns.noCenter
         runner.no_color_opt = ns.noColorOpt
         runner.infile = Path(ns.infile)
-        try:
-            return runner.call()
-        except NotImplementedError as exc:
-            sys.stderr.write(f"PrintPDF: {exc}\n")
-            return 4
+        return runner.call()
 
 
 if __name__ == "__main__":

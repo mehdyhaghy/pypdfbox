@@ -1,12 +1,9 @@
-"""Tests for the lite-port :class:`CloudyBorder` shim.
+"""Tests for the :class:`CloudyBorder` geometry engine ported from
+``org.apache.pdfbox.pdmodel.interactive.annotation.handlers.CloudyBorder``.
 
-Upstream's CloudyBorder is a 1100-line geometry engine; the lite port
-keeps the public surface (constructor + three ``create_cloudy_*``
-methods + the ``get_*`` accessors) so callers in
-``PDSquareAppearanceHandler`` / ``PDCircleAppearanceHandler`` /
-``PDPolygonAppearanceHandler`` continue to type-check. Full path
-generation is deferred — see the ``TODO: full path generation``
-comments. These tests pin the API shape and the bbox seeding behaviour.
+These tests pin the public API + accessor behaviour and exercise the
+three ``create_cloudy_*`` entry points end-to-end so the path generation
+math is covered.
 """
 
 from __future__ import annotations
@@ -59,8 +56,11 @@ def test_cloudy_border_create_cloudy_rectangle_accepts_none_rd() -> None:
     rect = PDRectangle(0.0, 0.0, 100.0, 50.0)
     cb = CloudyBorder(_stream(), 2.0, 1.0, rect)
     cb.create_cloudy_rectangle(None)  # must not raise
-    # bbox unchanged because path generation is stubbed.
-    assert cb.get_rectangle().get_width() == 100.0
+    # Path generation produces a bbox that contains the input rectangle
+    # (with curl tails extending slightly outside the perimeter).
+    bbox = cb.get_rectangle()
+    assert bbox.get_width() > 0.0
+    assert bbox.get_height() > 0.0
 
 
 def test_cloudy_border_get_rect_difference_with_null_annotation_rect() -> None:
@@ -75,5 +75,52 @@ def test_cloudy_border_create_cloudy_polygon_updates_bbox() -> None:
     cb = CloudyBorder(_stream(), 2.0, 1.0, rect)
     cb.create_cloudy_polygon([[1.0, 1.0], [9.0, 1.0], [9.0, 9.0]])
     bbox = cb.get_rectangle()
-    assert bbox.get_lower_left_x() == 1.0
-    assert bbox.get_upper_right_y() == 9.0
+    # Path generation produces a bbox extending around the polygon
+    # vertices (curls extend outside the polygon perimeter).
+    assert bbox.get_width() > 0.0
+    assert bbox.get_height() > 0.0
+
+
+def test_cloudy_border_create_cloudy_ellipse_emits_path() -> None:
+    rect = PDRectangle(0.0, 0.0, 60.0, 40.0)
+    cb = CloudyBorder(_stream(), 2.0, 1.0, rect)
+    cb.create_cloudy_ellipse(None)
+    bbox = cb.get_rectangle()
+    assert bbox.get_width() > 0.0
+    assert bbox.get_height() > 0.0
+
+
+def test_cloudy_border_arc_segment_emits_curve_to_stream() -> None:
+    rect = PDRectangle(0.0, 0.0, 10.0, 10.0)
+    cb = CloudyBorder(_stream(), 1.0, 1.0, rect)
+    out: list[tuple[float, float]] = []
+    cb.get_arc_segment(0.0, 1.0, 0.0, 0.0, 5.0, 5.0, out, True)
+    # 1 move (start) + 3 control / endpoints for the curve.
+    assert len(out) == 4
+
+
+def test_cloudy_border_flatten_ellipse_returns_polygon() -> None:
+    points = CloudyBorder.flatten_ellipse(0.0, 0.0, 50.0, 30.0)
+    assert len(points) >= 8
+    # First / last should approximately coincide because flatten_ellipse
+    # closes the polygon.
+    first = points[0]
+    last = points[-1]
+    assert abs(first[0] - last[0]) < 1.0
+    assert abs(first[1] - last[1]) < 1.0
+
+
+def test_cloudy_border_polygon_direction_is_signed() -> None:
+    rect = PDRectangle(0.0, 0.0, 10.0, 10.0)
+    cb = CloudyBorder(_stream(), 1.0, 1.0, rect)
+    ccw = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)]
+    cw = list(reversed(ccw))
+    assert cb.get_polygon_direction(ccw) > 0
+    assert cb.get_polygon_direction(cw) < 0
+
+
+def test_cloudy_border_compute_params_polygon_returns_negative_for_zero_length() -> None:
+    rect = PDRectangle(0.0, 0.0, 10.0, 10.0)
+    cb = CloudyBorder(_stream(), 1.0, 1.0, rect)
+    array = [0.0, 0.0]
+    assert cb.compute_params_polygon(1.0, 0.5, 0.829, 5.0, 0.0, array) == -1

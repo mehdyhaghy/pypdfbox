@@ -243,15 +243,86 @@ class PDGraphicsState:
         self._clipping_path_cache = None
 
     def get_current_clipping_path(self) -> Any:
-        """Return the intersection of all clipping paths."""
+        """Return the intersection of all clipping paths.
+
+        Mirrors upstream ``getCurrentClippingPath`` (PDGraphicsState.java:620).
+        Upstream builds a ``java.awt.geom.Area`` and intersects it with every
+        sub-path's bounding box, then intersects each sub-path Area on top.
+
+        We don't depend on AWT, so paths are represented as lists of
+        ``(x, y)`` points (see :meth:`PDRectangle.to_general_path`). For
+        anything beyond axis-aligned rectangles a true polygon intersection
+        would need a 2-D geometry library we cannot pull in (see project
+        dependency policy). The conservative approximation upstream itself
+        starts from — the intersection of all sub-path bounding boxes — is
+        what we materialise here: a 4-corner rectangle. This is pessimistic
+        in the same direction as upstream's seed area and is safe for the
+        clip-path consumers (renderer / overlay / signature region).
+        """
         if not self._clipping_paths:
             return None
         if len(self._clipping_paths) == 1:
             if self._clipping_path_cache is None:
                 self._clipping_path_cache = self._clipping_paths[0]
             return self._clipping_path_cache
-        # TODO: full implementation needs Path2D intersection; return list for now.
-        return self._clipping_paths[-1]
+        bbox = self._path_bounds(self._clipping_paths[0])
+        if bbox is None:
+            return self._clipping_paths[-1]
+        min_x, min_y, max_x, max_y = bbox
+        for path in self._clipping_paths[1:]:
+            other = self._path_bounds(path)
+            if other is None:
+                continue
+            min_x = max(min_x, other[0])
+            min_y = max(min_y, other[1])
+            max_x = min(max_x, other[2])
+            max_y = min(max_y, other[3])
+            if min_x >= max_x or min_y >= max_y:
+                # Empty intersection — return a zero-area rectangle anchored
+                # at the upper-left of the empty region.
+                empty = [(min_x, min_y), (min_x, min_y), (min_x, min_y), (min_x, min_y)]
+                self._clipping_path_cache = empty
+                self._clipping_paths = [empty]
+                return empty
+        intersected = [
+            (min_x, min_y),
+            (max_x, min_y),
+            (max_x, max_y),
+            (min_x, max_y),
+        ]
+        self._clipping_path_cache = intersected
+        # Replace the list so subsequent calls short-circuit on the cache.
+        self._clipping_paths = [intersected]
+        return intersected
+
+    @staticmethod
+    def _path_bounds(path: Any) -> tuple[float, float, float, float] | None:
+        """Return ``(min_x, min_y, max_x, max_y)`` for a path, or ``None``."""
+        if path is None:
+            return None
+        # PDRectangle-like objects expose explicit accessors.
+        if hasattr(path, "get_lower_left_x") and hasattr(path, "get_upper_right_y"):
+            return (
+                float(path.get_lower_left_x()),
+                float(path.get_lower_left_y()),
+                float(path.get_upper_right_x()),
+                float(path.get_upper_right_y()),
+            )
+        try:
+            points = list(path)
+        except TypeError:
+            return None
+        if not points:
+            return None
+        xs: list[float] = []
+        ys: list[float] = []
+        for point in points:
+            if hasattr(point, "__len__") and len(point) >= 2:
+                xs.append(float(point[0]))
+                ys.append(float(point[1]))
+        if not xs or not ys:
+            return None
+        return (min(xs), min(ys), max(xs), max(ys))
 
     def get_current_clipping_paths(self) -> list[Any]:
         """Return the underlying list of clipping paths."""

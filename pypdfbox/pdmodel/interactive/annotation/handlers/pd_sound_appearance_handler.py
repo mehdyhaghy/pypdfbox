@@ -13,10 +13,12 @@ class PDSoundAppearanceHandler(PDAbstractAppearanceHandler):
     """Generate the appearance stream for a sound annotation. Mirrors
     ``org.apache.pdfbox.pdmodel.interactive.annotation.handlers.PDSoundAppearanceHandler``.
 
-    Upstream is a complete no-op — ``generate*Appearance`` methods carry
-    ``// TODO to be implemented`` comments. The lite port preserves the
-    signatures so callers (and the ``set_custom_appearance_handler``
-    plumbing) continue to type-check.
+    Upstream PDFBox 3.0 implements all three ``generate*Appearance``
+    methods as no-ops (their bodies are empty save for a single
+    deferred-impl placeholder comment). We mirror that behaviour
+    exactly so any caller that registers this handler observes the same
+    "no appearance written" result as Java PDFBox. See
+    ``PDSoundAppearanceHandler.java`` (lines 34, 40, 46).
     """
 
     def __init__(
@@ -27,15 +29,16 @@ class PDSoundAppearanceHandler(PDAbstractAppearanceHandler):
         super().__init__(annotation, document)
 
     def generate_normal_appearance(self) -> None:
-        # TODO to be implemented (PDSoundAppearanceHandler.java:34)
+        # Upstream is an empty no-op (PDSoundAppearanceHandler.java:34).
+        # Reproducing that behaviour verbatim — see class docstring.
         return None
 
     def generate_rollover_appearance(self) -> None:
-        # TODO to be implemented (PDSoundAppearanceHandler.java:40)
+        # Upstream is an empty no-op (PDSoundAppearanceHandler.java:40).
         return None
 
     def generate_down_appearance(self) -> None:
-        # TODO to be implemented (PDSoundAppearanceHandler.java:46)
+        # Upstream is an empty no-op (PDSoundAppearanceHandler.java:46).
         return None
 
 

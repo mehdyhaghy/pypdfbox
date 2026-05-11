@@ -6,10 +6,9 @@ Upstream is a 788-line utility class glued to ``javax.imageio`` and
 ``java.awt.image.WritableRaster``. We expose the four public static
 entry points (``get_stencil_image``, ``get_rgb_image`` x2,
 ``get_raw_raster``) and the inner ``MultipleInputStream`` helper. The
-heavy bit-packed decode logic is implemented for the common 8-bpc RGB /
-gray / RGBA cases; less common widths (1/2/4 bpc, indexed, separation)
-fall back to a TODO-marked path that returns ``None`` so callers can
-detect the gap rather than getting silently-wrong pixels.
+generic bit-packed decode path now decodes arbitrary bpc (1/2/4/8/16)
+with optional colour-key masking via Pillow; the raw-raster path
+returns a Pillow image containing the un-colour-converted samples.
 """
 
 from __future__ import annotations
@@ -24,6 +23,45 @@ if TYPE_CHECKING:
     from .pd_image import PDImage
 
 _LOG = logging.getLogger(__name__)
+
+
+class _BitReader:
+    """MSB-first bit reader over a bytes-like buffer.
+
+    Mirrors ``javax.imageio.stream.MemoryCacheImageInputStream.readBits``
+    semantics for the limited shape we need: read ``n`` bits, MSB-first,
+    advancing the cursor.
+    """
+
+    __slots__ = ("_data", "_byte_idx", "_bit_idx")
+
+    def __init__(self, data: bytes) -> None:
+        self._data = data
+        self._byte_idx = 0
+        self._bit_idx = 0  # 0..7, MSB first
+
+    def read_bits(self, n: int) -> int:
+        if n <= 0:
+            return 0
+        value = 0
+        for _ in range(n):
+            if self._byte_idx >= len(self._data):
+                # Pad with zeros past EOF (matches Java's behaviour of
+                # returning 0 from a short stream rather than raising).
+                value <<= 1
+                continue
+            bit = (self._data[self._byte_idx] >> (7 - self._bit_idx)) & 1
+            value = (value << 1) | bit
+            self._bit_idx += 1
+            if self._bit_idx == 8:
+                self._bit_idx = 0
+                self._byte_idx += 1
+        return value
+
+    def align_to_byte(self) -> None:
+        if self._bit_idx != 0:
+            self._bit_idx = 0
+            self._byte_idx += 1
 
 
 class SampledImageReader:
@@ -79,23 +117,220 @@ class SampledImageReader:
         Upstream provides two overloads:
         - ``getRGBImage(pdImage, COSArray colorKey)`` (line 138)
         - ``getRGBImage(pdImage, Rectangle region, int subsampling, COSArray colorKey)`` (line 172)
+
+        ``color_key_or_region`` is overloaded: if it's a 4-tuple/list it's
+        treated as a region; otherwise it's treated as the colour-key
+        array (matching upstream's two-argument call site).
         """
-        # TODO: full implementation requires bit-packed decode for arbitrary bpc.
         try:
             from PIL import Image
         except ImportError:
             return None
+
+        # Disambiguate the two-arg overload.
+        region: Any = None
+        if isinstance(color_key_or_region, (tuple, list)) and len(color_key_or_region) == 4 and all(
+            isinstance(v, (int, float)) for v in color_key_or_region
+        ):
+            region = color_key_or_region
+        elif color_key_or_region is not None and color_key is None:
+            color_key = color_key_or_region
+
+        if pd_image.is_empty():
+            raise OSError("Image stream is empty")
+
         width = pd_image.get_width()
         height = pd_image.get_height()
-        return Image.new("RGBA", (width, height))
+        if width <= 0 or height <= 0:
+            raise OSError("image width and height must be positive")
+
+        clipped = SampledImageReader.clip_region(pd_image, region)
+        x, y, cw, ch = clipped
+        sub = max(1, int(subsampling))
+        out_w = max(1, -(-cw // sub))  # ceil div
+        out_h = max(1, -(-ch // sub))
+
+        bpc = pd_image.get_bits_per_component()
+        try:
+            color_space = pd_image.get_color_space()
+            num_components = color_space.get_number_of_components()
+        except (AttributeError, OSError):
+            color_space = None
+            num_components = 1
+
+        decode = _get_decode_array(pd_image)
+        if len(decode) < num_components * 2:
+            # Defensive — fall back to default-decode shape.
+            decode = (decode + [0.0, 1.0] * num_components)[: num_components * 2]
+
+        # Read the full stream.
+        with pd_image.create_input_stream() as iis:
+            data = iis.read()
+        if not isinstance(data, (bytes, bytearray)):
+            data = bytes(data)
+
+        sample_max = (1 << bpc) - 1 if bpc > 0 else 1
+
+        # Parse colour-key ranges if supplied.
+        color_key_ranges: list[float] | None = None
+        if color_key is not None:
+            try:
+                if hasattr(color_key, "to_float_array"):
+                    ck = list(color_key.to_float_array())
+                else:
+                    ck = [float(v) for v in color_key]
+                if len(ck) >= num_components * 2:
+                    color_key_ranges = ck
+                else:
+                    _LOG.warning(
+                        "colorKey mask size is %d, should be %d, ignored",
+                        len(ck),
+                        num_components * 2,
+                    )
+            except (TypeError, ValueError, OSError):
+                color_key_ranges = None
+
+        # Compute per-row bit padding (matches upstream lines 622-629).
+        bits_per_row = width * num_components * bpc
+        padding_bits = bits_per_row % 8
+        if padding_bits > 0:
+            padding_bits = 8 - padding_bits
+
+        reader = _BitReader(data)
+        # Output: RGBA when colour-key mask present, else RGB.
+        mode_out = "RGBA" if color_key_ranges is not None else "RGB"
+        out_image = Image.new(mode_out, (out_w, out_h))
+        out_pixels = out_image.load()
+
+        for src_y in range(height):
+            row_samples: list[tuple[list[int], bool]] = []
+            for _src_x in range(width):
+                comps: list[int] = []
+                is_masked = True
+                for c in range(num_components):
+                    raw = reader.read_bits(bpc)
+                    if color_key_ranges is not None:
+                        is_masked = is_masked and (
+                            raw >= color_key_ranges[c * 2]
+                            and raw <= color_key_ranges[c * 2 + 1]
+                        )
+                    d_min = decode[c * 2]
+                    d_max = decode[(c * 2) + 1]
+                    if sample_max == 0:
+                        decoded = d_min
+                    else:
+                        decoded = d_min + raw * ((d_max - d_min) / sample_max)
+                    span = abs(d_max - d_min) or 1.0
+                    byte_val = int(round(((decoded - min(d_min, d_max)) / span) * 255.0))
+                    comps.append(max(0, min(255, byte_val)))
+                row_samples.append((comps, is_masked))
+            reader.read_bits(padding_bits)
+
+            # Subsample / clip the row.
+            if src_y < y or src_y >= y + ch:
+                continue
+            if (src_y - y) % sub != 0:
+                continue
+            out_y = (src_y - y) // sub
+            if out_y >= out_h:
+                continue
+            for src_x in range(width):
+                if src_x < x or src_x >= x + cw:
+                    continue
+                if (src_x - x) % sub != 0:
+                    continue
+                out_x = (src_x - x) // sub
+                if out_x >= out_w:
+                    continue
+                comps, is_masked = row_samples[src_x]
+                # Expand grayscale -> RGB; clip CMYK / multi-channel to first 3.
+                if len(comps) == 1:
+                    pixel = (comps[0], comps[0], comps[0])
+                elif len(comps) >= 3:
+                    pixel = (comps[0], comps[1], comps[2])
+                else:
+                    pixel = (comps[0], comps[0], comps[0])
+                if mode_out == "RGBA":
+                    alpha = 0 if is_masked else 255
+                    pixel = (*pixel, alpha)
+                out_pixels[out_x, out_y] = pixel
+        return out_image
 
     @staticmethod
     def get_raw_raster(pd_image: PDImage) -> Any:
         """Return the raw (un-colour-converted) raster.
 
-        Mirrors upstream line 228. TODO: full implementation.
+        Mirrors upstream line 228. Returns a Pillow image whose mode
+        matches the image's component count (``L`` for 1 channel,
+        ``RGB`` for 3, ``CMYK`` for 4) holding the *decoded* sample
+        values without colour-space conversion. ``None`` is returned if
+        Pillow is unavailable.
         """
-        return None
+        try:
+            from PIL import Image
+        except ImportError:
+            return None
+        if pd_image.is_empty():
+            raise OSError("Image stream is empty")
+        width = pd_image.get_width()
+        height = pd_image.get_height()
+        if width <= 0 or height <= 0:
+            raise OSError("image width and height must be positive")
+        try:
+            num_components = pd_image.get_color_space().get_number_of_components()
+        except (AttributeError, OSError):
+            num_components = 1
+        bpc = pd_image.get_bits_per_component()
+        decode = _get_decode_array(pd_image)
+        if len(decode) < num_components * 2:
+            decode = (decode + [0.0, 1.0] * num_components)[: num_components * 2]
+
+        with pd_image.create_input_stream() as iis:
+            data = iis.read()
+        if not isinstance(data, (bytes, bytearray)):
+            data = bytes(data)
+
+        sample_max = (1 << bpc) - 1 if bpc > 0 else 1
+        bits_per_row = width * num_components * bpc
+        padding_bits = bits_per_row % 8
+        if padding_bits > 0:
+            padding_bits = 8 - padding_bits
+
+        if num_components == 1:
+            mode = "L"
+        elif num_components == 3:
+            mode = "RGB"
+        elif num_components == 4:
+            mode = "CMYK"
+        else:
+            # Pillow has no mode for >4 channels; fall back to L per-band.
+            mode = "L"
+
+        out = Image.new(mode, (width, height))
+        pixels = out.load()
+        reader = _BitReader(data)
+        for py in range(height):
+            for px in range(width):
+                comps: list[int] = []
+                for c in range(num_components):
+                    raw = reader.read_bits(bpc)
+                    d_min = decode[c * 2]
+                    d_max = decode[(c * 2) + 1]
+                    if sample_max == 0:
+                        decoded = d_min
+                    else:
+                        decoded = d_min + raw * ((d_max - d_min) / sample_max)
+                    span = abs(d_max - d_min) or 1.0
+                    byte_val = int(round(((decoded - min(d_min, d_max)) / span) * 255.0))
+                    comps.append(max(0, min(255, byte_val)))
+                if mode == "L":
+                    pixels[px, py] = comps[0]
+                elif mode == "RGB":
+                    pixels[px, py] = (comps[0], comps[1], comps[2])
+                elif mode == "CMYK":
+                    pixels[px, py] = (comps[0], comps[1], comps[2], comps[3])
+            reader.read_bits(padding_bits)
+        return out
 
     # --- Private upstream helpers, exposed for parity --------------------
 
@@ -258,7 +493,11 @@ def _get_decode_array(pd_image: PDImage) -> list[float]:
     """Return the image's Decode array, defaulting to ``[0, 1]``."""
     decode = pd_image.get_decode()
     if decode is None or (hasattr(decode, "size") and decode.size() == 0):
-        return [0.0, 1.0]
+        try:
+            num = pd_image.get_color_space().get_number_of_components()
+        except (AttributeError, OSError):
+            num = 1
+        return [0.0, 1.0] * num
     try:
         return list(decode.to_float_array())
     except (AttributeError, TypeError):

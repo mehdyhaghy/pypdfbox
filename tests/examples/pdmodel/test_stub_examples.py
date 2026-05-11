@@ -49,10 +49,12 @@ def test_add_image_to_pdf_class_exists() -> None:
     add_image_to_pdf.AddImageToPDF.main([])
 
 
-def test_add_javascript_stub() -> None:
+def test_add_javascript_class_exists() -> None:
+    # Wave 1285.1: AddJavascript.main() now sets a JS open-action and
+    # saves. Hitting the usage gate (wrong arg count) is the offline-safe
+    # way to assert the class is wired.
     assert hasattr(add_javascript, "AddJavascript")
-    with pytest.raises(NotImplementedError):
-        add_javascript.AddJavascript.main(["in.pdf", "out.pdf"])
+    add_javascript.AddJavascript.main([])
 
 
 def test_add_metadata_from_doc_info_stub() -> None:
@@ -104,10 +106,11 @@ def test_create_separation_color_box_stub() -> None:
         create_separation_color_box.CreateSeparationColorBox.main(None)
 
 
-def test_embedded_files_stub() -> None:
+def test_embedded_files_class_exists() -> None:
+    # Wave 1285.1: EmbeddedFiles.do_it() now builds a real attachment.
+    # Usage-gate path: zero args triggers usage() without raising.
     assert hasattr(embedded_files, "EmbeddedFiles")
-    with pytest.raises(NotImplementedError):
-        embedded_files.EmbeddedFiles.main(["out.pdf"])
+    embedded_files.EmbeddedFiles.main([])
 
 
 def test_embedded_fonts_stub() -> None:
@@ -151,10 +154,11 @@ def test_extract_ttf_fonts_class_exists() -> None:
         extract_ttf_fonts.ExtractTTFFonts.main([])
 
 
-def test_print_urls_stub() -> None:
+def test_print_urls_class_exists() -> None:
+    # Wave 1285.1: PrintURLs.main() now drives a real PDFTextStripperByArea
+    # extraction. Wrong arg count hits the usage gate without raising.
     assert hasattr(print_urls, "PrintURLs")
-    with pytest.raises(NotImplementedError):
-        print_urls.PrintURLs.main(["in.pdf"])
+    print_urls.PrintURLs.main([])
 
 
 def test_rubber_stamp_with_image_stub() -> None:
@@ -171,7 +175,10 @@ def test_show_text_with_positioning_stub() -> None:
         show_text_with_positioning.ShowTextWithPositioning.main(None)
 
 
-def test_superimpose_page_stub() -> None:
+def test_superimpose_page_class_exists() -> None:
+    # Wave 1285.1: SuperimposePage.main() now drives LayerUtility +
+    # PDPageContentStream.draw_form. With zero args the usage gate
+    # triggers ``SystemExit(1)``.
     assert hasattr(superimpose_page, "SuperimposePage")
-    with pytest.raises(NotImplementedError):
-        superimpose_page.SuperimposePage.main(["src.pdf", "dst.pdf"])
+    with pytest.raises(SystemExit):
+        superimpose_page.SuperimposePage.main([])

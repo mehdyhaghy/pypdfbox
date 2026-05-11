@@ -86,6 +86,38 @@ def test_graphics_state_clipping_intersection():
     assert "path-2" in paths
 
 
+def test_graphics_state_clipping_intersection_returns_bbox_intersection():
+    """When multiple paths are intersected, the current path collapses to
+    the bounding-box intersection — a four-corner rectangle in the order
+    upstream's ``PDRectangle.toGeneralPath`` produces."""
+    gs = PDGraphicsState()
+    gs.intersect_clipping_path([(0, 0), (100, 0), (100, 100), (0, 100)])
+    gs.intersect_clipping_path([(50, 50), (200, 50), (200, 200), (50, 200)])
+    intersected = gs.get_current_clipping_path()
+    assert intersected == [(50, 50), (100, 50), (100, 100), (50, 100)]
+
+
+def test_graphics_state_clipping_intersection_empty_is_zero_area():
+    """Non-overlapping clip paths collapse to a single-point rectangle so
+    downstream consumers see an empty region rather than the wrong path."""
+    gs = PDGraphicsState()
+    gs.intersect_clipping_path([(0, 0), (10, 0), (10, 10), (0, 10)])
+    gs.intersect_clipping_path([(100, 100), (200, 100), (200, 200), (100, 200)])
+    intersected = gs.get_current_clipping_path()
+    xs = {p[0] for p in intersected}
+    ys = {p[1] for p in intersected}
+    assert len(xs) == 1 and len(ys) == 1  # degenerate (empty intersection)
+
+
+def test_graphics_state_clipping_single_path_is_cached_verbatim():
+    gs = PDGraphicsState()
+    path = [(1.0, 2.0), (3.0, 4.0)]
+    gs.intersect_clipping_path(path)
+    assert gs.get_current_clipping_path() is path
+    # Cached on second call.
+    assert gs.get_current_clipping_path() is path
+
+
 def test_graphics_state_composite_dispatches_blend_composite():
     gs = PDGraphicsState()
     gs.set_alpha_constant(0.6)

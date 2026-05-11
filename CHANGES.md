@@ -2356,3 +2356,33 @@ Also includes wave 1267 carry-over additions (PDAnnotationLink, PDAnnotationPoly
 - **`PDTransitionDirection.get_cos_base`** added to bridge the example port (returns `COSName.NONE` or `COSInteger.get(direction)`).
 - **Library-first applied:** `argparse` for CLI; Pillow for image output; `cryptography` for all signature primitives; existing pypdfbox subsystems (PDFRenderer, PDFTextStripper, PDFPageable/Printable, multipdf.Merger/Splitter) wherever applicable.
 - **Parity:** 100.0% (8,276 / 8,276 — Java method count grew by 524). Tests: 28,748 → 29,017 (+269). **Class coverage:** 888 → 1,020 matched (+132); 334 → 202 Java-only (-132). Remaining 202 Java-only: 106 preflight (out-of-scope) + 96 debugger (Swing UI, skipped). **Class coverage excluding preflight + debugger: 100.0%.**
+
+## Wave 1284 — stub-body fill across 6 subsystems
+
+- **Shading + color/pattern (28):** full `to_paint` / `get_raster` ports for `AxialShadingContext`, `RadialShadingContext`, `Type1ShadingContext`, `TriangleBasedShadingContext`; Type 4/5 build `GouraudShadingContext`, Type 6/7 build `PatchMeshesShadingContext`.
+- **fontbox GSUB / glyf (37):** full byte-stream parser ports for `GlyphSubstitutionTable` (read_script_list / feature_list / lookup_list + 16 nested table readers — with PDFBOX-6146 duplicate-script dedup, PDFBOX-4489 sort-order check, LookupType 7 unwrap, lookup-table cache); `GlyfDescript` degenerate defaults; `GsubData` sentinel `TypeError`; `Encoding.get_encoding_name` introspection fallback.
+- **PDAcroForm:** `import_fdf` + `export_fdf` full FDF round-trip.
+- **Examples + xmpbox + encryption (17):** `AddImageToPDF`, `BengaliPDFHello`, `ExtractEmbeddedFiles`, `ExtractTTFFonts`, `CreateVisibleSignature2.create_visual_signature_template`, `AbstractField` + `AbstractSimpleProperty` ABCs, `SecurityHandler.compute_*` routing.
+- **Remaining 81 `raise NotImplementedError` markers verified as legitimate Java abstract / `UnsupportedOperationException` mirrors** (PDFGraphicsStreamEngine hooks, PDFont / PDSimpleFont / PDCIDFont abstract methods, PDField scaffold methods, Iterator.remove pattern, decode-only filter encode methods).
+- **Parity:** 100.0% maintained (8,276 / 8,276). Tests: 29,017 → 29,051 (+34).
+
+## Wave 1285 — TODO cleanup across annotation handlers / rendering / examples
+
+- **Tools / examples stubs (2):** `PrintPDF.call` now dispatches to OS print spooler (`lpr` on POSIX, `os.startfile` on Windows) with `-printerName` / `-orientation` / `-duplex` / `-tray` / `-mediaSize` flag mapping. `PDFToTextTask.execute` self-contained Python port — opens PDF, runs `PDFTextStripper`, writes output (no Ant runtime needed).
+- **Annotation appearance handlers (60 TODOs cleared):**
+  - `PDTextAppearanceHandler` (15): all `_draw_*` glyph icons (note, paragraph, comment, help, key, cross-hairs, insert, etc.) — Font-Awesome Bezier paths for Comment/Key, hand-built path approximations for glyph-based icons.
+  - `PDFreeTextAppearanceHandler` (6): full `/DA` parsing (Tf font + size + last non-stroking color), callout polyline + line-ending styles, rotation transform.
+  - `PDCaretAppearanceHandler` (2): `/RD` rect-diff + bbox expansion.
+  - `CloudyBorder` (27): full geometry engine — `cloudy_rectangle_impl` / `cloudy_polygon_impl` / `cloudy_ellipse_impl`, `add_corner_curl`, `add_first_intermediate_curl`, `get_intermediate_curl_template`, `output_curl_template`, `flatten_ellipse` (equal-angle stepping with chord-error analysis), `draw_basic_ellipse`, polygon-direction (shoelace).
+  - `PDFileAttachmentAppearanceHandler` (5): paperclip / push-pin / graph / tag stylized icons.
+  - `PDLineAppearanceHandler` (4): inline / Top caption + monospace fallback when `get_string_width` unavailable.
+  - `PDSquareAppearanceHandler` (3) / `PDCircleAppearanceHandler` (3): cloudy-border bbox/matrix propagation per upstream lines 76-80.
+  - `PDHighlightAppearanceHandler` (2): two ExtGStates (alpha + Multiply blend) + curvy-end Bezier control.
+  - `PDPolygonAppearanceHandler` (1): cloudy-polygon integration via `CloudyBorder.create_cloudy_polygon`.
+- **Rendering (3 TODOs cleared):** `TilingPaint.create_context` + `get_image` + `get_anchor_rect` MAXEDGE clamp; `SoftPaintContext.get_raster` luma-mask compositing with backdrop-colour fallback and transfer-function memoisation.
+- **Image (2):** `SampledImageReader.get_rgb_image` bpc 1/2/4/8/16 decoder with color-key masking; `get_raw_raster` un-converted Pillow image with mode-by-component-count.
+- **`PDGraphicsState.get_current_clipping_path`:** bounding-box intersection across stacked sub-paths (mirrors upstream `Area(boundingBox)` seed).
+- **`CertificateVerifier.check_revocations_with_issuer`:** OCSP-first via existing `OcspHelper`, falls back to `CRLVerifier.verify_certificate_crls`, recurses up the chain.
+- **examples.pdmodel ports (4 demos now fully callable):** `print_urls` (PDFTextStripperByArea regions), `embedded_files` (PDComplexFileSpecification + name-tree), `superimpose_page` (LayerUtility.import_page_as_form), `add_javascript` (PDActionJavaScript + set_open_action).
+- **Remaining 20 TODOs documented as out-of-scope blockers:** 13 example demos depend on external font fixtures (LiberationSans, Lohit-Bengali, IPA Gothic, batang.ttc) or XMPBox accessor surfaces still in flight; 2 in rendering require full PageDrawer (multi-wave work); 1 each in `pd_signature` (full PKI chain trust), `predictor_encoder` (COSStream builder hook), `gsub_worker_factory` (upstream notes redesign), `instruction_sequence_builder` (PostScript radix numbers), `import_fdf` (mirror of upstream's `setNeedAppearances` workaround).
+- **Parity:** 100.0% maintained (8,276 / 8,276). Tests: 29,017 → 29,151 (+134).

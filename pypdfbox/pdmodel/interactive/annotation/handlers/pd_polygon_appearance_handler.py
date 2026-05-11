@@ -82,7 +82,6 @@ class PDPolygonAppearanceHandler(PDAbstractAppearanceHandler):
                 and border_effect.get_style()
                 == PDBorderEffectDictionary.STYLE_CLOUDY
             ):
-                # TODO: full path generation — fall back to plain polygon.
                 cloudy = CloudyBorder(
                     cs,
                     border_effect.get_intensity(),
@@ -90,7 +89,11 @@ class PDPolygonAppearanceHandler(PDAbstractAppearanceHandler):
                     self.get_rectangle(),
                 )
                 cloudy.create_cloudy_polygon(path_array)
-                self._emit_polygon(cs, path_array)
+                annotation.set_rectangle(cloudy.get_rectangle())
+                appearance_stream = annotation.get_normal_appearance_stream()
+                if appearance_stream is not None:
+                    appearance_stream.set_bbox(cloudy.get_bbox())
+                    appearance_stream.set_matrix(cloudy.get_matrix())
             else:
                 self._emit_polygon(cs, path_array)
             cs.draw_shape(line_width, has_stroke, has_background)

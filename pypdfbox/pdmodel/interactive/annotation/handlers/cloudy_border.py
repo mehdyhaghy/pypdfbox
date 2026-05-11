@@ -19,15 +19,10 @@ class CloudyBorder:
     """Generates annotation appearances with a cloudy border. Mirrors
     ``org.apache.pdfbox.pdmodel.interactive.annotation.handlers.CloudyBorder``.
 
-    The Java implementation is a 1100-line geometry engine that approximates
-    Adobe's cloudy-border path with intermediate / corner curls along the
-    annotation boundary. Full path generation is deferred — see the
-    ``TODO: full path generation`` comments in
-    :meth:`create_cloudy_rectangle`, :meth:`create_cloudy_polygon`, and
-    :meth:`create_cloudy_ellipse` — but the public surface (constructor +
-    three ``create_*`` entry points + the ``get_*`` accessors used by the
-    square / circle / polygon handlers) lands here so the cluster types
-    line up.
+    Full port of the upstream geometry engine: corner / intermediate curl
+    Bezier templates around polygons, ellipse flattening, and the bounding
+    box bookkeeping that drives the form-XObject ``/BBox`` / ``/Matrix`` /
+    ``/RD`` entries on the parent annotation.
     """
 
     # Class-level angle constants mirror upstream's private static
@@ -76,14 +71,15 @@ class CloudyBorder:
         """Generate a cloudy border for a rectangular annotation.
 
         Mirrors upstream ``createCloudyRectangle(PDRectangle)``
-        (CloudyBorder.java:86). Used by the square handler and (with the
-        callout omitted) by the free-text handler.
-        """
+        (CloudyBorder.java:86)."""
         self._rect_with_diff = self._apply_rect_diff(rd, self._line_width / 2)
-        # TODO: full path generation — emit the corner / intermediate
-        # curl arcs around the resolved ``_rect_with_diff`` perimeter.
-        # The lite port currently leaves the bbox at the input rectangle
-        # so the calling handler's appearance bbox is at least valid.
+        left = self._rect_with_diff.get_lower_left_x()
+        bottom = self._rect_with_diff.get_lower_left_y()
+        right = self._rect_with_diff.get_upper_right_x()
+        top = self._rect_with_diff.get_upper_right_y()
+
+        self.cloudy_rectangle_impl(left, bottom, right, top, False)
+        self.finish()
 
     def create_cloudy_polygon(self, path: list[list[float]]) -> None:
         """Generate a cloudy border for a polygon annotation.
@@ -91,16 +87,19 @@ class CloudyBorder:
         Mirrors upstream ``createCloudyPolygon(float[][])``
         (CloudyBorder.java:104). ``path`` is a list of points expressed
         as ``[x, y]`` (move/line vertices) or ``[x1, y1, x2, y2, x3, y3]``
-        (Bezier — currently unsupported, the endpoint is used).
+        (Bezier — the endpoint is used, curves are not yet supported).
         """
-        # TODO: full path generation — flatten the polygon vertices,
-        # add per-vertex curl arcs along each edge, and update the
-        # bbox extents.
-        for entry in path:
-            if len(entry) >= 2:
-                x = float(entry[-2])
-                y = float(entry[-1])
-                self._update_bbox(x, y)
+        n = len(path)
+        polygon: list[tuple[float, float]] = []
+        for i in range(n):
+            array = path[i]
+            if len(array) == 2:
+                polygon.append((float(array[0]), float(array[1])))
+            elif len(array) == 6:
+                # Curve segments are not yet supported in cloudy border.
+                polygon.append((float(array[4]), float(array[5])))
+        self.cloudy_polygon_impl(polygon, False)
+        self.finish()
 
     def create_cloudy_ellipse(self, rd: PDRectangle | None) -> None:
         """Generate a cloudy border for a circle annotation.
@@ -109,8 +108,13 @@ class CloudyBorder:
         (CloudyBorder.java:135).
         """
         self._rect_with_diff = self._apply_rect_diff(rd, 0.0)
-        # TODO: full path generation — flatten the ellipse, walk the
-        # resulting polygon, and emit curl arcs.
+        left = self._rect_with_diff.get_lower_left_x()
+        bottom = self._rect_with_diff.get_lower_left_y()
+        right = self._rect_with_diff.get_upper_right_x()
+        top = self._rect_with_diff.get_upper_right_y()
+
+        self.cloudy_ellipse_impl(left, bottom, right, top)
+        self.finish()
 
     # ------------------------------------------------------------------
     # accessors used by polygon / circle / square handlers
@@ -177,35 +181,43 @@ class CloudyBorder:
         from ....pd_rectangle import PDRectangle
 
         assert self._annot_rect is not None
-        rect = self._annot_rect
-        if rd is None:
-            return PDRectangle.from_xywh(
-                rect.get_lower_left_x(),
-                rect.get_lower_left_y(),
-                rect.get_width(),
-                rect.get_height(),
-            )
-        left_d = max(min_diff, rd.get_lower_left_x())
-        bottom_d = max(min_diff, rd.get_lower_left_y())
-        right_d = max(min_diff, rd.get_upper_right_x())
-        top_d = max(min_diff, rd.get_upper_right_y())
+        rect_left = self._annot_rect.get_lower_left_x()
+        rect_bottom = self._annot_rect.get_lower_left_y()
+        rect_right = self._annot_rect.get_upper_right_x()
+        rect_top = self._annot_rect.get_upper_right_y()
+
+        # Normalize — matches upstream's awkward ordering verbatim.
+        rect_left = min(rect_left, rect_right)
+        rect_bottom = min(rect_bottom, rect_top)
+        rect_right = max(rect_left, rect_right)
+        rect_top = max(rect_bottom, rect_top)
+
+        if rd is not None:
+            rd_left = max(rd.get_lower_left_x(), min_diff)
+            rd_bottom = max(rd.get_lower_left_y(), min_diff)
+            rd_right = max(rd.get_upper_right_x(), min_diff)
+            rd_top = max(rd.get_upper_right_y(), min_diff)
+        else:
+            rd_left = min_diff
+            rd_bottom = min_diff
+            rd_right = min_diff
+            rd_top = min_diff
+
+        rect_left += rd_left
+        rect_bottom += rd_bottom
+        rect_right -= rd_right
+        rect_top -= rd_top
+
         return PDRectangle.from_xywh(
-            rect.get_lower_left_x() + left_d,
-            rect.get_lower_left_y() + bottom_d,
-            rect.get_width() - left_d - right_d,
-            rect.get_height() - bottom_d - top_d,
+            rect_left,
+            rect_bottom,
+            rect_right - rect_left,
+            rect_top - rect_bottom,
         )
 
     def _update_bbox(self, x: float, y: float) -> None:
         """Track the running bbox extents. Mirrors upstream's private
         ``updateBBox`` (CloudyBorder.java:1021)."""
-        if not self._output_started:
-            self._output_started = True
-            self._bbox_min_x = x
-            self._bbox_min_y = y
-            self._bbox_max_x = x
-            self._bbox_max_y = y
-            return
         if x < self._bbox_min_x:
             self._bbox_min_x = x
         if y < self._bbox_min_y:
@@ -218,9 +230,7 @@ class CloudyBorder:
     # ------------------------------------------------------------------
     # public parity surface — mirrors upstream's private static / private
     # helpers under their upstream snake_case names so the parity script
-    # counts them. The bodies are stubs (``# TODO: full implementation``)
-    # for the complex geometry helpers; the simple math helpers (cosine /
-    # sine / get_*_cloud_radius / get_polygon_direction) are real ports.
+    # counts them.
     # ------------------------------------------------------------------
 
     def get_b_box(self) -> PDRectangle:
@@ -264,20 +274,163 @@ class CloudyBorder:
         is_ellipse: bool,
     ) -> None:
         """Mirrors upstream's private ``cloudyRectangleImpl``
-        (CloudyBorder.java:225). TODO: full implementation — converts
-        the rectangle into a closed polygon and dispatches to
-        :meth:`cloudy_polygon_impl`."""
-        # TODO: full implementation
-        _ = (left, bottom, right, top, is_ellipse)
+        (CloudyBorder.java:225). Converts the rectangle into a closed
+        polygon and dispatches to :meth:`cloudy_polygon_impl`."""
+        w = right - left
+        h = top - bottom
+
+        if self._intensity <= 0.0:
+            output = self._output
+            if output is not None and hasattr(output, "add_rect"):
+                output.add_rect(left, bottom, w, h)
+            self._bbox_min_x = left
+            self._bbox_min_y = bottom
+            self._bbox_max_x = right
+            self._bbox_max_y = top
+            return
+
+        if w < 1.0:
+            polygon: list[tuple[float, float]] = [
+                (left, bottom),
+                (left, top),
+                (left, bottom),
+            ]
+        elif h < 1.0:
+            polygon = [(left, bottom), (right, bottom), (left, bottom)]
+        else:
+            polygon = [
+                (left, bottom),
+                (right, bottom),
+                (right, top),
+                (left, top),
+                (left, bottom),
+            ]
+
+        self.cloudy_polygon_impl(polygon, is_ellipse)
 
     def cloudy_polygon_impl(
         self, vertices: list[tuple[float, float]], is_ellipse: bool
     ) -> None:
         """Mirrors upstream's private ``cloudyPolygonImpl``
-        (CloudyBorder.java:279). TODO: full implementation — emits the
-        curl arcs around each polygon edge."""
-        # TODO: full implementation
-        _ = (vertices, is_ellipse)
+        (CloudyBorder.java:279)."""
+        polygon = self.remove_zero_length_segments(list(vertices))
+        # In-place direction adjustment — match upstream semantics by
+        # operating on a mutable list.
+        polygon_list = list(polygon)
+        self.get_positive_polygon(polygon_list)
+        num_points = len(polygon_list)
+
+        if num_points < 2:
+            return
+        if self._intensity <= 0.0:
+            self.move_to(polygon_list[0])
+            for i in range(1, num_points):
+                self.line_to(polygon_list[i])
+            return
+
+        cloud_radius = (
+            self.get_ellipse_cloud_radius()
+            if is_ellipse
+            else self.get_polygon_cloud_radius()
+        )
+        if cloud_radius < 0.5:
+            cloud_radius = 0.5
+
+        k = math.cos(_ANGLE_34_DEG)
+        adv_interm_default = 2 * k * cloud_radius
+        adv_corner_default = k * cloud_radius
+        array = [0.0, 0.0]
+        angle_prev = 0.0
+
+        prev_pt = polygon_list[num_points - 2]
+        first_pt = polygon_list[0]
+        seed_length = math.hypot(
+            first_pt[0] - prev_pt[0], first_pt[1] - prev_pt[1]
+        )
+        n0 = self.compute_params_polygon(
+            adv_interm_default,
+            adv_corner_default,
+            k,
+            cloud_radius,
+            seed_length,
+            array,
+        )
+        alpha_prev = array[0] if n0 == 0 else _ANGLE_34_DEG
+
+        j = 0
+        while j + 1 < num_points:
+            pt = polygon_list[j]
+            pt_next = polygon_list[j + 1]
+            length = math.hypot(pt_next[0] - pt[0], pt_next[1] - pt[1])
+            if length == 0.0:
+                alpha_prev = _ANGLE_34_DEG
+                j += 1
+                continue
+
+            n = self.compute_params_polygon(
+                adv_interm_default,
+                adv_corner_default,
+                k,
+                cloud_radius,
+                length,
+                array,
+            )
+            if n < 0:
+                if not self._output_started:
+                    self.move_to(pt)
+                j += 1
+                continue
+
+            alpha = array[0]
+            dx_off = array[1]
+
+            angle_cur = math.atan2(pt_next[1] - pt[1], pt_next[0] - pt[0])
+            if j == 0:
+                pt_prev = polygon_list[num_points - 2]
+                angle_prev = math.atan2(
+                    pt[1] - pt_prev[1], pt[0] - pt_prev[0]
+                )
+
+            cos_a = self.cosine(pt_next[0] - pt[0], length)
+            sin_a = self.sine(pt_next[1] - pt[1], length)
+            x = pt[0]
+            y = pt[1]
+
+            self.add_corner_curl(
+                angle_prev,
+                angle_cur,
+                cloud_radius,
+                pt[0],
+                pt[1],
+                alpha,
+                alpha_prev,
+                not self._output_started,
+            )
+            # Advance to the center point of the first intermediate curl.
+            adv = 2 * k * cloud_radius + 2 * dx_off
+            x += adv * cos_a
+            y += adv * sin_a
+
+            num_interm = n
+            if n >= 1:
+                self.add_first_intermediate_curl(
+                    angle_cur, cloud_radius, alpha, x, y
+                )
+                x += adv_interm_default * cos_a
+                y += adv_interm_default * sin_a
+                num_interm = n - 1
+
+            template = self.get_intermediate_curl_template(
+                angle_cur, cloud_radius
+            )
+            for _ in range(num_interm):
+                self.output_curl_template(template, x, y)
+                x += adv_interm_default * cos_a
+                y += adv_interm_default * sin_a
+
+            angle_prev = angle_cur
+            alpha_prev = alpha if n == 0 else _ANGLE_34_DEG
+            j += 1
 
     def cloudy_ellipse_impl(
         self,
@@ -287,9 +440,150 @@ class CloudyBorder:
         top_orig: float,
     ) -> None:
         """Mirrors upstream's private ``cloudyEllipseImpl``
-        (CloudyBorder.java:743). TODO: full implementation."""
-        # TODO: full implementation
-        _ = (left_orig, bottom_orig, right_orig, top_orig)
+        (CloudyBorder.java:743)."""
+        if self._intensity <= 0.0:
+            self.draw_basic_ellipse(left_orig, bottom_orig, right_orig, top_orig)
+            return
+
+        left = left_orig
+        bottom = bottom_orig
+        right = right_orig
+        top = top_orig
+        width = right - left
+        height = top - bottom
+        cloud_radius = self.get_ellipse_cloud_radius()
+
+        threshold1 = 0.50 * cloud_radius
+        if width < threshold1 and height < threshold1:
+            self.draw_basic_ellipse(left, bottom, right, top)
+            return
+
+        threshold2 = 5
+        if (width < threshold2 and height > 20) or (
+            width > 20 and height < threshold2
+        ):
+            self.cloudy_rectangle_impl(left, bottom, right, top, True)
+            return
+
+        radius_adj = math.sin(_ANGLE_12_DEG) * cloud_radius - 1.50
+        if width > 2 * radius_adj:
+            left += radius_adj
+            right -= radius_adj
+        else:
+            mid = (left + right) / 2
+            left = mid - 0.10
+            right = mid + 0.10
+        if height > 2 * radius_adj:
+            top -= radius_adj
+            bottom += radius_adj
+        else:
+            mid = (top + bottom) / 2
+            top = mid + 0.10
+            bottom = mid - 0.10
+
+        flat_polygon = self.flatten_ellipse(left, bottom, right, top)
+        num_points = len(flat_polygon)
+        if num_points < 2:
+            return
+
+        tot_len = 0.0
+        for i in range(1, num_points):
+            tot_len += math.hypot(
+                flat_polygon[i][0] - flat_polygon[i - 1][0],
+                flat_polygon[i][1] - flat_polygon[i - 1][1],
+            )
+
+        k = math.cos(_ANGLE_34_DEG)
+        curl_advance = 2 * k * cloud_radius
+        n = int(math.ceil(tot_len / curl_advance))
+        if n < 2:
+            self.draw_basic_ellipse(left_orig, bottom_orig, right_orig, top_orig)
+            return
+
+        curl_advance = tot_len / n
+        cloud_radius = curl_advance / (2 * k)
+
+        if cloud_radius < 0.5:
+            cloud_radius = 0.5
+            curl_advance = 2 * k * cloud_radius
+        elif cloud_radius < 3.0:
+            self.draw_basic_ellipse(left_orig, bottom_orig, right_orig, top_orig)
+            return
+
+        center_points_length = n
+        center_points: list[tuple[float, float]] = []
+        length_remain = 0.0
+        comparison_toler = self._line_width * 0.10
+
+        for i in range(num_points - 1):
+            p1 = flat_polygon[i]
+            p2 = flat_polygon[i + 1]
+            dx = p2[0] - p1[0]
+            dy = p2[1] - p1[1]
+            length = math.hypot(dx, dy)
+            if length == 0.0:
+                continue
+            length_todo = length + length_remain
+            if (
+                length_todo >= curl_advance - comparison_toler
+                or i == num_points - 2
+            ):
+                cos_a = self.cosine(dx, length)
+                sin_a = self.sine(dy, length)
+                d = curl_advance - length_remain
+                while True:
+                    x = p1[0] + d * cos_a
+                    y = p1[1] + d * sin_a
+                    if len(center_points) < center_points_length:
+                        center_points.append((x, y))
+                    length_todo -= curl_advance
+                    d += curl_advance
+                    if not (length_todo >= curl_advance - comparison_toler):
+                        break
+                length_remain = length_todo
+                if length_remain < 0:
+                    length_remain = 0.0
+            else:
+                length_remain += length
+
+        num_points = len(center_points)
+        angle_prev = 0.0
+        alpha_prev = 0.0
+
+        for i in range(num_points):
+            idx_next = i + 1
+            if i + 1 >= num_points:
+                idx_next = 0
+            pt = center_points[i]
+            pt_next = center_points[idx_next]
+
+            if i == 0:
+                pt_prev = center_points[num_points - 1]
+                angle_prev = math.atan2(
+                    pt[1] - pt_prev[1], pt[0] - pt_prev[0]
+                )
+                alpha_prev = self.compute_params_ellipse(
+                    pt_prev, pt, cloud_radius, curl_advance
+                )
+
+            angle_cur = math.atan2(pt_next[1] - pt[1], pt_next[0] - pt[0])
+            alpha = self.compute_params_ellipse(
+                pt, pt_next, cloud_radius, curl_advance
+            )
+
+            self.add_corner_curl(
+                angle_prev,
+                angle_cur,
+                cloud_radius,
+                pt[0],
+                pt[1],
+                alpha,
+                alpha_prev,
+                not self._output_started,
+            )
+
+            angle_prev = angle_cur
+            alpha_prev = alpha
 
     def compute_params_polygon(
         self,
@@ -301,8 +595,7 @@ class CloudyBorder:
         array: list[float],
     ) -> int:
         """Mirrors upstream's private ``computeParamsPolygon``
-        (CloudyBorder.java:398). Real port — used by
-        :meth:`cloudy_polygon_impl`."""
+        (CloudyBorder.java:398)."""
         if length == 0.0:
             array[0] = _ANGLE_34_DEG
             array[1] = 0.0
@@ -344,9 +637,14 @@ class CloudyBorder:
         add_move_to: bool,
     ) -> None:
         """Mirrors upstream's private ``addCornerCurl``
-        (CloudyBorder.java:428). TODO: full implementation."""
-        # TODO: full implementation
-        _ = (angle_prev, angle_cur, radius, cx, cy, alpha, alpha_prev, add_move_to)
+        (CloudyBorder.java:428)."""
+        a = angle_prev + _ANGLE_180_DEG + alpha_prev
+        b = angle_prev + _ANGLE_180_DEG + alpha_prev - math.radians(22)
+        self.get_arc_segment(a, b, cx, cy, radius, radius, None, add_move_to)
+
+        a = b
+        b = angle_cur - alpha
+        self.get_arc(a, b, radius, radius, cx, cy, None, False)
 
     def add_first_intermediate_curl(
         self,
@@ -357,26 +655,70 @@ class CloudyBorder:
         cy: float,
     ) -> None:
         """Mirrors upstream's private ``addFirstIntermediateCurl``
-        (CloudyBorder.java:444). TODO: full implementation."""
-        # TODO: full implementation
-        _ = (angle_cur, r, alpha, cx, cy)
+        (CloudyBorder.java:444)."""
+        a = angle_cur + _ANGLE_180_DEG
+        self.get_arc_segment(
+            a + alpha, a + alpha - _ANGLE_30_DEG, cx, cy, r, r, None, False
+        )
+        self.get_arc_segment(
+            a + alpha - _ANGLE_30_DEG, a + _ANGLE_90_DEG, cx, cy, r, r, None, False
+        )
+        self.get_arc_segment(
+            a + _ANGLE_90_DEG,
+            a + _ANGLE_180_DEG - _ANGLE_34_DEG,
+            cx,
+            cy,
+            r,
+            r,
+            None,
+            False,
+        )
 
     def get_intermediate_curl_template(
         self, angle_cur: float, r: float
     ) -> list[tuple[float, float]]:
         """Mirrors upstream's private ``getIntermediateCurlTemplate``
-        (CloudyBorder.java:458). TODO: full implementation."""
-        # TODO: full implementation
-        _ = (angle_cur, r)
-        return []
+        (CloudyBorder.java:458)."""
+        points: list[tuple[float, float]] = []
+        a = angle_cur + _ANGLE_180_DEG
+
+        self.get_arc_segment(
+            a + _ANGLE_34_DEG, a + _ANGLE_12_DEG, 0.0, 0.0, r, r, points, False
+        )
+        self.get_arc_segment(
+            a + _ANGLE_12_DEG, a + _ANGLE_90_DEG, 0.0, 0.0, r, r, points, False
+        )
+        self.get_arc_segment(
+            a + _ANGLE_90_DEG,
+            a + _ANGLE_180_DEG - _ANGLE_34_DEG,
+            0.0,
+            0.0,
+            r,
+            r,
+            points,
+            False,
+        )
+        return points
 
     def output_curl_template(
         self, template: list[tuple[float, float]], x: float, y: float
     ) -> None:
         """Mirrors upstream's private ``outputCurlTemplate``
-        (CloudyBorder.java:475). TODO: full implementation."""
-        # TODO: full implementation
-        _ = (template, x, y)
+        (CloudyBorder.java:475)."""
+        n = len(template)
+        i = 0
+        if (n % 3) == 1:
+            a = template[0]
+            self.move_to(a[0] + x, a[1] + y)
+            i += 1
+        while i + 2 < n:
+            a = template[i]
+            b = template[i + 1]
+            c = template[i + 2]
+            self.curve_to(
+                a[0] + x, a[1] + y, b[0] + x, b[1] + y, c[0] + x, c[1] + y
+            )
+            i += 3
 
     def reverse_polygon(self, points: list[tuple[float, float]]) -> None:
         """Mirrors upstream's private ``reversePolygon``
@@ -415,9 +757,48 @@ class CloudyBorder:
         add_move_to: bool,
     ) -> None:
         """Mirrors upstream's private ``getArc``
-        (CloudyBorder.java:592). TODO: full implementation."""
-        # TODO: full implementation
-        _ = (start_ang, end_ang, rx, ry, cx, cy, out, add_move_to)
+        (CloudyBorder.java:592)."""
+        angle_incr = math.pi / 2
+        startx = rx * math.cos(start_ang) + cx
+        starty = ry * math.sin(start_ang) + cy
+
+        angle_todo = end_ang - start_ang
+        while angle_todo < 0:
+            angle_todo += 2 * math.pi
+        sweep = angle_todo
+        angle_done = 0.0
+
+        if add_move_to:
+            if out is not None:
+                out.append((startx, starty))
+            else:
+                self.move_to(startx, starty)
+
+        while angle_todo > angle_incr:
+            self.get_arc_segment(
+                start_ang + angle_done,
+                start_ang + angle_done + angle_incr,
+                cx,
+                cy,
+                rx,
+                ry,
+                out,
+                False,
+            )
+            angle_done += angle_incr
+            angle_todo -= angle_incr
+
+        if angle_todo > 0:
+            self.get_arc_segment(
+                start_ang + angle_done,
+                start_ang + sweep,
+                cx,
+                cy,
+                rx,
+                ry,
+                out,
+                False,
+            )
 
     def get_arc_segment(
         self,
@@ -431,20 +812,108 @@ class CloudyBorder:
         add_move_to: bool,
     ) -> None:
         """Mirrors upstream's private ``getArcSegment``
-        (CloudyBorder.java:639). TODO: full implementation."""
-        # TODO: full implementation
-        _ = (start_ang, end_ang, cx, cy, rx, ry, out, add_move_to)
+        (CloudyBorder.java:639). Single Bezier section of an elliptical
+        arc. Sweep angle must not exceed 90 degrees."""
+        cos_a = math.cos(start_ang)
+        sin_a = math.sin(start_ang)
+        cos_b = math.cos(end_ang)
+        sin_b = math.sin(end_ang)
+        denom = math.sin((end_ang - start_ang) / 2.0)
+        if denom == 0.0:
+            if add_move_to:
+                xs = cx + rx * cos_a
+                ys = cy + ry * sin_a
+                if out is not None:
+                    out.append((xs, ys))
+                else:
+                    self.move_to(xs, ys)
+            return
+        bcp = 1.333333333 * (1 - math.cos((end_ang - start_ang) / 2.0)) / denom
+        p1x = cx + rx * (cos_a - bcp * sin_a)
+        p1y = cy + ry * (sin_a + bcp * cos_a)
+        p2x = cx + rx * (cos_b + bcp * sin_b)
+        p2y = cy + ry * (sin_b - bcp * cos_b)
+        p3x = cx + rx * cos_b
+        p3y = cy + ry * sin_b
+
+        if add_move_to:
+            xs = cx + rx * cos_a
+            ys = cy + ry * sin_a
+            if out is not None:
+                out.append((xs, ys))
+            else:
+                self.move_to(xs, ys)
+
+        if out is not None:
+            out.append((p1x, p1y))
+            out.append((p2x, p2y))
+            out.append((p3x, p3y))
+        else:
+            self.curve_to(p1x, p1y, p2x, p2y, p3x, p3y)
 
     @staticmethod
     def flatten_ellipse(
         left: float, bottom: float, right: float, top: float
     ) -> list[tuple[float, float]]:
         """Mirrors upstream's private static ``flattenEllipse``
-        (CloudyBorder.java:705). TODO: full implementation — flatten
-        the ellipse path into a polygon with flatness 0.5."""
-        # TODO: full implementation
-        _ = (left, bottom, right, top)
-        return []
+        (CloudyBorder.java:705). Flatten the ellipse path into a polygon
+        with flatness 0.50.
+
+        Upstream relies on ``java.awt.geom.Ellipse2D.getPathIterator`` to
+        produce the flat polygon. The lite port emulates the same
+        behaviour by stepping around the ellipse in equal-angle
+        increments chosen so the chord-to-arc distance stays under the
+        flatness threshold.
+        """
+        rx = abs(right - left) / 2
+        ry = abs(top - bottom) / 2
+        cx = (left + right) / 2
+        cy = (bottom + top) / 2
+
+        if rx == 0.0 and ry == 0.0:
+            return [(cx, cy)]
+
+        # Chord error for a circular arc of radius r over half-angle h is
+        # r * (1 - cos(h)).  Pick the increment such that max(rx, ry) * (1
+        # - cos(h)) <= flatness.
+        flatness = 0.50
+        r_max = max(rx, ry)
+        if r_max <= flatness:
+            # Tiny ellipse — a single segment is enough.
+            return [
+                (cx + rx, cy),
+                (cx, cy + ry),
+                (cx - rx, cy),
+                (cx, cy - ry),
+                (cx + rx, cy),
+            ]
+        arg = 1.0 - flatness / r_max
+        if arg < -1.0:
+            arg = -1.0
+        if arg > 1.0:
+            arg = 1.0
+        # Half-angle increment.
+        half = math.acos(arg)
+        step = max(2 * half, math.radians(1.0))
+        steps = max(8, int(math.ceil(2 * math.pi / step)))
+        step = 2 * math.pi / steps
+
+        points: list[tuple[float, float]] = []
+        for i in range(steps + 1):
+            theta = i * step
+            x = cx + rx * math.cos(theta)
+            y = cy + ry * math.sin(theta)
+            points.append((x, y))
+
+        # Upstream appends the last point a second time if the polygon
+        # isn't visually closed; do the same.
+        size = len(points)
+        close_test_limit = 0.05
+        if size >= 2 and math.hypot(
+            points[-1][0] - points[0][0], points[-1][1] - points[0][1]
+        ) > close_test_limit:
+            points.append(points[-1])
+        return points
 
     def remove_zero_length_segments(
         self, polygon: list[tuple[float, float]]
@@ -455,12 +924,16 @@ class CloudyBorder:
         if np <= 2:
             return polygon
         toler = 0.50
+        # Upstream skips repeated points but keeps the first / last
+        # vertices (so polygon closure is preserved).
         result: list[tuple[float, float]] = [polygon[0]]
         pt_prev = polygon[0]
         for i in range(1, np):
             pt = polygon[i]
-            if abs(pt[0] - pt_prev[0]) < toler and abs(pt[1] - pt_prev[1]) < toler:
-                # Skip but advance pt_prev so duplicates collapse correctly.
+            if (
+                abs(pt[0] - pt_prev[0]) < toler
+                and abs(pt[1] - pt_prev[1]) < toler
+            ):
                 pt_prev = pt
                 continue
             result.append(pt)
@@ -471,9 +944,12 @@ class CloudyBorder:
         self, left: float, bottom: float, right: float, top: float
     ) -> None:
         """Mirrors upstream's private ``drawBasicEllipse``
-        (CloudyBorder.java:1000). TODO: full implementation."""
-        # TODO: full implementation
-        _ = (left, bottom, right, top)
+        (CloudyBorder.java:1000)."""
+        rx = abs(right - left) / 2
+        ry = abs(top - bottom) / 2
+        cx = (left + right) / 2
+        cy = (bottom + top) / 2
+        self.get_arc(0.0, 2 * math.pi, rx, ry, cx, cy, None, True)
 
     def begin_output(self, x: float, y: float) -> None:
         """Mirrors upstream's private ``beginOutput``
