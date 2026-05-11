@@ -36,5 +36,19 @@ class PDTransitionDirection:
             cls.NONE,
         )
 
+    @classmethod
+    def get_cos_base(cls, direction: int):
+        """Mirror upstream ``getCOSBase()``.
+
+        Returns ``COSName.NONE`` for the ``NONE`` sentinel and a
+        ``COSInteger`` carrying the direction value otherwise.
+        """
+        from pypdfbox.cos.cos_integer import COSInteger
+        from pypdfbox.cos.cos_name import COSName
+
+        if direction == cls.NONE:
+            return COSName.get_pdf_name("None")
+        return COSInteger.get(direction)
+
 
 __all__ = ["PDTransitionDirection"]
