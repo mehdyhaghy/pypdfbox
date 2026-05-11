@@ -23,5 +23,18 @@ class PDTransitionDirection:
     TOP_LEFT_TO_BOTTOM_RIGHT = 315
     NONE = -1
 
+    @classmethod
+    def values(cls) -> tuple[int, ...]:
+        """Mirror Java enum ``values()`` — return all defined directions
+        in declaration order, including the ``NONE`` sentinel."""
+        return (
+            cls.LEFT_TO_RIGHT,
+            cls.BOTTOM_TO_TOP,
+            cls.RIGHT_TO_LEFT,
+            cls.TOP_TO_BOTTOM,
+            cls.TOP_LEFT_TO_BOTTOM_RIGHT,
+            cls.NONE,
+        )
+
 
 __all__ = ["PDTransitionDirection"]

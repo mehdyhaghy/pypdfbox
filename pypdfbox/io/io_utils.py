@@ -17,6 +17,109 @@ if TYPE_CHECKING:
 
 DEFAULT_COPY_BUFFER: int = 8192
 
+
+class IOUtils:
+    """Class-shaped facade mirroring ``org.apache.pdfbox.io.IOUtils``.
+
+    Upstream Java declares ``IOUtils`` as a ``public final class`` with
+    static methods. Python prefers module-level functions, so the canonical
+    implementations live below as module-level callables; this class
+    re-exports them as ``@staticmethod`` for parity with the upstream
+    class shape (callers porting ``IOUtils.copy(...)`` find the expected
+    name).
+    """
+
+    @staticmethod
+    def copy(
+        in_stream: BinaryIO, out_stream: BinaryIO, buffer_size: int = DEFAULT_COPY_BUFFER
+    ) -> int:
+        return copy(in_stream, out_stream, buffer_size)
+
+    @staticmethod
+    def to_byte_array(in_stream: BinaryIO, buffer_size: int = DEFAULT_COPY_BUFFER) -> bytes:
+        return to_byte_array(in_stream, buffer_size)
+
+    @staticmethod
+    def close_quietly(closeable: "_Closeable | None") -> None:
+        close_quietly(closeable)
+
+    @staticmethod
+    def populate_buffer(in_stream: BinaryIO, buffer: bytearray) -> int:
+        return populate_buffer(in_stream, buffer)
+
+    @staticmethod
+    def create_memory_only_stream_cache() -> "StreamCacheCreateFunction":
+        return create_memory_only_stream_cache()
+
+    @staticmethod
+    def create_temp_file_only_stream_cache() -> "StreamCacheCreateFunction":
+        return create_temp_file_only_stream_cache()
+
+    @staticmethod
+    def unmap(buf: object) -> None:
+        unmap(buf)
+
+    @staticmethod
+    def close_and_log_exception(
+        closeable: "_Closeable | None",
+        log_name: str | None = None,
+        resource_name: str | None = None,
+    ) -> None:
+        """Close *closeable* (if any) and log a warning if it raises.
+
+        Mirrors upstream ``IOUtils.closeAndLogException``."""
+        close_and_log_exception(closeable, log_name, resource_name)
+
+    @staticmethod
+    def create_protected_temp_dir() -> Path:
+        """Mirrors upstream ``IOUtils.createProtectedTempDir``."""
+        return create_protected_temp_dir()
+
+    @staticmethod
+    def create_protected_temp_file(
+        prefix: str = "pypdfbox-", suffix: str = ""
+    ) -> Path:
+        """Mirrors upstream ``IOUtils.createProtectedTempFile``."""
+        return create_protected_temp_file(prefix=prefix, suffix=suffix)
+
+    @staticmethod
+    def apply_owner_only_permissions(path: Path, *, is_directory: bool) -> None:
+        """Mirrors upstream private ``IOUtils.applyOwnerOnlyPermissions`` —
+        ensures *path* is owner-only readable/writable."""
+        _apply_owner_only_permissions(path, is_directory=is_directory)
+
+    @staticmethod
+    def register_for_deletion(path: Path) -> None:
+        """Mirrors upstream private ``IOUtils.registerForDeletion`` —
+        schedules *path* for deletion at interpreter shutdown."""
+        _register_for_deletion(path)
+
+    @staticmethod
+    def delete_path_recursively(path: Path) -> None:
+        """Mirrors upstream ``IOUtils.deletePathRecursively`` — best-effort
+        recursive delete that swallows ``OSError`` to mirror Java's
+        ``IOException``-tolerant shutdown hook."""
+        try:
+            if path.is_dir():
+                shutil.rmtree(path, ignore_errors=True)
+            elif path.exists():
+                path.unlink()
+        except OSError:
+            pass
+
+    @staticmethod
+    def new_buffer_cleaner() -> object:
+        """Mirrors upstream ``IOUtils.newBufferCleaner`` — returns a
+        callable that unmaps memory-mapped buffers. Python's ``mmap``
+        objects are released by GC, so this returns :meth:`unmap`."""
+        return IOUtils.unmap
+
+    @staticmethod
+    def unmapper() -> object:
+        """Mirrors upstream ``IOUtils.unmapper`` — alias of
+        :meth:`new_buffer_cleaner`."""
+        return IOUtils.new_buffer_cleaner()
+
 _log = logging.getLogger(__name__)
 
 # Tracks temporary directories created by ``create_protected_temp_dir`` so

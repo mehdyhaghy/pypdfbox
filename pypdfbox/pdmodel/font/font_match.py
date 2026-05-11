@@ -55,6 +55,14 @@ class FontMatch:
             return NotImplemented
         return self.score > other.score
 
+    def compare_to(self, other: FontMatch) -> int:
+        """Mirror upstream ``compareTo`` (Java line 738-741) — return
+        a negative / zero / positive int such that a priority queue
+        pops higher-scoring matches first."""
+        if self.score == other.score:
+            return 0
+        return -1 if self.score > other.score else 1
+
     def __repr__(self) -> str:
         return f"FontMatch(score={self.score!r}, info={self.info!r})"
 
