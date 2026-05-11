@@ -241,28 +241,154 @@ def test_is_strict_parsing_round_trip() -> None:
 # --- skipped placeholders for parity with upstream test list ----------------
 
 
-@pytest.mark.skip(reason="needs PDFBOX-5835.xml fixture + PDFAIdentificationSchema typed accessors")
+PDFBOX_5835_PACKET = (
+    b"<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>\n"
+    b"<?xpacket begin=\"\xef\xbb\xbf\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>"
+    b"<x:xmpmeta xmlns:x=\"adobe:ns:meta/\" x:xmptk=\"FIS/xee\">\n"
+    b" <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\n"
+    b" <rdf:Description xmlns:pdfaid=\"http://www.aiim.org/pdfa/ns/id/\">\n"
+    b"   <pdfaid:part>3</pdfaid:part>\n"
+    b"   <pdfaid:conformance>A</pdfaid:conformance>\n"
+    b" </rdf:Description>\n"
+    b" </rdf:RDF>\n"
+    b"</x:xmpmeta><?xpacket end=\"w\"?>"
+)
+
+
 def test_pdfbox5835() -> None:
-    pass
+    """
+    Translated from upstream ``testPDFBox5835``: a packet that declares
+    ``pdfaid:part`` and ``pdfaid:conformance`` as element-form children (rather
+    than the attribute-form covered by ``testPDFBox5976``) must still surface
+    through the typed :class:`PDFAIdentificationSchema` accessors.
+
+    Upstream loads ``PDFBOX-5835.xml`` from test resources; the inlined packet
+    above is byte-equivalent to the property-bearing subset of that fixture
+    (the surrounding pdfaExtension/schemas declarations the upstream fixture
+    carries are not exercised by the assertions).
+    """
+    xmp = DomXmpParser().parse(PDFBOX_5835_PACKET)
+    schema = xmp.get_pdfa_identification_schema()
+    assert schema is not None
+    assert schema.get_conformance() == "A"
+    assert schema.get_part() == 3
 
 
-@pytest.mark.skip(reason="needs ExifSchema + CFAPatternType (rich type system, not yet ported)")
 def test_exif() -> None:
-    pass
+    """Typed-construction prerequisites for upstream EXIF parser tests.
+
+    Upstream ``DomXmpParserTest`` exercises ``ExifSchema`` + ``CFAPatternType``
+    through full parse round-trips (``testPDFBOX6126`` /
+    ``testNonStandardURIinRDF``). Until the DOM parser builds typed
+    structured-type instances from rdf:Seq/rdf:li children (owned by another
+    agent), this asserts the type-system pieces the parser will rely on:
+    :class:`ExifSchema` and :class:`CFAPatternType` exist, expose the right
+    namespace/prefix metadata, and the structured type is registered with
+    :class:`TypeMapping`.
+    """
+    from pypdfbox.xmpbox import ExifSchema, XMPMetadata
+    from pypdfbox.xmpbox.type import CFAPatternType, TypeMapping
+
+    metadata = XMPMetadata.create_xmp_metadata()
+    assert ExifSchema.NAMESPACE == "http://ns.adobe.com/exif/1.0/"
+    assert ExifSchema.PREFERRED_PREFIX == "exif"
+    cfa = CFAPatternType(metadata)
+    assert cfa.get_namespace() == ExifSchema.NAMESPACE
+    assert cfa.get_prefered_prefix() == "exif"
+    cfa.set_columns(2)
+    cfa.set_rows(2)
+    cfa.add_value(0)
+    cfa.add_value(1)
+    assert cfa.get_columns() == 2
+    assert cfa.get_rows() == 2
+    assert cfa.get_values() == [0, 1]
+    assert TypeMapping(metadata).is_structured_type_known("CFAPattern") is True
 
 
-@pytest.mark.skip(
-    reason="LayerType + PhotoshopSchema typed accessors are ported, but the "
-    "DOM parser does not yet build typed structured-type instances from "
-    "rdf:Seq/rdf:li children — TextLayers parses as a plain list rather than "
-    "an ArrayProperty of LayerType. Un-skip when parser typed-construction lands."
-)
 def test_layer() -> None:
-    pass
+    """Parser builds typed :class:`LayerType` instances inside an
+    :class:`ArrayProperty`.
+
+    Exercises the typed-array dispatch path: ``photoshop:TextLayers`` is
+    registered as a Seq of :class:`LayerType` in the parser's typed-array
+    registry, so its ``rdf:li`` children — which carry
+    ``photoshop:LayerName`` / ``photoshop:LayerText`` as attributes —
+    materialise as :class:`LayerType` instances reachable via
+    :meth:`PhotoshopSchema.get_text_layers`. Mirrors the
+    ``photoshopSchema.getTextLayers()`` assertions embedded in upstream's
+    ``testHistory`` (PDFBox 3.0 ``DomXmpParserTest`` line 422-427).
+    """
+    packet = (
+        '<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?>'
+        '<x:xmpmeta xmlns:x="adobe:ns:meta/">'
+        '<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">'
+        '<rdf:Description rdf:about=""'
+        ' xmlns:photoshop="http://ns.adobe.com/photoshop/1.0/">'
+        "<photoshop:TextLayers>"
+        "<rdf:Seq>"
+        '<rdf:li photoshop:LayerName="Name1" photoshop:LayerText="Text1"/>'
+        '<rdf:li photoshop:LayerName="Name2" photoshop:LayerText="Text2"/>'
+        "</rdf:Seq>"
+        "</photoshop:TextLayers>"
+        "</rdf:Description>"
+        "</rdf:RDF>"
+        "</x:xmpmeta>"
+        '<?xpacket end="w"?>'
+    ).encode("utf-8")
+
+    metadata = DomXmpParser().parse(packet)
+    photoshop = metadata.get_photoshop_schema()
+    assert photoshop is not None
+
+    array = photoshop.get_text_layers_property()
+    assert array is not None
+    # Bag / Seq / Alt collapse to a single Python ``Enum`` alias under
+    # the hood (all share value ``True``), so we only assert it's an
+    # array-flavoured cardinality rather than checking the literal name.
+    assert array.get_array_type().is_array() is True
+
+    layers = photoshop.get_text_layers()
+    assert layers is not None
+    assert len(layers) == 2
+    assert layers[0].get_layer_name() == "Name1"
+    assert layers[0].get_layer_text() == "Text1"
+    assert layers[1].get_layer_name() == "Name2"
+    assert layers[1].get_layer_text() == "Text2"
 
 
-@pytest.mark.skip(
-    reason="needs ResourceEventType / ResourceRefType (rich type system, not yet ported)"
-)
 def test_history() -> None:
-    pass
+    """Typed-construction prerequisites for upstream ``testHistory`` /
+    ``testPDFBox3882_2``.
+
+    Upstream parses a ``xmpMM:History`` Seq populated with
+    :class:`ResourceEventType` entries (action / instanceID / when /
+    softwareAgent fields). The DOM parser does not yet build typed structured
+    children for rdf:Seq members (owned by another agent), so we assert the
+    underlying type ports + :class:`TypeMapping` registration so the parser
+    can construct them when typed-construction lands.
+    """
+    from pypdfbox.xmpbox import XMPMetadata
+    from pypdfbox.xmpbox.type import ResourceEventType, ResourceRefType, TypeMapping
+
+    metadata = XMPMetadata.create_xmp_metadata()
+    event = ResourceEventType(metadata)
+    assert event.get_namespace() == "http://ns.adobe.com/xap/1.0/sType/ResourceEvent#"
+    assert event.get_prefered_prefix() == "stEvt"
+    event.set_action("created")
+    event.set_instance_id("xmp.iid:01801174072068118A6D9A879C818256")
+    event.set_software_agent("Adobe Photoshop CS5 Macintosh")
+    assert event.get_action() == "created"
+    assert event.get_instance_id() == "xmp.iid:01801174072068118A6D9A879C818256"
+    assert event.get_software_agent() == "Adobe Photoshop CS5 Macintosh"
+
+    ref = ResourceRefType(metadata)
+    assert ref.get_namespace() == "http://ns.adobe.com/xap/1.0/sType/ResourceRef#"
+    assert ref.get_prefered_prefix() == "stRef"
+    ref.set_instance_id("xmp.iid:49E997338D4911E1AB62EBF9B374B234")
+    ref.set_document_id("xmp.did:49E997348D4911E1AB62EBF9B374B234")
+    assert ref.get_instance_id() == "xmp.iid:49E997338D4911E1AB62EBF9B374B234"
+    assert ref.get_document_id() == "xmp.did:49E997348D4911E1AB62EBF9B374B234"
+
+    tm = TypeMapping(metadata)
+    assert tm.is_structured_type_known("ResourceEvent") is True
+    assert tm.is_structured_type_known("ResourceRef") is True

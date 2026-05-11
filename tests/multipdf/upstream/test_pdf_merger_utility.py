@@ -196,16 +196,234 @@ def test_merge_bogus_struct_parents_1() -> None: ...
 def test_merge_bogus_struct_parents_2() -> None: ...
 
 
-@pytest.mark.skip(reason="ParentTree numeric-tree mapping deferred")
-def test_parent_tree() -> None: ...
+def test_parent_tree(tmp_path) -> None:
+    """Synthetic equivalent of upstream ``testParentTree``.
+
+    Upstream loads ``PDFBOX-3999-GeneralForbearance.pdf`` (not shipped in
+    pypdfbox) and asserts the page count of ``getNumberTreeAsMap`` matches
+    ``getParentTreeNextKey``. We instead build a synthetic one-page
+    tagged document, write a few ``/StructParents`` keys into the
+    parent-tree's ``/Nums`` leaf, and confirm:
+
+    * :meth:`PDStructureTreeRoot.get_parent_tree` returns a typed
+      :class:`PDStructureElementNumberTreeNode`.
+    * ``PDFMergerUtility.get_number_tree_as_map`` flattens it into the
+      expected ``{key: value}`` mapping.
+    * :meth:`PDStructureTreeRoot.get_parent_tree_next_key` returns the
+      sentinel value (``len(map)`` for a dense allocator-style tree).
+    """
+    from pypdfbox.cos import (
+        COSArray,
+        COSDictionary,
+        COSInteger,
+        COSName,
+    )
+    from pypdfbox.pdmodel.documentinterchange.logicalstructure import (
+        PDStructureElementNumberTreeNode,
+        PDStructureTreeRoot,
+    )
+
+    doc = _build_doc(1)
+    root = PDStructureTreeRoot()
+    doc_dict = COSDictionary()
+    doc_dict.set_item(COSName.get_pdf_name("Type"), COSName.get_pdf_name("StructElem"))
+    doc_dict.set_item(COSName.get_pdf_name("S"), COSName.get_pdf_name("Document"))
+    doc_dict.set_item(COSName.get_pdf_name("P"), root.get_cos_object())
+    root.get_cos_object().set_item(COSName.get_pdf_name("K"), doc_dict)
+
+    # Build a /Nums leaf with three keys (0, 1, 2) each holding a
+    # struct-element dictionary (the value type the parent-tree exposes
+    # via PDParentTreeValue).
+    parent_tree = PDStructureElementNumberTreeNode()
+    nums = COSArray()
+    for key in range(3):
+        elem = COSDictionary()
+        elem.set_item(
+            COSName.get_pdf_name("Type"), COSName.get_pdf_name("StructElem")
+        )
+        elem.set_item(COSName.get_pdf_name("S"), COSName.get_pdf_name("P"))
+        elem.set_item(COSName.get_pdf_name("P"), doc_dict)
+        nums.add(COSInteger.get(key))
+        nums.add(elem)
+    parent_tree.get_cos_object().set_item(COSName.get_pdf_name("Nums"), nums)
+    root.set_parent_tree(parent_tree)
+    root.set_parent_tree_next_key(3)
+    doc.get_document_catalog().set_struct_tree_root(root)
+
+    out = tmp_path / "out.pdf"
+    doc.save(str(out))
+    doc.close()
+
+    with PDDocument.load(str(out)) as reloaded:
+        struct_root = reloaded.get_document_catalog().get_struct_tree_root()
+        pt = struct_root.get_parent_tree()
+        assert pt is not None
+        # Upstream assertion: getValue(0) succeeds (returns first leaf
+        # entry as a typed PDStructureElement-backed COSObjectable).
+        first = pt.get_value(0)
+        assert first is not None
+        flat = PDFMergerUtility.get_number_tree_as_map(pt)
+        assert len(flat) == 3
+        assert max(flat.keys()) + 1 == 3
+        assert min(flat.keys()) == 0
+        assert struct_root.get_parent_tree_next_key() == 3
+        # Each leaf entry is reachable as a wrapped PDParentTreeValue
+        # via get_parent_tree_value (the typed accessor).
+        pv0 = struct_root.get_parent_tree_value(0)
+        assert pv0 is not None
 
 
-@pytest.mark.skip(reason="PDFBOX-5198 Document/Parts structure deferred")
-def test_pdf_box_5198_2() -> None: ...
+def _build_struct_doc_for_5198(num_pages: int = 1):
+    """Build a tagged PDF with the PDF/UA-style /K shape PDFBOX-5198
+    exercises: top-level /K is a single ``/Document`` whose own /K array
+    is a list of per-page ``/Part`` dicts.
+    """
+    from pypdfbox.cos import (
+        COSArray,
+        COSDictionary,
+        COSInteger,
+        COSName,
+    )
+    from pypdfbox.pdmodel.documentinterchange.logicalstructure import (
+        PDStructureTreeRoot,
+    )
+
+    doc = _build_doc(num_pages)
+    root = PDStructureTreeRoot()
+    doc_dict = COSDictionary()
+    doc_dict.set_item(COSName.get_pdf_name("Type"), COSName.get_pdf_name("StructElem"))
+    doc_dict.set_item(COSName.get_pdf_name("S"), COSName.get_pdf_name("Document"))
+    doc_dict.set_item(COSName.get_pdf_name("P"), root.get_cos_object())
+    k_array = COSArray()
+    pages = list(doc.get_pages())
+    for i, page in enumerate(pages):
+        page_cos = page.get_cos_object()
+        page_cos.set_item(
+            COSName.get_pdf_name("StructParents"), COSInteger.get(i)
+        )
+        part = COSDictionary()
+        part.set_item(
+            COSName.get_pdf_name("Type"), COSName.get_pdf_name("StructElem")
+        )
+        part.set_item(COSName.get_pdf_name("S"), COSName.get_pdf_name("Part"))
+        part.set_item(COSName.get_pdf_name("P"), doc_dict)
+        part.set_item(COSName.get_pdf_name("Pg"), page_cos)
+        part.set_item(COSName.get_pdf_name("K"), COSInteger.get(0))
+        k_array.add(part)
+    doc_dict.set_item(COSName.get_pdf_name("K"), k_array)
+    root.get_cos_object().set_item(COSName.get_pdf_name("K"), doc_dict)
+
+    # Minimal parent tree so the merger's offset logic has something to
+    # work with.
+    from pypdfbox.pdmodel.documentinterchange.logicalstructure import (
+        PDStructureElementNumberTreeNode,
+    )
+
+    parent_tree = PDStructureElementNumberTreeNode()
+    nums = COSArray()
+    for i in range(len(pages)):
+        nums.add(COSInteger.get(i))
+        part_for_page = k_array.get_object(i)
+        nums.add(part_for_page)
+    parent_tree.get_cos_object().set_item(COSName.get_pdf_name("Nums"), nums)
+    root.set_parent_tree(parent_tree)
+    root.set_parent_tree_next_key(len(pages))
+
+    doc.get_document_catalog().set_struct_tree_root(root)
+    return doc
 
 
-@pytest.mark.skip(reason="PDFBOX-5198 Document/Parts structure deferred")
-def test_pdf_box_5198_3() -> None: ...
+def _check_pdf_box_5198_parts(merged_path: str) -> None:
+    """Replicate upstream's ``checkParts``: the merged document's
+    top-level /K must be a single ``/Document`` whose /K array contains
+    one ``/Part`` dict per page, all pointing at the Document dict via /P.
+    """
+    from pypdfbox.cos import COSArray, COSDictionary, COSName
+
+    with PDDocument.load(merged_path) as doc:
+        struct_root = doc.get_document_catalog().get_struct_tree_root()
+        top_k = struct_root.get_cos_object().get_dictionary_object(
+            COSName.get_pdf_name("K")
+        )
+        # Upstream's checkParts assumes a single top-level Document dict.
+        # The merger wraps multi-source merges under a fresh /Document
+        # dict — when both sources already each have a /Document at /K,
+        # the destination /K becomes either that fresh wrapper dict or
+        # (depending on the dst /K shape) an array carrying a single
+        # element pointing at it. Normalise: if /K is a singleton array
+        # holding a /Document dict, peel the wrapper.
+        if isinstance(top_k, COSArray) and top_k.size() == 1:
+            inner = top_k.get_object(0)
+            if isinstance(inner, COSDictionary) and inner.get_name(
+                COSName.get_pdf_name("S")
+            ) == "Document":
+                top_k = inner
+        assert isinstance(top_k, COSDictionary)
+        assert top_k.get_name(COSName.get_pdf_name("S")) == "Document"
+        assert (
+            top_k.get_dictionary_object(COSName.get_pdf_name("P"))
+            is struct_root.get_cos_object()
+        )
+        k_array = top_k.get_dictionary_object(COSName.get_pdf_name("K"))
+        assert isinstance(k_array, COSArray)
+        num_pages = doc.get_number_of_pages()
+        assert k_array.size() == num_pages
+        for i in range(k_array.size()):
+            entry = k_array.get_object(i)
+            assert isinstance(entry, COSDictionary)
+            assert entry.get_name(COSName.get_pdf_name("S")) == "Part"
+            assert (
+                entry.get_dictionary_object(COSName.get_pdf_name("P"))
+                is top_k
+            )
+
+
+def test_pdf_box_5198_2(tmp_path) -> None:
+    """Synthetic equivalent of upstream ``testPDFBox5198_2``.
+
+    Upstream merges two ``PDFA3A.pdf`` copies and asserts the merged
+    /StructTreeRoot's /K is a single /Document whose /K array is one
+    /Part dict per page. We reproduce the same merge with synthetic
+    tagged PDFs and run the upstream ``checkParts`` shape check.
+    """
+    a = tmp_path / "a.pdf"
+    b = tmp_path / "b.pdf"
+    out = tmp_path / "out.pdf"
+
+    src_a = _build_struct_doc_for_5198(1)
+    src_a.save(str(a))
+    src_a.close()
+    src_b = _build_struct_doc_for_5198(1)
+    src_b.save(str(b))
+    src_b.close()
+
+    util = PDFMergerUtility()
+    util.add_sources([str(a), str(b)])
+    util.set_destination_file_name(str(out))
+    util.merge_documents()
+
+    _check_pdf_box_5198_parts(str(out))
+
+
+def test_pdf_box_5198_3(tmp_path) -> None:
+    """Synthetic equivalent of upstream ``testPDFBox5198_3`` (three-way
+    merge variant)."""
+    a = tmp_path / "a.pdf"
+    b = tmp_path / "b.pdf"
+    c = tmp_path / "c.pdf"
+    out = tmp_path / "out.pdf"
+
+    for path in (a, b, c):
+        src = _build_struct_doc_for_5198(1)
+        src.save(str(path))
+        src.close()
+
+    util = PDFMergerUtility()
+    util.add_sources([str(a), str(b), str(c)])
+    util.set_destination_file_name(str(out))
+    util.merge_documents()
+
+    _check_pdf_box_5198_parts(str(out))
 
 
 @pytest.mark.skip(reason="Splitter-side tests live with the splitter port")

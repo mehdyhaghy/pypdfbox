@@ -614,6 +614,9 @@ Not yet ported (need `TTFParser` / `TrueTypeCollection` / `TTFSubsetter` — fon
 | `tests/fixtures/fontbox/cmap/CMapMalformedbfrange1` | `fontbox/src/test/resources/cmap/CMapMalformedbfrange1` | 3.0.x |
 | `tests/fixtures/fontbox/cmap/CMapMalformedbfrange2` | `fontbox/src/test/resources/cmap/CMapMalformedbfrange2` | 3.0.x |
 | `tests/fixtures/fontbox/cmap/Identitybfrange` | `fontbox/src/test/resources/cmap/Identitybfrange` | 3.0.x |
+| `tests/fixtures/pdmodel/with_outline.pdf` | `pdfbox/src/test/resources/org/apache/pdfbox/pdmodel/with_outline.pdf` | 3.0.x |
+| `tests/fixtures/pdmodel/page_tree_multiple_levels.pdf` | `pdfbox/src/test/resources/org/apache/pdfbox/pdmodel/page_tree_multiple_levels.pdf` | 3.0.x |
+| `tests/fixtures/pdfparser/PDFBOX-6041-example.pdf` | `pdfbox/src/test/resources/org/apache/pdfbox/pdfparser/PDFBOX-6041-example.pdf` | 3.0.x |
 
 ### `tests/pdmodel/upstream/`
 
@@ -622,7 +625,7 @@ Not yet ported (need `TTFParser` / `TrueTypeCollection` / `TTFSubsetter` — fon
 | `tests/pdmodel/upstream/test_pd_document.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/TestPDDocument.java` (`testVersions` partial — auto-bump-on-save deferred to font / encryption clusters; `testSaveArabicLocale` skipped — Java-locale-specific) |
 | `tests/pdmodel/upstream/test_pd_document_catalog.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/PDDocumentCatalogTest.java` (page-labels, malformed page-labels, page count, output-intents, malformed open-action boolean, and null threads covered with fixture-free synthetic documents) |
 | `tests/pdmodel/upstream/test_pd_page.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/PDPageTest.java` (annotation pre-add and null thread-bead cases active with fixture-free synthetic coverage; remaining fixture-dependent cases still deferred) |
-| `tests/pdmodel/upstream/test_pd_page_tree.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/PDPageTreeTest.java` (node-loop case covered with a fixture-free synthetic page-tree cycle; cases requiring `with_outline.pdf` / `page_tree_multiple_levels.pdf` fixtures skipped) |
+| `tests/pdmodel/upstream/test_pd_page_tree.py` | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/PDPageTreeTest.java` (full upstream parity: `with_outline.pdf` / `page_tree_multiple_levels.pdf` fixtures bundled under `tests/fixtures/pdmodel/`; node-loop case covered with a fixture-free synthetic page-tree cycle) |
 
 ### `tests/contentstream/upstream/`
 

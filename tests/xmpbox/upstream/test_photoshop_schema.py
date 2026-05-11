@@ -17,8 +17,11 @@ from __future__ import annotations
 import pytest
 
 from pypdfbox.xmpbox import (
+    ArrayProperty,
+    Cardinality,
     DateType,
     IntegerType,
+    LayerType,
     PhotoshopSchema,
     ProperNameType,
     TextType,
@@ -294,26 +297,113 @@ def test_random_property_setter_simple(
     assert getattr(schema, getter_name)() is field
 
 
-@pytest.mark.skip(reason="PhotoshopSchema has no array-cardinality simple parameter rows")
-def test_setting_value_in_array() -> None:
-    pass
+# ---------------------------------------------------------------------------
+# *InArray rows — upstream ``SchemaTester.internalTest*InArray`` returns early
+# for ``cardinality == Simple``. PhotoshopSchema's upstream parameter set is
+# Simple-only, so the upstream tests are no-ops there; but the schema does
+# carry two genuine array properties outside that parameter set —
+# ``DocumentAncestors`` (Bag of Text) and ``TextLayers`` (Seq of LayerType).
+# Cluster #1 covers those array properties here, mirroring the upstream
+# ``*InArray`` contracts (multi-value append preserves order, the typed
+# ``*Property`` accessor returns a populated ``ArrayProperty``) against the
+# two array-shaped local-names the schema actually exposes.
+# ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(reason="PhotoshopSchema has no array-cardinality simple parameter rows")
-def test_random_setting_value_in_array() -> None:
-    pass
+def test_setting_value_in_array(metadata: XMPMetadata) -> None:
+    """
+    Translated from upstream ``SchemaTester.testSettingValueInArray``: append
+    a string to the ``DocumentAncestors`` Bag and verify it is retrievable
+    via the bag-list accessor. Upstream's parameterised driver short-circuits
+    on Cardinality.Simple, so for PhotoshopSchema this exercises the only
+    Bag-of-Text property the schema declares.
+    """
+    schema = PhotoshopSchema(metadata)
+    schema.add_document_ancestors("uuid:first")
+    schema.add_document_ancestors("uuid:second")
+    assert schema.get_document_ancestors() == ["uuid:first", "uuid:second"]
 
 
-@pytest.mark.skip(reason="PhotoshopSchema has no array-cardinality simple parameter rows")
-def test_property_setter_in_array() -> None:
-    pass
+def test_random_setting_value_in_array(metadata: XMPMetadata) -> None:
+    """
+    Translated from upstream ``testRandomSettingValueInArray``: upstream loops
+    ``RAND_LOOP_COUNT`` (50) random values through the bag-add accessor. We
+    substitute a deterministic three-value sample so the test stays
+    reproducible while still exercising the "multi-add preserves ordering"
+    contract.
+    """
+    schema = PhotoshopSchema(metadata)
+    values = ["uuid:a", "uuid:b", "uuid:c"]
+    for value in values:
+        schema.add_document_ancestors(value)
+    assert schema.get_document_ancestors() == values
 
 
-@pytest.mark.skip(reason="PhotoshopSchema has no array-cardinality simple parameter rows")
-def test_random_property_setter_in_array() -> None:
-    pass
+def test_property_setter_in_array(metadata: XMPMetadata) -> None:
+    """
+    Translated from upstream ``SchemaTester.testPropertySetterInArray``:
+    after appending a value via the bag-add accessor, the typed
+    ``getXxxProperty`` round-trip yields a populated :class:`ArrayProperty`.
+    For PhotoshopSchema this exercises the ``DocumentAncestors`` array.
+    """
+    schema = PhotoshopSchema(metadata)
+    schema.add_document_ancestors("uuid:first")
+    bag = schema.get_document_ancestors_property()
+    assert isinstance(bag, ArrayProperty)
+    children = bag.get_all_properties()
+    assert len(children) == 1
+    schema.add_document_ancestors("uuid:second")
+    bag2 = schema.get_document_ancestors_property()
+    assert isinstance(bag2, ArrayProperty)
+    assert len(bag2.get_all_properties()) == 2
 
 
-@pytest.mark.skip(reason="random sampling collapsed into deterministic typed variant above")
-def test_random_setter_simple() -> None:
-    pass
+def test_random_property_setter_in_array(metadata: XMPMetadata) -> None:
+    """
+    Translated from upstream ``testRandomPropertySetterInArray``: same
+    typed-array round-trip with a few sample values. Cluster #1 substitutes a
+    deterministic two-layer sample for the ``TextLayers`` Seq (the other
+    array-shaped property the schema declares) so both array slots are
+    covered. Upstream uses ``LayerType`` here when ``Types.Layer`` enters
+    the parameter set.
+    """
+    schema = PhotoshopSchema(metadata)
+    schema.add_text_layers("Layer 1", "First layer text")
+    schema.add_text_layers("Layer 2", "Second layer text")
+    seq = schema.get_text_layers_property()
+    assert isinstance(seq, ArrayProperty)
+    assert seq.get_array_type() == Cardinality.Seq
+    layers = seq.get_all_properties()
+    assert len(layers) == 2
+    assert all(isinstance(layer, LayerType) for layer in layers)
+    assert layers[0].get_layer_name() == "Layer 1"
+    assert layers[1].get_layer_text() == "Second layer text"
+
+
+@pytest.mark.parametrize(("field_name", "type_token", "card"), _PARAMETERS)
+def test_random_setter_simple(
+    metadata: XMPMetadata, field_name: str, type_token: str, card: str
+) -> None:
+    """
+    Translated from upstream ``testRandomSetterSimple``: upstream loops
+    ``RAND_LOOP_COUNT`` (50) random values through the string-form simple
+    setter, asserting both the typed property store and the string getter
+    round-trip the assigned value. Cluster #1 substitutes a small deterministic
+    sequence so the test stays reproducible while still exercising the same
+    contract.
+
+    Upstream excludes ``Urgency`` / ``ColorMode`` (Integer return type !=
+    String parameter) and ``DateCreated`` (random Calendar is not the
+    String-form setter's expected input). We mirror that exclusion.
+    """
+    del card
+    if field_name in {"Urgency", "ColorMode", "DateCreated"}:
+        pytest.skip("upstream excludes return-type-mismatched fields from this round")
+    schema = PhotoshopSchema(metadata)
+    getter_name, setter_name = _ACCESSORS[field_name]
+    samples = (_sample_value(type_token), "another-value-2", "another-value-3")
+    for value in samples:
+        getattr(schema, setter_name)(value)
+        assert getattr(schema, getter_name)() == _expected_read_back(type_token, value)
+        # Stored under the upstream constant local-name.
+        assert schema.get_property(field_name) is not None

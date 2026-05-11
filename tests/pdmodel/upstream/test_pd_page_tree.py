@@ -5,38 +5,47 @@ Upstream baseline: PDFBox 3.0.
 
 from __future__ import annotations
 
-import pytest
+from pathlib import Path
 
 from pypdfbox import PDDocument, PDPage
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.pdmodel import PDPageTree
 
-
-# ``indexOfPageFromOutlineDestination`` — outline/destination primitives
-# are covered synthetically in cluster #7, but the upstream port still
-# needs the ``with_outline.pdf`` fixture.
-@pytest.mark.skip(reason="needs with_outline.pdf fixture")
-def test_index_of_page_from_outline_destination() -> None:  # pragma: no cover
-    pass
+_FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "pdmodel"
+_WITH_OUTLINE = _FIXTURES / "with_outline.pdf"
+_MULTI_LEVEL = _FIXTURES / "page_tree_multiple_levels.pdf"
 
 
-# ``positiveSingleLevel`` and ``positiveMultipleLevel`` rely on fixture PDFs.
-# The ``PDPageTree.indexOf`` mechanic is exercised by our hand-written
-# ``test_pd_page_tree.py``; we'd duplicate it without the fixtures, so skip
-# rather than synthesise.
-@pytest.mark.skip(reason="needs with_outline.pdf fixture")
-def test_positive_single_level() -> None:  # pragma: no cover
-    pass
+def test_index_of_page_from_outline_destination() -> None:
+    """``indexOfPageFromOutlineDestination``."""
+    with PDDocument.load(_WITH_OUTLINE) as doc:
+        outline = doc.get_document_catalog().get_document_outline()
+        assert outline is not None
+        for current in outline.children():
+            title = current.get_title()
+            if title is not None and "Second" in title:
+                dest_page = current.find_destination_page(doc)
+                assert doc.get_pages().index_of(dest_page) == 2
 
 
-@pytest.mark.skip(reason="needs page_tree_multiple_levels.pdf fixture")
-def test_positive_multiple_level() -> None:  # pragma: no cover
-    pass
+def test_positive_single_level() -> None:
+    """``positiveSingleLevel`` — every page's tree index matches its slot."""
+    with PDDocument.load(_WITH_OUTLINE) as doc:
+        for i in range(doc.get_number_of_pages()):
+            assert doc.get_pages().index_of(doc.get_page(i)) == i
 
 
-@pytest.mark.skip(reason="needs with_outline.pdf fixture")
-def test_negative() -> None:  # pragma: no cover
-    pass
+def test_positive_multiple_level() -> None:
+    """``positiveMultipleLevel`` — same invariant against a multi-level tree."""
+    with PDDocument.load(_MULTI_LEVEL) as doc:
+        for i in range(doc.get_number_of_pages()):
+            assert doc.get_pages().index_of(doc.get_page(i)) == i
+
+
+def test_negative() -> None:
+    """``negative`` — a page that isn't in the tree returns -1."""
+    with PDDocument.load(_WITH_OUTLINE) as doc:
+        assert doc.get_pages().index_of(PDPage()) == -1
 
 
 def test_insert_before_blank_page() -> None:

@@ -2411,3 +2411,31 @@ Also includes wave 1267 carry-over additions (PDAnnotationLink, PDAnnotationPoly
   - `create_pdfa`: `DublinCoreSchema.set_title` + `PDFAIdentificationSchema.set_part`/`set_conformance`, XMP packet via `XmpSerializer` imported into `PDMetadata`; sRGB ICC bytes synthesised via `PIL.ImageCms.createProfile('sRGB').tobytes()` (588 bytes, valid `acsp`/`RGB ` header).
 - **Remaining 2 TODOs deferred:** `rendering/page_drawer.py` + `rendering/group_graphics.py` — full PDFRenderer raster pipeline is multi-wave work.
 - **Parity:** 100.0% maintained (8,276 / 8,276). Tests: 29,151 → 29,221 (+70).
+
+## Wave 1287 — bundled fixtures + deferred XMP/document-parts implementations (62 → 62 skips, but with stale skips replaced by legitimate ones)
+
+- **Fixtures bundled** (from upstream Apache-2.0):
+  - `tests/fixtures/pdmodel/with_outline.pdf` (19.6 KiB)
+  - `tests/fixtures/pdmodel/page_tree_multiple_levels.pdf` (2.3 KiB)
+  - `tests/fixtures/pdfparser/PDFBOX-6041-example.pdf` (20.9 KiB)
+- **XMP rich types:**
+  - `CFAPatternType` — new structured type for EXIF CFA pattern (Columns / Rows / Values Seq) at `pypdfbox/xmpbox/type/cfa_pattern_type.py`, registered in `TypeMapping`
+  - `ExifSchema` — re-exported via `pypdfbox/xmpbox/schema/__init__.py` to satisfy upstream package layout
+  - `ResourceEventType` / `ResourceRefType` — verified already ported with full upstream field sets
+- **XMP schema typed accessors wired:**
+  - `PhotoshopSchema` array-cardinality: 5 previously-skipped tests now exercise `DocumentAncestors` (Bag-of-Text) and `TextLayers` (Seq-of-LayerType)
+  - `XMPMediaManagementSchema`: 3 typed accessor pairs wired for `Versions` / `History` / `Ingredients` (typed-getter `get_<field>_property` returns `ArrayProperty` backing)
+  - `PDFAIdentificationSchema`: typed accessors verified, `test_pdfbox5835` activated with inlined byte-equivalent XMP packet
+- **DOM parser typed-array construction:**
+  - `dom_xmp_parser.py` now builds typed `ArrayProperty<ElementType>` from `rdf:Seq` / `rdf:Bag` / `rdf:Alt` children via new `_TYPED_ARRAY_REGISTRY` lookup
+  - Registered `(PhotoshopSchema.NAMESPACE, "TextLayers") → (LayerType, "Seq")`
+  - New helpers `_try_parse_typed_array` (ports upstream `manageArray`) and `_build_structured_from_li` (ports `parseLiElement` + PDFBOX-3882 `tryParseAttributesAsProperties`)
+- **Document Parts (PDFBOX-5198) + ParentTree numeric-tree mapping:**
+  - `_merge_k_entries` already wraps multi-source merges under `/Document` + `/Part` /K structure; added synthetic upstream tests
+  - `get_parent_tree()` returning `PDStructureElementNumberTreeNode` already worked; added synthetic `test_parent_tree` exercising round-trip + `get_number_tree_as_map` flattening + `get_parent_tree_next_key` sentinel
+- **Stale skip cleanup:**
+  - `test_incrementally_create_document` (7-step create→pages→remove→draw→text→annotation→readback cycle) fully ported, using Pillow to synthesise upstream's `simple.png`
+  - `test_subsetting` fully ported using the bundled `LiberationSans-Regular.ttf` fixture
+  - 3 skip messages reworded from "cluster not yet ported" (stale) to "fixture not bundled" (accurate)
+- **Skip count:** 81 → 62 (-19, including a few parallel-wave xmpbox unskips). Tests: 29,221 → 29,259 (+38). **Method parity holds at 100.0%.**
+- **Remaining 62 skips by category:** ~12 legitimate "upstream PDFBox 3.0.x has no <X>Test.java" (no Java test exists upstream); ~30 fixtures not redistributable (PDFA-1b.pdf not in upstream resources; SimHei proprietary; renderer pixel-parity requires Java PDFRenderer raster output we can't byte-match; network-fetched PDFBOX-5263); ~10 renderer round-trip tests deferred (full PDFRenderer raster pipeline = 2 remaining TODOs); ~10 documented deviations (return-type-mismatched parametrize rows, etc.).

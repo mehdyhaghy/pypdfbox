@@ -121,7 +121,9 @@ def test_pdfbox_5945_size_matches_highest_object_number() -> None:
 # ---------- skipped upstream cases ----------------------------------------
 
 
-@pytest.mark.skip(reason="requires multipdf PageExtractor (deferred cluster)")
+@pytest.mark.skip(
+    reason="needs PDFBOX-3110-poems-beads.pdf fixture; PageExtractor port is ready"
+)
 def test_pdfbox_5485() -> None:
     """Re-save a page subset extracted via ``PageExtractor``."""
 

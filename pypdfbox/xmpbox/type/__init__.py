@@ -24,8 +24,10 @@ from .abstract_structured_type import AbstractStructuredType
 from .agent_name_type import AgentNameType
 from .array_property import ArrayProperty, Cardinality
 from .boolean_type import BooleanType
+from .cfa_pattern_type import CFAPatternType
 from .choice_type import ChoiceType
 from .colorant_type import ColorantType
+from .complex_property_container import ComplexPropertyContainer
 from .date_type import DateType
 from .dimensions_type import DimensionsType
 from .font_type import FontType
@@ -49,7 +51,6 @@ from .real_type import RealType
 from .rendition_class_type import RenditionClassType
 from .resource_event_type import ResourceEventType
 from .resource_ref_type import ResourceRefType
-from .complex_property_container import ComplexPropertyContainer
 from .text_type import TextType
 from .thumbnail_type import ThumbnailType
 from .type_mapping import TypeMapping
@@ -68,6 +69,7 @@ __all__ = [
     "ArrayProperty",
     "Attribute",
     "BooleanType",
+    "CFAPatternType",
     "Cardinality",
     "ChoiceType",
     "ColorantType",

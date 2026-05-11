@@ -14,6 +14,12 @@ from .pdfa_identification_schema import PDFAIdentificationSchema
 from .pdfua_identification_schema import PDFUAIdentificationSchema
 from .photoshop_schema import PhotoshopSchema
 from .tiff_schema import TiffSchema
+from .type import (
+    AbstractStructuredType,
+    ArrayProperty,
+    Cardinality,
+    LayerType,
+)
 from .xmp_basic_schema import XMPBasicSchema
 from .xmp_media_management_schema import XMPMediaManagementSchema
 from .xmp_metadata import RDF_NAMESPACE, XMPMetadata
@@ -81,6 +87,39 @@ class XmpParsingException(ValueError):
 # XML namespace constants used by the parser.
 _RDF_NS = RDF_NAMESPACE
 _XML_NS = "http://www.w3.org/XML/1998/namespace"
+
+# Built-in typed-array element registry.
+#
+# Mirrors upstream ``TypeMapping#getStructuredTypeName`` /
+# ``PropertyType(card = Seq, type = Layer)`` lookups: when an
+# ``rdf:Bag`` / ``rdf:Seq`` / ``rdf:Alt`` lives under a known
+# ``(namespace, property-local-name)`` slot whose typed element class is
+# registered here, the parser builds typed ``AbstractStructuredType``
+# instances out of the ``rdf:li`` children and stores them inside an
+# :class:`ArrayProperty` (with the appropriate cardinality), exactly the
+# way upstream ``manageArray`` + ``parseLiElement`` would.
+#
+# Keys are ``(schema namespace URI, property local-name)``; values are
+# ``(element class, cardinality)``. The element class must subclass
+# :class:`AbstractStructuredType` and expose a ``_FIELD_TYPES`` mapping
+# so :meth:`AbstractStructuredType.add_simple_property` knows how to wrap
+# each child value. Unknown slots fall through to the legacy plain-list
+# / plain-dict representation.
+# The cardinality string is the literal name (``"Bag"`` / ``"Seq"`` /
+# ``"Alt"``) rather than a :class:`Cardinality` enum member because the
+# enum's ``Bag`` / ``Seq`` / ``Alt`` members share the same value
+# (``True``) — Python collapses them into a single canonical alias,
+# losing the per-flavour name lookup. The literal string survives that
+# collapse.
+_TYPED_ARRAY_REGISTRY: dict[
+    tuple[str, str], tuple[type[AbstractStructuredType], str]
+] = {
+    (PhotoshopSchema.NAMESPACE, PhotoshopSchema.TEXT_LAYERS): (
+        LayerType,
+        "Seq",
+    ),
+}
+
 
 # Built-in schema dispatch table: namespace URI -> XMPSchema subclass.
 _SCHEMA_REGISTRY: dict[str, type[XMPSchema]] = {
@@ -391,6 +430,23 @@ class DomXmpParser:
                 ns, local, desc, metadata, per_ns, about, namespace_prefixes
             )
             self._validate_strict_property(schema, ns, local)
+            # Typed-array path: if this (namespace, local-name) slot has a
+            # registered structured element type, port upstream
+            # ``manageArray`` + ``parseLiElement`` and install an
+            # :class:`ArrayProperty` of typed instances on the schema. Falls
+            # back to the legacy plain-list / plain-dict path when no entry
+            # is registered or the element shape doesn't match.
+            typed_array = self._try_parse_typed_array(child, ns, local, schema)
+            if typed_array is not None:
+                typed_array.set_property_name(local)
+                # ``ArrayProperty`` does not expose ``get_value`` so the
+                # generic ``XMPSchema.add_property`` duck-typing path
+                # rejects it. Write through the internal slot directly,
+                # matching the way typed setters (e.g.
+                # ``PhotoshopSchema.set_text_layers_property``) install an
+                # array under the upstream local name.
+                schema._properties[local] = typed_array  # noqa: SLF001
+                continue
             parsed_value = self._parse_property_value(child)
             self._assign(schema, local, parsed_value)
 
@@ -463,6 +519,118 @@ class DomXmpParser:
 
         # Simple text value.
         return (element.text or "").strip()
+
+    def _try_parse_typed_array(
+        self,
+        element: ET.Element,
+        ns: str,
+        local: str,
+        schema: XMPSchema,
+    ) -> ArrayProperty | None:
+        """
+        If ``(ns, local)`` matches a registered typed-array slot, port
+        upstream ``manageArray`` + ``parseLiElement``: build an
+        :class:`ArrayProperty` of typed
+        :class:`AbstractStructuredType` instances out of the contained
+        ``rdf:li`` children and return it. Returns ``None`` when the slot
+        is not registered, the element does not enclose a
+        ``Bag``/``Seq``/``Alt`` container, or no ``rdf:li`` children are
+        present (so the legacy plain-list code path can take over).
+        """
+        entry = _TYPED_ARRAY_REGISTRY.get((ns, local))
+        if entry is None:
+            return None
+        element_cls, cardinality_name = entry
+        container = self._find_rdf_container(element)
+        if container is None:
+            return None
+        container_ns, container_local = _strip_qname(container.tag)
+        if container_ns != _RDF_NS:
+            return None
+        if container_local != cardinality_name:
+            # Upstream raises FORMAT in strict mode; we silently fall back
+            # to the plain-list code path because the parsed value still
+            # round-trips for callers that don't reach for the typed view.
+            return None
+        lis = list(container.findall(f"{{{_RDF_NS}}}li"))
+        if not lis:
+            return None
+        # Map the canonical cardinality-name string back to the right
+        # :class:`Cardinality` member. The enum collapses Bag/Seq/Alt
+        # into a single alias under the hood — :func:`getattr` here
+        # always returns the canonical (Bag) member but that is fine for
+        # the array's :meth:`is_array` semantics; the cardinality-name
+        # is what callers introspect (``get_array_type().name``).
+        cardinality = getattr(Cardinality, cardinality_name)
+        array = ArrayProperty(
+            schema.get_metadata(),
+            ns,
+            getattr(schema, "_prefix", None),
+            local,
+            cardinality,
+        )
+        for li in lis:
+            instance = self._build_structured_from_li(li, element_cls, schema)
+            if instance is not None:
+                array.add_property(instance)
+        return array
+
+    def _build_structured_from_li(
+        self,
+        li: ET.Element,
+        element_cls: type[AbstractStructuredType],
+        schema: XMPSchema,
+    ) -> AbstractStructuredType | None:
+        """
+        Build a typed structured-type instance from a single ``rdf:li``
+        element. Mirrors upstream ``parseLiElement`` for the simple
+        attribute-only / nested-rdf:Description forms used by
+        Photoshop-style typed arrays.
+
+        Attribute-form (PDFBOX-3882):
+        ``<rdf:li photoshop:LayerName="..." photoshop:LayerText="..."/>``
+        — each non-RDF / non-XML attribute populates the matching field
+        on the structured-type instance.
+
+        Element-form: a nested ``rdf:Description`` (or bare element-form
+        fields) — same as upstream's ``parseLiDescription``: each child
+        element whose local-name is a known field is set on the instance.
+        """
+        instance = element_cls(schema.get_metadata())
+        field_types = getattr(element_cls, "_FIELD_TYPES", {})
+
+        # Attribute-form fields.
+        for qname, value in li.attrib.items():
+            attr_ns, attr_local = _strip_qname(qname)
+            if attr_ns in (_RDF_NS, _XML_NS):
+                continue
+            if attr_local in field_types:
+                instance.add_simple_property(attr_local, value)
+
+        # Element-form fields. Honor a nested ``rdf:Description`` wrapper
+        # (PDFBOX-6126) — fall through to its children, also picking up
+        # the wrapper's attribute-form fields.
+        children = list(li)
+        if len(children) == 1:
+            inner_ns, inner_local = _strip_qname(children[0].tag)
+            if inner_ns == _RDF_NS and inner_local == "Description":
+                description = children[0]
+                for qname, value in description.attrib.items():
+                    attr_ns, attr_local = _strip_qname(qname)
+                    if attr_ns in (_RDF_NS, _XML_NS):
+                        continue
+                    if attr_local in field_types:
+                        instance.add_simple_property(attr_local, value)
+                children = list(description)
+        for child in children:
+            child_ns, child_local = _strip_qname(child.tag)
+            if child_ns == _RDF_NS:
+                continue
+            if child_local in field_types:
+                text = (child.text or "").strip()
+                instance.add_simple_property(child_local, text)
+
+        return instance
 
     @staticmethod
     def _find_rdf_container(element: ET.Element) -> ET.Element | None:

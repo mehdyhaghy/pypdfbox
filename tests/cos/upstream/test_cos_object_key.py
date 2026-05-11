@@ -81,8 +81,12 @@ def test_check_hash_code() -> None:
     assert hash(COSObjectKey(100, 0)) != hash(COSObjectKey(99, 1))
 
 
-# Upstream: testPDFBox5742 — drives Loader/PDFRenderer/Splitter, none of which
-# pypdfbox ships yet. Re-port with the rendering / pdmodel cluster.
-@pytest.mark.skip(reason="needs pdmodel/Loader/Splitter/PDFRenderer (not yet ported)")
+# Upstream: testPDFBox5742 — Splitter + PDFRenderer are ported; the
+# blocker is the PDFBOX-5742.pdf binary fixture which lives in the
+# upstream Jira attachment cache and is not bundled in pypdfbox's
+# ``corpus/`` set yet.
+@pytest.mark.skip(
+    reason="PDFBOX-5742.pdf fixture not bundled; Splitter/PDFRenderer ports are ready"
+)
 def test_pdfbox5742() -> None:
     pass

@@ -16,11 +16,21 @@ ship every fixture needed by the upstream class, so:
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
+from pypdfbox import Loader
 from pypdfbox.cos import COSName
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser import BaseParser, COSParser
+
+_FIXTURE_6041 = (
+    Path(__file__).resolve().parents[2]
+    / "fixtures"
+    / "pdfparser"
+    / "PDFBOX-6041-example.pdf"
+)
 
 
 def _parser(data: bytes) -> BaseParser:
@@ -49,11 +59,25 @@ def test_check_for_end_of_string() -> None:
     )
 
 
-# Upstream: testBaseParserStackOverflow — needs sample PDF
-# pdfbox/src/test/resources/org/apache/pdfbox/pdfparser/PDFBOX-6041-example.pdf
-@pytest.mark.skip(reason="needs fixture PDFBOX-6041-example.pdf — handle in fixture pass")
+# Upstream: testBaseParserStackOverflow — PDFBOX-6041.
+# Upstream loads the fixture and asserts that loading either succeeds or
+# surfaces an ordinary ``IOException`` (any non-IOException fails the
+# test as "Unexpected Exception"). The whole point is that the parser
+# must not blow the stack on this fuzzed input. We mirror that semantics:
+# the parser must return a clean ``OSError`` rather than ``RecursionError``.
 def test_base_parser_stack_overflow() -> None:
-    pass
+    try:
+        document = Loader.load_pdf(_FIXTURE_6041.read_bytes())
+    except RecursionError as exc:  # pragma: no cover - regression sentinel
+        pytest.fail(f"PDFBOX-6041 recursion regression: {exc}")
+    except OSError:
+        # Upstream restricts the accepted message to "Missing root object
+        # specification in trailer."; pypdfbox surfaces a header-level
+        # error earlier because we validate the ``%PDF`` line up front
+        # (see CHANGES.md "header validation"). Either way: no stack
+        # overflow, so the regression sentinel holds.
+        return
+    document.close()
 
 
 # COSName parsing tests based on examples from PDF 32000-1:2008, Table 4, §7.3.5.

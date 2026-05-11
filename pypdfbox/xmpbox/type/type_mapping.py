@@ -9,6 +9,7 @@ from .abstract_structured_type import AbstractStructuredType
 from .agent_name_type import AgentNameType
 from .array_property import ArrayProperty, Cardinality
 from .boolean_type import BooleanType
+from .cfa_pattern_type import CFAPatternType
 from .choice_type import ChoiceType
 from .colorant_type import ColorantType
 from .date_type import DateType
@@ -76,6 +77,7 @@ _STRUCTURED: dict[str, type[AbstractStructuredType]] = {
     "Thumbnail": ThumbnailType,
     "Layer": LayerType,
     "Job": JobType,
+    "CFAPattern": CFAPatternType,
     "PDFAField": PDFAFieldType,
     "PDFAProperty": PDFAPropertyType,
     "PDFASchema": PDFASchemaType,

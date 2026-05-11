@@ -15,6 +15,7 @@ import pytest
 
 from pypdfbox.xmpbox import (
     AgentNameType,
+    ArrayProperty,
     IntegerType,
     RenditionClassType,
     TextType,
@@ -94,19 +95,19 @@ _ACCESSORS: dict[str, tuple[str, str, str | None, str | None]] = {
     "Versions": (
         "get_versions_string_list",
         "add_versions",
-        None,
+        "get_versions_property",
         None,
     ),
     "History": (
         "get_history_string_list",
         "add_history",
-        None,
+        "get_history_property",
         None,
     ),
     "Ingredients": (
         "get_ingredients_string_list",
         "add_ingredients",
-        None,
+        "get_ingredients_property",
         None,
     ),
 }
@@ -197,10 +198,32 @@ def test_set_then_get_typed_form(
     properties; array-cardinality rows reuse the string-flavour Bag/Seq path
     in pypdfbox (no setXxxProperty in the upstream class itself).
     """
-    _, _, typed_getter, typed_setter = _ACCESSORS[field_name]
-    if typed_getter is None or typed_setter is None:
+    string_getter, string_setter, typed_getter, typed_setter = _ACCESSORS[field_name]
+    if typed_getter is None:
         pytest.skip(f"no typed accessor pair for {field_name}")
     if card != "Simple":
+        # Array-cardinality rows: upstream declares no ``setXxxProperty`` for
+        # ``Versions`` / ``History`` / ``Ingredients`` (only the read accessor
+        # ``ArrayProperty getXxxProperty()``). Append a value via the
+        # string-form ``addXxx`` and verify the typed read accessor either
+        # returns a populated :class:`ArrayProperty` (when the schema stores
+        # bags/seqs typed) or ``None`` when cluster #1's plain-list backing is
+        # in use — in which case the string-flavour accessor must surface the
+        # value. Either form must round-trip the appended sample.
+        sample = _sample_value(type_token)
+        getattr(schema, string_setter)(sample)
+        typed_result = getattr(schema, typed_getter)()
+        if typed_result is None:
+            # pypdfbox cluster #1 keeps the plain-list backing for upstream
+            # parity divergence; the string-flavour accessor surfaces the
+            # appended value.
+            assert getattr(schema, string_getter)() == [sample]
+        else:
+            assert isinstance(typed_result, ArrayProperty)
+            children = typed_result.get_all_properties()
+            assert len(children) >= 1
+        return
+    if typed_setter is None:
         pytest.skip(f"typed setXxxProperty not declared upstream for {field_name}")
     value = _sample_value(type_token)
     type_cls = _TYPED_CLASS[type_token]
