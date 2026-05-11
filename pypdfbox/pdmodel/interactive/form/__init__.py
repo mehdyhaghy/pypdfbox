@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+from .appearance_generator_helper import AppearanceGeneratorHelper
+from .appearance_style import AppearanceStyle
+from .builder import Builder
+from .field_iterator import FieldIterator
+from .field_utils import FieldUtils
+from .key_value import KeyValue
+from .paragraph import Line, Paragraph
 from .pd_acro_form import PDAcroForm
 from .pd_appearance_generator import PDAppearanceGenerator
 from .pd_button import PDButton
@@ -18,8 +25,20 @@ from .pd_terminal_field import PDFieldStub, PDTerminalField
 from .pd_text_field import PDTextField
 from .pd_variable_text import PDVariableText
 from .pd_xfa_resource import PDXFAResource
+from .plain_text import PlainText
+from .plain_text_formatter import PlainTextFormatter
+from .scripting_handler import ScriptingHandler
+from .text_align import TextAlign
+from .word import Word
 
 __all__ = [
+    "AppearanceGeneratorHelper",
+    "AppearanceStyle",
+    "Builder",
+    "FieldIterator",
+    "FieldUtils",
+    "KeyValue",
+    "Line",
     "PDAcroForm",
     "PDAppearanceGenerator",
     "PDButton",
@@ -39,4 +58,10 @@ __all__ = [
     "PDTextField",
     "PDVariableText",
     "PDXFAResource",
+    "Paragraph",
+    "PlainText",
+    "PlainTextFormatter",
+    "ScriptingHandler",
+    "TextAlign",
+    "Word",
 ]

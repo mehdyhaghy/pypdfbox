@@ -8,6 +8,7 @@ from .mac_os_roman_encoding import MacOSRomanEncoding
 from .mac_roman_encoding import MacRomanEncoding
 from .standard_encoding import StandardEncoding
 from .symbol_encoding import SymbolEncoding
+from .type1_encoding import Type1Encoding
 from .win_ansi_encoding import WinAnsiEncoding
 from .zapf_dingbats_encoding import ZapfDingbatsEncoding
 
@@ -20,6 +21,7 @@ __all__ = [
     "MacRomanEncoding",
     "StandardEncoding",
     "SymbolEncoding",
+    "Type1Encoding",
     "WinAnsiEncoding",
     "ZapfDingbatsEncoding",
 ]

@@ -1556,3 +1556,21 @@ New `type4` subpackage ported from upstream `org.apache.pdfbox.pdmodel.common.fu
 | `tests/fontbox/ttf/upstream/test_true_type_font_collection.py` | `TrueTypeFontCollectionTest.java` |
 | `tests/fontbox/ttf/gsub/upstream/test_compound_character_tokenizer.py` | `gsub/CompoundCharacterTokenizerTest.java` |
 | `tests/fontbox/ttf/gsub/upstream/test_glyph_array_splitter_regex_impl.py` | `gsub/GlyphArraySplitterRegexImplTest.java` |
+
+### Wave 1280 additions
+
+Six subsystem clusters ported in 92 new modules. Library-first throughout (Pillow / fontTools / stdlib / jbig2-parser). Upstream PDFBox 3.0.x. Modules grouped by package; upstream Java paths are the obvious mirror of the snake_case Python paths (e.g. `pypdfbox/pdmodel/graphics/shading/axial_shading_context.py` ← `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/AxialShadingContext.java`). See `.parity/parity.json` for the full method-by-method audit.
+
+**`pdmodel.graphics.shading/` (25):** axial_shading_context, axial_shading_paint, coons_patch, cubic_bezier_curve, gouraud_shading_context, int_point, line, patch, patch_meshes_shading_context, pd_mesh_based_shading_type, pd_triangle_based_shading_type, radial_shading_context, radial_shading_paint, shaded_triangle, shading_context, shading_paint, tensor_patch, triangle_based_shading_context, type1_shading_context, type1_shading_paint, type4_shading_paint, type5_shading_paint, type6_shading_paint, type7_shading_paint, vertex.
+
+**`pdmodel/interactive/annotation/handlers/` (17):** cloudy_border, pd_caret_appearance_handler, pd_circle_appearance_handler, pd_file_attachment_appearance_handler, pd_free_text_appearance_handler, pd_highlight_appearance_handler, pd_ink_appearance_handler, pd_line_appearance_handler, pd_link_appearance_handler, pd_polygon_appearance_handler, pd_polyline_appearance_handler, pd_sound_appearance_handler, pd_square_appearance_handler, pd_squiggly_appearance_handler, pd_strikeout_appearance_handler, pd_text_appearance_handler, pd_underline_appearance_handler.
+
+**`filter/` (14):** ascii85_input_stream, ascii85_output_stream, ccitt_fax_decoder_stream, ccitt_fax_encoder_stream, crypt_filter, decode_options, final_decode_options, flate_filter_decoder_stream, jbig2_filter, jpx_filter, node, predictor, predictor_output_stream, tree.
+
+**`pdmodel/font/` (15):** cid_system_info, file_system_font_provider, font_cache, font_mapper_impl, font_match, fs_font_info, pd_cid_font_type2_embedder, pd_true_type_font_embedder, pd_type1_font_embedder, subsetter, to_unicode_writer, true_type_embedder, uni_util, vertical_displacement_range, encoding/type1_encoding.
+
+**`pdmodel/interactive/form/` (12):** appearance_generator_helper, appearance_style, builder, field_iterator, field_utils, key_value, paragraph, plain_text, plain_text_formatter, scripting_handler, text_align, word.
+
+**`contentstream/operator/graphics/` (12):** append_rectangle_to_path, clip_even_odd_rule, clip_non_zero_rule, close_fill_even_odd_and_stroke_path, close_fill_non_zero_and_stroke_path, end_path, fill_even_odd_and_stroke_path, fill_even_odd_rule, fill_non_zero_and_stroke_path, fill_non_zero_rule, graphics_operator_processor, legacy_fill_non_zero_rule.
+
+Upstream JUnit test ports (where they exist): `tests/pdmodel/font/test_to_unicode_writer.py` ← `TestToUnicodeWriter.java`.
