@@ -2386,3 +2386,28 @@ Also includes wave 1267 carry-over additions (PDAnnotationLink, PDAnnotationPoly
 - **examples.pdmodel ports (4 demos now fully callable):** `print_urls` (PDFTextStripperByArea regions), `embedded_files` (PDComplexFileSpecification + name-tree), `superimpose_page` (LayerUtility.import_page_as_form), `add_javascript` (PDActionJavaScript + set_open_action).
 - **Remaining 20 TODOs documented as out-of-scope blockers:** 13 example demos depend on external font fixtures (LiberationSans, Lohit-Bengali, IPA Gothic, batang.ttc) or XMPBox accessor surfaces still in flight; 2 in rendering require full PageDrawer (multi-wave work); 1 each in `pd_signature` (full PKI chain trust), `predictor_encoder` (COSStream builder hook), `gsub_worker_factory` (upstream notes redesign), `instruction_sequence_builder` (PostScript radix numbers), `import_fdf` (mirror of upstream's `setNeedAppearances` workaround).
 - **Parity:** 100.0% maintained (8,276 / 8,276). Tests: 29,017 → 29,151 (+134).
+
+## Wave 1286 — last functional TODOs closed (20 → 2)
+
+- **Engine + wiring (5):**
+  - `GsubWorkerFactory`: redesigned multi-script dispatch — walks all `script_list` keys against `Language` enum's script-tag tuples; multi-script fonts now route by what they actually carry, with explicit-hint matching taking precedence.
+  - `InstructionSequenceBuilder`: implements PostScript radix literals (`base#digits`, base 2-36) per PLRM §3.3.2. Closes upstream TODO at `InstructionSequenceBuilder.java:83`.
+  - `PDSignature`: full PKCS#7 verification — hand-rolled DER walker for `SignedAttributes`, PyCA `cryptography` for RSA/EC sig math + hash construction; new `trust_roots` kwarg drives manual issuer-name → issuer-key chain walk.
+  - `PredictorEncoder.prepare_predictor_pd_image`: full `PDImageXObject` build with `/DecodeParms { Predictor 15, Columns, Colors, BitsPerComponent }` and color-space inference from PIL channel count.
+  - `ImportFDF`: confirmed upstream's `setNeedAppearances(true)` workaround still needed (pypdfbox's `AppearanceGeneratorHelper` doesn't auto-trigger from `acro_form.import_fdf`); expanded the rationale comment.
+- **Examples ported to fully-callable (13 demos):**
+  - `extract_metadata`: wired to `xmpbox` `DublinCoreSchema` / `AdobePDFSchema` / `XMPBasicSchema` with `PDDocumentInformation` fallback when no `/Metadata` stream.
+  - `add_metadata_from_doc_info`: populates schemas from `PDDocumentInformation` and writes `PDMetadata` (XMP packet rendered via inline minidom template walking `_properties` storage since `XmpSerializer.get_all_properties` returns primitives).
+  - `show_text_with_positioning`: Standard-14 Helvetica replaces LiberationSans TTF; demonstrates `show_text_with_positioning` + `set_word_spacing` operators.
+  - `rubber_stamp_with_image`: `PDImageXObject.create_from_byte_array` from inline PNG bytes + `PDFormXObject` + `PDAppearanceDictionary/Stream`.
+  - `create_gradient_shading_pdf`: `PDShadingType2/3/4` + `PDFunctionType2` Gouraud mesh hand-built into COSStream (1-flag + 2-uint16 + 3-uint8 per vertex).
+  - `create_patterns_pdf`: `PDTilingPattern` (colored + uncolored) + `PDPattern` with operators written directly to backing COSStream (`PDPatternContentStream` not yet ported).
+  - `add_annotations`: 8 annotations including `PDAnnotationHighlight` with quad-points + opacity, `PDAnnotationLink` × 2 (URI + GoTo with `PDPageFitWidthDestination`), `PDAnnotationCircle`/`Square` with `PDBorderStyleDictionary`, `PDAnnotationLine` with `LE_OPEN_ARROW` + caption, `PDAnnotationFreeText` (callout intent), `PDAnnotationPolygon`. `/Helv` default-resources via `PDAcroForm`.
+  - `create_separation_color_box`: `PDSeparation` with `[/Separation /Gold /DeviceRGB <fn>]` + `PDFunctionType2` tint transform mapping `(1,1,1) → (1,1,0)`.
+  - `embedded_fonts`: end-to-end with Standard-14 Helvetica fallback (LiberationSans TTF not bundled); upstream-faithful via `demo_with_font(out, ttf_path)` helper for user TTF.
+  - `embedded_vertical_fonts` / `embedded_multiple_fonts`: full `demo_with_font(s)` helpers mirroring upstream's font loads; `main()` raises clear `NotImplementedError` only when ipag.ttf / batang.ttc / mingliu.ttc absent.
+  - `bengali_pdf_generation_hello_world`: full layout reflow with Helvetica fallback when Lohit-Bengali absent; `[skipped]` placeholder on encode failures keeps output well-formed.
+  - `create_portable_collection`: full `/Collection` schema (Schema/Sort/View dicts), 3 fields, 2 embedded files with `/CI` entries, attached via `PDDocumentNameDictionary` + `PDEmbeddedFilesNameTreeNode`.
+  - `create_pdfa`: `DublinCoreSchema.set_title` + `PDFAIdentificationSchema.set_part`/`set_conformance`, XMP packet via `XmpSerializer` imported into `PDMetadata`; sRGB ICC bytes synthesised via `PIL.ImageCms.createProfile('sRGB').tobytes()` (588 bytes, valid `acsp`/`RGB ` header).
+- **Remaining 2 TODOs deferred:** `rendering/page_drawer.py` + `rendering/group_graphics.py` — full PDFRenderer raster pipeline is multi-wave work.
+- **Parity:** 100.0% maintained (8,276 / 8,276). Tests: 29,151 → 29,221 (+70).

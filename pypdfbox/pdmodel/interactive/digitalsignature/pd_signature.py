@@ -2,11 +2,409 @@ from __future__ import annotations
 
 import datetime as _dt
 import hashlib
+from typing import TYPE_CHECKING
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
 
 from .pd_prop_build import PDPropBuild
 from .signature_validation_result import SignatureValidationResult
+
+if TYPE_CHECKING:  # pragma: no cover — typing only
+    from cryptography.x509 import Certificate
+
+# --------------------------------------------------------------------- DER helpers
+#
+# Wave 1286: closes the upstream-parity TODO at the bottom of
+# :meth:`PDSignature.verify`. The PyCA ``cryptography`` package exposes a
+# high-level PKCS#7 *builder* but no high-level *verifier* — full PKCS#7
+# signature math (the "signature over signed-attributes" RFC 5652 §5.4
+# computation) and chain-trust validation have to be wired by hand
+# against ``cryptography.x509`` primitives. The helpers below stay
+# private to this module; they are intentionally minimal — just enough
+# to find the SignerInfo, recover the signed-attrs blob and verify it.
+
+
+def _read_der_length(buf: bytes, offset: int) -> tuple[int, int]:
+    """Decode a DER length starting at ``offset``. Returns ``(length, n_bytes)``.
+
+    Duplicated from :mod:`.sig_utils` so this module stays
+    import-light (sig_utils pulls in the COS layer for unrelated MDP
+    helpers). Indefinite-length form (``0x80``) is rejected — DER
+    forbids it. Raises :class:`ValueError` on malformed input.
+    """
+    if offset >= len(buf):
+        raise ValueError("DER length: unexpected EOF")
+    first = buf[offset]
+    if first < 0x80:
+        return first, 1
+    if first == 0x80:
+        raise ValueError("DER forbids indefinite-length form")
+    n = first & 0x7F
+    if n == 0 or offset + 1 + n > len(buf):
+        raise ValueError("DER length: truncated long form")
+    length = 0
+    for b in buf[offset + 1 : offset + 1 + n]:
+        length = (length << 8) | b
+    return length, 1 + n
+
+
+def _read_der_tlv(buf: bytes, offset: int) -> tuple[int, int, int, int]:
+    """Read a TLV at ``offset``. Returns ``(tag, header_len, body_offset, body_len)``.
+
+    ``header_len`` is the byte count of tag + length encoding;
+    ``body_offset`` = ``offset + header_len``; ``body_len`` is the
+    payload length. Total TLV length is ``header_len + body_len``.
+    """
+    if offset >= len(buf):
+        raise ValueError("DER TLV: unexpected EOF")
+    tag = buf[offset]
+    length, n_bytes = _read_der_length(buf, offset + 1)
+    header_len = 1 + n_bytes
+    body_offset = offset + header_len
+    if body_offset + length > len(buf):
+        raise ValueError("DER TLV: body overruns buffer")
+    return tag, header_len, body_offset, length
+
+
+def _walk_signer_info(pkcs7_der: bytes) -> dict[str, bytes] | None:
+    """Walk a DER-encoded PKCS#7 / CMS ``SignedData`` blob and return the
+    fields needed to verify the signer-info signature.
+
+    Returns a dict with the following bytes-valued keys (all DER-encoded
+    fragments / OID payloads / signature bytes), or ``None`` when the
+    blob is not shaped like a SignedData with a single SignerInfo:
+
+    - ``signed_attrs_set``: the ``signedAttributes`` value re-encoded as
+      a ``SET OF`` (tag ``0x31``) — this is the byte sequence RFC 5652
+      §5.4 requires the signature to be verified against.
+    - ``signature``: the raw signature OCTET STRING payload.
+    - ``digest_algo_oid``: the OID body of the ``digestAlgorithm``.
+    - ``signature_algo_oid``: the OID body of the ``signatureAlgorithm``.
+
+    The walker is permissive: any structural mismatch returns ``None``
+    instead of raising. Callers treat ``None`` as "couldn't perform full
+    PKCS#7 verification" and fall back to the digest-match check.
+    """
+    try:
+        # ContentInfo ::= SEQUENCE { contentType OID, content [0] EXPLICIT … }
+        tag, _, body, body_len = _read_der_tlv(pkcs7_der, 0)
+        if tag != 0x30:  # SEQUENCE
+            return None
+        # contentType OID
+        oid_tag, _, oid_body, oid_len = _read_der_tlv(pkcs7_der, body)
+        if oid_tag != 0x06:
+            return None
+        # content [0] EXPLICIT
+        cursor = oid_body + oid_len
+        c_tag, _, c_body, c_len = _read_der_tlv(pkcs7_der, cursor)
+        if c_tag != 0xA0:
+            return None
+        # SignedData SEQUENCE inside
+        sd_tag, _, sd_body, sd_len = _read_der_tlv(pkcs7_der, c_body)
+        if sd_tag != 0x30:
+            return None
+        sd_end = sd_body + sd_len
+        cursor = sd_body
+        # version INTEGER
+        v_tag, _, v_body, v_len = _read_der_tlv(pkcs7_der, cursor)
+        if v_tag != 0x02:
+            return None
+        cursor = v_body + v_len
+        # digestAlgorithms SET OF AlgorithmIdentifier
+        da_tag, _, da_body, da_len = _read_der_tlv(pkcs7_der, cursor)
+        if da_tag != 0x31:
+            return None
+        cursor = da_body + da_len
+        # encapContentInfo SEQUENCE
+        eci_tag, _, eci_body, eci_len = _read_der_tlv(pkcs7_der, cursor)
+        if eci_tag != 0x30:
+            return None
+        cursor = eci_body + eci_len
+        # OPTIONAL: certificates [0] IMPLICIT, crls [1] IMPLICIT
+        while cursor < sd_end:
+            peek_tag = pkcs7_der[cursor]
+            if peek_tag in (0xA0, 0xA1):
+                _, _, opt_body, opt_len = _read_der_tlv(pkcs7_der, cursor)
+                cursor = opt_body + opt_len
+                continue
+            if peek_tag == 0x31:
+                break  # signerInfos SET
+            return None
+        # signerInfos SET OF SignerInfo
+        if cursor >= sd_end or pkcs7_der[cursor] != 0x31:
+            return None
+        si_tag, _, si_body, si_len = _read_der_tlv(pkcs7_der, cursor)
+        # Take the first SignerInfo (PDF signatures carry exactly one).
+        first_tag, _, first_body, first_len = _read_der_tlv(pkcs7_der, si_body)
+        if first_tag != 0x30:
+            return None
+        first_end = first_body + first_len
+        cursor = first_body
+        # version INTEGER
+        sv_tag, _, sv_body, sv_len = _read_der_tlv(pkcs7_der, cursor)
+        if sv_tag != 0x02:
+            return None
+        cursor = sv_body + sv_len
+        # sid: SignerIdentifier — IssuerAndSerialNumber (SEQUENCE 0x30) or
+        # subjectKeyIdentifier (tagged [0] IMPLICIT, 0x80). Skip its TLV.
+        _sid_tag, _, sid_body, sid_len = _read_der_tlv(pkcs7_der, cursor)
+        cursor = sid_body + sid_len
+        # digestAlgorithm AlgorithmIdentifier ::= SEQUENCE { OID, params }
+        diga_tag, _, diga_body, diga_len = _read_der_tlv(pkcs7_der, cursor)
+        if diga_tag != 0x30:
+            return None
+        diga_oid_tag, _, diga_oid_body, diga_oid_len = _read_der_tlv(
+            pkcs7_der, diga_body
+        )
+        if diga_oid_tag != 0x06:
+            return None
+        digest_algo_oid = pkcs7_der[diga_oid_body : diga_oid_body + diga_oid_len]
+        cursor = diga_body + diga_len
+        # OPTIONAL: signedAttrs [0] IMPLICIT SET OF Attribute
+        signed_attrs_set: bytes | None = None
+        if cursor < first_end and pkcs7_der[cursor] == 0xA0:
+            sa_tag, _, sa_body, sa_len = _read_der_tlv(pkcs7_der, cursor)
+            # Re-encode as ``SET OF`` (0x31) per RFC 5652 §5.4: signature
+            # is computed over the SET-tagged DER, not the IMPLICIT tag.
+            # We rebuild the length encoding ourselves to mirror DER's
+            # short/long-form rules — copying the original header would
+            # only work for short-form lengths.
+            payload = pkcs7_der[sa_body : sa_body + sa_len]
+            signed_attrs_set = b"\x31" + _encode_der_length(sa_len) + payload
+            cursor = sa_body + sa_len
+        # signatureAlgorithm
+        siga_tag, _, siga_body, siga_len = _read_der_tlv(pkcs7_der, cursor)
+        if siga_tag != 0x30:
+            return None
+        siga_oid_tag, _, siga_oid_body, siga_oid_len = _read_der_tlv(
+            pkcs7_der, siga_body
+        )
+        if siga_oid_tag != 0x06:
+            return None
+        signature_algo_oid = pkcs7_der[siga_oid_body : siga_oid_body + siga_oid_len]
+        cursor = siga_body + siga_len
+        # signature OCTET STRING
+        sig_tag, _, sig_body, sig_len = _read_der_tlv(pkcs7_der, cursor)
+        if sig_tag != 0x04:
+            return None
+        signature = pkcs7_der[sig_body : sig_body + sig_len]
+
+        if signed_attrs_set is None:
+            return None
+        return {
+            "signed_attrs_set": signed_attrs_set,
+            "signature": signature,
+            "digest_algo_oid": digest_algo_oid,
+            "signature_algo_oid": signature_algo_oid,
+        }
+    except (ValueError, IndexError):
+        return None
+
+
+def _encode_der_length(length: int) -> bytes:
+    """Encode ``length`` in DER short/long form."""
+    if length < 0:
+        raise ValueError("DER length must be non-negative")
+    if length < 0x80:
+        return bytes([length])
+    body: list[int] = []
+    n = length
+    while n:
+        body.insert(0, n & 0xFF)
+        n >>= 8
+    if len(body) > 0x7F:
+        raise ValueError("DER length too large to encode")
+    return bytes([0x80 | len(body), *body])
+
+
+# Map digest-algorithm OIDs (RFC 5754 / RFC 8017) to PyCA hash objects.
+# We only enumerate the algorithms PDF signatures use in practice (SHA-1
+# through SHA-512). Anything else returns ``None`` from
+# :func:`_hash_for_oid` and the signature-math step bails out.
+# Note: OIDs below are the *DER bodies* (without the leading tag/length).
+_DIGEST_OID_HEX_TO_HASH: dict[str, str] = {
+    "2b0e03021a": "SHA1",  # 1.3.14.3.2.26
+    "608648016503040201": "SHA256",  # 2.16.840.1.101.3.4.2.1
+    "608648016503040202": "SHA384",  # 2.16.840.1.101.3.4.2.2
+    "608648016503040203": "SHA512",  # 2.16.840.1.101.3.4.2.3
+    "608648016503040204": "SHA224",  # 2.16.840.1.101.3.4.2.4
+}
+
+
+def _hash_for_oid(oid_body: bytes) -> object | None:
+    """Look up a PyCA ``hashes.HashAlgorithm`` instance for an OID body."""
+    try:
+        from cryptography.hazmat.primitives import hashes
+    except ImportError:  # pragma: no cover — install-time guard
+        return None
+    name = _DIGEST_OID_HEX_TO_HASH.get(oid_body.hex())
+    if name is None:
+        return None
+    return getattr(hashes, name)()
+
+
+def _verify_signed_attrs_signature(
+    certificate: Certificate,
+    signed_attrs_set_der: bytes,
+    signature: bytes,
+    digest_algo_oid: bytes,
+    signature_algo_oid: bytes,
+) -> tuple[bool, str | None]:
+    """Verify ``signature`` against ``signed_attrs_set_der`` using
+    ``certificate.public_key()``.
+
+    Returns ``(ok, error_message)``. ``ok`` is ``True`` iff the
+    signature math passes; ``error_message`` is ``None`` on success or a
+    short diagnostic on failure / unsupported algorithm.
+    """
+    try:
+        from cryptography.exceptions import InvalidSignature
+        from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
+    except ImportError:  # pragma: no cover — install-time guard
+        return False, "cryptography is required for PKCS#7 verification"
+
+    digest_hash = _hash_for_oid(digest_algo_oid)
+    if digest_hash is None:
+        return False, f"unsupported digest algorithm OID {digest_algo_oid.hex()}"
+
+    public_key = certificate.public_key()
+
+    # RSA: the signatureAlgorithm OID can be either
+    #   1.2.840.113549.1.1.1 (rsaEncryption — "raw" RSA, PKCS#1 v1.5 with
+    #     the digest algorithm taken from ``digestAlgorithm``), or
+    #   1.2.840.113549.1.1.{5,11,12,13,14} (RSA-with-SHA1/256/384/512/224
+    #     — PKCS#1 v1.5 with digest baked into the OID).
+    # In both cases we verify with PKCS#1 v1.5 padding plus ``digest_hash``.
+    rsa_oid_hex_prefix = "2a864886f70d0101"  # 1.2.840.113549.1.1
+    ec_oid_hex_prefix = "2a8648ce3d04"  # 1.2.840.10045.4 (ECDSA)
+    sig_oid_hex = signature_algo_oid.hex()
+
+    try:
+        if isinstance(public_key, rsa.RSAPublicKey) and sig_oid_hex.startswith(
+            rsa_oid_hex_prefix
+        ):
+            public_key.verify(
+                signature,
+                signed_attrs_set_der,
+                padding.PKCS1v15(),
+                digest_hash,  # type: ignore[arg-type]
+            )
+            return True, None
+        if isinstance(
+            public_key, ec.EllipticCurvePublicKey
+        ) and sig_oid_hex.startswith(ec_oid_hex_prefix):
+            public_key.verify(
+                signature,
+                signed_attrs_set_der,
+                ec.ECDSA(digest_hash),  # type: ignore[arg-type]
+            )
+            return True, None
+    except InvalidSignature:
+        return False, "signature math over signed-attributes failed"
+    except (ValueError, TypeError) as exc:
+        return False, f"signature verification raised: {exc}"
+
+    return False, (
+        f"unsupported signature algorithm: key={type(public_key).__name__} "
+        f"oid={sig_oid_hex}"
+    )
+
+
+def _verify_chain_trust(
+    signer_certificate: Certificate,
+    embedded_certs: list[Certificate],
+    trust_roots: list[Certificate],
+) -> tuple[bool, str | None]:
+    """Walk from ``signer_certificate`` up to a member of ``trust_roots``.
+
+    Implementation note: ``cryptography.x509.verification.PolicyBuilder``
+    exposes only ``ServerVerifier`` / ``ClientVerifier`` builders (TLS
+    server / client name binding), which are inappropriate for PDF
+    document-signing chains (no DNS / IP / email subject alternative
+    name to bind against). We therefore do a structural walk by hand:
+    follow ``issuer``-name chains, verify each non-self-signed link's
+    signature with the issuer's public key, and stop when the current
+    cert is signed by a member of ``trust_roots``.
+
+    Caller passes an explicit list of trusted root certs — there is no
+    implicit system-store lookup (system stores vary by platform and
+    pulling them in would require ``certifi`` / ``truststore`` deps).
+    Use the empty-list shortcut when no chain trust is wanted.
+
+    Returns ``(ok, error_message)``.
+    """
+    if not trust_roots:
+        return False, "no trust roots supplied — chain trust skipped"
+
+    # Build an issuer-name → cert index covering embedded + roots.
+    intermediates: dict[bytes, Certificate] = {}
+    for c in (*embedded_certs, *trust_roots):
+        intermediates[c.subject.public_bytes()] = c
+    root_subjects = {r.subject.public_bytes() for r in trust_roots}
+
+    current = signer_certificate
+    # Walk at most len(intermediates)+1 steps to avoid pathological loops.
+    for _ in range(len(intermediates) + 1):
+        issuer_name = current.issuer.public_bytes()
+        # Self-signed: only trusted if it IS one of the roots.
+        if issuer_name == current.subject.public_bytes():
+            if issuer_name in root_subjects:
+                # Verify self-signature for completeness.
+                ok, _ = _verify_cert_signature(current, current)
+                return (True, None) if ok else (
+                    False,
+                    "self-signed root failed self-verify",
+                )
+            return False, "chain terminates at untrusted self-signed cert"
+        issuer = intermediates.get(issuer_name)
+        if issuer is None:
+            return False, "chain broken: missing issuer for " + (
+                current.subject.rfc4514_string()
+            )
+        ok, err = _verify_cert_signature(current, issuer)
+        if not ok:
+            return False, err or "issuer signature check failed"
+        if issuer_name in root_subjects:
+            return True, None
+        current = issuer
+    return False, "chain too long / loop detected"
+
+
+def _verify_cert_signature(
+    cert: Certificate, issuer: Certificate
+) -> tuple[bool, str | None]:
+    """Verify ``cert.signature`` against ``issuer.public_key()``."""
+    try:
+        from cryptography.exceptions import InvalidSignature
+        from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
+    except ImportError:  # pragma: no cover — install-time guard
+        return False, "cryptography is required"
+    try:
+        sig_hash = cert.signature_hash_algorithm
+        if sig_hash is None:
+            return False, "certificate has no signature hash algorithm"
+        public_key = issuer.public_key()
+        if isinstance(public_key, rsa.RSAPublicKey):
+            public_key.verify(
+                cert.signature,
+                cert.tbs_certificate_bytes,
+                padding.PKCS1v15(),
+                sig_hash,
+            )
+            return True, None
+        if isinstance(public_key, ec.EllipticCurvePublicKey):
+            public_key.verify(
+                cert.signature,
+                cert.tbs_certificate_bytes,
+                ec.ECDSA(sig_hash),
+            )
+            return True, None
+    except InvalidSignature:
+        return False, "issuer signature is invalid"
+    except (ValueError, TypeError) as exc:
+        return False, f"chain verification raised: {exc}"
+    return False, f"unsupported issuer key type: {type(public_key).__name__}"
+
 
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _SIG: COSName = COSName.get_pdf_name("Sig")
@@ -365,26 +763,47 @@ class PDSignature:
 
     # ---------- verify ----------
 
-    def verify(self, document_bytes: bytes) -> SignatureValidationResult:
+    def verify(
+        self,
+        document_bytes: bytes,
+        *,
+        trust_roots: list[Certificate] | None = None,
+    ) -> SignatureValidationResult:
         """Verify this signature against ``document_bytes``.
 
-        Best-effort partial implementation:
+        Wave 1286 brings the signature pipeline to feature-parity with
+        the upstream PDFBox lite verifier:
 
         1. Computes the document digest over the ``/ByteRange`` slices.
         2. Extracts the signer certificate from the PKCS#7 ``/Contents``
            blob via :func:`cryptography.hazmat.primitives.serialization.
            pkcs7.load_der_pkcs7_certificates`.
-        3. Tries to recover the ``messageDigest`` signed-attribute (OID
-           ``1.2.840.113549.1.9.4``) from the SignedData ASN.1 with a
-           minimal hand-rolled DER walker (we intentionally avoid an
-           ``asn1crypto`` dep — see ``CHANGES.md``).
-        4. If both digests are present, compares them and sets
-           :attr:`SignatureValidationResult.is_valid` accordingly.
+        3. Recovers the ``messageDigest`` signed-attribute (OID
+           ``1.2.840.113549.1.9.4``) and compares it with the digest of
+           the bracketed bytes — a match proves the document was not
+           altered after signing.
+        4. **(new)** Verifies the SignerInfo *signature* over the DER
+           encoding of the ``SET OF`` signed-attributes (RFC 5652 §5.4)
+           — i.e. the math that proves the SignerInfo came from the
+           holder of the private key matching the signer certificate.
+        5. **(new)** If ``trust_roots`` is supplied, walks the issuer
+           chain from the signer cert through the embedded certs up to
+           a trusted root and verifies each link's signature.
 
-        **NOT implemented** (TODO — chain trust, signature-math
-        verification over the signed-attributes, timestamp validation,
-        revocation): a digest-match success here means the signed bytes
-        were not altered, *not* that the signing certificate is trusted.
+        :param document_bytes: full byte content of the PDF being
+            verified — :meth:`get_signed_data` bracketed-byte extraction
+            runs against this.
+        :param trust_roots: explicit list of :class:`Certificate` objects
+            to anchor the chain walk against. The empty list (or
+            ``None``) skips chain trust; :attr:`is_valid` then reflects
+            only digest-match + signed-attrs signature math.
+
+        :returns: a :class:`SignatureValidationResult` whose
+            :attr:`is_valid` is ``True`` iff every available check
+            passed. ``errors`` carries a short diagnostic per failed
+            check. Best-effort: an unsupported algorithm or malformed
+            blob never raises — it returns ``is_valid=False`` with the
+            diagnostic appended.
         """
         result = SignatureValidationResult()
 
@@ -465,25 +884,63 @@ class PDSignature:
 
         # Digest-match check. A pass here means the bracketed bytes were
         # not altered after signing — NOT that the signer cert is trusted.
+        digest_match: bool
         if result.signed_digest is not None and result.computed_digest is not None:
-            if result.signed_digest == result.computed_digest:
-                result.is_valid = True
-            else:
+            digest_match = result.signed_digest == result.computed_digest
+            if not digest_match:
                 result.errors.append(
                     "digest mismatch: messageDigest signed-attribute does "
                     "not match recomputed /ByteRange digest"
                 )
-                result.is_valid = False
         else:
+            digest_match = False
             result.errors.append(
                 "messageDigest signed-attribute not found in PKCS#7 — "
                 "cannot perform digest-match check"
             )
-            result.is_valid = False
 
-        # TODO: full chain trust + signature math over signed-attributes
-        # (cryptography's high-level pkcs7 API is signing-only). Tracked
-        # in CHANGES.md.
+        # Wave 1286: signature math over the signed-attributes (RFC 5652
+        # §5.4). The PyCA ``cryptography`` package's high-level pkcs7 API
+        # is signing-only, so we walk the SignedData DER ourselves to
+        # recover the SignerInfo fields and feed them into the public
+        # key's low-level ``verify`` primitive.
+        signer_info = _walk_signer_info(trimmed)
+        sig_math_ok: bool
+        if signer_info is None:
+            sig_math_ok = False
+            result.errors.append(
+                "could not locate SignerInfo signed-attributes; full "
+                "PKCS#7 signature math skipped"
+            )
+        else:
+            sig_math_ok, sig_err = _verify_signed_attrs_signature(
+                cert,
+                signer_info["signed_attrs_set"],
+                signer_info["signature"],
+                signer_info["digest_algo_oid"],
+                signer_info["signature_algo_oid"],
+            )
+            if sig_err is not None:
+                result.errors.append(sig_err)
+
+        # Wave 1286: optional chain-trust walk. When the caller passes
+        # ``trust_roots=None`` (or an empty list) we keep the upstream
+        # behaviour of "digest + signature math = valid"; with an
+        # explicit trust anchor we additionally require the chain to
+        # reach it.
+        chain_ok: bool
+        if trust_roots is None or not trust_roots:
+            chain_ok = True
+        else:
+            chain_ok, chain_err = _verify_chain_trust(
+                cert,
+                certs[1:],
+                list(trust_roots),
+            )
+            if chain_err is not None:
+                result.errors.append(chain_err)
+
+        result.is_valid = digest_match and sig_math_ok and chain_ok
         return result
 
     # ---------- presence predicates ----------

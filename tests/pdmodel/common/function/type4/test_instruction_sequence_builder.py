@@ -109,3 +109,59 @@ def test_get_instruction_sequence_returns_main() -> None:
     assert isinstance(main, InstructionSequence)
     # Calling again returns the same instance.
     assert builder.get_instruction_sequence() is main
+
+
+# ---------- Wave 1286: radix-literal parsing ----------
+
+
+def test_radix_literal_octal() -> None:
+    """PostScript ``8#1777`` is decimal 1023 (PLRM 3.3.2)."""
+    builder = InstructionSequenceBuilder()
+    builder.token("8#1777")
+    instructions = builder.get_instruction_sequence().get_instructions()
+    assert instructions == [1023]
+    assert isinstance(instructions[0], int)
+
+
+def test_radix_literal_hexadecimal_upper_and_lower_case() -> None:
+    """``16#FFFE`` and ``16#fffe`` both parse to 65534."""
+    builder = InstructionSequenceBuilder()
+    builder.token("16#FFFE")
+    builder.token("16#fffe")
+    instructions = builder.get_instruction_sequence().get_instructions()
+    assert instructions == [65534, 65534]
+
+
+def test_radix_literal_binary() -> None:
+    builder = InstructionSequenceBuilder()
+    builder.token("2#1010")
+    assert builder.get_instruction_sequence().get_instructions() == [10]
+
+
+def test_radix_literal_base_36() -> None:
+    """The maximum permissible base; ``Z`` is 35."""
+    builder = InstructionSequenceBuilder()
+    builder.token("36#Z")
+    assert builder.get_instruction_sequence().get_instructions() == [35]
+
+
+def test_radix_literal_invalid_base_kept_as_name() -> None:
+    """Base 1 is not allowed; the token must fall through to ``add_name``."""
+    builder = InstructionSequenceBuilder()
+    builder.token("1#0")
+    assert builder.get_instruction_sequence().get_instructions() == ["1#0"]
+
+
+def test_radix_literal_invalid_digit_kept_as_name() -> None:
+    """``8#9`` has a digit outside the declared base; treat as a name."""
+    builder = InstructionSequenceBuilder()
+    builder.token("8#9")
+    assert builder.get_instruction_sequence().get_instructions() == ["8#9"]
+
+
+def test_radix_literal_inside_program_executes() -> None:
+    """End-to-end: ``16#10 16#20 add`` -> 48."""
+    seq = InstructionSequenceBuilder.parse("16#10 16#20 add")
+    ctx = ExecutionContext(Operators())
+    seq.execute(ctx)
+    assert ctx.get_stack() == [48]

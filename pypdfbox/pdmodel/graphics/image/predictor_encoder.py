@@ -172,10 +172,109 @@ class PredictorEncoder:
     ) -> PDImageXObject | None:
         """Wrap the deflate-encoded predicted data in a ``PDImageXObject``.
 
-        TODO: full implementation depends on the COSStream builder; in the
-        meantime ``encode()`` delegates to ``LosslessFactory``.
+        Wave 1286 closes the upstream-parity TODO at
+        ``LosslessFactory.PredictorEncoder.preparePredictorPDImage``
+        (Java line 566). ``stream`` holds the flate-compressed bytes that
+        the row-by-row predictor pass produced; we splice them into a
+        fresh COSStream and stamp the standard image-XObject dictionary
+        entries plus the ``/DecodeParms`` predictor block:
+
+            /Filter      /FlateDecode
+            /DecodeParms <<
+                /Predictor 15            # PNG (optimum, adaptive)
+                /Columns   <width>
+                /Colors    <color components>
+                /BitsPerComponent <bpc>
+            >>
+
+        Returns ``None`` when ``self.document`` is missing the
+        ``get_document().scratch_file`` plumbing (i.e. caller built the
+        encoder with a fake document) — the caller falls back to
+        :meth:`encode` which routes through :class:`LosslessFactory`.
         """
-        return None
+        # Local imports keep the COS plumbing out of the module-level
+        # graph (matches upstream's pattern of only touching ``COSName``
+        # / ``COSInteger`` constants inside this method).
+        try:
+            from pypdfbox.cos import (  # noqa: PLC0415
+                COSDictionary,
+                COSInteger,
+                COSName,
+                COSStream,
+            )
+        except ImportError:
+            return None
+
+        try:
+            cos_doc = self.document.get_document()
+            scratch = cos_doc.scratch_file
+        except AttributeError:
+            return None
+
+        encoded = stream.getvalue()
+        if not encoded:
+            return None
+
+        cos_stream = COSStream(scratch)
+        cos_stream.set_item(
+            COSName.get_pdf_name("Type"), COSName.get_pdf_name("XObject")
+        )
+        cos_stream.set_item(
+            COSName.get_pdf_name("Subtype"), COSName.get_pdf_name("Image")
+        )
+        cos_stream.set_int(COSName.get_pdf_name("Width"), int(self.width))
+        cos_stream.set_int(COSName.get_pdf_name("Height"), int(self.height))
+        cos_stream.set_int(
+            COSName.get_pdf_name("BitsPerComponent"), int(bits_per_component)
+        )
+        # Pick the color space from the source image's channel count.
+        # Matches upstream's ``getColorSpace().getType()`` branching for
+        # the gray / RGB / CMYK split (CMYK handled by callers that
+        # pre-convert the PIL image).
+        color_components = self.components_per_pixel - (
+            1 if self.has_alpha else 0
+        )
+        if color_components == 1:
+            color_space: COSName = COSName.get_pdf_name("DeviceGray")
+        elif color_components == 4:
+            color_space = COSName.get_pdf_name("DeviceCMYK")
+        else:
+            color_space = COSName.get_pdf_name("DeviceRGB")
+        cos_stream.set_item(COSName.get_pdf_name("ColorSpace"), color_space)
+        cos_stream.set_item(
+            COSName.FILTER,  # type: ignore[attr-defined]
+            COSName.get_pdf_name("FlateDecode"),
+        )
+
+        # /DecodeParms — the predictor + column / colors / BPC triple
+        # tells a downstream decoder how to invert the predictor pass.
+        # Upstream stamps ``/Predictor 15`` (PNG adaptive); the per-row
+        # filter byte that ``encode()`` emits inside each row picks the
+        # active filter at decode time.
+        decode_params = COSDictionary()
+        decode_params.set_item(
+            COSName.get_pdf_name("Predictor"), COSInteger.get(15)
+        )
+        decode_params.set_item(
+            COSName.get_pdf_name("Columns"), COSInteger.get(int(self.width))
+        )
+        decode_params.set_item(
+            COSName.get_pdf_name("Colors"), COSInteger.get(int(color_components))
+        )
+        decode_params.set_item(
+            COSName.get_pdf_name("BitsPerComponent"),
+            COSInteger.get(int(bits_per_component)),
+        )
+        cos_stream.set_item(
+            COSName.get_pdf_name("DecodeParms"), decode_params
+        )
+
+        cos_stream.set_int(COSName.get_pdf_name("Length"), len(encoded))
+        cos_stream.set_raw_data(encoded)
+
+        from .pd_image_x_object import PDImageXObject  # noqa: PLC0415
+
+        return PDImageXObject(cos_stream)
 
 
 __all__ = ["PredictorEncoder"]

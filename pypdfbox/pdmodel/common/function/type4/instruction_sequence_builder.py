@@ -16,6 +16,13 @@ from .parser import AbstractSyntaxHandler, Parser
 #   REAL_PATTERN    = "\\-?\\d*\\.\\d*([Ee]\\-?\\d+)?"
 _INTEGER_PATTERN = re.compile(r"[+\-]?\d+")
 _REAL_PATTERN = re.compile(r"-?\d*\.\d*([Ee]-?\d+)?")
+# PostScript radix literal: ``base#digits`` where ``base`` is 2..36 and
+# ``digits`` are interpreted in that base (PLRM 3rd ed. §3.3.2). Closes
+# the upstream TODO at InstructionSequenceBuilder.java:83 — upstream
+# never implemented this in Java, but the literal form is permitted in
+# the Type-4 grammar so PDF producers can (and occasionally do) emit
+# values like ``8#1777`` or ``16#FFFE``.
+_RADIX_PATTERN = re.compile(r"(\d+)#([0-9A-Za-z]+)")
 
 
 class InstructionSequenceBuilder(AbstractSyntaxHandler):
@@ -80,7 +87,27 @@ class InstructionSequenceBuilder(AbstractSyntaxHandler):
                 self._get_current_sequence().add_real(self.parse_real(token))
                 return
 
-            # TODO Maybe implement radix numbers, such as 8#1777 or 16#FFFE
+            # Wave 1286: closes upstream TODO at
+            # InstructionSequenceBuilder.java:83. Parse PostScript radix
+            # literals ``base#digits`` (e.g. ``8#1777`` is 1023, ``16#FFFE``
+            # is 65534). ``base`` must be 2..36 per PLRM 3.3.2; any digit
+            # outside the declared base (or a base outside 2..36) leaves
+            # the token as a name, preserving the original "unknown =
+            # name" fallback for malformed input.
+            radix = _RADIX_PATTERN.fullmatch(token)
+            if radix is not None:
+                base_str, digits = radix.group(1), radix.group(2)
+                try:
+                    base = int(base_str)
+                    if 2 <= base <= 36:
+                        value = int(digits, base)
+                        self._get_current_sequence().add_integer(value)
+                        return
+                except ValueError:
+                    # Digits not valid in the declared base — fall
+                    # through to the name fallback below.
+                    pass
+
             self._get_current_sequence().add_name(token)
 
     @staticmethod

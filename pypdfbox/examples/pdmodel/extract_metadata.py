@@ -6,7 +6,18 @@ Pretty-prints a document's XMP metadata to stdout.
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 from typing import Any
+
+from pypdfbox.loader import Loader
+from pypdfbox.pdmodel.pd_document import PDDocument
+from pypdfbox.xmpbox import (
+    AdobePDFSchema,
+    DomXmpParser,
+    DublinCoreSchema,
+    XMPBasicSchema,
+    XmpParsingException,
+)
 
 
 class ExtractMetadata:
@@ -22,18 +33,34 @@ class ExtractMetadata:
         if len(argv) != 1:
             ExtractMetadata.usage()
             raise SystemExit(1)
-        # TODO: XMP schema accessors (DublinCoreSchema, AdobePDFSchema,
-        # XMPBasicSchema) need to be exposed via pypdfbox.xmpbox to back this
-        # example.
-        raise NotImplementedError(
-            "ExtractMetadata awaits xmpbox schema accessors.",
-        )
+
+        with Loader.load_pdf(Path(argv[0])) as cos_doc:
+            document = PDDocument(cos_doc)
+            catalog = document.get_document_catalog()
+            meta = catalog.get_metadata()
+            if meta is not None:
+                xmp_parser = DomXmpParser()
+                try:
+                    raw = meta.export_xmp_metadata()
+                    metadata = xmp_parser.parse(raw)
+                    ExtractMetadata.show_dublin_core_schema(metadata)
+                    ExtractMetadata.show_adobe_pdf_schema(metadata)
+                    ExtractMetadata.show_xmp_basic_schema(metadata)
+                except XmpParsingException as exc:  # noqa: BLE001
+                    sys.stderr.write(
+                        "An error occurred when parsing the metadata: "
+                        f"{exc}\n",
+                    )
+            else:
+                information = document.get_document_information()
+                if information is not None:
+                    ExtractMetadata.show_document_information(information)
 
     @staticmethod
     def show_xmp_basic_schema(metadata: Any) -> None:
         """Mirrors ``showXMPBasicSchema(XMPMetadata)`` (line 103)."""
-        basic = getattr(metadata, "get_xmp_basic_schema", lambda: None)()
-        if basic is not None:
+        basic = metadata.get_xmp_basic_schema()
+        if isinstance(basic, XMPBasicSchema):
             ExtractMetadata.display("Create Date:", basic.get_create_date())
             ExtractMetadata.display("Modify Date:", basic.get_modify_date())
             ExtractMetadata.display("Creator Tool:", basic.get_creator_tool())
@@ -41,8 +68,8 @@ class ExtractMetadata:
     @staticmethod
     def show_adobe_pdf_schema(metadata: Any) -> None:
         """Mirrors ``showAdobePDFSchema(XMPMetadata)`` (line 114)."""
-        pdf = getattr(metadata, "get_adobe_pdf_schema", lambda: None)()
-        if pdf is not None:
+        pdf = metadata.get_adobe_pdf_schema()
+        if isinstance(pdf, AdobePDFSchema):
             ExtractMetadata.display("Keywords:", pdf.get_keywords())
             ExtractMetadata.display("PDF Version:", pdf.get_pdf_version())
             ExtractMetadata.display("PDF Producer:", pdf.get_producer())
@@ -50,8 +77,8 @@ class ExtractMetadata:
     @staticmethod
     def show_dublin_core_schema(metadata: Any) -> None:
         """Mirrors ``showDublinCoreSchema(XMPMetadata)`` (line 125)."""
-        dc = getattr(metadata, "get_dublin_core_schema", lambda: None)()
-        if dc is not None:
+        dc = metadata.get_dublin_core_schema()
+        if isinstance(dc, DublinCoreSchema):
             ExtractMetadata.display("Title:", dc.get_title())
             ExtractMetadata.display("Description:", dc.get_description())
             ExtractMetadata.list_string("Creators: ", dc.get_creators())

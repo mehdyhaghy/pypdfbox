@@ -84,3 +84,63 @@ def test_empty_language_returns_default_worker() -> None:
     gd = GsubData(language="")
     worker = _factory().get_gsub_worker(_NullCmap(), gd)
     assert isinstance(worker, DefaultGsubWorker)
+
+
+# ---------- Wave 1286: script-list-aware resolution ----------
+
+
+def _gsub_data_with_scripts(language: str, *script_tags: str) -> GsubData:
+    """Build a :class:`GsubData` whose ``script_list`` carries ``script_tags``."""
+    gd = GsubData(language=language)
+    # ``ScriptTable`` carries no fields relevant to dispatch — empty
+    # instances are enough to make ``script_list`` keys present.
+    from pypdfbox.fontbox.ttf.gsub.script_table import ScriptTable
+
+    for tag in script_tags:
+        gd.script_list[tag] = ScriptTable()
+    return gd
+
+
+def test_resolve_from_script_list_when_language_unspecified() -> None:
+    """``UNSPECIFIED`` language must still route a font that carries
+    ``deva`` to the Devanagari worker."""
+    gd = _gsub_data_with_scripts("UNSPECIFIED", "deva")
+    worker = _factory().get_gsub_worker(_NullCmap(), gd)
+    assert isinstance(worker, GsubWorkerForDevanagari)
+
+
+def test_resolve_from_script_list_prefers_modern_tag() -> None:
+    """``bng2`` (modern) beats ``beng`` when both are present."""
+    gd = _gsub_data_with_scripts("UNSPECIFIED", "beng", "bng2")
+    worker = _factory().get_gsub_worker(_NullCmap(), gd)
+    assert isinstance(worker, GsubWorkerForBengali)
+
+
+def test_resolve_from_script_list_falls_back_to_legacy_tag() -> None:
+    """Without ``gjr2`` the secondary ``gujr`` tag still resolves Gujarati."""
+    gd = _gsub_data_with_scripts("UNSPECIFIED", "gujr")
+    worker = _factory().get_gsub_worker(_NullCmap(), gd)
+    assert isinstance(worker, GsubWorkerForGujarati)
+
+
+def test_explicit_hint_wins_over_other_scripts_when_present() -> None:
+    """A font carrying both ``latn`` and ``deva`` whose hint is
+    ``LATIN`` must route to Latin (the hint matches a present script)."""
+    gd = _gsub_data_with_scripts("LATIN", "latn", "deva")
+    worker = _factory().get_gsub_worker(_NullCmap(), gd)
+    assert isinstance(worker, GsubWorkerForLatin)
+
+
+def test_unknown_hint_falls_through_to_script_resolution() -> None:
+    """A font whose hint is ``"HEBREW"`` (unknown) but whose script
+    list carries ``latn`` must still route to Latin via script
+    resolution rather than the default worker."""
+    gd = _gsub_data_with_scripts("HEBREW", "latn")
+    worker = _factory().get_gsub_worker(_NullCmap(), gd)
+    assert isinstance(worker, GsubWorkerForLatin)
+
+
+def test_empty_script_list_and_unknown_hint_returns_default() -> None:
+    gd = GsubData(language="HEBREW")
+    worker = _factory().get_gsub_worker(_NullCmap(), gd)
+    assert isinstance(worker, DefaultGsubWorker)
