@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
+from .table.common.coverage_table_format1 import CoverageTableFormat1
+from .table.common.coverage_table_format2 import CoverageTableFormat2
+from .table.common.range_record import RangeRecord
 from .ttf_table import TTFTable
 
 if TYPE_CHECKING:
     from .true_type_font import TrueTypeFont
     from .ttf_data_stream import TTFDataStream
+
+_LOG = logging.getLogger(__name__)
 
 
 class GlyphSubstitutionTable(TTFTable):
@@ -828,262 +834,623 @@ class GlyphSubstitutionTable(TTFTable):
     # return the equivalent fontTools structures.
 
     def read_script_list(
-        self, data: TTFDataStream, offset: int  # noqa: ARG002
-    ) -> Any:
+        self, data: TTFDataStream, offset: int
+    ) -> dict[str, Any]:
         """Mirror upstream ``readScriptList(TTFDataStream, long)``
-        (Java line 132) — not implemented; fontTools owns GSUB parsing.
+        (GlyphSubstitutionTable.java L132-164).
 
-        Use :meth:`get_script_list` for the equivalent already-decoded
-        structure.
+        Returns an ordered ``{script_tag: script_table_dict}`` mapping
+        where each value has the shape returned by
+        :meth:`read_script_table`. Implements PDFBOX-6146 (skip duplicate
+        script tags) and the implausible-offset short-circuit upstream
+        applies.
         """
-        raise NotImplementedError(
-            "read_script_list: GSUB byte-stream parsing is delegated to "
-            "fontTools; use get_script_list() for the decoded structure"
-        )
+        data.seek(offset)
+        script_count = data.read_unsigned_short()
+        script_tags: list[str] = []
+        script_offsets: list[int] = []
+        result: dict[str, Any] = {}
+        for i in range(script_count):
+            script_tags.append(data.read_string(4))
+            script_offsets.append(data.read_unsigned_short())
+            if script_offsets[i] < data.get_current_position() - offset:
+                _LOG.error(
+                    "scriptOffsets[%d]: %d implausible: data.getCurrentPosition()"
+                    " - offset = %d",
+                    i,
+                    script_offsets[i],
+                    data.get_current_position() - offset,
+                )
+                return result
+        for i in range(script_count):
+            if script_tags[i] in result:
+                continue
+            result[script_tags[i]] = self.read_script_table(
+                data, offset + script_offsets[i]
+            )
+        return result
 
     def read_script_table(
-        self, data: TTFDataStream, offset: int  # noqa: ARG002
-    ) -> Any:
+        self, data: TTFDataStream, offset: int
+    ) -> dict[str, Any]:
         """Mirror upstream ``readScriptTable(TTFDataStream, long)``
-        (Java line 166) — not implemented; fontTools owns GSUB parsing.
+        (GlyphSubstitutionTable.java L166-208).
 
-        Use :meth:`get_script_list` and walk ``ScriptRecord[i].Script``
-        for the equivalent already-decoded structure.
+        Returns ``{"default_lang_sys": dict | None, "lang_sys_tables":
+        {tag: dict}}`` where each LangSys entry has the shape returned
+        by :meth:`read_lang_sys_table`.
         """
-        raise NotImplementedError(
-            "read_script_table: GSUB byte-stream parsing is delegated to "
-            "fontTools; walk get_script_list().ScriptRecord instead"
-        )
+        data.seek(offset)
+        default_lang_sys_offset = data.read_unsigned_short()
+        lang_sys_count = data.read_unsigned_short()
+        lang_sys_tags: list[str] = []
+        lang_sys_offsets: list[int] = []
+        empty: dict[str, Any] = {
+            "default_lang_sys": None,
+            "lang_sys_tables": {},
+        }
+        for i in range(lang_sys_count):
+            lang_sys_tags.append(data.read_string(4))
+            lang_sys_offsets.append(data.read_unsigned_short())
+            if lang_sys_offsets[i] < data.get_current_position() - offset:
+                _LOG.error(
+                    "langSysOffsets[%d]: %d implausible: data.getCurrentPosition()"
+                    " - offset = %d",
+                    i,
+                    lang_sys_offsets[i],
+                    data.get_current_position() - offset,
+                )
+                return empty
+            if i > 0 and lang_sys_tags[i] < lang_sys_tags[i - 1]:
+                _LOG.error(
+                    "LangSysRecords not alphabetically sorted by LangSys tag:"
+                    " %s < %s",
+                    lang_sys_tags[i],
+                    lang_sys_tags[i - 1],
+                )
+                return empty
+
+        default_lang_sys_table: dict[str, Any] | None = None
+        if default_lang_sys_offset != 0:
+            default_lang_sys_table = self.read_lang_sys_table(
+                data, offset + default_lang_sys_offset
+            )
+        lang_sys_tables: dict[str, Any] = {}
+        for i in range(lang_sys_count):
+            lang_sys_tables[lang_sys_tags[i]] = self.read_lang_sys_table(
+                data, offset + lang_sys_offsets[i]
+            )
+        return {
+            "default_lang_sys": default_lang_sys_table,
+            "lang_sys_tables": lang_sys_tables,
+        }
 
     def read_lang_sys_table(
-        self, data: TTFDataStream, offset: int  # noqa: ARG002
-    ) -> Any:
+        self, data: TTFDataStream, offset: int
+    ) -> dict[str, Any]:
         """Mirror upstream ``readLangSysTable(TTFDataStream, long)``
-        (Java line 210) — not implemented; fontTools owns GSUB parsing.
+        (GlyphSubstitutionTable.java L210-223).
 
-        Use :meth:`get_lang_sys_tables` for the equivalent already-decoded
-        ``LangSys`` list.
+        Returns ``{"lookup_order": int, "required_feature_index": int,
+        "feature_index_count": int, "feature_indices": list[int]}``.
         """
-        raise NotImplementedError(
-            "read_lang_sys_table: GSUB byte-stream parsing is delegated "
-            "to fontTools; use get_lang_sys_tables() instead"
-        )
+        data.seek(offset)
+        lookup_order = data.read_unsigned_short()
+        required_feature_index = data.read_unsigned_short()
+        feature_index_count = data.read_unsigned_short()
+        feature_indices = [
+            data.read_unsigned_short() for _ in range(feature_index_count)
+        ]
+        return {
+            "lookup_order": lookup_order,
+            "required_feature_index": required_feature_index,
+            "feature_index_count": feature_index_count,
+            "feature_indices": feature_indices,
+        }
 
     def read_feature_list(
-        self, data: TTFDataStream, offset: int  # noqa: ARG002
-    ) -> Any:
+        self, data: TTFDataStream, offset: int
+    ) -> dict[str, Any]:
         """Mirror upstream ``readFeatureList(TTFDataStream, long)``
-        (Java line 225) — not implemented; fontTools owns GSUB parsing.
+        (GlyphSubstitutionTable.java L225-262).
 
-        Use :meth:`get_feature_list` for the equivalent already-decoded
-        structure.
+        Returns ``{"feature_count": int, "feature_records":
+        [(tag, feature_table_dict), ...]}``.
         """
-        raise NotImplementedError(
-            "read_feature_list: GSUB byte-stream parsing is delegated to "
-            "fontTools; use get_feature_list() for the decoded structure"
-        )
+        data.seek(offset)
+        feature_count = data.read_unsigned_short()
+        feature_tags: list[str] = []
+        feature_offsets: list[int] = []
+        for i in range(feature_count):
+            tag = data.read_string(4)
+            feature_tags.append(tag)
+            if i > 0 and feature_tags[i] < feature_tags[i - 1]:
+                if feature_tags[i].isalnum() and feature_tags[i - 1].isalnum():
+                    _LOG.debug(
+                        "FeatureRecord array not alphabetically sorted by"
+                        " FeatureTag: %s < %s",
+                        feature_tags[i],
+                        feature_tags[i - 1],
+                    )
+                else:
+                    _LOG.warning(
+                        "FeatureRecord array not alphabetically sorted by"
+                        " FeatureTag: %s < %s",
+                        feature_tags[i],
+                        feature_tags[i - 1],
+                    )
+                    return {"feature_count": 0, "feature_records": []}
+            feature_offsets.append(data.read_unsigned_short())
+        feature_records: list[tuple[str, dict[str, Any]]] = []
+        for i in range(feature_count):
+            feature_table = self.read_feature_table(
+                data, offset + feature_offsets[i]
+            )
+            feature_records.append((feature_tags[i], feature_table))
+        return {
+            "feature_count": feature_count,
+            "feature_records": feature_records,
+        }
 
     def read_feature_table(
-        self, data: TTFDataStream, offset: int  # noqa: ARG002
-    ) -> Any:
+        self, data: TTFDataStream, offset: int
+    ) -> dict[str, Any]:
         """Mirror upstream ``readFeatureTable(TTFDataStream, long)``
-        (Java line 264) — not implemented; fontTools owns GSUB parsing.
+        (GlyphSubstitutionTable.java L264-275).
 
-        Use :meth:`get_feature_record` and read
-        ``FeatureRecord.Feature`` for the equivalent already-decoded
-        structure.
+        Returns ``{"feature_params": int, "lookup_index_count": int,
+        "lookup_list_indices": list[int]}``.
         """
-        raise NotImplementedError(
-            "read_feature_table: GSUB byte-stream parsing is delegated "
-            "to fontTools; read get_feature_record(i).Feature instead"
-        )
+        data.seek(offset)
+        feature_params = data.read_unsigned_short()
+        lookup_index_count = data.read_unsigned_short()
+        lookup_list_indices = [
+            data.read_unsigned_short() for _ in range(lookup_index_count)
+        ]
+        return {
+            "feature_params": feature_params,
+            "lookup_index_count": lookup_index_count,
+            "lookup_list_indices": lookup_list_indices,
+        }
 
     def read_lookup_list(
-        self, data: TTFDataStream, offset: int  # noqa: ARG002
-    ) -> Any:
+        self, data: TTFDataStream, offset: int
+    ) -> dict[str, Any]:
         """Mirror upstream ``readLookupList(TTFDataStream, long)``
-        (Java line 277) — not implemented; fontTools owns GSUB parsing.
+        (GlyphSubstitutionTable.java L277-307).
 
-        Use :meth:`get_lookup_list` for the equivalent already-decoded
-        structure.
+        Returns ``{"lookup_count": int, "lookup_tables": list[dict]}``.
+        Each entry has the shape produced by :meth:`read_lookup_table`.
+        Mirrors upstream's PDFBOX-6146 dedup of duplicate lookup offsets.
         """
-        raise NotImplementedError(
-            "read_lookup_list: GSUB byte-stream parsing is delegated to "
-            "fontTools; use get_lookup_list() for the decoded structure"
-        )
+        data.seek(offset)
+        lookup_count = data.read_unsigned_short()
+        lookups: list[int] = []
+        original_data_size = data.get_original_data_size()
+        for i in range(lookup_count):
+            lookups.append(data.read_unsigned_short())
+            if lookups[i] == 0:
+                _LOG.error(
+                    "lookups[%d] is 0 at offset %d",
+                    i,
+                    data.get_current_position() - 2,
+                )
+            elif offset + lookups[i] > original_data_size:
+                _LOG.error(
+                    "%d > %d", offset + lookups[i], original_data_size
+                )
+        lookup_tables: list[dict[str, Any]] = []
+        lookup_cache: dict[int, dict[str, Any]] = {}
+        for i in range(lookup_count):
+            cached = lookup_cache.get(lookups[i])
+            if cached is None:
+                cached = self.read_lookup_table(data, offset + lookups[i])
+                lookup_cache[lookups[i]] = cached
+            lookup_tables.append(cached)
+        return {
+            "lookup_count": lookup_count,
+            "lookup_tables": lookup_tables,
+        }
 
     def read_lookup_subtable(
         self,
-        data: TTFDataStream,  # noqa: ARG002
-        offset: int,  # noqa: ARG002
-        lookup_type: int,  # noqa: ARG002
+        data: TTFDataStream,
+        offset: int,
+        lookup_type: int,
     ) -> Any:
         """Mirror upstream ``readLookupSubtable(TTFDataStream, long, int)``
-        (Java line 309) — not implemented; fontTools owns GSUB parsing.
+        (GlyphSubstitutionTable.java L309-343).
 
-        Use :meth:`get_lookup_subtables` for the equivalent
-        already-decoded list.
+        Dispatches to the type-specific subtable reader. Returns
+        ``None`` for unsupported lookup types (5/6/8/etc.) — upstream
+        emits a debug log and returns null.
         """
-        raise NotImplementedError(
-            "read_lookup_subtable: GSUB byte-stream parsing is delegated "
-            "to fontTools; use get_lookup_subtables() instead"
+        if lookup_type == 1:
+            return self.read_single_lookup_sub_table(data, offset)
+        if lookup_type == 2:
+            return self.read_multiple_substitution_subtable(data, offset)
+        if lookup_type == 3:
+            return self.read_alternate_substitution_subtable(data, offset)
+        if lookup_type == 4:
+            return self.read_ligature_substitution_subtable(data, offset)
+        _LOG.debug(
+            "Type %d GSUB lookup table is not supported and will be ignored",
+            lookup_type,
         )
+        return None
 
     def read_lookup_table(
-        self, data: TTFDataStream, offset: int  # noqa: ARG002
-    ) -> Any:
+        self, data: TTFDataStream, offset: int
+    ) -> dict[str, Any]:
         """Mirror upstream ``readLookupTable(TTFDataStream, long)``
-        (Java line 347) — not implemented; fontTools owns GSUB parsing.
+        (GlyphSubstitutionTable.java L347-424).
 
-        Use :meth:`get_lookup` for the equivalent already-decoded
-        structure (including the transparent unwrap of LookupType 7
-        Extension Substitution subtables that upstream does inline).
+        Returns ``{"lookup_type": int, "lookup_flag": int,
+        "mark_filtering_set": int, "sub_tables": list}``. Mirrors the
+        upstream LookupType 7 Extension Substitution unwrap which
+        promotes the inner ``extensionLookupType`` into ``lookup_type``.
         """
-        raise NotImplementedError(
-            "read_lookup_table: GSUB byte-stream parsing is delegated to "
-            "fontTools; use get_lookup(i) for the decoded structure"
+        data.seek(offset)
+        lookup_type = data.read_unsigned_short()
+        lookup_flag = data.read_unsigned_short()
+        sub_table_count = data.read_unsigned_short()
+        sub_table_offsets: list[int] = []
+        original_data_size = data.get_original_data_size()
+        for i in range(sub_table_count):
+            sub_offset = data.read_unsigned_short()
+            sub_table_offsets.append(sub_offset)
+            if sub_offset == 0:
+                _LOG.error(
+                    "subTableOffsets[%d] is 0 at offset %d",
+                    i,
+                    data.get_current_position() - 2,
+                )
+                return {
+                    "lookup_type": lookup_type,
+                    "lookup_flag": lookup_flag,
+                    "mark_filtering_set": 0,
+                    "sub_tables": [],
+                }
+            if offset + sub_offset > original_data_size:
+                _LOG.error(
+                    "%d > %d", offset + sub_offset, original_data_size
+                )
+                return {
+                    "lookup_type": lookup_type,
+                    "lookup_flag": lookup_flag,
+                    "mark_filtering_set": 0,
+                    "sub_tables": [],
+                }
+        mark_filtering_set = (
+            data.read_unsigned_short() if (lookup_flag & 0x0010) != 0 else 0
         )
+
+        sub_tables: list[Any] = [None] * sub_table_count
+        if lookup_type in (1, 2, 3, 4):
+            for i in range(sub_table_count):
+                sub_tables[i] = self.read_lookup_subtable(
+                    data, offset + sub_table_offsets[i], lookup_type
+                )
+        elif lookup_type == 7:
+            for i in range(sub_table_count):
+                data.seek(offset + sub_table_offsets[i])
+                subst_format = data.read_unsigned_short()
+                if subst_format != 1:
+                    _LOG.error(
+                        "The expected SubstFormat for ExtensionSubstFormat1"
+                        " subtable is %d but should be 1 at offset %d",
+                        subst_format,
+                        offset + sub_table_offsets[i],
+                    )
+                    continue
+                extension_lookup_type = data.read_unsigned_short()
+                if lookup_type != 7 and lookup_type != extension_lookup_type:
+                    _LOG.error(
+                        "extensionLookupType changed from %d to %d at"
+                        " offset %d",
+                        lookup_type,
+                        extension_lookup_type,
+                        offset + sub_table_offsets[i] + 2,
+                    )
+                    continue
+                lookup_type = extension_lookup_type
+                extension_offset = data.read_unsigned_int()
+                extension_address = (
+                    offset + sub_table_offsets[i] + extension_offset
+                )
+                sub_tables[i] = self.read_lookup_subtable(
+                    data, extension_address, extension_lookup_type
+                )
+        else:
+            _LOG.debug(
+                "Type %d GSUB lookup table is not supported and will be"
+                " ignored",
+                lookup_type,
+            )
+        return {
+            "lookup_type": lookup_type,
+            "lookup_flag": lookup_flag,
+            "mark_filtering_set": mark_filtering_set,
+            "sub_tables": sub_tables,
+        }
 
     def read_single_lookup_sub_table(
-        self, data: TTFDataStream, offset: int  # noqa: ARG002
-    ) -> Any:
-        """Mirror upstream ``readSingleLookupSubTable(TTFDataStream,
-        long)`` (Java line 426) — not implemented; fontTools owns GSUB
-        parsing.
+        self, data: TTFDataStream, offset: int
+    ) -> dict[str, Any] | None:
+        """Mirror upstream ``readSingleLookupSubTable(TTFDataStream, long)``
+        (GlyphSubstitutionTable.java L426-459).
 
-        fontTools merges Format 1 (``DeltaGlyphID``) and Format 2
-        (explicit substitute array) into a single ``mapping`` dict; reach
-        for that via :meth:`get_lookup_subtables` to read either format.
+        Format 1 returns ``{"subst_format": 1, "coverage_table":
+        CoverageTable, "delta_glyph_id": int}``. Format 2 returns
+        ``{"subst_format": 2, "coverage_table": CoverageTable,
+        "substitute_glyph_ids": list[int]}``. Returns ``None`` for
+        unknown formats.
         """
-        raise NotImplementedError(
-            "read_single_lookup_sub_table: GSUB byte-stream parsing is "
-            "delegated to fontTools; read .mapping on a SingleSubst "
-            "subtable from get_lookup_subtables() instead"
-        )
+        data.seek(offset)
+        subst_format = data.read_unsigned_short()
+        if subst_format == 1:
+            coverage_offset = data.read_unsigned_short()
+            delta_glyph_id = data.read_signed_short()
+            coverage_table = self.read_coverage_table(
+                data, offset + coverage_offset
+            )
+            return {
+                "subst_format": subst_format,
+                "coverage_table": coverage_table,
+                "delta_glyph_id": delta_glyph_id,
+            }
+        if subst_format == 2:
+            coverage_offset = data.read_unsigned_short()
+            glyph_count = data.read_unsigned_short()
+            substitute_glyph_ids = [
+                data.read_unsigned_short() for _ in range(glyph_count)
+            ]
+            coverage_table = self.read_coverage_table(
+                data, offset + coverage_offset
+            )
+            return {
+                "subst_format": subst_format,
+                "coverage_table": coverage_table,
+                "substitute_glyph_ids": substitute_glyph_ids,
+            }
+        _LOG.warning("Unknown substFormat: %d", subst_format)
+        return None
 
     def read_multiple_substitution_subtable(
-        self, data: TTFDataStream, offset: int  # noqa: ARG002
-    ) -> Any:
+        self, data: TTFDataStream, offset: int
+    ) -> dict[str, Any]:
         """Mirror upstream ``readMultipleSubstitutionSubtable(TTFDataStream,
-        long)`` (Java line 461) — not implemented; fontTools owns GSUB
-        parsing.
+        long)`` (GlyphSubstitutionTable.java L461-499).
 
-        fontTools exposes the equivalent on
-        ``MultipleSubst.mapping`` (a ``{src_glyph: [dst_glyph, ...]}``
-        dict) — reach it via :meth:`get_lookup_subtables`.
+        Returns ``{"subst_format": 1, "coverage_table": CoverageTable,
+        "sequence_tables": [{"glyph_count": int,
+        "substitute_glyph_ids": list[int]}, ...]}``.
         """
-        raise NotImplementedError(
-            "read_multiple_substitution_subtable: GSUB byte-stream "
-            "parsing is delegated to fontTools; read .mapping on a "
-            "MultipleSubst subtable from get_lookup_subtables() instead"
-        )
+        data.seek(offset)
+        subst_format = data.read_unsigned_short()
+        if subst_format != 1:
+            raise OSError(
+                "The expected SubstFormat for LigatureSubstitutionTable is 1"
+            )
+        coverage = data.read_unsigned_short()
+        sequence_count = data.read_unsigned_short()
+        sequence_offsets = [
+            data.read_unsigned_short() for _ in range(sequence_count)
+        ]
+        coverage_table = self.read_coverage_table(data, offset + coverage)
+        if sequence_count != coverage_table.get_size():
+            raise OSError(
+                "According to the OpenTypeFont specifications, the coverage"
+                " count should be equal to the no. of SequenceTables"
+            )
+        sequence_tables: list[dict[str, Any]] = []
+        for i in range(sequence_count):
+            data.seek(offset + sequence_offsets[i])
+            glyph_count = data.read_unsigned_short()
+            substitute_glyph_ids = data.read_unsigned_short_array(glyph_count)
+            sequence_tables.append(
+                {
+                    "glyph_count": glyph_count,
+                    "substitute_glyph_ids": substitute_glyph_ids,
+                }
+            )
+        return {
+            "subst_format": subst_format,
+            "coverage_table": coverage_table,
+            "sequence_tables": sequence_tables,
+        }
 
     def read_alternate_substitution_subtable(
-        self, data: TTFDataStream, offset: int  # noqa: ARG002
-    ) -> Any:
+        self, data: TTFDataStream, offset: int
+    ) -> dict[str, Any]:
         """Mirror upstream ``readAlternateSubstitutionSubtable(TTFDataStream,
-        long)`` (Java line 501) — not implemented; fontTools owns GSUB
-        parsing.
+        long)`` (GlyphSubstitutionTable.java L501-542).
 
-        fontTools exposes the equivalent on
-        ``AlternateSubst.alternates`` (a ``{src_glyph: [alt_glyph, ...]}``
-        dict) — reach it via :meth:`get_lookup_subtables`.
+        Returns ``{"subst_format": 1, "coverage_table": CoverageTable,
+        "alternate_set_tables": [{"glyph_count": int,
+        "alternate_glyph_ids": list[int]}, ...]}``.
         """
-        raise NotImplementedError(
-            "read_alternate_substitution_subtable: GSUB byte-stream "
-            "parsing is delegated to fontTools; read .alternates on an "
-            "AlternateSubst subtable from get_lookup_subtables() instead"
-        )
+        data.seek(offset)
+        subst_format = data.read_unsigned_short()
+        if subst_format != 1:
+            raise OSError(
+                "The expected SubstFormat for AlternateSubstitutionTable is 1"
+            )
+        coverage = data.read_unsigned_short()
+        alt_set_count = data.read_unsigned_short()
+        alternate_offsets = [
+            data.read_unsigned_short() for _ in range(alt_set_count)
+        ]
+        coverage_table = self.read_coverage_table(data, offset + coverage)
+        if alt_set_count != coverage_table.get_size():
+            raise OSError(
+                "According to the OpenTypeFont specifications, the coverage"
+                " count should be equal to the no. of AlternateSetTable"
+            )
+        alternate_set_tables: list[dict[str, Any]] = []
+        for i in range(alt_set_count):
+            data.seek(offset + alternate_offsets[i])
+            glyph_count = data.read_unsigned_short()
+            alternate_glyph_ids = data.read_unsigned_short_array(glyph_count)
+            alternate_set_tables.append(
+                {
+                    "glyph_count": glyph_count,
+                    "alternate_glyph_ids": alternate_glyph_ids,
+                }
+            )
+        return {
+            "subst_format": subst_format,
+            "coverage_table": coverage_table,
+            "alternate_set_tables": alternate_set_tables,
+        }
 
     def read_ligature_substitution_subtable(
-        self, data: TTFDataStream, offset: int  # noqa: ARG002
-    ) -> Any:
+        self, data: TTFDataStream, offset: int
+    ) -> dict[str, Any]:
         """Mirror upstream ``readLigatureSubstitutionSubtable(TTFDataStream,
-        long)`` (Java line 544) — not implemented; fontTools owns GSUB
-        parsing.
+        long)`` (GlyphSubstitutionTable.java L544-587).
 
-        fontTools exposes the equivalent on ``LigatureSubst.ligatures``
-        (a ``{first_glyph: [Ligature, ...]}`` dict whose ``Ligature``
-        entries carry ``LigGlyph`` and ``Component[]``) — reach it via
-        :meth:`get_lookup_subtables`.
+        Returns ``{"subst_format": 1, "coverage_table": CoverageTable,
+        "ligature_set_tables": list[dict]}``. Each ligature_set_table
+        entry has the shape produced by :meth:`read_ligature_set_table`.
         """
-        raise NotImplementedError(
-            "read_ligature_substitution_subtable: GSUB byte-stream "
-            "parsing is delegated to fontTools; read .ligatures on a "
-            "LigatureSubst subtable from get_lookup_subtables() instead"
-        )
+        data.seek(offset)
+        subst_format = data.read_unsigned_short()
+        if subst_format != 1:
+            raise OSError(
+                "The expected SubstFormat for LigatureSubstitutionTable is 1"
+            )
+        coverage = data.read_unsigned_short()
+        lig_set_count = data.read_unsigned_short()
+        ligature_offsets = [
+            data.read_unsigned_short() for _ in range(lig_set_count)
+        ]
+        coverage_table = self.read_coverage_table(data, offset + coverage)
+        if lig_set_count != coverage_table.get_size():
+            raise OSError(
+                "According to the OpenTypeFont specifications, the coverage"
+                " count should be equal to the no. of LigatureSetTables"
+            )
+        ligature_set_tables: list[dict[str, Any]] = []
+        for i in range(lig_set_count):
+            coverage_glyph_id = coverage_table.get_glyph_id(i)
+            ligature_set_tables.append(
+                self.read_ligature_set_table(
+                    data, offset + ligature_offsets[i], coverage_glyph_id
+                )
+            )
+        return {
+            "subst_format": subst_format,
+            "coverage_table": coverage_table,
+            "ligature_set_tables": ligature_set_tables,
+        }
 
     def read_ligature_set_table(
         self,
-        data: TTFDataStream,  # noqa: ARG002
-        ligature_set_table_location: int,  # noqa: ARG002
-        coverage_glyph_id: int,  # noqa: ARG002
-    ) -> Any:
-        """Mirror upstream ``readLigatureSetTable(TTFDataStream, long,
-        int)`` (Java line 589) — not implemented; fontTools owns GSUB
-        parsing.
+        data: TTFDataStream,
+        ligature_set_table_location: int,
+        coverage_glyph_id: int,
+    ) -> dict[str, Any]:
+        """Mirror upstream ``readLigatureSetTable(TTFDataStream, long, int)``
+        (GlyphSubstitutionTable.java L589-612).
 
-        fontTools doesn't materialise a separate ``LigatureSetTable``
-        layer — its ``LigatureSubst.ligatures[<first_glyph>]`` list is
-        the equivalent flattened structure. Reach it via
-        :meth:`get_lookup_subtables`.
+        Returns ``{"ligature_count": int, "ligature_tables":
+        list[dict]}``; each ligature_table entry has the shape produced
+        by :meth:`read_ligature_table`.
         """
-        raise NotImplementedError(
-            "read_ligature_set_table: GSUB byte-stream parsing is "
-            "delegated to fontTools; LigatureSubst.ligatures[k] is the "
-            "equivalent flattened structure"
-        )
+        data.seek(ligature_set_table_location)
+        ligature_count = data.read_unsigned_short()
+        ligature_offsets = [
+            data.read_unsigned_short() for _ in range(ligature_count)
+        ]
+        ligature_tables: list[dict[str, Any]] = []
+        for ligature_offset in ligature_offsets:
+            ligature_tables.append(
+                self.read_ligature_table(
+                    data,
+                    ligature_set_table_location + ligature_offset,
+                    coverage_glyph_id,
+                )
+            )
+        return {
+            "ligature_count": ligature_count,
+            "ligature_tables": ligature_tables,
+        }
 
     def read_ligature_table(
         self,
-        data: TTFDataStream,  # noqa: ARG002
-        ligature_table_location: int,  # noqa: ARG002
-        coverage_glyph_id: int,  # noqa: ARG002
-    ) -> Any:
+        data: TTFDataStream,
+        ligature_table_location: int,
+        coverage_glyph_id: int,
+    ) -> dict[str, Any]:
         """Mirror upstream ``readLigatureTable(TTFDataStream, long, int)``
-        (Java line 614) — not implemented; fontTools owns GSUB parsing.
+        (GlyphSubstitutionTable.java L614-642).
 
-        Each entry in ``LigatureSubst.ligatures[<first_glyph>]`` is a
-        fontTools ``Ligature`` object carrying ``LigGlyph`` and the
-        component glyph list; that's the equivalent of upstream's
-        ``LigatureTable``. Reach it via :meth:`get_lookup_subtables`.
+        Returns ``{"ligature_glyph": int, "component_count": int,
+        "component_glyph_ids": list[int]}``. The first component is the
+        coverage glyph id (per the OT spec — the coverage glyph isn't
+        stored in the table itself, it's implied).
         """
-        raise NotImplementedError(
-            "read_ligature_table: GSUB byte-stream parsing is delegated "
-            "to fontTools; each Ligature in LigatureSubst.ligatures[k] "
-            "is the equivalent decoded structure"
-        )
+        data.seek(ligature_table_location)
+        ligature_glyph = data.read_unsigned_short()
+        component_count = data.read_unsigned_short()
+        if component_count > 100:
+            raise OSError(
+                f"componentCount in ligature table is {component_count},"
+                " font likely corrupt"
+            )
+        component_glyph_ids = [0] * component_count
+        if component_count > 0:
+            component_glyph_ids[0] = coverage_glyph_id
+        for i in range(1, component_count):
+            component_glyph_ids[i] = data.read_unsigned_short()
+        return {
+            "ligature_glyph": ligature_glyph,
+            "component_count": component_count,
+            "component_glyph_ids": component_glyph_ids,
+        }
 
     def read_coverage_table(
-        self, data: TTFDataStream, offset: int  # noqa: ARG002
-    ) -> Any:
+        self, data: TTFDataStream, offset: int
+    ) -> CoverageTableFormat1 | CoverageTableFormat2:
         """Mirror upstream ``readCoverageTable(TTFDataStream, long)``
-        (Java line 644) — not implemented; fontTools owns GSUB parsing.
+        (GlyphSubstitutionTable.java L644-677).
 
-        fontTools' ``Coverage`` objects expose the same data via
-        ``Coverage.glyphs`` (an explicit list of glyph names — both
-        Format 1 and Format 2 are normalised to that shape on read).
-        Reach it via the subtable's ``Coverage`` attribute pulled from
-        :meth:`get_lookup_subtables`.
+        Dispatches by coverage format byte to either
+        :class:`CoverageTableFormat1` (glyph-array) or
+        :class:`CoverageTableFormat2` (range-record). Raises
+        :class:`OSError` for unknown formats.
         """
-        raise NotImplementedError(
-            "read_coverage_table: GSUB byte-stream parsing is delegated "
-            "to fontTools; read .Coverage.glyphs on a subtable instead"
-        )
+        data.seek(offset)
+        coverage_format = data.read_unsigned_short()
+        if coverage_format == 1:
+            glyph_count = data.read_unsigned_short()
+            glyph_array = [
+                data.read_unsigned_short() for _ in range(glyph_count)
+            ]
+            return CoverageTableFormat1(coverage_format, glyph_array)
+        if coverage_format == 2:
+            range_count = data.read_unsigned_short()
+            range_records = [
+                self.read_range_record(data) for _ in range(range_count)
+            ]
+            return CoverageTableFormat2(coverage_format, range_records)
+        raise OSError(f"Unknown coverage format: {coverage_format}")
 
-    def read_range_record(self, data: TTFDataStream) -> Any:  # noqa: ARG002
-        """Mirror upstream ``readRangeRecord(TTFDataStream)`` (Java line
-        956) — not implemented; fontTools owns GSUB parsing.
+    def read_range_record(self, data: TTFDataStream) -> RangeRecord:
+        """Mirror upstream ``readRangeRecord(TTFDataStream)``
+        (GlyphSubstitutionTable.java L956-962).
 
-        Coverage Format 2 ``RangeRecord`` entries are not surfaced by
-        fontTools; the entire coverage is normalised to a flat
-        ``Coverage.glyphs`` list. Read that via the subtable's
-        ``Coverage`` attribute pulled from :meth:`get_lookup_subtables`.
+        Reads the (start_glyph_id, end_glyph_id, start_coverage_index)
+        triple used by Coverage Format 2.
         """
-        raise NotImplementedError(
-            "read_range_record: GSUB byte-stream parsing is delegated "
-            "to fontTools; the equivalent data is flattened into "
-            ".Coverage.glyphs"
+        start_glyph_id = data.read_unsigned_short()
+        end_glyph_id = data.read_unsigned_short()
+        start_coverage_index = data.read_unsigned_short()
+        return RangeRecord(
+            start_glyph_id=start_glyph_id,
+            end_glyph_id=end_glyph_id,
+            start_coverage_index=start_coverage_index,
         )
 
 

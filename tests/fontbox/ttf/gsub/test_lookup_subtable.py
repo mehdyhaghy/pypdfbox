@@ -75,7 +75,7 @@ def test_ligature_format1_single_glyph_signature_is_unsupported() -> None:
     sub = LookupTypeLigatureSubstitutionSubstFormat1()
     # Mirrors upstream UnsupportedOperationException — ligature shaping
     # cannot be expressed in the single-GID-in / single-GID-out signature.
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(TypeError):
         sub.do_substitution(1, 0)
 
 
@@ -153,7 +153,7 @@ def test_ligature_set_count_default() -> None:
 
 def test_multiple_format1_single_signature_unsupported() -> None:
     sub = LookupTypeMultipleSubstitutionFormat1()
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(TypeError):
         sub.do_substitution(1, 0)
 
 
@@ -193,7 +193,7 @@ def test_sequence_table_getters() -> None:
 
 def test_alternate_format1_single_signature_unsupported() -> None:
     sub = LookupTypeAlternateSubstitutionFormat1()
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(TypeError):
         sub.do_substitution(1, 0)
 
 

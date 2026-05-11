@@ -44,10 +44,23 @@ class TriangleBasedShadingContext(ShadingContext):
     def calc_pixel_table_array(
         self, device_bounds: tuple[int, int, int, int],
     ) -> list[list[int]]:
-        raise NotImplementedError
+        """Abstract — concrete subclasses (Gouraud / PatchMeshes)
+        materialise their triangle / patch list and populate the pixel
+        table. Mirrors upstream
+        ``TriangleBasedShadingContext.calcPixelTableArray``."""
+        _ = device_bounds
+        raise NotImplementedError(
+            "TriangleBasedShadingContext.calc_pixel_table_array is abstract"
+        )
 
     def is_data_empty(self) -> bool:
-        raise NotImplementedError
+        """Abstract — subclasses report whether their decoded triangle
+        / patch list is empty. Mirrors upstream
+        ``TriangleBasedShadingContext.isDataEmpty``."""
+        _ = self
+        raise NotImplementedError(
+            "TriangleBasedShadingContext.is_data_empty is abstract"
+        )
 
     # ------------------------------------------------------------------
     # Triangle rasterisation
@@ -125,6 +138,24 @@ class TriangleBasedShadingContext(ShadingContext):
         return self.convert_to_rgb(values)
 
     def get_raster(self, x: int, y: int, w: int, h: int) -> Any:
-        raise NotImplementedError(
-            "TriangleBasedShadingContext.get_raster wires up with the renderer cluster"
-        )
+        """Generate a ``PIL.Image`` raster covering ``(x, y, w, h)`` in
+        device space using the precomputed pixel table. Mirrors upstream
+        ``TriangleBasedShadingContext.getRaster``
+        (TriangleBasedShadingContext.java line 199) — writes only where
+        ``getValueFromArray`` returns a non-negative RGB; pixels outside
+        the table read as transparent."""
+        from PIL import Image  # noqa: PLC0415
+
+        out = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        if self.is_data_empty() and self.get_background() is None:
+            return out
+        pixels = out.load()
+        for row in range(h):
+            for col in range(w):
+                value = self.get_value_from_array(x + col, row + y)
+                if value >= 0:
+                    r = value & 0xFF
+                    g = (value >> 8) & 0xFF
+                    b = (value >> 16) & 0xFF
+                    pixels[col, row] = (r, g, b, 255)
+        return out

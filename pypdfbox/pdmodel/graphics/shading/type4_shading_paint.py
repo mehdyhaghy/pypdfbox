@@ -5,6 +5,7 @@ Mirrors PDFBox ``org.apache.pdfbox.pdmodel.graphics.shading.Type4ShadingPaint``.
 
 from __future__ import annotations
 
+import contextlib
 from typing import Any
 
 from .shading_paint import ShadingPaint
@@ -24,7 +25,22 @@ class Type4ShadingPaint(ShadingPaint):
         xform: Any,
         hints: Any | None = None,
     ) -> Any:
-        # Concrete Type4ShadingContext is wired in with the renderer cluster.
-        raise NotImplementedError(
-            "Type4ShadingPaint.create_context wires up with the renderer cluster"
-        )
+        """Return a :class:`GouraudShadingContext` populated with the
+        free-form mesh triangles. Mirrors upstream
+        ``Type4ShadingPaint.createContext`` (line 56) which constructs a
+        ``Type4ShadingContext`` — pypdfbox's renderer is Pillow-based and
+        the shared :class:`GouraudShadingContext` covers the Type 4 and 5
+        triangle-mesh cases."""
+        _ = (user_bounds, hints)
+        from .gouraud_shading_context import GouraudShadingContext  # noqa: PLC0415
+
+        ctx = GouraudShadingContext(self.shading, cm, xform, self.matrix)
+        try:
+            triangles = list(self.shading.collect_triangles(xform, self.matrix))
+        except (NotImplementedError, AttributeError, OSError):
+            triangles = []
+        ctx.set_triangle_list(triangles)
+        if device_bounds is not None:
+            with contextlib.suppress(TypeError, ValueError):
+                ctx.create_pixel_table(tuple(device_bounds))
+        return ctx

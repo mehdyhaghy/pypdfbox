@@ -134,11 +134,26 @@ class PDTriangleBasedShadingType(PDShading):
         Concrete subclasses wire this up against the real bit reader; the
         abstract surface exists for parity with upstream's protected helper.
         """
-        raise NotImplementedError
+        _ = (
+            input_stream,
+            max_src_coord,
+            max_src_color,
+            range_x,
+            range_y,
+            col_range_tab,
+            matrix,
+            xform,
+        )
+        raise NotImplementedError(
+            "PDTriangleBasedShadingType.read_vertex is abstract"
+        )
 
     def collect_triangles(self, xform: Any = None, matrix: Any = None) -> list[Any]:
         """Concrete subclasses produce a list of ``ShadedTriangle`` instances."""
-        raise NotImplementedError
+        _ = (xform, matrix)
+        raise NotImplementedError(
+            "PDTriangleBasedShadingType.collect_triangles is abstract"
+        )
 
     def get_bounds(self, xform: Any = None, matrix: Any = None) -> Any:
         """Bounding rectangle of the union of all triangles.

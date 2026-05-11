@@ -90,9 +90,67 @@ class AxialShadingContext(ShadingContext):
         return self._axial_shading_type.get_function()
 
     def get_raster(self, x: int, y: int, w: int, h: int) -> Any:
-        # Full pixel raster output requires an inverse transform from device space
-        # to shading space; pypdfbox renderer is not wired in yet. The render math
-        # is exercised by the colour table; pixel emission is deferred.
-        raise NotImplementedError(
-            "AxialShadingContext.get_raster is wired up with the renderer cluster"
-        )
+        """Generate a ``PIL.Image`` raster covering ``(x, y, w, h)`` in
+        device space. Mirrors upstream
+        ``AxialShadingContext.getRaster`` (AxialShadingContext.java
+        line 167) — solves the linear-axis input value, applies extend /
+        background rules, and looks up the colour table.
+
+        pypdfbox returns an RGBA Pillow image; the upstream Java surface
+        is a ``WritableRaster``. Transparent (alpha=0) pixels are emitted
+        for the "continue" branches where no background colour is set."""
+        from PIL import Image  # noqa: PLC0415
+
+        bg = self.get_background()
+        rgb_bg = self.get_rgb_background()
+        coords = self._coords
+        domain = self._domain
+        extend = self._extend
+        denom = self._denom
+        factor = self._factor
+        table = self._color_table
+
+        out = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        pixels = out.load()
+        for j in range(h):
+            for i in range(w):
+                use_background = False
+                px = float(x + i)
+                py = float(y + j)
+                input_value = (
+                    self._x1x0 * (px - coords[0]) + self._y1y0 * (py - coords[1])
+                )
+                if denom == 0:
+                    if bg is None:
+                        continue
+                    use_background = True
+                else:
+                    input_value /= denom
+                if input_value < 0:
+                    if extend[0]:
+                        input_value = domain[0]
+                    elif bg is None:
+                        continue
+                    else:
+                        use_background = True
+                elif input_value > 1:
+                    if extend[1]:
+                        input_value = domain[1]
+                    elif bg is None:
+                        continue
+                    else:
+                        use_background = True
+                if use_background:
+                    value = rgb_bg
+                else:
+                    key = int(input_value * factor)
+                    if key < 0:
+                        key = 0
+                    elif key > factor:
+                        key = factor
+                    value = table[key]
+                r = value & 0xFF
+                g = (value >> 8) & 0xFF
+                b = (value >> 16) & 0xFF
+                pixels[i, j] = (r, g, b, 255)
+        return out

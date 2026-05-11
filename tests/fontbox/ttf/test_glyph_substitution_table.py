@@ -526,132 +526,185 @@ def test_remove_feature_empty_list() -> None:
     assert records == []
 
 
-# ---------- read_* upstream-private parsers (delegate to fontTools) --------
+# ---------- read_* upstream-private parsers (byte-stream decoders) --------
 
 
-def test_read_script_list_raises_notimplemented() -> None:
+def _pack_uint16(value: int) -> bytes:
+    return value.to_bytes(2, "big", signed=False)
+
+
+def _pack_int16(value: int) -> bytes:
+    return value.to_bytes(2, "big", signed=True)
+
+
+def test_read_lang_sys_table_decodes_required_feature_and_indices() -> None:
     from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
 
     table = GlyphSubstitutionTable()
-    with pytest.raises(NotImplementedError, match="fontTools"):
-        table.read_script_list(MemoryTTFDataStream(b""), 0)
+    blob = (
+        _pack_uint16(0)
+        + _pack_uint16(0xFFFF)
+        + _pack_uint16(3)
+        + _pack_uint16(0)
+        + _pack_uint16(1)
+        + _pack_uint16(4)
+    )
+    out = table.read_lang_sys_table(MemoryTTFDataStream(blob), 0)
+    assert out["lookup_order"] == 0
+    assert out["required_feature_index"] == 0xFFFF
+    assert out["feature_index_count"] == 3
+    assert out["feature_indices"] == [0, 1, 4]
 
 
-def test_read_script_table_raises_notimplemented() -> None:
+def test_read_feature_table_decodes_lookup_indices() -> None:
     from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
 
     table = GlyphSubstitutionTable()
-    with pytest.raises(NotImplementedError, match="fontTools"):
-        table.read_script_table(MemoryTTFDataStream(b""), 0)
+    blob = (
+        _pack_uint16(0)
+        + _pack_uint16(2)
+        + _pack_uint16(2)
+        + _pack_uint16(5)
+    )
+    out = table.read_feature_table(MemoryTTFDataStream(blob), 0)
+    assert out["feature_params"] == 0
+    assert out["lookup_index_count"] == 2
+    assert out["lookup_list_indices"] == [2, 5]
 
 
-def test_read_lang_sys_table_raises_notimplemented() -> None:
+def test_read_coverage_table_format1() -> None:
     from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
 
     table = GlyphSubstitutionTable()
-    with pytest.raises(NotImplementedError, match="fontTools"):
-        table.read_lang_sys_table(MemoryTTFDataStream(b""), 0)
+    blob = (
+        _pack_uint16(1)
+        + _pack_uint16(3)
+        + _pack_uint16(10)
+        + _pack_uint16(20)
+        + _pack_uint16(30)
+    )
+    out = table.read_coverage_table(MemoryTTFDataStream(blob), 0)
+    assert out.get_coverage_format() == 1
+    assert out.get_size() == 3
+    assert out.get_glyph_id(0) == 10
+    assert out.get_glyph_id(2) == 30
 
 
-def test_read_feature_list_raises_notimplemented() -> None:
+def test_read_coverage_table_format2_and_range_record() -> None:
     from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
 
     table = GlyphSubstitutionTable()
-    with pytest.raises(NotImplementedError, match="fontTools"):
-        table.read_feature_list(MemoryTTFDataStream(b""), 0)
+    blob = (
+        _pack_uint16(2)
+        + _pack_uint16(1)
+        + _pack_uint16(10)
+        + _pack_uint16(12)
+        + _pack_uint16(0)
+    )
+    out = table.read_coverage_table(MemoryTTFDataStream(blob), 0)
+    assert out.get_coverage_format() == 2
+    records = out.get_range_records()
+    assert len(records) == 1
+    assert records[0].start_glyph_id == 10
+    assert records[0].end_glyph_id == 12
 
 
-def test_read_feature_table_raises_notimplemented() -> None:
+def test_read_range_record_round_trip() -> None:
     from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
 
     table = GlyphSubstitutionTable()
-    with pytest.raises(NotImplementedError, match="fontTools"):
-        table.read_feature_table(MemoryTTFDataStream(b""), 0)
+    blob = _pack_uint16(5) + _pack_uint16(9) + _pack_uint16(1)
+    out = table.read_range_record(MemoryTTFDataStream(blob))
+    assert out.start_glyph_id == 5
+    assert out.end_glyph_id == 9
+    assert out.start_coverage_index == 1
 
 
-def test_read_lookup_list_raises_notimplemented() -> None:
+def test_read_single_lookup_sub_table_format1() -> None:
     from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
 
     table = GlyphSubstitutionTable()
-    with pytest.raises(NotImplementedError, match="fontTools"):
-        table.read_lookup_list(MemoryTTFDataStream(b""), 0)
+    blob = (
+        _pack_uint16(1)
+        + _pack_uint16(6)
+        + _pack_int16(3)
+        + _pack_uint16(1)
+        + _pack_uint16(1)
+        + _pack_uint16(7)
+    )
+    out = table.read_single_lookup_sub_table(MemoryTTFDataStream(blob), 0)
+    assert out["subst_format"] == 1
+    assert out["delta_glyph_id"] == 3
+    assert out["coverage_table"].get_glyph_id(0) == 7
 
 
-def test_read_lookup_subtable_raises_notimplemented() -> None:
+def test_read_single_lookup_sub_table_format2() -> None:
     from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
 
     table = GlyphSubstitutionTable()
-    with pytest.raises(NotImplementedError, match="fontTools"):
-        table.read_lookup_subtable(MemoryTTFDataStream(b""), 0, 1)
+    blob = (
+        _pack_uint16(2)
+        + _pack_uint16(8)
+        + _pack_uint16(1)
+        + _pack_uint16(99)
+        + _pack_uint16(1)
+        + _pack_uint16(1)
+        + _pack_uint16(50)
+    )
+    out = table.read_single_lookup_sub_table(MemoryTTFDataStream(blob), 0)
+    assert out["subst_format"] == 2
+    assert out["substitute_glyph_ids"] == [99]
+    assert out["coverage_table"].get_glyph_id(0) == 50
 
 
-def test_read_lookup_table_raises_notimplemented() -> None:
+def test_read_ligature_table_uses_coverage_glyph_id_as_first_component() -> None:
     from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
 
     table = GlyphSubstitutionTable()
-    with pytest.raises(NotImplementedError, match="fontTools"):
-        table.read_lookup_table(MemoryTTFDataStream(b""), 0)
+    blob = (
+        _pack_uint16(42)
+        + _pack_uint16(3)
+        + _pack_uint16(101)
+        + _pack_uint16(102)
+    )
+    out = table.read_ligature_table(MemoryTTFDataStream(blob), 0, 100)
+    assert out["ligature_glyph"] == 42
+    assert out["component_count"] == 3
+    assert out["component_glyph_ids"] == [100, 101, 102]
 
 
-def test_read_single_lookup_sub_table_raises_notimplemented() -> None:
+def test_read_script_table_with_default_only() -> None:
     from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
 
     table = GlyphSubstitutionTable()
-    with pytest.raises(NotImplementedError, match="fontTools"):
-        table.read_single_lookup_sub_table(MemoryTTFDataStream(b""), 0)
+    # ScriptTable at offset 0: defaultLangSysOffset (4), langSysCount (0).
+    # LangSysTable at offset 4: lookupOrder (0), requiredFeatureIndex (1),
+    # featureIndexCount (0).
+    blob = (
+        _pack_uint16(4)
+        + _pack_uint16(0)
+        + _pack_uint16(0)
+        + _pack_uint16(1)
+        + _pack_uint16(0)
+    )
+    out = table.read_script_table(MemoryTTFDataStream(blob), 0)
+    assert out["lang_sys_tables"] == {}
+    assert out["default_lang_sys"] is not None
+    assert out["default_lang_sys"]["required_feature_index"] == 1
 
 
-def test_read_multiple_substitution_subtable_raises_notimplemented() -> None:
+def test_read_lookup_subtable_unsupported_type_returns_none() -> None:
     from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
 
     table = GlyphSubstitutionTable()
-    with pytest.raises(NotImplementedError, match="fontTools"):
-        table.read_multiple_substitution_subtable(MemoryTTFDataStream(b""), 0)
+    out = table.read_lookup_subtable(MemoryTTFDataStream(b""), 0, 5)
+    assert out is None
 
 
-def test_read_alternate_substitution_subtable_raises_notimplemented() -> None:
+def test_read_coverage_table_unknown_format_raises() -> None:
     from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
 
     table = GlyphSubstitutionTable()
-    with pytest.raises(NotImplementedError, match="fontTools"):
-        table.read_alternate_substitution_subtable(MemoryTTFDataStream(b""), 0)
-
-
-def test_read_ligature_substitution_subtable_raises_notimplemented() -> None:
-    from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
-
-    table = GlyphSubstitutionTable()
-    with pytest.raises(NotImplementedError, match="fontTools"):
-        table.read_ligature_substitution_subtable(MemoryTTFDataStream(b""), 0)
-
-
-def test_read_ligature_set_table_raises_notimplemented() -> None:
-    from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
-
-    table = GlyphSubstitutionTable()
-    with pytest.raises(NotImplementedError, match="fontTools"):
-        table.read_ligature_set_table(MemoryTTFDataStream(b""), 0, 0)
-
-
-def test_read_ligature_table_raises_notimplemented() -> None:
-    from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
-
-    table = GlyphSubstitutionTable()
-    with pytest.raises(NotImplementedError, match="fontTools"):
-        table.read_ligature_table(MemoryTTFDataStream(b""), 0, 0)
-
-
-def test_read_coverage_table_raises_notimplemented() -> None:
-    from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
-
-    table = GlyphSubstitutionTable()
-    with pytest.raises(NotImplementedError, match="fontTools"):
-        table.read_coverage_table(MemoryTTFDataStream(b""), 0)
-
-
-def test_read_range_record_raises_notimplemented() -> None:
-    from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
-
-    table = GlyphSubstitutionTable()
-    with pytest.raises(NotImplementedError, match="fontTools"):
-        table.read_range_record(MemoryTTFDataStream(b""))
+    blob = _pack_uint16(99)
+    with pytest.raises(OSError, match="Unknown coverage format"):
+        table.read_coverage_table(MemoryTTFDataStream(blob), 0)

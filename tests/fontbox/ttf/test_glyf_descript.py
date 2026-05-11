@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from pypdfbox.fontbox.ttf.glyf_descript import GlyfDescript
 from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
 
@@ -28,20 +26,23 @@ def test_default_state() -> None:
     d.resolve()
 
 
-def test_abstract_methods_raise() -> None:
+def test_default_abstract_methods_return_degenerate_values() -> None:
+    """The base provides degenerate defaults — an "empty descript".
+
+    Upstream's ``GlyphDescription`` interface declares these abstract;
+    the Python port keeps the surface but supplies sensible defaults so
+    callers holding a generic :class:`GlyfDescript` reference don't
+    have to special-case the "no concrete subclass" path. Concrete
+    subclasses (:class:`GlyfSimpleDescript` /
+    :class:`GlyfCompositeDescript`) override every accessor.
+    """
     d = GlyfDescript(0)
-    with pytest.raises(NotImplementedError):
-        d.is_composite()
-    with pytest.raises(NotImplementedError):
-        d.get_point_count()
-    with pytest.raises(NotImplementedError):
-        d.get_end_pt_of_contours(0)
-    with pytest.raises(NotImplementedError):
-        d.get_flags(0)
-    with pytest.raises(NotImplementedError):
-        d.get_x_coordinate(0)
-    with pytest.raises(NotImplementedError):
-        d.get_y_coordinate(0)
+    assert d.is_composite() is False
+    assert d.get_point_count() == 0
+    assert d.get_end_pt_of_contours(0) == -1
+    assert d.get_flags(0) == 0
+    assert d.get_x_coordinate(0) == 0
+    assert d.get_y_coordinate(0) == 0
 
 
 def test_read_instructions() -> None:

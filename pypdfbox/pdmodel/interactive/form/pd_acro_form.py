@@ -594,27 +594,71 @@ class PDAcroForm:
             if isinstance(field, PDTerminalField):
                 field.construct_appearances()
 
-    # ---------- FDF (deferred) ----------
+    # ---------- FDF ----------
 
     def import_fdf(self, fdf: object) -> None:
-        """Apply an :class:`FDFDocument`'s field values to this form.
+        """Import the field values from ``fdf`` (an :class:`FDFDocument`)
+        into this form.
 
-        The ``pypdfbox.pdmodel.fdf`` module is not yet ported; calling
-        this raises :class:`NotImplementedError`.
+        Mirrors upstream ``PDAcroForm.importFDF(FDFDocument)`` (lines
+        129-144): walks each ``FDFField`` from the FDF catalog, looks up
+        the matching :class:`PDField` by its partial field name, and
+        delegates to :meth:`PDField.import_fdf`. Missing fields are
+        silently ignored (matches upstream's ``if (docField != null)``
+        guard).
         """
-        raise NotImplementedError(
-            "PDAcroForm.import_fdf: FDFDocument support is not yet implemented"
-        )
+        from pypdfbox.pdmodel.fdf.fdf_document import FDFDocument
+
+        if not isinstance(fdf, FDFDocument):
+            raise TypeError(
+                "PDAcroForm.import_fdf expected FDFDocument; got "
+                f"{type(fdf).__name__}"
+            )
+        fdf_fields = fdf.get_catalog().get_fdf().get_fields()
+        if not fdf_fields:
+            return
+        for fdf_field in fdf_fields:
+            partial = fdf_field.get_partial_field_name()
+            if partial is None:
+                continue
+            doc_field = self.get_field(partial)
+            if doc_field is not None:
+                doc_field.import_fdf(fdf_field)
 
     def export_fdf(self) -> object:
         """Export this form's field values as a new :class:`FDFDocument`.
 
-        The ``pypdfbox.pdmodel.fdf`` module is not yet ported; calling
-        this raises :class:`NotImplementedError`.
+        Mirrors upstream ``PDAcroForm.exportFDF()`` (lines 152-173):
+        builds a fresh :class:`FDFDocument`, attaches a fresh
+        :class:`FDFDictionary`, calls :meth:`PDField.export_fdf` on every
+        top-level field, and copies the document ID across when the
+        owning ``PDDocument`` exposes one.
         """
-        raise NotImplementedError(
-            "PDAcroForm.export_fdf: FDFDocument support is not yet implemented"
-        )
+        from pypdfbox.pdmodel.fdf.fdf_dictionary import FDFDictionary
+        from pypdfbox.pdmodel.fdf.fdf_document import FDFDocument
+
+        fdf = FDFDocument()
+        catalog = fdf.get_catalog()
+        fdf_dict = FDFDictionary()
+        catalog.set_fdf(fdf_dict)
+
+        fields = self.get_fields()
+        fdf_fields = [field.export_fdf() for field in fields]
+
+        document = self._document
+        if document is not None:
+            cos_doc = None
+            get_cos = getattr(document, "get_document", None)
+            if callable(get_cos):
+                cos_doc = get_cos()
+            if cos_doc is not None and hasattr(cos_doc, "get_document_id"):
+                doc_id = cos_doc.get_document_id()
+                if doc_id is not None:
+                    fdf_dict.set_id(doc_id)
+
+        if fdf_fields:
+            fdf_dict.set_fields(fdf_fields)
+        return fdf
 
     # ---------- /XFA ----------
 

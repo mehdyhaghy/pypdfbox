@@ -46,11 +46,14 @@ def test_gsub_lookup_tail_coverage_getters_and_unsupported_signatures() -> None:
     assert ligature.get_coverage_table() == (9,)
     assert ligature.get_coverage_object().get_glyph_array() == (9,)
 
-    with pytest.raises(NotImplementedError):
+    # Multi-glyph lookups don't fit the single-GID-in / single-GID-out
+    # signature — upstream throws UnsupportedOperationException; Python's
+    # nearest equivalent is ``TypeError``.
+    with pytest.raises(TypeError):
         multiple.do_substitution(3, 0)
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(TypeError):
         alternate.do_substitution(6, 0)
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(TypeError):
         ligature.do_substitution(9, 0)
 
 

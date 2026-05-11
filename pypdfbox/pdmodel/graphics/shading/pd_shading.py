@@ -121,6 +121,18 @@ class PDShading:
         return "Shading"
 
     def get_shading_type(self) -> int:
+        """Return the ``/ShadingType`` value for this shading. Abstract on
+        :class:`PDShading`: each concrete subclass returns its fixed code
+        (1 for function-based, 2 axial, 3 radial, 4-7 mesh-based).
+
+        Falls back to reading the ``/ShadingType`` entry off the underlying
+        dictionary when called on a bare ``PDShading`` instance — matches
+        the upstream behavior where the value is stored in COS and the
+        getter is only declared ``abstract`` for compile-time enforcement.
+        """
+        value = self._dict.get_int(_SHADING_TYPE, 0)
+        if value:
+            return int(value)
         raise NotImplementedError("PDShading is abstract; override get_shading_type")
 
     def set_shading_type(self, shading_type: int) -> None:
@@ -479,16 +491,34 @@ class PDShading:
         themselves in a type-specific ``ShadingPaint`` instance — see
         ``Type1ShadingPaint``, ``Type2ShadingPaint``, etc.
 
-        pypdfbox does not yet expose a Java-AWT-equivalent ``Paint``
-        interface (the rendering surface lands in a later wave). Until
-        then this base method raises :class:`NotImplementedError`,
-        matching the abstract upstream contract — subclasses override
-        once their paint hook is wired through.
+        Dispatches to the type-specific paint class based on
+        ``get_shading_type()``. Subclasses that return ``None`` from this
+        method (Types 4-7 currently) match the lite-surface convention
+        used for the mesh shading types.
         """
-        raise NotImplementedError(
-            "PDShading.to_paint requires the rendering cluster; "
-            "no paint hook is wired through yet"
-        )
+        shading_type = self._dict.get_int(_SHADING_TYPE, 0)
+        if shading_type == PDShading.SHADING_TYPE1:
+            from .type1_shading_paint import Type1ShadingPaint  # noqa: PLC0415
+            return Type1ShadingPaint(self, matrix)
+        if shading_type == PDShading.SHADING_TYPE2:
+            from .axial_shading_paint import AxialShadingPaint  # noqa: PLC0415
+            return AxialShadingPaint(self, matrix)
+        if shading_type == PDShading.SHADING_TYPE3:
+            from .radial_shading_paint import RadialShadingPaint  # noqa: PLC0415
+            return RadialShadingPaint(self, matrix)
+        if shading_type == PDShading.SHADING_TYPE4:
+            from .type4_shading_paint import Type4ShadingPaint  # noqa: PLC0415
+            return Type4ShadingPaint(self, matrix)
+        if shading_type == PDShading.SHADING_TYPE5:
+            from .type5_shading_paint import Type5ShadingPaint  # noqa: PLC0415
+            return Type5ShadingPaint(self, matrix)
+        if shading_type == PDShading.SHADING_TYPE6:
+            from .type6_shading_paint import Type6ShadingPaint  # noqa: PLC0415
+            return Type6ShadingPaint(self, matrix)
+        if shading_type == PDShading.SHADING_TYPE7:
+            from .type7_shading_paint import Type7ShadingPaint  # noqa: PLC0415
+            return Type7ShadingPaint(self, matrix)
+        return None
 
     # ---------- bounds (rendering hook) ----------
 

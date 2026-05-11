@@ -8,9 +8,9 @@ from pypdfbox.fontbox.ttf.gsub import GsubData
 def test_no_data_found_is_typed_class_sentinel() -> None:
     sentinel: GsubData = GsubData.NO_DATA_FOUND
 
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(TypeError):
         sentinel.get_language()
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(TypeError):
         sentinel.get_supported_features()
 
 

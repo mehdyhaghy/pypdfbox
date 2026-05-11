@@ -23,7 +23,10 @@ class PDMeshBasedShadingType(PDTriangleBasedShadingType):
         self, points: list[tuple[float, float]], color: list[list[float]]
     ) -> Any:
         """Subclasses produce a CoonsPatch / TensorPatch from raw decoded data."""
-        raise NotImplementedError
+        _ = (points, color)
+        raise NotImplementedError(
+            "PDMeshBasedShadingType.generate_patch is abstract"
+        )
 
     def collect_patches(
         self,
@@ -38,7 +41,10 @@ class PDMeshBasedShadingType(PDTriangleBasedShadingType):
         sees the symbol while the production path stays on the concrete
         subclass.
         """
-        raise NotImplementedError
+        _ = (xform, matrix, control_points)
+        raise NotImplementedError(
+            "PDMeshBasedShadingType.collect_patches is abstract"
+        )
 
     def read_patch(
         self,
@@ -56,7 +62,23 @@ class PDMeshBasedShadingType(PDTriangleBasedShadingType):
         control_points: int,
     ) -> Any:
         """Read a single patch (coordinates + corner colours) from the stream."""
-        raise NotImplementedError
+        _ = (
+            input_stream,
+            is_free,
+            implicit_edge,
+            implicit_corner_color,
+            max_src_coord,
+            max_src_color,
+            range_x,
+            range_y,
+            col_range,
+            matrix,
+            xform,
+            control_points,
+        )
+        raise NotImplementedError(
+            "PDMeshBasedShadingType.read_patch is abstract"
+        )
 
     def get_bounds(
         self,

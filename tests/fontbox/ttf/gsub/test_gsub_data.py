@@ -101,25 +101,25 @@ def test_no_data_found_sentinel_raises_on_every_accessor() -> None:
     import pytest
 
     sentinel = GsubData.NO_DATA_FOUND
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(TypeError):
         sentinel.get_language()
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(TypeError):
         sentinel.get_active_script_name()
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(TypeError):
         sentinel.get_script_list()
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(TypeError):
         sentinel.get_feature_list()
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(TypeError):
         sentinel.get_glyph_substitution_map()
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(TypeError):
         sentinel.get_lookup_tables()
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(TypeError):
         sentinel.is_feature_supported("liga")
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(TypeError):
         sentinel.get_feature_table("liga")
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(TypeError):
         sentinel.get_feature("liga")
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(TypeError):
         sentinel.get_supported_features()
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(TypeError):
         sentinel.apply_substitution_lookup_list([1, 2, 3])

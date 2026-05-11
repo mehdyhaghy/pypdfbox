@@ -38,4 +38,10 @@ class ShadingPaint:
         xform: Any,
         hints: Any | None = None,
     ) -> Any:
-        raise NotImplementedError
+        """Abstract — subclasses (Axial / Radial / Type1 / Type4-7) build
+        their type-specific :class:`ShadingContext`. Mirrors upstream
+        ``ShadingPaint.createContext`` which is also abstract."""
+        _ = (cm, device_bounds, user_bounds, xform, hints)
+        raise NotImplementedError(
+            "ShadingPaint.create_context is abstract; override in a subclass"
+        )

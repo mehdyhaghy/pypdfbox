@@ -51,6 +51,7 @@ class PDJPXColorSpace(PDColorSpace):
 
     def get_initial_color(self) -> PDColor:
         """Upstream raises ``UnsupportedOperationException``."""
+        _ = self
         raise NotImplementedError("JPX color spaces don't support drawing")
 
     def to_rgb(self, value: list[float]) -> list[float]:
@@ -87,6 +88,7 @@ class PDJPXColorSpace(PDColorSpace):
 
     def get_cos_object(self) -> Any:
         """Upstream raises ``UnsupportedOperationException``."""
+        _ = self
         raise NotImplementedError("JPX color spaces don't have COS objects")
 
 

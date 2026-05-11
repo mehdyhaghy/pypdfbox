@@ -79,4 +79,10 @@ class ShadingContext:
     # Abstract raster API – subclasses must override.
     # ------------------------------------------------------------------
     def get_raster(self, x: int, y: int, w: int, h: int) -> Any:
-        raise NotImplementedError
+        """Abstract — subclasses produce a ``PIL.Image`` (RGBA) covering
+        the region ``(x, y, w, h)`` in device space. Mirrors upstream
+        ``ShadingContext.getRaster`` which is implemented per subclass."""
+        _ = (x, y, w, h)
+        raise NotImplementedError(
+            "ShadingContext.get_raster is abstract; override in a subclass"
+        )

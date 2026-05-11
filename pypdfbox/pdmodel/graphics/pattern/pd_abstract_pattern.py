@@ -95,8 +95,19 @@ class PDAbstractPattern:
     # ---------- /PatternType ----------
 
     def get_pattern_type(self) -> int:
-        """Subclasses override to return their fixed pattern type code."""
-        raise NotImplementedError
+        """Subclasses override to return their fixed pattern type code.
+
+        Falls back to reading the ``/PatternType`` entry off the underlying
+        dictionary when called on a bare ``PDAbstractPattern`` instance.
+        Mirrors upstream's abstract method signature; the value is
+        physically stored in COS so a base-level lookup is always
+        available."""
+        value = self._dict.get_int(_PATTERN_TYPE, 0)
+        if value:
+            return int(value)
+        raise NotImplementedError(
+            "PDAbstractPattern is abstract; override get_pattern_type"
+        )
 
     def set_pattern_type(self, pattern_type: int) -> None:
         """Write ``/PatternType``. Mirrors upstream

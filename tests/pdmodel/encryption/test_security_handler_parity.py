@@ -145,16 +145,18 @@ def test_encrypt_data_rejects_unsupported_input() -> None:
 # --------------------------------------------------------- placeholder subclass API
 
 
-def test_compute_encrypted_key_not_implemented_on_base() -> None:
-    with pytest.raises(NotImplementedError):
+def test_compute_encrypted_key_rejected_on_non_password_handler() -> None:
+    # Wave 1284: the base class now routes password derivation to the
+    # standard handler; non-password handlers raise ``TypeError`` instead.
+    with pytest.raises(TypeError, match="does not derive keys"):
         _handler().compute_encrypted_key(b"pw")
 
 
-def test_compute_user_password_not_implemented_on_base() -> None:
-    with pytest.raises(NotImplementedError):
+def test_compute_user_password_rejected_on_non_password_handler() -> None:
+    with pytest.raises(TypeError, match="does not derive a /U entry"):
         _handler().compute_user_password(b"pw")
 
 
-def test_compute_owner_password_not_implemented_on_base() -> None:
-    with pytest.raises(NotImplementedError):
+def test_compute_owner_password_rejected_on_non_password_handler() -> None:
+    with pytest.raises(TypeError, match="does not derive a /O entry"):
         _handler().compute_owner_password(b"owner", b"user")

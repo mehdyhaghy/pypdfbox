@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -84,7 +85,7 @@ class Attribute:
         return hash((self._ns_uri, self._name, self._value))
 
 
-class AbstractField:
+class AbstractField(ABC):
     """
     Base class for XMP property representations.
 
@@ -147,8 +148,21 @@ class AbstractField:
     def getMetadata(self) -> XMPMetadata:  # noqa: N802 - upstream Java name
         return self.get_metadata()
 
+    @abstractmethod
     def get_namespace(self) -> str | None:
-        raise NotImplementedError
+        """Return the namespace URI of this property.
 
+        Mirrors upstream ``AbstractField.getNamespace()`` — abstract in Java.
+        Concrete subclasses (``AbstractSimpleProperty``, ``ArrayProperty``,
+        ``AbstractComplexProperty``) carry the namespace value supplied at
+        construction time.
+        """
+
+    @abstractmethod
     def get_prefix(self) -> str | None:
-        raise NotImplementedError
+        """Return the XML prefix used to serialize this property.
+
+        Mirrors upstream ``AbstractField.getPrefix()`` — abstract in Java.
+        Concrete subclasses are responsible for returning the prefix
+        recorded at construction time.
+        """

@@ -194,4 +194,17 @@ class PDShadingType3(PDShading):
         self._dict.set_item(_EXTEND, array)
 
 
+    # ---------- paint (rendering hook) ----------
+
+    def to_paint(self, matrix: Any = None) -> Any:
+        """Return a ``RadialShadingPaint`` for this radial-gradient shading.
+
+        Mirrors upstream ``PDShadingType3.toPaint(Matrix)`` which returns
+        ``new RadialShadingPaint(this, matrix)``.
+        """
+        from .radial_shading_paint import RadialShadingPaint  # noqa: PLC0415
+
+        return RadialShadingPaint(self, matrix)
+
+
 __all__ = ["PDShadingType3"]

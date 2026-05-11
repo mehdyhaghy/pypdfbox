@@ -59,26 +59,26 @@ def test_attribute_hash_and_non_attribute_equality() -> None:
     assert hash(attr) == hash(Attribute("ns", "name", "value"))
 
 
-def test_abstract_field_base_namespace_and_prefix_raise(
+def test_abstract_field_cannot_instantiate_directly(
     metadata: XMPMetadata,
 ) -> None:
-    field = AbstractField(metadata, "field")
-
-    with pytest.raises(NotImplementedError):
-        field.get_namespace()
-    with pytest.raises(NotImplementedError):
-        field.get_prefix()
+    # AbstractField is an ABC with abstract get_namespace/get_prefix —
+    # mirrors upstream ``public abstract class AbstractField`` and the two
+    # abstract accessors on it.
+    del metadata
+    with pytest.raises(TypeError):
+        AbstractField(object(), "field")  # type: ignore[abstract]
 
 
 @pytest.mark.parametrize(
     "method_name",
     ["set_value", "get_string_value", "get_value"],
 )
-def test_abstract_simple_property_base_methods_raise(method_name: str) -> None:
-    method = getattr(AbstractSimpleProperty, method_name)
-
-    with pytest.raises(NotImplementedError):
-        method(object(), "value") if method_name == "set_value" else method(object())
+def test_abstract_simple_property_methods_are_abstract(method_name: str) -> None:
+    # The three accessors are abstract in upstream Java; concrete
+    # simple-property subclasses (Boolean/Integer/Real/Text/Date) implement
+    # them. Verify the base class advertises them as abstract.
+    assert method_name in AbstractSimpleProperty.__abstractmethods__
 
 
 def test_pdfa_schema_empty_description_lists(metadata: XMPMetadata) -> None:

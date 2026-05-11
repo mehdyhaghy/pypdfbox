@@ -159,15 +159,11 @@ class PDShadingType1(PDShading):
 
         Mirrors upstream ``PDShadingType1.toPaint(Matrix)`` (line 104 of
         ``PDShadingType1.java``) which returns
-        ``new Type1ShadingPaint(this, matrix)``. pypdfbox's rendering
-        surface lands in a later wave, so the paint constructor isn't
-        wired through yet — raises :class:`NotImplementedError` until
-        it is.
+        ``new Type1ShadingPaint(this, matrix)``.
         """
-        raise NotImplementedError(
-            "PDShadingType1.to_paint requires the rendering cluster; "
-            "Type1ShadingPaint is not wired through yet"
-        )
+        from .type1_shading_paint import Type1ShadingPaint  # noqa: PLC0415
+
+        return Type1ShadingPaint(self, matrix)
 
 
 __all__ = ["PDShadingType1"]

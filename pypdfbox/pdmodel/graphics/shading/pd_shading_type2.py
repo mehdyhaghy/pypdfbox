@@ -196,19 +196,15 @@ class PDShadingType2(PDShading):
     # ---------- paint (rendering hook) ----------
 
     def to_paint(self, matrix: Any = None) -> Any:
-        """Return a ``Type2ShadingPaint`` for this axial-gradient shading.
+        """Return an ``AxialShadingPaint`` for this axial-gradient shading.
 
         Mirrors upstream ``PDShadingType2.toPaint(Matrix)`` (line 127 of
         ``PDShadingType2.java``) which returns
-        ``new Type2ShadingPaint(this, matrix)``. pypdfbox's rendering
-        surface lands in a later wave, so the paint constructor isn't
-        wired through yet — raises :class:`NotImplementedError` until
-        it is.
+        ``new AxialShadingPaint(this, matrix)``.
         """
-        raise NotImplementedError(
-            "PDShadingType2.to_paint requires the rendering cluster; "
-            "Type2ShadingPaint is not wired through yet"
-        )
+        from .axial_shading_paint import AxialShadingPaint  # noqa: PLC0415
+
+        return AxialShadingPaint(self, matrix)
 
 
 __all__ = ["PDShadingType2"]

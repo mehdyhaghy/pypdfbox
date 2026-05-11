@@ -397,8 +397,6 @@ def test_higher_type_paints_expose_shading_and_matrix(paint_cls: type) -> None:
     paint = paint_cls(shading, matrix="m")
     assert paint.get_shading() is shading
     assert paint.get_matrix() == "m"
-    with pytest.raises(NotImplementedError):
-        paint.create_context(None, None, None, None)
 
 
 # ----------------------------------------------------------------------

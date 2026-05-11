@@ -97,5 +97,21 @@ class Encoding:
         return False
 
     def get_encoding_name(self) -> str:
-        """Subclasses override to return a stable encoding identifier."""
-        raise NotImplementedError
+        """Return a stable identifier for this encoding.
+
+        Mirrors upstream ``getEncodingName()`` on
+        ``org.apache.pdfbox.pdmodel.font.encoding.Encoding`` (line 176).
+        Upstream declares the method abstract; concrete subclasses
+        (``WinAnsiEncoding`` -> ``"WinAnsi"``, ``MacRomanEncoding`` ->
+        ``"MacRoman"``, ...) hand-roll the literal name.
+
+        The base implementation here derives the same identifier from
+        the class name — strip a trailing ``Encoding`` suffix and return
+        the rest. Subclasses are still free to override for a different
+        spelling (e.g. ``StandardEncoding`` upstream returns
+        ``"StandardEncoding"`` rather than ``"Standard"``).
+        """
+        name = type(self).__name__
+        if name.endswith("Encoding") and len(name) > len("Encoding"):
+            return name[: -len("Encoding")]
+        return name

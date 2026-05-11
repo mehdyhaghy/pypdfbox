@@ -351,12 +351,36 @@ class SecurityHandler(ABC):
     ) -> bytes:
         """Compute the file-encryption key from a password.
 
-        Placeholder on the base class — concrete handlers (e.g. the standard
-        security handler) implement the per-revision algorithms.
+        Upstream Java declares this exclusively on
+        ``StandardSecurityHandler``; we keep the entry point on the base so
+        callers can program against the abstract type. The base routes to
+        ``StandardSecurityHandler``'s revision-dispatched algorithm using
+        the current handler's ``_revision`` / ``_key_length`` settings.
+        Handlers that do not derive keys from passwords (e.g.
+        ``PublicKeySecurityHandler``) raise ``TypeError`` — they wrap the
+        file key in a recipient list instead.
         """
-        raise NotImplementedError(
-            "compute_encrypted_key must be implemented by a concrete "
-            "SecurityHandler subclass"
+        from .standard_security_handler import StandardSecurityHandler
+
+        if not isinstance(self, StandardSecurityHandler):
+            raise TypeError(
+                f"{type(self).__name__} does not derive keys from a password;"
+                " call compute_encrypted_key on a StandardSecurityHandler."
+            )
+        return StandardSecurityHandler.compute_encrypted_key(  # type: ignore[arg-type]
+            password,
+            o if o is not None else b"",
+            u if u is not None else 0,
+            oe if oe is not None else (document_id if document_id is not None else b""),
+            ue if ue is not None else (revision if revision is not None else 0),
+            permissions if permissions is not None else (
+                (length_in_bits or 40) // 8
+            ),
+            encrypt_metadata if encrypt_metadata is not None else True,
+            revision,
+            (length_in_bits // 8) if length_in_bits is not None else None,
+            encrypt_metadata,
+            is_owner_password,
         )
 
     def compute_user_password(
@@ -369,10 +393,28 @@ class SecurityHandler(ABC):
         length_in_bits: int | None = None,
         encrypt_metadata: bool | None = None,
     ) -> bytes:
-        """Compute the /U entry from a password. Subclass override."""
-        raise NotImplementedError(
-            "compute_user_password must be implemented by a concrete "
-            "SecurityHandler subclass"
+        """Compute the /U entry from a password.
+
+        Routes to the standard handler's algorithm 4/5. Non-password handlers
+        raise ``TypeError`` — see :meth:`compute_encrypted_key`.
+        """
+        from .standard_security_handler import StandardSecurityHandler
+
+        if not isinstance(self, StandardSecurityHandler):
+            raise TypeError(
+                f"{type(self).__name__} does not derive a /U entry from a"
+                " password."
+            )
+        return StandardSecurityHandler.compute_user_password(
+            password,
+            o if o is not None else b"",
+            permissions if permissions is not None else 0,
+            document_id if document_id is not None else b"",
+            revision if revision is not None else self._revision,
+            (length_in_bits // 8)
+            if length_in_bits is not None
+            else (self._key_length // 8),
+            encrypt_metadata if encrypt_metadata is not None else True,
         )
 
     def compute_owner_password(
@@ -382,10 +424,25 @@ class SecurityHandler(ABC):
         revision: int | None = None,
         length_in_bits: int | None = None,
     ) -> bytes:
-        """Compute the /O entry from owner+user passwords. Subclass override."""
-        raise NotImplementedError(
-            "compute_owner_password must be implemented by a concrete "
-            "SecurityHandler subclass"
+        """Compute the /O entry from owner+user passwords.
+
+        Routes to the standard handler's algorithm 3. Non-password handlers
+        raise ``TypeError`` — see :meth:`compute_encrypted_key`.
+        """
+        from .standard_security_handler import StandardSecurityHandler
+
+        if not isinstance(self, StandardSecurityHandler):
+            raise TypeError(
+                f"{type(self).__name__} does not derive a /O entry from"
+                " owner/user passwords."
+            )
+        return StandardSecurityHandler.compute_owner_password(
+            owner_password,
+            user_password,
+            revision if revision is not None else self._revision,
+            (length_in_bits // 8)
+            if length_in_bits is not None
+            else (self._key_length // 8),
         )
 
     # --------------------------------------------------- COSBase dispatch

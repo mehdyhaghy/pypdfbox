@@ -15,6 +15,12 @@ class _SimpleField(AbstractField):
         super().__init__(None, name)
         self._value = value
 
+    def get_namespace(self) -> str | None:
+        return None
+
+    def get_prefix(self) -> str | None:
+        return None
+
 
 def test_types_text_is_simple_basic() -> None:
     assert Types.Text.is_simple()
@@ -66,7 +72,11 @@ def test_complex_property_container_get_first_equivalent_property() -> None:
 
 
 class _Complex(AbstractComplexProperty):
-    pass
+    def get_namespace(self) -> str | None:
+        return None
+
+    def get_prefix(self) -> str | None:
+        return None
 
 
 def test_abstract_complex_property_namespace_map() -> None:

@@ -120,9 +120,11 @@ class LookupSubTable(ABC):
         the subtable's Coverage table, or ``-1`` if the glyph is not
         covered. Implementations return the substituted GID or
         ``original_glyph_id`` itself when ``coverage_index < 0``.
-        Mirrors ``LookupSubTable.doSubstitution`` upstream.
+        Mirrors ``LookupSubTable.doSubstitution`` upstream — declared
+        ``@abstractmethod`` here; concrete subclasses (type-1 single
+        substitution being the only one with a meaningful single-GID
+        return) own the substitution semantics.
         """
-        raise NotImplementedError
 
 
 @dataclass
@@ -328,8 +330,11 @@ class LookupTypeMultipleSubstitutionFormat1(LookupSubTable):
         return self.sequence_tables
 
     def do_substitution(self, original_glyph_id: int, coverage_index: int) -> int:
-        # Upstream throws UnsupportedOperationException("not applicable").
-        raise NotImplementedError(
+        # Upstream throws UnsupportedOperationException("not applicable")
+        # — the single-glyph signature can't express a glyph sequence.
+        # Python's nearest equivalent for "operation not supported on
+        # this object" is ``TypeError`` (cf. tuple.__setitem__).
+        raise TypeError(
             "Multiple substitution produces a glyph sequence; "
             "use do_substitution_multiple instead."
         )
@@ -430,7 +435,10 @@ class LookupTypeAlternateSubstitutionFormat1(LookupSubTable):
         return self.alternate_set_tables
 
     def do_substitution(self, original_glyph_id: int, coverage_index: int) -> int:
-        raise NotImplementedError(
+        # Upstream throws UnsupportedOperationException; alternates need
+        # a layout-engine pick, not a single-glyph result. Python's
+        # nearest equivalent is ``TypeError``.
+        raise TypeError(
             "Alternate substitution exposes a candidate set; "
             "use get_alternate_glyph_ids_for instead."
         )
@@ -492,8 +500,9 @@ class LookupTypeLigatureSubstitutionSubstFormat1(LookupSubTable):
     def do_substitution(self, original_glyph_id: int, coverage_index: int) -> int:
         # Ligature lookups consume multiple glyphs and produce one — the
         # single-glyph signature can't express the shaping result.
-        # Upstream throws UnsupportedOperationException here.
-        raise NotImplementedError(
+        # Upstream throws UnsupportedOperationException here. Python's
+        # nearest equivalent is ``TypeError``.
+        raise TypeError(
             "Ligature substitution requires a glyph sequence; "
             "use do_substitution_glyphs instead."
         )

@@ -91,16 +91,21 @@ def test_refresh_appearances_with_field_list_walks_supplied_fields() -> None:
     form.refresh_appearances([field])  # must not raise
 
 
-def test_import_fdf_raises_not_implemented() -> None:
+def test_import_fdf_rejects_non_fdf_document() -> None:
     form = PDAcroForm()
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(TypeError):
         form.import_fdf(object())
 
 
-def test_export_fdf_raises_not_implemented() -> None:
+def test_export_fdf_returns_empty_fdf_document() -> None:
+    """Exporting a fresh, empty form yields a freshly-built FDFDocument
+    whose ``/FDF`` dictionary carries no fields."""
+    from pypdfbox.pdmodel.fdf.fdf_document import FDFDocument
+
     form = PDAcroForm()
-    with pytest.raises(NotImplementedError):
-        form.export_fdf()
+    fdf = form.export_fdf()
+    assert isinstance(fdf, FDFDocument)
+    assert fdf.get_catalog().get_fdf().get_fields() is None
 
 
 def test_default_resources_default_none_and_round_trip() -> None:

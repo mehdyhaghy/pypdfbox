@@ -81,7 +81,7 @@ def test_single_format2_uncovered_passthrough() -> None:
 def test_multiple_format1_single_signature_throws() -> None:
     # Upstream: throws UnsupportedOperationException("not applicable").
     sub = LookupTypeMultipleSubstitutionFormat1()
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(TypeError):
         sub.do_substitution(1, 0)
 
 
@@ -111,7 +111,7 @@ def test_multiple_format1_sequence_accessors() -> None:
 def test_alternate_format1_single_signature_throws() -> None:
     # Upstream: throws UnsupportedOperationException("not applicable").
     sub = LookupTypeAlternateSubstitutionFormat1()
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(TypeError):
         sub.do_substitution(1, 0)
 
 
@@ -130,7 +130,7 @@ def test_alternate_format1_alternate_set_accessors() -> None:
 
 def test_ligature_format1_single_glyph_signature_unsupported() -> None:
     sub = LookupTypeLigatureSubstitutionSubstFormat1()
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(TypeError):
         sub.do_substitution(1, 0)
 
 

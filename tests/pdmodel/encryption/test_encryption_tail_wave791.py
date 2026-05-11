@@ -46,11 +46,13 @@ def test_security_handler_reads_file_like_input_and_uses_r5_file_key_directly() 
 def test_security_handler_base_algorithm_placeholders_raise() -> None:
     handler = _TailHandler()
 
-    with pytest.raises(NotImplementedError, match="compute_encrypted_key"):
+    # Wave 1284: base class now routes to StandardSecurityHandler for
+    # password-driven derivation; non-password handlers raise TypeError.
+    with pytest.raises(TypeError, match="does not derive keys"):
         handler.compute_encrypted_key(b"password")
-    with pytest.raises(NotImplementedError, match="compute_user_password"):
+    with pytest.raises(TypeError, match="does not derive a /U entry"):
         handler.compute_user_password(b"password")
-    with pytest.raises(NotImplementedError, match="compute_owner_password"):
+    with pytest.raises(TypeError, match="does not derive a /O entry"):
         handler.compute_owner_password(b"owner", b"user")
 
 

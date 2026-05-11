@@ -24,6 +24,22 @@ class Type7ShadingPaint(ShadingPaint):
         xform: Any,
         hints: Any | None = None,
     ) -> Any:
-        raise NotImplementedError(
-            "Type7ShadingPaint.create_context wires up with the renderer cluster"
+        """Return a :class:`PatchMeshesShadingContext` for this tensor-patch
+        mesh. Mirrors upstream ``Type7ShadingPaint.createContext`` which
+        constructs a ``Type7ShadingContext``. pypdfbox uses the shared
+        :class:`PatchMeshesShadingContext` (Type 6 / 7) parameterised by
+        ``control_points=16`` (tensor)."""
+        _ = (user_bounds, hints)
+        from .patch_meshes_shading_context import (  # noqa: PLC0415
+            PatchMeshesShadingContext,
+        )
+
+        bounds = tuple(device_bounds) if device_bounds is not None else None
+        return PatchMeshesShadingContext(
+            self.shading,
+            cm,
+            xform,
+            self.matrix,
+            bounds,
+            control_points=16,
         )

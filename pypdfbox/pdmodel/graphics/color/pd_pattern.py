@@ -90,6 +90,7 @@ class PDPattern(PDColorSpace):
         otherwise return an empty list because
         :meth:`get_number_of_components` is 0, which is misleading).
         """
+        _ = bits_per_component
         raise NotImplementedError(
             "PDPattern has no default decode array — query the underlying "
             "color space (uncolored tiling) or render the pattern's "
@@ -219,6 +220,7 @@ class PDPattern(PDColorSpace):
         same intent as :class:`NotImplementedError` per the project's
         Java→Python exception convention.
         """
+        _ = (raster, width, height)
         raise NotImplementedError(
             "PDPattern.to_rgb_image is unsupported — render the pattern's "
             "content stream / shading instead, or recurse into the "
@@ -233,6 +235,7 @@ class PDPattern(PDColorSpace):
         line 105) which throws ``UnsupportedOperationException``; we
         surface the same intent as :class:`NotImplementedError`.
         """
+        _ = (raster, width, height)
         raise NotImplementedError(
             "PDPattern.to_raw_image is unsupported — Pattern color spaces "
             "have no native raster form."

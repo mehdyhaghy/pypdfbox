@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from abc import abstractmethod
 from typing import TYPE_CHECKING, Any
 
 from .abstract_field import AbstractField
@@ -33,20 +34,38 @@ class AbstractSimpleProperty(AbstractField):
         self._prefix = prefix
         self._raw_value = value
 
+    @abstractmethod
     def set_value(self, value: Any) -> None:
-        raise NotImplementedError
+        """Validate and store the property's typed value.
+
+        Mirrors upstream ``AbstractSimpleProperty.setValue(Object)`` — abstract
+        in Java; each simple-property subclass (Boolean, Integer, Real, Text,
+        Date, …) is responsible for type-checking and storing the value.
+        """
 
     def setValue(self, value: Any) -> None:  # noqa: N802 - upstream Java name
         self.set_value(value)
 
+    @abstractmethod
     def get_string_value(self) -> str:
-        raise NotImplementedError
+        """Return the property's value as its canonical XML serialization.
+
+        Mirrors upstream ``AbstractSimpleProperty.getStringValue()`` — abstract
+        in Java. Subclasses convert the stored typed value back to the textual
+        form expected in XMP packets (e.g. ``"True"``/``"False"`` for booleans).
+        """
 
     def getStringValue(self) -> str:  # noqa: N802 - upstream Java name
         return self.get_string_value()
 
+    @abstractmethod
     def get_value(self) -> Any:
-        raise NotImplementedError
+        """Return the property's typed Python value.
+
+        Mirrors upstream ``AbstractSimpleProperty.getValue()`` — abstract in
+        Java. Subclasses return the stored value coerced to the expected
+        Python type (``bool``, ``int``, ``float``, ``str``, ``datetime``…).
+        """
 
     def getValue(self) -> Any:  # noqa: N802 - upstream Java name
         return self.get_value()

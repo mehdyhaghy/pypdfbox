@@ -67,13 +67,48 @@ def test_wave525_scripting_handler_round_trips_opaque_object() -> None:
     assert form.get_scripting_handler() is None
 
 
-def test_wave525_deferred_fdf_methods_raise_not_implemented() -> None:
+def test_wave525_fdf_round_trip_methods_implemented() -> None:
+    """``import_fdf`` and ``export_fdf`` are wired now — verify the
+    happy path returns the right shape rather than the previous
+    ``NotImplementedError`` placeholder."""
+    from pypdfbox.pdmodel.fdf.fdf_document import FDFDocument
+
     form = PDAcroForm()
 
-    with pytest.raises(NotImplementedError, match="import_fdf"):
+    with pytest.raises(TypeError):
         form.import_fdf(object())
-    with pytest.raises(NotImplementedError, match="export_fdf"):
-        form.export_fdf()
+
+    fdf = form.export_fdf()
+    assert isinstance(fdf, FDFDocument)
+    # No fields → /FDF has no /Fields entry (upstream omits the array
+    # when empty; see PDAcroForm.exportFDF lines 168-171).
+    assert fdf.get_catalog().get_fdf().get_fields() is None
+
+
+def test_wave525_import_fdf_applies_field_values() -> None:
+    """``PDAcroForm.import_fdf`` should look each FDF field up by partial
+    name and delegate to the matching :class:`PDField`'s ``import_fdf``."""
+    from pypdfbox.cos import COSString
+    from pypdfbox.pdmodel.fdf.fdf_dictionary import FDFDictionary
+    from pypdfbox.pdmodel.fdf.fdf_document import FDFDocument
+    from pypdfbox.pdmodel.fdf.fdf_field import FDFField
+    from pypdfbox.pdmodel.interactive.form.pd_text_field import PDTextField
+
+    form = PDAcroForm()
+    field = PDTextField(form)
+    field.set_partial_name("name")
+    form.set_fields([field])
+
+    fdf_doc = FDFDocument()
+    fdf_field = FDFField()
+    fdf_field.set_partial_field_name("name")
+    fdf_field.set_value(COSString("hello"))
+    fdf_dict = FDFDictionary()
+    fdf_dict.set_fields([fdf_field])
+    fdf_doc.get_catalog().set_fdf(fdf_dict)
+
+    form.import_fdf(fdf_doc)
+    assert field.get_value() == "hello"
 
 
 def test_wave525_xfa_accessor_alias_and_clear() -> None:

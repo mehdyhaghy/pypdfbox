@@ -89,22 +89,67 @@ class GlyfDescript:
         return self.get_contour_count()
 
     def is_composite(self) -> bool:
-        raise NotImplementedError
+        """Return ``True`` for composite glyph descriptions.
+
+        Mirrors upstream's abstract ``isComposite()`` (from the
+        ``GlyphDescription`` interface — GlyphDescription.java line 65).
+        Upstream declares it abstract; the base implementation here
+        returns ``False`` because an "empty" :class:`GlyfDescript`
+        (zero contours, no points, no instructions) is by definition a
+        simple-glyph degenerate, not a composite. :class:`GlyfCompositeDescript`
+        overrides to return ``True``.
+        """
+        return False
 
     def get_point_count(self) -> int:
-        raise NotImplementedError
+        """Return the total number of points in the glyph outline.
 
-    def get_end_pt_of_contours(self, i: int) -> int:
-        raise NotImplementedError
+        Mirrors upstream's abstract ``getPointCount()``
+        (GlyphDescription.java line 71). The base implementation
+        returns ``0`` — an empty descript has no points; concrete
+        subclasses populate from their decoded point arrays.
+        """
+        return 0
 
-    def get_flags(self, i: int) -> int:
-        raise NotImplementedError
+    def get_end_pt_of_contours(self, i: int) -> int:  # noqa: ARG002
+        """Return the end-point index of the *i*-th contour.
 
-    def get_x_coordinate(self, i: int) -> int:
-        raise NotImplementedError
+        Mirrors upstream's abstract ``getEndPtOfContours(int)``
+        (GlyphDescription.java line 34). The base implementation
+        returns ``-1`` to signal "no contour" — concrete subclasses
+        index into their decoded contour array.
+        """
+        return -1
 
-    def get_y_coordinate(self, i: int) -> int:
-        raise NotImplementedError
+    def get_flags(self, i: int) -> int:  # noqa: ARG002
+        """Return the outline flag byte for the *i*-th point.
+
+        Mirrors upstream's abstract ``getFlags(int)``
+        (GlyphDescription.java line 45). The base implementation
+        returns ``0`` (no flags set); concrete subclasses index into
+        their decoded flag array.
+        """
+        return 0
+
+    def get_x_coordinate(self, i: int) -> int:  # noqa: ARG002
+        """Return the x coordinate of the *i*-th point.
+
+        Mirrors upstream's abstract ``getXCoordinate(int)``
+        (GlyphDescription.java line 52). The base implementation
+        returns ``0``; concrete subclasses index into their decoded
+        x-coordinate array.
+        """
+        return 0
+
+    def get_y_coordinate(self, i: int) -> int:  # noqa: ARG002
+        """Return the y coordinate of the *i*-th point.
+
+        Mirrors upstream's abstract ``getYCoordinate(int)``
+        (GlyphDescription.java line 59). The base implementation
+        returns ``0``; concrete subclasses index into their decoded
+        y-coordinate array.
+        """
+        return 0
 
     # ---- instruction handling ----------------------------------------
 

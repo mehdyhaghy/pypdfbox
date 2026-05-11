@@ -40,10 +40,13 @@ def test_add_annotations_stub() -> None:
         add_annotations.AddAnnotations.main(["out.pdf"])
 
 
-def test_add_image_to_pdf_stub() -> None:
+def test_add_image_to_pdf_class_exists() -> None:
+    # Wave 1284: AddImageToPDF.main() now drives a real load/draw/save
+    # pipeline. Verify the class is wired and that wrong arg counts hit
+    # the usage gate without raising.
     assert hasattr(add_image_to_pdf, "AddImageToPDF")
-    with pytest.raises(NotImplementedError):
-        add_image_to_pdf.AddImageToPDF.main(["in.pdf", "img.jpg", "out.pdf"])
+    # 0 args → usage gate; should not raise.
+    add_image_to_pdf.AddImageToPDF.main([])
 
 
 def test_add_javascript_stub() -> None:
@@ -125,10 +128,13 @@ def test_embedded_vertical_fonts_stub() -> None:
         embedded_vertical_fonts.EmbeddedVerticalFonts.main(None)
 
 
-def test_extract_embedded_files_stub() -> None:
+def test_extract_embedded_files_class_exists() -> None:
+    # Wave 1284: ExtractEmbeddedFiles.main() now drives a real
+    # NameTreeNode + PDAnnotationFileAttachment walk. Hitting the usage
+    # gate (wrong arg count) is the safe way to assert the class wires up.
     assert hasattr(extract_embedded_files, "ExtractEmbeddedFiles")
-    with pytest.raises(NotImplementedError):
-        extract_embedded_files.ExtractEmbeddedFiles.main(["in.pdf"])
+    with pytest.raises(SystemExit):
+        extract_embedded_files.ExtractEmbeddedFiles.main([])
 
 
 def test_extract_metadata_stub() -> None:
@@ -137,9 +143,11 @@ def test_extract_metadata_stub() -> None:
         extract_metadata.ExtractMetadata.main(["in.pdf"])
 
 
-def test_extract_ttf_fonts_stub() -> None:
+def test_extract_ttf_fonts_class_exists() -> None:
+    # Wave 1284: ExtractTTFFonts.main() now drives the full font walk.
+    # With no args, ``usage()`` triggers and raises ``SystemExit(1)``.
     assert hasattr(extract_ttf_fonts, "ExtractTTFFonts")
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(SystemExit):
         extract_ttf_fonts.ExtractTTFFonts.main([])
 
 

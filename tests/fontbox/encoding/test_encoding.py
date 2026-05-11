@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pytest
-
 from pypdfbox.fontbox.encoding import Encoding
 
 
@@ -90,13 +88,22 @@ def test_overwrite_replaces_reverse_mapping() -> None:
     assert enc.get_code("A") is None
 
 
-def test_get_encoding_name_default_raises() -> None:
-    class E(Encoding):
+def test_get_encoding_name_default_derives_from_class_name() -> None:
+    # The base ``Encoding.get_encoding_name`` derives its identifier
+    # from the class name — strip a trailing ``Encoding`` suffix and
+    # return the remainder. Concrete subclasses are free to override
+    # for a different spelling (e.g. ``StandardEncoding`` upstream
+    # returns ``"StandardEncoding"`` literally).
+    class CustomEncoding(Encoding):
         def __init__(self) -> None:
             super().__init__()
 
-    with pytest.raises(NotImplementedError):
-        E().get_encoding_name()
+    class NoSuffix(Encoding):
+        def __init__(self) -> None:
+            super().__init__()
+
+    assert CustomEncoding().get_encoding_name() == "Custom"
+    assert NoSuffix().get_encoding_name() == "NoSuffix"
 
 
 def test_add_character_encoding_alias_matches_add() -> None:

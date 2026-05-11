@@ -40,13 +40,25 @@ class Patch:
     # Abstract API
     # ------------------------------------------------------------------
     def get_flag1_edge(self) -> list[tuple[float, float]]:
-        raise NotImplementedError
+        """Abstract — Coons / Tensor subclasses return their implicit
+        edge points for flag=1. Mirrors upstream
+        ``Patch.getFlag1Edge``."""
+        _ = self
+        raise NotImplementedError("Patch.get_flag1_edge is abstract")
 
     def get_flag2_edge(self) -> list[tuple[float, float]]:
-        raise NotImplementedError
+        """Abstract — Coons / Tensor subclasses return their implicit
+        edge points for flag=2. Mirrors upstream
+        ``Patch.getFlag2Edge``."""
+        _ = self
+        raise NotImplementedError("Patch.get_flag2_edge is abstract")
 
     def get_flag3_edge(self) -> list[tuple[float, float]]:
-        raise NotImplementedError
+        """Abstract — Coons / Tensor subclasses return their implicit
+        edge points for flag=3. Mirrors upstream
+        ``Patch.getFlag3Edge``."""
+        _ = self
+        raise NotImplementedError("Patch.get_flag3_edge is abstract")
 
     # ------------------------------------------------------------------
     # Flag-driven implicit colour helpers
