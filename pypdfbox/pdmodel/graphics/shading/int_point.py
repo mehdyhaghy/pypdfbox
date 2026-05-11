@@ -20,16 +20,26 @@ class IntPoint:
         self.x = int(x)
         self.y = int(y)
 
-    def __hash__(self) -> int:
-        # Matches upstream: 89 * (623 + x) + y
+    def hash_code(self) -> int:
+        """Faster ``hashCode()`` than ``java.awt.Point``.
+
+        Mirrors upstream ``IntPoint.hashCode()``.
+        """
         return 89 * (623 + self.x) + self.y
 
-    def __eq__(self, other: object) -> bool:
+    def equals(self, other: object) -> bool:
+        """Mirrors upstream ``IntPoint.equals(Object)``."""
         if self is other:
             return True
         if not isinstance(other, IntPoint):
             return False
         return self.x == other.x and self.y == other.y
+
+    def __hash__(self) -> int:
+        return self.hash_code()
+
+    def __eq__(self, other: object) -> bool:
+        return self.equals(other)
 
     def __repr__(self) -> str:
         return f"IntPoint({self.x}, {self.y})"

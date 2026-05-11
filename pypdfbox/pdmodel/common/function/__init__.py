@@ -5,6 +5,7 @@ from .pd_function_type0 import PDFunctionType0
 from .pd_function_type2 import PDFunctionType2
 from .pd_function_type3 import PDFunctionType3
 from .pd_function_type4 import PDFunctionType4
+from .rinterpol import Rinterpol
 
 __all__ = [
     "PDFunction",
@@ -13,4 +14,5 @@ __all__ = [
     "PDFunctionType3",
     "PDFunctionType4",
     "PDFunctionTypeIdentity",
+    "Rinterpol",
 ]

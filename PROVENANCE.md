@@ -1574,3 +1574,30 @@ Six subsystem clusters ported in 92 new modules. Library-first throughout (Pillo
 **`contentstream/operator/graphics/` (12):** append_rectangle_to_path, clip_even_odd_rule, clip_non_zero_rule, close_fill_even_odd_and_stroke_path, close_fill_non_zero_and_stroke_path, end_path, fill_even_odd_and_stroke_path, fill_even_odd_rule, fill_non_zero_and_stroke_path, fill_non_zero_rule, graphics_operator_processor, legacy_fill_non_zero_rule.
 
 Upstream JUnit test ports (where they exist): `tests/pdmodel/font/test_to_unicode_writer.py` ← `TestToUnicodeWriter.java`.
+
+### Wave 1281 additions
+
+Five subsystem clusters ported in 166 new modules. Library-first throughout (Pillow / fontTools / cryptography / defusedxml / stdlib). Upstream PDFBox 3.0.x; Java paths mirror snake_case Python paths. See `.parity/parity.json` for the full audit. Selected groupings (full list visible via `git diff HEAD~1 -- pypdfbox`):
+
+- **`pypdfbox/rendering/`**: glyph_cache, group_graphics, page_drawer, page_drawer_parameters, soft_mask, tiling_paint, tiling_paint_factory.
+- **`pypdfbox/pdmodel/graphics/image/`**: pd_image, custom_factory, png_converter, predictor_encoder, sampled_image_reader.
+- **`pypdfbox/pdmodel/graphics/{color,blend,state}/`**: 11 new modules (CIE / gamma / tristimulus / JPX color + blend channel/composite/function + PDGraphicsState/PDTextState).
+- **`pypdfbox/pdfparser/`** + **`pdfparser/xref/`**: brute_force_parser, fdf_parser, object_numbers, pdf_object_stream_parser, pdf_xref_stream + parser, xref_trailer_obj, plus 6 xref entry classes.
+- **`pypdfbox/io/`**: 10 new io modules (random_access*, stream_cache*, sequence_random_access, etc.).
+- **`pypdfbox/cos/`**: cos_increment, cos_input_stream, cos_output_stream, cos_update_info, i_cos_parser, rewritten cos_object_key.
+- **`pypdfbox/pdmodel/fdf/`**: 11 new annotation/page/template modules.
+- **`pypdfbox/pdmodel/common/`**: cos_array_list, cos_dictionary_map, cos_objectable, label_generator, label_handler, pd_dictionary_wrapper, pd_immutable_rectangle, pd_object_stream, pd_typed_dictionary_wrapper, function/rinterpol.
+- **`pypdfbox/pdmodel/`** (top-level): default_resource_cache_create_impl, page_iterator, pd_abstract_content_stream, resource_cache, resource_cache_create_function, resource_cache_factory, search_context.
+- **`pypdfbox/pdmodel/encryption/`**: message_digests, rc4_cipher, sasl_prep, security_handler_factory, security_provider.
+- **`pypdfbox/pdmodel/interactive/digitalsignature/`** + **`visible/`**: 8 new sig/template modules.
+- **`pypdfbox/pdmodel/fixup/`** + **`processor/`**: 6 new fixup classes.
+- **`pypdfbox/contentstream/operator/{color,markedcontent,state,text}/`**: 18 new operator classes.
+- **`pypdfbox/util/`**: hex, iterative_merge_sort, matrix, vector, string_util, number_format_util, small_map, xml_util.
+- **`pypdfbox/util/filetypedetector/`**: byte_trie, file_type, file_type_detector.
+- **`pypdfbox/fontbox/util/autodetect/`**: 7 OS-dependent font-discovery modules.
+- **`pypdfbox/pdfwriter/compress/`**: 4 compress-pool / object-stream modules.
+- **`pypdfbox/xmpbox/{xml,schema,type}/`**: 8 new XMP modules (DomHelper, NamespaceFinder, PdfaExtensionHelper, XmpSerializer, XmpSchemaFactory, Types, ComplexPropertyContainer, AbstractComplexProperty).
+- **`pypdfbox/text/`**: legacy_pdf_stream_engine, line_item.
+- **`pypdfbox/printing/`**: pdf_pageable, pdf_printable.
+- **`pypdfbox/multipdf/k_cloner.py`**, **`pdmodel/interactive/action/pd_action_factory.py`**, **`pdmodel/interactive/annotation/`** (annotation_filter, pd_external_data_dictionary).
+- **`pypdfbox/fontbox/`**: cmap/cmap_strings, type1/token, type1/type1_char_string_reader, pfb/pfb_parser.

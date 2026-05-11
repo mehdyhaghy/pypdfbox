@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .annotation_filter import AnnotationFilter
 from .pd_annotation import PDAnnotation
 from .pd_annotation_caret import PDAnnotationCaret
 from .pd_annotation_file_attachment import PDAnnotationFileAttachment
@@ -40,6 +41,7 @@ from .pd_appearance_entry import PDAppearanceEntry
 from .pd_appearance_stream import PDAppearanceStream
 from .pd_border_effect_dictionary import PDBorderEffectDictionary
 from .pd_border_style_dictionary import PDBorderStyleDictionary
+from .pd_external_data_dictionary import PDExternalDataDictionary
 from .pd_icon_fit import PDIconFit
 from .pd_ink_list import PDInkList
 from .pd_line_info import PDLineInfo
@@ -49,6 +51,7 @@ from .pd_path_info import PDPathInfo
 from .pd_vertices import PDVertices
 
 __all__ = [
+    "AnnotationFilter",
     "PDAnnotation",
     "PDAnnotationCaret",
     "PDAnnotationCircle",
@@ -87,6 +90,7 @@ __all__ = [
     "PDAppearanceStream",
     "PDBorderEffectDictionary",
     "PDBorderStyleDictionary",
+    "PDExternalDataDictionary",
     "PDIconFit",
     "PDInkList",
     "PDLineInfo",

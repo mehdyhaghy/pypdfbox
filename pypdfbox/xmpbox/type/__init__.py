@@ -17,6 +17,7 @@ behavior is unaffected.
 
 from __future__ import annotations
 
+from .abstract_complex_property import AbstractComplexProperty
 from .abstract_field import AbstractField, Attribute
 from .abstract_simple_property import AbstractSimpleProperty
 from .abstract_structured_type import AbstractStructuredType
@@ -48,15 +49,18 @@ from .real_type import RealType
 from .rendition_class_type import RenditionClassType
 from .resource_event_type import ResourceEventType
 from .resource_ref_type import ResourceRefType
+from .complex_property_container import ComplexPropertyContainer
 from .text_type import TextType
 from .thumbnail_type import ThumbnailType
 from .type_mapping import TypeMapping
+from .types import Types
 from .uri_type import URIType
 from .url_type import URLType
 from .version_type import VersionType
 from .xpath_type import XPathType
 
 __all__ = [
+    "AbstractComplexProperty",
     "AbstractField",
     "AbstractSimpleProperty",
     "AbstractStructuredType",
@@ -67,6 +71,7 @@ __all__ = [
     "Cardinality",
     "ChoiceType",
     "ColorantType",
+    "ComplexPropertyContainer",
     "DateType",
     "DimensionsType",
     "FontType",
@@ -94,6 +99,7 @@ __all__ = [
     "TextType",
     "ThumbnailType",
     "TypeMapping",
+    "Types",
     "URIType",
     "URLType",
     "VersionType",

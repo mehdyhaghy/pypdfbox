@@ -18,6 +18,10 @@ class Vertex:
         self.point: tuple[float, float] = (float(p[0]), float(p[1]))
         self.color: list[float] = [float(v) for v in c]
 
-    def __repr__(self) -> str:
+    def to_string(self) -> str:
+        """Mirror upstream ``Vertex.toString()``."""
         colors = " ".join(f"{c:3.2f}" for c in self.color)
         return f"Vertex{{ Point2D.Double[{self.point[0]}, {self.point[1]}], colors=[{colors}] }}"
+
+    def __repr__(self) -> str:
+        return self.to_string()

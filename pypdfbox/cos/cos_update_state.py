@@ -1,25 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable
 
 from .cos_base import COSBase
 from .cos_document_state import COSDocumentState
-
-
-class COSIncrement:
-    """Minimal increment collector mirroring upstream ``COSIncrement``.
-
-    Upstream's ``COSIncrement`` is a sizable traversal helper used by the
-    incremental writer. The pypdfbox port only models the public surface
-    needed by ``COSUpdateState.to_increment()``: an iterable seeded with
-    the managed update-info object. Full traversal lives in the writer.
-    """
-
-    def __init__(self, base: COSBase) -> None:
-        self._objects: list[COSBase] = [base] if base is not None else []
-
-    def __iter__(self) -> Iterator[COSBase]:
-        return iter(self._objects)
+from .cos_increment import COSIncrement
 
 
 class COSUpdateState:
@@ -91,7 +76,11 @@ class COSUpdateState:
 
         Mirrors upstream ``COSUpdateState#toIncrement()`` (Java line 254).
         """
-        return COSIncrement(self._update_info)
+        # Imported lazily-safe at module top; ``COSIncrement`` wants a
+        # ``COSUpdateInfo`` (an object that exposes ``get_cos_object`` +
+        # ``get_update_state``). ``self._update_info`` satisfies both
+        # since every concrete COS update-info type does.
+        return COSIncrement(self._update_info)  # type: ignore[arg-type]
 
     def _link_child(self, child: COSBase) -> None:
         state = getattr(child, "get_update_state", None)

@@ -1,12 +1,29 @@
 from __future__ import annotations
 
+import atexit
 import contextlib
 import logging
-from typing import BinaryIO, Protocol
+import os
+import shutil
+import stat
+import tempfile
+from pathlib import Path
+from typing import TYPE_CHECKING, BinaryIO, Protocol
+
+if TYPE_CHECKING:
+    from .random_access_stream_cache import RandomAccessStreamCache
+    from .stream_cache_create_function import StreamCacheCreateFunction
+
 
 DEFAULT_COPY_BUFFER: int = 8192
 
 _log = logging.getLogger(__name__)
+
+# Tracks temporary directories created by ``create_protected_temp_dir`` so
+# they can be cleaned up at interpreter shutdown — mirrors upstream's
+# shutdown-hook list (``TEMP_DIRS_TO_DELETE``).
+_TEMP_DIRS_TO_DELETE: list[Path] = []
+_SHUTDOWN_HOOK_REGISTERED = False
 
 
 class _Closeable(Protocol):
@@ -91,6 +108,104 @@ def close_and_log_exception(
         if initial_exception is None:
             return exc
     return initial_exception
+
+
+def create_memory_only_stream_cache() -> StreamCacheCreateFunction:
+    """Return a factory that produces fresh in-memory stream caches.
+
+    Mirrors upstream ``IOUtils.createMemoryOnlyStreamCache`` (Java line
+    362). Memory-only caches use unrestricted main memory.
+    """
+    # Local import — random_access_stream_cache_impl imports back to
+    # io_utils indirectly through the package __init__.
+    from .random_access_stream_cache_impl import (  # noqa: PLC0415
+        RandomAccessStreamCacheImpl,
+    )
+
+    def _create() -> RandomAccessStreamCache:
+        return RandomAccessStreamCacheImpl()
+
+    return _create
+
+
+def create_temp_file_only_stream_cache() -> StreamCacheCreateFunction:
+    """Return a factory that produces fresh temp-file stream caches.
+
+    Mirrors upstream ``IOUtils.createTempFileOnlyStreamCache`` (Java line
+    373). The upstream form routes through
+    ``MemoryUsageSetting.setupTempFileOnly().streamCache``. We surface a
+    ``ScratchFile``-backed cache directly because pypdfbox's
+    ``MemoryUsageSetting`` does not yet expose a ``stream_cache`` field.
+    """
+    from .memory_usage_setting import MemoryUsageSetting  # noqa: PLC0415
+    from .scratch_file import ScratchFile  # noqa: PLC0415
+
+    setting = MemoryUsageSetting.setup_temp_file_only()
+
+    def _create() -> RandomAccessStreamCache:
+        return ScratchFile(setting)
+
+    return _create
+
+
+def create_protected_temp_dir() -> Path:
+    """Create a temp directory with owner-only permissions.
+
+    Mirrors upstream ``IOUtils.createProtectedTempDir`` (Java line 389).
+    Returns a freshly created directory rooted under the system temp
+    location. Schedules deletion at interpreter shutdown.
+    """
+    path = Path(tempfile.mkdtemp(prefix="pypdfbox-"))
+    _apply_owner_only_permissions(path, is_directory=True)
+    _register_for_deletion(path)
+    return path
+
+
+def create_protected_temp_file(
+    directory: Path | str | None,
+    prefix: str | None,
+    suffix: str | None,
+) -> Path:
+    """Create a temp file with owner-only permissions.
+
+    Mirrors upstream ``IOUtils.createProtectedTempFile`` (Java line 463).
+    Unlike :func:`create_protected_temp_dir` no shutdown-hook deletion
+    is registered — the caller owns lifecycle.
+    """
+    dir_str = os.fspath(directory) if directory is not None else None
+    fd, name = tempfile.mkstemp(prefix=prefix or "", suffix=suffix or "", dir=dir_str)
+    os.close(fd)
+    path = Path(name)
+    _apply_owner_only_permissions(path, is_directory=False)
+    return path
+
+
+def _apply_owner_only_permissions(path: Path, *, is_directory: bool) -> None:
+    if os.name == "nt":
+        # On Windows there is no chmod analogue to POSIX file modes; rely
+        # on default ACL inheritance. Upstream falls back to ACL hacks;
+        # we accept the platform default for parity simplicity.
+        return
+    mode = stat.S_IRWXU if is_directory else stat.S_IRUSR | stat.S_IWUSR
+    os.chmod(path, mode)
+
+
+def _register_for_deletion(path: Path) -> None:
+    global _SHUTDOWN_HOOK_REGISTERED
+    _TEMP_DIRS_TO_DELETE.append(path)
+    if not _SHUTDOWN_HOOK_REGISTERED:
+        atexit.register(_delete_registered_paths)
+        _SHUTDOWN_HOOK_REGISTERED = True
+
+
+def _delete_registered_paths() -> None:
+    while _TEMP_DIRS_TO_DELETE:
+        p = _TEMP_DIRS_TO_DELETE.pop()
+        with contextlib.suppress(Exception):
+            if p.is_dir():
+                shutil.rmtree(p, ignore_errors=True)
+            elif p.exists():
+                p.unlink()
 
 
 def unmap(buf: object) -> None:

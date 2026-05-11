@@ -295,7 +295,22 @@ class Operator:
         return len(self._name)
 
 
+def _get_draw_object_class() -> type:
+    """Lazily resolve :class:`DrawObject` to avoid the circular import
+    between the package ``__init__`` and the ``draw_object`` submodule."""
+    from .draw_object import DrawObject
+
+    return DrawObject
+
+
+def __getattr__(name: str) -> object:  # pragma: no cover - dispatch shim
+    if name == "DrawObject":
+        return _get_draw_object_class()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 __all__ = [
+    "DrawObject",
     "MissingOperandException",
     "Operator",
     "OperatorName",

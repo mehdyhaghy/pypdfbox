@@ -9,6 +9,7 @@ from .set_char_spacing import SetCharSpacing
 from .set_font_and_size import SetFontAndSize
 from .set_horizontal_text_scaling import SetHorizontalTextScaling
 from .set_matrix import SetMatrix
+from .set_text_horizontal_scaling import SetTextHorizontalScaling
 from .set_text_leading_op import SetTextLeading
 from .set_text_rendering_mode_op import SetTextRenderingMode
 from .set_text_rise_op import SetTextRise
@@ -28,6 +29,7 @@ __all__ = [
     "SetFontAndSize",
     "SetHorizontalTextScaling",
     "SetMatrix",
+    "SetTextHorizontalScaling",
     "SetTextLeading",
     "SetTextRenderingMode",
     "SetTextRise",

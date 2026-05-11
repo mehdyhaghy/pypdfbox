@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .k_cloner import KCloner
 from .layer_utility import LayerUtility
 from .overlay import Overlay, Position
 from .page_extractor import PageExtractor
@@ -14,6 +15,7 @@ from .splitter import Splitter
 __all__ = [
     "AcroFormMergeMode",
     "DocumentMergeMode",
+    "KCloner",
     "LayerUtility",
     "Overlay",
     "PDFCloneUtility",

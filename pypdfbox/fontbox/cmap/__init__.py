@@ -6,6 +6,7 @@ from .cid_range import CIDRange
 from .cmap import CMap, CMapMappingError
 from .cmap_manager import CMapManager
 from .cmap_parser import CMapParser
+from .cmap_strings import CMapStrings
 from .codespace_range import CodespaceRange
 
 __all__ = [
@@ -16,5 +17,6 @@ __all__ = [
     "CMapManager",
     "CMapMappingError",
     "CMapParser",
+    "CMapStrings",
     "CodespaceRange",
 ]

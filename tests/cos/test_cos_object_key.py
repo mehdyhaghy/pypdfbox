@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError
-
 import pytest
 
 from pypdfbox.cos import COSObjectKey
@@ -42,8 +40,11 @@ def test_ordering() -> None:
 
 
 def test_frozen() -> None:
+    # COSObjectKey is immutable: read-only properties + ``__slots__``
+    # without setters means assignment raises ``AttributeError`` (the
+    # CPython equivalent of dataclasses' ``FrozenInstanceError``).
     k = COSObjectKey(1, 0)
-    with pytest.raises(FrozenInstanceError):
+    with pytest.raises(AttributeError):
         k.object_number = 99  # type: ignore[misc]
 
 

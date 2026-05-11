@@ -31,9 +31,13 @@ from pypdfbox.contentstream.operator.text.set_matrix import (
 
 
 def test_concatenate_alias_points_to_concatenate_matrix() -> None:
-    """``state.Concatenate`` is the upstream-faithful name for the same
-    handler we ship under ``graphics`` as ``ConcatenateMatrix``."""
-    assert Concatenate is ConcatenateMatrix
+    """``state.Concatenate`` is the upstream-faithful name for the ``cm``
+    operator. Historically this was a re-export alias of
+    ``ConcatenateMatrix``; the wave 1281 port introduces a dedicated
+    upstream-named class. Either binding satisfies the parity contract
+    so long as both advertise the same operator name and dispatch the
+    ``cm`` token through the engine's ``transform`` hook."""
+    assert Concatenate.OPERATOR_NAME == ConcatenateMatrix.OPERATOR_NAME == "cm"
 
 
 def test_state_concatenate_matrix_alias_matches_graphics() -> None:

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from .default_resource_cache_create_impl import DefaultResourceCacheCreateImpl
 from .missing_resource_exception import MissingResourceException
+from .page_iterator import PageIterator
 from .page_layout import PageLayout
 from .page_mode import PageMode
+from .pd_abstract_content_stream import PDAbstractContentStream
 from .pd_developer_extension import PDDeveloperExtension
 from .pd_document import PDDocument
 from .pd_document_catalog import PDDocumentCatalog
@@ -16,11 +19,17 @@ from .pd_page_tree import PDPageTree
 from .pd_rectangle import PDRectangle
 from .pd_resources import PDResources
 from .pd_viewer_preferences import PDViewerPreferences
+from .resource_cache import ResourceCache
+from .resource_cache_create_function import ResourceCacheCreateFunction
+from .resource_cache_factory import ResourceCacheFactory
+from .search_context import SearchContext
 
 __all__ = [
+    "DefaultResourceCacheCreateImpl",
     "MissingResourceException",
-    "PDDocument",
+    "PDAbstractContentStream",
     "PDDeveloperExtension",
+    "PDDocument",
     "PDDocumentCatalog",
     "PDDocumentInformation",
     "PDDocumentNameDestinationDictionary",
@@ -32,6 +41,11 @@ __all__ = [
     "PDRectangle",
     "PDResources",
     "PDViewerPreferences",
+    "PageIterator",
     "PageLayout",
     "PageMode",
+    "ResourceCache",
+    "ResourceCacheCreateFunction",
+    "ResourceCacheFactory",
+    "SearchContext",
 ]

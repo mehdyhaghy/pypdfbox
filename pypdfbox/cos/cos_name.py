@@ -262,3 +262,10 @@ COSName.WIN_ANSI_ENCODING = _static_name("WinAnsiEncoding")  # type: ignore[attr
 COSName.FIRST_CHAR = _static_name("FirstChar")  # type: ignore[attr-defined]
 COSName.LAST_CHAR = _static_name("LastChar")  # type: ignore[attr-defined]
 COSName.WIDTHS = _static_name("Widths")  # type: ignore[attr-defined]
+# Xref-stream / object-stream constants used by the parser & writer.
+COSName.XREF = _static_name("XRef")  # type: ignore[attr-defined]
+COSName.INDEX = _static_name("Index")  # type: ignore[attr-defined]
+COSName.W = _static_name("W")  # type: ignore[attr-defined]
+COSName.N = _static_name("N")  # type: ignore[attr-defined]
+COSName.FIRST = _static_name("First")  # type: ignore[attr-defined]
+COSName.OBJ_STM = _static_name("ObjStm")  # type: ignore[attr-defined]

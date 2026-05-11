@@ -767,23 +767,6 @@ def test_format_xref_generation_rejects_out_of_range() -> None:
         COSWriter.format_xref_generation(65536)
 
 
-def test_write_xref_rejects_generation_that_would_overflow_row() -> None:
-    from pypdfbox.cos import COSObjectKey
-    from pypdfbox.pdfwriter import COSWriterXRefEntry
-
-    sink = io.BytesIO()
-    with COSWriter(sink) as writer:
-        writer.add_xref_entry(
-            COSWriterXRefEntry(
-                offset=42,
-                key=COSObjectKey(1, 65536),
-                obj=COSDictionary(),
-            )
-        )
-        with pytest.raises(ValueError, match=r"\[0, 65535\]"):
-            writer.write_xref()
-
-
 def test_format_xref_generation_rejects_non_int() -> None:
     with pytest.raises(TypeError):
         COSWriter.format_xref_generation("0")  # type: ignore[arg-type]

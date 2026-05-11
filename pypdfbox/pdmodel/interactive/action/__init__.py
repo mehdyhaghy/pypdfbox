@@ -3,6 +3,7 @@ from __future__ import annotations
 from .open_mode import OpenMode
 from .pd_action import PDAction
 from .pd_action_embedded_go_to import PDActionEmbeddedGoTo
+from .pd_action_factory import PDActionFactory
 from .pd_action_go_to import PDActionGoTo
 from .pd_action_go_to_3d_view import PDActionGoTo3DView
 from .pd_action_go_to_dp import PDActionGoToDp
@@ -36,6 +37,7 @@ __all__ = [
     "OpenMode",
     "PDAction",
     "PDActionEmbeddedGoTo",
+    "PDActionFactory",
     "PDActionGoTo",
     "PDActionGoTo3DView",
     "PDActionGoToDp",

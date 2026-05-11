@@ -22,10 +22,13 @@ from .sig_utils import (
     set_mdp_permission,
 )
 from .signature_interface import SignatureInterface
+from .signature_options import DEFAULT_SIGNATURE_SIZE, SignatureOptions
 from .signature_validation_result import SignatureValidationResult
+from .signing_support import SigningSupport
 
 __all__ = [
     "COSFilterInputStream",
+    "DEFAULT_SIGNATURE_SIZE",
     "PDPropBuild",
     "PDPropBuildDataDict",
     "PDSeedValue",
@@ -36,7 +39,9 @@ __all__ = [
     "PDSignatureLock",
     "Pkcs7Signature",
     "SignatureInterface",
+    "SignatureOptions",
     "SignatureValidationResult",
+    "SigningSupport",
     "check_certificate_usage",
     "check_responder_certificate_usage",
     "check_time_stamp_certificate_usage",

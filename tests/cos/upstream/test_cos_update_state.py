@@ -164,8 +164,13 @@ def test_to_increment_returns_increment_seeded_with_update_info() -> None:
     increment = info.get_update_state().to_increment()
 
     assert isinstance(increment, COSIncrement)
-    members = list(increment)
-    assert members == [info]
+    # Upstream's ``COSIncrement`` only emits objects whose update state
+    # was actually marked dirty; an unattached dictionary stays clean
+    # and the increment yields nothing. The earlier minimal pypdfbox
+    # placeholder yielded the seed unconditionally — that diverged from
+    # PDFBox behaviour and is no longer the case (wave 1281 ports the
+    # full traversal).
+    assert list(increment) == []
 
 
 def test_constructor_stores_update_info_for_increment() -> None:
@@ -173,4 +178,6 @@ def test_constructor_stores_update_info_for_increment() -> None:
     update_state = COSUpdateState(target)
 
     increment = update_state.to_increment()
-    assert list(increment) == [target]
+    # Upstream ``COSIncrement`` only emits objects whose state is
+    # actually marked dirty — see test above.
+    assert list(increment) == []
