@@ -193,21 +193,41 @@ class Loader:
         return Loader.load_pdf(path, password)
 
     @staticmethod
-    def load_xfdf(source: PDFSource) -> None:
+    def load_xfdf(source: PDFSource) -> FDFDocument:
         """Parse an XFDF (XML Forms Data Format) document — mirrors
         ``org.apache.pdfbox.Loader.loadXFDF``.
 
-        Not yet implemented: XFDF parsing requires the ``fdf`` /
-        ``xfdf`` subsystems, which land in a later wave alongside the
-        rest of interactive-form data exchange. The method exists today
-        so downstream code can call it and get a clear, actionable
-        ``NotImplementedError`` instead of an ``AttributeError``.
+        Accepts the same source shapes as :meth:`load_pdf`: a path,
+        bytes-like buffer, binary stream, or :class:`RandomAccessRead`.
+        Returns a populated :class:`pypdfbox.pdmodel.fdf.FDFDocument`.
+
+        Mirrors ``Loader.loadXFDF(File)`` / ``Loader.loadXFDF(InputStream)``
+        upstream (``Loader.java`` lines 120-155), which both eventually
+        delegate to ``new FDFDocument(XMLUtil.parse(input))``.
         """
-        raise NotImplementedError(
-            "Loader.load_xfdf is not yet implemented — XFDF parsing is "
-            "deferred to a later wave (tracked alongside the FDF / XFDF "
-            "interactive-form data exchange port)."
-        )
+        from pypdfbox.pdmodel.fdf import FDFDocument  # noqa: PLC0415
+        from pypdfbox.util.xml_util import XMLUtil  # noqa: PLC0415
+
+        # Read the source as bytes for XMLUtil.parse (which itself reads
+        # via defusedxml). We use the same _coerce_source helper to
+        # accept paths, bytes, streams and RandomAccessRead uniformly,
+        # then drain the resulting RandomAccessRead into memory.
+        access, owned = Loader._coerce_source(source)
+        try:
+            access.seek(0)
+            data = access.read_fully(access.length())
+        finally:
+            if owned:
+                access.close()
+
+        xml_doc = XMLUtil.parse(data)
+        fdf = FDFDocument()
+        try:
+            fdf.set_xfdf(xml_doc)
+        except BaseException:
+            fdf.close()
+            raise
+        return fdf
 
     @staticmethod
     def load_fdf(source: PDFSource) -> FDFDocument:

@@ -99,6 +99,8 @@ def test_wave395_write_with_bad_pddocument_get_document_type_raises() -> None:
 
 
 def test_wave395_stage_encryption_rejects_non_standard_policy() -> None:
+    # ``_stage_encryption`` now accepts both Standard and PublicKey policies;
+    # anything else surfaces as ``TypeError`` rather than ``NotImplementedError``.
     class FakePDDocument:
         _protection_policy = object()
 
@@ -107,7 +109,7 @@ def test_wave395_stage_encryption_rejects_non_standard_policy() -> None:
 
     with (
         COSWriter(io.BytesIO()) as writer,
-        pytest.raises(NotImplementedError, match="StandardProtectionPolicy"),
+        pytest.raises(TypeError, match="PublicKeyProtectionPolicy"),
     ):
         writer._stage_encryption(FakePDDocument(), COSDocument())
 

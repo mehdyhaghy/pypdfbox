@@ -414,11 +414,12 @@ def test_acro_form_merge_mode_is_honoured_at_merge_time(tmp_path: Path) -> None:
         assert names.count("name") == 2
 
 
-def test_document_merge_mode_optimize_logs_fallback(
+def test_document_merge_mode_optimize_does_not_log_fallback(
     tmp_path: Path, caplog
 ) -> None:
-    """OPTIMIZE_RESOURCES_MODE is recognised but currently delegates to the
-    legacy path; a one-line info message is emitted."""
+    """OPTIMIZE_RESOURCES_MODE now performs a real cross-document
+    resource-deduplicating merge; the legacy-fallback info log must not
+    fire for valid input."""
     a = tmp_path / "a.pdf"
     out = tmp_path / "out.pdf"
     _save(_build_minimal_struct_doc(body=b"% A\n"), a)
@@ -429,9 +430,10 @@ def test_document_merge_mode_optimize_logs_fallback(
     util.set_document_merge_mode(DocumentMergeMode.OPTIMIZE_RESOURCES_MODE)
     with caplog.at_level(logging.INFO, logger="pypdfbox.multipdf.pdf_merger_utility"):
         util.merge_documents()
-    assert any(
-        "OPTIMIZE_RESOURCES_MODE" in rec.getMessage() for rec in caplog.records
+    assert not any(
+        "falling back" in rec.getMessage() for rec in caplog.records
     )
+    assert out.exists() and out.stat().st_size > 0
 
 
 # ---------- IDTree collision ----------

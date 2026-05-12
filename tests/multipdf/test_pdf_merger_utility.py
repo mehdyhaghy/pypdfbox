@@ -313,7 +313,7 @@ def test_property_setters() -> None:
     )
 
 
-def test_optimize_resources_mode_falls_back_to_legacy(tmp_path: Path) -> None:
+def test_optimize_resources_mode_merges_pages(tmp_path: Path) -> None:
     a = tmp_path / "a.pdf"
     b = tmp_path / "b.pdf"
     out = tmp_path / "out.pdf"
@@ -323,7 +323,7 @@ def test_optimize_resources_mode_falls_back_to_legacy(tmp_path: Path) -> None:
     util.set_document_merge_mode(DocumentMergeMode.OPTIMIZE_RESOURCES_MODE)
     util.add_sources([str(a), str(b)])
     util.set_destination_file_name(str(out))
-    util.merge_documents()  # must not crash; legacy fallback path
+    util.merge_documents()  # real cross-document resource-dedup merge
     with PDDocument.load(str(out)) as merged:
         assert merged.get_number_of_pages() == 2
 
@@ -588,9 +588,11 @@ def test_merge_viewer_preferences_or_merges_booleans() -> None:
     src.close()
 
 
-def test_optimized_merge_documents_falls_back_to_legacy(tmp_path: Path) -> None:
+def test_optimized_merge_documents_runs_real_optimize_path(
+    tmp_path: Path,
+) -> None:
     """``optimized_merge_documents`` records params via setters and runs
-    the legacy merge path."""
+    the real page-only resource-deduplicating merge path."""
     a = tmp_path / "a.pdf"
     out = tmp_path / "out.pdf"
     _save_to_path(_build_doc(1), a)

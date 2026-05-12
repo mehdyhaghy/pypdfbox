@@ -625,6 +625,37 @@ class PDAcroForm:
             if doc_field is not None:
                 doc_field.import_fdf(fdf_field)
 
+    def import_xfdf(self, xfdf: object) -> None:
+        """Import form-field values from an XFDF source.
+
+        Accepts either an already-parsed
+        :class:`pypdfbox.pdmodel.fdf.FDFDocument` (whose backing data
+        came from XFDF via :meth:`Loader.load_xfdf` or
+        :meth:`FDFDocument.set_xfdf`) or any source that
+        :meth:`Loader.load_xfdf` accepts — path, bytes, binary stream,
+        or :class:`RandomAccessRead`.
+
+        Upstream PDFBox has no dedicated ``importXFDF`` — instead callers
+        compose ``Loader.loadXFDF(...)`` + ``importFDF(...)``. The
+        Python port wraps that two-step idiom in one call so the snake_case
+        API surface stays uniform with :meth:`import_fdf`.
+        """
+        from pypdfbox.pdmodel.fdf.fdf_document import FDFDocument
+
+        if isinstance(xfdf, FDFDocument):
+            self.import_fdf(xfdf)
+            return
+
+        from pypdfbox.loader import Loader  # noqa: PLC0415
+
+        # Loader.load_xfdf returns a freshly-allocated FDFDocument; we
+        # own the lifetime, so close it after the field walk completes.
+        fdf = Loader.load_xfdf(xfdf)  # type: ignore[arg-type]
+        try:
+            self.import_fdf(fdf)
+        finally:
+            fdf.close()
+
     def export_fdf(self) -> object:
         """Export this form's field values as a new :class:`FDFDocument`.
 

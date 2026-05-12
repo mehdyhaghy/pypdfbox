@@ -71,6 +71,16 @@ class DCTDecode(Filter):
         encoded: BinaryIO,
         parameters: COSDictionary | None = None,
     ) -> None:
+        """``/DCTDecode`` is a decode-only filter — by upstream design.
+
+        Mirrors ``DCTFilter.encode`` in Apache PDFBox, which raises
+        ``UnsupportedOperationException`` with this same message.
+        Producing a JPEG image is a higher-level concern handled by
+        ``JPEGFactory`` (which composes the JPEG bytes itself via
+        ImageIO and then attaches them to a ``PDImageXObject`` carrying
+        the ``/DCTDecode`` filter name) rather than by the filter layer.
+        This is upstream-faithful behaviour, not a pypdfbox deferral.
+        """
         raise NotImplementedError(
             "DCTFilter encoding not implemented, use the JPEGFactory methods instead"
         )

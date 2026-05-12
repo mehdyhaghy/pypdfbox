@@ -143,14 +143,54 @@ def test_load_pdf_from_file_rejects_non_path() -> None:
 # ---------- deferred parsers ----------
 
 
-def test_load_xfdf_raises_not_implemented() -> None:
-    with pytest.raises(NotImplementedError, match="XFDF"):
-        Loader.load_xfdf(b"<?xml version='1.0'?><xfdf/>")
+def test_load_xfdf_returns_populated_fdf_document() -> None:
+    """``Loader.load_xfdf`` accepts bytes and returns an
+    :class:`FDFDocument` whose catalog carries the parsed fields."""
+    sample = (
+        b'<?xml version="1.0" encoding="UTF-8"?>'
+        b'<xfdf xmlns="http://ns.adobe.com/xfdf/">'
+        b'<fields><field name="city"><value>Lyon</value></field></fields>'
+        b"</xfdf>"
+    )
+    fdf = Loader.load_xfdf(sample)
+    try:
+        fields = fdf.get_catalog().get_fdf().get_fields()
+        assert fields is not None and len(fields) == 1
+        assert fields[0].get_partial_field_name() == "city"
+        assert fields[0].get_value() == "Lyon"
+    finally:
+        fdf.close()
 
 
 def test_load_xfdf_java_alias_matches_load_xfdf() -> None:
-    with pytest.raises(NotImplementedError, match="XFDF"):
-        Loader.loadXFDF(b"<?xml version='1.0'?><xfdf/>")
+    """The upstream camelCase alias is wired up too."""
+    sample = b'<?xml version="1.0"?><xfdf><fields/></xfdf>'
+    fdf = Loader.loadXFDF(sample)
+    try:
+        assert fdf.get_catalog().get_fdf().get_fields() == []
+    finally:
+        fdf.close()
+
+
+def test_load_xfdf_from_path(tmp_path: Path) -> None:
+    """Loader accepts a path-like source for XFDF too."""
+    src = tmp_path / "sample.xfdf"
+    src.write_bytes(
+        b'<?xml version="1.0"?>'
+        b'<xfdf><fields><field name="x"><value>1</value></field></fields></xfdf>'
+    )
+    fdf = Loader.load_xfdf(src)
+    try:
+        fields = fdf.get_catalog().get_fdf().get_fields()
+        assert fields is not None
+        assert fields[0].get_value() == "1"
+    finally:
+        fdf.close()
+
+
+def test_load_xfdf_rejects_wrong_root() -> None:
+    with pytest.raises(OSError, match="root should be 'xfdf'"):
+        Loader.load_xfdf(b"<not-xfdf/>")
 
 
 def test_load_fdf_delegates_to_fdf_document_loader() -> None:

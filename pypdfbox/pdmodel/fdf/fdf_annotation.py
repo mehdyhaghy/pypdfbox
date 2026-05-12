@@ -588,6 +588,30 @@ class FDFAnnotation:
             from .fdf_annotation_line import FDFAnnotationLine
 
             return FDFAnnotationLine(annot)
+        if name == "Polygon":
+            from .fdf_annotation_polygon import FDFAnnotationPolygon
+
+            return FDFAnnotationPolygon(annot)
+        if name in ("PolyLine", "Polyline"):
+            from .fdf_annotation_polyline import FDFAnnotationPolyline
+
+            return FDFAnnotationPolyline(annot)
+        if name == "Ink":
+            from .fdf_annotation_ink import FDFAnnotationInk
+
+            return FDFAnnotationInk(annot)
+        if name == "Stamp":
+            from .fdf_annotation_stamp import FDFAnnotationStamp
+
+            return FDFAnnotationStamp(annot)
+        if name == "Caret":
+            from .fdf_annotation_caret import FDFAnnotationCaret
+
+            return FDFAnnotationCaret(annot)
+        if name in ("Highlight", "Underline", "StrikeOut", "Squiggly"):
+            from .fdf_annotation_text_markup import FDFAnnotationTextMarkup
+
+            return FDFAnnotationTextMarkup(annot)
         return cls(annot)
 
 

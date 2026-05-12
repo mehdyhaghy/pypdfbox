@@ -3,6 +3,8 @@ from __future__ import annotations
 import contextlib
 import os
 from typing import IO, BinaryIO
+from xml.dom.minidom import Document as XmlDocument
+from xml.dom.minidom import Element
 
 from pypdfbox.cos import COSDictionary, COSDocument, COSName
 from pypdfbox.io import RandomAccessRead, RandomAccessWrite
@@ -194,16 +196,58 @@ class FDFDocument:
 
     # ---------- /FDF convenience accessors (parity with upstream) ----------
 
-    def set_xfdf(self, xfdf: object) -> None:
-        """XFDF (XML-encoded FDF) ingest is not implemented in this wave.
-        Upstream models this as a ``FDFDocument(org.w3c.dom.Document)``
-        constructor; XFDF parsing requires a full SAX/DOM front-end and
-        will land in a later wave.
+    def set_xfdf(self, xfdf: XmlDocument | Element | bytes | bytearray | IO[bytes]) -> None:
+        """Replace this document's catalog with the contents of an XFDF
+        XML document. Mirrors the ``FDFDocument(org.w3c.dom.Document)``
+        constructor upstream (``FDFDocument.java`` lines 106-117).
+
+        Accepts any of:
+
+        - a parsed :class:`xml.dom.minidom.Document` (the upstream form);
+        - a parsed :class:`xml.dom.minidom.Element` pointing at the
+          ``<xfdf>`` root;
+        - raw ``bytes`` / ``bytearray`` holding XFDF XML;
+        - a binary stream (anything with a ``.read()`` method).
+
+        Raises ``OSError`` when the input is not rooted at an ``<xfdf>``
+        element — matches the upstream ``IOException`` contract.
         """
-        raise NotImplementedError(
-            "XFDF (XML Forms Data Format) ingest is not yet supported — "
-            "see CHANGES.md / open a feature request."
-        )
+        from pypdfbox.util.xml_util import XMLUtil
+
+        from .xfdf_parser import populate_fdf_dictionary_from_xfdf
+
+        if isinstance(xfdf, XmlDocument):
+            root = xfdf.documentElement
+        elif isinstance(xfdf, Element):
+            root = xfdf
+        elif isinstance(xfdf, (bytes, bytearray)):
+            root = XMLUtil.parse(xfdf).documentElement
+        elif hasattr(xfdf, "read"):
+            root = XMLUtil.parse(xfdf).documentElement  # type: ignore[arg-type]
+        else:
+            raise TypeError(
+                "FDFDocument.set_xfdf expected an XML document, element, "
+                f"bytes, or readable stream; got {type(xfdf).__name__}"
+            )
+
+        if root is None or root.tagName != "xfdf":
+            actual = root.tagName if root is not None else None
+            raise OSError(
+                "Error while importing xfdf document, root should be "
+                f"'xfdf' and not {actual!r}"
+            )
+
+        # Rebuild the catalog: fresh FDFCatalog, fresh FDFDictionary,
+        # populated from the parsed XML. Matches upstream
+        # ``FDFDocument(Document)`` which constructs a new ``FDFCatalog``
+        # via the ``Element`` overload then assigns it via setCatalog.
+        from .fdf_dictionary import FDFDictionary
+
+        catalog = FDFCatalog()
+        fdf_dict = FDFDictionary()
+        populate_fdf_dictionary_from_xfdf(fdf_dict, root)
+        catalog.set_fdf(fdf_dict)
+        self.set_catalog(catalog)
 
     def save_xfdf(
         self,

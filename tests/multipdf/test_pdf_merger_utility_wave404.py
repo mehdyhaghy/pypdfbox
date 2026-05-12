@@ -99,9 +99,12 @@ def test_wave404_merge_without_sources_is_noop_even_without_destination() -> Non
     PDFMergerUtility().merge_documents()
 
 
-def test_wave404_merge_documents_stages_overload_arguments_and_logs_optimize(
+def test_wave404_merge_documents_stages_overload_arguments_under_optimize(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
+    """``merge_documents`` stages overload arguments via the setters; in
+    OPTIMIZE_RESOURCES_MODE the real (no-fallback) optimised path runs,
+    so no legacy-fallback info log is emitted."""
     util = PDFMergerUtility()
     cache_factory = object()
     compress_parameters = object()
@@ -117,7 +120,7 @@ def test_wave404_merge_documents_stages_overload_arguments_and_logs_optimize(
 
     assert util.get_stream_cache_create_function() is cache_factory
     assert util.get_compress_parameters() is compress_parameters
-    assert "falling back to PDFBOX_LEGACY_MODE" in caplog.text
+    assert "falling back to PDFBOX_LEGACY_MODE" not in caplog.text
 
 
 def test_wave404_merge_to_stream_from_bytes_and_bytearray_sources() -> None:

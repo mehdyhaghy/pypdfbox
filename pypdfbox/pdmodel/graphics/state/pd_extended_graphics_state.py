@@ -61,11 +61,15 @@ class PDExtendedGraphicsState:
 
     This is a "lite" port: line dash pattern is exposed as the raw
     ``COSArray`` (full ``PDLineDashPattern`` typed wrapper deferred), the
-    ``/Font`` entry exposes raw font + size helpers (full
-    ``PDFontSetting`` deferred). There is not yet a public
-    ``PDGraphicsState`` port, so ``copy_into_graphics_state`` accepts
-    objects with matching snake_case setters/attributes or a mutable
-    mapping. Soft mask / transfer function support is deferred.
+    ``/Font`` entry has both raw font + size helpers and a typed
+    :class:`PDFontSetting` accessor pair
+    (:meth:`get_font_setting` / :meth:`set_font_setting`). There is not
+    yet a public ``PDGraphicsState`` port, so ``copy_into_graphics_state``
+    accepts objects with matching snake_case setters/attributes or a
+    mutable mapping. Soft mask / transfer function support is exposed
+    through typed-accessor companions
+    (:meth:`get_transfer_typed` et al.); the lower-level ``copy_into``
+    plumbing for those entries remains deferred.
     """
 
     # ---------- line cap style codes (PDF 32000-1 §8.4.3.3, Table 54) ----------
@@ -648,7 +652,7 @@ class PDExtendedGraphicsState:
     def set_flatness(self, f: float | None) -> None:
         self._set_float_item(_FL, f)
 
-    # ---------- /Font helper (size only — full PDFontSetting deferred) ----------
+    # ---------- /Font helpers (raw font + size; typed PDFontSetting below) ----------
 
     def get_font(self) -> COSBase | None:
         base = self._dict.get_dictionary_object(_FONT)
@@ -833,8 +837,7 @@ class PDExtendedGraphicsState:
           4-array (one per process colorant; see PDF 32000-1 §11.7.5.3).
         - A single :class:`PDFunction` instance otherwise.
 
-        Companion to :meth:`get_transfer` (raw COS access). Typed version
-        deferred until Wave 42 — see CHANGES.md.
+        Companion to :meth:`get_transfer` (raw COS access).
         """
         return self._resolve_transfer(self.get_transfer())
 

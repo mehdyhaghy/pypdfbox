@@ -876,5 +876,48 @@ class PDType1Font(PDSimpleFont):
                 return BuiltInEncoding(dict(encoding_map))
         return StandardEncoding.INSTANCE
 
+    # ---------- subsetting ----------
+    #
+    # Upstream ``PDSimpleFont.subset()`` raises ``UnsupportedOperationException``
+    # ("only TTF subsetting via PDType0Font is currently supported"). PDFBox
+    # has never implemented Type 1 / CFF subsetting at the PDDocument level
+    # and fontTools' bundled t1Lib does not expose a subset entry point
+    # either (its ``T1Font`` class has only parse/write/getGlyphSet, no
+    # ``subset``); fontTools' ``Subsetter`` operates on OpenType /CFF
+    # tables, not raw Type 1 streams. The inherited :meth:`subset` /
+    # :meth:`add_to_subset` therefore continue to raise — overridden here
+    # only to attach a Type 1-specific docstring.
+
+    def will_be_subset(self) -> bool:
+        """``False`` — Type 1 subsetting is not currently implemented."""
+        return False
+
+    def add_to_subset(self, code_point: int) -> None:
+        """Type 1 subsetting is not currently implemented.
+
+        Mirrors upstream ``PDSimpleFont.addToSubset`` which raises
+        ``UnsupportedOperationException``; only TTF subsetting (via
+        :class:`PDType0Font` + :class:`PDCIDFontType2Embedder`) is
+        supported by PDFBox today. fontTools does not provide a Type 1
+        subsetter either, so we keep parity with upstream rather than
+        invent a divergent implementation.
+        """
+        raise NotImplementedError(
+            "Type 1 font subsetting is not supported "
+            "(only TTF subsetting via PDType0Font is currently implemented; "
+            "fontTools t1Lib has no public subset entry point)"
+        )
+
+    def subset(self) -> None:
+        """Type 1 subsetting is not currently implemented.
+
+        See :meth:`add_to_subset` for the rationale.
+        """
+        raise NotImplementedError(
+            "Type 1 font subsetting is not supported "
+            "(only TTF subsetting via PDType0Font is currently implemented; "
+            "fontTools t1Lib has no public subset entry point)"
+        )
+
 
 __all__ = ["PDType1Font"]

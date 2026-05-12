@@ -97,6 +97,52 @@ def test_import_fdf_rejects_non_fdf_document() -> None:
         form.import_fdf(object())
 
 
+def _value_string(field: PDFieldStub) -> str | None:
+    """Read the field's ``/V`` entry as a Python string (stub fields
+    don't expose a typed ``get_value`` accessor)."""
+    v = field.get_cos_object().get_string(COSName.get_pdf_name("V"))
+    return v
+
+
+def test_import_xfdf_from_bytes_loads_and_imports() -> None:
+    """``PDAcroForm.import_xfdf`` accepts raw XFDF bytes, parses them via
+    :meth:`Loader.load_xfdf`, and forwards to :meth:`import_fdf`."""
+    form = PDAcroForm()
+    field = PDFieldStub(form)
+    field.set_partial_name("city")
+    form.set_fields([field])
+    sample = (
+        b'<?xml version="1.0"?>'
+        b'<xfdf><fields>'
+        b'<field name="city"><value>Lyon</value></field>'
+        b"</fields></xfdf>"
+    )
+    form.import_xfdf(sample)
+    assert _value_string(field) == "Lyon"
+
+
+def test_import_xfdf_from_fdf_document_short_circuits() -> None:
+    """Passing an already-loaded FDFDocument re-uses it without re-parsing."""
+    from pypdfbox.pdmodel.fdf import FDFDocument
+
+    form = PDAcroForm()
+    field = PDFieldStub(form)
+    field.set_partial_name("city")
+    form.set_fields([field])
+    fdf = FDFDocument()
+    fdf.set_xfdf(
+        b'<?xml version="1.0"?>'
+        b'<xfdf><fields>'
+        b'<field name="city"><value>Marseille</value></field>'
+        b"</fields></xfdf>"
+    )
+    try:
+        form.import_xfdf(fdf)
+    finally:
+        fdf.close()
+    assert _value_string(field) == "Marseille"
+
+
 def test_export_fdf_returns_empty_fdf_document() -> None:
     """Exporting a fresh, empty form yields a freshly-built FDFDocument
     whose ``/FDF`` dictionary carries no fields."""

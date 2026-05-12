@@ -1012,15 +1012,21 @@ class PDDocument:
         implies ``setAllSecurityToBeRemoved(false)`` (matches upstream's
         guard, which warns and resets the flag rather than failing the
         call)."""
+        from pypdfbox.pdmodel.encryption.public_key_protection_policy import (
+            PublicKeyProtectionPolicy,
+        )
         from pypdfbox.pdmodel.encryption.standard_protection_policy import (
             StandardProtectionPolicy,
         )
 
-        if not isinstance(protection_policy, StandardProtectionPolicy):
-            # Public-key handlers land later — fail loudly until then.
-            raise NotImplementedError(
-                "PDDocument.protect: only StandardProtectionPolicy is supported "
-                "(public-key handler dispatch is deferred)"
+        if not isinstance(
+            protection_policy, (StandardProtectionPolicy, PublicKeyProtectionPolicy)
+        ):
+            # Only the two PDFBox-native policy shapes are supported here —
+            # anything else is a caller bug rather than a deferred surface.
+            raise TypeError(
+                "PDDocument.protect requires a StandardProtectionPolicy or "
+                f"PublicKeyProtectionPolicy, got {type(protection_policy).__name__}"
             )
 
         if self._all_security_to_be_removed:
@@ -1454,18 +1460,116 @@ class PDDocument:
         :class:`PDPage`.
 
         The page's dictionary, ``/Resources``, ``/Contents`` stream(s), and
-        inheritable attributes are copied. Annotations are copied as-is
-        (their ``/Subtype``-specific references are NOT remapped;
-        cross-document ``/Names`` tree merging, ``/Dest`` resolution, font
-        / image resource deduplication, and annotation ``/Parent`` /
-        ``/AcroForm`` field fix-ups are deferred — see ``CHANGES.md``)."""
+        inheritable attributes are copied. Widget-annotation ``/Parent``
+        chains are walked to their top-most field root and that root is
+        promoted into this document's ``/AcroForm /Fields`` (name
+        collisions are resolved with a per-document ``dummyFieldName``
+        counter mirroring :class:`PDFMergerUtility` legacy mode), so
+        AcroForm widgets imported from another document remain navigable
+        from the destination's form. Cross-document ``/Names`` tree
+        merging, ``/Dest`` resolution, and font / image resource
+        deduplication are deferred — see ``CHANGES.md``."""
         src_dict = page.get_cos_object()
         new_dict = self._deep_copy_cos(src_dict, set())
         # Drop /Parent — re-set when added to our page tree.
         new_dict.remove_item(COSName.get_pdf_name("Parent"))
         new_page = PDPage(new_dict)
+        self._import_page_acroform_fixup(new_dict)
         self.get_pages().add(new_page)
         return new_page
+
+    def _import_page_acroform_fixup(self, page_dict: Any) -> None:
+        """For an imported page, walk its ``/Annots`` and promote any
+        widget-annot ``/Parent`` chain to a top-level field root under
+        this document's ``/AcroForm /Fields``.
+
+        Collision handling mirrors :class:`PDFMergerUtility`'s legacy
+        mode: if a field with the same ``/T`` is already present in the
+        destination's top-level field set, the imported field's ``/T``
+        is rewritten with a per-document monotonic suffix
+        (``dummyFieldName`` + counter) so callers can still resolve
+        every field by name without losing the import.
+        """
+        from pypdfbox.cos import COSArray, COSDictionary
+
+        annots_name = COSName.get_pdf_name("Annots")
+        annots = page_dict.get_dictionary_object(annots_name)
+        if not isinstance(annots, COSArray):
+            return
+        # Collect top-level field roots reached via /Parent walking.
+        roots: list[COSDictionary] = []
+        seen: set[int] = set()
+        for i in range(annots.size()):
+            annot = annots.get_object(i)
+            if not isinstance(annot, COSDictionary):
+                continue
+            subtype = annot.get_name(COSName.get_pdf_name("Subtype"))
+            # Only widget annots participate in /AcroForm. Other
+            # annot kinds use /Parent for structure-tree linking — those
+            # references are inside the cloned subgraph and stay valid.
+            if subtype != "Widget":
+                continue
+            parent = annot.get_dictionary_object(
+                COSName.get_pdf_name("Parent")
+            )
+            root = parent if isinstance(parent, COSDictionary) else annot
+            # Climb to the topmost /Parent.
+            while True:
+                up = root.get_dictionary_object(
+                    COSName.get_pdf_name("Parent")
+                )
+                if not isinstance(up, COSDictionary):
+                    break
+                root = up
+            if id(root) in seen:
+                continue
+            seen.add(id(root))
+            roots.append(root)
+        if not roots:
+            return
+
+        from .interactive.form import PDAcroForm
+
+        catalog = self.get_document_catalog()
+        acro_form = catalog.get_acro_form()
+        if acro_form is None:
+            acro_form = PDAcroForm(self)
+            catalog.set_acro_form(acro_form)
+        form_dict = acro_form.get_cos_object()
+        fields_array = form_dict.get_dictionary_object(
+            COSName.get_pdf_name("Fields")
+        )
+        if not isinstance(fields_array, COSArray):
+            fields_array = COSArray()
+            form_dict.set_item(COSName.get_pdf_name("Fields"), fields_array)
+        existing_names: set[str] = set()
+        for i in range(fields_array.size()):
+            entry = fields_array.get_object(i)
+            if isinstance(entry, COSDictionary):
+                t = entry.get_string(COSName.get_pdf_name("T"))
+                if t is not None:
+                    existing_names.add(t)
+        if not hasattr(self, "_import_field_counter"):
+            self._import_field_counter = 1
+        prefix = "dummyFieldName"
+        for root in roots:
+            already = False
+            for i in range(fields_array.size()):
+                if fields_array.get_object(i) is root:
+                    already = True
+                    break
+            if already:
+                continue
+            t = root.get_string(COSName.get_pdf_name("T"))
+            if t is not None and t in existing_names:
+                root.set_string(
+                    COSName.get_pdf_name("T"),
+                    f"{prefix}{self._import_field_counter}",
+                )
+                self._import_field_counter += 1
+            elif t is not None:
+                existing_names.add(t)
+            fields_array.add(root)
 
     def _deep_copy_cos(self, value: Any, seen: set[int]) -> Any:
         """Recursive deep copy of a ``COSBase`` tree. Cycles are broken via

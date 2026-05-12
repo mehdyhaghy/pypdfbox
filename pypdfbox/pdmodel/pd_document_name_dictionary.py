@@ -4,6 +4,9 @@ from typing import Any
 
 from pypdfbox.cos import COSDictionary, COSName
 
+from .interactive.annotation.pd_appearance_stream_name_tree_node import (
+    PDAppearanceStreamNameTreeNode,
+)
 from .interactive.documentnavigation.destination import PDDestinationNameTreeNode
 from .pd_alternate_presentations_name_tree_node import (
     PDAlternatePresentationsNameTreeNode,
@@ -52,8 +55,9 @@ class PDDocumentNameDictionary:
     Holds the per-category named-resource sub-dictionaries available at
     the document level: ``/Dests``, ``/AP``, ``/EmbeddedFiles``,
     ``/JavaScript``, ``/Pages``, ``/Templates``, ``/IDS``, ``/URLS``,
-    ``/AlternatePresentations`` and ``/Renditions``. The ``/AP`` entry
-    is exposed as a raw ``COSDictionary`` (no typed wrapper yet).
+    ``/AlternatePresentations`` and ``/Renditions``. ``/AP`` resolves to
+    a :class:`PDAppearanceStreamNameTreeNode` whose leaves are
+    ``PDAppearanceStream`` Form XObjects.
     """
 
     # ``/Names`` sub-dictionary key constants (PDF 32000-1 §7.7.4, Table 31).
@@ -372,33 +376,52 @@ class PDDocumentNameDictionary:
         else:
             self._name_dictionary.set_item(_RENDITIONS, renditions.get_cos_object())
 
-    # ---------- /AP (deferred placeholder) ----------
+    # ---------- /AP ----------
 
-    def get_ap(self) -> COSDictionary | None:
-        """Return the raw ``/AP`` name-tree dictionary, or ``None`` if absent.
+    def get_ap(self) -> PDAppearanceStreamNameTreeNode | None:
+        """Return ``/AP`` as a typed appearance-stream name tree, or
+        ``None`` when absent.
 
-        ``/AP`` is a spec-defined document-level name tree mapping name
-        strings to appearance streams (PDF 32000-1 §7.7.4, Table 31), but
-        current PDFBox does not expose a public accessor for it on
-        ``PDDocumentNameDictionary``. pypdfbox keeps this raw-COS convenience
-        until a typed appearance-stream name-tree wrapper exists.
+        ``/AP`` is the document-level name tree mapping name strings to
+        appearance streams (PDF 32000-1 §7.7.4, Table 31). Upstream
+        PDFBox 3.x does not expose a public accessor for ``/AP`` on
+        ``PDDocumentNameDictionary``; pypdfbox surfaces it as
+        :class:`PDAppearanceStreamNameTreeNode` so the leaf values are
+        typed as ``PDAppearanceStream`` (matching the shape of the
+        sibling typed name-tree wrappers exposed on this class).
+        """
+        dic = self._name_dictionary.get_dictionary_object(_AP)
+        if isinstance(dic, COSDictionary):
+            return PDAppearanceStreamNameTreeNode(dic)
+        return None
+
+    def get_ap_raw(self) -> COSDictionary | None:
+        """Return the raw ``/AP`` name-tree dictionary, or ``None``.
+
+        Lower-level escape hatch kept for callers that need to bypass the
+        typed wrapper (e.g. FDF round-trips that read/write the raw node
+        without value conversion).
         """
         dic = self._name_dictionary.get_dictionary_object(_AP)
         if isinstance(dic, COSDictionary):
             return dic
         return None
 
-    def set_ap(self, ap: COSDictionary | None) -> None:
+    def set_ap(
+        self, ap: PDAppearanceStreamNameTreeNode | COSDictionary | None
+    ) -> None:
         """Set or clear the ``/AP`` name-tree dictionary.
 
-        Accepts the raw ``COSDictionary`` since no typed wrapper is yet
-        provided; this is pypdfbox spec-expanded surface rather than a current
-        PDFBox method.
+        Accepts either a :class:`PDAppearanceStreamNameTreeNode` or a raw
+        ``COSDictionary`` (the latter for callers that still hold an
+        un-wrapped node).
         """
         if ap is None:
             self._name_dictionary.remove_item(_AP)
-        else:
+        elif isinstance(ap, COSDictionary):
             self._name_dictionary.set_item(_AP, ap)
+        else:
+            self._name_dictionary.set_item(_AP, ap.get_cos_object())
 
 
 __all__ = ["PDDocumentNameDictionary"]

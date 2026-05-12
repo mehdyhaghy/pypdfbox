@@ -251,11 +251,18 @@ def test_get_ap_returns_none_when_absent() -> None:
 
 
 def test_set_and_get_ap_round_trip() -> None:
+    """``/AP`` round-trip: typed wrapper exposes the same backing dictionary
+    used by raw escape hatch :py:meth:`get_ap_raw`.
+    """
     nd = PDDocumentNameDictionary()
     ap = COSDictionary()
     nd.set_ap(ap)
     out = nd.get_ap()
-    assert out is ap
+    # Typed wrapper points at the same COSDictionary; the raw escape hatch
+    # returns the underlying dictionary directly.
+    assert out is not None
+    assert out.get_cos_object() is ap
+    assert nd.get_ap_raw() is ap
     assert nd.get_cos_object().get_dictionary_object(_AP) is ap
 
 

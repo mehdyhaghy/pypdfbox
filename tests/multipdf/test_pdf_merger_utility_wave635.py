@@ -60,6 +60,9 @@ def test_wave635_open_source_loads_supported_inputs_and_rejects_bad_streams(
 def test_wave635_merge_documents_without_sources_stages_options_and_returns(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
+    """OPTIMIZE_RESOURCES_MODE now performs a real cross-document merge;
+    the legacy-fallback log must not fire — and overload arguments
+    should still be staged via the setters."""
     util = PDFMergerUtility()
     stream_cache = object()
     compress_params = object()
@@ -73,7 +76,7 @@ def test_wave635_merge_documents_without_sources_stages_options_and_returns(
 
     assert util.get_stream_cache_create_function() is stream_cache
     assert util.get_compress_parameters() is compress_params
-    assert "falling back to PDFBOX_LEGACY_MODE" in caplog.text
+    assert "falling back to PDFBOX_LEGACY_MODE" not in caplog.text
 
 
 def test_wave635_merge_random_access_requires_random_access_sources() -> None:

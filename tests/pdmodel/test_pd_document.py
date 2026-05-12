@@ -199,10 +199,10 @@ def test_stubs_raise_with_cluster_pointer() -> None:
     # ``get_encryption`` now returns ``None`` for unencrypted docs (no
     # raise) — encryption wiring landed in the security cluster.
     assert doc.get_encryption() is None
-    # ``protect`` accepts only StandardProtectionPolicy; passing a stray
-    # object still raises (NotImplementedError for non-standard policy
-    # shapes such as the public-key handler).
-    with pytest.raises(NotImplementedError):
+    # ``protect`` accepts ``StandardProtectionPolicy`` or
+    # ``PublicKeyProtectionPolicy``; passing a stray object surfaces a
+    # ``TypeError`` (caller bug, no longer a deferred-feature marker).
+    with pytest.raises(TypeError):
         doc.protect(object())
     # ``add_signature`` now exists; it requires a real ``PDSignature``
     # instance — passing anything else raises TypeError (write-side

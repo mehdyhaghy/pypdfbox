@@ -253,7 +253,9 @@ def test_protect_accepts_standard_protection_policy() -> None:
 
 
 def test_protect_rejects_non_standard_policy() -> None:
-    with PDDocument() as pd, pytest.raises(NotImplementedError):
+    # ``protect`` now accepts StandardProtectionPolicy and
+    # PublicKeyProtectionPolicy; anything else is a caller bug.
+    with PDDocument() as pd, pytest.raises(TypeError):
         pd.protect(object())
 
 

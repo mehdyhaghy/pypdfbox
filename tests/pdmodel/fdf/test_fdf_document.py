@@ -76,12 +76,98 @@ def test_save_after_close_raises() -> None:
         fdf.save(io.BytesIO())
 
 
-def test_set_xfdf_still_unsupported() -> None:
-    """XFDF ingest still requires a SAX/DOM front-end (deferred wave)."""
+def test_set_xfdf_rejects_wrong_root_element() -> None:
+    """An XFDF ingest with a non-``<xfdf>`` root must raise ``OSError``
+    (matches upstream's ``IOException``)."""
     fdf = FDFDocument()
     try:
-        with pytest.raises(NotImplementedError):
-            fdf.set_xfdf(b"<xfdf/>")
+        with pytest.raises(OSError, match="root should be 'xfdf'"):
+            fdf.set_xfdf(b"<not-xfdf/>")
+    finally:
+        fdf.close()
+
+
+def test_set_xfdf_populates_fields_and_annotations() -> None:
+    """A round-trip XFDF ingest must populate /FDF /Fields and /Annots."""
+    sample = (
+        b'<?xml version="1.0" encoding="UTF-8"?>'
+        b'<xfdf xmlns="http://ns.adobe.com/xfdf/" xml:space="preserve">'
+        b"<fields>"
+        b'<field name="first_name"><value>Mehdy</value></field>'
+        b'<field name="last_name"><value>Haghy</value></field>'
+        b"</fields>"
+        b"<annots>"
+        b'<text page="0" rect="10,20,30,40" color="#ff0000" name="n1"'
+        b' title="Author" subject="hi"/>'
+        b"</annots>"
+        b"</xfdf>"
+    )
+    fdf = FDFDocument()
+    try:
+        fdf.set_xfdf(sample)
+        fdf_dict = fdf.get_catalog().get_fdf()
+        fields = fdf_dict.get_fields()
+        assert fields is not None
+        assert [f.get_partial_field_name() for f in fields] == [
+            "first_name",
+            "last_name",
+        ]
+        assert [f.get_value() for f in fields] == ["Mehdy", "Haghy"]
+        annots = fdf_dict.get_annotations()
+        assert annots is not None and len(annots) == 1
+        annot = annots[0]
+        assert annot.get_subtype() == "Text"
+        assert annot.get_page() == 0
+        assert annot.get_name() == "n1"
+        assert annot.get_title() == "Author"
+        assert annot.get_subject() == "hi"
+        # #ff0000 -> red channel 1.0, others 0.0
+        color = annot.get_color()
+        assert color is not None
+        assert color[0] == pytest.approx(1.0, abs=1e-3)
+        assert color[1] == pytest.approx(0.0, abs=1e-3)
+        assert color[2] == pytest.approx(0.0, abs=1e-3)
+    finally:
+        fdf.close()
+
+
+def test_set_xfdf_nested_fields() -> None:
+    """Nested ``<field>`` elements must populate the parent's /Kids."""
+    sample = (
+        b'<?xml version="1.0" encoding="UTF-8"?>'
+        b'<xfdf xmlns="http://ns.adobe.com/xfdf/">'
+        b"<fields>"
+        b'<field name="address">'
+        b'  <field name="city"><value>Lyon</value></field>'
+        b'  <field name="zip"><value>69000</value></field>'
+        b"</field>"
+        b"</fields>"
+        b"</xfdf>"
+    )
+    fdf = FDFDocument()
+    try:
+        fdf.set_xfdf(sample)
+        fields = fdf.get_catalog().get_fdf().get_fields()
+        assert fields is not None and len(fields) == 1
+        parent = fields[0]
+        assert parent.get_partial_field_name() == "address"
+        kids = parent.get_kids()
+        assert kids is not None
+        assert [k.get_partial_field_name() for k in kids] == ["city", "zip"]
+        assert [k.get_value() for k in kids] == ["Lyon", "69000"]
+    finally:
+        fdf.close()
+
+
+def test_set_xfdf_accepts_minidom_document() -> None:
+    """An already-parsed ``minidom.Document`` is also acceptable."""
+    from pypdfbox.util.xml_util import XMLUtil
+
+    sample = b'<?xml version="1.0"?><xfdf><fields/></xfdf>'
+    doc = XMLUtil.parse(sample)
+    fdf = FDFDocument()
+    try:
+        fdf.set_xfdf(doc)
     finally:
         fdf.close()
 

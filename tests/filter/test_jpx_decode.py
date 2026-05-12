@@ -100,9 +100,69 @@ def test_jpx_decode_invalid_input_raises_oserror() -> None:
         JPXDecode().decode(io.BytesIO(b"not a jp2 stream"), io.BytesIO())
 
 
-def test_jpx_encode_raises_not_implemented() -> None:
-    with pytest.raises(NotImplementedError, match="JPX encoding not implemented"):
-        JPXDecode().encode(io.BytesIO(b""), io.BytesIO(), COSDictionary())
+def test_jpx_encode_round_trips_rgb_raster() -> None:
+    """Pillow's OpenJPEG-backed encoder produces a JP2 stream that the
+    sibling :meth:`decode` recovers to the same component count and
+    geometry. We do not assert pixel exactness because JPEG 2000 in its
+    default Pillow mode is lossy.
+    """
+    width, height = 8, 4
+    src = Image.new("RGB", (width, height), color=(123, 200, 50))
+    raw = src.tobytes()
+
+    params = COSDictionary()
+    params.set_int("Width", width)
+    params.set_int("Height", height)
+    params.set_int("BitsPerComponent", 8)
+    params.set_int("ColorComponents", 3)
+
+    encoded_buf = io.BytesIO()
+    JPXDecode().encode(io.BytesIO(raw), encoded_buf, params)
+    encoded_bytes = encoded_buf.getvalue()
+    assert len(encoded_bytes) > 0
+
+    out = io.BytesIO()
+    result = JPXDecode().decode(io.BytesIO(encoded_bytes), out)
+    assert result.parameters.get_int("Width") == width
+    assert result.parameters.get_int("Height") == height
+    assert result.parameters.get_int("ColorComponents") == 3
+    assert result.bytes_written == width * height * 3
+
+
+def test_jpx_encode_requires_parameters() -> None:
+    with pytest.raises(OSError, match="parameters are required"):
+        JPXDecode().encode(io.BytesIO(b""), io.BytesIO(), None)
+
+
+def test_jpx_encode_rejects_unsupported_bpc() -> None:
+    params = COSDictionary()
+    params.set_int("Width", 4)
+    params.set_int("Height", 4)
+    params.set_int("BitsPerComponent", 4)
+    params.set_int("ColorComponents", 1)
+    with pytest.raises(OSError, match="unsupported /BitsPerComponent"):
+        JPXDecode().encode(io.BytesIO(b"\x00" * 8), io.BytesIO(), params)
+
+
+def test_jpx_encode_grayscale_round_trip() -> None:
+    width, height = 4, 4
+    src = Image.new("L", (width, height), color=200)
+    raw = src.tobytes()
+
+    params = COSDictionary()
+    params.set_int("Width", width)
+    params.set_int("Height", height)
+    params.set_int("BitsPerComponent", 8)
+    params.set_int("ColorComponents", 1)
+
+    encoded_buf = io.BytesIO()
+    JPXDecode().encode(io.BytesIO(raw), encoded_buf, params)
+
+    out = io.BytesIO()
+    result = JPXDecode().decode(io.BytesIO(encoded_buf.getvalue()), out)
+    assert result.parameters.get_int("Width") == width
+    assert result.parameters.get_int("Height") == height
+    assert result.parameters.get_int("ColorComponents") == 1
 
 
 def test_jpx_decode_clears_decode_entry_when_not_image_mask() -> None:

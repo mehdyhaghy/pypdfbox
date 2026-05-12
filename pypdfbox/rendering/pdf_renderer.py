@@ -370,7 +370,24 @@ class PDFRenderer(PDFStreamEngine):
         Pillow mode of the returned image (RGB, RGBA, L, "1"). When
         ``None`` (the default), the lite renderer keeps its historical
         white-RGB canvas behaviour.
+
+        Upstream allocates a ``BufferedImage`` and constructs a
+        ``PageDrawer`` via :meth:`create_page_drawer`, then calls
+        ``pageDrawer.drawPage(graphics, pageSize)``. We follow the same
+        flow: the actual rasterisation lives in
+        :meth:`PageDrawer.draw_page`, which delegates back to
+        :meth:`_render_page_into` so the heavy PIL/aggdraw state stays on
+        the renderer for now.
         """
+        # Imported lazily — both modules import each other, and the
+        # circular import only resolves once both classes are bound.
+        from pypdfbox.rendering.page_drawer import (  # noqa: PLC0415
+            PageDrawer,
+        )
+        from pypdfbox.rendering.page_drawer_parameters import (  # noqa: PLC0415
+            PageDrawerParameters,
+        )
+
         dpi = _require_positive_finite(dpi, "dpi")
         page = self._get_page_for_render(page_index)
         media_box = page.get_media_box()
@@ -388,6 +405,88 @@ class PDFRenderer(PDFStreamEngine):
         # ``new Color(0, 0, 0, 0)`` clearRect; the conversion at the
         # end preserves alpha by paint-checking the white background.
         image = Image.new("RGB", (width_px, height_px), (255, 255, 255))
+
+        # Bundle the renderer-level options into a PageDrawerParameters
+        # (mirrors upstream PDFRenderer.renderImageWithDPI which builds
+        # parameters → createPageDrawer → drawPage).
+        destination = RenderDestination(self._default_destination)
+        parameters = PageDrawerParameters(
+            renderer=self,
+            page=page,
+            subsampling_allowed=self._subsampling_allowed,
+            destination=destination,
+            rendering_hints=self._rendering_hints,
+            image_downscaling_optimization_threshold=(
+                self._image_downscaling_optimization_threshold
+            ),
+        )
+        # Ask the customisation hook for a page drawer. The lite
+        # renderer's default implementation stamps the annotation filter
+        # onto the parameters and (since wave 1288) returns a real
+        # ``PageDrawer`` instance — subclasses can override to plug in
+        # their own drawer.
+        page_drawer = self.create_page_drawer(parameters)
+        if page_drawer is None or page_drawer is self:
+            # Subclass override returned ``self`` (legacy lite-renderer
+            # behaviour) — fall back to a fresh ``PageDrawer`` so the
+            # delegation path is always exercised.
+            page_drawer = PageDrawer(parameters)
+        # Record the active scale on the renderer up-front so any helper
+        # consulted before ``_render_page_into`` runs sees the right
+        # value (e.g. resolving the device CTM during constructor work).
+        self._scale = scale
+        self._page_height_px = float(height_px)
+        page_drawer.draw_page(image, media_box)
+
+        # Convert to the caller-requested image type if needed.
+        # Pillow handles every direction (RGB → L / "1" / RGBA / etc.)
+        # via ``Image.convert``; for ARGB we tag the formerly-white
+        # background as fully transparent so it composes correctly,
+        # mirroring upstream's transparent-canvas + final blit
+        # behaviour.
+        if image_type is not None and image_type is not ImageType.RGB:
+            target_mode = image_type.pil_mode
+            if target_mode == "RGBA":
+                rgba = image.convert("RGBA")
+                # Make any pixel that's still pure white fully
+                # transparent so the alpha channel matches what
+                # upstream's transparent-canvas render produced.
+                pixels = cast(Any, rgba.load())
+                w, h = rgba.size
+                for y in range(h):
+                    for x in range(w):
+                        r, g, b, _a = pixels[x, y]
+                        if r == 255 and g == 255 and b == 255:
+                            pixels[x, y] = (r, g, b, 0)
+                image = rgba
+            else:
+                image = image.convert(target_mode)
+        # Cache the freshly-rendered page so callers can recover it via
+        # ``get_page_image()`` (mirrors upstream package-private accessor).
+        self._page_image = image
+        return image
+
+    def _render_page_into(
+        self,
+        page: PDPage,
+        image: Image.Image,
+        page_size: Any,
+        scale: float,
+    ) -> None:
+        """Drive the content-stream walk that paints ``page`` into
+        ``image`` at ``scale``. Invoked from
+        :meth:`PageDrawer.draw_page`; broken out so the PageDrawer
+        delegate stays tiny while the heavyweight PIL/aggdraw state
+        keeps living on the renderer.
+
+        ``page_size`` mirrors upstream's PDRectangle argument and
+        anchors the device CTM origin/flip. It's currently expected to
+        be the page's media box (the only shape ``render_image_with_dpi``
+        forwards), but a downstream caller can pass any rectangle to
+        re-anchor the y-axis flip (e.g. for crop-box rendering or
+        ``renderPageToGraphics``-style overlays).
+        """
+        width_px, height_px = image.size
 
         # Reset per-render state. ``self._draw`` is the *current* aggdraw
         # wrapper around ``self._image``; it may be replaced mid-render
@@ -408,8 +507,8 @@ class PDFRenderer(PDFStreamEngine):
         #   device = [scale 0; 0 -scale] * [1 0; 0 1; -mb.x -mb.y] +
         #            [0 height_px]
         # Implemented as a single PDF-style 6-tuple.
-        mb_x = media_box.get_lower_left_x()
-        mb_y = media_box.get_lower_left_y()
+        mb_x = page_size.get_lower_left_x()
+        mb_y = page_size.get_lower_left_y()
         self._device_ctm = (
             scale,
             0.0,
@@ -443,34 +542,6 @@ class PDFRenderer(PDFStreamEngine):
                 current.flush()
             self._draw = None
             self._image = None
-
-        # Convert to the caller-requested image type if needed.
-        # Pillow handles every direction (RGB → L / "1" / RGBA / etc.)
-        # via ``Image.convert``; for ARGB we tag the formerly-white
-        # background as fully transparent so it composes correctly,
-        # mirroring upstream's transparent-canvas + final blit
-        # behaviour.
-        if image_type is not None and image_type is not ImageType.RGB:
-            target_mode = image_type.pil_mode
-            if target_mode == "RGBA":
-                rgba = image.convert("RGBA")
-                # Make any pixel that's still pure white fully
-                # transparent so the alpha channel matches what
-                # upstream's transparent-canvas render produced.
-                pixels = cast(Any, rgba.load())
-                w, h = rgba.size
-                for y in range(h):
-                    for x in range(w):
-                        r, g, b, _a = pixels[x, y]
-                        if r == 255 and g == 255 and b == 255:
-                            pixels[x, y] = (r, g, b, 0)
-                image = rgba
-            else:
-                image = image.convert(target_mode)
-        # Cache the freshly-rendered page so callers can recover it via
-        # ``get_page_image()`` (mirrors upstream package-private accessor).
-        self._page_image = image
-        return image
 
     def renderImageWithDPI(  # noqa: N802 - upstream Java alias
         self,
@@ -728,21 +799,36 @@ class PDFRenderer(PDFStreamEngine):
         (Java 552–557) — overridable by subclasses that want to plug in
         a custom drawer.
 
-        The lite renderer folds upstream's ``PageDrawer`` inline (this
-        same ``PDFRenderer`` subclass walks the operators), so the hook
-        returns ``self`` after stamping the active annotation filter
-        onto ``parameters`` if it accepts one. Subclasses that mirror
-        upstream's split (separate ``PageDrawer`` class) should
-        override this method to return their own instance."""
-        # Upstream stamps the renderer's annotation filter onto the
-        # newly-created PageDrawer. We surface the same filter on the
-        # parameters object when it has a writable slot, so a downstream
-        # custom drawer derived from ``parameters`` sees the right
-        # filter without having to call ``set_annotation_filter`` itself.
+        Returns a fresh :class:`PageDrawer` bound to ``parameters``
+        when a real :class:`PageDrawerParameters` is supplied. Falls
+        back to ``self`` for the legacy "no parameters" call shape so
+        existing callers that pre-date the wave-1288 split keep
+        working. The renderer's currently-active annotation filter is
+        stamped onto the returned drawer (and onto the parameters
+        themselves when they expose ``set_annotation_filter``) so the
+        drawer matches the value the caller would have read via
+        :meth:`get_annotations_filter`."""
+        from pypdfbox.rendering.page_drawer import (  # noqa: PLC0415
+            PageDrawer,
+        )
+
+        # Mirror upstream's filter inheritance: a fresh PageDrawer
+        # adopts the renderer's filter unless the subclass replaces it.
         if parameters is not None and hasattr(parameters, "set_annotation_filter"):
             with contextlib.suppress(Exception):
                 parameters.set_annotation_filter(self._annotation_filter)
-        return self
+        if parameters is None or not hasattr(parameters, "get_page"):
+            # Legacy call shape (predates the PageDrawer split). Keep
+            # behaviour stable for callers that mirror upstream's
+            # subclass-only override pattern without supplying real
+            # parameters.
+            return self
+        try:
+            drawer = PageDrawer(parameters)
+        except (TypeError, AttributeError):
+            return self
+        drawer.set_annotation_filter(self._annotation_filter)
+        return drawer
 
     def transform(
         self,

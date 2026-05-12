@@ -584,6 +584,44 @@ class PDType3Font(PDSimpleFont):
             ury = max(ury, glyph_bbox.get_upper_right_y())
         return PDRectangle(llx, lly, urx, ury)
 
+    # ---------- subsetting ----------
+    #
+    # Type 3 fonts have no shared font program — every glyph is a
+    # self-contained inline content stream stored under /CharProcs. There
+    # is no Type 1 / TrueType / CFF table to strip, so "subsetting" is a
+    # null operation by definition (PDF 32000-1 §9.6.5). Upstream PDFBox
+    # inherits :meth:`PDSimpleFont.subset` which raises
+    # ``UnsupportedOperationException``; we override the message here so
+    # callers reaching this through Type 3 fonts get a specific reason.
+
+    def will_be_subset(self) -> bool:
+        """Type 3 fonts are never subset — every glyph is already inline."""
+        return False
+
+    def add_to_subset(self, code_point: int) -> None:
+        """Type 3 fonts do not support subsetting.
+
+        Inline glyph definitions in ``/CharProcs`` mean there is no
+        shared font program to subset; mirrors upstream's
+        ``UnsupportedOperationException`` with a Type 3-specific message.
+        """
+        raise NotImplementedError(
+            "subsetting is not supported for Type 3 fonts "
+            "(glyphs are defined inline in /CharProcs)"
+        )
+
+    def subset(self) -> None:
+        """Type 3 fonts do not support subsetting.
+
+        See :meth:`add_to_subset` for the rationale — Type 3 glyphs are
+        inline content streams under ``/CharProcs`` with no shared
+        program to strip. Mirrors upstream ``PDSimpleFont.subset``.
+        """
+        raise NotImplementedError(
+            "subsetting is not supported for Type 3 fonts "
+            "(glyphs are defined inline in /CharProcs)"
+        )
+
     @staticmethod
     def check_font_matrix_values(matrix: COSArray | None) -> bool:
         """``True`` iff ``matrix`` is a 6-entry array of numeric items.

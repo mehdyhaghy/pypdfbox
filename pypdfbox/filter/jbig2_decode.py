@@ -150,6 +150,16 @@ class JBIG2Decode(Filter):
         encoded: BinaryIO,
         parameters: COSDictionary | None = None,
     ) -> None:
+        """``/JBIG2Decode`` is a decode-only filter — by upstream design.
+
+        Mirrors ``JBIG2Filter`` in Apache PDFBox, which inherits the
+        default ``encode`` that raises ``UnsupportedOperationException``.
+        PDFBox does not ship a JBIG2 encoder (and no production PDF
+        toolchain produces JBIG2 from scratch — the format is the
+        province of dedicated tools such as ``jbig2enc`` invoked by
+        upstream OCR / scan pipelines). This is upstream-faithful
+        behaviour, not a pypdfbox deferral.
+        """
         raise NotImplementedError(
             "JBIG2Decode.encode is not implemented (decode-only)"
         )

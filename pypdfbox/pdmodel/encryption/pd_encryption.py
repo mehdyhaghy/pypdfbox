@@ -83,8 +83,11 @@ def _as_cos_name(name: str | COSName) -> COSName:
 class PDEncryption:
     """
     Wraps the trailer's ``/Encrypt`` dictionary. Mirrors the PDFBox
-    ``PDEncryption`` API surface (lite slice — security-handler dispatch and
-    crypt-filter sub-dictionaries are deferred).
+    ``PDEncryption`` API surface, including the ``/CF`` crypt-filter
+    sub-dictionary table and ``/StmF`` / ``/StrF`` default crypt-filter
+    name dispatch. Per-object crypt-filter routing is handled by
+    :class:`StandardSecurityHandler`; per-stream ``/Filter Crypt /Name``
+    overrides are honoured by the :class:`CryptFilter` pipeline.
     """
 
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
@@ -423,6 +426,20 @@ class PDEncryption:
         """Set ``/StmF``. Mirrors upstream ``setStreamFilterName``."""
         self._dict.set_name(_STM_F, name)
 
+    def get_default_stream_filter_name(self) -> str:
+        """Return ``/StmF`` (defaults to ``Identity``).
+
+        Friendly alias for :py:meth:`get_stream_filter_name`. ``/StmF``
+        names the default crypt-filter entry in ``/CF`` to apply to
+        streams that do not carry their own ``/Filter /Crypt /Name``
+        override (PDF 32000-1 §7.6.5).
+        """
+        return self.get_stream_filter_name()
+
+    def set_default_stream_filter_name(self, name: str) -> None:
+        """Set ``/StmF``. Friendly alias for :py:meth:`set_stream_filter_name`."""
+        self.set_stream_filter_name(name)
+
     # ---------- /StrF — default string filter name ----------
 
     def get_str_f(self) -> str | None:
@@ -449,6 +466,20 @@ class PDEncryption:
     def set_string_filter_name(self, name: str) -> None:
         """Set ``/StrF``. Mirrors upstream ``setStringFilterName``."""
         self._dict.set_name(_STR_F, name)
+
+    def get_default_string_filter_name(self) -> str:
+        """Return ``/StrF`` (defaults to ``Identity``).
+
+        Friendly alias for :py:meth:`get_string_filter_name`. ``/StrF``
+        names the default crypt-filter entry in ``/CF`` to apply to
+        strings unless a per-object override is present (PDF 32000-1
+        §7.6.5).
+        """
+        return self.get_string_filter_name()
+
+    def set_default_string_filter_name(self, name: str) -> None:
+        """Set ``/StrF``. Friendly alias for :py:meth:`set_string_filter_name`."""
+        self.set_string_filter_name(name)
 
     # ---------- /EFF — default embedded-file filter name ----------
 

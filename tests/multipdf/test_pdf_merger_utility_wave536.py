@@ -126,16 +126,20 @@ def test_wave536_merge_documents_records_stream_cache_and_compress_parameters() 
     assert util.get_compress_parameters() is compress
 
 
-def test_wave536_optimize_mode_logs_fallback_without_sources(
+def test_wave536_optimize_mode_no_legacy_fallback_log_for_valid_input(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
+    """OPTIMIZE_RESOURCES_MODE now performs a real cross-document
+    resource-deduplicating merge; the legacy-fallback info log must not
+    fire for an empty-sources no-op call."""
     util = PDFMergerUtility()
     util.set_document_merge_mode(DocumentMergeMode.OPTIMIZE_RESOURCES_MODE)
 
     with caplog.at_level(logging.INFO, logger="pypdfbox.multipdf.pdf_merger_utility"):
         util.merge_documents()
 
-    assert "OPTIMIZE_RESOURCES_MODE not yet implemented" in caplog.text
+    assert "OPTIMIZE_RESOURCES_MODE not yet implemented" not in caplog.text
+    assert "falling back to PDFBOX_LEGACY_MODE" not in caplog.text
 
 
 def test_wave536_merge_random_access_read_rejects_non_random_access_source() -> None:

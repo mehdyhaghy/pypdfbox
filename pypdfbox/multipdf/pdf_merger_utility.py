@@ -9,13 +9,126 @@ from typing import TYPE_CHECKING, Any, BinaryIO, Union
 from pypdfbox.cos import (
     COSArray,
     COSBase,
+    COSBoolean,
     COSDictionary,
     COSName,
+    COSNull,
+    COSNumber,
+    COSObject,
     COSStream,
+    COSString,
 )
 from pypdfbox.io import RandomAccessRead
 
 from .pdf_clone_utility import PDFCloneUtility
+
+
+class _HashAbort(Exception):
+    """Sentinel raised inside :func:`_hash_cos` when a value cannot be
+    hashed (cycle, unsupported leaf). Caught by the optimize-mode
+    resource cache to skip the affected entry rather than poison the
+    digest."""
+
+
+def _hash_cos(
+    value: object,
+    hasher: Any,
+    seen: set[int],
+) -> None:
+    """Recursively fold ``value``'s canonical COS representation into
+    ``hasher`` (an ``hashlib`` digest builder). Cycles raise
+    :class:`_HashAbort` so callers can mark the value un-hashable.
+
+    Used only by the optimize-mode cross-document resource deduplicator;
+    we deliberately keep this private to the merger module so we don't
+    paint ourselves into a corner with a "canonical hash" public API.
+    """
+    if value is None:
+        hasher.update(b"\x00null")
+        return
+    if isinstance(value, COSObject):
+        _hash_cos(value.get_object(), hasher, seen)
+        return
+    if isinstance(value, COSNull):
+        hasher.update(b"\x00null")
+        return
+    if isinstance(value, COSBoolean):
+        hasher.update(b"\x01" + (b"T" if value.get_value() else b"F"))
+        return
+    if isinstance(value, COSNumber):
+        # Stable text form — ints round-trip exactly; floats use a
+        # fixed-precision repr so 1.0 vs 1.000 both hash the same.
+        hasher.update(b"\x02")
+        if isinstance(value, type(value)):
+            n = value.int_value() if hasattr(value, "int_value") else 0
+            f = value.float_value() if hasattr(value, "float_value") else 0.0
+            if float(n) == f:
+                hasher.update(str(int(n)).encode("ascii"))
+            else:
+                hasher.update(f"{f:.10g}".encode("ascii"))
+        return
+    if isinstance(value, COSName):
+        hasher.update(b"\x03")
+        nm = value.get_name()
+        hasher.update(nm.encode("utf-8"))
+        return
+    if isinstance(value, COSString):
+        hasher.update(b"\x04")
+        hasher.update(bytes(value.get_bytes()))
+        return
+    if isinstance(value, COSStream):
+        if id(value) in seen:
+            raise _HashAbort
+        seen.add(id(value))
+        hasher.update(b"\x06stream{")
+        for key in sorted(
+            (k.get_name() for k in value.key_set()), key=lambda s: s
+        ):
+            hasher.update(b"\x07")
+            hasher.update(key.encode("utf-8"))
+            hasher.update(b"=")
+            sub = value.get_item(COSName.get_pdf_name(key))
+            _hash_cos(sub, hasher, seen)
+        hasher.update(b"}")
+        if value.has_data():
+            try:
+                with value.create_raw_input_stream() as body:
+                    while True:
+                        chunk = body.read(64 * 1024)
+                        if not chunk:
+                            break
+                        hasher.update(chunk)
+            except Exception as exc:  # noqa: BLE001
+                raise _HashAbort from exc
+        return
+    if isinstance(value, COSDictionary):
+        if id(value) in seen:
+            raise _HashAbort
+        seen.add(id(value))
+        hasher.update(b"\x08dict{")
+        for key in sorted(
+            (k.get_name() for k in value.key_set()), key=lambda s: s
+        ):
+            hasher.update(b"\x07")
+            hasher.update(key.encode("utf-8"))
+            hasher.update(b"=")
+            sub = value.get_item(COSName.get_pdf_name(key))
+            _hash_cos(sub, hasher, seen)
+        hasher.update(b"}")
+        return
+    if isinstance(value, COSArray):
+        if id(value) in seen:
+            raise _HashAbort
+        seen.add(id(value))
+        hasher.update(b"\x09array[")
+        for i in range(value.size()):
+            _hash_cos(value.get(i), hasher, seen)
+            hasher.update(b",")
+        hasher.update(b"]")
+        return
+    # Unknown leaf — abort so the caller skips this entry rather than
+    # over-coalescing distinct objects.
+    raise _HashAbort
 
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.pd_document import PDDocument
@@ -78,9 +191,13 @@ _ANNOTS: COSName = COSName.get_pdf_name("Annots")
 class DocumentMergeMode(enum.Enum):
     """Mirrors ``PDFMergerUtility.DocumentMergeMode``.
 
-    ``OPTIMIZE_RESOURCES_MODE`` is recognised but currently delegates to the
-    legacy path — true cross-document resource deduplication is deferred
-    (see ``CHANGES.md``).
+    ``OPTIMIZE_RESOURCES_MODE`` clones each source page through a shared
+    :class:`PDFCloneUtility` whose identity table coalesces equivalent
+    resources (fonts, XObjects, ColorSpaces, ExtGStates, Patterns,
+    Shadings, Properties) across every source page — mirroring upstream
+    ``optimizedMergeDocuments``. Document-level catalog substructures
+    (``/AcroForm``, ``/Outlines``, ``/Names`` ...) are NOT merged in
+    this mode; use :data:`PDFBOX_LEGACY_MODE` when they are needed.
     """
 
     OPTIMIZE_RESOURCES_MODE = "OPTIMIZE_RESOURCES_MODE"
@@ -144,7 +261,10 @@ class PDFMergerUtility:
       overlaid (dest wins on conflict). When the destination has no
       tree but a source does, a fresh empty ``/StructTreeRoot`` is
       created on the destination so the source tree can be cloned in.
-    - ``OPTIMIZE_RESOURCES_MODE`` recognised but routes to the legacy path.
+    - ``OPTIMIZE_RESOURCES_MODE`` clones pages through a shared
+      :class:`PDFCloneUtility`; entries under each page's ``/Resources``
+      sub-dicts (``/Font``, ``/XObject``, etc.) are cross-document
+      deduplicated via a SHA-256 canonical-form cache.
     - Dynamic XFA documents are rejected.
     """
 
@@ -349,11 +469,6 @@ class PDFMergerUtility:
         if compress_parameters is not None:
             self.set_compress_parameters(compress_parameters)
         if self._document_merge_mode == DocumentMergeMode.OPTIMIZE_RESOURCES_MODE:
-            # OPTIMIZE_RESOURCES_MODE deferred — fall back to legacy.
-            _LOG.info(
-                "OPTIMIZE_RESOURCES_MODE not yet implemented; "
-                "falling back to PDFBOX_LEGACY_MODE."
-            )
             self.optimized_merge_documents(
                 self._stream_cache_create_function, self._compress_parameters
             )
@@ -421,16 +536,195 @@ class PDFMergerUtility:
         stream_cache_create_function: Any = None,
         compress_parameters: Any = None,
     ) -> None:
-        """Mirror of upstream ``optimizedMergeDocuments``. Real cross-document
-        resource deduplication is deferred — this port forwards to
-        :meth:`legacy_merge_documents` and records the parameters via
-        the matching setters so callers reading them back see what was
-        staged. See ``CHANGES.md``."""
+        """Mirror of upstream ``optimizedMergeDocuments``.
+
+        Each source page is cloned through a *shared* :class:`PDFCloneUtility`
+        whose identity table coalesces structurally identical resources
+        (fonts, XObjects, ColorSpaces, ExtGStates, Patterns, Shadings)
+        across every source page — when two pages reference the same
+        source font object, the destination gets a single shared clone.
+
+        Unlike :meth:`legacy_merge_documents`, this path does NOT merge
+        document-level structures (``/AcroForm``, ``/Outlines``, ``/Names``,
+        ``/StructTreeRoot``, ``/PageLabels``, ``/Metadata`` etc.). Mirrors
+        upstream behaviour — callers that need those substructures should
+        use the legacy path.
+        """
         if stream_cache_create_function is not None:
             self.set_stream_cache_create_function(stream_cache_create_function)
         if compress_parameters is not None:
             self.set_compress_parameters(compress_parameters)
-        self._legacy_merge_documents_impl()
+        self._optimized_merge_documents_impl()
+
+    def _optimized_merge_documents_impl(self) -> None:
+        """Page-only merge with cross-document resource dedup.
+
+        Mirrors upstream ``optimizedMergeDocuments`` (Java line 375).
+        A single :class:`PDFCloneUtility` is reused across every source
+        document so its identity table (``_cloned_version``) coalesces
+        repeated references to the same source object into one clone in
+        the destination. To strengthen that across *different* source
+        documents — where Python ``id()`` keys cannot collapse two
+        distinct-but-equivalent fonts — a content-hash side-table maps
+        the canonical SHA-256 of each cloned resource entry to the
+        clone, so a second source page asking for the same font / image
+        bytes points at the already-present destination clone.
+        """
+        if not self._sources:
+            return
+        if self._destination_file_name is None and self._destination_stream is None:
+            raise ValueError(
+                "Either set_destination_file_name(...) or set_destination_stream(...) "
+                "must be configured before merge_documents()."
+            )
+
+        from pypdfbox.pdmodel.pd_document import PDDocument
+        from pypdfbox.pdmodel.pd_page import PDPage
+
+        destination = PDDocument()
+        opened_sources: list[tuple[PDDocument, bool]] = []
+        try:
+            cloner = PDFCloneUtility(destination)
+            # Cross-document resource cache: SHA-256 of canonical COS
+            # serialisation -> already-cloned destination object. Lets
+            # us coalesce equivalent resources whose source objects
+            # have different ``id()`` (e.g. two source PDFs each
+            # carrying a copy of the same Type1 font).
+            resource_hash_cache: dict[bytes, COSBase] = {}
+
+            for source in self._sources:
+                source_doc, owns = self._open_source(source)
+                opened_sources.append((source_doc, owns))
+                try:
+                    src_catalog = source_doc.get_document_catalog()
+                    if self._is_dynamic_xfa(src_catalog.get_acro_form()):
+                        raise OSError(
+                            "Error: can't merge source document containing "
+                            "dynamic XFA form content."
+                        )
+                    for page in source_doc.get_pages():
+                        old_page_dict = page.get_cos_object()
+                        new_page_dict = cloner.clone_for_new_document(
+                            old_page_dict
+                        )
+                        assert isinstance(new_page_dict, COSDictionary)
+                        new_page_dict.remove_item(_PARENT)
+                        # Resources are folded through the cross-doc
+                        # hash-dedup cache so two source pages that
+                        # reference the same font / image don't bloat
+                        # the destination with duplicate clones.
+                        self._dedup_page_resources(
+                            new_page_dict, resource_hash_cache
+                        )
+                        destination.get_pages().add(PDPage(new_page_dict))
+                    # AcroForm fields: optimize mode still carries them
+                    # over so widget annotations on imported pages stay
+                    # navigable from the destination's form. Name-collision
+                    # handling matches the legacy path.
+                    dest_catalog = destination.get_document_catalog()
+                    self._merge_acro_form(cloner, dest_catalog, src_catalog)
+                finally:
+                    if owns:
+                        try:
+                            source_doc.close()
+                        except Exception:  # noqa: BLE001
+                            _LOG.exception("error closing source PDDocument")
+                        opened_sources[-1] = (source_doc, False)
+
+            if self._destination_document_information is not None:
+                destination.set_document_information(
+                    self._destination_document_information
+                )
+            if self._destination_metadata is not None:
+                destination.get_document_catalog().set_metadata(
+                    self._destination_metadata
+                )
+
+            if self._destination_stream is None:
+                assert self._destination_file_name is not None
+                destination.save(self._destination_file_name)
+            else:
+                destination.save(self._destination_stream)
+        finally:
+            try:
+                destination.close()
+            except Exception:  # noqa: BLE001
+                _LOG.exception("error closing destination PDDocument")
+            for src_doc, still_owned in opened_sources:
+                if still_owned:
+                    try:
+                        src_doc.close()
+                    except Exception:  # noqa: BLE001
+                        _LOG.exception("error closing source PDDocument")
+
+    # ---------- optimize-mode resource hashing ----------
+
+    _RESOURCE_KEYS: tuple[COSName, ...] = (
+        COSName.get_pdf_name("Font"),
+        COSName.get_pdf_name("XObject"),
+        COSName.get_pdf_name("ColorSpace"),
+        COSName.get_pdf_name("ExtGState"),
+        COSName.get_pdf_name("Pattern"),
+        COSName.get_pdf_name("Shading"),
+        COSName.get_pdf_name("Properties"),
+    )
+
+    def _dedup_page_resources(
+        self,
+        page_dict: COSDictionary,
+        resource_hash_cache: dict[bytes, COSBase],
+    ) -> None:
+        """Walk ``page_dict``'s ``/Resources`` and coalesce each entry
+        under the canonical resource sub-dicts (``/Font``, ``/XObject``,
+        ``/ColorSpace``, ``/ExtGState``, ``/Pattern``, ``/Shading``,
+        ``/Properties``) via the SHA-256 ``resource_hash_cache``.
+
+        On a hit, the page's resource-sub-dict entry is rewritten to
+        point at the already-present destination clone, so the second
+        source page that references "the same" font emits zero extra
+        objects in the destination.
+        """
+        resources = page_dict.get_dictionary_object(_RESOURCES)
+        if not isinstance(resources, COSDictionary):
+            return
+        for category in self._RESOURCE_KEYS:
+            sub = resources.get_dictionary_object(category)
+            if not isinstance(sub, COSDictionary):
+                continue
+            for name in list(sub.key_set()):
+                value = sub.get_dictionary_object(name)
+                if value is None:
+                    continue
+                key = self._canonical_resource_hash(value)
+                if key is None:
+                    continue
+                existing = resource_hash_cache.get(key)
+                if existing is not None and existing is not value:
+                    sub.set_item(name, existing)
+                else:
+                    resource_hash_cache[key] = value
+
+    @staticmethod
+    def _canonical_resource_hash(value: COSBase) -> bytes | None:
+        """Return a stable SHA-256 over ``value``'s canonical COS
+        representation, or ``None`` when the object isn't safe to hash
+        (cycles, unsupported leaves).
+
+        The canonical form is a deterministic ``repr``-ish encoding
+        that walks dictionaries in sorted key order and arrays in
+        index order; ``COSStream`` bodies are hashed via their raw
+        bytes. Two resources that serialise byte-for-byte the same way
+        produce the same digest regardless of which source document
+        produced them.
+        """
+        import hashlib
+
+        hasher = hashlib.sha256()
+        try:
+            _hash_cos(value, hasher, set())
+        except _HashAbort:
+            return None
+        return hasher.digest()
 
     def _legacy_merge_documents_impl(self) -> None:
         if not self._sources:

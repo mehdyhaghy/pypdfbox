@@ -113,7 +113,9 @@ def test_wave586_encryption_alias_and_unsupported_policy() -> None:
         trailer = doc.get_document().get_trailer()
         assert trailer is not None
         assert trailer.get_dictionary_object(COSName.ENCRYPT) is encryption  # type: ignore[attr-defined]
-        with pytest.raises(NotImplementedError, match="only StandardProtectionPolicy"):
+        # Wave 1289 wired ``PublicKeyProtectionPolicy`` through ``protect``;
+        # an arbitrary object is now a caller bug (``TypeError``).
+        with pytest.raises(TypeError, match="PublicKeyProtectionPolicy"):
             doc.protect(object())
     finally:
         doc.close()

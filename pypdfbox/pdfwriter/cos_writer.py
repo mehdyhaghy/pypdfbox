@@ -1106,6 +1106,12 @@ class COSWriter(ICOSVisitor):
         # Path 2: fresh ``protect()`` policy → derive a handler.
         protection_policy = getattr(pd_document, "_protection_policy", None)
         if protection_policy is not None:
+            from pypdfbox.pdmodel.encryption.public_key_protection_policy import (
+                PublicKeyProtectionPolicy,
+            )
+            from pypdfbox.pdmodel.encryption.public_key_security_handler import (
+                PublicKeySecurityHandler,
+            )
             from pypdfbox.pdmodel.encryption.standard_protection_policy import (
                 StandardProtectionPolicy,
             )
@@ -1113,18 +1119,28 @@ class COSWriter(ICOSVisitor):
                 StandardSecurityHandler,
             )
 
-            if not isinstance(protection_policy, StandardProtectionPolicy):
-                raise NotImplementedError(
-                    "COSWriter encryption: only StandardProtectionPolicy is "
-                    "supported (public-key handler dispatch is deferred)"
+            if isinstance(protection_policy, StandardProtectionPolicy):
+                # The standard handler derives the file-encryption key from
+                # the file-id; ensure trailer carries one BEFORE prepare_document
+                # synthesises /O, /U, etc. (otherwise it falls back to the
+                # 16-zero-bytes fixture which won't survive a re-load).
+                self._propagate_document_id(cos_document)
+                handler = StandardSecurityHandler(protection_policy)
+                handler.prepare_document(pd_document)
+            elif isinstance(protection_policy, PublicKeyProtectionPolicy):
+                # Public-key (``/Adobe.PubSec``) handler — derives the file
+                # key from a fresh 20-byte seed wrapped per-recipient via
+                # PKCS#7 (see PublicKeySecurityHandler.prepare_document).
+                # /ID still helps downstream tooling, so seed one if missing.
+                self._propagate_document_id(cos_document)
+                handler = PublicKeySecurityHandler(protection_policy)
+                handler.prepare_document(pd_document)
+            else:
+                raise TypeError(
+                    "COSWriter encryption: protection policy must be "
+                    "StandardProtectionPolicy or PublicKeyProtectionPolicy, "
+                    f"got {type(protection_policy).__name__}"
                 )
-            # The standard handler derives the file-encryption key from
-            # the file-id; ensure trailer carries one BEFORE prepare_document
-            # synthesises /O, /U, etc. (otherwise it falls back to the
-            # 16-zero-bytes fixture which won't survive a re-load).
-            self._propagate_document_id(cos_document)
-            handler = StandardSecurityHandler(protection_policy)
-            handler.prepare_document(pd_document)
             # Cache the handler back on the PDDocument so subsequent
             # ``decrypt()`` / ``get_current_access_permission()`` calls see
             # an active handler immediately after save.
