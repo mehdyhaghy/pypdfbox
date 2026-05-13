@@ -31,7 +31,13 @@ from pypdfbox.multipdf import (
     DocumentMergeMode,
     PDFMergerUtility,
 )
+from pypdfbox.multipdf.splitter import Splitter
 from pypdfbox.pdmodel import PDDocument, PDPage
+from pypdfbox.pdmodel.interactive.annotation.pd_annotation_link import (
+    PDAnnotationLink,
+)
+
+_FIXTURE_DIR = Path(__file__).resolve().parents[2] / "fixtures" / "multipdf"
 
 
 def _seed_page(page: PDPage) -> None:
@@ -426,41 +432,135 @@ def test_pdf_box_5198_3(tmp_path) -> None:
     _check_pdf_box_5198_parts(str(out))
 
 
-@pytest.mark.skip(reason="Splitter-side tests live with the splitter port")
+# --------------------------------------------------------------------------
+# Splitter tests that upstream parks inside PDFMergerUtilityTest (1200..1530).
+# Ported in Wave 1290 — fixtures bundled from upstream Apache 2.0 corpus at
+# pdfbox/src/test/resources/input/merge/. Deep-orphan invariants
+# (checkForPageOrphans / checkWithNumberTree in upstream) are covered by
+# tests/multipdf/test_splitter_struct_tree.py on synthetic structures, so we
+# port only the surface-visible page/annotation/destination assertions.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.skip(
+    reason=(
+        "Fixture PDFBOX-4417-001031.pdf uses compressed object streams "
+        "(ObjStm) and an incremental update; our parser currently loads "
+        "only 82 of the file's >340 objects, so /StructTreeRoot at "
+        "(42 0 R) is unresolved. Tracked as a parser gap, not a splitter "
+        "regression — structure-tree splitting itself is covered "
+        "synthetically by tests/multipdf/test_splitter_struct_tree.py."
+    )
+)
 def test_split_with_structure_tree() -> None: ...
 
 
-@pytest.mark.skip(reason="Splitter-side tests live with the splitter port")
+@pytest.mark.skip(
+    reason=(
+        "Fixture PDFBOX-5762-722238.pdf also relies on the same compressed-"
+        "object-stream parser path; chunk's /StructTreeRoot resolves to "
+        "None after split. See test_split_with_structure_tree skip."
+    )
+)
 def test_split_with_structure_tree_and_destinations() -> None: ...
 
 
-@pytest.mark.skip(reason="Splitter-side tests live with the splitter port")
-def test_split_with_structure_tree_and_destinations_and_removed_annotations() -> (
-    None
-): ...
+def test_split_with_structure_tree_and_destinations_and_removed_annotations() -> None:
+    # PDFBOX-5929: when /Annots are cleared from the source pages first,
+    # the splitter still produces a well-formed chunk with the expected
+    # page count (deep orphan-check covered by test_splitter_struct_tree).
+    with PDDocument.load(str(_FIXTURE_DIR / "PDFBOX-5762-722238.pdf")) as doc:
+        splitter = Splitter()
+        for page in doc.get_pages():
+            page.set_annotations([])
+        splitter.set_start_page(1)
+        splitter.set_end_page(2)
+        splitter.set_split_at_page(2)
+        split_result = splitter.split(doc)
+        assert len(split_result) == 1
+        with split_result[0] as dst_doc:
+            assert dst_doc.get_number_of_pages() == 2
 
 
-@pytest.mark.skip(reason="Splitter-side test")
+@pytest.mark.skip(
+    reason=(
+        "Fixture PDFBOX-5792-240045.pdf: same compressed-object-stream "
+        "parser limitation — split chunks ship without /StructTreeRoot. "
+        "Tracked as a parser gap."
+    )
+)
 def test_single_page_split() -> None: ...
 
 
-@pytest.mark.skip(reason="Splitter-side test")
+@pytest.mark.skip(
+    reason=(
+        "Fixture PDFBOX-5809-509329.pdf: split-clone produces fresh "
+        "COSDictionary instances for cloned pages, so /Parent and /Popup "
+        "back-references no longer share object identity with their new "
+        "owner page. Upstream relies on default Object.equals() which is "
+        "identity-based, so this is a real cross-snapshot identity-pool "
+        "gap in the splitter's deep-clone path."
+    )
+)
 def test_split_with_popup_annotations() -> None: ...
 
 
-@pytest.mark.skip(reason="Splitter-side test")
-def test_split_with_broken_destination() -> None: ...
+def test_split_with_broken_destination() -> None:
+    with PDDocument.load(str(_FIXTURE_DIR / "PDFBOX-5811-362972.pdf")) as doc:
+        splitter = Splitter()
+        splitter.set_start_page(2)
+        splitter.set_end_page(2)
+        split_result = splitter.split(doc)
+        assert len(split_result) == 1
+        with split_result[0] as dst_doc:
+            assert dst_doc.get_number_of_pages() == 1
+            annotations = dst_doc.get_page(0).get_annotations()
+            assert len(annotations) == 1
+            link = annotations[0]
+            assert isinstance(link, PDAnnotationLink)
+            assert link.get_destination() is None
+        # The original (unmodified) link still has the broken /Dest and
+        # raises (upstream raises IOException; we map to OSError per
+        # CLAUDE.md exception mapping).
+        annotations = doc.get_page(1).get_annotations()
+        assert len(annotations) == 1
+        link = annotations[0]
+        assert isinstance(link, PDAnnotationLink)
+        with pytest.raises(OSError):
+            link.get_destination()
 
 
-@pytest.mark.skip(reason="Splitter-side test")
+@pytest.mark.skip(
+    reason=(
+        "Fixture PDFBOX-5840-410609.pdf: our Splitter.fix_destinations "
+        "leaves named-destination links intact rather than resolving them "
+        "through /Catalog/Dests + /Names before retargeting. Upstream "
+        "fixDestinations() expands names first, so chunk destinations end "
+        "up as PDPageDestination while ours stays PDNamedDestination."
+    )
+)
 def test_split_with_named_destinations() -> None: ...
 
 
-@pytest.mark.skip(reason="Splitter-side test")
+@pytest.mark.skip(
+    reason=(
+        "PDFBOX-6009 fixture lives in upstream TARGETPDFDIR (network-fetched "
+        "issue attachment), not in pdfbox/src/test/resources — not bundled"
+    )
+)
 def test_split_with_pg_entry_at_the_top() -> None: ...
 
 
-@pytest.mark.skip(reason="Splitter-side test")
+@pytest.mark.skip(
+    reason=(
+        "Fixture PDFBOX-6018-099267-p9-OrphanPopups.pdf: post-split, the "
+        "annotation's /P (page back-pointer) still references the source "
+        "PDF's page dict rather than being rewritten to the chunk's clone, "
+        "so ann.get_page() and dst_doc.get_page(0) are no longer the same "
+        "COSDictionary instance. Same identity-pool gap as "
+        "test_split_with_popup_annotations."
+    )
+)
 def test_split_with_orphan_popup_annotation() -> None: ...
 
 

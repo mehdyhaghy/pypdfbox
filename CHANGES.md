@@ -2439,3 +2439,25 @@ Also includes wave 1267 carry-over additions (PDAnnotationLink, PDAnnotationPoly
   - 3 skip messages reworded from "cluster not yet ported" (stale) to "fixture not bundled" (accurate)
 - **Skip count:** 81 → 62 (-19, including a few parallel-wave xmpbox unskips). Tests: 29,221 → 29,259 (+38). **Method parity holds at 100.0%.**
 - **Remaining 62 skips by category:** ~12 legitimate "upstream PDFBox 3.0.x has no <X>Test.java" (no Java test exists upstream); ~30 fixtures not redistributable (PDFA-1b.pdf not in upstream resources; SimHei proprietary; renderer pixel-parity requires Java PDFRenderer raster output we can't byte-match; network-fetched PDFBOX-5263); ~10 renderer round-trip tests deferred (full PDFRenderer raster pipeline = 2 remaining TODOs); ~10 documented deviations (return-type-mismatched parametrize rows, etc.).
+
+## Wave 1290 — splitter-side upstream tests + parser/splitter gap diagnostics (62 → 60 skips)
+
+This wave converts 9 vague "Splitter-side test" skip stubs in `tests/multipdf/upstream/test_pdf_merger_utility.py` into either real ported tests or diagnostic skip stubs that document the underlying gap they were hiding. The stubs previously claimed coverage "lives with the splitter port", but the named tests didn't actually exist there.
+
+- **Fixtures bundled** (from upstream Apache-2.0 `pdfbox/src/test/resources/input/merge/`):
+  - `tests/fixtures/multipdf/PDFBOX-4417-001031.pdf` (53 KiB)
+  - `tests/fixtures/multipdf/PDFBOX-5762-722238.pdf` (35 KiB)
+  - `tests/fixtures/multipdf/PDFBOX-5792-240045.pdf` (44 KiB)
+  - `tests/fixtures/multipdf/PDFBOX-5809-509329.pdf` (43 KiB)
+  - `tests/fixtures/multipdf/PDFBOX-5811-362972.pdf` (44 KiB)
+  - `tests/fixtures/multipdf/PDFBOX-5840-410609.pdf` (33 KiB)
+  - `tests/fixtures/multipdf/PDFBOX-6018-099267-p9-OrphanPopups.pdf` (2 KiB)
+- **Now-real ports (2):**
+  - `test_split_with_structure_tree_and_destinations_and_removed_annotations` (PDFBOX-5929 regression: clearing annotations before split must still emit a well-formed chunk)
+  - `test_split_with_broken_destination` (PDFBOX-5811: split nulls a malformed `/Dest` in the chunk while the unmodified source still raises `OSError`/`IOException` on `getDestination`)
+- **Skipped-with-diagnosis (now-named gaps, replacing vague stubs):**
+  - `test_split_with_structure_tree` / `..._and_destinations` / `test_single_page_split` — block on a **parser** gap: indirect refs that live inside compressed object streams (`/Type /ObjStm`) aren't lazily loaded. For PDFBOX-4417-001031.pdf the parser pool ends up with 82 of >340 objects, so the catalog's `/StructTreeRoot (42 0 R)` resolves to `None`. Synthetic struct-tree splits are still covered by `tests/multipdf/test_splitter_struct_tree.py`.
+  - `test_split_with_popup_annotations` / `test_split_with_orphan_popup_annotation` — block on a **splitter** gap: the deep-clone path produces fresh `COSDictionary` instances for cloned pages, so the annotation's `/P` back-pointer no longer shares object identity with the chunk's owner page (upstream relies on default `Object.equals()` ≡ identity).
+  - `test_split_with_named_destinations` — `Splitter.fix_destinations` doesn't expand `PDNamedDestination` via `/Catalog/Dests` + `/Names` before retargeting, so named-destination links remain `PDNamedDestination` in the chunk rather than being rewritten to `PDPageDestination`.
+  - `test_split_with_pg_entry_at_the_top` — fixture (PDFBOX-6009.pdf) lives in upstream `TARGETPDFDIR` (network-fetched issue attachment), not in `pdfbox/src/test/resources/` — not redistributable.
+- **Skip count:** 62 → 60 (-2). Tests: 29,317 → 29,319 (+2). **Method parity holds at 100.0%.**

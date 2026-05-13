@@ -617,6 +617,13 @@ Not yet ported (need `TTFParser` / `TrueTypeCollection` / `TTFSubsetter` — fon
 | `tests/fixtures/pdmodel/with_outline.pdf` | `pdfbox/src/test/resources/org/apache/pdfbox/pdmodel/with_outline.pdf` | 3.0.x |
 | `tests/fixtures/pdmodel/page_tree_multiple_levels.pdf` | `pdfbox/src/test/resources/org/apache/pdfbox/pdmodel/page_tree_multiple_levels.pdf` | 3.0.x |
 | `tests/fixtures/pdfparser/PDFBOX-6041-example.pdf` | `pdfbox/src/test/resources/org/apache/pdfbox/pdfparser/PDFBOX-6041-example.pdf` | 3.0.x |
+| `tests/fixtures/multipdf/PDFBOX-4417-001031.pdf` | `pdfbox/src/test/resources/input/merge/PDFBOX-4417-001031.pdf` | 3.0.x |
+| `tests/fixtures/multipdf/PDFBOX-5762-722238.pdf` | `pdfbox/src/test/resources/input/merge/PDFBOX-5762-722238.pdf` | 3.0.x |
+| `tests/fixtures/multipdf/PDFBOX-5792-240045.pdf` | `pdfbox/src/test/resources/input/merge/PDFBOX-5792-240045.pdf` | 3.0.x |
+| `tests/fixtures/multipdf/PDFBOX-5809-509329.pdf` | `pdfbox/src/test/resources/input/merge/PDFBOX-5809-509329.pdf` | 3.0.x |
+| `tests/fixtures/multipdf/PDFBOX-5811-362972.pdf` | `pdfbox/src/test/resources/input/merge/PDFBOX-5811-362972.pdf` | 3.0.x |
+| `tests/fixtures/multipdf/PDFBOX-5840-410609.pdf` | `pdfbox/src/test/resources/input/merge/PDFBOX-5840-410609.pdf` | 3.0.x |
+| `tests/fixtures/multipdf/PDFBOX-6018-099267-p9-OrphanPopups.pdf` | `pdfbox/src/test/resources/input/merge/PDFBOX-6018-099267-p9-OrphanPopups.pdf` | 3.0.x |
 
 ### `tests/pdmodel/upstream/`
 
