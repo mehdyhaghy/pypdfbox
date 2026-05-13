@@ -641,16 +641,22 @@ class Splitter:
         """Clone the link's destination array, install the clone, and
         remember it for the :meth:`fix_destinations` post-pass.
 
-        Mirrors upstream's ``destToFixMap`` book-keeping. We don't try to
-        resolve named destinations here — the catalog name-tree lookup
-        is wider than what the lite ``PDDocumentCatalog`` exposes — and
-        leave named-target links untouched.
+        Mirrors upstream's ``destToFixMap`` book-keeping. Named
+        destinations are resolved up front via the source catalog's
+        ``find_named_destination_page`` (mirrors upstream's
+        ``findNamedDestinationPage`` — ``/Names /Dests`` name-tree first,
+        then legacy catalog ``/Dests`` flat dictionary) so the cloned
+        destination is a concrete :class:`PDPageDestination` rather than
+        a name that won't resolve in the chunk's name tree.
         """
         from pypdfbox.pdmodel.interactive.action.pd_action_go_to import (
             PDActionGoTo,
         )
         from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
             PDDestination,
+        )
+        from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_named_destination import (  # noqa: E501
+            PDNamedDestination,
         )
         from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (  # noqa: E501
             PDPageDestination,
@@ -685,7 +691,30 @@ class Splitter:
                     link.set_action(None)
                     src_destination = None
 
-        # Skip named destinations entirely — see method docstring.
+        # Resolve a named destination through the source catalog's
+        # /Names /Dests name-tree (then legacy /Dests) so it becomes a
+        # PDPageDestination. Upstream comment (Splitter.java ~876):
+        # "we do not use the named destination anymore because names get
+        # modified, e.g. 0xAD becomes 0, see file 410609.pdf where the
+        # name no longer matches with the entry in the new name tree".
+        #
+        # PDActionGoTo.get_destination() in our port returns ``str`` for
+        # name/string ``/D`` (parity with our local API choice — see tests
+        # in test_pd_action_go_to_parity.py); wrap that back into a
+        # PDNamedDestination before resolving so we can reuse the catalog
+        # helper without diverging from upstream's resolution semantics.
+        if isinstance(src_destination, str):
+            src_destination = PDNamedDestination(src_destination)
+        if isinstance(src_destination, PDNamedDestination):
+            try:
+                src_catalog = self.get_source_document().get_document_catalog()
+                resolved = src_catalog.find_named_destination_page(src_destination)
+            except Exception:  # noqa: BLE001
+                resolved = None
+            src_destination = resolved
+
+        # Skip non-page destinations (anything we couldn't resolve to a
+        # concrete PDPageDestination — including unresolved named refs).
         if not isinstance(src_destination, PDPageDestination):
             return
 

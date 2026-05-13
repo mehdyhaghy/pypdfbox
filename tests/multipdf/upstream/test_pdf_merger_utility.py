@@ -558,16 +558,89 @@ def test_split_with_broken_destination() -> None:
             link.get_destination()
 
 
-@pytest.mark.skip(
-    reason=(
-        "Fixture PDFBOX-5840-410609.pdf: our Splitter.fix_destinations "
-        "leaves named-destination links intact rather than resolving them "
-        "through /Catalog/Dests + /Names before retargeting. Upstream "
-        "fixDestinations() expands names first, so chunk destinations end "
-        "up as PDPageDestination while ours stays PDNamedDestination."
+def test_split_with_named_destinations() -> None:
+    from pypdfbox.pdmodel.interactive.action.pd_action_go_to import (
+        PDActionGoTo,
     )
-)
-def test_split_with_named_destinations() -> None: ...
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_named_destination import (  # noqa: E501
+        PDNamedDestination,
+    )
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (  # noqa: E501
+        PDPageDestination,
+    )
+
+    with PDDocument.load(str(_FIXTURE_DIR / "PDFBOX-5840-410609.pdf")) as doc:
+        splitter = Splitter()
+        splitter.set_split_at_page(6)
+        split_result = splitter.split(doc)
+        assert len(split_result) == 1
+        with split_result[0] as dst_doc:
+            assert dst_doc.get_number_of_pages() == 6
+            annotations = dst_doc.get_page(0).get_annotations()
+            assert len(annotations) == 5
+            link1 = annotations[0]
+            link2 = annotations[1]
+            link3 = annotations[2]
+            link4 = annotations[3]
+            link5 = annotations[4]
+            assert isinstance(link1, PDAnnotationLink)
+            assert isinstance(link2, PDAnnotationLink)
+            assert isinstance(link3, PDAnnotationLink)
+            assert isinstance(link4, PDAnnotationLink)
+            assert isinstance(link5, PDAnnotationLink)
+            action1 = link1.get_action()
+            action2 = link2.get_action()
+            action3 = link3.get_action()
+            action4 = link4.get_action()
+            action5 = link5.get_action()
+            assert isinstance(action1, PDActionGoTo)
+            assert isinstance(action2, PDActionGoTo)
+            assert isinstance(action3, PDActionGoTo)
+            assert isinstance(action4, PDActionGoTo)
+            assert isinstance(action5, PDActionGoTo)
+            pd1 = action1.get_destination()
+            pd2 = action2.get_destination()
+            pd3 = action3.get_destination()
+            pd4 = action4.get_destination()
+            pd5 = action5.get_destination()
+            assert isinstance(pd1, PDPageDestination)
+            assert isinstance(pd2, PDPageDestination)
+            assert isinstance(pd3, PDPageDestination)
+            assert isinstance(pd4, PDPageDestination)
+            assert isinstance(pd5, PDPageDestination)
+            page_tree = dst_doc.get_pages()
+            assert page_tree.index_of(pd1.get_page()) == 0
+            assert page_tree.index_of(pd2.get_page()) == 1
+            assert page_tree.index_of(pd3.get_page()) == 3
+            assert page_tree.index_of(pd4.get_page()) == 3
+            assert page_tree.index_of(pd5.get_page()) == 5
+
+            assert dst_doc.get_document_catalog().get_metadata() is not None
+
+            import io
+
+            baos = io.BytesIO()
+            dst_doc.save(baos)
+            with PDDocument.load(baos.getvalue()) as reloaded_doc:
+                assert (
+                    reloaded_doc.get_document_catalog().get_metadata()
+                    is not None
+                )
+
+        # Check that source document is unchanged
+        annotations = doc.get_page(0).get_annotations()
+        assert len(annotations) == 5
+        link = annotations[0]
+        assert isinstance(link, PDAnnotationLink)
+        src_action = link.get_action()
+        assert isinstance(src_action, PDActionGoTo)
+        # Upstream returns PDNamedDestination from PDActionGoTo.getDestination()
+        # for ``/D`` of name/string form; our port surfaces the raw ``str``
+        # (see test_pd_action_go_to_parity.test_get_destination_dispatches_*).
+        # The contract that matters here — source document untouched, ``/D``
+        # still a name reference — holds in either form.
+        src_dest = src_action.get_destination()
+        assert isinstance(src_dest, (PDNamedDestination, str))
 
 
 @pytest.mark.skip(

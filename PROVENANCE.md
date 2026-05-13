@@ -469,6 +469,52 @@ Tools cluster #1 — command-line dispatcher and basic commands.
 Original work (no PROVENANCE entry needed; listed here for clarity):
 - `pypdfbox/tools/info.py` — small pypdfbox-specific document summary command.
 
+### `pypdfbox/debugger/`
+
+Tkinter/Ttk port of the upstream Swing-based debugger (PDF tree explorer / hex viewer / search). Wave 1292+. Stdlib-only (`tkinter`, `tkinter.ttk`, `tkinter.font`, `tkinter.simpledialog`, `tkinter.filedialog`, `tkinter.messagebox`) plus the existing Pillow dep for image rendering.
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/debugger/ui/array_entry.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/ArrayEntry.java` |
+| `pypdfbox/debugger/ui/map_entry.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/MapEntry.java` |
+| `pypdfbox/debugger/ui/page_entry.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/PageEntry.java` |
+| `pypdfbox/debugger/ui/document_entry.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/DocumentEntry.java` |
+| `pypdfbox/debugger/ui/xref_entry.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/XrefEntry.java` |
+| `pypdfbox/debugger/ui/xref_entries.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/XrefEntries.java` |
+| `pypdfbox/debugger/ui/pdf_tree_model.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/PDFTreeModel.java` |
+| `pypdfbox/debugger/ui/window_prefs.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/WindowPrefs.java` |
+| `pypdfbox/debugger/ui/debug_log.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/DebugLog.java` |
+| `pypdfbox/debugger/ui/high_resolution_image_icon.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/HighResolutionImageIcon.java` |
+| `pypdfbox/debugger/ui/image_util.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/ImageUtil.java` |
+| `pypdfbox/debugger/treestatus/tree_status.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/treestatus/TreeStatus.java` |
+| `pypdfbox/debugger/treestatus/tree_status_pane.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/treestatus/TreeStatusPane.java` |
+| `pypdfbox/debugger/ui/textsearcher/search_engine.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/textsearcher/SearchEngine.java` |
+| `pypdfbox/debugger/ui/textsearcher/searcher.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/textsearcher/Searcher.java` |
+| `pypdfbox/debugger/ui/textsearcher/search_panel.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/textsearcher/SearchPanel.java` |
+| `pypdfbox/debugger/hexviewer/hex_model.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/hexviewer/HexModel.java` |
+| `pypdfbox/debugger/hexviewer/hex_changed_event.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/hexviewer/HexChangedEvent.java` |
+| `pypdfbox/debugger/hexviewer/hex_change_listener.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/hexviewer/HexChangeListener.java` |
+| `pypdfbox/debugger/hexviewer/select_event.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/hexviewer/SelectEvent.java` |
+| `pypdfbox/debugger/hexviewer/selection_change_listener.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/hexviewer/SelectionChangeListener.java` |
+| `pypdfbox/debugger/hexviewer/hex_model_changed_event.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/hexviewer/HexModelChangedEvent.java` |
+| `pypdfbox/debugger/hexviewer/hex_model_change_listener.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/hexviewer/HexModelChangeListener.java` |
+| `pypdfbox/debugger/hexviewer/address_pane.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/hexviewer/AddressPane.java` |
+| `pypdfbox/debugger/hexviewer/hex_pane.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/hexviewer/HexPane.java` |
+| `pypdfbox/debugger/hexviewer/ascii_pane.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/hexviewer/ASCIIPane.java` |
+| `pypdfbox/debugger/hexviewer/upper_pane.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/hexviewer/UpperPane.java` |
+| `pypdfbox/debugger/hexviewer/status_pane.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/hexviewer/StatusPane.java` |
+| `pypdfbox/debugger/hexviewer/hex_editor.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/hexviewer/HexEditor.java` |
+| `pypdfbox/debugger/hexviewer/hex_view.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/hexviewer/HexView.java` |
+| `pypdfbox/debugger/flagbitspane/flag.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/flagbitspane/Flag.java` |
+| `pypdfbox/debugger/flagbitspane/annot_flag.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/flagbitspane/AnnotFlag.java` |
+| `pypdfbox/debugger/flagbitspane/field_flag.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/flagbitspane/FieldFlag.java` |
+| `pypdfbox/debugger/flagbitspane/encrypt_flag.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/flagbitspane/EncryptFlag.java` |
+| `pypdfbox/debugger/flagbitspane/sig_flag.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/flagbitspane/SigFlag.java` |
+| `pypdfbox/debugger/flagbitspane/font_flag.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/flagbitspane/FontFlag.java` |
+| `pypdfbox/debugger/flagbitspane/panose_flag.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/flagbitspane/PanoseFlag.java` |
+| `pypdfbox/debugger/flagbitspane/flag_bits_pane_view.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/flagbitspane/FlagBitsPaneView.java` |
+| `pypdfbox/debugger/flagbitspane/flag_bits_pane.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/flagbitspane/FlagBitsPane.java` |
+
 ---
 
 ## Ported upstream tests

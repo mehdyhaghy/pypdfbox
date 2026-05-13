@@ -2479,3 +2479,44 @@ The other two wave-1290 parser-gap skips (`test_split_with_structure_tree_and_de
 Skip reasons have been rewritten to reflect these now-localized gaps.
 
 - **Skip count:** 60 → 59 (-1). Tests: 29,319 → 29,320 (+1). **Method parity holds at 100.0%.**
+
+## Wave 1292 — debugger Tkinter port (foundation, hexviewer, treestatus + textsearcher) + splitter named-destination expansion
+
+**Decision recorded**: Swing-based `org.apache.pdfbox.debugger` is now an active porting target. Backend = Tkinter / Ttk (Python stdlib), no new dependencies. Pillow (already in deps) handles image rendering.
+
+### Splitter fix
+
+- `pypdfbox/multipdf/splitter.py` — extended `_stage_link_destination` to resolve `PDNamedDestination` (and the raw `str` form returned by our `PDActionGoTo.get_destination()`) through `PDDocumentCatalog.find_named_destination_page` (which covers both `/Names /Dests` name-tree and legacy catalog `/Dests`), mirroring upstream `Splitter.java:872-879`.
+- `tests/multipdf/upstream/test_pdf_merger_utility.py::test_split_with_named_destinations` — full port from upstream `PDFMergerUtilityTest.java:1422`, now passing.
+
+### Debugger foundation (`pypdfbox/debugger/ui/`)
+
+- Headless data wrappers ported: `ArrayEntry`, `MapEntry`, `PageEntry`, `DocumentEntry`, `XrefEntry`, `XrefEntries`.
+- `PDFTreeModel` ported, omitting the no-op `add_tree_model_listener` / `remove_tree_model_listener` registration pair (Tkinter `ttk.Treeview` is observer-side, not model-side). `value_for_path_changed` kept as an explicit no-op for API parity.
+- `WindowPrefs` JSON-backed (`~/.config/pypdfbox/debugger.json` on POSIX, `%APPDATA%/pypdfbox/debugger.json` on Windows) instead of `java.util.prefs.Preferences`. Defaults seed from a caller-supplied screen size instead of `Toolkit.getDefaultToolkit()`.
+- `DebugLog` forwards to stdlib `logging` and an optional Tk dialog sink registered via `set_dialog_sink(...)`, replacing the `commons-logging` `Log` interface and `LogDialog.instance()` singleton.
+- `HighResolutionImageIcon.get_photo_image()` returns a Tk `ImageTk.PhotoImage`; `paint_icon(canvas, x, y)` uses `canvas.create_image` in place of Swing's `Icon.paintIcon(Component, Graphics, x, y)`.
+- `ImageUtil.get_rotated_image` delegates to Pillow's `Image.transpose` (Java's `g.rotate(toRadians(θ))` is clockwise; PIL's `ROTATE_*` is counter-clockwise — direction flip handled here).
+- Skipped: `OSXAdapter.java` (Java-specific reflection bridge to `com.apple.eawt.Application` — Tkinter on macOS exposes the same affordances via `root.createcommand('::tk::mac::Quit', ...)`; deferred to the eventual `PDFDebugger` shell wave).
+
+### Hexviewer (`pypdfbox/debugger/hexviewer/`)
+
+- Swing widgets re-implemented on Tkinter/Ttk: `JComponent`→`tk.Text`/`ttk.Frame`, custom `paintComponent` replaced with `tk.Text` content + tag-based styling, `JScrollPane` replaced with a single `ttk.Scrollbar` fanned out to the three column `tk.Text` panes.
+- `HexView.getPane()` returns a `ttk.Frame` instead of a Java `JComponent`.
+- `HexEditor` jump-to-index dialog uses `tkinter.simpledialog.askinteger` instead of a hand-built `JDialog` (same behaviour: out-of-range values silently bounds-checked by the model).
+- Selection / hex-change "listener" interfaces ported as `typing.Protocol` (runtime-checkable) instead of Java interfaces; any duck-typed object with the snake_case method satisfies them.
+- `HexChangedEvent` masks `new_value` to 0..255 in the constructor so Python ints behave like Java signed bytes for downstream consumers.
+
+### Treestatus + ui/textsearcher (`pypdfbox/debugger/treestatus/`, `pypdfbox/debugger/ui/textsearcher/`)
+
+- `TreeStatus` represents a tree path as a `tuple[Any, ...]` (root first, leaf last) instead of `javax.swing.tree.TreePath` — Tkinter has no `TreePath` equivalent. `_search_node` returns `None` for non-numeric array indices instead of raising `NumberFormatException` (matches the documented "invalid string returns null" contract).
+- `SearchEngine` operates on a `(get_text, add_highlight, remove_all_highlights, painter)` callback quad instead of `Document` + `Highlighter`. The returned `Highlight` dataclass replaces `javax.swing.text.Highlighter.Highlight`. Adds a sibling `search_regex(...)` using `re` (project extension — upstream is literal-only).
+- `SearchPanel` adds a *Regex* check-box.
+- `Searcher` and listener interfaces are duck-typed methods (`insert_update`, `state_changed`, `component_shown`, …) instead of Swing `*Listener` interfaces.
+
+### Flagbitspane (`pypdfbox/debugger/flagbitspane/`)
+
+- Swing `JTable` + `JPanel` + `GridBagLayout` replaced with Tkinter `ttk.Treeview` + `ttk.Frame`. The 30/20 pt monospaced bold Swing labels become `ttk.Label`s with `tkinter.font.Font` to keep visual parity.
+- `flagbitspane.Flag._is_flag_bit_set`: hoisted from upstream private `FieldFlag#isFlagBitSet` to the abstract base so every subclass reuses the helper (formula unchanged: `(v & (1 << (b-1))) == mask`).
+- `flagbitspane.PanoseFlag`: ported `getPanoseBytes` as a `@staticmethod`; constructor raises `TypeError` if `/Panose` resolves to something other than `COSString` (upstream throws `ClassCastException` for the same input).
+- `flagbitspane.FlagBitsPane.get_pane()`: returns `None` when the supplied flag-type COSName is not one of the six recognised entries (upstream Java throws `NullPointerException` because `view` stays null and `getPane()` derefs it).
