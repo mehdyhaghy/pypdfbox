@@ -171,11 +171,76 @@ def test_incrementally_create_document(tmp_path: Path) -> None:
         assert len(page1.get_annotations()) == 1
 
 
-@pytest.mark.skip(
-    reason="needs network-fetched PDFBOX-5263 fixture + setAllSecurityToBeRemoved"
-)
-def test_concurrent_modification() -> None:
-    pass
+def test_concurrent_modification(tmp_path: Path) -> None:
+    """Synthetic equivalent of upstream ``testConcurrentModification``
+    (PDFBOX-5263).
+
+    Upstream loads a network-fetched encrypted PDF
+    (``YTW2VWJQTDAE67PGJT6GS7QSKW3GNUQR.pdf``), calls
+    ``setAllSecurityToBeRemoved(true)``, and asserts that ``save`` does
+    not raise ``ConcurrentModificationException`` — a regression where
+    decrypting + writing in the same pass concurrently mutated the
+    object pool.
+
+    The structural contract is:
+
+    1. An encrypted document can be loaded with the correct password.
+    2. Calling ``set_all_security_to_be_removed(True)`` on the loaded
+       document and re-saving completes without raising.
+    3. The re-saved bytes open without a password and have no
+       ``/Encrypt`` entry in the trailer.
+
+    We synthesise a fresh encrypted PDF (full ``protect`` + ``save``
+    pipeline through ``StandardSecurityHandler``), reload it with the
+    user password, run the same ``setAllSecurityToBeRemoved`` flow, and
+    assert each invariant in turn.
+    """
+    pytest.importorskip("pypdfbox.pdmodel.encryption.standard_security_handler")
+    pytest.importorskip("pypdfbox.pdmodel.encryption.standard_protection_policy")
+
+    from pypdfbox.pdmodel.encryption.access_permission import AccessPermission
+    from pypdfbox.pdmodel.encryption.standard_protection_policy import (
+        StandardProtectionPolicy,
+    )
+
+    # ---------- step 1: build a real encrypted PDF via protect+save ----------
+    pd = PDDocument()
+    page = PDPage(PDRectangle.A4)
+    pd.add_page(page)
+    policy = StandardProtectionPolicy(
+        owner_password="o-pw",
+        user_password="u-pw",
+        permissions=AccessPermission(),
+    )
+    pd.protect(policy)
+    encrypted_sink = io.BytesIO()
+    pd.save(encrypted_sink)
+    pd.close()
+    encrypted_bytes = encrypted_sink.getvalue()
+
+    # Sanity: reloading without the password reports the doc as encrypted.
+    with PDDocument.load(encrypted_bytes) as probe:
+        assert probe.is_encrypted() is True
+
+    # ---------- step 2: load with password, strip security, re-save -------
+    cleaned_sink = io.BytesIO()
+    with PDDocument.load(encrypted_bytes, password="u-pw") as document:
+        assert document.is_encrypted() is True
+        document.set_all_security_to_be_removed(True)
+        assert document.is_all_security_to_be_removed() is True
+        # The regression under test: save must not raise (the upstream
+        # ConcurrentModificationException came from the writer mutating
+        # the object pool while a decrypt pass was still iterating it).
+        document.save(cleaned_sink)
+
+    # ---------- step 3: cleaned bytes reload without a password -----------
+    cleaned_bytes = cleaned_sink.getvalue()
+    with PDDocument.load(cleaned_bytes) as reloaded:
+        # /Encrypt has been stripped from the trailer.
+        assert reloaded.is_encrypted() is False
+        assert reloaded.get_document().get_encryption_dictionary() is None
+        # Document is still well-formed — page tree survived the strip.
+        assert reloaded.get_number_of_pages() == 1
 
 
 def test_subsetting() -> None:

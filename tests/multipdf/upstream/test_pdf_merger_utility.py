@@ -134,74 +134,83 @@ def test_pdf_merger_utility_2() -> None: ...
 def test_jpeg_ccitt() -> None: ...
 
 
-@pytest.mark.skip(reason="OpenAction destination uses upstream fixture")
-def test_pdf_merger_open_action() -> None: ...
+def test_pdf_merger_open_action(tmp_path: Path) -> None:
+    """Synthetic equivalent of upstream ``testPDFMergerOpenAction``
+    (PDFBOX-3972).
+
+    Upstream synthesises the two source PDFs in-line (no external
+    fixture is needed for the structural assertion). The destination
+    document carries an ``/OpenAction`` whose explicit page target is
+    its own page 1 (0-based: ``doc2.getPage(1)``). After merging
+    ``doc1 + doc2`` (in that order), the merged catalog's
+    ``/OpenAction`` must still resolve to that same page — which now
+    lives at index ``len(doc1) + 1 == 4``.
+
+    We rebuild the same shape synthetically and assert the same
+    invariant.
+    """
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (  # noqa: E501
+        PDPageDestination,
+    )
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_fit_destination import (  # noqa: E501
+        PDPageFitDestination,
+    )
+
+    path1 = tmp_path / "MergerOpenActionTest1.pdf"
+    path2 = tmp_path / "MergerOpenActionTest2.pdf"
+    out = tmp_path / "MergerOpenActionTestResult.pdf"
+
+    # doc1 — three pages, no OpenAction.
+    doc1 = PDDocument()
+    for _ in range(3):
+        page = PDPage()
+        _seed_page(page)
+        doc1.add_page(page)
+    doc1.save(str(path1))
+    doc1.close()
+
+    # doc2 — three pages, with /OpenAction = PDPageFitDestination(page[1]).
+    doc2 = PDDocument()
+    for _ in range(3):
+        page = PDPage()
+        _seed_page(page)
+        doc2.add_page(page)
+    dest = PDPageFitDestination()
+    dest.set_page(doc2.get_page(1))
+    doc2.get_document_catalog().set_open_action(dest)
+    doc2.save(str(path2))
+    doc2.close()
+
+    util = PDFMergerUtility()
+    util.add_source(str(path1))
+    util.add_source(str(path2))
+    util.set_destination_file_name(str(out))
+    util.merge_documents()
+
+    with PDDocument.load(str(out)) as merged_doc:
+        catalog = merged_doc.get_document_catalog()
+        open_action = catalog.get_open_action()
+        assert isinstance(open_action, PDPageDestination)
+        target = open_action.get_page()
+        assert target is not None
+        # Upstream uses ``catalog.getPages().indexOf(dest.getPage())``;
+        # ``PDPageTree.index_of`` does the same lookup against the
+        # underlying COSDictionary identity.
+        assert merged_doc.get_pages().index_of(target) == 4
 
 
-@pytest.mark.skip(
-    reason="upstream input/PDFA-1b.pdf fixture — covered synthetically by "
-    "tests/multipdf/test_merger_struct_tree.py and "
-    "test_pdf_merger_utility_struct_tree.py"
-)
-def test_structure_tree_merge() -> None: ...
-
-
-@pytest.mark.skip(
-    reason="upstream input/PDFA-1b.pdf fixture — covered synthetically by "
-    "tests/multipdf/test_merger_struct_tree.py"
-)
-def test_structure_tree_merge_2() -> None: ...
-
-
-@pytest.mark.skip(
-    reason="upstream input/PDFA-1b.pdf fixture — covered synthetically by "
-    "tests/multipdf/test_merger_struct_tree.py"
-)
-def test_structure_tree_merge_3() -> None: ...
-
-
-@pytest.mark.skip(
-    reason="upstream input/PDFA-1b.pdf fixture — covered synthetically by "
-    "tests/multipdf/test_merger_struct_tree.py"
-)
-def test_structure_tree_merge_4() -> None: ...
-
-
-@pytest.mark.skip(
-    reason="upstream input/PDFA-1b.pdf fixture — covered synthetically by "
-    "tests/multipdf/test_merger_struct_tree.py"
-)
-def test_structure_tree_merge_5() -> None: ...
-
-
-@pytest.mark.skip(
-    reason="upstream input/PDFA-1b.pdf fixture — covered synthetically by "
-    "tests/multipdf/test_merger_struct_tree.py"
-)
-def test_structure_tree_merge_6() -> None: ...
-
-
-@pytest.mark.skip(
-    reason="upstream input/PDFA-1b.pdf fixture — covered synthetically by "
-    "tests/multipdf/test_merger_struct_tree.py"
-)
-def test_structure_tree_merge_7() -> None: ...
-
-
-@pytest.mark.skip(
-    reason="upstream input/PDFA-1b.pdf fixture — synthetic equivalent in "
-    "tests/multipdf/test_pdf_merger_utility_struct_tree.py "
-    "(test_struct_tree_merge_keys_offset_into_dest_range)"
-)
-def test_missing_parent_tree_next_key() -> None: ...
-
-
-@pytest.mark.skip(
-    reason="upstream input/PDFA-1b.pdf fixture — synthetic equivalent in "
-    "tests/multipdf/test_merger_struct_tree.py "
-    "(test_id_tree_collision_dest_wins_with_warning)"
-)
-def test_structure_tree_merge_id_tree() -> None: ...
+# Upstream PDFMergerUtilityTest.testStructureTreeMerge[1..7],
+# testMissingParentTreeNextKey, and testStructureTreeMergeIDTree are
+# *not* ported here. Each depends on a binary upstream fixture
+# (PDFBOX-3999-GeneralForbearance.pdf, PDFBOX-4408.pdf, PDFBOX-4417-001031.pdf,
+# PDFBOX-4417-054080.pdf, PDFBOX-4418-000671.pdf, PDFBOX-4418-000314.pdf,
+# PDFBOX-4423-000746.pdf) that we don't bundle. The behaviour each upstream
+# test asserts is exercised synthetically in:
+#   - tests/multipdf/test_merger_struct_tree.py
+#   - tests/multipdf/test_pdf_merger_utility_struct_tree.py
+# (ParentTree key offset, ParentTreeNextKey recalculation, /Pg rewriting,
+# MCID-indexed parent-tree leaves, page-orphan-free merge, RoleMap conflict
+# resolution, /IDTree collision handling, empty-dest bootstrap).
 
 
 def test_merge_bogus_struct_parents_1(tmp_path: Path) -> None:
@@ -1058,5 +1067,118 @@ def test_outlines_self_parent(tmp_path: Path) -> None:
             assert steps < 50, "outline walk failed to terminate"
 
 
-@pytest.mark.skip(reason="PDFBOX-515 stream-cloning fixture not ported")
-def test_pdf_box_515() -> None: ...
+def test_pdf_box_515(tmp_path: Path) -> None:
+    """Synthetic equivalent of upstream ``testPDFBox515`` (PDFBOX-515 /
+    PDFBOX-5950).
+
+    Upstream merges ``ComSquare1.pdf`` + ``Ghostscript1.pdf`` where one
+    source has an image stream buried inside the trailer ``/Info`` —
+    specifically at ``Info / ImPDF / Images / Kids / [0]``. The test
+    fails unless the merger deep-clones that stream (and doesn't close
+    the source COSDocument prematurely while the cloned stream is still
+    being read).
+
+    We replicate the same nested-stream pathology synthetically:
+
+    * Build a source ``PDDocument`` whose ``/Info`` carries the same
+      nested layout (``ImPDF`` → ``Images`` → ``Kids`` → ``[0]``).
+    * Plant a ``COSStream`` at the leaf with ``/Type /XObject``,
+      ``/Subtype /Image``, ``/Width`` and ``/Height`` markers we can
+      assert on, and a known raw-data payload.
+    * Merge the source with a plain second document.
+    * Reload the merged file, walk the same ``/Info`` chain, and assert
+      the leaf stream survived with its markers + payload intact.
+
+    This pins down the PDFCloneUtility deep-clone of stream values
+    reached through info-dict nesting — the exact code path PDFBOX-515
+    regressed.
+    """
+    from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSStream
+
+    path_a = tmp_path / "ComSquare1.pdf"
+    path_b = tmp_path / "Ghostscript1.pdf"
+    out = tmp_path / "PDFBOX-515-result.pdf"
+
+    expected_width = 909
+    expected_height = 233
+    marker_payload = b"\x89PNG-MARKER-pdfbox-515-deep-clone\x00\x01\x02"
+
+    # ----- Source A: carries the deep nested image stream in /Info. -----
+    doc_a = _build_doc(1)
+    info = doc_a.get_document_information().get_cos_object()
+
+    # Leaf: a COSStream shaped like a PDImageXObject body.
+    leaf_stream = COSStream()
+    leaf_stream.set_item(
+        COSName.get_pdf_name("Type"), COSName.get_pdf_name("XObject")
+    )
+    leaf_stream.set_item(
+        COSName.get_pdf_name("Subtype"), COSName.get_pdf_name("Image")
+    )
+    leaf_stream.set_item(
+        COSName.get_pdf_name("Width"), COSInteger.get(expected_width)
+    )
+    leaf_stream.set_item(
+        COSName.get_pdf_name("Height"), COSInteger.get(expected_height)
+    )
+    leaf_stream.set_item(
+        COSName.get_pdf_name("BitsPerComponent"), COSInteger.get(8)
+    )
+    leaf_stream.set_item(
+        COSName.get_pdf_name("ColorSpace"), COSName.get_pdf_name("DeviceRGB")
+    )
+    leaf_stream.set_raw_data(marker_payload)
+
+    # Wrap: Kids = [leaf_stream], Images = { Kids: [...] }, ImPDF = { Images: ... }
+    kids = COSArray()
+    kids.add(leaf_stream)
+    images_dict = COSDictionary()
+    images_dict.set_item(COSName.get_pdf_name("Kids"), kids)
+    impdf_dict = COSDictionary()
+    impdf_dict.set_item(COSName.get_pdf_name("Images"), images_dict)
+    info.set_item(COSName.get_pdf_name("ImPDF"), impdf_dict)
+
+    doc_a.save(str(path_a))
+    doc_a.close()
+
+    # ----- Source B: a plain single-page document, no /Info nesting. -----
+    doc_b = _build_doc(1)
+    doc_b.save(str(path_b))
+    doc_b.close()
+
+    # ----- Merge: same shape as upstream (legacy + memory-only cache). ---
+    util = PDFMergerUtility()
+    util.add_source(str(path_a))
+    util.add_source(str(path_b))
+    util.set_destination_file_name(str(out))
+    util.merge_documents()
+
+    # ----- Verify: the deep stream survived the merge intact. -----
+    with PDDocument.load(str(out)) as merged_doc:
+        assert merged_doc.get_number_of_pages() == 2
+        merged_info = merged_doc.get_document_information().get_cos_object()
+        impdf = merged_info.get_dictionary_object(COSName.get_pdf_name("ImPDF"))
+        assert isinstance(impdf, COSDictionary)
+        images = impdf.get_dictionary_object(COSName.get_pdf_name("Images"))
+        assert isinstance(images, COSDictionary)
+        merged_kids = images.get_dictionary_object(COSName.get_pdf_name("Kids"))
+        assert isinstance(merged_kids, COSArray)
+        assert merged_kids.size() == 1
+        merged_leaf = merged_kids.get_object(0)
+        # Upstream casts to ``COSDictionary`` then builds a PDImageXObject
+        # from it — a ``COSStream`` IS-A ``COSDictionary`` (subtype), and
+        # the cast accepts both. Our parse path round-trips stream dicts
+        # as COSStream, which is what we assert here.
+        assert isinstance(merged_leaf, COSStream)
+        # The marker payload (the "deep stream" content) must round-trip.
+        with merged_leaf.create_raw_input_stream() as src:
+            recovered = src.read()
+        assert recovered == marker_payload, (
+            "Deep stream body lost during merge — PDFBOX-515 regression"
+        )
+        # Width/Height markers must survive — these are what upstream's
+        # ``bim.getWidth() / bim.getHeight()`` end up reading.
+        assert merged_leaf.get_int(COSName.get_pdf_name("Width")) == expected_width
+        assert (
+            merged_leaf.get_int(COSName.get_pdf_name("Height")) == expected_height
+        )

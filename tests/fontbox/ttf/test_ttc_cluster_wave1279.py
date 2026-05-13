@@ -380,21 +380,77 @@ class TestCFFTable:
         assert table.get_tag() == ""  # set later by directory walk
 
     def test_read_populates_font(self) -> None:
-        # Build a minimal OTF (TTC-less) via fontTools so we can hand
-        # its 'CFF ' bytes to CFFTable.read. We use a CFF-backed font
-        # generated on the fly: fontTools ships a tiny test font we
-        # don't have in fixtures, so we synthesise via the CFF parser
-        # path directly — easier than crafting CFF bytes by hand.
+        # Build a minimal OTF (CFF-flavoured) via fontTools' FontBuilder
+        # — the same in-memory synthesis path the OTFParser upstream
+        # tests use (tests/fontbox/ttf/upstream/test_otf_parser.py).
+        # Extract the inner ``CFF `` table bytes from the OTF wrapper
+        # (mirrors CFFParser._extract_cff_table) and feed them to
+        # CFFTable.read via a MemoryTTFDataStream, exercising the
+        # exact upstream contract: read_bytes(get_length()) → CFFParser
+        # → cff_font is populated and initialized flips to True.
+        try:
+            from fontTools.fontBuilder import FontBuilder  # noqa: PLC0415
+            from fontTools.misc.psCharStrings import T2CharString  # noqa: PLC0415
+        except ImportError:
+            pytest.skip("fontTools FontBuilder / T2CharString unavailable")
 
-        # Use an already-known-good CFF program: the simplest way is
-        # to convert a glyph-less Type 1 font, but pypdfbox's own test
-        # corpus doesn't ship one. Skip this test if no OTF fixture
-        # is available — the read_headers path is exercised by other
-        # tests.
-        pytest.skip(
-            "no OTF/CFF fixture available; read() path covered by "
-            "downstream parity tests"
+        cs = T2CharString()
+        cs.program = ["endchar"]
+
+        fb = FontBuilder(unitsPerEm=1000, isTTF=False)
+        glyph_order = [".notdef", "A"]
+        fb.setupGlyphOrder(glyph_order)
+        fb.setupCharacterMap({0x41: "A"})
+        fb.setupCFF(
+            psName="ParityCFFTable",
+            fontInfo={"FullName": "Parity CFFTable"},
+            charStringsDict=dict.fromkeys(glyph_order, cs),
+            privateDict={},
         )
+        fb.setupHorizontalMetrics(dict.fromkeys(glyph_order, (500, 0)))
+        fb.setupHorizontalHeader(ascent=800, descent=-200)
+        fb.setupNameTable({"familyName": "Parity", "styleName": "Regular"})
+        fb.setupOS2(sTypoAscender=800, usWinAscent=800, usWinDescent=200)
+        fb.setupPost()
+
+        otf_buf = io.BytesIO()
+        fb.font.save(otf_buf)
+        otf_bytes = otf_buf.getvalue()
+
+        # Extract the 'CFF ' table bytes from the OTF directory.
+        # Mirrors pypdfbox.fontbox.cff.cff_parser._extract_cff_table:
+        # 16-byte records of tag(4) checksum(4) offset(4) length(4)
+        # starting at offset 12.
+        num_tables = struct.unpack(">H", otf_bytes[4:6])[0]
+        cff_bytes: bytes | None = None
+        for i in range(num_tables):
+            record = 12 + i * 16
+            tag = otf_bytes[record : record + 4]
+            if tag == b"CFF ":
+                offset = struct.unpack(">I", otf_bytes[record + 8 : record + 12])[0]
+                length = struct.unpack(
+                    ">I", otf_bytes[record + 12 : record + 16]
+                )[0]
+                cff_bytes = otf_bytes[offset : offset + length]
+                break
+        assert cff_bytes is not None, "synthesised OTF must contain a 'CFF ' table"
+
+        # Feed the raw CFF payload through CFFTable.read with a memory
+        # data stream and the declared length — this is the surface
+        # CFFTable.java L50-L59 exercises.
+        from pypdfbox.fontbox.ttf.ttf_data_stream import (  # noqa: PLC0415
+            MemoryTTFDataStream,
+        )
+
+        table = CFFTable()
+        table.set_length(len(cff_bytes))
+        # Host TTF is only consulted by the _CFFByteSource for re-reading;
+        # read() itself never touches it. None-typed minimal stand-in is
+        # acceptable for this surface check — upstream's read() takes the
+        # ttf only to wire the byte-source callback.
+        table.read(None, MemoryTTFDataStream(cff_bytes))  # type: ignore[arg-type]
+        assert table.initialized is True
+        assert table.get_font() is not None
 
 
 # -------------------- End-to-end: TTC iteration ---------------------

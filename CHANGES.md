@@ -2681,3 +2681,39 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
 - `test_outlines_self_parent` (PDFBOX-5939) — synthetic port: builds a single-page doc with one outline item whose `/Parent` points at itself, merges the file with itself. Exercises both the `id(parent.get_cos_object()) is self._dictionary` guard in `PDOutlineNode.update_parent_open_count` and the `visited` set in `_merge_outline`.
 - Deleted 3 duplicate skip stubs from `tests/cos/upstream/test_cos_increment.py` — `TestCOSIncrement.java` cluster-fits to `pdfwriter`, not `cos`. Real ports live at `tests/pdfwriter/upstream/test_save_incremental.py`. File now contains only a docstring breadcrumb pointing to the actual port location.
 - Deleted `tests/cos/test_cos_increment_wave872.py` (now meaningless — it only verified the placeholder stubs were importable; with stubs gone, the file's purpose is gone).
+
+## Wave 1297 — further skip reduction (stub deletion + structural synth + license-correct skip messages)
+
+### Removed 9 redundant struct-tree merge skip stubs (`tests/multipdf/upstream/test_pdf_merger_utility.py`)
+
+- Deleted `test_structure_tree_merge`, `..._2` through `..._7`, `test_missing_parent_tree_next_key`, `test_structure_tree_merge_id_tree`. All 9 had skip reasons inaccurately citing `PDFA-1b.pdf`; the actual upstream fixtures are `PDFBOX-3999-GeneralForbearance.pdf`, `PDFBOX-4408.pdf`, `PDFBOX-4417/4418/4423-*.pdf` (none bundled).
+- All 9 code paths (ParentTree key offset, ParentTreeNextKey recalculation, `/Pg` rewriting, MCID-indexed parent-tree leaves, page-orphan-free merge, `/RoleMap` conflict, `/IDTree` collision, empty-dest bootstrap) are already covered by hand-written synthetic tests in `tests/multipdf/test_merger_struct_tree.py` and `tests/multipdf/test_pdf_merger_utility_struct_tree.py`.
+- Replaced the 9 stubs with a single block-comment pointing at the synthetic equivalents and correctly naming the actual upstream fixtures.
+
+### DejaVuSansMono bundling + license-correct skip messages
+
+- Bundled `tests/fixtures/fontbox/ttf/DejaVuSansMono.ttf` (317.3 KiB, Bitstream Vera + DejaVu public-domain) — Apache-compatible permissive license.
+- Re-enabled `test_pdfbox_3379_dejavu_mono` (PDFBOX-3379 LSB-preservation TTF subsetter test).
+- Tightened skip reasons on PDFBOX-5728 (NotoMono SIL OFL 1.1) and PDFBOX-6015 (Apple proprietary `Keyboard.ttf` — copyright Apple, EULA forbids redistribution) to name the actual licensing blocker so future audits don't re-open the bundling question.
+
+### Structural synth: PDFBOX-3972 / PDFBOX-515 / PDFBOX-5263
+
+- `test_pdf_merger_open_action` (PDFBOX-3972) — synthesizes two `PDDocument`s, where doc2 has `/OpenAction = PDPageFitDestination → doc2.page[1]`. Merges, reloads, asserts merged catalog's OpenAction is a `PDPageDestination` whose `get_page()` resolves to index 4 (= `len(doc1) + 1`) in the merged page tree.
+- `test_pdf_box_515` (PDFBOX-515 / PDFBOX-5950 deep stream cloning) — plants a `COSStream` at `/Info /ImPDF /Images /Kids /[0]` (PDImageXObject-shaped: `/Type /XObject /Subtype /Image /Width 909 /Height 233 /BitsPerComponent 8 /ColorSpace /DeviceRGB` + marker payload). Merges, reloads, walks the same nested path, asserts the leaf is still a `COSStream` and its raw payload + `Width` / `Height` markers survived. Proves `PDFCloneUtility` deep-clones through the merger.
+- `test_concurrent_modification` (PDFBOX-5263 `setAllSecurityToBeRemoved`) — synthesizes an encrypted `PDDocument` via `StandardProtectionPolicy(owner_password='o-pw', user_password='u-pw')`, saves, reloads with password, calls `set_all_security_to_be_removed(True)`, re-saves, reloads with NO password. Asserts `is_encrypted() is False` and `get_encryption_dictionary() is None`. Same invariant upstream's network-fetched fixture exercises.
+
+### Deleted 13 upstream-test placeholder stubs + 8 dependent wave-augmentation files
+
+- Removed 13 stubs that recorded "no upstream JUnit counterpart" plus 8 wave-augmentation files whose sole purpose was to invoke the stubs' no-op sentinels (`test_no_upstream_tests_exist` / `test_upstream_*_does_not_exist`):
+  - `tests/pdmodel/interactive/action/upstream/test_pd_windows_launch_params.py`
+  - `tests/pdmodel/documentinterchange/logicalstructure/upstream/test_pd_{attribute_object,object_reference,structure_class_map}.py`
+  - `tests/fontbox/cff/upstream/test_{cff_cid_font,cff_type1_font,fd_select,type1_char_string,type2_char_string}.py` + 5 `_wave120{6,7,8,9,10}.py` siblings.
+  - `tests/pdmodel/font/upstream/test_pd_true_type_font.py`
+  - `tests/multipdf/upstream/test_{splitter,splitter_cid_fonts,splitter_signatures}.py` + 3 `_wave116{3,4,5}.py` siblings.
+- Hand-written coverage for every affected class lives in sibling non-`upstream/` test files. No behavior change.
+- Empty `__init__.py`-only upstream dirs left in place for future ports.
+
+### Remaining skip triage
+
+- `CFFTable.read()` upstream parity test (`tests/fontbox/ttf/test_ttc_cluster_wave1279.py`) unskipped by synthesizing a minimal CFF-flavoured OTF in-memory via `fontTools.fontBuilder.FontBuilder`, extracting the CFF table bytes, and feeding them through `CFFTable.read` — closes a parity gap that no downstream test exercised (`OpenTypeFont.get_cff()` uses fontTools directly).
+- PDFBOX-3319 SimHei subsetter test converted from unconditional skip to system-font-conditional: probes 10 standard macOS / Linux / Windows SimHei locations and runs whenever the font is installed on the host (mirrors upstream's `Files.exists` guard). Stays skipped on dev hosts without SimHei.

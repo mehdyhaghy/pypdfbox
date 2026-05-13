@@ -707,6 +707,7 @@ Not yet ported (need `TTFParser` / `TrueTypeCollection` / `TTFSubsetter` — fon
 | pypdfbox fixture path | upstream resource path | upstream PDFBox version |
 |---|---|---|
 | `tests/fixtures/fontbox/ttf/LiberationSans-Regular.ttf` | `fontbox/src/test/resources/ttf/LiberationSans-Regular.ttf` | 3.0.x |
+| `tests/fixtures/fontbox/ttf/DejaVuSansMono.ttf` | downloaded by upstream from `https://issues.apache.org/jira/secure/attachment/12809395/DejaVuSansMono.ttf` (see `fontbox/pom.xml` `PDFBOX-3379` execution) — DejaVu Sans Mono 2.26 (Bitstream Vera license + DejaVu public-domain changes) | 3.0.x |
 | `tests/fixtures/fontbox/cmap/CMapTest` | `fontbox/src/test/resources/cmap/CMapTest` | 3.0.x |
 | `tests/fixtures/fontbox/cmap/CMapNoWhitespace` | `fontbox/src/test/resources/cmap/CMapNoWhitespace` | 3.0.x |
 | `tests/fixtures/fontbox/cmap/CMapMalformedbfrange1` | `fontbox/src/test/resources/cmap/CMapMalformedbfrange1` | 3.0.x |
@@ -1145,8 +1146,6 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 |---|---|---|
 | `tests/multipdf/test_splitter_signatures.py` | 3.0.x | hand-written; signature widget detection + AcroForm /SigFlags scrub for `pdfbox/src/main/java/org/apache/pdfbox/multipdf/Splitter.java` (upstream has no dedicated `SplitterSignatureTest.java`) |
 | `tests/multipdf/test_splitter_cid_fonts.py` | 3.0.x | hand-written; CID `/FontFile2` round-trip across `Splitter` chunks (upstream has no dedicated `SplitterCIDFontTest.java` — exercised via `PDFMergerUtilityTest` fixtures we don't carry) |
-| `tests/multipdf/upstream/test_splitter_signatures.py` | 3.0.x | placeholder pointing at hand-written coverage — upstream has no `SplitterSignatureTest.java` |
-| `tests/multipdf/upstream/test_splitter_cid_fonts.py` | 3.0.x | placeholder pointing at hand-written coverage — upstream has no `SplitterCIDFontTest.java` |
 | `pypdfbox/pdmodel/graphics/optionalcontent/pd_optional_content_configuration.py` | 3.0.x | original (no standalone upstream class — Apache PDFBox 3.0 inlines /D accessors on `PDOptionalContentProperties.java`; pypdfbox extracts a typed wrapper so the same surface services /Configs entries) |
 | `tests/pdmodel/graphics/optionalcontent/upstream/test_optional_content_groups.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/optionalcontent/TestOptionalContentGroups.java` (state-assertion subset — content-stream writing + image-diff render phases skipped per per-test comment) |
 | `tests/multipdf/test_merger_struct_tree.py` | 3.0.x | hand-written; structure-tree edge-case coverage for `pdfbox/src/main/java/org/apache/pdfbox/multipdf/PDFMergerUtility.java` — RoleMap conflict, MCID-indexed parent-tree leaves, /Pg rewriting, destination /Info / /Metadata override, AcroFormMergeMode dispatch, IDTree collision (synthetic equivalents to upstream `PDFMergerUtilityTest.testStructureTreeMerge*` cases that depend on `input/PDFA-1b.pdf` fixture) |
@@ -1175,7 +1174,6 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `pypdfbox/pdmodel/interactive/annotation/pd_annotation_watermark.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationWatermark.java` |
 | `pypdfbox/xmpbox/type/version_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/VersionType.java` |
 | `tests/fontbox/ttf/upstream/test_kerning_subtable.py` | 3.0.x | parity-shaped coverage for `fontbox/src/main/java/org/apache/fontbox/ttf/KerningSubtable.java` format behavior |
-| `tests/pdmodel/documentinterchange/logicalstructure/upstream/test_pd_object_reference.py` | 3.0.x | parity-shaped coverage for `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/logicalstructure/PDObjectReference.java` |
 | `tests/pdmodel/graphics/color/upstream/test_pd_separation.py` | 3.0.x | parity-shaped coverage for `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDSeparation.java` |
 | `tests/pdmodel/interactive/action/test_pd_action_go_to_3d_view.py` | 3.0.x | hand-written coverage for `PDActionGoTo3DView` |
 | `tests/pdmodel/interactive/action/test_pd_action_sound_round_out.py` | 3.0.x | hand-written coverage for `PDActionSound` round-out |
@@ -1448,20 +1446,12 @@ non-`_wave<N>` sibling file in the same directory.
 | `tests/cos/upstream/test_cos_object_key_wave1224.py` | 3.0.x | (none — coverage augmentation around `tests/cos/upstream/test_cos_object_key.py`) |
 | `tests/cos/upstream/test_cos_update_info_wave1223.py` | 3.0.x | (none — coverage augmentation around `tests/cos/upstream/test_cos_update_info.py`) |
 | `tests/cos/upstream/test_pdf_doc_encoding_wave1017.py` | 3.0.x | (none — coverage augmentation around `tests/cos/upstream/test_pdf_doc_encoding.py`) |
-| `tests/fontbox/cff/upstream/test_cff_cid_font_wave1210.py` | 3.0.x | (none — coverage augmentation around `tests/fontbox/cff/upstream/test_cff_cid_font.py`) |
-| `tests/fontbox/cff/upstream/test_cff_type1_font_wave1209.py` | 3.0.x | (none — coverage augmentation around `tests/fontbox/cff/upstream/test_cff_type1_font.py`) |
-| `tests/fontbox/cff/upstream/test_fd_select_wave1208.py` | 3.0.x | (none — coverage augmentation around `tests/fontbox/cff/upstream/test_fd_select.py`) |
-| `tests/fontbox/cff/upstream/test_type1_char_string_wave1207.py` | 3.0.x | (none — coverage augmentation around `tests/fontbox/cff/upstream/test_type1_char_string.py`) |
-| `tests/fontbox/cff/upstream/test_type2_char_string_wave1206.py` | 3.0.x | (none — coverage augmentation around `tests/fontbox/cff/upstream/test_type2_char_string.py`) |
 | `tests/fontbox/cmap/upstream/test_cmap_parser_wave1204.py` | 3.0.x | (none — coverage augmentation around `tests/fontbox/cmap/upstream/test_cmap_parser.py`) |
 | `tests/fontbox/ttf/upstream/test_glyph_positioning_table_wave938.py` | 3.0.x | (none — coverage augmentation around `tests/fontbox/ttf/upstream/test_glyph_positioning_table.py`) |
 | `tests/fontbox/ttf/upstream/test_glyph_substitution_table_wave1189.py` | 3.0.x | (none — coverage augmentation around `tests/fontbox/ttf/upstream/test_glyph_substitution_table.py`) |
 | `tests/fontbox/ttf/upstream/test_ttf_subsetter_wave1188.py` | 3.0.x | (none — coverage augmentation around `tests/fontbox/ttf/upstream/test_ttf_subsetter.py`) |
 | `tests/multipdf/upstream/test_overlay_wave955.py` | 3.0.x | (none — coverage augmentation around `tests/multipdf/upstream/test_overlay.py`) |
 | `tests/multipdf/upstream/test_page_extractor_wave1008.py` | 3.0.x | (none — coverage augmentation around `tests/multipdf/upstream/test_page_extractor.py`) |
-| `tests/multipdf/upstream/test_splitter_cid_fonts_wave1164.py` | 3.0.x | (none — coverage augmentation around `tests/multipdf/upstream/test_splitter_cid_fonts.py`) |
-| `tests/multipdf/upstream/test_splitter_signatures_wave1163.py` | 3.0.x | (none — coverage augmentation around `tests/multipdf/upstream/test_splitter_signatures.py`) |
-| `tests/multipdf/upstream/test_splitter_wave1165.py` | 3.0.x | (none — coverage augmentation around `tests/multipdf/upstream/test_splitter.py`) |
 | `tests/pdfwriter/upstream/test_save_incremental_wave917.py` | 3.0.x | (none — coverage augmentation around `tests/pdfwriter/upstream/test_save_incremental.py`) |
 | `tests/pdmodel/documentinterchange/logicalstructure/upstream/test_pd_structure_element_wave1004.py` | 3.0.x | (none — coverage augmentation around `tests/pdmodel/documentinterchange/logicalstructure/upstream/test_pd_structure_element.py`) |
 | `tests/pdmodel/font/upstream/test_pd_type0_font_wave1127.py` | 3.0.x | (none — coverage augmentation around `tests/pdmodel/font/upstream/test_pd_type0_font.py`) |
@@ -1480,7 +1470,6 @@ No new port files added. The wave only extended existing upstream-derived module
 | `tests/pdmodel/font/test_pd_cid_system_info_wave1274.py` | 3.0.x | (hand-written coverage for `PDCIDSystemInfo.to_string`) |
 | `tests/pdmodel/interactive/documentnavigation/outline/test_pd_outline_item_iterator_wave1274.py` | 3.0.x | (hand-written coverage for `PDOutlineItemIterator.next` Java-iterator alias) |
 | `tests/pdmodel/font/test_pd_true_type_font.py` | 3.0.x | hand-written coverage for `PDTrueTypeFont.generate_bounding_box` / `get_parser` / `get_path_from_outlines` / `load` |
-| `tests/pdmodel/font/upstream/test_pd_true_type_font.py` | 3.0.x | placeholder — upstream PDFBox 3.0.x has no `PDTrueTypeFontTest.java` to port |
 | `tests/fontbox/ttf/gsub/upstream/test_feature_record.py` | 3.0.x | upstream-shaped synthetic tests for `FeatureRecord.to_string` (no standalone JUnit upstream — exercised through GSUB parsing tests) |
 | `tests/fontbox/ttf/gsub/upstream/test_lookup_table.py` | 3.0.x | upstream-shaped synthetic tests for `LookupTable.to_string` |
 | `tests/fontbox/ttf/gsub/upstream/test_script_table.py` | 3.0.x | upstream-shaped synthetic tests for `ScriptTable.to_string` |
