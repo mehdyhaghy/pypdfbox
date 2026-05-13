@@ -10,6 +10,11 @@ currently skipped pending the upstream fixture bundle (``PDFA*.pdf``,
 Hand-written coverage of :class:`pypdfbox.multipdf.Splitter` lives in
 :mod:`tests.multipdf.test_splitter` — every API surface upstream exposes
 is covered there for the no-fixture case.
+
+Re-verified wave 1296 against upstream 3.0 branch HEAD ``e48bce8``:
+``find /tmp/pdfbox/pdfbox -name "*Splitter*Test*.java"`` still returns
+nothing under multipdf (only fontbox's unrelated
+``GlyphArraySplitterRegexImplTest.java`` matches the substring).
 """
 
 from __future__ import annotations
@@ -17,6 +22,12 @@ from __future__ import annotations
 import pytest
 
 
-@pytest.mark.skip(reason="Upstream has no SplitterTest.java; coverage lives in test_pdf_merger_utility upstream stubs and tests/multipdf/test_splitter.py")
+@pytest.mark.skip(
+    reason=(
+        "Upstream has no SplitterTest.java; coverage lives in "
+        "test_pdf_merger_utility upstream stubs and "
+        "tests/multipdf/test_splitter.py"
+    )
+)
 def test_upstream_splitter_test_class_does_not_exist() -> None:
     pass

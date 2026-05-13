@@ -204,12 +204,187 @@ def test_missing_parent_tree_next_key() -> None: ...
 def test_structure_tree_merge_id_tree() -> None: ...
 
 
-@pytest.mark.skip(reason="bogus StructParents fixture not ported")
-def test_merge_bogus_struct_parents_1() -> None: ...
+def test_merge_bogus_struct_parents_1(tmp_path: Path) -> None:
+    """Synthetic equivalent of upstream ``testMergeBogusStructParents1``
+    (PDFBOX-4429).
+
+    Upstream loads ``PDFBOX-4408.pdf`` twice, then on the *destination*:
+
+    * nulls out ``/StructTreeRoot``;
+    * sets ``/StructParents`` on page 0 to ``9999`` (off-tree);
+    * sets ``/StructParent`` on the first annotation of page 0 to ``9998``.
+
+    It then calls ``appendDocument(dst, src)`` and verifies the merge
+    completes without crashing. We reproduce the same shape using a
+    synthetic tagged source PDF (``_build_struct_doc_for_5198``) plus a
+    synthetic destination that carries the *bogus* off-tree
+    ``/StructParents`` markers — and assert the merger:
+
+    * does NOT raise;
+    * bootstraps a fresh ``/StructTreeRoot`` on the destination;
+    * strips the bogus ``/StructParents``/``/StructParent`` entries from
+      pre-existing destination pages so they don't dangle off-tree
+      (lines 1460-1474 in ``pdf_merger_utility.py`` — the PDFBOX-4429
+      defence);
+    * produces a destination whose ``/ParentTree`` has a non-negative
+      ``ParentTreeNextKey`` and whose ``/K`` is non-null
+      (the upstream ``checkWithNumberTree`` / ``checkForPageOrphans``
+      surface).
+    """
+    from pypdfbox.cos import COSArray, COSDictionary, COSName
+    from pypdfbox.pdmodel.interactive.annotation.pd_annotation_text import (
+        PDAnnotationText,
+    )
+
+    src_path = tmp_path / "src.pdf"
+    dst_path = tmp_path / "dst.pdf"
+    out_path = tmp_path / "out.pdf"
+
+    # Source: a real tagged single-page document.
+    src_doc = _build_struct_doc_for_5198(1)
+    src_doc.save(str(src_path))
+    src_doc.close()
+
+    # Destination: a tagged document, then we strip its struct tree and
+    # poison its page + annotation with off-tree /StructParents values.
+    dst_doc = _build_struct_doc_for_5198(1)
+    dst_doc.get_document_catalog().set_structure_tree_root(None)
+    dst_page = dst_doc.get_page(0)
+    dst_page.set_struct_parents(9999)
+    # Add a single annotation carrying a bogus /StructParent — mirrors
+    # ``dst.getPage(0).getAnnotations().get(0).setStructParent(9998)``.
+    annot = PDAnnotationText()
+    annot.set_struct_parent(9998)
+    annots = COSArray()
+    annots.add(annot.get_cos_object())
+    dst_page.get_cos_object().set_item(COSName.get_pdf_name("Annots"), annots)
+    dst_doc.save(str(dst_path))
+    dst_doc.close()
+
+    with (
+        PDDocument.load(str(src_path)) as src,
+        PDDocument.load(str(dst_path)) as dst,
+    ):
+        # Sanity: before merge, dst has the bogus values + no struct tree.
+        assert dst.get_document_catalog().get_struct_tree_root() is None
+        assert dst.get_page(0).get_struct_parents() == 9999
+
+        util = PDFMergerUtility()
+        # Must not raise — this is the PDFBOX-4429 regression guard.
+        util.append_document(dst, src)
+
+        # After merge: dst gained a bootstrapped struct tree from src.
+        merged_root = dst.get_document_catalog().get_struct_tree_root()
+        assert merged_root is not None
+        # Bogus /StructParents on the pre-existing dst page must have
+        # been stripped (so it no longer points off-tree).
+        assert dst.get_page(0).get_struct_parents() == -1
+        # And the bogus /StructParent on the dst annotation too.
+        merged_annots = dst.get_page(0).get_cos_object().get_dictionary_object(
+            COSName.get_pdf_name("Annots")
+        )
+        assert isinstance(merged_annots, COSArray)
+        for i in range(merged_annots.size()):
+            entry = merged_annots.get_object(i)
+            assert isinstance(entry, COSDictionary)
+            sp = entry.get_dictionary_object(COSName.get_pdf_name("StructParent"))
+            assert sp is None, "bogus /StructParent should have been stripped"
+        # /ParentTree must be well-formed and /K must be present.
+        assert merged_root.get_parent_tree_next_key() != -1
+        assert merged_root.get_k() is not None
+        # /ParentTree exists and is the typed wrapper.
+        assert merged_root.get_parent_tree() is not None
+
+        # Sanity-check: total page count = dst (1) + src (1) = 2.
+        assert dst.get_number_of_pages() == 2
+        # And the round-trip survives a save+reload (no dangling refs).
+        dst.save(str(out_path))
+
+    with PDDocument.load(str(out_path)) as reloaded:
+        assert reloaded.get_number_of_pages() == 2
+        rt_root = reloaded.get_document_catalog().get_struct_tree_root()
+        assert rt_root is not None
+        assert rt_root.get_parent_tree_next_key() != -1
 
 
-@pytest.mark.skip(reason="bogus StructParents fixture not ported")
-def test_merge_bogus_struct_parents_2() -> None: ...
+def test_merge_bogus_struct_parents_2(tmp_path: Path) -> None:
+    """Synthetic equivalent of upstream ``testMergeBogusStructParents2``
+    (PDFBOX-4429, mirror of variant 1).
+
+    Variant 2 puts the bogus ``/StructParents``/``/StructParent`` values
+    on the *source* side and nulls out the *source*'s struct tree. The
+    destination keeps its struct tree intact. The merger must still
+    complete without crashing; because the source has no struct tree,
+    the imported pages have ``/StructParents`` / ``/StructParent``
+    stripped on clone (``merge_struct_tree == False`` path in
+    ``pdf_merger_utility.py`` lines 983-985).
+    """
+    from pypdfbox.cos import COSArray, COSDictionary, COSName
+    from pypdfbox.pdmodel.interactive.annotation.pd_annotation_text import (
+        PDAnnotationText,
+    )
+
+    src_path = tmp_path / "src.pdf"
+    dst_path = tmp_path / "dst.pdf"
+    out_path = tmp_path / "out.pdf"
+
+    # Destination: a real tagged single-page document.
+    dst_doc = _build_struct_doc_for_5198(1)
+    dst_doc.save(str(dst_path))
+    dst_doc.close()
+
+    # Source: tagged document with struct tree stripped + bogus /StructParents.
+    src_doc = _build_struct_doc_for_5198(1)
+    src_doc.get_document_catalog().set_structure_tree_root(None)
+    src_page = src_doc.get_page(0)
+    src_page.set_struct_parents(9999)
+    annot = PDAnnotationText()
+    annot.set_struct_parent(9998)
+    annots = COSArray()
+    annots.add(annot.get_cos_object())
+    src_page.get_cos_object().set_item(COSName.get_pdf_name("Annots"), annots)
+    src_doc.save(str(src_path))
+    src_doc.close()
+
+    with (
+        PDDocument.load(str(src_path)) as src,
+        PDDocument.load(str(dst_path)) as dst,
+    ):
+        # Sanity: before merge, src has bogus values + no struct tree.
+        assert src.get_document_catalog().get_struct_tree_root() is None
+        assert src.get_page(0).get_struct_parents() == 9999
+
+        util = PDFMergerUtility()
+        # Must not raise.
+        util.append_document(dst, src)
+
+        # After merge: dst's original struct tree is intact, and the
+        # imported page no longer carries the bogus off-tree
+        # /StructParents (it was stripped on the non-struct-tree path).
+        merged_root = dst.get_document_catalog().get_struct_tree_root()
+        assert merged_root is not None
+        # /ParentTree well-formed, /K present.
+        assert merged_root.get_parent_tree_next_key() != -1
+        assert merged_root.get_k() is not None
+        # The imported (formerly src) page is at index 1.
+        imported_page = dst.get_page(1)
+        # Bogus /StructParents must have been stripped on import.
+        assert imported_page.get_struct_parents() == -1
+        imp_annots = imported_page.get_cos_object().get_dictionary_object(
+            COSName.get_pdf_name("Annots")
+        )
+        assert isinstance(imp_annots, COSArray)
+        for i in range(imp_annots.size()):
+            entry = imp_annots.get_object(i)
+            assert isinstance(entry, COSDictionary)
+            sp = entry.get_dictionary_object(COSName.get_pdf_name("StructParent"))
+            assert sp is None, "bogus /StructParent should have been stripped"
+
+        assert dst.get_number_of_pages() == 2
+        dst.save(str(out_path))
+
+    with PDDocument.load(str(out_path)) as reloaded:
+        assert reloaded.get_number_of_pages() == 2
 
 
 def test_parent_tree(tmp_path) -> None:
@@ -807,8 +982,80 @@ def test_split_with_orphan_popup_annotation() -> None:
             assert ann1.get_popup().get_parent_markup() == ann1
 
 
-@pytest.mark.skip(reason="Self-parent outline fixture not ported")
-def test_outlines_self_parent() -> None: ...
+def test_outlines_self_parent(tmp_path: Path) -> None:
+    """Synthetic equivalent of upstream ``testOutlinesSelfParent``
+    (PDFBOX-5939).
+
+    Upstream loads ``PDFBOX-5939-google-docs-1.pdf`` (a Google-Docs export
+    where one outline item's ``/Parent`` points at itself, forming a
+    self-cycle in the outline tree) twice as the merge source and asserts
+    that ``mergeDocuments`` does NOT stack-overflow.
+
+    We rebuild the same structural pathology synthetically:
+
+    * One outline item whose ``/Parent`` entry resolves back to itself —
+      same indirect-reference cycle Google Docs emits.
+    * Source = destination = the same synthetic file added twice.
+    * Assert ``mergeDocuments`` returns cleanly and the merged document
+      has the expected page count (2).
+
+    The defence under test is the ``id(parent.get_cos_object()) is
+    self._dictionary`` check in
+    ``PDOutlineNode.update_parent_open_count`` and the ``visited`` guard
+    in ``PDFMergerUtility._merge_outline``.
+    """
+    from pypdfbox.cos import COSName
+    from pypdfbox.pdmodel.interactive.documentnavigation.outline import (
+        PDDocumentOutline,
+        PDOutlineItem,
+    )
+
+    src_path = tmp_path / "self-parent.pdf"
+    out_path = tmp_path / "out.pdf"
+
+    # Build a single-page document with a self-parenting outline item.
+    doc = _build_doc(1)
+    outline = PDDocumentOutline()
+    # Wire the outline root <-> item as parent/child first so the item is
+    # reachable from the outline root...
+    item = PDOutlineItem()
+    item.set_title("Self-Parent")
+    outline.add_last(item)
+    # ...then *break* its /Parent so it points at itself rather than the
+    # outline root. This is the PDFBOX-5939 pathology Google Docs emits.
+    item.get_cos_object().set_item(
+        COSName.get_pdf_name("Parent"), item.get_cos_object()
+    )
+    doc.get_document_catalog().set_document_outline(outline)
+    doc.save(str(src_path))
+    doc.close()
+
+    util = PDFMergerUtility()
+    util.add_source(str(src_path))
+    util.add_source(str(src_path))
+    util.set_destination_file_name(str(out_path))
+    # Must not stack-overflow / infinite-loop.
+    util.merge_documents()
+
+    with PDDocument.load(str(out_path)) as merged:
+        assert merged.get_number_of_pages() == 2
+        # The merged outline is present and walking it terminates (the
+        # ``visited`` guard in ``_merge_outline`` + the self-parent guard
+        # in ``update_parent_open_count`` keep us out of the cycle).
+        merged_outline = merged.get_document_catalog().get_document_outline()
+        if merged_outline is not None:
+            seen: set[int] = set()
+            cursor = merged_outline.get_first_child()
+            steps = 0
+            while cursor is not None and steps < 50:
+                cid = id(cursor.get_cos_object())
+                if cid in seen:
+                    break
+                seen.add(cid)
+                cursor = cursor.get_next_sibling()
+                steps += 1
+            # We must have terminated naturally (not via the safety cap).
+            assert steps < 50, "outline walk failed to terminate"
 
 
 @pytest.mark.skip(reason="PDFBOX-515 stream-cloning fixture not ported")

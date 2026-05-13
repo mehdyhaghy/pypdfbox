@@ -5,6 +5,10 @@ No upstream JUnit test for ``PDWindowsLaunchParams`` exists in
 PDFBox 3.0 branch (as of the snapshot consulted while porting this module).
 The only upstream test in that package is ``PDActionURITest.java``.
 
+Re-verified wave 1296 against upstream 3.0 branch HEAD ``e48bce8``:
+``find /tmp/pdfbox -name "*WindowsLaunch*Test*.java"`` still returns no
+results.
+
 Hand-written coverage lives in
 ``tests/pdmodel/interactive/action/test_pd_windows_launch_params.py``.
 """

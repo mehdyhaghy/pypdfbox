@@ -20,11 +20,14 @@ checks.
 from __future__ import annotations
 
 import io
+from pathlib import Path
 
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSDocument, COSName
 from pypdfbox.pdfwriter import COSWriter
+
+_FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "pdfwriter"
 
 # ---------- testPDFBox4321 -------------------------------------------------
 
@@ -118,14 +121,38 @@ def test_pdfbox_5945_size_matches_highest_object_number() -> None:
     assert declared_size >= 1
 
 
+# ---------- testPDFBox5485 -------------------------------------------------
+
+
+def test_pdfbox_5485_page_extractor_round_trip() -> None:
+    """Re-save a page subset extracted via ``PageExtractor`` — mirrors
+    upstream ``testPDFBox5485``. Loads ``PDFBOX-3110-poems-beads.pdf``,
+    extracts page 2 only, then saves the resulting one-page document.
+    The assertion is just "save() succeeds without raising" (matching
+    upstream which only checks that the round-trip completes)."""
+    # Local imports keep the pdmodel/multipdf layers off the top-level
+    # import graph for tests that don't need them — important because
+    # the COSWriter parity tests above run against bare COSDocuments.
+    from pypdfbox.multipdf import PageExtractor  # noqa: PLC0415
+    from pypdfbox.pdmodel import PDDocument  # noqa: PLC0415
+
+    fixture = _FIXTURES / "PDFBOX-3110-poems-beads.pdf"
+    with PDDocument.load(fixture) as source_doc:
+        # Upstream constructs PageExtractor(doc, 2, 2) — 1-based inclusive
+        # range covering only the second page.
+        extractor = PageExtractor(source_doc, 2, 2)
+        with extractor.extract() as extracted:
+            sink = io.BytesIO()
+            extracted.save(sink)
+            # Sanity: extract() produced exactly one page (upstream
+            # doesn't assert this but it pins the test to the intended
+            # behavior — a regression that silently dropped pages would
+            # still satisfy a bare "save didn't raise" check).
+            assert extracted.get_number_of_pages() == 1
+            assert sink.getvalue().startswith(b"%PDF-")
+
+
 # ---------- skipped upstream cases ----------------------------------------
-
-
-@pytest.mark.skip(
-    reason="needs PDFBOX-3110-poems-beads.pdf fixture; PageExtractor port is ready"
-)
-def test_pdfbox_5485() -> None:
-    """Re-save a page subset extracted via ``PageExtractor``."""
 
 
 @pytest.mark.skip(reason="requires network-fetched fixtures + importPage flow")

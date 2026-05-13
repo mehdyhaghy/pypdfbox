@@ -8,6 +8,10 @@ Apache PDFBox 3.0.x has **no** dedicated ``CFFType1FontTest.java``.
 ``CFFType1Font`` is exercised indirectly through ``CFFParserTest``,
 which will be ported alongside the parser in a later wave.
 
+Re-verified wave 1296 against upstream 3.0 branch HEAD ``e48bce8``:
+``find /tmp/pdfbox -name "*CFFType1Font*Test*.java"`` still returns no
+results.
+
 We keep the stub file so that:
 
 * the module path ``tests.fontbox.cff.upstream.test_cff_type1_font``

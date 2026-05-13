@@ -10,6 +10,10 @@ This stub keeps the upstream test path consistent so future re-syncs
 against PDFBox are diffable — if upstream ever adds a dedicated
 ``FDSelectTest``, dropping the translated tests in this file is a
 clean diff.
+
+Re-verified wave 1296 against upstream 3.0 branch HEAD ``e48bce8``:
+``find /tmp/pdfbox -name "*FDSelect*Test*.java"`` still returns no
+results.
 """
 
 from __future__ import annotations

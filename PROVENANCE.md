@@ -722,6 +722,19 @@ Not yet ported (need `TTFParser` / `TrueTypeCollection` / `TTFSubsetter` — fon
 | `tests/fixtures/multipdf/PDFBOX-5811-362972.pdf` | `pdfbox/src/test/resources/input/merge/PDFBOX-5811-362972.pdf` | 3.0.x |
 | `tests/fixtures/multipdf/PDFBOX-5840-410609.pdf` | `pdfbox/src/test/resources/input/merge/PDFBOX-5840-410609.pdf` | 3.0.x |
 | `tests/fixtures/multipdf/PDFBOX-6018-099267-p9-OrphanPopups.pdf` | `pdfbox/src/test/resources/input/merge/PDFBOX-6018-099267-p9-OrphanPopups.pdf` | 3.0.x |
+| `tests/fixtures/multipdf/OverlayTestBaseRot0.pdf` | `pdfbox/src/test/resources/org/apache/pdfbox/multipdf/OverlayTestBaseRot0.pdf` | 3.0.x |
+| `tests/fixtures/multipdf/rot0.pdf` | `pdfbox/src/test/resources/org/apache/pdfbox/multipdf/rot0.pdf` | 3.0.x |
+| `tests/fixtures/multipdf/rot90.pdf` | `pdfbox/src/test/resources/org/apache/pdfbox/multipdf/rot90.pdf` | 3.0.x |
+| `tests/fixtures/multipdf/rot180.pdf` | `pdfbox/src/test/resources/org/apache/pdfbox/multipdf/rot180.pdf` | 3.0.x |
+| `tests/fixtures/multipdf/rot270.pdf` | `pdfbox/src/test/resources/org/apache/pdfbox/multipdf/rot270.pdf` | 3.0.x |
+| `tests/fixtures/multipdf/Overlayed-with-rot0.pdf` | `pdfbox/src/test/resources/org/apache/pdfbox/multipdf/Overlayed-with-rot0.pdf` | 3.0.x |
+| `tests/fixtures/multipdf/Overlayed-with-rot90.pdf` | `pdfbox/src/test/resources/org/apache/pdfbox/multipdf/Overlayed-with-rot90.pdf` | 3.0.x |
+| `tests/fixtures/multipdf/Overlayed-with-rot180.pdf` | `pdfbox/src/test/resources/org/apache/pdfbox/multipdf/Overlayed-with-rot180.pdf` | 3.0.x |
+| `tests/fixtures/multipdf/Overlayed-with-rot270.pdf` | `pdfbox/src/test/resources/org/apache/pdfbox/multipdf/Overlayed-with-rot270.pdf` | 3.0.x |
+| `tests/fixtures/multipdf/PDFBOX-6049-Source.pdf` | `pdfbox/src/test/resources/org/apache/pdfbox/multipdf/PDFBOX-6049-Source.pdf` | 3.0.x |
+| `tests/fixtures/multipdf/PDFBOX-6049-Overlay.pdf` | `pdfbox/src/test/resources/org/apache/pdfbox/multipdf/PDFBOX-6049-Overlay.pdf` | 3.0.x |
+| `tests/fixtures/multipdf/PDFBOX-6049-ExpectedResult.pdf` | `pdfbox/src/test/resources/org/apache/pdfbox/multipdf/PDFBOX-6049-ExpectedResult.pdf` | 3.0.x |
+| `tests/fixtures/pdfwriter/PDFBOX-3110-poems-beads.pdf` | `pdfbox/src/test/resources/input/PDFBOX-3110-poems-beads.pdf` | 3.0.x |
 
 ### `tests/pdmodel/upstream/`
 

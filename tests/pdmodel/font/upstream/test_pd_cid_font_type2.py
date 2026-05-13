@@ -11,23 +11,70 @@ Upstream coverage focuses on three loading paths:
   ``getAverageFontWidth``, ``getFontMatrix``, ``getBoundingBox``)
   with and without an embedded program.
 
-The two upstream tests that exercise actual SFNT bytes
-(``testCIDToGIDMapWithGlyphsThroughLoad``,
-``testHorizontalMetricsViaCmap``) are skipped here — they require a
-full TTF fixture sync from ``pdfbox/src/test/resources`` which is
-tracked separately under the fontbox/ttf cluster. Hand-written
-metric tests in ``tests/pdmodel/font/test_pd_cid_font_type2.py``
-exercise the same code paths via a stubbed TTF.
+The two SFNT-byte-driven tests at the bottom of this file
+(``test_horizontal_metrics_via_cmap`` and
+``test_cid_to_gid_map_with_glyphs_through_load``) exercise the same
+upstream code paths using the bundled ``LiberationSans-Regular.ttf``
+fixture rather than the on-demand downloads upstream pulls into
+``target/fonts`` — they cover the cmap-driven ``/W``/``getHeight``
+fallback and the ``/CIDToGIDMap`` -> ``cid_to_gid`` round-trip,
+respectively.
 """
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from pypdfbox.cos import COSArray, COSFloat, COSName, COSStream
-from pypdfbox.fontbox.ttf import OTFParser, TTFParser
+from pypdfbox.fontbox.ttf import OTFParser, TrueTypeFont, TTFParser
 from pypdfbox.pdmodel.font.pd_cid_font_type2 import PDCIDFontType2
 from pypdfbox.pdmodel.font.pd_font_descriptor import PDFontDescriptor
+
+_TTF_FIXTURE = (
+    Path(__file__).parent.parent.parent.parent
+    / "tests"
+    / "fixtures"
+    / "fontbox"
+    / "ttf"
+    / "LiberationSans-Regular.ttf"
+)
+# The path above resolves from .../tests/pdmodel/font/upstream/ — climb
+# four parents to the project root, then re-descend into tests/fixtures.
+if not _TTF_FIXTURE.exists():  # pragma: no cover - defensive
+    _TTF_FIXTURE = (
+        Path(__file__).resolve().parents[3]
+        / "fixtures"
+        / "fontbox"
+        / "ttf"
+        / "LiberationSans-Regular.ttf"
+    )
+
+
+def _load_liberation_bytes() -> bytes:
+    return _TTF_FIXTURE.read_bytes()
+
+
+def _build_embedded_font(
+    *, cid_to_gid_map: COSStream | str | None = None
+) -> PDCIDFontType2:
+    """Build a PDCIDFontType2 whose ``/FontFile2`` carries the bundled
+    Liberation Sans Regular fixture. Pre-parses the SFNT once and
+    injects it so :meth:`get_true_type_font` returns immediately.
+    """
+    raw = _load_liberation_bytes()
+    font = PDCIDFontType2()
+    fd = PDFontDescriptor()
+    program_stream = COSStream()
+    program_stream.set_data(raw)
+    fd.set_font_file2(program_stream)
+    font.set_font_descriptor(fd)
+    font.set_true_type_font(TrueTypeFont.from_bytes(raw))
+    if cid_to_gid_map is not None:
+        font.set_cid_to_gid_map(cid_to_gid_map)
+    return font
+
 
 # ---------- /CIDToGIDMap ----------
 
@@ -274,23 +321,95 @@ def test_generate_bounding_box_none_when_no_sources() -> None:
     assert font.generate_bounding_box() is None
 
 
-# ---------- skipped: SFNT-fixture-bound tests ----------
+# ---------- SFNT-fixture-bound tests (bundled LiberationSans) ----------
 
 
-@pytest.mark.skip(
-    reason="upstream test reads pdfbox/src/test/resources/ttf — fixture sync "
-    "tracked under the fontbox/ttf cluster"
-)
-def test_horizontal_metrics_via_cmap() -> None:  # pragma: no cover
-    pass
+def test_horizontal_metrics_via_cmap() -> None:
+    """Glyph advances and heights come from the embedded TTF when no
+    ``/W`` array overrides them.
+
+    Mirrors the upstream coverage of ``getWidthFromFont``,
+    ``getHeight`` and ``getAverageFontWidth`` against a real SFNT
+    program. We use the bundled ``LiberationSans-Regular.ttf`` fixture
+    (Liberation Sans, SIL OFL — already bundled under
+    ``tests/fixtures/fontbox/ttf/`` for other tests) so the same code
+    path runs against a real ``hmtx`` / ``glyf`` table instead of a
+    stub.
+    """
+    font = _build_embedded_font()
+
+    # Identity /CIDToGIDMap is the default — so CID == GID for the
+    # cmap-resolved glyph IDs below.
+    cmap = font.get_true_type_font().get_unicode_cmap_lookup()
+    gid_a = cmap.get_glyph_id(ord("A"))
+    gid_lower_a = cmap.get_glyph_id(ord("a"))
+    assert gid_a > 0
+    assert gid_lower_a > 0
+    assert gid_a != gid_lower_a
+
+    # Liberation Sans Regular ships at 2048 units/em; the scale factor
+    # is therefore 1000 / 2048 ~= 0.488. We assert the actual hmtx
+    # advances ride through that scaling.
+    upem = font.get_true_type_font().get_units_per_em()
+    raw_advance_a = font.get_true_type_font().get_advance_width(gid_a)
+    expected_a = raw_advance_a * 1000.0 / upem
+    assert font.get_width_from_font(gid_a) == pytest.approx(expected_a)
+
+    # /A/ is a capital letter — its glyph yMax must exceed yMin.
+    assert font.get_height(gid_a) > 0.0
+
+    # Average width pulls from the embedded program (positive advances
+    # only); for Liberation Sans Regular this is well above zero.
+    avg = font.get_average_font_width()
+    assert avg > 0.0
+
+    # Font matrix derives from upem, not the /CIDFont default 1/1000.
+    matrix = font.get_font_matrix()
+    assert matrix[0] == pytest.approx(1.0 / upem)
+    assert matrix[3] == pytest.approx(1.0 / upem)
 
 
-@pytest.mark.skip(
-    reason="upstream test parses an embedded TTF and asserts /CIDToGIDMap "
-    "round-trips against the cmap — fixture sync deferred"
-)
-def test_cid_to_gid_map_with_glyphs_through_load() -> None:  # pragma: no cover
-    pass
+def test_cid_to_gid_map_with_glyphs_through_load() -> None:
+    """An explicit ``/CIDToGIDMap`` stream overrides the identity
+    mapping; advances flow through the rewired GIDs.
+
+    Mirrors the upstream check that constructor-side ``readCIDToGIDMap``
+    populates the ``cid2gid`` table and that downstream metric calls
+    consult it. We build a small map (``CID 0 -> GID 0``,
+    ``CID 1 -> GID 'A'``, ``CID 2 -> GID 'a'``) and verify both
+    ``cid_to_gid`` and ``get_width_from_font`` honour it.
+    """
+    raw = _load_liberation_bytes()
+    ttf = TrueTypeFont.from_bytes(raw)
+    cmap = ttf.get_unicode_cmap_lookup()
+    gid_upper = cmap.get_glyph_id(ord("A"))
+    gid_lower = cmap.get_glyph_id(ord("a"))
+
+    # Big-endian uint16 per CID slot.
+    payload = (
+        (0).to_bytes(2, "big")
+        + gid_upper.to_bytes(2, "big")
+        + gid_lower.to_bytes(2, "big")
+    )
+    map_stream = COSStream()
+    map_stream.set_data(payload)
+
+    font = _build_embedded_font(cid_to_gid_map=map_stream)
+
+    # The identity check flips off and the parsed values come back.
+    assert font.is_identity_cid_to_gid_map() is False
+    assert font.get_cid_to_gid_map_bytes() == payload
+    assert font.cid_to_gid(0) == 0
+    assert font.cid_to_gid(1) == gid_upper
+    assert font.cid_to_gid(2) == gid_lower
+
+    # Metric calls run the CID through /CIDToGIDMap before consulting
+    # hmtx — the result must match the advance we'd read for the
+    # cmap-resolved GID directly.
+    expected_advance = (
+        ttf.get_advance_width(gid_upper) * 1000.0 / ttf.get_units_per_em()
+    )
+    assert font.get_width_from_font(1) == pytest.approx(expected_advance)
 
 
 # ---------- noMapping field (warning-dedup set) ----------

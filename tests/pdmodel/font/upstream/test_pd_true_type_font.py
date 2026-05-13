@@ -10,6 +10,10 @@ When upstream eventually adds a dedicated test class, port it here.
 Until then this file holds a single skipped placeholder so the parity
 scanner can find an upstream-test row for the class without churning
 through a missing-file warning.
+
+Re-verified wave 1296 against upstream 3.0 branch HEAD ``e48bce8``:
+``find /tmp/pdfbox -name "*PDTrueTypeFont*Test*.java"`` still returns
+no results.
 """
 
 from __future__ import annotations

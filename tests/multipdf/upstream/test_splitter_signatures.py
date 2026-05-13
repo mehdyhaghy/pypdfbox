@@ -16,6 +16,9 @@ The relevant upstream behaviour we mirror:
 
 Hand-written coverage lives in
 :mod:`tests.multipdf.test_splitter_signatures`.
+
+Re-verified wave 1296 against upstream 3.0 branch HEAD ``e48bce8``:
+no ``SplitterSignatureTest.java`` exists anywhere in the tree.
 """
 from __future__ import annotations
 

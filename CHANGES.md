@@ -2647,3 +2647,37 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
 - `PagePane._render_image` now reads zoom, rotation, image type, render destination, and allow-subsampling from their respective menu singletons (`ZoomMenu` / `RotationMenu` / `ImageTypeMenu` / `RenderDestinationMenu` / `ViewMenu`) when present, matching upstream's `RenderWorker`.
 - Resolver helpers no longer instantiate menu singletons as a side-effect — the debugger main shell (`PDFDebugger`) owns singleton lifecycle, mirroring upstream.
 - Workaround: `PDFRenderer.render_image_with_dpi` does not yet accept a `destination=` kwarg (upstream's four-arg `renderImage(int, float, ImageType, RenderDestination)` overload). `PagePane` calls `renderer.set_default_destination(destination)` before render, so OCG visibility and page-drawer parameters still see the selection — but the renderer-level four-arg signature parity remains a renderer-side gap for a future wave.
+
+## Wave 1296 — skip reduction (fixture bundling + structural synthesis + upstream test audit)
+
+### Overlay fixtures (`tests/fixtures/multipdf/`)
+
+- Bundled 12 upstream overlay fixtures from `pdfbox/src/test/resources/org/apache/pdfbox/multipdf/`: `OverlayTestBaseRot0.pdf`, `rot{0,90,180,270}.pdf`, `Overlayed-with-rot{0,90,180,270}.pdf`, `PDFBOX-6049-Source.pdf`, `PDFBOX-6049-Overlay.pdf`, `PDFBOX-6049-ExpectedResult.pdf`.
+- Ported the 3 previously-skipped `OverlayTest` cases (`testRotatedOverlays`, `testRotatedOverlaysMap`, `testOverlayOnRotatedSourcePages`).
+- Upstream's pixel-exact `PDFRenderer` comparison is replaced with structural parity (page count, MediaBox, Rotation, Contents shape, Resources keys, save-reload round-trip) anchored to the bundled `Overlayed-with-rot*.pdf` / `PDFBOX-6049-ExpectedResult.pdf` references — rendering parity remains out of scope (PRD §6.12).
+- `tests/multipdf/upstream/test_overlay_wave955.py` repurposed from a wave-955 stub-shim into a regression guard ensuring the rotated-overlay tests stay non-stub.
+
+### "No upstream JUnit test exists" re-audit
+
+- Re-audited 13 skip stubs against PDFBox 3.0 HEAD `e48bce8` (`PDFBOX-5660: update apache parent`). All 13 confirmed still absent upstream (`CFFCIDFontTest`, `CFFType1FontTest`, `FDSelectTest`, `Type1CharStringTest`, `Type2CharStringTest`, `PDTrueTypeFontTest`, `PDStructureClassMapTest`, `PDAttributeObjectTest`, `PDObjectReferenceTest`, `PDWindowsLaunchParamsTest`, `SplitterTest`, `SplitterCIDFontTest`, `SplitterSignatureTest`).
+- Tightened each stub's docstring to record the verification revision so future re-syncs are auditable.
+- Fixed a pre-existing E501 long-line in `tests/multipdf/upstream/test_splitter.py`.
+
+### Fontbox / pdmodel.font fixture audit
+
+- Re-enabled `PDCIDFontType2`'s two upstream-named SFNT-driven tests (`test_horizontal_metrics_via_cmap`, `test_cid_to_gid_map_with_glyphs_through_load`) by reusing the already-bundled `LiberationSans-Regular.ttf` fixture — they now verify real `hmtx` / `glyf` metric scaling and `/CIDToGIDMap` round-trip.
+- Tightened the two `TestCMapSubtable` skip reasons (`test_pdfbox_5328`, `test_vertical_substitution`) to name the actual blocker: `NotoSansSC-Regular.otf` is SIL OFL 1.1 and `ipag.ttf` is IPA Font License — both non-Apache and not redistributable under pypdfbox's Apache-2.0 license. Upstream downloads them at Maven-build time from external URLs and we cannot. Synthetic equivalents covering the same code paths already exist in `tests/fontbox/ttf/test_cmap_subtable.py`.
+
+### PDFBOX-5742 / PDFBOX-3110 fixture path
+
+- Bundled upstream `PDFBOX-3110-poems-beads.pdf` (45.6 KiB) at `tests/fixtures/pdfwriter/`.
+- Re-enabled `tests/pdfwriter/upstream/test_cos_writer.py::test_pdfbox_5485_page_extractor_round_trip` — loads the fixture, extracts page 2 via `PageExtractor`, round-trips through `save()`.
+- Replaced the skipped `tests/cos/upstream/test_cos_object_key.py::test_pdfbox5742` stub with a synthetic structural equivalent (builds a 2-page `PDDocument` where both pages share a single `COSDictionary` `/Resources`, splits + saves + reloads, asserts the marker name survives — targeting the exact indirect-object preservation contract one layer below upstream's pixel-identical rendering assertion). The upstream binary fixture lives only in the Jira attachment cache (`target/pdfs/PDFBOX-5742.pdf`) and is not bundleable.
+
+### Synthesized struct-parents + self-parent outline + cos_increment cleanup
+
+- `test_merge_bogus_struct_parents_1` (PDFBOX-4429 variant 1) — replaced the skip stub with a synthetic port that exercises the `pdf_merger_utility.py:1460-1474` defence: builds a tagged source + a destination with `/StructTreeRoot=null`, page `/StructParents=9999`, annotation `/StructParent=9998`. Asserts `append_document` doesn't raise, the merger bootstraps a fresh `/StructTreeRoot` on dst, strips bogus values from pre-existing pages/annots, and `ParentTreeNextKey != -1` + `/K is not None` after merge + round-trip.
+- `test_merge_bogus_struct_parents_2` — mirror variant: bogus values on **source** side, source `/StructTreeRoot=null`, dst intact. Exercises the `merge_struct_tree == False` path that strips `/StructParents` / `/StructParent` on imported page clones (lines 983-985).
+- `test_outlines_self_parent` (PDFBOX-5939) — synthetic port: builds a single-page doc with one outline item whose `/Parent` points at itself, merges the file with itself. Exercises both the `id(parent.get_cos_object()) is self._dictionary` guard in `PDOutlineNode.update_parent_open_count` and the `visited` set in `_merge_outline`.
+- Deleted 3 duplicate skip stubs from `tests/cos/upstream/test_cos_increment.py` — `TestCOSIncrement.java` cluster-fits to `pdfwriter`, not `cos`. Real ports live at `tests/pdfwriter/upstream/test_save_incremental.py`. File now contains only a docstring breadcrumb pointing to the actual port location.
+- Deleted `tests/cos/test_cos_increment_wave872.py` (now meaningless — it only verified the placeholder stubs were importable; with stubs gone, the file's purpose is gone).

@@ -13,6 +13,9 @@ adds no font-specific cloning.
 
 Hand-written coverage lives in
 :mod:`tests.multipdf.test_splitter_cid_fonts`.
+
+Re-verified wave 1296 against upstream 3.0 branch HEAD ``e48bce8``:
+no ``SplitterCIDFontTest.java`` exists anywhere in the tree.
 """
 from __future__ import annotations
 

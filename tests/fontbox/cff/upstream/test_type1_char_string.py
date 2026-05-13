@@ -7,6 +7,10 @@ Apache PDFBox 3.0.x has **no** ``Type1CharStringTest.java`` —
 ``DataInputRandomAccessTest`` and ``Type1FontUtilTest`` only. There is
 nothing to port.
 
+Re-verified wave 1296 against upstream 3.0 branch HEAD ``e48bce8``:
+``find /tmp/pdfbox -name "*Type1CharString*Test*.java"`` still returns
+no results.
+
 We keep the stub file so that:
 
 * the module path ``tests.fontbox.cff.upstream.test_type1_char_string``
