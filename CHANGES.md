@@ -2748,3 +2748,33 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
 
 - Raised line coverage on `pypdfbox.debugger` from 80% → 87% (+167 new hand-written tests, 557 → 724 debugger tests). Targets: `tree.py`, `pdf_tree_model.py`, `pdf_tree_cell_renderer.py`, `menu_base.py`, `window_prefs.py`, `recent_files.py`, `log_dialog.py`, `tree_status.py` / `tree_status_pane.py`, `stream.py`, `stream_text_view.py`, `tool_tip_controller.py`, `hex_pane.py`, `font_pane.py`, `font_encoding_pane_controller.py`, `type0_font.py`, `cs_separation.py`, `signature_pane.py`, and `pd_debugger.py` static helpers.
 - Remaining sub-90% files are Tkinter paint pipelines, rendering integrations, or require embedded font programs that aren't fixturable from synthetic `COSDictionary` tests — categorized in the wave-1298 task transcript.
+
+## Wave 1299 — debugger coverage push + parity recompute + examples/benchmark scope reconciliation
+
+### Parity snapshot refresh
+
+- Refreshed `.parity/parity.json` + `.parity/coverage.json` + `.parity/snapshot.txt` against upstream PDFBox 3.0 HEAD `e48bce8`.
+- `matched_classes` 1020 → **1109** (+89) after the debugger port (waves 1292-1298).
+- `java_only_classes` 202 → **113** (-89). Breakdown: 106 preflight (out of scope, permanent) + 7 in-flight debugger inner helpers.
+- `test_count` 29,259 → **30,134** (+875). `test_skipped` 62 → **12**.
+- Method-name parity at 97.3% (8548/8788). Class coverage excluding preflight + the 7 in-flight debugger helpers: **100.0%**.
+
+### Examples / benchmark scope reconciliation
+
+- Audited `pypdfbox/examples/` (107 .py files mirroring upstream `examples/` 94 classes) and `pypdfbox/benchmark/` (5 .py files mirroring upstream's 4 classes). Both are fully ported and contribute to the 100% method-parity total. The `feedback_preflight_excluded` memory note tagging them as out-of-scope was stale; updated.
+
+### Stream pane coverage push
+
+- `pypdfbox/debugger/streampane/stream_pane.py`: **67% → 100%** line coverage via 33 hand-written tests (4 → 37 cases) exercising notebook tab switching, XML / image stream dispatch, content-stream emitter operand / operator branches (COSBoolean / COSArray / COSDictionary / COSNull / COSFloat / unknown-type, COSString escapes, BT/ET / q/Q / BMC/EMC indent stacking, BI inline-image params, write-indent toggles), and decode-failure logging paths.
+
+### Pagepane coverage push
+
+- `pypdfbox/debugger/pagepane/page_pane.py`: **66% → 100%** line coverage.
+- `pypdfbox/debugger/pagepane/debug_text_overlay.py`: **52% → 100%** line coverage.
+- 70 new hand-written tests across both files exercising: 4 rotation branches in `_on_mouse_moved`, mouse-click URI open, real link / widget rect collection, AcroForm absence + catalog `AttributeError` swallow paths, `_init_rect_map` `OSError` path, `_draw_debug_overlays` with stubbed ViewMenu flags, `_present_image` `ValueError` and `canvas=None` paths, every `_resolve_*` helper's ImportError / static-raise / instance-fallback / falsy / double-raise matrix, `_collect_font_bbox_rect` happy + 5 skip paths, `show_glyph` happy + 6 skip paths, `_collect_thread_beads` happy + 5 edge paths.
+- Surfaceable production bug logged: `_DebugTextStripper.show_glyph` will throw `AttributeError` if the engine ever fires the hook because `PDFTextStripper` currently lacks a base `show_glyph`. Filed as a follow-up for whenever the base class grows the hook.
+
+### PDFDebugger shell coverage push
+
+- `pypdfbox/debugger/pd_debugger.py`: **59% → 90%** line coverage via 74 hand-written tests covering `init_tree` branches, `_populate_children` error paths, tree-open / selection handlers, dispatch fallbacks, every menu action (open / open-URL / reopen / save-as / save-decoded / save-raw / print / find / about / exit / copy-tree-path / osx-open), recent-files opener, URL loader (file-scheme + missing-scheme `ValueError`), module helpers (`_ensure_default_root`, `_node_label`, `_convert_to_string`, `_read_stream_bytes`), and the `main()` entry point.
+- Remaining 10% uncovered: macOS-only `_is_mac_os()`-gated branches (already covered through `osx_adapter.py` 100%), pane-construction code paths requiring fully-classified parent chains, and `urlopen`-failure path through `_read_pdf_url` — all need larger ported PDF fixtures.
