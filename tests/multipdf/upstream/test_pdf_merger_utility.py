@@ -520,17 +520,49 @@ def test_split_with_structure_tree_and_destinations_and_removed_annotations() ->
 def test_single_page_split() -> None: ...
 
 
-@pytest.mark.skip(
-    reason=(
-        "Fixture PDFBOX-5809-509329.pdf: split-clone produces fresh "
-        "COSDictionary instances for cloned pages, so /Parent and /Popup "
-        "back-references no longer share object identity with their new "
-        "owner page. Upstream relies on default Object.equals() which is "
-        "identity-based, so this is a real cross-snapshot identity-pool "
-        "gap in the splitter's deep-clone path."
+def test_split_with_popup_annotations() -> None:
+    from pypdfbox.pdmodel.interactive.annotation.pd_annotation_popup import (
+        PDAnnotationPopup,
     )
-)
-def test_split_with_popup_annotations() -> None: ...
+    from pypdfbox.pdmodel.interactive.annotation.pd_annotation_text import (
+        PDAnnotationText,
+    )
+
+    with PDDocument.load(str(_FIXTURE_DIR / "PDFBOX-5809-509329.pdf")) as doc:
+        splitter = Splitter()
+        splitter.set_start_page(3)
+        splitter.set_end_page(3)
+        splitter.set_split_at_page(1)
+        split_result = splitter.split(doc)
+        assert len(split_result) == 1
+        with split_result[0] as dst_doc:
+            assert dst_doc.get_number_of_pages() == 1
+            annotations = dst_doc.get_page(0).get_annotations()
+            assert len(annotations) == 5
+            annotation_text3 = annotations[3]
+            annotation_popup4 = annotations[4]
+            assert isinstance(annotation_text3, PDAnnotationText)
+            assert isinstance(annotation_popup4, PDAnnotationPopup)
+            # Markup's /Popup → cloned popup dict; popup's /Parent →
+            # cloned markup dict; markup's /P → cloned page dict.
+            # Upstream uses default Object.equals (identity); our
+            # PDAnnotation.__eq__ is identity-by-dict, so the comparison
+            # against PDAnnotationPopup/PDAnnotationText wrappers reads
+            # the same on both sides.
+            assert annotation_text3.get_popup() == annotation_popup4
+            assert annotation_popup4.get_parent_markup() == annotation_text3
+            assert annotation_text3.get_page() is dst_doc.get_page(0).get_cos_object()
+        # Source document is untouched — same identity invariants hold
+        # against the original page.
+        annotations = doc.get_page(2).get_annotations()
+        assert len(annotations) == 5
+        annotation_text3 = annotations[3]
+        annotation_popup4 = annotations[4]
+        assert isinstance(annotation_text3, PDAnnotationText)
+        assert isinstance(annotation_popup4, PDAnnotationPopup)
+        assert annotation_text3.get_popup() == annotation_popup4
+        assert annotation_popup4.get_parent_markup() == annotation_text3
+        assert annotation_text3.get_page() is doc.get_page(2).get_cos_object()
 
 
 def test_split_with_broken_destination() -> None:
@@ -652,17 +684,36 @@ def test_split_with_named_destinations() -> None:
 def test_split_with_pg_entry_at_the_top() -> None: ...
 
 
-@pytest.mark.skip(
-    reason=(
-        "Fixture PDFBOX-6018-099267-p9-OrphanPopups.pdf: post-split, the "
-        "annotation's /P (page back-pointer) still references the source "
-        "PDF's page dict rather than being rewritten to the chunk's clone, "
-        "so ann.get_page() and dst_doc.get_page(0) are no longer the same "
-        "COSDictionary instance. Same identity-pool gap as "
-        "test_split_with_popup_annotations."
+def test_split_with_orphan_popup_annotation() -> None:
+    # PDFBOX-6018: Split a PDF with popup annotations that are NOT in the
+    # annotation list. Verify that after splitting, they still link back
+    # to their markup annotation and the markup to the page.
+    from pypdfbox.pdmodel.interactive.annotation.pd_annotation_text import (
+        PDAnnotationText,
     )
-)
-def test_split_with_orphan_popup_annotation() -> None: ...
+
+    with PDDocument.load(
+        str(_FIXTURE_DIR / "PDFBOX-6018-099267-p9-OrphanPopups.pdf")
+    ) as doc:
+        splitter = Splitter()
+        split_result = splitter.split(doc)
+        assert len(split_result) == 1
+        with split_result[0] as dst_doc:
+            assert dst_doc.get_number_of_pages() == 1
+            page = dst_doc.get_page(0)
+            annotations = page.get_annotations()
+            assert len(annotations) == 2
+            ann0 = annotations[0]
+            ann1 = annotations[1]
+            assert isinstance(ann0, PDAnnotationText)
+            assert isinstance(ann1, PDAnnotationText)
+            # Markup /P points at the chunk's page; popup-clone /Parent
+            # points back at the cloned markup (Splitter mirrors the
+            # orphan-popup re-link from upstream processAnnotations).
+            assert ann0.get_page() is page.get_cos_object()
+            assert ann1.get_page() is page.get_cos_object()
+            assert ann0.get_popup().get_parent_markup() == ann0
+            assert ann1.get_popup().get_parent_markup() == ann1
 
 
 @pytest.mark.skip(reason="Self-parent outline fixture not ported")

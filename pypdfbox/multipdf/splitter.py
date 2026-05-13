@@ -471,12 +471,30 @@ class Splitter:
         Signature widgets are dropped entirely (split documents have a
         different byte range, so any contained signature would be invalid
         anyway — see :meth:`_is_signature_widget`).
+
+        Annotation ``/P`` back-pointers are rewritten to the *imported*
+        page's COSDictionary so ``ann.get_page() == dst_doc.get_page(N)``
+        holds for callers walking the chunk (upstream relies on Java
+        default ``Object.equals`` = identity; we mirror that by replacing
+        the back-pointer with the cloned page's dict).
+
+        Each cloned annot dict is mapped from BOTH its source-annot id and
+        the imported (deep-copy) annot id in ``_annot_dict_map`` so the
+        second pass's ``/Popup`` lookup hits regardless of whether the
+        deep-copy's cycle-break path returned the source instance or a
+        fresh clone for cross-annotation refs in the same page.
         """
         from pypdfbox.pdmodel.interactive.annotation.pd_annotation import (
             PDAnnotation,
         )
         from pypdfbox.pdmodel.interactive.annotation.pd_annotation_link import (
             PDAnnotationLink,
+        )
+        from pypdfbox.pdmodel.interactive.annotation.pd_annotation_markup import (  # noqa: E501
+            PDAnnotationMarkup,
+        )
+        from pypdfbox.pdmodel.interactive.annotation.pd_annotation_popup import (  # noqa: E501
+            PDAnnotationPopup,
         )
 
         try:
@@ -485,8 +503,30 @@ class Splitter:
             return
         if not annotations:
             return
+        try:
+            imported_page_dict = imported.get_cos_object()
+        except AttributeError:
+            imported_page_dict = None
+
+        # Source-side /Annots array (when available) lets us index into
+        # the original annot dicts. Upstream iterates the imported page
+        # which still shares /Annots with the source (shallow page copy);
+        # our import_page does a deep page-graph clone, so the source
+        # array gives us the only handle on the original-identity annot
+        # dicts that downstream consumers (e.g. struct-tree clone's OBJR
+        # rewrites) expect as keys.
+        source_annots_array = None
+        try:
+            source_page_dict = source_page.get_cos_object()
+        except AttributeError:
+            source_page_dict = None
+        if isinstance(source_page_dict, COSDictionary):
+            value = source_page_dict.get_dictionary_object(_ANNOTS)
+            if isinstance(value, COSArray):
+                source_annots_array = value
+
         cloned: list[PDAnnotation] = []
-        for ann in annotations:
+        for index, ann in enumerate(annotations):
             ann_dict = ann.get_cos_object()
 
             # Skip signature widgets entirely. Either the widget IS the
@@ -498,6 +538,13 @@ class Splitter:
 
             cloned_dict = COSDictionary(list(ann_dict.entry_set()))
             self._annot_dict_map[id(ann_dict)] = cloned_dict
+            # Map the source-side annot dict too — downstream consumers
+            # (struct-tree clone's OBJR lookup, popup back-ref rewriting)
+            # use source ids as keys.
+            if source_annots_array is not None and index < source_annots_array.size():
+                source_ann_dict = source_annots_array.get_object(index)
+                if isinstance(source_ann_dict, COSDictionary):
+                    self._annot_dict_map[id(source_ann_dict)] = cloned_dict
             cloned_ann = PDAnnotation.create(cloned_dict)
             cloned.append(cloned_ann)
 
@@ -519,15 +566,116 @@ class Splitter:
                     cloned_ann, source_page.get_cos_object()
                 )
 
-        # Second pass: rewrite /Popup → cloned popup dict references
-        # so popup/markup annotation pairs stay internally consistent.
+            # Rewrite the cloned annot's /P back-pointer to the imported
+            # page dict whenever the source had a page back-ref. Mirrors
+            # upstream ``processAnnotations`` (Splitter.java line 921-924):
+            # ``if (annotation.getPage() != null) annotationClone.setPage(imported)``.
+            # Without this, the deep-copy cycle-break path in
+            # ``_deep_copy_cos`` leaves /P pointing at the *source* page,
+            # breaking annotation/page identity for chunk consumers.
+            if (
+                imported_page_dict is not None
+                and hasattr(ann, "get_page")
+                and ann.get_page() is not None
+            ):
+                cloned_ann.set_page(imported_page_dict)
+
+        # Second pass: rewrite /Popup → cloned popup dict references on
+        # markup annots, and /Parent → cloned markup dict on popups, so
+        # popup/markup annotation pairs stay internally consistent.
+        # Mirrors upstream ``processAnnotations`` second loop (Java line
+        # 926-967), including orphan-popup handling: a markup whose popup
+        # isn't in the annotation list gets its popup cloned, /P set to
+        # the imported page, and re-linked via /Popup ↔ /Parent.
+        #
+        # We resolve the popup/parent ref through the source annot's
+        # /Popup or /Parent (when available) — the deep-copy in
+        # ``import_page`` produces fresh COSDictionary instances for
+        # cross-annotation refs in the same page (so the cloned annot's
+        # /Popup is a *different* dict instance than /Annots[i+1] for the
+        # same source popup). Going through the source side bypasses that
+        # aliasing artefact.
+        clone_index = 0
         for ann in cloned:
             ann_dict = ann.get_cos_object()
-            popup_value = ann_dict.get_dictionary_object(_POPUP)
-            if isinstance(popup_value, COSDictionary):
-                cloned_popup = self._annot_dict_map.get(id(popup_value))
-                if cloned_popup is not None:
-                    ann_dict.set_item(_POPUP, cloned_popup)
+            source_ann_dict: COSBase | None = None
+            if source_annots_array is not None:
+                # ``cloned`` may have skipped signature widgets, so walk
+                # source forwards looking for the next non-sig-widget.
+                while clone_index < source_annots_array.size():
+                    candidate = source_annots_array.get_object(clone_index)
+                    clone_index += 1
+                    if not isinstance(candidate, COSDictionary):
+                        continue
+                    if self._is_signature_widget(candidate):
+                        continue
+                    source_ann_dict = candidate
+                    break
+
+            if isinstance(ann, PDAnnotationMarkup):
+                source_popup_value: Any = None
+                if isinstance(source_ann_dict, COSDictionary):
+                    source_popup_value = source_ann_dict.get_dictionary_object(
+                        _POPUP
+                    )
+                # Fall back to the cloned dict's /Popup when source-side
+                # lookup didn't produce a popup (e.g. source page lacked
+                # an /Annots array or the index alignment broke down).
+                popup_value = (
+                    source_popup_value
+                    if isinstance(source_popup_value, COSDictionary)
+                    else ann_dict.get_dictionary_object(_POPUP)
+                )
+                if isinstance(popup_value, COSDictionary):
+                    cloned_popup = self._annot_dict_map.get(id(popup_value))
+                    if cloned_popup is not None:
+                        ann_dict.set_item(_POPUP, cloned_popup)
+                    else:
+                        # Orphan popup — popup dict isn't in the page's
+                        # /Annots list. Clone it, hook /P back to the
+                        # imported page, then re-link Popup ↔ Parent.
+                        cloned_popup = COSDictionary(
+                            list(popup_value.entry_set())
+                        )
+                        self._annot_dict_map[id(popup_value)] = cloned_popup
+                        popup_clone = PDAnnotationPopup(cloned_popup)
+                        popup_clone.set_parent(ann_dict)
+                        ann_dict.set_item(_POPUP, cloned_popup)
+                        # Upstream guards setPage on the orphan popup with
+                        # ``if (annotationPopupClone.getPage() != null)`` —
+                        # but at this point the orphan clone is a shallow
+                        # copy of a deep-copied source popup, so it
+                        # generally carries a /P entry. Mirror upstream's
+                        # guard via PDAnnotation.get_page().
+                        if (
+                            imported_page_dict is not None
+                            and popup_clone.get_page() is not None
+                        ):
+                            popup_clone.set_page(imported_page_dict)
+
+            if isinstance(ann, PDAnnotationPopup):
+                source_parent_value: Any = None
+                if isinstance(source_ann_dict, COSDictionary):
+                    source_parent_value = source_ann_dict.get_dictionary_object(
+                        _PARENT
+                    )
+                parent_value = (
+                    source_parent_value
+                    if isinstance(source_parent_value, COSDictionary)
+                    else ann_dict.get_dictionary_object(_PARENT)
+                )
+                # Popup's /Parent points at the source markup dict;
+                # rewrite it to the cloned markup so back-traversal stays
+                # inside the chunk. If the markup is orphan (not in this
+                # chunk), upstream still calls ``setItem(PARENT, null)``
+                # — we follow by setting whatever the lookup yields,
+                # falling back to nulling the entry when unmapped.
+                if isinstance(parent_value, COSDictionary):
+                    cloned_markup = self._annot_dict_map.get(id(parent_value))
+                    if cloned_markup is not None:
+                        ann_dict.set_item(_PARENT, cloned_markup)
+                    else:
+                        ann_dict.remove_item(_PARENT)
 
         with contextlib.suppress(Exception):
             imported.set_annotations(cloned)

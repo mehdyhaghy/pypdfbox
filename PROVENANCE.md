@@ -514,6 +514,37 @@ Tkinter/Ttk port of the upstream Swing-based debugger (PDF tree explorer / hex v
 | `pypdfbox/debugger/flagbitspane/panose_flag.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/flagbitspane/PanoseFlag.java` |
 | `pypdfbox/debugger/flagbitspane/flag_bits_pane_view.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/flagbitspane/FlagBitsPaneView.java` |
 | `pypdfbox/debugger/flagbitspane/flag_bits_pane.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/flagbitspane/FlagBitsPane.java` |
+| `pypdfbox/debugger/streampane/tooltip/tool_tip.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/streampane/tooltip/ToolTip.java` |
+| `pypdfbox/debugger/streampane/tooltip/tool_tip_controller.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/streampane/tooltip/ToolTipController.java` |
+| `pypdfbox/debugger/streampane/tooltip/color_tool_tip.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/streampane/tooltip/ColorToolTip.java` |
+| `pypdfbox/debugger/streampane/tooltip/rg_tool_tip.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/streampane/tooltip/RGToolTip.java` |
+| `pypdfbox/debugger/streampane/tooltip/k_tool_tip.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/streampane/tooltip/KToolTip.java` |
+| `pypdfbox/debugger/streampane/tooltip/g_tool_tip.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/streampane/tooltip/GToolTip.java` |
+| `pypdfbox/debugger/streampane/tooltip/scn_tool_tip.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/streampane/tooltip/SCNToolTip.java` |
+| `pypdfbox/debugger/streampane/tooltip/font_tool_tip.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/streampane/tooltip/FontToolTip.java` |
+| `pypdfbox/debugger/colorpane/cs_array_based.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/colorpane/CSArrayBased.java` |
+| `pypdfbox/debugger/colorpane/cs_device_n.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/colorpane/CSDeviceN.java` |
+| `pypdfbox/debugger/colorpane/cs_indexed.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/colorpane/CSIndexed.java` |
+| `pypdfbox/debugger/colorpane/cs_separation.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/colorpane/CSSeparation.java` |
+| `pypdfbox/debugger/colorpane/color_bar_cell_renderer.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/colorpane/ColorBarCellRenderer.java` |
+| `pypdfbox/debugger/colorpane/device_n_colorant.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/colorpane/DeviceNColorant.java` |
+| `pypdfbox/debugger/colorpane/device_n_table_model.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/colorpane/DeviceNTableModel.java` |
+| `pypdfbox/debugger/colorpane/indexed_colorant.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/colorpane/IndexedColorant.java` |
+| `pypdfbox/debugger/colorpane/indexed_table_model.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/colorpane/IndexedTableModel.java` |
+| `pypdfbox/debugger/fontencodingpane/font_pane.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/fontencodingpane/FontPane.java` |
+| `pypdfbox/debugger/fontencodingpane/font_encoding_view.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/fontencodingpane/FontEncodingView.java` |
+| `pypdfbox/debugger/fontencodingpane/simple_font.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/fontencodingpane/SimpleFont.java` |
+| `pypdfbox/debugger/fontencodingpane/type0_font.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/fontencodingpane/Type0Font.java` |
+| `pypdfbox/debugger/fontencodingpane/type3_font.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/fontencodingpane/Type3Font.java` |
+| `pypdfbox/debugger/fontencodingpane/font_encoding_pane_controller.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/fontencodingpane/FontEncodingPaneController.java` |
+| `pypdfbox/debugger/streampane/stream.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/streampane/Stream.java` |
+| `pypdfbox/debugger/streampane/operator_marker.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/streampane/OperatorMarker.java` |
+| `pypdfbox/debugger/streampane/stream_pane_view.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/streampane/StreamPaneView.java` |
+| `pypdfbox/debugger/streampane/stream_text_view.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/streampane/StreamTextView.java` |
+| `pypdfbox/debugger/streampane/stream_image_view.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/streampane/StreamImageView.java` |
+| `pypdfbox/debugger/streampane/stream_pane.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/streampane/StreamPane.java` |
+| `pypdfbox/debugger/stringpane/string_pane.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/stringpane/StringPane.java` |
+| `pypdfbox/debugger/signaturepane/signature_pane.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/signaturepane/SignaturePane.java` |
 
 ---
 

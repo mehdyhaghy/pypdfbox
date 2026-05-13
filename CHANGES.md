@@ -2520,3 +2520,48 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
 - `flagbitspane.Flag._is_flag_bit_set`: hoisted from upstream private `FieldFlag#isFlagBitSet` to the abstract base so every subclass reuses the helper (formula unchanged: `(v & (1 << (b-1))) == mask`).
 - `flagbitspane.PanoseFlag`: ported `getPanoseBytes` as a `@staticmethod`; constructor raises `TypeError` if `/Panose` resolves to something other than `COSString` (upstream throws `ClassCastException` for the same input).
 - `flagbitspane.FlagBitsPane.get_pane()`: returns `None` when the supplied flag-type COSName is not one of the six recognised entries (upstream Java throws `NullPointerException` because `view` stays null and `getPane()` derefs it).
+
+## Wave 1293 — debugger Tkinter port (colorpane / fontencodingpane / streampane + tooltip / stringpane / signaturepane) + splitter clone-identity fix
+
+### Streampane tooltip (`pypdfbox/debugger/streampane/tooltip/`)
+
+- HTML payload → structured `ToolTipText` / `ToolTipSegment` dataclasses. Upstream returns an HTML string (`<html><body><div bgcolor=…>…`) for Swing's `setToolTipText`; the port returns a frozen dataclass with a `plain` caption and a tuple of `(text, color_hex_or_None)` segments — consumers map those to `tk.Text.tag_configure` + `tk.Text.insert(... tags=...)`.
+- `SCNToolTip` returns `ToolTipText(plain="Pattern", segments=())` for `PDPattern` instead of `<html>Pattern</html>`.
+- CMYK conversion: upstream loads the bundled `CGATS001Compat-v2-micro.icc` profile via `ICC_ColorSpace`; the port routes through `PDDeviceCMYK.to_rgb`, which currently applies the subtractive `(1-c)(1-k)` approximation (documented elsewhere in `PDDeviceCMYK`). Absolute colorimetry differs from upstream until the ICC pipeline lands.
+- `ToolTipController.get_tool_tip` accepts either a plain `str` content-stream buffer or any object exposing `.get("1.0","end")` (e.g. `tk.Text`); word/row boundaries are computed from the string buffer instead of via `javax.swing.text.Utilities`.
+- `color_hex_value` clamps channels to `[0,255]` before formatting (matches the spirit of `java.awt.Color`'s out-of-range tolerance).
+
+### Colorpane (`pypdfbox/debugger/colorpane/`)
+
+- Swing → Tkinter UI port: `JPanel` / `BoxLayout` / `GridBagLayout` → `ttk.Frame` with packed/grid children; `JTable` + `ColorBarCellRenderer` → `ttk.Treeview` with per-row background tags (Tkinter has no per-cell renderer, so the entire row receives the swatch's background); `JSlider` + `JTextField` + `JLabel`(opaque) → `ttk.Scale` + `ttk.Entry`(StringVar) + `tk.Canvas`; `BevelBorder` → `relief="sunken"` + `highlightbackground`.
+- Color values: `java.awt.Color` → `tuple[float, float, float]` (RGB in `[0, 1]`); `ColorBarCellRenderer.to_hex` formats as `#RRGGBB` for Tk consumption.
+- Table models: `javax.swing.table.AbstractTableModel` → plain helper class exposing `get_row_count` / `get_column_count` / `get_value_at` / `get_column_name` / `get_column_class` plus Tkinter-friendly `get_columns()` / `get_rows()`. Column-class tags are string sentinels (`"Color"`, `"String"`, `"Integer"`) instead of `java.lang.Class`.
+- `PDDeviceN.to_rgb` / `PDSeparation.to_rgb` can return `None` (Python port returns `tuple | None`) where upstream would NPE; degrades to opaque black.
+- `CSSeparation`: upstream's `ChangeListener.stateChanged` + `ActionListener.actionPerformed` collapse to `_on_slider` / `_on_tint_entry` bound via Tk's `command=` / `bind("<Return>")`. A `_syncing` re-entrancy flag prevents StringVar bounce between slider and entry that upstream avoided because `JSlider.setValue` is a no-op for unchanged values.
+- `CSArrayBased`: AWT `ColorSpace.CS_*` constants inlined (`CS_XYZ=1001`, `CS_LINEAR_RGB=1004`, `CS_GRAY=1003`, `CS_SRGB=1000`) since they aren't already exported by `pd_icc_based`. `IOException` → `OSError` per CLAUDE.md mapping.
+
+### Fontencodingpane (`pypdfbox/debugger/fontencodingpane/`)
+
+- `FontEncodingView` is a `ttk.Frame` containing a `ttk.Treeview`, not a `JPanel` + `JTable`. Glyph thumbnails are rendered via `PIL.ImageDraw.polygon` from the path's `(x, y)` control points (coarse but faithful approximation of `Graphics2D.fill(GeneralPath)`). `PhotoImage` references are pinned on the frame to defeat Tk garbage collection.
+- `Type3Font.renderType3Glyph`: upstream constructs a one-off `PDDocument` / `PDFRenderer` to rasterize each glyph. pypdfbox substitutes a small Pillow text label of the glyph name when `fontBBox` is non-empty — the table still distinguishes mapped vs. unmapped rows without forcing a full rendering pipeline into the debugger.
+- `FontEncodingPaneController` adds a `PDFontFactory.create_font` wrap step because pypdfbox's `PDResources.get_font` may return a raw `COSDictionary` for direct entries (per its cluster-1 contract).
+- `SimpleFont._get_glyphs` uses `font.get_path(glyph_name)` instead of upstream's `((PDVectorFont) font).getPath(index)` — equivalent outlines, and pypdfbox never hits PDFBOX-3445 because the name lookup goes through the same internal resolver.
+
+### Splitter annotation identity (`pypdfbox/multipdf/splitter.py`)
+
+- `_process_annotations` now sets each cloned annot's `/P` to the imported page dict whenever the source carried a page back-pointer (mirrors upstream `Splitter.java:921-924`'s `annotationClone.setPage(imported)`), so `ann.get_page()` and `dst_doc.get_page(N).get_cos_object()` are identity-equal for callers walking the chunk.
+- `_annot_dict_map` is now keyed by BOTH the imported (deep-copied) annot dict id AND the source-annot dict id (the source side is what struct-tree OBJR rewrites and the second-pass popup/parent linkage need).
+- Second pass resolves popup ↔ markup references through the source annot dict's `/Popup` / `/Parent` to dodge the deep-copy aliasing where a markup's `/Popup` and `/Annots[i+1]` produce two different cloned popup instances for the same source popup. Orphan popups are cloned + re-linked per upstream `Splitter.java:926-967`; popup `/Parent` is rewritten to the cloned markup (or removed when the markup didn't follow the split).
+- Tests unskipped: `test_split_with_popup_annotations`, `test_split_with_orphan_popup_annotation`.
+
+### Streampane / stringpane / signaturepane (`pypdfbox/debugger/streampane/`, `stringpane/`, `signaturepane/`)
+
+- `StreamPane`: blocking `JOptionPane.showMessageDialog` on decode failure → `logging.warning` so the debugger main loop / tests don't block.
+- `StreamPane`: drops Swing `SwingWorker` background parsing — content-stream parsing runs inline on the Tk main thread (content streams are small; Tkinter has no equivalent background-then-fold-back idiom).
+- `OperatorMarker`: returns plain `dict[str, dict[str, Any]]` of `tag_configure` kwargs instead of Swing `Style` instances.
+- `SignaturePane`: uses `cryptography.hazmat.primitives.serialization.pkcs7.load_der_pkcs7_certificates` instead of Bouncy Castle `ASN1Dump`. The ASN.1-View tab carries a hex dump rather than a recursive ASN.1 tree, plus a new `Certificates` tab listing embedded X.509 certs in a `ttk.Treeview`.
+- `Stream`: `Stream(cos_stream, isThumb).getStream(unknownKey)` returned `null` upstream via `Map.get(key) == null` semantics; the port returns `None` explicitly via a `dict` containment check.
+- `Stream.get_image`: simplified `PDImageXObject` construction (upstream's two-arg ctor with `PDResources` is not present in pypdfbox's port — the single-arg `PDImageXObject(PDStream)` is used; `resources` parameter accepted for API parity but unused).
+- `StreamPane` XML pretty-printer uses `xml.dom.minidom` instead of TrAX (minidom does not resolve external DTDs by default — secure-processing flags unnecessary in Python).
+- `StreamTextView`: `Searcher` / find-menu integration and `AncestorListener` menu wiring deferred to the eventual `PDFDebugger` shell wave (global menus are a debugger-frame concern). Tooltip controller plumbing is wired but no concrete controller is yet supplied.
+- `StreamImageView`: global `ZoomMenu` / `RotationMenu` singletons not ported — zoom / rotation exposed as constructor kwargs + `set_zoom` / `set_rotation` setters.
