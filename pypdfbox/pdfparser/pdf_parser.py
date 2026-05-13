@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from pypdfbox.cos import (
@@ -27,6 +28,8 @@ from .cos_parser import (
 from .endstream_filter_stream import EndstreamFilterStream
 from .parse_error import PDFParseError
 from .xref_trailer_resolver import XrefEntry, XrefTrailerResolver, XrefType
+
+_LOG = logging.getLogger(__name__)
 
 # How many trailing bytes to scan for ``startxref`` / ``%%EOF``. Mirrors the
 # upstream ``COSParser.DEFAULT_TRAIL_BYTECOUNT`` knob (default 2048 in PDFBox;
@@ -758,6 +761,33 @@ class PDFParser:
         peek = self._base.peek_byte()
         if peek == 0x78:  # 'x' — likely the "xref" keyword
             self._parse_traditional_xref_section()
+            # PDF 1.5 hybrid layout (PDF 32000-1 §7.5.8.4): when the
+            # trailer carries ``/XRefStm`` alongside a traditional xref
+            # table, also parse that supplementary xref stream into the
+            # *same* section so its compressed-object entries overwrite
+            # the legacy table's free-list stubs for the same object
+            # numbers. Mirrors upstream ``COSParser`` lines 372..414.
+            trailer = self._resolver.get_current_trailer()
+            if trailer is not None and trailer.contains_key(
+                COSName.get_pdf_name("XRefStm")
+            ):
+                stm_obj = trailer.get_dictionary_object(
+                    COSName.get_pdf_name("XRefStm")
+                )
+                if isinstance(stm_obj, COSInteger) and stm_obj.value > 0:
+                    try:
+                        self._handle_xref_stream_at(
+                            stm_obj.value, is_hybrid=True
+                        )
+                        if self._document is not None:
+                            self._document.set_has_hybrid_xref()
+                    except PDFParseError:
+                        if not self._lenient:
+                            raise
+                        _LOG.exception(
+                            "failed to parse hybrid /XRefStm at offset %d",
+                            stm_obj.value,
+                        )
             # Once the trailer has been merged, eagerly stand up the
             # security handler if the caller staged a password — the next
             # iteration of /Prev may land on an xref STREAM, and that
@@ -770,7 +800,7 @@ class PDFParser:
             # before encrypted object bodies are parsed later.
             self._handle_xref_stream_at(offset)
 
-    def _handle_xref_stream_at(self, offset: int) -> None:
+    def _handle_xref_stream_at(self, offset: int, is_hybrid: bool = False) -> None:
         """Parse one xref-stream object (PDF 32000-1 §7.5.8): read its
         dictionary, decode the body via ``COSStream.create_input_stream``
         (so /Filter chains — typically ``/FlateDecode`` with a PNG
@@ -783,7 +813,13 @@ class PDFParser:
         document's own /Encrypt), or when the trailer of a previous
         section already had it, the staged password (see
         :meth:`set_password`) is used to attach a security handler to
-        the stream before the body is decoded."""
+        the stream before the body is decoded.
+
+        ``is_hybrid=True`` is the PDF 1.5 hybrid path (xref stream
+        supplementing a traditional xref table within the same section).
+        In that mode we skip the trailer-set / encrypt-bootstrap branches
+        — the traditional table already supplied them — and only add the
+        stream's entries to the current section."""
         # Reset cursor to the indirect-object header and parse the
         # ``n g obj`` line + dictionary + ``stream`` body.
         self._src.seek(offset)
@@ -838,20 +874,23 @@ class PDFParser:
         # twice (once now during xref load, once later) and the second
         # pass would garble the entries.
         stream.set_skip_encryption(True)
-        # Treat the xref-stream dict as a trailer fragment so /Encrypt /ID
-        # /Root /Size are visible to /Prev walking and the early-handler
-        # bootstrap. Existing trailer keys from previously-parsed sections
-        # still win — the resolver merges newest-first.
-        self._resolver.set_trailer(stream)
-        # Diagnostic flag for callers / tests.
-        if stream.contains_key(COSName.ENCRYPT):  # type: ignore[attr-defined]
-            self._has_encrypted_xref_streams = True
+        if not is_hybrid:
+            # Treat the xref-stream dict as a trailer fragment so /Encrypt /ID
+            # /Root /Size are visible to /Prev walking and the early-handler
+            # bootstrap. Existing trailer keys from previously-parsed sections
+            # still win — the resolver merges newest-first.
+            self._resolver.set_trailer(stream)
+            # Diagnostic flag for callers / tests.
+            if stream.contains_key(COSName.ENCRYPT):  # type: ignore[attr-defined]
+                self._has_encrypted_xref_streams = True
         # Decode the body and walk the packed entries — this populates
         # the resolver with byte offsets for every object, including the
         # /Encrypt object itself. Has to run BEFORE the handler bootstrap
         # because ``_prepare_security_handler_if_needed`` resolves
         # ``/Encrypt`` through the resolver to grab its dict.
         self._decode_xref_stream_entries(stream)
+        if is_hybrid:
+            return
         # Now that entries are registered, eagerly stand up the security
         # handler if /Encrypt is in scope and a password was staged. The
         # handler isn't used to decrypt THIS stream (xref streams are

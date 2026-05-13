@@ -442,24 +442,48 @@ def test_pdf_box_5198_3(tmp_path) -> None:
 # --------------------------------------------------------------------------
 
 
-@pytest.mark.skip(
-    reason=(
-        "Fixture PDFBOX-4417-001031.pdf uses compressed object streams "
-        "(ObjStm) and an incremental update; our parser currently loads "
-        "only 82 of the file's >340 objects, so /StructTreeRoot at "
-        "(42 0 R) is unresolved. Tracked as a parser gap, not a splitter "
-        "regression — structure-tree splitting itself is covered "
-        "synthetically by tests/multipdf/test_splitter_struct_tree.py."
-    )
-)
-def test_split_with_structure_tree() -> None: ...
+def test_split_with_structure_tree() -> None:
+    with PDDocument.load(str(_FIXTURE_DIR / "PDFBOX-4417-001031.pdf")) as doc:
+        splitter = Splitter()
+        splitter.set_start_page(1)
+        splitter.set_end_page(2)
+        splitter.set_split_at_page(2)
+        split_result = splitter.split(doc)
+        assert len(split_result) == 1
+        with split_result[0] as dst_doc:
+            assert dst_doc.get_number_of_pages() == 2
+            structure_tree_root = (
+                dst_doc.get_document_catalog().get_structure_tree_root()
+            )
+            assert (
+                len(
+                    PDFMergerUtility.get_id_tree_as_map(
+                        structure_tree_root.get_id_tree()
+                    )
+                )
+                == 126
+            )
+            assert (
+                len(
+                    PDFMergerUtility.get_number_tree_as_map(
+                        structure_tree_root.get_parent_tree()
+                    )
+                )
+                == 2
+            )
+            assert len(structure_tree_root.get_role_map()) == 6
 
 
 @pytest.mark.skip(
     reason=(
-        "Fixture PDFBOX-5762-722238.pdf also relies on the same compressed-"
-        "object-stream parser path; chunk's /StructTreeRoot resolves to "
-        "None after split. See test_split_with_structure_tree skip."
+        "Splitter.fix_destinations: with PDFBOX-5762-722238.pdf the link "
+        "destinations expected to retarget to pages 0/1 of the chunk are "
+        "nulled instead. The destination's /D[0] page-dict identity "
+        "doesn't match the source-page snapshot registered in "
+        "_page_dict_map. Hybrid-xref-resolution makes the chunk's "
+        "/StructTreeRoot, parent-tree size (7) and role-map size (4) "
+        "match upstream — only the destination-page identity matching "
+        "remains broken."
     )
 )
 def test_split_with_structure_tree_and_destinations() -> None: ...
@@ -484,9 +508,13 @@ def test_split_with_structure_tree_and_destinations_and_removed_annotations() ->
 
 @pytest.mark.skip(
     reason=(
-        "Fixture PDFBOX-5792-240045.pdf: same compressed-object-stream "
-        "parser limitation — split chunks ship without /StructTreeRoot. "
-        "Tracked as a parser gap."
+        "Splitter role-map narrowing: with PDFBOX-5792-240045.pdf the "
+        "first chunk's role-map ends up with 3 mappings (Endnote "
+        "Reference, Normal, Superscript) vs upstream's expected 4. "
+        "Hybrid xref now resolves the structure tree correctly, so this "
+        "is a chunk-side clone-narrowing gap — likely a missed role-map "
+        "entry that's only reachable through one of the dropped annot "
+        "back-references."
     )
 )
 def test_single_page_split() -> None: ...

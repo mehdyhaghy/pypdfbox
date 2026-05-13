@@ -2461,3 +2461,21 @@ This wave converts 9 vague "Splitter-side test" skip stubs in `tests/multipdf/up
   - `test_split_with_named_destinations` — `Splitter.fix_destinations` doesn't expand `PDNamedDestination` via `/Catalog/Dests` + `/Names` before retargeting, so named-destination links remain `PDNamedDestination` in the chunk rather than being rewritten to `PDPageDestination`.
   - `test_split_with_pg_entry_at_the_top` — fixture (PDFBOX-6009.pdf) lives in upstream `TARGETPDFDIR` (network-fetched issue attachment), not in `pdfbox/src/test/resources/` — not redistributable.
 - **Skip count:** 62 → 60 (-2). Tests: 29,317 → 29,319 (+2). **Method parity holds at 100.0%.**
+
+## Wave 1291 — PDF 1.5 hybrid /XRefStm parser support (60 → 59 skips)
+
+Closes the parser gap diagnosed in wave 1290: indirect refs inside compressed object streams (`/Type /ObjStm`) weren't lazily loaded because the trailer's supplementary `/XRefStm` pointer (PDF 32000-1 §7.5.8.4 hybrid layout) was ignored.
+
+- `pypdfbox/pdfparser/pdf_parser.py`:
+  - `parse_xref_section_at` — after parsing a traditional xref section + trailer, also parse the trailer's `/XRefStm` value as a supplementary xref stream merged into the same section (so its in-use / compressed entries overwrite the legacy table's free-list stubs for the same object numbers). Sets `COSDocument.set_has_hybrid_xref()` for diagnostics. Lenient mode logs and continues on parse errors; strict mode re-raises.
+  - `_handle_xref_stream_at` — gains an `is_hybrid: bool = False` keyword. The hybrid branch (a) skips `XrefTrailerResolver.set_trailer` (the traditional table already supplied the trailer fragment) and (b) skips the `/Encrypt` early-handler bootstrap, but still calls `_decode_xref_stream_entries` so the supplementary entries merge into the current section. Mirrors upstream `COSParser.parseXrefObjStream(streamOffset, isStandalone=false)`.
+
+For PDFBOX-4417-001031.pdf the parser pool goes from 82 → 288 in-use objects (`/StructTreeRoot (42 0 R)` now resolves), and `test_split_with_structure_tree` matches upstream's exact ID-tree (126) / parent-tree (2) / role-map (6) sizes.
+
+The other two wave-1290 parser-gap skips (`test_split_with_structure_tree_and_destinations`, `test_single_page_split`) now reach further but surface narrower splitter-side gaps:
+- `Splitter.fix_destinations` page-identity matching: destinations that should retarget to pages 0/1 of the chunk get nulled (their `/D[0]` doesn't match the source-page snapshot in `_page_dict_map`).
+- `Splitter` role-map narrowing: PDFBOX-5792-240045.pdf's first chunk drops one role-map mapping vs upstream (3 vs 4) — likely reachable only through one of the discarded annotation back-references.
+
+Skip reasons have been rewritten to reflect these now-localized gaps.
+
+- **Skip count:** 60 → 59 (-1). Tests: 29,319 → 29,320 (+1). **Method parity holds at 100.0%.**
