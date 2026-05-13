@@ -133,8 +133,15 @@ def test_default_open_routes_through_filedialog(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """``_default_open`` lazily imports ``tkinter.filedialog`` and forwards
-    to ``askopenfilename``."""
-    import sys
+    to ``askopenfilename``.
+
+    We patch the ``filedialog`` attribute on the ``tkinter`` module directly
+    (not just ``sys.modules``), because once ``tkinter.filedialog`` has been
+    imported transitively (e.g. via ``pypdfbox.debugger.pd_debugger``), the
+    attribute on ``tkinter`` shadows any ``sys.modules`` entry and the real
+    ``askopenfilename`` would open a blocking native file dialog.
+    """
+    import tkinter
     import types
 
     captured: list[dict[str, Any]] = []
@@ -145,7 +152,7 @@ def test_default_open_routes_through_filedialog(
         return "/tmp/opened.pdf"
 
     fake.askopenfilename = fake_askopenfilename  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "tkinter.filedialog", fake)
+    monkeypatch.setattr(tkinter, "filedialog", fake, raising=False)
 
     assert module._default_open(initialdir="/tmp") == "/tmp/opened.pdf"
     assert captured == [{"initialdir": "/tmp"}]
@@ -155,8 +162,10 @@ def test_default_save_routes_through_filedialog(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """``_default_save`` lazily imports ``tkinter.filedialog`` and forwards
-    to ``asksaveasfilename``."""
-    import sys
+    to ``asksaveasfilename``. See ``test_default_open_routes_through_filedialog``
+    for why we patch the attribute on ``tkinter`` rather than ``sys.modules``.
+    """
+    import tkinter
     import types
 
     captured: list[dict[str, Any]] = []
@@ -167,7 +176,7 @@ def test_default_save_routes_through_filedialog(
         return "/tmp/saved.pdf"
 
     fake.asksaveasfilename = fake_asksaveasfilename  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "tkinter.filedialog", fake)
+    monkeypatch.setattr(tkinter, "filedialog", fake, raising=False)
 
     assert module._default_save(initialdir="/tmp") == "/tmp/saved.pdf"
     assert captured == [{"initialdir": "/tmp"}]

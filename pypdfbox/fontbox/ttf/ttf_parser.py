@@ -239,6 +239,59 @@ class TTFParser:
         self._is_embedded = True
         return self.parse(source)
 
+    # ---------- static-convenience entry points -----------------------
+    # Upstream's ``parse`` / ``parseEmbedded`` are instance methods that
+    # require ``new TTFParser()`` first; in Python that's noisy because
+    # most callers never customise the parser flags. These class-level
+    # helpers let callers skip the no-op constructor:
+    #
+    #     TTFParser.parse_font(b)          # equivalent to TTFParser().parse(b)
+    #     TTFParser.parse_embedded_font(b) # equivalent to TTFParser().parse_embedded(b)
+    #
+    # The instance methods remain the parity-canonical surface (matching
+    # upstream's signature); these classmethods are convenience aliases.
+
+    @classmethod
+    def parse_font(
+        cls,
+        source: bytes
+        | bytearray
+        | memoryview
+        | str
+        | os.PathLike[str]
+        | BinaryIO
+        | TTFDataStream
+        | RandomAccessRead,
+    ) -> TrueTypeFont:
+        """Static-style convenience: ``TTFParser.parse_font(source)``.
+
+        Constructs a default :class:`TTFParser` (``is_embedded=False``,
+        ``parse_on_demand=True``) and parses ``source``. Equivalent to
+        ``TTFParser().parse(source)`` — useful when no parser-flag
+        customisation is needed (the common case).
+        """
+        return cls().parse(source)
+
+    @classmethod
+    def parse_embedded_font(
+        cls,
+        source: bytes
+        | bytearray
+        | memoryview
+        | str
+        | os.PathLike[str]
+        | BinaryIO
+        | TTFDataStream
+        | RandomAccessRead,
+    ) -> TrueTypeFont:
+        """Static-style convenience: ``TTFParser.parse_embedded_font(source)``.
+
+        Constructs a default :class:`TTFParser` and calls
+        :meth:`parse_embedded`. Equivalent to
+        ``TTFParser().parse_embedded(source)``.
+        """
+        return cls().parse_embedded(source)
+
     # ---------- table-header fast path --------------------------------
     # Mirrors upstream ``parseTableHeaders(RandomAccessRead)`` /
     # ``parseTableHeaders(TTFDataStream)`` (TTFParser.java L114-L324).

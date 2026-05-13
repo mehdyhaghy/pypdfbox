@@ -34,6 +34,10 @@ from pypdfbox.pdmodel import PDDocument, PDPage
 @pytest.fixture()
 def tk_root() -> Iterator[tk.Tk]:
     """Per-test Tk root. Mirrors ``tests/debugger/streampane/conftest.py``."""
+    import os
+
+    if os.environ.get("PYPDFBOX_SKIP_TK", "") == "1":
+        pytest.skip("PYPDFBOX_SKIP_TK=1 -- Tk tests opted out")
     try:
         root = tk.Tk()
     except tk.TclError as exc:

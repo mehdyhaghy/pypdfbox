@@ -708,6 +708,19 @@ Not yet ported (need `TTFParser` / `TrueTypeCollection` / `TTFSubsetter` — fon
 |---|---|---|
 | `tests/fixtures/fontbox/ttf/LiberationSans-Regular.ttf` | `fontbox/src/test/resources/ttf/LiberationSans-Regular.ttf` | 3.0.x |
 | `tests/fixtures/fontbox/ttf/DejaVuSansMono.ttf` | downloaded by upstream from `https://issues.apache.org/jira/secure/attachment/12809395/DejaVuSansMono.ttf` (see `fontbox/pom.xml` `PDFBOX-3379` execution) — DejaVu Sans Mono 2.26 (Bitstream Vera license + DejaVu public-domain changes) | 3.0.x |
+| `pypdfbox/resources/ttf/LiberationSans-Regular.ttf` | liberation-fonts-2.1.5 release tarball (SIL OFL 1.1, Google 2010 + Red Hat 2012) — Standard 14 Helvetica substitute | liberation-fonts 2.1.5 |
+| `pypdfbox/resources/ttf/LiberationSans-Bold.ttf` | liberation-fonts-2.1.5 — Helvetica-Bold substitute | liberation-fonts 2.1.5 |
+| `pypdfbox/resources/ttf/LiberationSans-Italic.ttf` | liberation-fonts-2.1.5 — Helvetica-Oblique substitute | liberation-fonts 2.1.5 |
+| `pypdfbox/resources/ttf/LiberationSans-BoldItalic.ttf` | liberation-fonts-2.1.5 — Helvetica-BoldOblique substitute | liberation-fonts 2.1.5 |
+| `pypdfbox/resources/ttf/LiberationSerif-Regular.ttf` | liberation-fonts-2.1.5 — Times-Roman substitute | liberation-fonts 2.1.5 |
+| `pypdfbox/resources/ttf/LiberationSerif-Bold.ttf` | liberation-fonts-2.1.5 — Times-Bold substitute | liberation-fonts 2.1.5 |
+| `pypdfbox/resources/ttf/LiberationSerif-Italic.ttf` | liberation-fonts-2.1.5 — Times-Italic substitute | liberation-fonts 2.1.5 |
+| `pypdfbox/resources/ttf/LiberationSerif-BoldItalic.ttf` | liberation-fonts-2.1.5 — Times-BoldItalic substitute | liberation-fonts 2.1.5 |
+| `pypdfbox/resources/ttf/LiberationMono-Regular.ttf` | liberation-fonts-2.1.5 — Courier substitute | liberation-fonts 2.1.5 |
+| `pypdfbox/resources/ttf/LiberationMono-Bold.ttf` | liberation-fonts-2.1.5 — Courier-Bold substitute | liberation-fonts 2.1.5 |
+| `pypdfbox/resources/ttf/LiberationMono-Italic.ttf` | liberation-fonts-2.1.5 — Courier-Oblique substitute | liberation-fonts 2.1.5 |
+| `pypdfbox/resources/ttf/LiberationMono-BoldItalic.ttf` | liberation-fonts-2.1.5 — Courier-BoldOblique substitute | liberation-fonts 2.1.5 |
+| `pypdfbox/resources/ttf/LICENSE.txt` | liberation-fonts-2.1.5 upstream `LICENSE` (SIL OFL 1.1 verbatim) | liberation-fonts 2.1.5 |
 | `tests/fixtures/fontbox/cmap/CMapTest` | `fontbox/src/test/resources/cmap/CMapTest` | 3.0.x |
 | `tests/fixtures/fontbox/cmap/CMapNoWhitespace` | `fontbox/src/test/resources/cmap/CMapNoWhitespace` | 3.0.x |
 | `tests/fixtures/fontbox/cmap/CMapMalformedbfrange1` | `fontbox/src/test/resources/cmap/CMapMalformedbfrange1` | 3.0.x |

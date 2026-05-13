@@ -9,6 +9,7 @@ to create one and skips the test on ``tk.TclError`` (e.g.
 from __future__ import annotations
 
 import contextlib
+import os
 import tkinter as tk
 from collections.abc import Iterator
 
@@ -23,7 +24,15 @@ def _tk_root_session() -> Iterator[tk.Tk | None]:
     single Python process — ``tk.StringVar`` / widgets bind to the first
     root, and recreating roots between tests breaks widget→var coupling
     in subtle ways. We create one root for the whole session and reuse it.
+
+    Setting ``PYPDFBOX_SKIP_TK=1`` in the environment yields ``None`` here
+    (and ``tk_root`` then skips) without ever touching Tk. Useful for
+    parallel ``pytest`` runs on macOS where two processes contending for
+    the WindowServer have been observed to crash one of them.
     """
+    if os.environ.get("PYPDFBOX_SKIP_TK", "") == "1":
+        yield None
+        return
     try:
         root = tk.Tk()
     except tk.TclError:
@@ -40,5 +49,5 @@ def _tk_root_session() -> Iterator[tk.Tk | None]:
 @pytest.fixture()
 def tk_root(_tk_root_session: tk.Tk | None) -> tk.Tk:
     if _tk_root_session is None:
-        pytest.skip("no Tk display available")
+        pytest.skip("no Tk display available (or PYPDFBOX_SKIP_TK=1)")
     return _tk_root_session

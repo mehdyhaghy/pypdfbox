@@ -174,8 +174,16 @@ def test_default_show_error_routes_through_messagebox(
     captured: list[tuple[str, str]] = []
 
     # Build a tiny fake ``tkinter.messagebox`` module the lazy import
-    # will find.
-    import sys
+    # will find. We patch the ``messagebox`` attribute on the ``tkinter``
+    # module directly because ``from tkinter import messagebox`` resolves
+    # via attribute lookup once ``tkinter`` itself has been imported
+    # (which happens transitively via ``pypdfbox.debugger.pd_debugger``
+    # and many other debugger modules). Patching only ``sys.modules`` is
+    # not enough -- if ``tkinter.messagebox`` is already loaded, the
+    # attribute on ``tkinter`` shadows the ``sys.modules`` entry and the
+    # real ``showerror`` is invoked, popping a native NSAlert on macOS
+    # and segfaulting the test process.
+    import tkinter
     import types
 
     fake_messagebox = types.ModuleType("tkinter.messagebox")
@@ -185,7 +193,7 @@ def test_default_show_error_routes_through_messagebox(
         return "ok"
 
     fake_messagebox.showerror = fake_showerror  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "tkinter.messagebox", fake_messagebox)
+    monkeypatch.setattr(tkinter, "messagebox", fake_messagebox, raising=False)
 
     result = module._default_show_error("MyTitle", "MyMessage")
     assert result == "ok"

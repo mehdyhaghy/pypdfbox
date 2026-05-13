@@ -247,6 +247,13 @@ class TrueTypeCollection:
         """
         return self._num_fonts
 
+    def get_num_fonts(self) -> int:
+        """Shorter convenience accessor — alias of
+        :meth:`get_number_of_fonts`. Both return the value upstream's
+        package-private ``numFonts`` field holds.
+        """
+        return self._num_fonts
+
     def get_font_offsets(self) -> list[int]:
         """Per-font byte offsets into the TTC container.
 

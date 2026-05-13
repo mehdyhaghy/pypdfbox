@@ -793,13 +793,36 @@ class TrueTypeFont:
             return None
         return str(value)
 
-    def get_name(self) -> str | None:
-        """PostScript name of the font (name table, nameID 6).
+    def get_name(
+        self,
+        name_id: int | None = None,
+        platform_id: int | None = None,
+        encoding_id: int | None = None,
+        language_id: int | None = None,
+    ) -> str | None:
+        """Name-table string lookup.
 
-        Mirrors upstream ``getName()``; returns ``None`` when the font
-        has no ``name`` table.
+        Called with no arguments this mirrors upstream ``getName()``
+        (TrueTypeFont.java L527) — returns the PostScript name
+        (``nameID = 6``), or ``None`` when the font has no ``name``
+        table.
+
+        Called with ``name_id`` (and optionally the full
+        platform / encoding / language triplet) this delegates to
+        :meth:`NamingTable.get_name`, exposing the lookup surface
+        upstream callers reach by doing ``font.getNaming().getName(...)``.
+        The four-argument form returns the exact-match record; the
+        single-argument form runs upstream's preferred-record fallback
+        order (Windows Unicode BMP English-US first, then other
+        Microsoft Unicode languages, then Unicode platform, then
+        Macintosh Roman English).
         """
-        return self._get_name_string(6)
+        if name_id is None:
+            return self._get_name_string(6)
+        naming = self.get_naming()
+        if naming is None:
+            return None
+        return naming.get_name(name_id, platform_id, encoding_id, language_id)
 
     def get_family_name(self) -> str | None:
         """Font family name (name table, nameID 1)."""
@@ -1502,6 +1525,60 @@ class TrueTypeFont:
     def get_original_data_size(self) -> int:
         """Length of :meth:`get_original_data` in bytes."""
         return len(self._raw_bytes)
+
+    def save(self, output: Any) -> None:
+        """Serialise the (possibly-mutated) font back out as an SFNT stream.
+
+        ``output`` accepts the same shapes ``fontTools.ttLib.TTFont.save``
+        does: a filesystem path (``str`` / ``os.PathLike``) or a writable
+        binary file-like object. The font is written via the underlying
+        fontTools ``TTFont`` so tables modified through ``get_naming()``,
+        ``get_glyph()``, etc. survive the round trip.
+
+        Library-first: re-implementing the SFNT serialiser in Python is
+        exactly what ``fontTools`` exists for. The PDFBox upstream does
+        the serialisation byte-by-byte via ``TTFSubsetter`` for the
+        embedding case; for callers that just want to write a TTF back
+        out, fontTools' ``TTFont.save`` is the correct primitive.
+
+        Implementation note: ``TTFont`` is constructed with ``lazy=True``
+        for read-side performance, but its ``save()`` then assumes the
+        reader file has a ``.name`` attribute (it tries to detect a save
+        over the original file). When the font was loaded from a
+        ``BytesIO`` — which is always the case here — that check fails
+        with ``AttributeError``. Routing every save through a
+        ``BytesIO`` sink and then dumping the bytes sidesteps the bug
+        and produces identical output (fontTools' ``save`` writes the
+        same SFNT regardless of destination).
+        """
+        import os as _os  # noqa: PLC0415
+
+        sink = io.BytesIO()
+        self._tt.save(sink, reorderTables=True)
+        payload = sink.getvalue()
+        if isinstance(output, (str, _os.PathLike)):
+            with open(_os.fspath(output), "wb") as fh:
+                fh.write(payload)
+            return
+        # File-like sink — write the materialised bytes through.
+        write = getattr(output, "write", None)
+        if write is None:
+            msg = (
+                "TrueTypeFont.save: output must be a path or a writable "
+                f"binary file-like object, got {type(output).__name__}"
+            )
+            raise TypeError(msg)
+        write(payload)
+
+    def get_naming_table(self) -> NamingTable | None:
+        """Alias for :meth:`get_naming` exposing the upstream-equivalent
+        getter under the more explicit ``get_naming_table`` spelling.
+
+        PDFBox uses ``getNaming()`` (TrueTypeFont.java L213); we keep
+        that as the canonical accessor and expose ``get_naming_table``
+        as a more discoverable variant. Both return the same instance.
+        """
+        return self.get_naming()
 
     def is_post_script(self) -> bool:
         """``False`` — TrueType-flavoured fonts are not PostScript-flavoured.

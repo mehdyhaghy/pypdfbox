@@ -4,11 +4,17 @@ Widget tests need a running ``Tk()`` root, which can't be created on
 headless systems. The ``tk_root`` fixture attempts to create one and
 skips the test on ``tk.TclError`` (e.g. ``no display name and no
 $DISPLAY``).
+
+Setting ``PYPDFBOX_SKIP_TK=1`` in the environment skips every Tk-based
+test in this subpackage -- useful for running multiple ``pytest``
+invocations concurrently on macOS without WindowServer contention
+(see ``tests/conftest.py``).
 """
 
 from __future__ import annotations
 
 import contextlib
+import os
 import tkinter as tk
 from collections.abc import Iterator
 
@@ -17,6 +23,8 @@ import pytest
 
 @pytest.fixture()
 def tk_root() -> Iterator[tk.Tk]:
+    if os.environ.get("PYPDFBOX_SKIP_TK", "") == "1":
+        pytest.skip("PYPDFBOX_SKIP_TK=1 -- Tk tests opted out")
     try:
         root = tk.Tk()
     except tk.TclError as exc:

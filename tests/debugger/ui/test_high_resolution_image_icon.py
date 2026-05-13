@@ -1,7 +1,6 @@
 """Hand-written tests for ``pypdfbox.debugger.ui.HighResolutionImageIcon``."""
 
-import os
-import sys
+import tkinter as tk
 
 import pytest
 
@@ -27,56 +26,25 @@ def test_get_image_returns_original() -> None:
     assert icon.get_image() is img
 
 
-def _can_open_display() -> bool:
-    if sys.platform == "darwin":
-        # On macOS Tk needs an active WindowServer; CI may run headless.
-        return os.environ.get("DISPLAY") is not None or os.environ.get("CI") != "true"
-    if sys.platform == "win32":
-        return True
-    return os.environ.get("DISPLAY") is not None
+def test_get_photo_image_resizes(tk_root: tk.Tk) -> None:
+    """Uses the session-scoped ``tk_root`` from ``conftest.py`` so we
+    don't spin up a second ``Tk()`` (which is what was crashing in
+    parallel pytest invocations on macOS).
+    """
+    icon = HighResolutionImageIcon(_make_image(128, 96), 64, 48)
+    photo = icon.get_photo_image()
+    # Calling twice returns the cached PhotoImage.
+    assert icon.get_photo_image() is photo
+    assert photo.width() == 64
+    assert photo.height() == 48
 
 
-@pytest.mark.skipif(
-    not _can_open_display(), reason="No display available for Tk"
-)
-def test_get_photo_image_resizes() -> None:
+def test_paint_icon_uses_canvas(tk_root: tk.Tk) -> None:
+    """Uses the session-scoped ``tk_root`` from ``conftest.py``."""
+    canvas = tk.Canvas(tk_root, width=100, height=100)
     try:
-        import tkinter as tk
-    except ImportError:
-        pytest.skip("tkinter not available")
-
-    try:
-        root = tk.Tk()
-    except tk.TclError:
-        pytest.skip("Cannot create Tk root in this environment")
-    try:
-        icon = HighResolutionImageIcon(_make_image(128, 96), 64, 48)
-        photo = icon.get_photo_image()
-        # Calling twice returns the cached PhotoImage.
-        assert icon.get_photo_image() is photo
-        assert photo.width() == 64
-        assert photo.height() == 48
-    finally:
-        root.destroy()
-
-
-@pytest.mark.skipif(
-    not _can_open_display(), reason="No display available for Tk"
-)
-def test_paint_icon_uses_canvas() -> None:
-    try:
-        import tkinter as tk
-    except ImportError:
-        pytest.skip("tkinter not available")
-
-    try:
-        root = tk.Tk()
-    except tk.TclError:
-        pytest.skip("Cannot create Tk root in this environment")
-    try:
-        canvas = tk.Canvas(root, width=100, height=100)
         icon = HighResolutionImageIcon(_make_image(40, 40), 20, 20)
         item_id = icon.paint_icon(canvas, 5, 7)
         assert canvas.coords(item_id) == [5.0, 7.0]
     finally:
-        root.destroy()
+        canvas.destroy()

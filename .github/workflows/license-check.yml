@@ -1,0 +1,58 @@
+name: License Check
+
+# Apache-2.0 / MIT / BSD-only policy per PRD §4. Hard-fails CI if any
+# transitive dependency reports a license outside the allow-list. Runs on
+# every PR and nightly so license drift in a transitive dep can't sneak in
+# between releases.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    # Nightly at 06:17 UTC — off-peak, no overlap with hourly cron herds.
+    - cron: "17 6 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  licenses:
+    name: dep-license allow-list
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Sync runtime dependencies
+        run: uv sync --no-dev
+
+      - name: Install pip-licenses
+        # pip-licenses itself is MIT-licensed.
+        run: uv pip install pip-licenses
+
+      # Allow-list mirrors CLAUDE.md "Apache-2.0 / MIT / BSD only" with the
+      # PSF additions needed for stdlib-derived deps (no-op today, future-
+      # proofs against typing_extensions etc.). MPL-2.0 is permitted per
+      # PRD §4 dependency catalog (weak copyleft, file-scope; safe to wrap).
+      - name: Render dependency licenses
+        run: uv run pip-licenses --format=csv --with-license-file --with-urls
+
+      - name: Enforce allow-list
+        run: |
+          uv run pip-licenses \
+            --format=csv \
+            --allow-only "Apache Software License;Apache License 2.0;MIT License;MIT;BSD License;3-Clause BSD License;BSD-3-Clause;BSD-2-Clause;Python Software Foundation License;Mozilla Public License 2.0 (MPL 2.0);ISC License;ISC License (ISCL);Historical Permission Notice and Disclaimer (HPND)"

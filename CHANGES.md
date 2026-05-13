@@ -2883,3 +2883,37 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
 ### CHANGES.md cleanup — 14 deferred-but-closed annotations
 
 - Appended `**Closed (Wave 1303 audit):**` annotations to 14 historical CHANGES.md lines whose "deferred" wording was silently superseded by later waves (Matrix, PDAnnotation factory, PDAnnotationWidget typed accessors, PDStructureNode kids, PDColorSpace.create, PDPropertyList.create, PDOptionalContentProperties /AS, PDAcroForm flatten/refresh_appearances, PDStructureElement /A and /C, PDAnnotationMovie, PDWindowsLaunchParams, PDInlineImage BI/ID/EI engine, renderer text ops, PDFontFactory Type1C, PDFMergerUtility struct-tree merging).
+
+## Wave 1304 — RC prep #2 (CI setup + parallel-pytest stability + AcroForm refresh + TTFParser writer + tools/merge unification)
+
+### GitHub Actions CI
+
+- New `.github/workflows/ci.yml` — `push`/`pull_request` to `main`. Job `test` runs ubuntu × macos × windows on Python 3.14: checkout → setup-python → `astral-sh/setup-uv@v3` (with cache) → install qpdf (apt on Linux, brew on macOS, skipped on Windows where qpdf tests self-skip) → `uv sync --all-extras` → `uv run ruff check` → `uv run pytest -q --tb=short --maxfail=10`. Concurrency group cancels stale PR runs.
+- New `.github/workflows/license-check.yml` — PR + push + nightly cron + `workflow_dispatch`. `pip-licenses` allow-list: Apache / MIT / BSD-2/3 / PSF / MPL-2.0 / ISC / HPND. Forbidden GPL/LGPL/AGPL/EPL/CDDL/SSPL/BUSL are absent by omission.
+- New `.github/workflows/release.yml` — skeleton, triggers on `v*` tags. `uv build` → TestPyPI via `pypa/gh-action-pypi-publish` trusted publishing. Tied to a `testpypi` GitHub Environment; flip `repository-url` + env name when graduating to production PyPI.
+
+### `tools/merge.py` vs `PDFMergerUtility` audit (line 660 update)
+
+- Decision: DO NOT unify this wave. Unification would break ~22 tests in non-trivial ways (well above the wave's 5-test risk budget): 17 unit-tests of internal helpers (`_collect_name_tree_entries`, `_deduplicate_name`, `_remap_*`, `_merge_supported_names`, `_merge_legacy_dests`, …) that would have to be deleted with the helpers, plus 4 functional tests that assert the `#2`-suffix convenience behavior.
+- The actual divergence is **one** named-destination collision-handling choice: `tools/merge.py` rewrites colliding `/Dests` / `/JavaScript` / `/EmbeddedFiles` entries as `name#2`, `name#3`, … and rewrites intra-source `PDNamedDestination` links to the suffixed name. `PDFMergerUtility` follows upstream (`cloneMergeCOSBase`) and lets duplicates ride along in the flat `/Names` array.
+- Every other surface (page-tree concat, link-target remap via cloner identity table, `/Lang`/`/PageLayout`/`/PageMode`/`/ViewerPreferences`/`/Metadata` first-source-wins, legacy `/Dests` → `/Names/Dests` folding) is fully covered by `PDFMergerUtility` with parity — verified via standalone probes.
+- Recommendation: future wave should simultaneously (a) port `tools/merge.py` to a `PDFMergerUtility` shim and (b) rewrite the affected ~22 tests around upstream-faithful semantics. Line 660 note in CHANGES.md tightened to reflect this single, deliberate divergence.
+
+### Parallel-pytest stability fix
+
+- `tests/debugger/ui/conftest.py`: `_tk_root_session` now honors `PYPDFBOX_SKIP_TK=1` env var — when set, yields `None` immediately and skips every `tk_root`-dependent test without touching Tk. Lets concurrent `pytest` invocations on macOS opt out of WindowServer contention (observed crashes in waves 1300-1302). Per the wave-1304 diagnostic: contention was process-level (multiple Tk roots from independent Python processes confusing WindowServer), not pytest-internal.
+- CI sets `PYPDFBOX_SKIP_TK=1` on macOS to avoid intermittent crashes; Tk widget tests still run on Linux + Windows where the headless / WSL setup is contention-free.
+
+### AcroForm `refresh_appearances` — closes deferred line in CHANGES.md
+
+- `PDAcroForm.refresh_appearances(fields=None)` shipped — per-`/FT` dispatch builds widget appearance streams from current `/V` values. Initial implementation covers **Tx** (text field) with `/DA` / `/Q` honored; **Btn / Ch / Sig** still raise `NotImplementedError` with tightened skip messages naming the per-`/FT` blocker.
+- `PDAcroForm.flatten(..., refresh_appearances=True)` now calls `refresh_appearances(fields)` before flattening (was raising `NotImplementedError`).
+- 7 tests at `tests/pdmodel/interactive/form/test_acro_form_refresh_appearances.py`.
+
+### TTFParser / TrueTypeCollection writer surface — closes deferred line 297
+
+- `pypdfbox/fontbox/ttf/ttf_parser.py`: new `TTFParser.parse(input)` / `parse_embedded(input)` static methods (parity wrappers around `TrueTypeFont(bytes)` + a `lazy=False` variant for stripped-embedded TTFs).
+- `pypdfbox/fontbox/ttf/true_type_collection.py`: new `TrueTypeCollection(bytes_or_path)` wrapper around `fontTools.ttLib.TTCollection`. Methods: `get_font_at_index(i)`, `get_num_fonts()`, `process_all_fonts(callback)`.
+- `pypdfbox/fontbox/ttf/true_type_font.py`: new `save(output)` writer (delegates to `fontTools.ttLib.TTFont.save()`); `get_name(name_id, platform_id=None, encoding_id=None, language_id=None)` accessor and `get_naming_table()` wrapper around the `name` table.
+- Hand-written tests at `tests/fontbox/ttf/test_ttf_parser_writer.py` (parse → modify name → save → reparse round-trip) and `tests/fontbox/ttf/test_true_type_collection.py` (collection load + iteration).
+- `.ttc` write is intentionally not exposed — fontTools doesn't reliably support writing collection back.

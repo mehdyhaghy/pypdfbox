@@ -13,6 +13,7 @@ EXPECTED_EXPORTS: dict[str, tuple[str, ...]] = {
         "PDPageTree",
         "PDRectangle",
         "PDResources",
+        "__version__",
     ),
     "pypdfbox.pdmodel": (
         "DefaultResourceCacheCreateImpl",
