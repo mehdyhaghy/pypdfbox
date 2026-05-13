@@ -4,19 +4,40 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pypdfbox"
-version = "0.0.1"
+version = "0.9.0rc1"
 description = "Python-native port of Apache PDFBox-compatible APIs (Apache 2.0)"
 readme = "README.md"
 requires-python = ">=3.14"
 license = { file = "LICENSE" }
-authors = [{ name = "pypdfbox contributors" }]
-keywords = ["pdf", "pdfbox", "accessibility", "tagged-pdf", "pdf-a"]
+authors = [
+    { name = "Mehdy Haghy", email = "mehdy@haghy.com" },
+    { name = "pypdfbox contributors" },
+]
+keywords = [
+    "pdf",
+    "pdfbox",
+    "accessibility",
+    "tagged-pdf",
+    "pdf-a",
+    "pdf-ua",
+    "pdf-parser",
+    "pdf-writer",
+    "pdf-rendering",
+    "xmp",
+    "fontbox",
+]
 classifiers = [
-    "Development Status :: 1 - Planning",
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Multimedia :: Graphics",
+    "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Text Processing :: Markup",
+    "Typing :: Typed",
 ]
 
 # PRD §4 + §3.7.1: runtime deps require explicit user approval per the
@@ -40,6 +61,9 @@ dependencies = [
 [project.urls]
 Homepage = "https://github.com/mehdyhaghy/pypdfbox"
 Repository = "https://github.com/mehdyhaghy/pypdfbox"
+Documentation = "https://github.com/mehdyhaghy/pypdfbox#readme"
+"Bug Tracker" = "https://github.com/mehdyhaghy/pypdfbox/issues"
+Changelog = "https://github.com/mehdyhaghy/pypdfbox/blob/main/CHANGES.md"
 
 # Mirror upstream's ``pdfbox`` script: dispatcher in pypdfbox.tools.cli
 # decides which subcommand (info / merge / split / version / decrypt) runs.

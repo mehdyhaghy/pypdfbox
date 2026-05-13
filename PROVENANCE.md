@@ -1711,3 +1711,766 @@ Five subsystem clusters ported in 166 new modules. Library-first throughout (Pil
 - **`pypdfbox/printing/`**: pdf_pageable, pdf_printable.
 - **`pypdfbox/multipdf/k_cloner.py`**, **`pdmodel/interactive/action/pd_action_factory.py`**, **`pdmodel/interactive/annotation/`** (annotation_filter, pd_external_data_dictionary).
 - **`pypdfbox/fontbox/`**: cmap/cmap_strings, type1/token, type1/type1_char_string_reader, pfb/pfb_parser.
+
+### Wave 1302 PROVENANCE backfill
+
+Backfill of upstream Java paths for source files added in earlier waves (mostly waves 1280-1286 mass-port batches plus a handful from earlier clusters). Every `pypdfbox/*.py` file (excluding `__init__.py`) now has either a row pointing to an upstream Java path or a `(none — <reason>)` marker for original / hand-written code. Many entries here correspond to **inner classes extracted to their own modules** — Java allows nested classes; pypdfbox promotes them to module-level for testability, so the upstream Java path is the *enclosing* class with a note.
+
+#### `pypdfbox/benchmark/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/benchmark/load_and_save.py` | 3.0.x | `benchmark/src/main/java/org/apache/pdfbox/benchmark/LoadAndSave.java` |
+| `pypdfbox/benchmark/null_output_stream.py` | 3.0.x | `benchmark/src/main/java/org/apache/pdfbox/benchmark/NullOutputStream.java` |
+| `pypdfbox/benchmark/rendering.py` | 3.0.x | `benchmark/src/main/java/org/apache/pdfbox/benchmark/Rendering.java` |
+| `pypdfbox/benchmark/text_extraction.py` | 3.0.x | `benchmark/src/main/java/org/apache/pdfbox/benchmark/TextExtraction.java` |
+
+#### `pypdfbox/contentstream/operator/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/contentstream/operator/draw_object.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/DrawObject.java` |
+
+#### `pypdfbox/contentstream/operator/color/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/contentstream/operator/color/set_color.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/color/SetColor.java` |
+| `pypdfbox/contentstream/operator/color/set_non_stroking_cmyk.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/color/SetNonStrokingDeviceCMYKColor.java` |
+| `pypdfbox/contentstream/operator/color/set_non_stroking_color_n.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/color/SetNonStrokingColorN.java` |
+| `pypdfbox/contentstream/operator/color/set_non_stroking_color_space.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/color/SetNonStrokingColorSpace.java` |
+| `pypdfbox/contentstream/operator/color/set_non_stroking_device_cmyk_color.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/color/SetNonStrokingDeviceCmykColor.java` |
+| `pypdfbox/contentstream/operator/color/set_non_stroking_device_gray_color.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/color/SetNonStrokingDeviceGrayColor.java` |
+| `pypdfbox/contentstream/operator/color/set_non_stroking_device_rgb_color.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/color/SetNonStrokingDeviceRgbColor.java` |
+| `pypdfbox/contentstream/operator/color/set_non_stroking_gray.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/color/SetNonStrokingDeviceGrayColor.java` |
+| `pypdfbox/contentstream/operator/color/set_non_stroking_rgb.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/color/SetNonStrokingDeviceRGBColor.java` |
+| `pypdfbox/contentstream/operator/color/set_stroking_cmyk.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/color/SetStrokingDeviceCMYKColor.java` |
+| `pypdfbox/contentstream/operator/color/set_stroking_color_n.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/color/SetStrokingColorN.java` |
+| `pypdfbox/contentstream/operator/color/set_stroking_color_space.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/color/SetStrokingColorSpace.java` |
+| `pypdfbox/contentstream/operator/color/set_stroking_device_cmyk_color.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/color/SetStrokingDeviceCmykColor.java` |
+| `pypdfbox/contentstream/operator/color/set_stroking_device_gray_color.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/color/SetStrokingDeviceGrayColor.java` |
+| `pypdfbox/contentstream/operator/color/set_stroking_device_rgb_color.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/color/SetStrokingDeviceRgbColor.java` |
+| `pypdfbox/contentstream/operator/color/set_stroking_gray.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/color/SetStrokingDeviceGrayColor.java` |
+| `pypdfbox/contentstream/operator/color/set_stroking_rgb.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/color/SetStrokingDeviceRGBColor.java` |
+
+#### `pypdfbox/contentstream/operator/graphics/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/contentstream/operator/graphics/append_rectangle_to_path.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/AppendRectangleToPath.java` |
+| `pypdfbox/contentstream/operator/graphics/clip_even_odd_rule.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/ClipEvenOddRule.java` |
+| `pypdfbox/contentstream/operator/graphics/clip_non_zero_rule.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/ClipNonZeroRule.java` |
+| `pypdfbox/contentstream/operator/graphics/close_fill_even_odd_and_stroke_path.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/CloseFillEvenOddAndStrokePath.java` |
+| `pypdfbox/contentstream/operator/graphics/close_fill_non_zero_and_stroke_path.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/CloseFillNonZeroAndStrokePath.java` |
+| `pypdfbox/contentstream/operator/graphics/concatenate_matrix.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/state/Concatenate.java` |
+| `pypdfbox/contentstream/operator/graphics/end_path.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/EndPath.java` |
+| `pypdfbox/contentstream/operator/graphics/fill_even_odd_and_stroke_path.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/FillEvenOddAndStrokePath.java` |
+| `pypdfbox/contentstream/operator/graphics/fill_even_odd_rule.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/FillEvenOddRule.java` |
+| `pypdfbox/contentstream/operator/graphics/fill_non_zero_and_stroke_path.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/FillNonZeroAndStrokePath.java` |
+| `pypdfbox/contentstream/operator/graphics/fill_non_zero_rule.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/FillNonZeroRule.java` |
+| `pypdfbox/contentstream/operator/graphics/graphics_operator_processor.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/GraphicsOperatorProcessor.java` |
+| `pypdfbox/contentstream/operator/graphics/invoke_named_xobject.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/DrawObject.java` |
+| `pypdfbox/contentstream/operator/graphics/legacy_fill_non_zero_rule.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/LegacyFillNonZeroRule.java` |
+
+#### `pypdfbox/contentstream/operator/imagecontent/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/contentstream/operator/imagecontent/begin_inline_image.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/BeginInlineImage.java` |
+| `pypdfbox/contentstream/operator/imagecontent/begin_inline_image_data.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/BeginInlineImage.java (ID operator — parsed inside BeginInlineImage)` |
+| `pypdfbox/contentstream/operator/imagecontent/end_inline_image.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/BeginInlineImage.java (EI operator — parsed inside BeginInlineImage)` |
+
+#### `pypdfbox/contentstream/operator/markedcontent/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/contentstream/operator/markedcontent/begin_marked_content.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/markedcontent/BeginMarkedContentSequence.java` |
+| `pypdfbox/contentstream/operator/markedcontent/begin_marked_content_sequence.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/markedcontent/BeginMarkedContentSequence.java` |
+| `pypdfbox/contentstream/operator/markedcontent/begin_marked_content_sequence_with_properties.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/markedcontent/BeginMarkedContentSequenceWithProperties.java` |
+| `pypdfbox/contentstream/operator/markedcontent/begin_marked_content_with_props.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/markedcontent/BeginMarkedContentSequenceWithProperties.java` |
+| `pypdfbox/contentstream/operator/markedcontent/define_marked_content_point.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/markedcontent/MarkedContentPoint.java` |
+| `pypdfbox/contentstream/operator/markedcontent/define_marked_content_point_with_props.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/markedcontent/MarkedContentPointWithProperties.java` |
+| `pypdfbox/contentstream/operator/markedcontent/end_marked_content.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/markedcontent/EndMarkedContentSequence.java` |
+| `pypdfbox/contentstream/operator/markedcontent/end_marked_content_sequence.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/markedcontent/EndMarkedContentSequence.java` |
+| `pypdfbox/contentstream/operator/markedcontent/marked_content_point.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/markedcontent/MarkedContentPoint.java` |
+| `pypdfbox/contentstream/operator/markedcontent/marked_content_point_with_properties.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/markedcontent/MarkedContentPointWithProperties.java` |
+
+#### `pypdfbox/contentstream/operator/path/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/contentstream/operator/path/append_rectangle.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/AppendRectangleToPath.java` |
+| `pypdfbox/contentstream/operator/path/clip_even_odd.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/ClipEvenOddRule.java` |
+| `pypdfbox/contentstream/operator/path/clip_non_zero_winding.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/ClipNonZeroRule.java` |
+| `pypdfbox/contentstream/operator/path/close_and_stroke_path.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/CloseAndStrokePath.java` |
+| `pypdfbox/contentstream/operator/path/close_fill_then_stroke_even_odd.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/CloseFillEvenOddAndStrokePath.java` |
+| `pypdfbox/contentstream/operator/path/close_fill_then_stroke_non_zero_winding.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/CloseFillNonZeroAndStrokePath.java` |
+| `pypdfbox/contentstream/operator/path/close_path.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/ClosePath.java` |
+| `pypdfbox/contentstream/operator/path/curve_to.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/CurveTo.java` |
+| `pypdfbox/contentstream/operator/path/curve_to_replicate_final_point.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/CurveToReplicateFinalPoint.java` |
+| `pypdfbox/contentstream/operator/path/curve_to_replicate_initial_point.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/CurveToReplicateInitialPoint.java` |
+| `pypdfbox/contentstream/operator/path/end_path_no_op.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/EndPath.java` |
+| `pypdfbox/contentstream/operator/path/fill_path_even_odd.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/FillEvenOddRule.java` |
+| `pypdfbox/contentstream/operator/path/fill_path_non_zero_winding.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/FillNonZeroRule.java` |
+| `pypdfbox/contentstream/operator/path/fill_then_stroke_even_odd.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/FillEvenOddAndStrokePath.java` |
+| `pypdfbox/contentstream/operator/path/fill_then_stroke_non_zero_winding.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/FillNonZeroAndStrokePath.java` |
+| `pypdfbox/contentstream/operator/path/legacy_fill_path.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/LegacyFillNonZeroRule.java` |
+| `pypdfbox/contentstream/operator/path/line_to.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/LineTo.java` |
+| `pypdfbox/contentstream/operator/path/move_to.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/MoveTo.java` |
+| `pypdfbox/contentstream/operator/path/stroke_path.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/graphics/StrokePath.java` |
+
+#### `pypdfbox/contentstream/operator/state/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/contentstream/operator/state/concatenate.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/state/Concatenate.java` |
+| `pypdfbox/contentstream/operator/state/restore.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/state/Restore.java` |
+| `pypdfbox/contentstream/operator/state/restore_graphics_state.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/state/Restore.java` |
+| `pypdfbox/contentstream/operator/state/save.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/state/Save.java` |
+| `pypdfbox/contentstream/operator/state/save_graphics_state.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/state/Save.java` |
+| `pypdfbox/contentstream/operator/state/set_dash_pattern.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/state/SetLineDashPattern.java` |
+| `pypdfbox/contentstream/operator/state/set_flatness.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/state/SetFlatness.java` |
+| `pypdfbox/contentstream/operator/state/set_graphics_state_parameters.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/state/SetGraphicsStateParameters.java` |
+| `pypdfbox/contentstream/operator/state/set_line_dash_pattern.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/state/SetLineDashPattern.java` |
+| `pypdfbox/contentstream/operator/state/set_rendering_intent.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/state/SetRenderingIntent.java` |
+
+#### `pypdfbox/contentstream/operator/text/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/contentstream/operator/text/move_text_position.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/text/MoveText.java` |
+| `pypdfbox/contentstream/operator/text/move_text_set_leading_handler.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/text/MoveTextSetLeading.java` |
+| `pypdfbox/contentstream/operator/text/next_line.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/text/NextLine.java` |
+| `pypdfbox/contentstream/operator/text/set_character_spacing.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/text/SetCharSpacing.java` |
+| `pypdfbox/contentstream/operator/text/set_font_and_size_handler.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/text/SetFontAndSize.java` |
+| `pypdfbox/contentstream/operator/text/set_horizontal_scaling.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/text/SetTextHorizontalScaling.java` |
+| `pypdfbox/contentstream/operator/text/set_text_horizontal_scaling.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/text/SetTextHorizontalScaling.java` |
+| `pypdfbox/contentstream/operator/text/set_text_leading.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/text/SetTextLeading.java` |
+| `pypdfbox/contentstream/operator/text/set_text_matrix.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/state/SetMatrix.java (Tm operator — upstream hosts SetMatrix under state/ but the Tm operator semantically lives in text state)` |
+| `pypdfbox/contentstream/operator/text/set_text_rendering_mode.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/text/SetTextRenderingMode.java` |
+| `pypdfbox/contentstream/operator/text/set_text_rise.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/text/SetTextRise.java` |
+| `pypdfbox/contentstream/operator/text/set_word_spacing.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/text/SetWordSpacing.java` |
+| `pypdfbox/contentstream/operator/text/show_text_array.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/text/ShowTextAdjusted.java` |
+| `pypdfbox/contentstream/operator/text/show_text_handler.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/text/ShowText.java` |
+| `pypdfbox/contentstream/operator/text/show_text_with_position.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/text/ShowTextLine.java` |
+| `pypdfbox/contentstream/operator/text/show_text_with_word_and_char_spacing.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/contentstream/operator/text/ShowTextLineAndSpace.java` |
+
+#### `pypdfbox/cos/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/cos/cos_increment.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/cos/CosIncrement.java` |
+| `pypdfbox/cos/cos_input_stream.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/cos/CosInputStream.java` |
+| `pypdfbox/cos/cos_output_stream.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/cos/CosOutputStream.java` |
+| `pypdfbox/cos/cos_update_info.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/cos/CosUpdateInfo.java` |
+| `pypdfbox/cos/i_cos_parser.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/cos/ICosParser.java` |
+
+#### `pypdfbox/examples/ant/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/examples/ant/pdf_to_text_task.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/ant/PdfToTextTask.java` |
+
+#### `pypdfbox/examples/interactive/form/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/examples/interactive/form/add_border_to_field.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/interactive/form/AddBorderToField.java` |
+| `pypdfbox/examples/interactive/form/create_check_box.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/interactive/form/CreateCheckBox.java` |
+| `pypdfbox/examples/interactive/form/create_multi_widgets_form.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/interactive/form/CreateMultiWidgetsForm.java` |
+| `pypdfbox/examples/interactive/form/create_push_button.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/interactive/form/CreatePushButton.java` |
+| `pypdfbox/examples/interactive/form/create_radio_buttons.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/interactive/form/CreateRadioButtons.java` |
+| `pypdfbox/examples/interactive/form/create_simple_form.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/interactive/form/CreateSimpleForm.java` |
+| `pypdfbox/examples/interactive/form/create_simple_form_with_embedded_font.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/interactive/form/CreateSimpleFormWithEmbeddedFont.java` |
+| `pypdfbox/examples/interactive/form/determine_text_fits_field.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/interactive/form/DetermineTextFitsField.java` |
+| `pypdfbox/examples/interactive/form/field_remover.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/interactive/form/FieldRemover.java` |
+| `pypdfbox/examples/interactive/form/field_triggers.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/interactive/form/FieldTriggers.java` |
+| `pypdfbox/examples/interactive/form/fill_form_field.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/interactive/form/FillFormField.java` |
+| `pypdfbox/examples/interactive/form/print_fields.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/interactive/form/PrintFields.java` |
+| `pypdfbox/examples/interactive/form/set_field.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/interactive/form/SetField.java` |
+| `pypdfbox/examples/interactive/form/update_field_on_document_open.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/interactive/form/UpdateFieldOnDocumentOpen.java` |
+
+#### `pypdfbox/examples/lucene/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/examples/lucene/index_pdf_files.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/lucene/IndexPdfFiles.java` |
+| `pypdfbox/examples/lucene/lucene_pdf_document.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/lucene/LucenePdfDocument.java` |
+
+#### `pypdfbox/examples/pdmodel/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/examples/pdmodel/_font_helpers.py` | 3.0.x | (none — original helper bridging Java FontName-enum constructor to pypdfbox PDType1Font(COSDictionary)) |
+| `pypdfbox/examples/pdmodel/add_annotations.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/AddAnnotations.java` |
+| `pypdfbox/examples/pdmodel/add_image_to_pdf.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/AddImageToPdf.java` |
+| `pypdfbox/examples/pdmodel/add_javascript.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/AddJavascript.java` |
+| `pypdfbox/examples/pdmodel/add_message_to_each_page.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/AddMessageToEachPage.java` |
+| `pypdfbox/examples/pdmodel/add_metadata_from_doc_info.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/AddMetadataFromDocInfo.java` |
+| `pypdfbox/examples/pdmodel/bengali_pdf_generation_hello_world.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/BengaliPdfGenerationHelloWorld.java` |
+| `pypdfbox/examples/pdmodel/create_blank_pdf.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/CreateBlankPdf.java` |
+| `pypdfbox/examples/pdmodel/create_bookmarks.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/CreateBookmarks.java` |
+| `pypdfbox/examples/pdmodel/create_gradient_shading_pdf.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/CreateGradientShadingPdf.java` |
+| `pypdfbox/examples/pdmodel/create_landscape_pdf.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/CreateLandscapePdf.java` |
+| `pypdfbox/examples/pdmodel/create_page_labels.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/CreatePageLabels.java` |
+| `pypdfbox/examples/pdmodel/create_patterns_pdf.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/CreatePatternsPdf.java` |
+| `pypdfbox/examples/pdmodel/create_pdfa.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/CreatePdfa.java` |
+| `pypdfbox/examples/pdmodel/create_portable_collection.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/CreatePortableCollection.java` |
+| `pypdfbox/examples/pdmodel/create_separation_color_box.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/CreateSeparationColorBox.java` |
+| `pypdfbox/examples/pdmodel/embedded_files.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/EmbeddedFiles.java` |
+| `pypdfbox/examples/pdmodel/embedded_fonts.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/EmbeddedFonts.java` |
+| `pypdfbox/examples/pdmodel/embedded_multiple_fonts.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/EmbeddedMultipleFonts.java` |
+| `pypdfbox/examples/pdmodel/embedded_vertical_fonts.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/EmbeddedVerticalFonts.java` |
+| `pypdfbox/examples/pdmodel/extract_embedded_files.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/ExtractEmbeddedFiles.java` |
+| `pypdfbox/examples/pdmodel/extract_metadata.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/ExtractMetadata.java` |
+| `pypdfbox/examples/pdmodel/extract_ttf_fonts.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/ExtractTtfFonts.java` |
+| `pypdfbox/examples/pdmodel/go_to_second_bookmark_on_open.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/GoToSecondBookmarkOnOpen.java` |
+| `pypdfbox/examples/pdmodel/hello_world.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/HelloWorld.java` |
+| `pypdfbox/examples/pdmodel/hello_world_ttf.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/HelloWorldTtf.java` |
+| `pypdfbox/examples/pdmodel/hello_world_type1.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/HelloWorldType1.java` |
+| `pypdfbox/examples/pdmodel/print_bookmarks.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/PrintBookmarks.java` |
+| `pypdfbox/examples/pdmodel/print_document_meta_data.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/PrintDocumentMetaData.java` |
+| `pypdfbox/examples/pdmodel/print_urls.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/PrintUrls.java` |
+| `pypdfbox/examples/pdmodel/remove_first_page.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/RemoveFirstPage.java` |
+| `pypdfbox/examples/pdmodel/replace_urls.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/ReplaceUrls.java` |
+| `pypdfbox/examples/pdmodel/rubber_stamp.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/RubberStamp.java` |
+| `pypdfbox/examples/pdmodel/rubber_stamp_with_image.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/RubberStampWithImage.java` |
+| `pypdfbox/examples/pdmodel/show_color_boxes.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/ShowColorBoxes.java` |
+| `pypdfbox/examples/pdmodel/show_text_with_positioning.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/ShowTextWithPositioning.java` |
+| `pypdfbox/examples/pdmodel/superimpose_page.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/SuperimposePage.java` |
+| `pypdfbox/examples/pdmodel/using_text_matrix.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/pdmodel/UsingTextMatrix.java` |
+
+#### `pypdfbox/examples/printing/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/examples/printing/opaque_draw_object.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/printing/OpaquePDFRenderer.java (extracted inner class OpaqueDrawObject)` |
+| `pypdfbox/examples/printing/opaque_pdf_renderer.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/printing/OpaquePdfRenderer.java` |
+| `pypdfbox/examples/printing/opaque_set_graphics_state_parameters.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/printing/OpaquePDFRenderer.java (extracted inner class OpaqueSetGraphicsStateParameters, lines 176-217)` |
+| `pypdfbox/examples/printing/printing.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/printing/Printing.java` |
+
+#### `pypdfbox/examples/rendering/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/examples/rendering/custom_graphics_stream_engine.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/rendering/CustomGraphicsStreamEngine.java` |
+| `pypdfbox/examples/rendering/custom_page_drawer.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/rendering/CustomPageDrawer.java` |
+
+#### `pypdfbox/examples/signature/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/examples/signature/cms_processable_input_stream.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/signature/CmsProcessableInputStream.java` |
+| `pypdfbox/examples/signature/create_embedded_time_stamp.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/signature/CreateEmbeddedTimeStamp.java` |
+| `pypdfbox/examples/signature/create_empty_signature_form.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/signature/CreateEmptySignatureForm.java` |
+| `pypdfbox/examples/signature/create_signature.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/signature/CreateSignature.java` |
+| `pypdfbox/examples/signature/create_signature_base.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/signature/CreateSignatureBase.java` |
+| `pypdfbox/examples/signature/create_signed_time_stamp.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/signature/CreateSignedTimeStamp.java` |
+| `pypdfbox/examples/signature/create_visible_signature.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/signature/CreateVisibleSignature.java` |
+| `pypdfbox/examples/signature/create_visible_signature2.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/signature/CreateVisibleSignature2.java` |
+| `pypdfbox/examples/signature/show_signature.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/signature/ShowSignature.java` |
+| `pypdfbox/examples/signature/sig_utils.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/signature/SigUtils.java` |
+| `pypdfbox/examples/signature/tsa_client.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/signature/TsaClient.java` |
+| `pypdfbox/examples/signature/validation_time_stamp.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/signature/ValidationTimeStamp.java` |
+
+#### `pypdfbox/examples/signature/cert/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/examples/signature/cert/certificate_verification_result.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/signature/cert/CertificateVerificationResult.java` |
+| `pypdfbox/examples/signature/cert/certificate_verifier.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/signature/cert/CertificateVerifier.java` |
+| `pypdfbox/examples/signature/cert/crl_verifier.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/signature/cert/CrlVerifier.java` |
+| `pypdfbox/examples/signature/cert/ocsp_helper.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/signature/cert/OcspHelper.java` |
+| `pypdfbox/examples/signature/cert/revoked_certificate_exception.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/signature/cert/RevokedCertificateException.java` |
+| `pypdfbox/examples/signature/cert/sha1_digest_calculator.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/signature/cert/OcspHelper.java (extracted inner class SHA1DigestCalculator, lines 616-651)` |
+
+#### `pypdfbox/examples/signature/validation/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/examples/signature/validation/add_validation_information.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/signature/validation/AddValidationInformation.java` |
+| `pypdfbox/examples/signature/validation/cert_information_collector.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/signature/validation/CertInformationCollector.java` |
+| `pypdfbox/examples/signature/validation/cert_information_helper.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/signature/validation/CertInformationHelper.java` |
+| `pypdfbox/examples/signature/validation/cert_signature_information.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/signature/validation/CertInformationCollector.java (extracted inner class CertSignatureInformation, lines 402-468)` |
+
+#### `pypdfbox/examples/util/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/examples/util/add_watermark_text.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/util/AddWatermarkText.java` |
+| `pypdfbox/examples/util/connected_input_stream.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/util/ConnectedInputStream.java` |
+| `pypdfbox/examples/util/draw_print_text_locations.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/util/DrawPrintTextLocations.java` |
+| `pypdfbox/examples/util/extract_text_by_area.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/util/ExtractTextByArea.java` |
+| `pypdfbox/examples/util/extract_text_simple.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/util/ExtractTextSimple.java` |
+| `pypdfbox/examples/util/pdf_highlighter.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/util/PdfHighlighter.java` |
+| `pypdfbox/examples/util/pdf_merger_example.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/util/PdfMergerExample.java` |
+| `pypdfbox/examples/util/print_image_locations.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/util/PrintImageLocations.java` |
+| `pypdfbox/examples/util/print_text_colors.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/util/PrintTextColors.java` |
+| `pypdfbox/examples/util/print_text_locations.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/util/PrintTextLocations.java` |
+| `pypdfbox/examples/util/remove_all_text.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/util/RemoveAllText.java` |
+| `pypdfbox/examples/util/split_booklet.py` | 3.0.x | `examples/src/main/java/org/apache/pdfbox/examples/util/SplitBooklet.java` |
+
+#### `pypdfbox/filter/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/filter/ascii85_input_stream.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/Ascii85InputStream.java` |
+| `pypdfbox/filter/ascii85_output_stream.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/Ascii85OutputStream.java` |
+| `pypdfbox/filter/ccitt_fax_decoder_stream.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/CcittFaxDecoderStream.java` |
+| `pypdfbox/filter/ccitt_fax_encoder_stream.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/CcittFaxEncoderStream.java` |
+| `pypdfbox/filter/crypt_filter.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/CryptFilter.java` |
+| `pypdfbox/filter/decode_options.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/DecodeOptions.java` |
+| `pypdfbox/filter/final_decode_options.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/DecodeOptions.java (extracted inner class FinalDecodeOptions)` |
+| `pypdfbox/filter/flate_filter_decoder_stream.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/FlateFilterDecoderStream.java` |
+| `pypdfbox/filter/jbig2_filter.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/Jbig2Filter.java` |
+| `pypdfbox/filter/jpx_filter.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/JpxFilter.java` |
+| `pypdfbox/filter/node.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/CCITTFaxDecoderStream.java (extracted inner class Node)` |
+| `pypdfbox/filter/predictor.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/Predictor.java` |
+| `pypdfbox/filter/predictor_output_stream.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/Predictor.java (extracted inner class PredictorOutputStream)` |
+| `pypdfbox/filter/tree.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/Tree.java` |
+
+#### `pypdfbox/fontbox/cmap/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/fontbox/cmap/cmap_strings.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/cmap/CmapStrings.java` |
+
+#### `pypdfbox/fontbox/pfb/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/fontbox/pfb/pfb_parser.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/pfb/PfbParser.java` |
+
+#### `pypdfbox/fontbox/type1/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/fontbox/type1/token.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/type1/Token.java` |
+| `pypdfbox/fontbox/type1/type1_char_string_reader.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/type1/Type1CharStringReader.java` |
+
+#### `pypdfbox/fontbox/util/autodetect/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/fontbox/util/autodetect/font_dir_finder.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/util/autodetect/FontDirFinder.java` |
+| `pypdfbox/fontbox/util/autodetect/font_file_finder.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/util/autodetect/FontFileFinder.java` |
+| `pypdfbox/fontbox/util/autodetect/mac_font_dir_finder.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/util/autodetect/MacFontDirFinder.java` |
+| `pypdfbox/fontbox/util/autodetect/native_font_dir_finder.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/util/autodetect/NativeFontDirFinder.java` |
+| `pypdfbox/fontbox/util/autodetect/os400_font_dir_finder.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/util/autodetect/Os400FontDirFinder.java` |
+| `pypdfbox/fontbox/util/autodetect/unix_font_dir_finder.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/util/autodetect/UnixFontDirFinder.java` |
+| `pypdfbox/fontbox/util/autodetect/windows_font_dir_finder.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/util/autodetect/WindowsFontDirFinder.java` |
+
+#### `pypdfbox/io/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/io/non_seekable_random_access_read_input_stream.py` | 3.0.x | `io/src/main/java/org/apache/pdfbox/io/NonSeekableRandomAccessReadInputStream.java` |
+| `pypdfbox/io/random_access.py` | 3.0.x | `io/src/main/java/org/apache/pdfbox/io/RandomAccess.java` |
+| `pypdfbox/io/random_access_input_stream.py` | 3.0.x | `io/src/main/java/org/apache/pdfbox/io/RandomAccessInputStream.java` |
+| `pypdfbox/io/random_access_output_stream.py` | 3.0.x | `io/src/main/java/org/apache/pdfbox/io/RandomAccessOutputStream.java` |
+| `pypdfbox/io/random_access_read_memory_mapped_file.py` | 3.0.x | `io/src/main/java/org/apache/pdfbox/io/RandomAccessReadMemoryMappedFile.java` |
+| `pypdfbox/io/random_access_read_write_buffer.py` | 3.0.x | `io/src/main/java/org/apache/pdfbox/io/RandomAccessReadWriteBuffer.java` |
+| `pypdfbox/io/random_access_stream_cache.py` | 3.0.x | `io/src/main/java/org/apache/pdfbox/io/RandomAccessStreamCache.java` |
+| `pypdfbox/io/random_access_stream_cache_impl.py` | 3.0.x | `io/src/main/java/org/apache/pdfbox/io/RandomAccessStreamCacheImpl.java` |
+| `pypdfbox/io/sequence_random_access_read.py` | 3.0.x | `io/src/main/java/org/apache/pdfbox/io/SequenceRandomAccessRead.java` |
+| `pypdfbox/io/stream_cache_create_function.py` | 3.0.x | `io/src/main/java/org/apache/pdfbox/io/RandomAccessStreamCache.java (extracted inner interface StreamCacheCreateFunction)` |
+
+#### `pypdfbox/pdfparser/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdfparser/brute_force_parser.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/BruteForceParser.java` |
+| `pypdfbox/pdfparser/fdf_parser.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/FdfParser.java` |
+| `pypdfbox/pdfparser/object_numbers.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/PDFXrefStreamParser.java (extracted inner class ObjectNumbers)` |
+| `pypdfbox/pdfparser/pdf_object_stream_parser.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/PdfObjectStreamParser.java` |
+| `pypdfbox/pdfparser/pdf_xref_stream.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/PdfXrefStream.java` |
+| `pypdfbox/pdfparser/pdf_xref_stream_parser.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/PdfXrefStreamParser.java` |
+| `pypdfbox/pdfparser/xref_trailer_obj.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/XrefTrailerResolver.java (extracted inner class XrefTrailerObj)` |
+
+#### `pypdfbox/pdfparser/xref/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdfparser/xref/abstract_x_reference.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/xref/AbstractXReference.java` |
+| `pypdfbox/pdfparser/xref/free_x_reference.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/xref/FreeXReference.java` |
+| `pypdfbox/pdfparser/xref/normal_x_reference.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/xref/NormalXReference.java` |
+| `pypdfbox/pdfparser/xref/object_stream_x_reference.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/xref/ObjectStreamXReference.java` |
+| `pypdfbox/pdfparser/xref/x_reference_entry.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/xref/XReferenceEntry.java` |
+| `pypdfbox/pdfparser/xref/x_reference_type.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/xref/XReferenceType.java` |
+
+#### `pypdfbox/pdfwriter/compress/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdfwriter/compress/cos_object_pool.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfwriter/compress/CosObjectPool.java` |
+| `pypdfbox/pdfwriter/compress/cos_writer_compression_pool.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfwriter/compress/CosWriterCompressionPool.java` |
+| `pypdfbox/pdfwriter/compress/cos_writer_object_stream.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfwriter/compress/CosWriterObjectStream.java` |
+| `pypdfbox/pdfwriter/compress/direct_access_byte_array_output_stream.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfwriter/compress/COSWriterObjectStream.java (extracted inner class DirectAccessByteArrayOutputStream, lines 397-409)` |
+
+#### `pypdfbox/pdmodel/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdmodel/default_resource_cache_create_impl.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/DefaultResourceCacheCreateImpl.java` |
+| `pypdfbox/pdmodel/page_iterator.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDPageTree.java (extracted inner class PageIterator)` |
+| `pypdfbox/pdmodel/pd_abstract_content_stream.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PdAbstractContentStream.java` |
+| `pypdfbox/pdmodel/resource_cache.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/ResourceCache.java` |
+| `pypdfbox/pdmodel/resource_cache_create_function.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/ResourceCacheCreateFunction.java` |
+| `pypdfbox/pdmodel/resource_cache_factory.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/ResourceCacheFactory.java` |
+| `pypdfbox/pdmodel/search_context.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/PDPageTree.java (extracted inner class SearchContext)` |
+
+#### `pypdfbox/pdmodel/common/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdmodel/common/cos_array_list.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/CosArrayList.java` |
+| `pypdfbox/pdmodel/common/cos_dictionary_map.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/CosDictionaryMap.java` |
+| `pypdfbox/pdmodel/common/cos_objectable.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/CosObjectable.java` |
+| `pypdfbox/pdmodel/common/label_generator.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/PDPageLabels.java (extracted inner class LabelGenerator, lines 295-415)` |
+| `pypdfbox/pdmodel/common/label_handler.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/PDPageLabels.java (extracted inner interface LabelHandler, lines 252-255)` |
+| `pypdfbox/pdmodel/common/pd_dictionary_wrapper.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/PdDictionaryWrapper.java` |
+| `pypdfbox/pdmodel/common/pd_immutable_rectangle.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/PdImmutableRectangle.java` |
+| `pypdfbox/pdmodel/common/pd_object_stream.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/PdObjectStream.java` |
+| `pypdfbox/pdmodel/common/pd_typed_dictionary_wrapper.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/PdTypedDictionaryWrapper.java` |
+
+#### `pypdfbox/pdmodel/common/function/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdmodel/common/function/rinterpol.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/PDFunctionType0.java (extracted inner class Rinterpol, lines 252-373)` |
+
+#### `pypdfbox/pdmodel/encryption/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdmodel/encryption/message_digests.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/encryption/MessageDigests.java` |
+| `pypdfbox/pdmodel/encryption/rc4_cipher.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/encryption/Rc4Cipher.java` |
+| `pypdfbox/pdmodel/encryption/sasl_prep.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/encryption/SaslPrep.java` |
+| `pypdfbox/pdmodel/encryption/security_handler_factory.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/encryption/SecurityHandlerFactory.java` |
+
+#### `pypdfbox/pdmodel/fdf/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdmodel/fdf/fdf_annotation_caret.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FdfAnnotationCaret.java` |
+| `pypdfbox/pdmodel/fdf/fdf_annotation_ink.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FdfAnnotationInk.java` |
+| `pypdfbox/pdmodel/fdf/fdf_annotation_polygon.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FdfAnnotationPolygon.java` |
+| `pypdfbox/pdmodel/fdf/fdf_annotation_polyline.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FdfAnnotationPolyline.java` |
+| `pypdfbox/pdmodel/fdf/fdf_annotation_stamp.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FdfAnnotationStamp.java` |
+| `pypdfbox/pdmodel/fdf/fdf_annotation_text_markup.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FdfAnnotationTextMarkup.java` |
+| `pypdfbox/pdmodel/fdf/fdf_java_script.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FdfJavaScript.java` |
+| `pypdfbox/pdmodel/fdf/fdf_option_element.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FdfOptionElement.java` |
+| `pypdfbox/pdmodel/fdf/fdf_page.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FdfPage.java` |
+| `pypdfbox/pdmodel/fdf/fdf_page_info.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FdfPageInfo.java` |
+| `pypdfbox/pdmodel/fdf/fdf_template.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FdfTemplate.java` |
+| `pypdfbox/pdmodel/fdf/xfdf_parser.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FDFDictionary.java (XFDF Element-based constructor switch table, lines 137-217; XFDF parsing logic spread across FDFCatalog / FDFField / FDFAnnotation upstream)` |
+
+#### `pypdfbox/pdmodel/fixup/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdmodel/fixup/abstract_fixup.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fixup/AbstractFixup.java` |
+| `pypdfbox/pdmodel/fixup/acro_form_default_fixup.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fixup/AcroFormDefaultFixup.java` |
+| `pypdfbox/pdmodel/fixup/pd_document_fixup.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fixup/PdDocumentFixup.java` |
+
+#### `pypdfbox/pdmodel/fixup/processor/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdmodel/fixup/processor/abstract_processor.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fixup/processor/AbstractProcessor.java` |
+| `pypdfbox/pdmodel/fixup/processor/acro_form_defaults_processor.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fixup/processor/AcroFormDefaultsProcessor.java` |
+| `pypdfbox/pdmodel/fixup/processor/acro_form_generate_appearances_processor.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fixup/processor/AcroFormGenerateAppearancesProcessor.java` |
+| `pypdfbox/pdmodel/fixup/processor/acro_form_orphan_widgets_processor.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fixup/processor/AcroFormOrphanWidgetsProcessor.java` |
+| `pypdfbox/pdmodel/fixup/processor/pd_document_processor.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fixup/processor/PdDocumentProcessor.java` |
+
+#### `pypdfbox/pdmodel/font/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdmodel/font/afm_loader.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/afm/AFMParser.java (functional adapter; delegates to fontTools.afmLib)` |
+| `pypdfbox/pdmodel/font/cid_system_info.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/CidSystemInfo.java` |
+| `pypdfbox/pdmodel/font/file_system_font_provider.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/FileSystemFontProvider.java` |
+| `pypdfbox/pdmodel/font/font_cache.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/FontCache.java` |
+| `pypdfbox/pdmodel/font/font_mapper_impl.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/FontMapperImpl.java` |
+| `pypdfbox/pdmodel/font/font_match.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/FontMapperImpl.java (extracted inner class FontMatch)` |
+| `pypdfbox/pdmodel/font/fs_font_info.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/FileSystemFontProvider.java (extracted inner class FSFontInfo)` |
+| `pypdfbox/pdmodel/font/pd_cid_font_type2_embedder.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PdCidFontType2Embedder.java` |
+| `pypdfbox/pdmodel/font/pd_true_type_font_embedder.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PdTrueTypeFontEmbedder.java` |
+| `pypdfbox/pdmodel/font/pd_type1_font_embedder.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PdType1FontEmbedder.java` |
+| `pypdfbox/pdmodel/font/subsetter.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/Subsetter.java` |
+| `pypdfbox/pdmodel/font/to_unicode_writer.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/ToUnicodeWriter.java` |
+| `pypdfbox/pdmodel/font/true_type_embedder.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/TrueTypeEmbedder.java` |
+| `pypdfbox/pdmodel/font/uni_util.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/UniUtil.java` |
+| `pypdfbox/pdmodel/font/vertical_displacement_range.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDCIDFont.java (extracted inner class VerticalDisplacementRange)` |
+
+#### `pypdfbox/pdmodel/font/encoding/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdmodel/font/encoding/type1_encoding.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/encoding/Type1Encoding.java` |
+
+#### `pypdfbox/pdmodel/graphics/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdmodel/graphics/blend_mode.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/blend/BlendMode.java` |
+
+#### `pypdfbox/pdmodel/graphics/blend/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdmodel/graphics/blend/blend_channel_function.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/blend/BlendMode.java (extracted inner functional interface BlendChannelFunction)` |
+| `pypdfbox/pdmodel/graphics/blend/blend_composite.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/blend/BlendComposite.java` |
+| `pypdfbox/pdmodel/graphics/blend/blend_function.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/blend/BlendMode.java (extracted inner functional interface BlendFunction)` |
+
+#### `pypdfbox/pdmodel/graphics/color/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdmodel/graphics/color/pd_cie_based_color_space.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PdCieBasedColorSpace.java` |
+| `pypdfbox/pdmodel/graphics/color/pd_cie_dictionary_based_color_space.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PdCieDictionaryBasedColorSpace.java` |
+| `pypdfbox/pdmodel/graphics/color/pd_gamma.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PdGamma.java` |
+| `pypdfbox/pdmodel/graphics/color/pd_jpx_color_space.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PdJpxColorSpace.java` |
+| `pypdfbox/pdmodel/graphics/color/pd_tristimulus.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PdTristimulus.java` |
+
+#### `pypdfbox/pdmodel/graphics/image/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdmodel/graphics/image/custom_factory.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/image/CustomFactory.java` |
+| `pypdfbox/pdmodel/graphics/image/pd_image.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/image/PdImage.java` |
+| `pypdfbox/pdmodel/graphics/image/png_converter.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/image/PngConverter.java` |
+| `pypdfbox/pdmodel/graphics/image/predictor_encoder.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/image/LosslessFactory.java (extracted inner class PredictorEncoder)` |
+| `pypdfbox/pdmodel/graphics/image/sampled_image_reader.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/image/SampledImageReader.java` |
+
+#### `pypdfbox/pdmodel/graphics/shading/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdmodel/graphics/shading/axial_shading_paint.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/AxialShadingPaint.java` |
+| `pypdfbox/pdmodel/graphics/shading/coons_patch.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/CoonsPatch.java` |
+| `pypdfbox/pdmodel/graphics/shading/cubic_bezier_curve.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/CubicBezierCurve.java` |
+| `pypdfbox/pdmodel/graphics/shading/gouraud_shading_context.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/GouraudShadingContext.java` |
+| `pypdfbox/pdmodel/graphics/shading/int_point.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/IntPoint.java` |
+| `pypdfbox/pdmodel/graphics/shading/line.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/Line.java` |
+| `pypdfbox/pdmodel/graphics/shading/patch.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/Patch.java` |
+| `pypdfbox/pdmodel/graphics/shading/patch_meshes_shading_context.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/PatchMeshesShadingContext.java` |
+| `pypdfbox/pdmodel/graphics/shading/pd_mesh_based_shading_type.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/PdMeshBasedShadingType.java` |
+| `pypdfbox/pdmodel/graphics/shading/pd_triangle_based_shading_type.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/PdTriangleBasedShadingType.java` |
+| `pypdfbox/pdmodel/graphics/shading/radial_shading_context.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/RadialShadingContext.java` |
+| `pypdfbox/pdmodel/graphics/shading/radial_shading_paint.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/RadialShadingPaint.java` |
+| `pypdfbox/pdmodel/graphics/shading/shaded_triangle.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/ShadedTriangle.java` |
+| `pypdfbox/pdmodel/graphics/shading/shading_context.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/ShadingContext.java` |
+| `pypdfbox/pdmodel/graphics/shading/shading_paint.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/ShadingPaint.java` |
+| `pypdfbox/pdmodel/graphics/shading/tensor_patch.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/TensorPatch.java` |
+| `pypdfbox/pdmodel/graphics/shading/triangle_based_shading_context.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/TriangleBasedShadingContext.java` |
+| `pypdfbox/pdmodel/graphics/shading/type1_shading_context.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/Type1ShadingContext.java` |
+| `pypdfbox/pdmodel/graphics/shading/type1_shading_paint.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/Type1ShadingPaint.java` |
+| `pypdfbox/pdmodel/graphics/shading/type4_shading_paint.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/Type4ShadingPaint.java` |
+| `pypdfbox/pdmodel/graphics/shading/type5_shading_paint.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/Type5ShadingPaint.java` |
+| `pypdfbox/pdmodel/graphics/shading/type6_shading_paint.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/Type6ShadingPaint.java` |
+| `pypdfbox/pdmodel/graphics/shading/type7_shading_paint.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/Type7ShadingPaint.java` |
+| `pypdfbox/pdmodel/graphics/shading/vertex.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/Vertex.java` |
+
+#### `pypdfbox/pdmodel/graphics/state/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdmodel/graphics/state/pd_graphics_state.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/state/PdGraphicsState.java` |
+| `pypdfbox/pdmodel/graphics/state/pd_text_state.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/state/PdTextState.java` |
+
+#### `pypdfbox/pdmodel/interactive/action/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdmodel/interactive/action/pd_action_factory.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/action/PdActionFactory.java` |
+
+#### `pypdfbox/pdmodel/interactive/annotation/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdmodel/interactive/annotation/annotation_filter.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/AnnotationFilter.java` |
+| `pypdfbox/pdmodel/interactive/annotation/pd_appearance_stream_name_tree_node.py` | 3.0.x | (none — original typed wrapper for /Names /AP name tree; upstream PDFBox 3.x exposes only raw COSDictionary; see CHANGES.md) |
+| `pypdfbox/pdmodel/interactive/annotation/pd_external_data_dictionary.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/PdExternalDataDictionary.java` |
+
+#### `pypdfbox/pdmodel/interactive/annotation/handlers/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdmodel/interactive/annotation/handlers/annotation_border.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/handlers/AnnotationBorder.java` |
+| `pypdfbox/pdmodel/interactive/annotation/handlers/cloudy_border.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/handlers/CloudyBorder.java` |
+| `pypdfbox/pdmodel/interactive/annotation/handlers/pd_abstract_appearance_handler.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PdAbstractAppearanceHandler.java` |
+| `pypdfbox/pdmodel/interactive/annotation/handlers/pd_appearance_handler.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PdAppearanceHandler.java` |
+| `pypdfbox/pdmodel/interactive/annotation/handlers/pd_caret_appearance_handler.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PdCaretAppearanceHandler.java` |
+| `pypdfbox/pdmodel/interactive/annotation/handlers/pd_circle_appearance_handler.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PdCircleAppearanceHandler.java` |
+| `pypdfbox/pdmodel/interactive/annotation/handlers/pd_file_attachment_appearance_handler.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PdFileAttachmentAppearanceHandler.java` |
+| `pypdfbox/pdmodel/interactive/annotation/handlers/pd_free_text_appearance_handler.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PdFreeTextAppearanceHandler.java` |
+| `pypdfbox/pdmodel/interactive/annotation/handlers/pd_highlight_appearance_handler.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PdHighlightAppearanceHandler.java` |
+| `pypdfbox/pdmodel/interactive/annotation/handlers/pd_ink_appearance_handler.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PdInkAppearanceHandler.java` |
+| `pypdfbox/pdmodel/interactive/annotation/handlers/pd_line_appearance_handler.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PdLineAppearanceHandler.java` |
+| `pypdfbox/pdmodel/interactive/annotation/handlers/pd_link_appearance_handler.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PdLinkAppearanceHandler.java` |
+| `pypdfbox/pdmodel/interactive/annotation/handlers/pd_polygon_appearance_handler.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PdPolygonAppearanceHandler.java` |
+| `pypdfbox/pdmodel/interactive/annotation/handlers/pd_polyline_appearance_handler.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PdPolylineAppearanceHandler.java` |
+| `pypdfbox/pdmodel/interactive/annotation/handlers/pd_sound_appearance_handler.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PdSoundAppearanceHandler.java` |
+| `pypdfbox/pdmodel/interactive/annotation/handlers/pd_square_appearance_handler.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PdSquareAppearanceHandler.java` |
+| `pypdfbox/pdmodel/interactive/annotation/handlers/pd_squiggly_appearance_handler.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PdSquigglyAppearanceHandler.java` |
+| `pypdfbox/pdmodel/interactive/annotation/handlers/pd_strikeout_appearance_handler.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PdStrikeoutAppearanceHandler.java` |
+| `pypdfbox/pdmodel/interactive/annotation/handlers/pd_text_appearance_handler.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PdTextAppearanceHandler.java` |
+| `pypdfbox/pdmodel/interactive/annotation/handlers/pd_underline_appearance_handler.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PdUnderlineAppearanceHandler.java` |
+
+#### `pypdfbox/pdmodel/interactive/digitalsignature/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdmodel/interactive/digitalsignature/signature_options.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/digitalsignature/SignatureOptions.java` |
+| `pypdfbox/pdmodel/interactive/digitalsignature/signing_support.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/digitalsignature/SigningSupport.java` |
+
+#### `pypdfbox/pdmodel/interactive/digitalsignature/visible/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdmodel/interactive/digitalsignature/visible/pd_visible_sig_builder.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/digitalsignature/visible/PdVisibleSigBuilder.java` |
+| `pypdfbox/pdmodel/interactive/digitalsignature/visible/pd_visible_sig_properties.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/digitalsignature/visible/PdVisibleSigProperties.java` |
+| `pypdfbox/pdmodel/interactive/digitalsignature/visible/pd_visible_sign_designer.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/digitalsignature/visible/PdVisibleSignDesigner.java` |
+| `pypdfbox/pdmodel/interactive/digitalsignature/visible/pdf_template_builder.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/digitalsignature/visible/PdfTemplateBuilder.java` |
+| `pypdfbox/pdmodel/interactive/digitalsignature/visible/pdf_template_creator.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/digitalsignature/visible/PdfTemplateCreator.java` |
+| `pypdfbox/pdmodel/interactive/digitalsignature/visible/pdf_template_structure.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/digitalsignature/visible/PdfTemplateStructure.java` |
+
+#### `pypdfbox/pdmodel/interactive/form/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdmodel/interactive/form/appearance_generator_helper.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/AppearanceGeneratorHelper.java` |
+| `pypdfbox/pdmodel/interactive/form/appearance_style.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/AppearanceStyle.java` |
+| `pypdfbox/pdmodel/interactive/form/builder.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/PlainTextFormatter.java (extracted inner class Builder)` |
+| `pypdfbox/pdmodel/interactive/form/field_iterator.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/PDFieldTree.java (extracted inner class FieldIterator)` |
+| `pypdfbox/pdmodel/interactive/form/field_utils.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/FieldUtils.java` |
+| `pypdfbox/pdmodel/interactive/form/key_value.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/FieldUtils.java (extracted inner class KeyValue)` |
+| `pypdfbox/pdmodel/interactive/form/paragraph.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/PlainText.java (extracted inner class Paragraph)` |
+| `pypdfbox/pdmodel/interactive/form/plain_text.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/PlainText.java` |
+| `pypdfbox/pdmodel/interactive/form/plain_text_formatter.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/PlainTextFormatter.java` |
+| `pypdfbox/pdmodel/interactive/form/scripting_handler.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/ScriptingHandler.java` |
+| `pypdfbox/pdmodel/interactive/form/text_align.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/PlainTextFormatter.java (extracted inner enum TextAlign)` |
+| `pypdfbox/pdmodel/interactive/form/word.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/PlainText.java (extracted inner class Word)` |
+
+#### `pypdfbox/pdmodel/interactive/measurement/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/pdmodel/interactive/measurement/pd_media_clip.py` | 3.0.x | (none — original Python addition, no upstream class) |
+| `pypdfbox/pdmodel/interactive/measurement/pd_media_clip_data.py` | 3.0.x | (none — original Python addition, no upstream class) |
+| `pypdfbox/pdmodel/interactive/measurement/pd_media_clip_section.py` | 3.0.x | (none — original Python addition, no upstream class) |
+| `pypdfbox/pdmodel/interactive/measurement/pd_media_play_parameters.py` | 3.0.x | (none — original Python addition, no upstream class) |
+| `pypdfbox/pdmodel/interactive/measurement/pd_media_rendition.py` | 3.0.x | (none — original Python addition, no upstream class) |
+| `pypdfbox/pdmodel/interactive/measurement/pd_rendition.py` | 3.0.x | (none — original Python addition, no upstream class) |
+| `pypdfbox/pdmodel/interactive/measurement/pd_selector_rendition.py` | 3.0.x | (none — original Python addition, no upstream class) |
+
+#### `pypdfbox/printing/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/printing/pdf_pageable.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/printing/PdfPageable.java` |
+| `pypdfbox/printing/pdf_printable.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/printing/PdfPrintable.java` |
+
+#### `pypdfbox/rendering/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/rendering/glyph_cache.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/rendering/GlyphCache.java` |
+| `pypdfbox/rendering/group_graphics.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/rendering/GroupGraphics.java` |
+| `pypdfbox/rendering/page_drawer.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/rendering/PageDrawer.java` |
+| `pypdfbox/rendering/page_drawer_parameters.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/rendering/PageDrawerParameters.java` |
+| `pypdfbox/rendering/soft_mask.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/rendering/SoftMask.java` |
+| `pypdfbox/rendering/tiling_paint.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/rendering/TilingPaint.java` |
+| `pypdfbox/rendering/tiling_paint_factory.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/rendering/TilingPaintFactory.java` |
+
+#### `pypdfbox/text/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/text/legacy_pdf_stream_engine.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/text/LegacyPdfStreamEngine.java` |
+| `pypdfbox/text/line_item.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/text/PDFTextStripper.java (extracted inner class LineItem, lines 2133-2163)` |
+| `pypdfbox/text/pdf_text_stripper.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/text/PdfTextStripper.java` |
+| `pypdfbox/text/text_position_comparator.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/text/TextPositionComparator.java` |
+
+#### `pypdfbox/tools/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/tools/decompress_objectstreams.py` | 3.0.x | `tools/src/main/java/org/apache/pdfbox/tools/DecompressObjectstreams.java` |
+| `pypdfbox/tools/decrypt_tool.py` | 3.0.x | `tools/src/main/java/org/apache/pdfbox/tools/Decrypt.java` |
+| `pypdfbox/tools/encrypt_tool.py` | 3.0.x | `tools/src/main/java/org/apache/pdfbox/tools/Encrypt.java` |
+| `pypdfbox/tools/export_fdf.py` | 3.0.x | `tools/src/main/java/org/apache/pdfbox/tools/ExportFdf.java` |
+| `pypdfbox/tools/export_xfdf.py` | 3.0.x | `tools/src/main/java/org/apache/pdfbox/tools/ExportXfdf.java` |
+| `pypdfbox/tools/extract_images.py` | 3.0.x | `tools/src/main/java/org/apache/pdfbox/tools/ExtractImages.java` |
+| `pypdfbox/tools/extract_text.py` | 3.0.x | `tools/src/main/java/org/apache/pdfbox/tools/ExtractText.java` |
+| `pypdfbox/tools/extract_xmp.py` | 3.0.x | `tools/src/main/java/org/apache/pdfbox/tools/ExtractXmp.java` |
+| `pypdfbox/tools/image_to_pdf.py` | 3.0.x | `tools/src/main/java/org/apache/pdfbox/tools/ImageToPdf.java` |
+| `pypdfbox/tools/import_fdf.py` | 3.0.x | `tools/src/main/java/org/apache/pdfbox/tools/ImportFdf.java` |
+| `pypdfbox/tools/import_xfdf.py` | 3.0.x | `tools/src/main/java/org/apache/pdfbox/tools/ImportXfdf.java` |
+| `pypdfbox/tools/overlay_pdf.py` | 3.0.x | `tools/src/main/java/org/apache/pdfbox/tools/OverlayPdf.java` |
+| `pypdfbox/tools/pdf_box.py` | 3.0.x | `tools/src/main/java/org/apache/pdfbox/tools/PdfBox.java` |
+| `pypdfbox/tools/pdf_merger.py` | 3.0.x | `tools/src/main/java/org/apache/pdfbox/tools/PdfMerger.java` |
+| `pypdfbox/tools/pdf_split.py` | 3.0.x | `tools/src/main/java/org/apache/pdfbox/tools/PdfSplit.java` |
+| `pypdfbox/tools/pdf_text2_html.py` | 3.0.x | `tools/src/main/java/org/apache/pdfbox/tools/PdfText2Html.java` |
+| `pypdfbox/tools/pdf_text2_markdown.py` | 3.0.x | `tools/src/main/java/org/apache/pdfbox/tools/PdfText2Markdown.java` |
+| `pypdfbox/tools/pdf_to_image.py` | 3.0.x | `tools/src/main/java/org/apache/pdfbox/tools/PdfToImage.java` |
+| `pypdfbox/tools/print_pdf.py` | 3.0.x | `tools/src/main/java/org/apache/pdfbox/tools/PrintPdf.java` |
+| `pypdfbox/tools/text_to_pdf.py` | 3.0.x | `tools/src/main/java/org/apache/pdfbox/tools/TextToPdf.java` |
+| `pypdfbox/tools/version_tool.py` | 3.0.x | `tools/src/main/java/org/apache/pdfbox/tools/Version.java` |
+| `pypdfbox/tools/write_decoded_doc.py` | 3.0.x | `tools/src/main/java/org/apache/pdfbox/tools/WriteDecodedDoc.java` |
+
+#### `pypdfbox/tools/imageio/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/tools/imageio/image_io_util.py` | 3.0.x | `tools/src/main/java/org/apache/pdfbox/tools/imageio/ImageIoUtil.java` |
+| `pypdfbox/tools/imageio/jpeg_util.py` | 3.0.x | `tools/src/main/java/org/apache/pdfbox/tools/imageio/JpegUtil.java` |
+| `pypdfbox/tools/imageio/meta_util.py` | 3.0.x | `tools/src/main/java/org/apache/pdfbox/tools/imageio/MetaUtil.java` |
+| `pypdfbox/tools/imageio/tiff_util.py` | 3.0.x | `tools/src/main/java/org/apache/pdfbox/tools/imageio/TiffUtil.java` |
+
+#### `pypdfbox/util/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/util/hex.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/util/Hex.java` |
+| `pypdfbox/util/iterative_merge_sort.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/util/IterativeMergeSort.java` |
+| `pypdfbox/util/matrix.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/util/Matrix.java` |
+| `pypdfbox/util/number_format_util.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/util/NumberFormatUtil.java` |
+| `pypdfbox/util/small_map.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/util/SmallMap.java` |
+| `pypdfbox/util/string_util.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/util/StringUtil.java` |
+| `pypdfbox/util/vector.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/util/Vector.java` |
+| `pypdfbox/util/xml_util.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/util/XmlUtil.java` |
+
+#### `pypdfbox/util/filetypedetector/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/util/filetypedetector/byte_trie.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/util/filetypedetector/ByteTrie.java` |
+| `pypdfbox/util/filetypedetector/file_type.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/util/filetypedetector/FileType.java` |
+| `pypdfbox/util/filetypedetector/file_type_detector.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/util/filetypedetector/FileTypeDetector.java` |
+
+#### `pypdfbox/xmpbox/schema/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/xmpbox/schema/xmp_schema_factory.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/XmpSchemaFactory.java` |
+
+#### `pypdfbox/xmpbox/type/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/xmpbox/type/abstract_complex_property.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/AbstractComplexProperty.java` |
+| `pypdfbox/xmpbox/type/cfa_pattern_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/CfaPatternType.java` |
+| `pypdfbox/xmpbox/type/complex_property_container.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/ComplexPropertyContainer.java` |
+| `pypdfbox/xmpbox/type/types.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/Types.java` |
+
+#### `pypdfbox/xmpbox/xml/`
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `pypdfbox/xmpbox/xml/dom_helper.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/xml/DomHelper.java` |
+| `pypdfbox/xmpbox/xml/namespace_finder.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/xml/DomXmpParser.java (extracted inner class NamespaceFinder, lines 1199-1229)` |
+| `pypdfbox/xmpbox/xml/pdfa_extension_helper.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/xml/PdfaExtensionHelper.java` |
+| `pypdfbox/xmpbox/xml/xmp_serializer.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/xml/XmpSerializer.java` |
+

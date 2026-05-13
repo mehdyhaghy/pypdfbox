@@ -17,6 +17,32 @@ Per-release notes go here; trivial naming changes (camelCase → snake_case) are
 - **No commons-logging / log4j.** Python `logging` (stdlib) is used throughout.
 - **Method naming.** Java camelCase → Python snake_case across the entire API surface. Semantics unchanged.
 
+## Project status (as of Wave 1301, 2026-05-13)
+
+- **Upstream baseline**: Apache PDFBox 3.0 HEAD `e48bce8`.
+- **Class parity**: 1,116 / 1,222 (100.0% excluding preflight; debugger now fully ported).
+- **Method parity**: 97.3% (8,548 / 8,788 matched).
+- **Tests**: 30,134 passing, 12 skipped (each with a documented reason), 0 known regressions in the stable core.
+- **Line coverage**: 90.22% global; ~99% on the stable parser+writer+pdmodel+contentstream+text+fontbox+rendering+xmpbox+tools core.
+- **Local TODOs**: 0.
+- **Out of scope (permanent)**: `org.apache.pdfbox.preflight.*` (106 classes — superseded by external veraPDF per PRD §13 and PDFBox 4.0 alignment).
+- **Phase**: Phase 3 closeout. Approaching release-candidate (3-5 waves to RC).
+
+## Wave summary 1238-1301
+
+| Waves | Headline delta |
+|---|---|
+| 1238-1245 | Closed remaining xref/object-stream parity gaps; lenient-parse recovery hardened. |
+| 1246-1255 | Annotation handlers + appearance streams reach behavioral parity with PDFBox. |
+| 1256-1265 | Form (AcroForm/XFA-lite) flattening, field-tree, and signature dictionaries completed. |
+| 1266-1275 | Encryption (AES-128/256, public-key) and standard security handler parity. |
+| 1276-1285 | Fontbox CFF/Type1/TrueType edge cases; rendering pipeline glyph + shading fixes. |
+| 1286-1290 | Cleared functional TODOs across engine, examples, and XMP/doc-parts gaps. |
+| 1291 | Recomputed global parity: 100% class coverage excluding preflight. |
+| 1292-1298 | Ported `org.apache.pdfbox.debugger.*` subsystem (89 new classes, +875 tests). |
+| 1299 | Snapshot refresh: method parity 97.3%; debugger inner helpers handed to sibling waves. |
+| 1300-1301 | Debugger inner-helper closeout + documentation/status pass. |
+
 ## Per-file deviations
 
 - `pypdfbox/pdmodel/interactive/form/pd_field_factory.py`: malformed or unknown field dictionaries are skipped by factory/tree traversal.
@@ -2812,3 +2838,17 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
 - Removed three dead `__init__` fields: `StreamPane._initialized`, `StringPane._hex_view`, `HexView._master`. All were assigned but never read.
 - No behavior change; upstream class shape preserved everywhere observable.
 - Rejected several simplification candidates that would have diverged from upstream class shape (per-instance `tkfont.Font`s mirroring Java fields, constructor-arg retention fields, etc.).
+
+## Wave 1302 — RC prep #1 (PROVENANCE backfill + README + version bump + Project status)
+
+### PROVENANCE.md backfill (453 files)
+
+- Audited every `pypdfbox/*.py` non-`__init__` source file against `PROVENANCE.md`. **453 missing rows surfaced** (mostly residue from waves 1280-1286 mass-port batches plus earlier clusters).
+- Added rows in 61 sub-sections covering `examples/` (95), `pdmodel/` (148), `contentstream/operator/` (90), `tools/` (26), `filter/` (14), `pdfparser/` (13), `fontbox/` (11), `io/` (10), `util/` (11), `xmpbox/` (9), `rendering/` (7), `cos/` (5), `pdfwriter/compress/` (4), `benchmark/` (4), `text/` (4), `printing/` (2).
+- 9 files reclassified as `(none — <reason>)` Python-originals (rendition wrappers, typed `/Names /AP` wrapper, font-helper bridge).
+- ~30 inner-class extractions row to their enclosing Java file with "(extracted inner class X)" annotation.
+- `PROVENANCE.md` 1713 → 2476 lines (+763). Audit recipe now reports **0 missing rows**.
+
+### README rewrite
+
+- `README.md` 108 → 180 lines. Banner: "pre-alpha / Phase 1" → "approaching RC". Added 3 verified end-to-end snippets, camelCase→snake_case API mapping table, 19-row feature matrix, real `.parity/snapshot.txt` numbers, development quick-start.

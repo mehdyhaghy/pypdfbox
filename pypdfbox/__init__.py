@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError, version as _pkg_version
+
 from .loader import Loader
 from .pdmodel import (
     PDDocument,
@@ -10,6 +12,11 @@ from .pdmodel import (
     PDResources,
 )
 
+try:
+    __version__ = _pkg_version("pypdfbox")
+except PackageNotFoundError:  # pragma: no cover - source tree without install metadata
+    __version__ = "0.0.0+unknown"
+
 __all__ = [
     "Loader",
     "PDDocument",
@@ -18,4 +25,5 @@ __all__ = [
     "PDPageTree",
     "PDRectangle",
     "PDResources",
+    "__version__",
 ]

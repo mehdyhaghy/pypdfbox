@@ -352,7 +352,7 @@ wheels = [
 
 [[package]]
 name = "pypdfbox"
-version = "0.0.1"
+version = "0.9.0rc1"
 source = { editable = "." }
 dependencies = [
     { name = "aggdraw" },
