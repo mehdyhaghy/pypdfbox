@@ -104,7 +104,6 @@ class StreamPane:
 
         self._notebook = ttk.Notebook(self._panel)
         self._filter_combo: ttk.Combobox | None = None
-        self._initialized = False
 
     # ---- public API --------------------------------------------------------
 
@@ -129,7 +128,6 @@ class StreamPane:
             self._notebook.add(self._hex_view.get_pane(), text="Hex view")
 
         self._notebook.pack(fill="both", expand=True)
-        self._initialized = True
 
     def get_panel(self) -> ttk.Frame:
         """Return the top-level container."""

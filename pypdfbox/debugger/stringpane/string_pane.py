@@ -60,7 +60,6 @@ class StringPane:
         self._tabbed_pane.add(hex_widget, text=self._HEX_TAB)
 
         self._text_widget = text_widget
-        self._hex_view = hex_widget
 
     # ---- public accessors --------------------------------------------------
 

@@ -2786,3 +2786,29 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
 - `pypdfbox/debugger/ui/textsearcher/search_panel.py`: **73% → 100%** (+8 tests).
 - `pypdfbox/debugger/ui/textsearcher/searcher.py`: **85% → 100%** (+12 tests).
 - 20 new tests covering Find-menu duck-typed frame wiring, component listener dispatch, regex-mode search, no-match counter path, and `tk.Text` integration via a stub frame and live `tk.Text` widget.
+
+## Wave 1301 — RC-prep work (PROVENANCE audit + qpdf validation + simplification + bounded coverage retry + status checkpoint)
+
+### PROVENANCE.md audit (waves 1292-1300)
+
+- Audited `PROVENANCE.md` with a Python-driven exact-path check (older brace-expansion rows confuse the naive `grep -q "$f"` recipe in `.parity/README.md`).
+- All **105** files added in waves 1292-1300 (91 debugger `pypdfbox/debugger/*.py` source files + 14 fixtures across `tests/fixtures/{multipdf,pdfwriter,fontbox/ttf}/`) have correct PROVENANCE entries. Zero missing rows in scope.
+- Broader sweep across the full `pypdfbox/` tree surfaced **259 older files** (mostly `examples/`, `benchmark/`, `fdf/`, `fixup/`, `io/`, `pdfparser/xref/`, `pdfwriter/compress/`, `pdmodel/graphics/{blend,color,image,shading,state}/`, `contentstream/operator/*`) lacking PROVENANCE rows. These all predate wave 1292 (mostly from the wave-1280 to wave-1286 mass-port batches). Scheduled for a dedicated backfill wave.
+
+### qpdf differential validation scaffolding
+
+- New `scripts/qpdf_check.py` + `tests/integration/test_qpdf_validation.py` wire `qpdf --check` and `qpdf --qdf --object-streams=disable` as a pytest-gated validation pass over pypdfbox-generated PDFs. Skips cleanly when `qpdf` isn't on `$PATH` (install via `brew install qpdf`).
+- Covers ~5-10 distinct save flows: basic save, encrypted save, incremental save, merge, split, overlay, content-stream writer.
+- On the dev machine `qpdf` isn't installed, so the suite skips. CI will need to install qpdf to gate on actual qpdf-validity. This is one of the PRD §12 validation-stack pillars (alongside veraPDF + PAC, which remain TBD).
+
+### Fontencodingpane coverage re-attempt (bounded)
+
+- Per-file coverage: `font_encoding_view.py` 78% → **100%**, `simple_font.py` 83% → **100%**, `type0_font.py` 76% → **100%**, `type3_font.py` 71% → **100%**.
+- 38 new bounded tests — all complete in <50ms each (no full-corpus 65535-iteration `_read_map` runs that caused wave-1300 process kills).
+- Strategy: stub-font tests constrain `has_glyph` to ≤5 codes so the loop body executes at most 5 times; full-font end-to-end runs intentionally avoided. Type3 `PDFRenderer`-backed rasterization stays out-of-scope (the port deliberately substitutes a Pillow text-label thumbnail).
+
+### Debugger simplification
+
+- Removed three dead `__init__` fields: `StreamPane._initialized`, `StringPane._hex_view`, `HexView._master`. All were assigned but never read.
+- No behavior change; upstream class shape preserved everywhere observable.
+- Rejected several simplification candidates that would have diverged from upstream class shape (per-instance `tkfont.Font`s mirroring Java fields, constructor-arg retention fields, etc.).

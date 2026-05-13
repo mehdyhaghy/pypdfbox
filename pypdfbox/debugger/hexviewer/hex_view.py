@@ -32,7 +32,6 @@ class HexView:
         master: tk.Misc,
         bytes_: bytes | bytearray | None = None,
     ) -> None:
-        self._master = master
         self._main_pane = ttk.Frame(master)
         self._editor: HexEditor | None = None
         if bytes_ is not None:

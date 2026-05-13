@@ -254,7 +254,7 @@ def parse_java_file(path: Path) -> list[JavaClass]:
         if name in _JAVA_KEYWORDS:
             continue
         nested: list[tuple[int, int]] = []
-        for j_idx, j_open, j_close in bodies:
+        for j_idx, _j_open, j_close in bodies:
             if j_idx == idx:
                 continue
             # Nested if its declaration sits between this class's open and close.
