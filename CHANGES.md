@@ -2605,3 +2605,45 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
 - `Tree`: `build_menu_items()` is pure data (list of `(label, callback)` tuples) for testability; the runtime widget composes the actual `tk.Menu` from that list. Right-click is bound on both `<Button-2>` and `<Button-3>` for cross-platform parity. `Desktop.getDesktop().open(file)` integration exposed via an `open_handler` callback (no stdlib equivalent to `Desktop.open`); the temp-file write uses `tempfile.mkdtemp(prefix="pdfbox-")` with `chmod 0o700`.
 - `OSXAdapter`: uses Tk's native macOS commands (`::tk::mac::Quit`, `tk::mac::standardAboutPanel`, `::tk::mac::ShowPreferences`, `::tk::mac::OpenDocument`) instead of reflective `com.apple.eawt` calls. Every method is a deliberate no-op when `sys.platform != "darwin"`, matching the upstream `ClassNotFoundException` fallback path.
 - `LogDialog`: records are buffered when the toplevel hasn't been built yet and replayed on first `show()`. Counters update immediately regardless of widget state so headless tests can assert on them. Auto-registers itself with `DebugLog.set_dialog_sink`.
+
+## Wave 1295 — PDFDebugger shell + splitter role-map fix + menu integration + renderer test triage
+
+### ViewMenu full wiring (`pypdfbox/debugger/ui/view_menu.py`)
+
+- `ViewMenu` now wires the full upstream cascade set (`TreeViewMenu`, `ImageTypeMenu`, `TextStripperMenu`) plus all per-render-pass overlay checkbuttons (TextPositions, Beads, ApproximateTextBounds, GlyphBounds), the Extract Text callback hook, and Repair AcroForm — closing the deferred wiring noted in Wave 1294.
+- Static accessors (`is_show_text_positions`, `is_show_text_strip_beads`, `is_show_approximate_text_bounds`, `is_show_glyph_bounds`, `is_repair_acro_form`, `is_rendering_option`) match upstream's contract; accessors with no instance return `False`.
+- Sub-menus and overlay checkbuttons start disabled (upstream `setEnabled(false)`); `PDFDebugger.documentLoaded` flips them after a doc loads — that wiring is the main-shell's responsibility.
+
+### Splitter role-map narrowing (`pypdfbox/multipdf/splitter.py`)
+
+- `clone_structure_tree` no longer resets `_role_set` / `_id_set` per chunk. Upstream `Splitter.java` initializes those sets once in `split()` and lets them accumulate across chunks; we were clearing them at the top of each chunk's clone, dropping roles that earlier chunks had collected.
+- Drop-empty cleanup: `_struct_dict_map.pop(id(src), None)` is now called on every `return None` after the dict was put, so a chunk's `/IDTree` doesn't surface empty placeholder structure dicts.
+- Test unskipped: `test_single_page_split` (PDFBOX-5792-240045 fixture) — all 6 chunks now produce the expected `/RoleMap` sizes (3, 3, 4, 4, 6, 7) and `/ParentTree` sizes (6, 6, 6, 5, 1, 1).
+- **All four splitter gaps diagnosed in waves 1290/1291 are now closed.**
+
+### PDFDebugger shell (`pypdfbox/debugger/pd_debugger.py`)
+
+- Swing `JFrame` → `ttk.Frame` parented to a caller-supplied `tk.Misc` (the shell is now embeddable). `JSplitPane` → `ttk.PanedWindow`. `JTree` → `ttk.Treeview` (via `pypdfbox.debugger.ui.Tree`).
+- Picocli CLI replaced by `argparse`.
+- Printing path (Swing `PrinterJob` + `PDFPageable`) shows a friendly "not implemented" `messagebox` — Python has no cross-platform print API in stdlib.
+- Drag-and-drop file open (Swing `TransferHandler`) omitted; tkdnd is out of scope.
+- HyperlinkListener / about-dialog HTML viewer simplified to a `messagebox.showinfo` (no embedded HTML renderer in stdlib Tk).
+- Find menu is partially wired: the cascade exists with `Find / Find Next / Find Previous`, but per-pane wiring is delegated to individual `SearchPanel` instances.
+- macOS hooks routed through `OSXAdapter` (stdlib `createcommand`), not Java reflection.
+- Tree population is one-level eager + on-demand expansion (replacement for Swing's lazy-load model events, which Tk's `<<TreeviewOpen>>` does not natively fan out).
+- Interactive password-prompt loop (`DocumentOpener` retry-on-`InvalidPasswordException`) is omitted — the port loads with the password passed via CLI / `open_document(...)` but does not re-prompt.
+- `Window` menu cascade exists but is empty (single-document semantics).
+- `loadConfiguration` (`config.properties`) is omitted — pypdfbox uses Python `logging` and no upstream configuration switches apply.
+
+**The debugger port is now structurally complete** — all 91 upstream Java files have a Python/Tkinter counterpart.
+
+### Renderer round-trip / TIFF-equivalence skip triage
+
+- `tests/pdmodel/upstream/test_pd_page_content_stream.py::test_rendering_round_trip` re-enabled as a *structural* round-trip — emits a filled rect via `PDPageContentStream`, renders via `PDFRenderer.render_image(0)`, asserts page-sized non-blank output. Upstream's variant compared the raster against a stored TIFF; that pixel-exact comparison is intentionally not ported because byte-equivalent raster output across the Java / Python rasterizer boundary is unachievable.
+- Skip reasons on the 4 remaining renderer / pixel-parity / fixture-bound skips (`test_pdf_merger_utility`, `test_pdf_merger_utility_2`, `test_jpeg_ccitt`, `test_pdfbox5742`) tightened to name the specific missing upstream binary and the pixel-parity blocker.
+
+### PagePane menu integration (`pypdfbox/debugger/pagepane/page_pane.py`)
+
+- `PagePane._render_image` now reads zoom, rotation, image type, render destination, and allow-subsampling from their respective menu singletons (`ZoomMenu` / `RotationMenu` / `ImageTypeMenu` / `RenderDestinationMenu` / `ViewMenu`) when present, matching upstream's `RenderWorker`.
+- Resolver helpers no longer instantiate menu singletons as a side-effect — the debugger main shell (`PDFDebugger`) owns singleton lifecycle, mirroring upstream.
+- Workaround: `PDFRenderer.render_image_with_dpi` does not yet accept a `destination=` kwarg (upstream's four-arg `renderImage(int, float, ImageType, RenderDestination)` overload). `PagePane` calls `renderer.set_default_destination(destination)` before render, so OCG visibility and page-drawer parameters still see the selection — but the renderer-level four-arg signature parity remains a renderer-side gap for a future wave.

@@ -7,17 +7,53 @@ exercised against a single synthetic PDF page.
 from __future__ import annotations
 
 import tkinter as tk
+from collections.abc import Iterator
 
 import pytest
 
 from pypdfbox.cos import COSStream
 from pypdfbox.debugger.pagepane.page_pane import (
     PagePane,
+    _resolve_allow_subsampling,
+    _resolve_image_type,
+    _resolve_render_destination,
     _resolve_rotation,
     _resolve_zoom_scale,
     _safe_call,
 )
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
+from pypdfbox.rendering.image_type import ImageType
+from pypdfbox.rendering.render_destination import RenderDestination
+
+
+@pytest.fixture()
+def _reset_menus() -> Iterator[None]:
+    """Reset every menu singleton this module touches before and after.
+
+    Each menu owns global selection state. Tests that assert specific
+    selections must not leak state into neighbouring tests, so we wipe
+    the singletons on both ends of the test.
+    """
+    from pypdfbox.debugger.ui.image_type_menu import ImageTypeMenu
+    from pypdfbox.debugger.ui.render_destination_menu import RenderDestinationMenu
+    from pypdfbox.debugger.ui.rotation_menu import RotationMenu
+    from pypdfbox.debugger.ui.text_stripper_menu import TextStripperMenu
+    from pypdfbox.debugger.ui.view_menu import ViewMenu
+    from pypdfbox.debugger.ui.zoom_menu import ZoomMenu
+
+    def _wipe() -> None:
+        ZoomMenu._reset_instance()  # noqa: SLF001
+        RotationMenu._reset_instance()  # noqa: SLF001
+        RenderDestinationMenu._reset_instance()  # noqa: SLF001
+        ViewMenu._reset_instance()  # noqa: SLF001
+        ImageTypeMenu._reset_for_testing()  # noqa: SLF001
+        TextStripperMenu._reset_for_testing()  # noqa: SLF001
+
+    _wipe()
+    try:
+        yield
+    finally:
+        _wipe()
 
 
 def _make_one_page_doc(content: bytes | None = b"BT /F0 12 Tf 10 50 Td (x) Tj ET") -> PDDocument:
@@ -160,6 +196,183 @@ def test_safe_call_returns_default_when_method_raises() -> None:
             raise RuntimeError("nope")
 
     assert _safe_call(_T(), "boom", default="ok") == "ok"
+
+
+# ---------------------------------------------------------------------------
+# Menu-singleton wiring (Wave 1295)
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_zoom_scale_reads_zoom_menu_static_selection(
+    tk_root: tk.Tk, _reset_menus: None
+) -> None:
+    """``_resolve_zoom_scale`` returns the currently-selected zoom percent."""
+    from pypdfbox.debugger.ui.zoom_menu import ZoomMenu
+
+    ZoomMenu.get_instance(master=tk_root).change_zoom_selection(2.0)
+    assert _resolve_zoom_scale() == pytest.approx(2.0)
+
+
+def test_resolve_rotation_reads_rotation_menu_selection(
+    tk_root: tk.Tk, _reset_menus: None
+) -> None:
+    from pypdfbox.debugger.ui.rotation_menu import RotationMenu
+
+    menu = RotationMenu.get_instance(master=tk_root)
+    menu.set_rotation_selection(RotationMenu.ROTATE_180_DEGREES)
+    assert _resolve_rotation() == 180
+
+
+def test_resolve_image_type_returns_none_when_menu_uninstantiated(
+    _reset_menus: None,
+) -> None:
+    assert _resolve_image_type() is None
+
+
+def test_resolve_image_type_reads_menu_selection(
+    tk_root: tk.Tk, _reset_menus: None
+) -> None:
+    from pypdfbox.debugger.ui.image_type_menu import ImageTypeMenu
+
+    menu = ImageTypeMenu.get_instance(master=tk_root)
+    menu.set_image_type_selection(ImageTypeMenu.IMAGETYPE_GRAY)
+    assert _resolve_image_type() is ImageType.GRAY
+
+
+def test_resolve_render_destination_reads_menu_selection(
+    tk_root: tk.Tk, _reset_menus: None
+) -> None:
+    from pypdfbox.debugger.ui.render_destination_menu import RenderDestinationMenu
+
+    menu = RenderDestinationMenu.get_instance(master=tk_root)
+    menu.set_render_destination_selection(
+        RenderDestinationMenu.RENDER_DESTINATION_PRINT
+    )
+    assert _resolve_render_destination() is RenderDestination.PRINT
+
+
+def test_resolve_allow_subsampling_reflects_view_menu_state(
+    tk_root: tk.Tk, _reset_menus: None
+) -> None:
+    from pypdfbox.debugger.ui.view_menu import ViewMenu
+
+    instance = ViewMenu.get_instance(master=tk_root)
+    # Toggle via the underlying BooleanVar; matches how the checkbutton
+    # would update it in a live UI.
+    instance._allow_subsampling_var.set(True)  # noqa: SLF001
+    assert _resolve_allow_subsampling() is True
+    instance._allow_subsampling_var.set(False)  # noqa: SLF001
+    assert _resolve_allow_subsampling() is False
+
+
+def test_page_pane_renders_at_zoom_menu_scale(
+    tk_root: tk.Tk, _reset_menus: None
+) -> None:
+    """A 2x zoom selection doubles the rendered image's pixel dimensions."""
+    from pypdfbox.debugger.ui.zoom_menu import ZoomMenu
+
+    ZoomMenu.get_instance(master=tk_root).change_zoom_selection(2.0)
+    doc = _make_one_page_doc()
+    try:
+        page_dict = doc.get_page(0).get_cos_object()
+        pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
+        pane.init()
+        image = pane.get_image()
+        assert image is not None
+        # Page is 60x60 user-space units; 2x scale → 120x120 pixels.
+        assert image.size == (120, 120)
+    finally:
+        doc.close()
+
+
+def test_page_pane_uses_image_type_menu_mode(
+    tk_root: tk.Tk, _reset_menus: None
+) -> None:
+    """Selecting Gray flips the rendered image's Pillow mode to ``L``."""
+    from pypdfbox.debugger.ui.image_type_menu import ImageTypeMenu
+
+    menu = ImageTypeMenu.get_instance(master=tk_root)
+    menu.set_image_type_selection(ImageTypeMenu.IMAGETYPE_GRAY)
+    doc = _make_one_page_doc()
+    try:
+        page_dict = doc.get_page(0).get_cos_object()
+        pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
+        pane.init()
+        image = pane.get_image()
+        assert image is not None
+        assert image.mode == "L"
+    finally:
+        doc.close()
+
+
+def test_page_pane_propagates_render_destination_to_renderer(
+    tk_root: tk.Tk, _reset_menus: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``_render_image`` should call ``set_default_destination`` with the
+    enum selected on ``RenderDestinationMenu``. We hijack the renderer
+    class via monkeypatch to inspect what the page pane wired in.
+    """
+    from pypdfbox.debugger.ui.render_destination_menu import RenderDestinationMenu
+
+    RenderDestinationMenu.get_instance(
+        master=tk_root
+    ).set_render_destination_selection(
+        RenderDestinationMenu.RENDER_DESTINATION_PRINT
+    )
+
+    seen: dict[str, object] = {}
+
+    import pypdfbox.rendering as rendering_module
+
+    real_renderer_cls = rendering_module.PDFRenderer
+
+    class _SpyRenderer(real_renderer_cls):  # type: ignore[misc, valid-type]
+        def set_default_destination(self, destination):  # type: ignore[override]
+            seen["destination"] = destination
+            return super().set_default_destination(destination)
+
+    monkeypatch.setattr(rendering_module, "PDFRenderer", _SpyRenderer)
+
+    doc = _make_one_page_doc()
+    try:
+        page_dict = doc.get_page(0).get_cos_object()
+        pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
+        pane.init()
+        assert seen.get("destination") is RenderDestination.PRINT
+    finally:
+        doc.close()
+
+
+def test_page_pane_propagates_allow_subsampling_to_renderer(
+    tk_root: tk.Tk, _reset_menus: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``ViewMenu.is_allow_subsampling()`` should be forwarded to the
+    renderer via ``set_subsampling_allowed`` when present.
+    """
+    from pypdfbox.debugger.ui.view_menu import ViewMenu
+
+    ViewMenu.get_instance(master=tk_root)._allow_subsampling_var.set(True)  # noqa: SLF001
+
+    seen: dict[str, object] = {}
+
+    import pypdfbox.rendering as rendering_module
+
+    real_renderer_cls = rendering_module.PDFRenderer
+
+    class _SpyRenderer(real_renderer_cls):  # type: ignore[misc, valid-type]
+        def set_subsampling_allowed(self, allowed):  # type: ignore[override]
+            seen["subsampling"] = bool(allowed)
+
+    monkeypatch.setattr(rendering_module, "PDFRenderer", _SpyRenderer)
+
+    doc = _make_one_page_doc()
+    try:
+        page_dict = doc.get_page(0).get_cos_object()
+        pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
+        pane.init()
+        assert seen.get("subsampling") is True
+    finally:
+        doc.close()
 
 
 @pytest.mark.parametrize(

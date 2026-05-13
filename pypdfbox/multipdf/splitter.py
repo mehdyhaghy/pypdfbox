@@ -1053,10 +1053,15 @@ class Splitter:
         if src_struct_root is None:
             return
 
-        # Reset per-chunk struct-clone state.
+        # Reset per-chunk struct-clone state. Note: ``_id_set`` and
+        # ``_role_set`` are intentionally NOT reset here — upstream
+        # initialises them once in ``split()`` and lets them accumulate
+        # across chunks (Splitter.java lines 136-137 vs line 200), so a
+        # chunk's /RoleMap and /IDTree can include entries first
+        # introduced by an earlier chunk. Resetting per chunk produced
+        # off-by-one role-map narrowing on PDFBOX-5792-240045.pdf (wave
+        # 1295).
         self._struct_dict_map = {}
-        self._id_set = set()
-        self._role_set = set()
 
         dst_struct_root = PDStructureTreeRoot()
         dst_struct_root_cos = dst_struct_root.get_cos_object()
@@ -1267,12 +1272,14 @@ class Splitter:
                     )
             if dst.size() == 1:
                 # Only a /Type entry remains — no useful payload.
+                self._struct_dict_map.pop(id(src), None)
                 return None
             if (
                 dst_page_dict is None
                 and isinstance(dst_parent, COSDictionary)
                 and dst_parent.get_dictionary_object(_PG) is None
             ):
+                self._struct_dict_map.pop(id(src), None)
                 return None
 
         if type_name != "OBJR" and type_name != "MCR":
@@ -1284,10 +1291,16 @@ class Splitter:
         next_page_dict = dst_page_dict if dst_page_dict is not None else current_page_dict
         cloned_kid = self._k_create_clone(kid, dst, next_page_dict, page_tree)
         if cloned_kid is None and kid is not None:
+            # The kids array wasn't empty, but became empty after narrowing —
+            # this element is now an orphan, drop its placeholder so the
+            # /IDTree / /ParentTree narrowing doesn't surface a half-empty
+            # struct dict.
+            self._struct_dict_map.pop(id(src), None)
             return None
 
         # Orphan check: no parent page, no own page, and no kids.
         if dst_page_dict is None and cloned_kid is None and current_page_dict is None:
+            self._struct_dict_map.pop(id(src), None)
             return None
 
         if cloned_kid is not None:

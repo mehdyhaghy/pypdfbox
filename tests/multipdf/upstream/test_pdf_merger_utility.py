@@ -112,15 +112,25 @@ def test_setters_round_trip_modes() -> None:
 # ---------- skipped upstream tests (one-line stubs) ----------
 
 
-@pytest.mark.skip(reason="upstream PDFA_check.pdf fixture + rendering not ported")
+@pytest.mark.skip(
+    reason="needs upstream input/PDFA_check.pdf binary fixture (not bundled) and "
+    "pixel-exact PDFRenderer parity against a Java-rendered model — "
+    "byte-exact raster output across rasterisers is unachievable"
+)
 def test_pdf_merger_utility() -> None: ...
 
 
-@pytest.mark.skip(reason="upstream compressed-resource fixture + rendering not ported")
+@pytest.mark.skip(
+    reason="needs upstream input/152074.pdf compressed-resource fixture (not bundled) "
+    "and pixel-exact PDFRenderer parity against a Java-rendered model"
+)
 def test_pdf_merger_utility_2() -> None: ...
 
 
-@pytest.mark.skip(reason="JPEG/CCITT image-stream comparison not ported")
+@pytest.mark.skip(
+    reason="needs upstream JPEG/CCITT image-stream fixtures and pixel-exact "
+    "PDFRenderer parity against a Java-rendered model"
+)
 def test_jpeg_ccitt() -> None: ...
 
 
@@ -550,18 +560,55 @@ def test_split_with_structure_tree_and_destinations_and_removed_annotations() ->
             assert dst_doc.get_number_of_pages() == 2
 
 
-@pytest.mark.skip(
-    reason=(
-        "Splitter role-map narrowing: with PDFBOX-5792-240045.pdf the "
-        "first chunk's role-map ends up with 3 mappings (Endnote "
-        "Reference, Normal, Superscript) vs upstream's expected 4. "
-        "Hybrid xref now resolves the structure tree correctly, so this "
-        "is a chunk-side clone-narrowing gap — likely a missed role-map "
-        "entry that's only reachable through one of the dropped annot "
-        "back-references."
+def test_single_page_split() -> None:
+    # PDFBOX-5792 — destination outside target document used to NPE in the
+    # next call of ``Splitter.fix_destinations``. We assert the same
+    # invariants upstream's ``testSinglePageSplit`` asserts: every chunk
+    # has one page, every link annotation's ``GoTo`` destination has its
+    # page nulled out, and the per-chunk /ParentTree + /RoleMap sizes
+    # match upstream's expected narrowing.
+    from pypdfbox.pdmodel.interactive.action.pd_action_go_to import (
+        PDActionGoTo,
     )
-)
-def test_single_page_split() -> None: ...
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (  # noqa: E501
+        PDPageDestination,
+    )
+
+    expected_pt_sizes = [6, 6, 6, 5, 1, 1]
+    expected_role_map_sizes = [3, 3, 4, 4, 6, 7]
+
+    with PDDocument.load(str(_FIXTURE_DIR / "PDFBOX-5792-240045.pdf")) as doc:
+        splitter = Splitter()
+        splitter.set_split_at_page(1)
+        split_result = splitter.split(doc)
+        assert len(split_result) == 6
+        for dst_doc in split_result:
+            assert dst_doc.get_number_of_pages() == 1
+            for ann in dst_doc.get_page(0).get_annotations():
+                assert isinstance(ann, PDAnnotationLink)
+                action = ann.get_action()
+                assert isinstance(action, PDActionGoTo)
+                destination = action.get_destination()
+                assert isinstance(destination, PDPageDestination)
+                assert destination.get_page() is None
+        for index, dst_doc in enumerate(split_result):
+            structure_tree_root = (
+                dst_doc.get_document_catalog().get_structure_tree_root()
+            )
+            assert (
+                len(
+                    PDFMergerUtility.get_number_tree_as_map(
+                        structure_tree_root.get_parent_tree()
+                    )
+                )
+                == expected_pt_sizes[index]
+            ), f"chunk {index} parent-tree size"
+            assert (
+                len(structure_tree_root.get_role_map())
+                == expected_role_map_sizes[index]
+            ), f"chunk {index} role-map size"
+        for dst_doc in split_result:
+            dst_doc.close()
 
 
 def test_split_with_popup_annotations() -> None:

@@ -10,8 +10,6 @@ TIFF byte equivalence) — those belong to the rendering test suite
 
 from __future__ import annotations
 
-import pytest
-
 from pypdfbox.cos import COSArray, COSName, COSStream
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.pdmodel.font import PDType1Font
@@ -235,13 +233,48 @@ def test_append_mode_preserves_existing_contents() -> None:
 
 
 # ----------------------------------------------------------------------
-# Skipped: rendering / TIFF byte-equivalence tests live in the rendering
-# suite. Listed here to track upstream coverage gaps.
+# Rendering round-trip — upstream uses PDFRenderer + TIFF byte-equivalence
+# against a Java-rendered model image. We can't byte-match Java's raster
+# output, but we can verify the *structural* round-trip: a content stream
+# emitted via PDPageContentStream must survive parse → PDFRenderer.render
+# and produce a non-blank raster of the correct dimensions. The pixel-
+# parity portion stays out of scope (different rasteriser → different
+# byte output) — that's tracked separately in CHANGES.md.
 # ----------------------------------------------------------------------
 
 
-@pytest.mark.skip(
-    reason="renderer round-trip / TIFF equivalence — rendering test suite"
-)
-def test_rendering_round_trip() -> None:  # pragma: no cover
-    pass
+def test_rendering_round_trip() -> None:
+    """Structural round-trip: a page written through PDPageContentStream
+    must render via PDFRenderer to an image of the page's pixel size and
+    contain at least one non-background pixel (so we know the content
+    stream actually reached the rasteriser).
+
+    Upstream's variant of this test compared the raster against a stored
+    TIFF model — that byte-exact comparison isn't achievable across the
+    Java/Python rasteriser boundary and is intentionally not ported.
+    """
+    # Import lazily so the rendering import only happens when this test
+    # actually runs (matches PDFRenderer's own lazy contentstream import).
+    from pypdfbox.rendering import PDFRenderer  # noqa: PLC0415
+
+    doc = PDDocument()
+    page = PDPage(PDRectangle(0.0, 0.0, 100.0, 50.0))
+    doc.add_page(page)
+    with PDPageContentStream(doc, page) as cs:
+        cs.set_non_stroking_color(0.5, 0.5, 0.5)
+        cs.add_rect(10.0, 10.0, 30.0, 30.0)
+        cs.fill()
+
+    renderer = PDFRenderer(doc)
+    image = renderer.render_image(0)
+    assert image is not None
+    # 1pt = 1px at scale=1.0 (72 DPI base * 1.0).
+    assert image.size == (100, 50)
+    # Non-blank: the filled grey rect must produce *some* non-(255,255,255)
+    # pixels. We don't pin the exact colour — that's pixel-parity, out of
+    # scope for the structural test.
+    extrema = image.getextrema()
+    assert any(channel_min < 255 for channel_min, _ in extrema), (
+        "renderer produced an all-white canvas — content stream not reaching "
+        "the rasteriser"
+    )

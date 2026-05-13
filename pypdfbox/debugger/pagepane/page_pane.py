@@ -228,8 +228,31 @@ class PagePane:
         from pypdfbox.rendering import PDFRenderer  # noqa: PLC0415
 
         renderer = PDFRenderer(self._document)
+        # Mirror upstream: PDFRenderer.setSubsamplingAllowed is gated on
+        # ViewMenu.isAllowSubsampling(). Use a duck-typed setter so the
+        # renderer doesn't have to expose one.
+        subsampling = _resolve_allow_subsampling()
+        setter = getattr(renderer, "set_subsampling_allowed", None)
+        if setter is not None:
+            with contextlib.suppress(TypeError, ValueError):
+                setter(subsampling)
         scale = _resolve_zoom_scale()
-        return renderer.render_image(self._page_index, scale=scale)
+        image_type = _resolve_image_type()
+        destination = _resolve_render_destination()
+        # The renderer's render_image_with_dpi does not yet accept a
+        # ``destination`` kwarg directly; upstream's three-arg overload
+        # threads it through. We propagate the user's choice via the
+        # renderer-level default destination setter so the page drawer
+        # and OCG visibility logic see it. The four-arg renderImage
+        # parity is tracked as a renderer-side gap.
+        if destination is not None:
+            dest_setter = getattr(renderer, "set_default_destination", None)
+            if dest_setter is not None:
+                with contextlib.suppress(TypeError, ValueError):
+                    dest_setter(destination)
+        return renderer.render_image(
+            self._page_index, scale=scale, image_type=image_type
+        )
 
     def _draw_debug_overlays(self, image: PilImage) -> None:
         """Paint debug overlays onto ``image`` in place when enabled."""
@@ -396,22 +419,19 @@ class PagePane:
 
 
 def _safe_get_view_menu() -> Any:
+    """Return the live ``ViewMenu`` singleton, or ``None``.
+
+    Never instantiates the singleton: doing so would create tk objects
+    attached to whatever ``Tk`` root happens to be current at the
+    moment of the first render, which can race with the test harness
+    and the upstream debugger main shell (which owns the singleton
+    lifecycle).
+    """
     try:
         from pypdfbox.debugger.ui.view_menu import ViewMenu  # noqa: PLC0415
     except ImportError:
         return None
-    getter = getattr(ViewMenu, "get_instance", None)
-    if getter is None:
-        return None
-    try:
-        return getter(None)
-    except TypeError:
-        try:
-            return getter()
-        except Exception:  # noqa: BLE001
-            return None
-    except Exception:  # noqa: BLE001
-        return None
+    return getattr(ViewMenu, "_instance", None)
 
 
 def _safe_call(target: Any, name: str, default: Any) -> Any:
@@ -429,36 +449,46 @@ def _safe_call(target: Any, name: str, default: Any) -> Any:
 def _resolve_zoom_scale() -> float:
     """Best-effort lookup of the currently active zoom scale.
 
-    Tries the singleton ``ZoomMenu.get_instance().get_page_zoom_scale()``
-    surface; falls back to upstream's static ``ZoomMenu.get_zoom_scale``;
-    falls back to ``1.0``. The duck-typing path keeps this module
-    importable when the sibling menus haven't landed yet.
+    Prefer the static ``ZoomMenu.get_zoom_scale()`` surface (matches
+    upstream's ``RenderWorker``); fall back to the live instance's
+    ``get_page_zoom_scale``; fall back to ``1.0``. We never instantiate
+    the singleton from here — doing so would attach the underlying
+    ``tk.StringVar`` to whatever ``Tk`` root happens to be current, and
+    upstream relies on callers (the debugger main shell) to create the
+    singleton first.
     """
     try:
         from pypdfbox.debugger.ui.zoom_menu import ZoomMenu  # noqa: PLC0415
     except ImportError:
         return 1.0
-    getter = getattr(ZoomMenu, "get_instance", None)
-    if getter is not None:
-        try:
-            inst = getter()
-            scale = getattr(inst, "get_page_zoom_scale", lambda: 1.0)()
-            return float(scale) if scale else 1.0
-        except Exception:  # noqa: BLE001
-            pass
     static_getter = getattr(ZoomMenu, "get_zoom_scale", None)
     if static_getter is not None:
         try:
             return float(static_getter())
         except Exception:  # noqa: BLE001
             pass
+    instance = getattr(ZoomMenu, "_instance", None)
+    if instance is not None:
+        try:
+            scale = instance.get_page_zoom_scale()
+            return float(scale) if scale else 1.0
+        except Exception:  # noqa: BLE001
+            pass
     return 1.0
 
 
 def _resolve_rotation() -> int:
+    """Look up the current rotation in degrees from the singleton.
+
+    Like :func:`_resolve_zoom_scale`, this never instantiates the
+    singleton — the menu is created by the debugger main shell.
+    """
     try:
         from pypdfbox.debugger.ui.rotation_menu import RotationMenu  # noqa: PLC0415
     except ImportError:
+        return 0
+    instance = getattr(RotationMenu, "_instance", None)
+    if instance is None:
         return 0
     static_getter = getattr(RotationMenu, "get_rotation_degrees", None)
     if static_getter is not None:
@@ -466,12 +496,65 @@ def _resolve_rotation() -> int:
             return int(static_getter())
         except Exception:  # noqa: BLE001
             pass
-    getter = getattr(RotationMenu, "get_instance", None)
-    if getter is not None:
-        try:
-            inst = getter()
-            rot = getattr(inst, "get_rotation", lambda: 0)()
-            return int(rot) if rot else 0
-        except Exception:  # noqa: BLE001
-            pass
     return 0
+
+
+def _resolve_image_type() -> Any:
+    """Look up the currently selected :class:`ImageType` from
+    ``ImageTypeMenu``. Returns ``None`` when the menu hasn't been
+    instantiated yet so the renderer keeps its historical RGB
+    behaviour. Mirrors upstream's ``ImageTypeMenu.getImageType()``.
+    """
+    try:
+        from pypdfbox.debugger.ui.image_type_menu import (  # noqa: PLC0415
+            ImageTypeMenu,
+        )
+    except ImportError:
+        return None
+    getter = getattr(ImageTypeMenu, "get_image_type", None)
+    if getter is None:
+        return None
+    try:
+        return getter()
+    except (RuntimeError, ValueError):
+        # Menu not yet instantiated, or label unknown — defer to the
+        # renderer's default (RGB).
+        return None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _resolve_render_destination() -> Any:
+    """Look up the currently selected :class:`RenderDestination` from
+    ``RenderDestinationMenu``. Returns ``None`` when the menu hasn't
+    been instantiated. Mirrors upstream's
+    ``RenderDestinationMenu.getRenderDestination()``.
+    """
+    try:
+        from pypdfbox.debugger.ui.render_destination_menu import (  # noqa: PLC0415
+            RenderDestinationMenu,
+        )
+    except ImportError:
+        return None
+    getter = getattr(RenderDestinationMenu, "get_render_destination", None)
+    if getter is None:
+        return None
+    try:
+        return getter()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _resolve_allow_subsampling() -> bool:
+    """Mirror upstream's ``ViewMenu.isAllowSubsampling()``."""
+    try:
+        from pypdfbox.debugger.ui.view_menu import ViewMenu  # noqa: PLC0415
+    except ImportError:
+        return False
+    getter = getattr(ViewMenu, "is_allow_subsampling", None)
+    if getter is None:
+        return False
+    try:
+        return bool(getter())
+    except Exception:  # noqa: BLE001
+        return False

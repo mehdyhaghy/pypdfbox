@@ -86,7 +86,9 @@ def test_check_hash_code() -> None:
 # upstream Jira attachment cache and is not bundled in pypdfbox's
 # ``corpus/`` set yet.
 @pytest.mark.skip(
-    reason="PDFBOX-5742.pdf fixture not bundled; Splitter/PDFRenderer ports are ready"
+    reason="needs upstream input/PDFBOX-5742.pdf binary fixture (not bundled in "
+    "tests/fixtures/) — Splitter and PDFRenderer ports are already wired, so "
+    "re-enabling is purely a fixture-bundling task"
 )
 def test_pdfbox5742() -> None:
     pass

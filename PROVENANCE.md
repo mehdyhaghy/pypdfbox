@@ -565,6 +565,7 @@ Tkinter/Ttk port of the upstream Swing-based debugger (PDF tree explorer / hex v
 | `pypdfbox/debugger/ui/pdf_tree_cell_renderer.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/PDFTreeCellRenderer.java` |
 | `pypdfbox/debugger/ui/tree.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/Tree.java` |
 | `pypdfbox/debugger/ui/osx_adapter.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/OSXAdapter.java` |
+| `pypdfbox/debugger/pd_debugger.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/PDFDebugger.java` |
 
 ---
 
