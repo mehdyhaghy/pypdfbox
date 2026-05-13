@@ -106,6 +106,21 @@ class PDCheckBox(PDButton):
             PDAppearanceGenerator().generate(self)
 
     def construct_appearances(self) -> None:
+        """Rebuild widget appearances for this check box.
+
+        Wave 1305 extends the lite-port behaviour beyond upstream's
+        ``PDCheckBox.constructAppearances`` (which only syncs ``/AS``):
+        the appearance generator is invoked first so every widget gets a
+        fresh on/off ``/AP /N`` subdictionary drawn from the field's
+        current value, then the super call syncs ``/AS`` against the
+        rebuilt appearance dictionary. This mirrors the user-visible
+        contract of upstream's ``AppearanceGeneratorHelper`` flow while
+        keeping ``PDButton.constructAppearances``'s state-sync semantics
+        intact.
+        """
+        from .pd_appearance_generator import PDAppearanceGenerator
+
+        PDAppearanceGenerator().generate(self)
         super().construct_appearances()
 
 

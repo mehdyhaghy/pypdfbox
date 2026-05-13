@@ -784,9 +784,10 @@ def test_standard14_no_embedded_program_renders_without_warning(
     the bundled Liberation TTF supplies real glyph outlines.
 
     Wave 1303 replaced the placeholder branch for Helvetica with full
-    Liberation substitution; the debug log only fires for the two
-    Standard 14 names with no Liberation equivalent (Symbol /
-    ZapfDingbats).
+    Liberation substitution; Wave 1305 then added DejaVu Sans for the
+    two symbolic Standard 14 names (Symbol / ZapfDingbats). All 14 names
+    now resolve to a bundled substitute, so the placeholder debug log
+    no longer fires for any Standard 14 reference.
     """
     import logging  # noqa: PLC0415
 
@@ -825,12 +826,13 @@ def test_standard14_no_embedded_program_renders_without_warning(
     )
 
 
-def test_standard14_symbol_warns_once_no_liberation_equivalent(
+def test_standard14_symbol_renders_through_dejavu_substitute(
     caplog,
 ) -> None:
-    """Symbol / ZapfDingbats have no Liberation equivalent — the
-    placeholder log still fires (exactly once per font, not per glyph)
-    for these two names.
+    """Wave 1305 — Symbol now resolves through the bundled DejaVu Sans
+    substitute (Bitstream Vera derivative; DejaVu changes in public
+    domain). Rendering must complete without emitting the placeholder-
+    rectangle debug log for the Symbol family.
     """
     import logging  # noqa: PLC0415
 
@@ -851,18 +853,19 @@ def test_standard14_symbol_warns_once_no_liberation_equivalent(
         cs.begin_text()
         cs.set_font(font, 12.0)
         cs.new_line_at_offset(10.0, 50.0)
-        cs.show_text("abc")  # 3 glyphs — should warn ONCE, not 3x
+        cs.show_text("abc")  # Symbol's SymbolEncoding maps these to Greek
         cs.end_text()
 
     caplog.set_level(logging.DEBUG, logger="pypdfbox.rendering.pdf_renderer")
     img = PDFRenderer(doc).render_image(0)
     assert img.size == (200, 100)
+    # DejaVu Sans substitution kicks in — no placeholder log for Symbol.
     standard14_msgs = [
         r
         for r in caplog.records
         if "Standard 14" in r.getMessage() and "Symbol" in r.getMessage()
     ]
-    assert len(standard14_msgs) == 1, (
-        f"expected one Symbol log, got {len(standard14_msgs)}: "
-        f"{[r.getMessage() for r in standard14_msgs]}"
+    assert standard14_msgs == [], (
+        "Symbol should resolve through the bundled DejaVu Sans TTF, "
+        f"not the placeholder log path: {[r.getMessage() for r in standard14_msgs]}"
     )

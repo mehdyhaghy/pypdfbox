@@ -571,12 +571,17 @@ def test_get_substitute_ttf_maps_all_12_proportional_and_mono_families(
 
 
 @pytest.mark.parametrize("canonical", ["Symbol", "ZapfDingbats"])
-def test_get_substitute_ttf_returns_none_for_symbol_and_zapf(
+def test_get_substitute_ttf_returns_dejavu_for_symbol_and_zapf(
     canonical: str,
 ) -> None:
-    """Symbol / ZapfDingbats have no Liberation equivalent — caller must
-    keep using the placeholder rectangle for these two families."""
-    assert Standard14Fonts.get_substitute_ttf(canonical) is None
+    """Wave 1305 — Symbol / ZapfDingbats resolve to the bundled DejaVu
+    Sans substitute (Bitstream Vera derivative; DejaVu changes in public
+    domain). DejaVu Sans carries the full Zapf Dingbats Unicode block
+    and the Greek/math portions of the Adobe Symbol encoding."""
+    ttf = Standard14Fonts.get_substitute_ttf(canonical)
+    assert ttf is not None, f"{canonical} should resolve to a substitute TTF"
+    # Both Symbol and ZapfDingbats share the single DejaVu Sans file.
+    assert ttf.get_name() == "DejaVuSans"
 
 
 def test_get_substitute_ttf_resolves_aliases() -> None:
@@ -618,12 +623,14 @@ def test_get_glyph_path_for_courier_returns_monospace_outline() -> None:
     assert any(cmd[0] == "moveto" for cmd in path)
 
 
-def test_get_glyph_path_for_symbol_returns_empty() -> None:
-    """Symbol stays on the placeholder branch — Liberation has no
-    matching glyph repertoire so we keep returning an empty list."""
-    # Symbol's encoding has no 'A' glyph (it uses 'Alpha' instead);
-    # check a name the Symbol AFM does carry but Liberation does not.
-    assert Standard14Fonts.get_glyph_path("Symbol", "Alpha") == []
+def test_get_glyph_path_for_symbol_returns_outline_after_wave_1305() -> None:
+    """Wave 1305 — Symbol now resolves through the DejaVu Sans substitute.
+    'Alpha' is present by-name in DejaVu Sans, so the path is non-empty
+    (the old "placeholder rectangle" branch is no longer reachable for
+    the canonical Greek/math glyph names)."""
+    path = Standard14Fonts.get_glyph_path("Symbol", "Alpha")
+    assert path
+    assert any(cmd[0] == "moveto" for cmd in path)
 
 
 def test_uni_name_helper_pads_short_hex() -> None:

@@ -110,6 +110,20 @@ class PDRadioButton(PDButton):
             PDAppearanceGenerator().generate(self)
 
     def construct_appearances(self) -> None:
+        """Rebuild widget appearances for this radio button group.
+
+        Wave 1305: like :meth:`PDCheckBox.construct_appearances`, the
+        appearance generator is invoked so every widget kid gets a
+        fresh on/off ``/AP /N`` subdictionary (the on-state draws a
+        filled circle), then the super call syncs each widget's
+        ``/AS`` against the rebuilt appearance dictionary. Mirrors the
+        user-visible contract of upstream's ``AppearanceGeneratorHelper``
+        flow while preserving ``PDButton.constructAppearances``'s
+        state-sync semantics.
+        """
+        from .pd_appearance_generator import PDAppearanceGenerator
+
+        PDAppearanceGenerator().generate(self)
         super().construct_appearances()
 
 

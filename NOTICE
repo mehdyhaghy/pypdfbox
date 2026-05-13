@@ -92,6 +92,33 @@ Liberation Fonts
 
 ----------------------------------------------------------------------
 
+DejaVu Fonts (DejaVu Sans)
+  Bitstream Vera Fonts Copyright (c) 2003 by Bitstream, Inc. All Rights
+  Reserved. Bitstream Vera is a trademark of Bitstream, Inc.
+  Arev Fonts Copyright (c) 2006 by Tavmjong Bah. All Rights Reserved.
+  DejaVu changes are in the public domain.
+
+  pypdfbox bundles ``DejaVuSans.ttf`` under ``pypdfbox/resources/ttf/``
+  as the rendering-time substitute for the two symbolic Standard 14
+  fonts — Symbol and ZapfDingbats (PDF 32000-1:2008 §9.6.2.2) — whose
+  glyph repertoires the Liberation families do not cover. DejaVu Sans
+  provides full coverage of the Zapf Dingbats Unicode block
+  (U+2700-U+27BF) and the Greek-letter / mathematical-operator portions
+  of the Adobe Symbol encoding via the AGL-name → Unicode codepoint
+  fallback in :class:`Standard14Fonts.get_glyph_path`.
+
+  The file is redistributed verbatim from the upstream DejaVu Fonts
+  2.37 release (https://dejavu-fonts.github.io/) under the combined
+  Bitstream Vera Fonts + Arev Fonts + public-domain DejaVu-changes
+  terms. The full license text travels in
+  ``pypdfbox/resources/ttf/LICENSE-DejaVu.txt``. The Bitstream Vera /
+  Tavmjong Bah Reserved Font Name clauses are honoured — pypdfbox
+  redistributes the font unchanged under its existing "DejaVu Sans"
+  name (which contains neither "Bitstream"/"Vera" nor
+  "Tavmjong Bah"/"Arev"); no derivative font is created.
+
+----------------------------------------------------------------------
+
 Runtime dependencies (declared, not bundled — installed by pip from PyPI):
 
   jbig2-parser (Python: jbig2_parser)

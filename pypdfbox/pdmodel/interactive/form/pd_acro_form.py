@@ -580,12 +580,23 @@ class PDAcroForm:
         each. Non-terminal fields are skipped (matches upstream's
         ``instanceof PDTerminalField`` guard).
 
-        Per-``/FT`` appearance construction (text/button/choice/sig) is
-        the responsibility of the field's own
-        :meth:`~PDTerminalField.construct_appearances`; on the lite
-        surface that delegates into :class:`PDAppearanceGenerator` for
-        the implemented field types and is a debug-logged no-op for the
-        rest.
+        Per-``/FT`` coverage on the lite surface:
+
+        * ``/Tx`` text fields — full appearance stream regenerated via
+          :class:`PDAppearanceGenerator` (single-line, multi-line, comb,
+          and ``/Q`` quadding all honoured). Shipped in Wave 1304.
+        * ``/Btn`` buttons — check boxes render the ``/MK /CA`` glyph
+          (default ``b"4"`` heavy check; ``b"8"`` cross supported),
+          radio buttons render a filled circle on the on-state, push
+          buttons render the ``/MK /CA`` caption centered in the rect.
+          Shipped in Wave 1305.
+        * ``/Ch`` choice fields — combo boxes render the selected value
+          as a single text line; list boxes render every option line by
+          line with the ``/I`` / ``/V`` selection highlighted (sky-blue
+          background, white text). Shipped in Wave 1305.
+        * ``/Sig`` signature fields — left as a debug-logged warning;
+          PDFBox itself does not synthesize visible signature
+          appearances (see PDFBOX-3524).
         """
         from .pd_terminal_field import PDTerminalField
 

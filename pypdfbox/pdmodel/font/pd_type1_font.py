@@ -314,14 +314,13 @@ class PDType1Font(PDSimpleFont):
 
         1. Embedded ``/FontFile`` program (the usual Type 1 path) — returns
            the program's outline for the encoding-resolved glyph name.
-        2. **Liberation substitute** for non-embedded Standard 14 fonts —
+        2. **Bundled substitute** for non-embedded Standard 14 fonts —
            when ``/BaseFont`` resolves to one of the 14 canonical
-           PostScript names (Helvetica, Times-Roman, Courier, … families)
-           and the dict ships no font program, fall through to the
-           bundled Liberation TTF outline via
-           :meth:`Standard14Fonts.get_glyph_path`. Symbol / ZapfDingbats
-           have no Liberation equivalent — those return an empty list and
-           the renderer continues to draw the placeholder rectangle.
+           PostScript names (Helvetica, Times-Roman, Courier, … families,
+           plus Symbol / ZapfDingbats) and the dict ships no font program,
+           fall through to the bundled substitute TTF outline via
+           :meth:`Standard14Fonts.get_glyph_path` — Liberation for the
+           Latin branches and DejaVu Sans for Symbol / ZapfDingbats.
 
         Returns an empty list when ``code`` does not resolve to a known
         glyph, or when no outline source is available.

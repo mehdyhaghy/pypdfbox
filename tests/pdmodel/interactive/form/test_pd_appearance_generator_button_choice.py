@@ -227,7 +227,12 @@ def test_push_button_generate_emits_caption_stream() -> None:
     assert isinstance(n, COSStream)
 
 
-def test_push_button_construct_appearances_is_no_op() -> None:
+def test_push_button_construct_appearances_creates_ap() -> None:
+    """Wave 1305: ``PDPushButton.construct_appearances`` now routes
+    through :class:`PDAppearanceGenerator` (upstream is a TODO no-op).
+    The /MK caption / background / border land on /AP /N exactly as for
+    :meth:`PDPushButton.regenerate_appearance`.
+    """
     form = PDAcroForm()
     pb = PDPushButton(form)
     pb.get_cos_object().set_item(_RECT, _rect(0, 0, 100, 30))
@@ -235,7 +240,10 @@ def test_push_button_construct_appearances_is_no_op() -> None:
     pb.construct_appearances()
 
     widget_cos = pb.get_widgets()[0].get_cos_object()
-    assert widget_cos.get_dictionary_object(_AP) is None
+    ap = widget_cos.get_dictionary_object(_AP)
+    assert isinstance(ap, COSDictionary)
+    n = ap.get_dictionary_object(_N)
+    assert isinstance(n, COSStream)
 
 
 # ---------- combo box ----------

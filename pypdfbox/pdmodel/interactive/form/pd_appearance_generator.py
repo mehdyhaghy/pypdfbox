@@ -238,6 +238,37 @@ class PDAppearanceGenerator:
     # PDF 32000-1:2008 Annex D uses code 0x34 ('4') for "a20" check.
     ZAPFDINGBATS_CHECK = b"4"
 
+    # Acrobat-recognised ``/MK /CA`` glyph codes for check-box style
+    # selection. Stored as Python str so callers reading ``/MK /CA`` (which
+    # comes back as a decoded string) can index this map directly. The
+    # corresponding bytes are emitted verbatim into the ZapfDingbats text
+    # operator at render time. PDF 32000-1:2008 Annex D names per code:
+    #
+    #     "4"  → a20  heavy check mark (default / Acrobat checkbox check)
+    #     "5"  → a18  X mark
+    #     "6"  → a22  ballot X
+    #     "7"  → a13  six-pointed star
+    #     "8"  → a17  six-pointed asterisk (Acrobat "cross")
+    #     "u"  → a4   diamond
+    #     "n"  → a6   square
+    #     "l"  → a3   bullet circle
+    #     "H"  → a39  heavy circle
+    #
+    # The map is deliberately a superset of the two codes called out in
+    # Wave 1305's task spec ("4" check / "8" cross) so callers picking
+    # less-common glyph styles still get a valid appearance.
+    MK_CA_GLYPHS: dict[str, bytes] = {
+        "4": b"4",
+        "5": b"5",
+        "6": b"6",
+        "7": b"7",
+        "8": b"8",
+        "u": b"u",
+        "n": b"n",
+        "l": b"l",
+        "H": b"H",
+    }
+
     # /DA font-name aliases mapped to their resolved Standard 14 names.
     # Upstream Acrobat / Reader populate the AcroForm /DR /Font dict with
     # these short keys (``Helv``, ``HeBo``, ``TiRo``, etc.); the lite port
@@ -442,8 +473,14 @@ class PDAppearanceGenerator:
 
             on_state = self._on_state_name_for_widget(widget_cos)
 
+            # Pull the optional ``/MK /CA`` caption — for check boxes this
+            # is a ZapfDingbats glyph code (Acrobat default is "4" =
+            # heavy check, "8" = cross). Radio buttons ignore it (the
+            # on-state always draws a filled circle).
+            glyph_bytes = self._mk_ca_glyph_bytes(widget_cos)
+
             on_stream = self._build_button_on_appearance(
-                width, height, is_radio
+                width, height, is_radio, glyph_bytes
             )
             off_stream = self._build_empty_appearance(width, height)
 
@@ -467,6 +504,29 @@ class PDAppearanceGenerator:
             else:
                 widget_cos.set_item(COSName.get_pdf_name("AS"), _OFF)
 
+    @classmethod
+    def _mk_ca_glyph_bytes(cls, widget_cos: COSDictionary) -> bytes:
+        """Return the ZapfDingbats glyph bytes implied by ``/MK /CA``.
+
+        Falls back to the heavy check mark when ``/MK`` is missing,
+        ``/CA`` is absent, or ``/CA`` carries a glyph code that isn't in
+        :attr:`MK_CA_GLYPHS`. The returned bytes are encoded for
+        emission into a ``( … ) Tj`` operator (single-byte ZapfDingbats
+        codes only — multi-glyph captions land in the push-button path
+        instead).
+        """
+        mk = widget_cos.get_dictionary_object(_MK)
+        if isinstance(mk, COSDictionary):
+            ca = mk.get_string(COSName.get_pdf_name("CA"))
+            # /MK /CA is conventionally a single-glyph code for
+            # checkboxes — only honour the lookup when the caption
+            # matches one of the spec-recognised codes. Multi-char
+            # captions get the default check glyph (they belong on
+            # push buttons, where the caption is rendered as text).
+            if isinstance(ca, str) and len(ca) == 1 and ca in cls.MK_CA_GLYPHS:
+                return cls.MK_CA_GLYPHS[ca]
+        return cls.ZAPFDINGBATS_CHECK
+
     def _on_state_name_for_widget(self, widget_cos: COSDictionary) -> str:
         """Return the on-state name to use for ``widget_cos``.
 
@@ -485,7 +545,11 @@ class PDAppearanceGenerator:
         return "Yes"
 
     def _build_button_on_appearance(
-        self, width: float, height: float, is_radio: bool
+        self,
+        width: float,
+        height: float,
+        is_radio: bool,
+        glyph_bytes: bytes = ZAPFDINGBATS_CHECK,
     ) -> PDAppearanceStream:
         appearance_cos = self._fresh_form_xobject(width, height)
         appearance_stream = PDAppearanceStream(appearance_cos)
@@ -495,7 +559,7 @@ class PDAppearanceGenerator:
             if is_radio:
                 self._draw_radio_dot(cs, width, height)
             else:
-                self._draw_check_glyph(cs, width, height)
+                self._draw_check_glyph(cs, width, height, glyph_bytes)
             cs.restore_graphics_state()
         return appearance_stream
 
@@ -511,12 +575,19 @@ class PDAppearanceGenerator:
         return appearance_stream
 
     def _draw_check_glyph(
-        self, cs: PDAppearanceContentStream, width: float, height: float
+        self,
+        cs: PDAppearanceContentStream,
+        width: float,
+        height: float,
+        glyph_bytes: bytes = ZAPFDINGBATS_CHECK,
     ) -> None:
-        """Draw a ZapfDingbats check mark glyph centered in the widget rect.
+        """Draw a ZapfDingbats glyph centered in the widget rect.
 
         Uses the resource-registered ZapfDingbats font so the encoded
-        bytes ``b"4"`` map to the heavy check glyph (a20) at runtime.
+        ``glyph_bytes`` (typically ``b"4"`` for the heavy check / ``b"8"``
+        for the cross) map to the matching glyph at runtime. Caller picks
+        the byte sequence via :meth:`_mk_ca_glyph_bytes` from the widget's
+        ``/MK /CA`` caption.
         """
         font = PDFontFactory.create_default_font(Standard14Fonts.ZAPF_DINGBATS)
         # Glyph height ~ 0.7 of cap-height; pick a size that fits the rect
@@ -533,7 +604,7 @@ class PDAppearanceGenerator:
         # Pass raw bytes so ``show_text`` emits ``(4) Tj`` verbatim — the
         # ZapfDingbats encoding handles the codepoint -> glyph mapping
         # at render time.
-        cs.show_text(self.ZAPFDINGBATS_CHECK)
+        cs.show_text(glyph_bytes)
         cs.end_text()
 
     def _draw_radio_dot(
@@ -761,20 +832,32 @@ class PDAppearanceGenerator:
                 )
                 cs.fill()
 
-            # Row text.
+            # Row text. Highlighted rows render in white (so the
+            # selection rectangle stays legible); other rows use the
+            # /DA color (or default black). Color is set per row so the
+            # selected/unselected switch happens inside the single BT/ET
+            # block.
+            default_color: tuple[float, ...] = color if color is not None else (0.0,)
+            selected_color: tuple[float, ...] = (1.0, 1.0, 1.0)
             cs.begin_text()
-            if color is not None:
-                cs.set_non_stroking_color(color)
-            else:
-                cs.set_non_stroking_color((0.0,))
+            cs.set_non_stroking_color(default_color)
             cs.set_font(font, resolved_size)
             x = 2.0
             cs.new_line_at_offset(x, top_y)
             first = True
-            for option in visible_options:
+            current_is_selected = False
+            for visible_idx, option in enumerate(visible_options):
                 if not first:
                     cs.new_line_at_offset(0.0, -line_height)
                 first = False
+                option_idx = top_index + visible_idx
+                row_selected = option_idx in highlighted
+                if row_selected and not current_is_selected:
+                    cs.set_non_stroking_color(selected_color)
+                    current_is_selected = True
+                elif not row_selected and current_is_selected:
+                    cs.set_non_stroking_color(default_color)
+                    current_is_selected = False
                 cs.show_text(option)
             cs.end_text()
             cs.restore_graphics_state()

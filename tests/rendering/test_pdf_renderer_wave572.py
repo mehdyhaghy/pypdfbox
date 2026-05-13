@@ -146,32 +146,57 @@ def test_code_to_gid_falls_back_to_unicode_cmap_when_font_methods_fail(
     assert "code_to_gid failed for 65: gid boom" in caplog.text
 
 
-def test_maybe_warn_standard14_only_logs_once(caplog: Any) -> None:
-    """Symbol triggers the once-per-font placeholder log; Helvetica does
-    not (it now resolves through the bundled Liberation TTF). See wave
-    1303 substitution work for context."""
-    class _SymbolFont:
-        def get_name(self) -> str:
-            return "Symbol"
+def test_maybe_warn_standard14_only_logs_once(
+    caplog: Any, monkeypatch: Any,
+) -> None:
+    """Wave 1305 — every Standard 14 name now has a bundled substitute
+    (Liberation for the Latin branches, DejaVu Sans for Symbol /
+    ZapfDingbats), so the placeholder branch is unreachable in normal
+    installs. Force the "no substitute" path by patching
+    :meth:`Standard14Fonts.get_substitute_ttf` so we can exercise the
+    once-per-font de-dup contract."""
+    from pypdfbox.pdmodel.font import standard14_fonts as s14  # noqa: PLC0415
 
-    class _HelveticaFont:
+    class _StubFont:
         def get_name(self) -> str:
             return "Helvetica"
 
+    monkeypatch.setattr(s14.Standard14Fonts, "get_substitute_ttf",
+                        classmethod(lambda cls, _name: None))
+
     doc, renderer = _prepared_renderer()
     try:
-        symbol_font = _SymbolFont()
-        helvetica_font = _HelveticaFont()
+        stub_font = _StubFont()
         caplog.set_level("DEBUG", logger="pypdfbox.rendering.pdf_renderer")
 
-        # Symbol — placeholder branch, exactly one log entry.
-        renderer._maybe_warn_standard14(symbol_font)  # noqa: SLF001
-        renderer._maybe_warn_standard14(symbol_font)  # noqa: SLF001
-        assert caplog.text.count("Symbol is a Standard 14 font") == 1
+        # Placeholder branch fires once per font, never per glyph.
+        renderer._maybe_warn_standard14(stub_font)  # noqa: SLF001
+        renderer._maybe_warn_standard14(stub_font)  # noqa: SLF001
+        assert caplog.text.count("Helvetica is a Standard 14 font") == 1
+    finally:
+        _finish(renderer)
+        doc.close()
 
-        # Helvetica — Liberation substitute available, no log entry.
-        renderer._maybe_warn_standard14(helvetica_font)  # noqa: SLF001
-        assert "Helvetica is a Standard 14 font" not in caplog.text
+
+def test_maybe_warn_standard14_silent_when_substitute_available(
+    caplog: Any,
+) -> None:
+    """All 14 canonical names resolve to a bundled substitute after
+    Wave 1305 — none should trigger the placeholder log under default
+    install conditions."""
+    class _Font:
+        def __init__(self, name: str) -> None:
+            self._name = name
+
+        def get_name(self) -> str:
+            return self._name
+
+    doc, renderer = _prepared_renderer()
+    try:
+        caplog.set_level("DEBUG", logger="pypdfbox.rendering.pdf_renderer")
+        for name in ("Helvetica", "Symbol", "ZapfDingbats", "Courier"):
+            renderer._maybe_warn_standard14(_Font(name))  # noqa: SLF001
+            assert f"{name} is a Standard 14 font" not in caplog.text
     finally:
         _finish(renderer)
         doc.close()

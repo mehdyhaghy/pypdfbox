@@ -4475,14 +4475,16 @@ class PDFRenderer(PDFStreamEngine):
         return width
 
     def _maybe_warn_standard14(self, font: Any) -> None:
-        """Emit a one-time debug log for Standard 14 fonts that even
-        Liberation substitution can't cover (Symbol / ZapfDingbats).
+        """Emit a one-time debug log for Standard 14 fonts with no bundled
+        substitute available.
 
-        Helvetica / Times-Roman / Courier families now resolve through
-        the bundled Liberation TTFs in :mod:`pypdfbox.resources.ttf` (see
-        :meth:`Standard14Fonts.get_substitute_ttf`), so the placeholder
-        rectangle only ever fires for the two symbolic Standard 14 names
-        — those are the cases the log keeps flagging.
+        All 14 canonical Standard PostScript names now resolve through a
+        bundled substitute (Liberation for the Helvetica / Times-Roman /
+        Courier branches, DejaVu Sans for Symbol / ZapfDingbats — see
+        :meth:`Standard14Fonts.get_substitute_ttf`), so reaching this
+        branch indicates either a substitute resource missing from the
+        installed package or a Type 1 draw path that bypassed the
+        upstream-symmetric outline branch — both worth a debug breadcrumb.
         """
         key = id(font)
         if key in self._warned_standard14_fonts:
@@ -4497,19 +4499,17 @@ class PDFRenderer(PDFStreamEngine):
             return
         if base_font is None or not Standard14Fonts.contains_name(base_font):
             return
-        # When a Liberation substitute exists, this draw path is a bug —
-        # the Type 1 branch above should have caught it. Skip the warn so
-        # we don't generate noise for the Helvetica/Times/Courier
-        # families; only Symbol / ZapfDingbats still legitimately fall
-        # through here.
+        # When a substitute exists, this draw path is a bug — the Type 1
+        # branch above should have caught it. Skip the warn so we don't
+        # generate noise for any well-mapped Standard 14 name.
         if Standard14Fonts.get_substitute_ttf(base_font) is not None:
             return
         self._warned_standard14_fonts.add(key)
         _log.debug(
-            "rendering: %s is a Standard 14 font with no Liberation "
+            "rendering: %s is a Standard 14 font with no bundled "
             "substitute available; using placeholder rectangle "
-            "(Symbol / ZapfDingbats have no metric-compatible "
-            "Liberation equivalent — see CHANGES.md)",
+            "(unexpected after Wave 1305 — substitute TTF resource "
+            "may be missing from the installed package)",
             base_font,
         )
 

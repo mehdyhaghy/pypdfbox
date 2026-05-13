@@ -83,13 +83,47 @@ def test_show_string_handles_zero_consumed_code_and_spacing(monkeypatch: Any) ->
         doc.close()
 
 
-def test_standard14_placeholder_warning_is_once_per_font(caplog: Any) -> None:
-    """Symbol / ZapfDingbats have no Liberation substitute — the
-    placeholder log fires exactly once per font, never per glyph.
+def test_standard14_placeholder_warning_fires_when_substitute_missing(
+    caplog: Any, monkeypatch: Any,
+) -> None:
+    """Wave 1305 — every Standard 14 name now has a bundled substitute,
+    so the placeholder-warn path is unreachable in normal installs. The
+    branch still exists as a safety net for installs where the
+    substitute TTF resource has been stripped; simulate that here by
+    patching ``Standard14Fonts.get_substitute_ttf`` to return ``None``
+    and assert the warn fires exactly once per font (never per glyph).
+    """
+    from pypdfbox.pdmodel.font import standard14_fonts as s14
 
-    Wave 1303 swapped the Helvetica / Times / Courier branch over to
-    bundled Liberation TTFs, so only the two symbolic Standard 14 names
-    still travel through the placeholder-warn path.
+    class _Font:
+        def get_name(self) -> str:
+            return "Helvetica"
+
+    monkeypatch.setattr(s14.Standard14Fonts, "get_substitute_ttf",
+                        classmethod(lambda cls, _name: None))
+
+    doc, renderer = _prepared_renderer()
+    font = _Font()
+    try:
+        caplog.set_level(logging.DEBUG, logger="pypdfbox.rendering.pdf_renderer")
+
+        renderer._maybe_warn_standard14(font)  # noqa: SLF001
+        renderer._maybe_warn_standard14(font)  # noqa: SLF001
+
+        assert caplog.text.count("Helvetica is a Standard 14 font") == 1
+        assert id(font) in renderer._warned_standard14_fonts  # noqa: SLF001
+    finally:
+        _finish(renderer)
+        doc.close()
+
+
+def test_standard14_warn_suppressed_for_symbol_after_dejavu_substitute(
+    caplog: Any,
+) -> None:
+    """Wave 1305 — Symbol now resolves through the bundled DejaVu Sans
+    substitute, so the placeholder log no longer fires for it. (Same
+    suppression branch that already covered Helvetica / Times / Courier
+    via Liberation since Wave 1303.)
     """
     class _Font:
         def get_name(self) -> str:
@@ -103,8 +137,8 @@ def test_standard14_placeholder_warning_is_once_per_font(caplog: Any) -> None:
         renderer._maybe_warn_standard14(font)  # noqa: SLF001
         renderer._maybe_warn_standard14(font)  # noqa: SLF001
 
-        assert caplog.text.count("Symbol is a Standard 14 font") == 1
-        assert id(font) in renderer._warned_standard14_fonts  # noqa: SLF001
+        assert "Symbol is a Standard 14 font" not in caplog.text
+        assert id(font) not in renderer._warned_standard14_fonts  # noqa: SLF001
     finally:
         _finish(renderer)
         doc.close()

@@ -157,16 +157,27 @@ _AVG_WIDTHS_CACHE: dict[str, list[float]] = {}
 _GENERIC_FONTS_CACHE: dict[str, Standard14FontWrapper] = {}
 
 
-# Canonical Standard-14 name -> bundled Liberation TTF basename. The
+# Canonical Standard-14 name -> bundled substitute-TTF basename. The
 # Liberation families are metric-compatible with Arial / Times New Roman /
 # Courier New (themselves metric-compatible with the Adobe core fonts) so
 # the SIL-OFL Liberation set is the de-facto substitution target for any
-# Standard-14 reference shipped without a font program. Symbol and
-# ZapfDingbats have no Liberation equivalent — callers continue through
-# the placeholder-rectangle path for those.
+# Standard-14 reference shipped without a font program (Helvetica / Times /
+# Courier branches).
+#
+# Symbol and ZapfDingbats have no Liberation equivalent — Liberation
+# carries no symbolic or dingbat glyph repertoire. For those two names we
+# fall back to **DejaVu Sans** (Bitstream Vera derivative; original
+# Bitstream Vera Fonts terms + DejaVu changes in public domain — both
+# permissive enough to bundle under Apache 2.0). DejaVu Sans provides full
+# 100% coverage of the Zapf Dingbats glyph set (U+2700-U+27BF) and ~84%
+# of the Adobe Symbol glyph set (158 / 189 named glyphs); the missing
+# Symbol entries are PUA-encoded bracket-extending pieces / serif-style
+# variants whose absence is visually inconsequential — the core Greek and
+# mathematical glyphs all render correctly.
 #
 # Files live in :mod:`pypdfbox.resources.ttf` (see ``NOTICE`` /
-# ``PROVENANCE.md`` for the upstream SIL-OFL attribution chain).
+# ``PROVENANCE.md`` for the upstream SIL-OFL / Bitstream-Vera attribution
+# chains).
 _LIBERATION_TTF_NAMES: dict[str, str] = {
     "Helvetica": "LiberationSans-Regular.ttf",
     "Helvetica-Bold": "LiberationSans-Bold.ttf",
@@ -180,25 +191,30 @@ _LIBERATION_TTF_NAMES: dict[str, str] = {
     "Courier-Bold": "LiberationMono-Bold.ttf",
     "Courier-Oblique": "LiberationMono-Italic.ttf",
     "Courier-BoldOblique": "LiberationMono-BoldItalic.ttf",
-    # Symbol / ZapfDingbats deliberately absent — the Liberation families
-    # carry no symbol or dingbats glyph repertoire, so substitution would
-    # be visibly wrong. Callers keep using the placeholder rectangle for
-    # these two names (CHANGES.md flags this remaining gap).
+    # Symbol / ZapfDingbats — DejaVu Sans substitute (Bitstream Vera
+    # derivative; DejaVu changes in public domain). DejaVu Sans covers
+    # the entire Zapf Dingbats Unicode block and the Greek-letter / math-
+    # operator portions of the Adobe Symbol encoding via the
+    # AGL-name → Unicode codepoint fallback already implemented in
+    # :meth:`Standard14Fonts.get_glyph_path` (the same path the Liberation
+    # branch uses for non-Latin glyphs).
+    "Symbol": "DejaVuSans.ttf",
+    "ZapfDingbats": "DejaVuSans.ttf",
 }
 
 
-# Per-canonical-name cache for the parsed Liberation substitute. Parsing a
-# TTF allocates the entire fontTools ``TTFont`` object graph and walks the
+# Per-canonical-name cache for the parsed substitute. Parsing a TTF
+# allocates the entire fontTools ``TTFont`` object graph and walks the
 # SFNT directory; we eat that cost once per font for the lifetime of the
-# process. ``False`` marks "tried, no substitute available" (Symbol /
-# ZapfDingbats path, or bundled resource missing).
+# process. ``False`` marks "tried, no substitute available" (bundled
+# resource missing for an unmapped canonical name).
 _LIBERATION_TTF_CACHE: dict[str, TrueTypeFont | bool] = {}
 
 
 def _ttf_glyph_path(
     ttf: TrueTypeFont, glyph_name: str
 ) -> list[tuple[Any, ...]]:
-    """Walk the Liberation substitute's outline for ``glyph_name``.
+    """Walk the substitute font's outline for ``glyph_name``.
 
     Returns ``[]`` when the substitute carries no glyph by that PostScript
     name. The returned commands are 7-tuples in the same shape produced by
@@ -219,7 +235,7 @@ def _ttf_glyph_path(
 def _ttf_glyph_path_for_code_point(
     ttf: TrueTypeFont, code_point: int
 ) -> list[tuple[Any, ...]]:
-    """Walk the Liberation substitute's outline for the Unicode codepoint.
+    """Walk the substitute font's outline for the Unicode codepoint.
 
     Mirrors the upstream "AGL miss → re-probe via Unicode" fallback in
     :meth:`Standard14Fonts.get_glyph_path`. Returns ``[]`` when the
@@ -243,8 +259,13 @@ def _ttf_glyph_path_for_gid(
     """Walk the TTF glyph outline at ``gid`` into PDFBox-shape commands.
 
     Uses fontTools' pen protocol (the same path the renderer uses for
-    embedded ``/FontFile2`` glyphs). Returns an empty list when the
-    glyph carries no contours or when the pen raises mid-walk.
+    embedded ``/FontFile2`` glyphs). Composite glyphs are flattened by
+    routing through a :class:`DecomposingPen` adapter so ``addComponent``
+    references (used widely in DejaVu Sans — every Greek capital like
+    ``Alpha`` / ``Beta`` is a composite over the Latin letter) end up
+    as concrete ``moveTo`` / ``lineTo`` / ``qCurveTo`` commands.
+    Returns an empty list when the glyph carries no contours or when
+    the pen raises mid-walk.
     """
     try:
         glyph_set = ttf._tt.getGlyphSet()  # noqa: SLF001
@@ -252,12 +273,78 @@ def _ttf_glyph_path_for_gid(
         glyph = glyph_set[glyph_name]
     except Exception:  # noqa: BLE001
         return []
-    pen = _CommandRecordingPen()
+    inner = _CommandRecordingPen()
+    pen = _DecomposingCommandPen(glyph_set, inner)
     try:
         glyph.draw(pen)
     except Exception:  # noqa: BLE001
         return []
-    return pen.commands
+    return inner.commands
+
+
+class _DecomposingCommandPen:
+    """Resolve composite ``addComponent`` references against ``glyph_set``
+    and forward the flat segments to an inner :class:`_CommandRecordingPen`.
+
+    Mirrors fontTools' :class:`DecomposingPen` contract — composite TTF
+    glyphs (every Greek capital in DejaVu Sans, plus many math symbols)
+    only emit through ``addComponent``; without flattening, our recording
+    pen never sees the underlying outline and the path comes back empty.
+    """
+
+    __slots__ = ("_glyph_set", "_inner")
+
+    def __init__(
+        self, glyph_set: Any, inner: _CommandRecordingPen
+    ) -> None:
+        self._glyph_set = glyph_set
+        self._inner = inner
+
+    def moveTo(self, pt: tuple[float, float]) -> None:  # noqa: N802
+        self._inner.moveTo(pt)
+
+    def lineTo(self, pt: tuple[float, float]) -> None:  # noqa: N802
+        self._inner.lineTo(pt)
+
+    def curveTo(  # noqa: N802
+        self, *points: tuple[float, float]
+    ) -> None:
+        self._inner.curveTo(*points)
+
+    def qCurveTo(  # noqa: N802
+        self, *points: tuple[float, float] | None
+    ) -> None:
+        self._inner.qCurveTo(*points)
+
+    def closePath(self) -> None:  # noqa: N802
+        self._inner.closePath()
+
+    def endPath(self) -> None:  # noqa: N802
+        self._inner.endPath()
+
+    def addComponent(  # noqa: N802
+        self,
+        glyphName: str,  # noqa: N803
+        transformation: tuple[float, float, float, float, float, float],
+    ) -> None:
+        # Resolve the referenced component, transform its outline, and
+        # forward the flat segments to the inner pen. Mirrors fontTools'
+        # ``DecomposingPen.addComponent`` body (which we can't subclass
+        # directly because our recording pen has its own moveTo/lineTo
+        # contract — fontTools' :class:`AbstractPen` API is just a list
+        # of well-named callbacks).
+        try:
+            component = self._glyph_set[glyphName]
+        except KeyError:
+            return
+        # Build a transforming pen that applies the affine on the way to
+        # the inner recorder.
+        from fontTools.pens.transformPen import TransformPen  # noqa: PLC0415
+
+        try:
+            component.draw(TransformPen(self, transformation))
+        except Exception:  # noqa: BLE001
+            return
 
 
 class _CommandRecordingPen:
@@ -362,22 +449,22 @@ class _CommandRecordingPen:
 
 
 def _load_substitution_ttf(canonical: str) -> TrueTypeFont | None:
-    """Return the bundled Liberation :class:`TrueTypeFont` substitute for the
-    named Standard-14 canonical font, or ``None`` when none is mapped (or
-    the bundled resource fails to load).
+    """Return the bundled :class:`TrueTypeFont` substitute for the named
+    Standard-14 canonical font, or ``None`` when no substitute is mapped
+    (or the bundled resource fails to load).
 
     Mirrors the spirit of upstream's
     ``FontMapperImpl.getTrueTypeFont(Standard14Fonts.FontName.*)`` chain
     which, in PDFBox, reaches for the Liberation TTFs shipped under
     ``org/apache/pdfbox/resources/ttf/`` — pypdfbox carries the same
     Liberation set under :mod:`pypdfbox.resources.ttf` (SIL OFL 1.1, see
-    ``NOTICE`` and :file:`pypdfbox/resources/ttf/LICENSE.txt`).
+    ``NOTICE`` and :file:`pypdfbox/resources/ttf/LICENSE.txt`) plus a
+    bundled DejaVu Sans (Bitstream Vera derivative; DejaVu changes in
+    public domain) used for the two symbolic Standard 14 names
+    (Symbol / ZapfDingbats) which Liberation has no equivalent for.
 
     The parsed font is cached per canonical name and reused on every
-    subsequent call. Symbol / ZapfDingbats return ``None`` — Liberation
-    has no symbol or dingbats coverage so substitution would be visibly
-    wrong (renderers continue to draw the placeholder rectangle for
-    those families).
+    subsequent call.
     """
     cached = _LIBERATION_TTF_CACHE.get(canonical)
     if cached is not None:
@@ -863,8 +950,8 @@ class Standard14Fonts:
 
     @classmethod
     def get_substitute_ttf(cls, base_name: str) -> TrueTypeFont | None:
-        """Return the parsed Liberation TTF substitute for the named font,
-        or ``None`` when none is mapped (Symbol / ZapfDingbats / unknown).
+        """Return the parsed substitute TTF for the named font, or ``None``
+        when no substitute is mapped or the bundled resource fails to load.
 
         pypdfbox extension — upstream PDFBox ships only
         ``LiberationSans-Regular.ttf`` in
@@ -874,12 +961,14 @@ class Standard14Fonts:
         (Sans/Serif/Mono × Regular/Bold/Italic/BoldItalic) under
         :mod:`pypdfbox.resources.ttf` so the Helvetica / Times-Roman /
         Courier families all get metric-compatible glyph outlines without
-        any system-font scanning.
+        any system-font scanning. The two symbolic Standard 14 names
+        (Symbol / ZapfDingbats) — for which Liberation has no equivalent —
+        resolve to a bundled **DejaVu Sans** (Bitstream Vera derivative;
+        DejaVu changes in public domain) which provides full Zapf Dingbats
+        Unicode-block coverage and the bulk of the Adobe Symbol glyph set.
 
-        Aliases (``Arial``, ``TimesNewRoman``, ``CourierNew``, …) are
-        normalised on the input. Symbol / ZapfDingbats return ``None`` —
-        Liberation has no symbol or dingbats coverage so substitution
-        would be visibly wrong.
+        Aliases (``Arial``, ``TimesNewRoman``, ``CourierNew``,
+        ``Symbol,Bold``, …) are normalised on the input.
         """
         canonical = cls.get_mapped_font_name(base_name)
         if canonical is None:
@@ -916,17 +1005,19 @@ class Standard14Fonts:
             mapped_font = cls.get_mapped_font(base_name)
         except ValueError:
             return []
-        # Preferred outline source — the bundled Liberation TTF when one is
-        # mapped for this canonical name. Standard14FontWrapper.get_path
-        # always returns ``[]`` (AFMs ship no outlines), so without this
-        # branch a Standard-14 reference with no embedded program would
-        # always fall through to the placeholder rectangle in the renderer.
+        # Preferred outline source — the bundled substitute TTF when one
+        # is mapped for this canonical name (Liberation for the Helvetica
+        # / Times / Courier branches, DejaVu Sans for the symbolic Symbol
+        # / ZapfDingbats branch). Standard14FontWrapper.get_path always
+        # returns ``[]`` (AFMs ship no outlines), so without this branch a
+        # Standard-14 reference with no embedded program would always
+        # fall through to the placeholder rectangle in the renderer.
         substitute_ttf = cls.get_substitute_ttf(base_name)
         if substitute_ttf is not None:
             path = _ttf_glyph_path(substitute_ttf, glyph_name)
             if path:
                 return path
-            # AGL / ZapfDingbats fallback through the Liberation cmap.
+            # AGL / ZapfDingbats fallback through the substitute's cmap.
             unicodes = cls.get_glyph_list(base_name).to_unicode(glyph_name)
             if unicodes is not None and len(unicodes) == 1:
                 code_point = ord(unicodes)

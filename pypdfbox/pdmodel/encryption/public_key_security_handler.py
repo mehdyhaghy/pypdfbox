@@ -192,10 +192,14 @@ class PublicKeySecurityHandler(SecurityHandler):
         Per PDF 32000-1 §7.6.5:
 
         1. Generate a 20-byte cryptographically random seed.
-        2. For each recipient, build a per-recipient blob = seed (20 bytes) ||
-           permissions (4 bytes, big-endian) and wrap it in a one-recipient
-           PKCS#7 envelope using AES-128 (V=4) or AES-256 (V=5) content
-           encryption. The envelope is serialised as DER bytes.
+        2. Group recipients by their 4-byte public-key permission mask. The
+           spec calls for ONE envelope per *distinct permission set* — a
+           multi-recipient envelope when several recipients share the same
+           permissions, and separate envelopes when they diverge. The per
+           -recipient blob in each envelope is ``seed (20 bytes) ||
+           permissions (4 bytes, big-endian)``, wrapped in PKCS#7 using
+           AES-128 (V=4) or AES-256 (V=5) content encryption and serialised
+           as DER bytes.
         3. Stash the envelopes on ``/Encrypt /Recipients`` and write the
            companion fields ``/Filter``, ``/SubFilter``, ``/V``, ``/R``,
            ``/Length``, ``/CF /DefaultCryptFilter``, ``/StmF``, ``/StrF``.
@@ -256,10 +260,17 @@ class PublicKeySecurityHandler(SecurityHandler):
 
         seed = os.urandom(_SEED_LENGTH)
 
-        envelopes: list[bytes] = []
+        # Group recipients by their public-key permission mask per PDF
+        # 32000-1 §7.6.5. Recipients that share permissions ride a single
+        # multi-recipient envelope; distinct permission sets each get their
+        # own envelope. The mask order is preserved by first-appearance so
+        # the on-disk /Recipients array stays deterministic across runs and
+        # matches policy author intent (the file-key digest then hashes
+        # envelopes in that same order).
+        permission_mask_to_recipients: dict[int, list[PublicKeyRecipient]] = {}
+        mask_order: list[int] = []
         for recipient in recipients:
-            cert = recipient.get_x509()
-            if cert is None:
+            if recipient.get_x509() is None:
                 raise ValueError(
                     "PublicKeyRecipient is missing its X.509 certificate"
                 )
@@ -273,11 +284,20 @@ class PublicKeySecurityHandler(SecurityHandler):
             perms_int = (
                 permission_obj.get_permission_bytes() & 0xFFFFFFFF
             )
+            if perms_int not in permission_mask_to_recipients:
+                permission_mask_to_recipients[perms_int] = []
+                mask_order.append(perms_int)
+            permission_mask_to_recipients[perms_int].append(recipient)
+
+        envelopes: list[bytes] = []
+        for perms_int in mask_order:
+            group = permission_mask_to_recipients[perms_int]
             blob = seed + perms_int.to_bytes(4, "big")
 
             builder = pkcs7.PKCS7EnvelopeBuilder()
             builder = builder.set_data(blob)
-            builder = builder.add_recipient(cert)
+            for recipient in group:
+                builder = builder.add_recipient(recipient.get_x509())
             builder = builder.set_content_encryption_algorithm(content_alg)
             envelope_der = builder.encrypt(
                 serialization.Encoding.DER,
