@@ -309,3 +309,83 @@ def test_get_index_of_child_for_dict_with_non_map_entry() -> None:
     model = PDFTreeModel()
     # A non-MapEntry child resolves to -1.
     assert model.get_index_of_child(d, COSInteger.get(1)) == -1
+
+
+# --- additional branches for parity coverage ------------------------------
+
+
+def test_get_index_of_child_for_cos_array_with_raw_child() -> None:
+    """When the child isn't an ArrayEntry, the model delegates to
+    ``COSArray.index_of``."""
+    arr = COSArray()
+    target = COSInteger.get(7)
+    arr.add(COSInteger.get(1))
+    arr.add(target)
+    model = PDFTreeModel()
+    # ``target`` is a raw COSBase, not an ArrayEntry → exercises line 125.
+    assert model.get_index_of_child(arr, target) == 1
+
+
+def test_get_index_of_child_for_dict_with_unknown_key_returns_minus_one() -> None:
+    """When the MapEntry key isn't in the dict, the search returns -1."""
+    d = COSDictionary()
+    d.set_item(COSName.get_pdf_name("A"), COSInteger.get(1))
+    model = PDFTreeModel()
+    foreign = MapEntry()
+    foreign.set_key(COSName.get_pdf_name("Z"))
+    foreign.set_value(COSInteger.get(99))
+    # /Z is not in the parent → the keys-loop falls off the end → -1.
+    assert model.get_index_of_child(d, foreign) == -1
+
+
+def test_get_index_of_child_through_map_entry_delegates_to_value() -> None:
+    """A MapEntry-wrapped parent delegates the index lookup to its value."""
+    inner = COSArray()
+    target = COSInteger.get(42)
+    inner.add(target)
+    me = MapEntry()
+    me.set_key(COSName.get_pdf_name("Wrap"))
+    me.set_value(inner)
+    model = PDFTreeModel()
+    assert model.get_index_of_child(me, target) == 0
+
+
+def test_get_index_of_child_through_array_entry_delegates_to_value() -> None:
+    """An ArrayEntry-wrapped parent delegates the index lookup to its value."""
+    inner = COSArray()
+    target = COSInteger.get(42)
+    inner.add(target)
+    ae = ArrayEntry()
+    ae.set_value(inner)
+    model = PDFTreeModel()
+    assert model.get_index_of_child(ae, target) == 0
+
+
+def _build_xref_entries_with_entry() -> XrefEntries:
+    """Construct a working ``XrefEntries`` with at least one row."""
+    from pypdfbox.cos import COSInteger as _CI
+    from pypdfbox.cos import COSObjectKey
+    from pypdfbox.pdmodel import PDDocument as _PDDocument
+
+    doc = _PDDocument()
+    cos_doc = doc.get_document()
+    key = COSObjectKey(99, 0)
+    cos_doc.add_xref_table({key: 1234})
+    # Populate the object pool so XrefEntries.get_xref_entry returns a wrapped value.
+    cos_doc.get_object_from_pool(key).set_object(_CI.get(7))
+    return XrefEntries(doc)
+
+
+def test_xref_entries_get_child_and_index_of_child_branches() -> None:
+    """Exercise the XrefEntries / XrefEntry branches in get_child &
+    get_index_of_child & get_child_count."""
+    xrefs = _build_xref_entries_with_entry()
+    model = PDFTreeModel(xrefs)
+    assert model.get_child_count(xrefs) == 1
+    xe = model.get_child(xrefs, 0)
+    # get_index_of_child for XrefEntries reads the child's own index.
+    assert model.get_index_of_child(xrefs, xe) == 0
+    # XrefEntry as parent: child count is always 1, index is always 0.
+    assert model.get_child_count(xe) == 1
+    inner_child = model.get_child(xe, 0)
+    assert model.get_index_of_child(xe, inner_child) == 0

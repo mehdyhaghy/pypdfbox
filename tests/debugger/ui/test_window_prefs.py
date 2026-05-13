@@ -192,3 +192,65 @@ def test_default_prefs_path_on_windows_no_appdata(monkeypatch) -> None:
     path = window_prefs._default_prefs_path()  # noqa: SLF001
     assert path.name == "debugger.json"
     assert "pypdfbox" in path.parts
+
+
+def test_load_handles_oserror(monkeypatch, tmp_path: Path) -> None:
+    """A non-FileNotFoundError ``OSError`` on read should yield defaults
+    without raising."""
+    path = tmp_path / "exists.json"
+    path.write_text('{"x": {"y": {}}}', encoding="utf-8")
+
+    orig_read_text = Path.read_text
+
+    def boom(self: Path, *args: object, **kwargs: object) -> str:
+        if self == path:
+            raise PermissionError("locked")
+        return orig_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", boom)
+    prefs = WindowPrefs("test", path=path)
+    # ``_data`` should default to empty on read failure.
+    assert prefs.get_extended_state() == 0
+
+
+def test_save_handles_mkdir_oserror(monkeypatch, tmp_path: Path) -> None:
+    """If creating the parent directory fails, ``_save`` swallows the error
+    and silently no-ops."""
+    target_dir = tmp_path / "no-perms"
+    target = target_dir / "prefs.json"
+
+    orig_mkdir = Path.mkdir
+
+    def boom(
+        self: Path,
+        *args: object,
+        **kwargs: object,
+    ) -> None:
+        if self == target_dir:
+            raise PermissionError("read-only")
+        orig_mkdir(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", boom)
+
+    prefs = WindowPrefs("test", path=target)
+    # Should not raise even though the parent dir creation will fail.
+    prefs.set_bounds((1, 2, 3, 4))
+    # And the file should not have been written.
+    assert not target.exists()
+
+
+def test_save_handles_write_oserror(monkeypatch, tmp_path: Path) -> None:
+    """If writing the file fails, ``_save`` swallows the error silently."""
+    target = tmp_path / "prefs.json"
+    prefs = WindowPrefs("test", path=target)
+
+    orig_write_text = Path.write_text
+
+    def boom(self: Path, *args: object, **kwargs: object) -> int:
+        if self == target:
+            raise PermissionError("locked file")
+        return orig_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", boom)
+    # Should not raise.
+    prefs.set_bounds((9, 9, 9, 9))

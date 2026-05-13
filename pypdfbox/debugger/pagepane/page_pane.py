@@ -555,3 +555,95 @@ def _resolve_allow_subsampling() -> bool:
         return bool(getter())
     except Exception:  # noqa: BLE001
         return False
+
+
+class RenderWorker:
+    """Synchronous port of ``PagePane.RenderWorker`` (PDFBox 3.0).
+
+    Upstream extends ``SwingWorker<BufferedImage, Integer>`` and runs the
+    page render off the EDT, calling ``label.setIcon(...)`` from
+    :meth:`done` when finished. Tkinter has no equivalent worker idiom in
+    the stdlib (and PIL rendering is fast enough for an interactive
+    debugger that the cost of an extra thread isn't worth the safety
+    hazard), so this port runs synchronously.
+
+    Surface kept compatible: :meth:`do_in_background` returns the
+    rendered PIL image (after debug overlays and rotation); :meth:`done`
+    presents it on the host pane's canvas. Call :meth:`execute` for the
+    upstream all-in-one entry point. The worker holds a back-reference to
+    its owning :class:`PagePane` so callbacks land on the right canvas.
+
+    Behavioural deviation from upstream is documented in CHANGES.md
+    (no background thread).
+    """
+
+    def __init__(self, page_pane: PagePane) -> None:
+        self._page_pane = page_pane
+        self._result: PilImage | None = None
+
+    # ------------------------------------------------------------------
+    # Public lifecycle
+    # ------------------------------------------------------------------
+
+    def execute(self) -> PilImage | None:
+        """Run the worker end-to-end and return the rendered image.
+
+        Mirrors ``SwingWorker.execute()`` — the upstream chain is
+        ``execute() -> doInBackground() -> done()``.
+        """
+        try:
+            image = self.do_in_background()
+        except (OSError, RuntimeError, ImportError) as exc:
+            _LOG.error("page render failed: %s", exc)
+            self._result = None
+            return None
+        self._result = image
+        self.done()
+        return image
+
+    def do_in_background(self) -> PilImage:
+        """Render the page (plus overlays and rotation) and return the image.
+
+        Mirrors the upstream protected method of the same name. Pulls
+        zoom / image-type / rotation through the same singletons as
+        :meth:`PagePane._start_rendering` so an out-of-band caller (e.g.
+        a test) gets identical output.
+        """
+        pp = self._page_pane
+        # Reuse the existing render pipeline so behaviour stays in lock
+        # step with PagePane's inline path. The intermediate steps
+        # mirror upstream's RenderWorker.doInBackground line-for-line:
+        #   renderImage → DebugTextOverlay overlay → ImageUtil rotation.
+        image = pp._render_image()  # noqa: SLF001 - same-module helper
+        pp._draw_debug_overlays(image)  # noqa: SLF001
+        rotation = _resolve_rotation()
+        if rotation:
+            try:
+                from pypdfbox.debugger.ui.image_util import (  # noqa: PLC0415
+                    ImageUtil,
+                )
+
+                image = ImageUtil.get_rotated_image(image, rotation)
+            except (ImportError, ValueError):
+                pass
+        return image
+
+    def done(self) -> None:
+        """Hand off the rendered image to the host pane.
+
+        Mirrors the upstream protected method. ``do_in_background`` /
+        ``execute`` must have produced :attr:`_result` first; ``None``
+        defers to the pane's existing canvas state.
+        """
+        if self._result is None:
+            return
+        self._page_pane._present_image(self._result)  # noqa: SLF001
+
+    def get(self) -> PilImage | None:
+        """Return the most recently produced image.
+
+        Mirrors ``SwingWorker.get()`` (modulo the checked
+        ``InterruptedException`` / ``ExecutionException`` semantics, which
+        don't apply to a synchronous port).
+        """
+        return self._result

@@ -153,3 +153,75 @@ def test_get_stream_catches_oserror_and_returns_none() -> None:
     stream = Stream(cos, is_thumb=False)
     # ``DECODED`` triggers ``create_input_stream`` which raises OSError.
     assert stream.get_stream(Stream.DECODED) is None
+
+
+def test_get_image_for_thumb_routes_to_create_thumbnail(monkeypatch) -> None:
+    """For a stream flagged as a thumb, ``get_image`` builds the image via
+    :meth:`PDImageXObject.create_thumbnail` rather than the regular ctor."""
+    from pypdfbox.pdmodel.graphics.image import pd_image_x_object
+
+    captured: list[str] = []
+
+    class _FakeImage:
+        def get_image(self) -> str:
+            return "thumb-image"
+
+    def fake_create_thumbnail(_cos: COSStream) -> _FakeImage:
+        captured.append("thumb")
+        return _FakeImage()
+
+    monkeypatch.setattr(
+        pd_image_x_object.PDImageXObject, "create_thumbnail", fake_create_thumbnail
+    )
+
+    cos = COSStream()
+    cos.set_data(b"img-bytes")
+    stream = Stream(cos, is_thumb=True)
+    result = stream.get_image(None)
+    assert result == "thumb-image"
+    assert captured == ["thumb"]
+
+
+def test_get_image_swallows_generic_exception(monkeypatch) -> None:
+    """A non-``OSError`` exception during decode is logged and swallowed,
+    yielding ``None``."""
+    from pypdfbox.pdmodel.graphics.image import pd_image_x_object
+
+    class _Boom:
+        def get_image(self) -> None:
+            raise RuntimeError("decode failed")
+
+    monkeypatch.setattr(
+        pd_image_x_object,
+        "PDImageXObject",
+        lambda *_args, **_kwargs: _Boom(),
+    )
+
+    cos = COSStream()
+    cos.set_item("Type", COSName.get_pdf_name("XObject"))
+    cos.set_item("Subtype", COSName.get_pdf_name("Image"))
+    cos.set_data(b"img-bytes")
+    stream = Stream(cos, is_thumb=False)
+    assert stream.get_image(None) is None
+
+
+def test_get_image_swallows_oserror(monkeypatch) -> None:
+    """An ``OSError`` during decode is logged and swallowed → ``None``."""
+    from pypdfbox.pdmodel.graphics.image import pd_image_x_object
+
+    class _BoomIO:
+        def get_image(self) -> None:
+            raise OSError("io error")
+
+    monkeypatch.setattr(
+        pd_image_x_object,
+        "PDImageXObject",
+        lambda *_args, **_kwargs: _BoomIO(),
+    )
+
+    cos = COSStream()
+    cos.set_item("Type", COSName.get_pdf_name("XObject"))
+    cos.set_item("Subtype", COSName.get_pdf_name("Image"))
+    cos.set_data(b"img-bytes")
+    stream = Stream(cos, is_thumb=False)
+    assert stream.get_image(None) is None

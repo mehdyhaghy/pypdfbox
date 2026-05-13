@@ -1368,4 +1368,93 @@ def _read_stream_bytes(stream: COSStream, *, raw: bool = False) -> bytes:
         return b""
 
 
-__all__ = ["PDFDebugger"]
+class DocumentOpener:
+    """Helper that retries :class:`PDDocument.load` after a password prompt.
+
+    Port of the abstract inner class
+    ``org.apache.pdfbox.debugger.PDFDebugger.DocumentOpener`` (PDFBox 3.0).
+
+    Upstream the abstract :meth:`open` is implemented by an anonymous
+    subclass per input type (file / URL / stream); :meth:`parse` drives
+    the password-retry loop, popping a Swing ``JPasswordField`` dialog on
+    each :class:`PDInvalidPasswordException`. Here :meth:`open` is left
+    abstract for the same reason and :meth:`parse` either asks for a
+    password via :func:`tkinter.simpledialog.askstring` (when a ``master``
+    is supplied) or via the standard library :func:`getpass.getpass` so
+    headless CLI callers (``pypdfbox.tools``) can still benefit.
+
+    The original behaviour mutates the instance's ``password`` field on
+    each retry; we preserve that — ``password`` is part of the public
+    surface so callers can inspect what the user typed.
+    """
+
+    def __init__(
+        self,
+        password: str | bytes = "",
+        master: tk.Misc | None = None,
+    ) -> None:
+        """Initialise the opener.
+
+        :param password: the initial password to try (mirrors upstream's
+            constructor arg).
+        :param master: optional ``tk.Misc`` master for the password
+            dialog. ``None`` falls back to :func:`getpass.getpass`.
+        """
+        self.password: str | bytes = password
+        self._master = master
+
+    def open(self) -> PDDocument:  # noqa: A003 - mirrors upstream method name
+        """Load the underlying input and return a :class:`PDDocument`.
+
+        Subclasses must override; the base implementation raises
+        :class:`NotImplementedError` to mirror upstream's
+        ``abstract PDDocument open()``.
+        """
+        raise NotImplementedError("DocumentOpener.open must be overridden")
+
+    def parse(self) -> PDDocument:
+        """Call :meth:`open`, retrying with a new password on each
+        :class:`PDInvalidPasswordException` until one succeeds or the
+        user cancels (which re-raises the original exception).
+        """
+        # Local import: encryption pulls a large module subtree; loading
+        # it eagerly would bloat unrelated debugger workflows.
+        from pypdfbox.pdmodel.encryption import (  # noqa: PLC0415
+            PDInvalidPasswordException,
+        )
+
+        while True:
+            try:
+                return self.open()
+            except PDInvalidPasswordException:
+                new_password = self._prompt_password()
+                if new_password is None:
+                    raise
+                self.password = new_password
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _prompt_password(self) -> str | None:
+        """Ask the user for a fresh password. ``None`` = user cancelled."""
+        if self._master is not None:
+            try:
+                return simpledialog.askstring(
+                    "Enter password",
+                    "Password:",
+                    show="*",
+                    parent=self._master,
+                )
+            except tk.TclError:
+                # Tk not available; fall through to the stdin prompt.
+                pass
+        try:
+            import getpass  # noqa: PLC0415
+
+            return getpass.getpass("Password: ")
+        except (EOFError, KeyboardInterrupt):
+            return None
+
+
+__all__ = ["DocumentOpener", "PDFDebugger"]

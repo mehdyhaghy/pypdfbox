@@ -298,3 +298,97 @@ def test_xref_entry_renders_as_string() -> None:
     # render_value uses str() for XrefEntry; non-empty result.
     rendered = render_value(xe)
     assert rendered  # truthy
+
+
+# ----------------------------------------------------------------------
+# OverlayIcon (port of PDFTreeCellRenderer.OverlayIcon inner class)
+# ----------------------------------------------------------------------
+
+
+class _RecordingIcon:
+    """Test double — records paint_icon calls."""
+
+    def __init__(self, label: str) -> None:
+        self.label = label
+        self.calls: list[tuple] = []
+
+    def paint_icon(self, component, graphics, x: int, y: int) -> None:
+        self.calls.append((component, graphics, x, y))
+
+
+def test_overlay_icon_get_base_returns_constructor_arg() -> None:
+    from pypdfbox.debugger.ui import OverlayIcon
+
+    base = _RecordingIcon("base")
+    icon = OverlayIcon(base)
+    assert icon.get_base() is base
+    assert icon.get_overlays() == []
+
+
+def test_overlay_icon_add_extends_overlay_list() -> None:
+    from pypdfbox.debugger.ui import OverlayIcon
+
+    base = _RecordingIcon("base")
+    overlay_a = _RecordingIcon("a")
+    overlay_b = _RecordingIcon("b")
+    icon = OverlayIcon(base)
+    icon.add(overlay_a)
+    icon.add(overlay_b)
+    assert icon.get_overlays() == [overlay_a, overlay_b]
+
+
+def test_overlay_icon_paint_icon_paints_base_then_overlays_in_order() -> None:
+    """``paint_icon`` paints the base first, then overlays in add order."""
+    from pypdfbox.debugger.ui import OverlayIcon
+
+    base = _RecordingIcon("base")
+    overlay_a = _RecordingIcon("a")
+    overlay_b = _RecordingIcon("b")
+    icon = OverlayIcon(base)
+    icon.add(overlay_a)
+    icon.add(overlay_b)
+    icon.paint_icon(component="cmp", graphics="gfx", x=3, y=4)
+    assert base.calls == [("cmp", "gfx", 3, 4)]
+    assert overlay_a.calls == [("cmp", "gfx", 3, 4)]
+    assert overlay_b.calls == [("cmp", "gfx", 3, 4)]
+
+
+def test_overlay_icon_paint_icon_tolerates_non_paintable_overlay() -> None:
+    """An overlay without ``paint_icon`` is silently skipped."""
+    from pypdfbox.debugger.ui import OverlayIcon
+
+    base = _RecordingIcon("base")
+    icon = OverlayIcon(base)
+    icon.add(object())  # no paint_icon attr
+    # Should not raise.
+    icon.paint_icon(component=None, graphics=None, x=0, y=0)
+    assert base.calls == [(None, None, 0, 0)]
+
+
+# ----------------------------------------------------------------------
+# PDFTreeCellRenderer parity surface
+# ----------------------------------------------------------------------
+
+
+def test_renderer_get_tree_cell_renderer_component_matches_call() -> None:
+    """``get_tree_cell_renderer_component`` is a thin alias for ``__call__``."""
+    renderer = PDFTreeCellRenderer()
+    val = COSInteger(11)
+    via_call = renderer(val)
+    via_named = renderer.get_tree_cell_renderer_component(
+        tree=None, node_value=val, selected=False, expanded=False, leaf=True,
+        row=0, has_focus=False,
+    )
+    assert via_named == via_call
+
+
+def test_renderer_to_tree_object_returns_text() -> None:
+    renderer = PDFTreeCellRenderer()
+    assert renderer.to_tree_object(COSInteger(7)) == "7"
+    assert renderer.to_tree_object(None) == ""
+
+
+def test_renderer_lookup_icon_returns_icon_name() -> None:
+    renderer = PDFTreeCellRenderer()
+    assert renderer.lookup_icon(COSInteger(1)) == ICON_INTEGER
+    assert renderer.lookup_icon(object()) is None

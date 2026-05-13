@@ -2778,3 +2778,11 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
 
 - `pypdfbox/debugger/pd_debugger.py`: **59% → 90%** line coverage via 74 hand-written tests covering `init_tree` branches, `_populate_children` error paths, tree-open / selection handlers, dispatch fallbacks, every menu action (open / open-URL / reopen / save-as / save-decoded / save-raw / print / find / about / exit / copy-tree-path / osx-open), recent-files opener, URL loader (file-scheme + missing-scheme `ValueError`), module helpers (`_ensure_default_root`, `_node_label`, `_convert_to_string`, `_read_stream_bytes`), and the `main()` entry point.
 - Remaining 10% uncovered: macOS-only `_is_mac_os()`-gated branches (already covered through `osx_adapter.py` 100%), pane-construction code paths requiring fully-classified parent chains, and `urlopen`-failure path through `_read_pdf_url` — all need larger ported PDF fixtures.
+
+## Wave 1300 — debugger coverage closeout
+
+### Text-searcher coverage
+
+- `pypdfbox/debugger/ui/textsearcher/search_panel.py`: **73% → 100%** (+8 tests).
+- `pypdfbox/debugger/ui/textsearcher/searcher.py`: **85% → 100%** (+12 tests).
+- 20 new tests covering Find-menu duck-typed frame wiring, component listener dispatch, regex-mode search, no-match counter path, and `tk.Text` integration via a stub frame and live `tk.Text` widget.

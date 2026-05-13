@@ -434,3 +434,198 @@ class _ContentStreamEmitter:
         self.segments.append((text, tag))
 
 
+class DocumentCreator:
+    """Synchronous port of ``StreamPane.DocumentCreator`` (PDFBox 3.0).
+
+    Upstream extends ``SwingWorker<StyledDocument, Integer>`` and runs
+    the stream→styled-document conversion off the EDT. As with
+    :class:`RenderWorker`, our Tk port runs synchronously — content-
+    stream parsing is fast enough not to warrant a thread and the
+    stdlib offers no equivalent worker idiom. Behavioural deviation
+    is documented in CHANGES.md.
+
+    Produces a list of ``(text, tag)`` segments compatible with
+    :class:`StreamPaneView.show_stream_text` (the Tk analogue of
+    Swing's ``StyledDocument``).
+    """
+
+    def __init__(
+        self,
+        target_view: Any,
+        stream: Stream,
+        filter_key: str,
+        nice: bool,
+    ) -> None:
+        """Construct the creator.
+
+        :param target_view: :class:`StreamPaneView`-like sink for
+            :meth:`done` to call ``show_stream_text`` on.
+        :param stream: :class:`Stream` wrapper around the underlying
+            ``COSStream`` (provides ``get_stream`` /
+            ``is_xml_metadata``).
+        :param filter_key: filter selection (see :class:`Stream`
+            constants — typically ``Stream.DECODED`` /
+            ``Stream.IMAGE``).
+        :param nice: if ``True``, prefer the operator-tokenised "nice"
+            view for content streams / pretty-printed XML for metadata.
+        """
+        self._target_view = target_view
+        self._stream = stream
+        self._filter_key = filter_key
+        self._nice = bool(nice)
+        self._result: list[tuple[str, str | None]] | None = None
+
+    # ------------------------------------------------------------------
+    # Public lifecycle (mirrors SwingWorker)
+    # ------------------------------------------------------------------
+
+    def execute(self) -> list[tuple[str, str | None]]:
+        """Run the creator end-to-end and return the segments produced."""
+        segments = self.do_in_background()
+        self._result = segments
+        self.done()
+        return segments
+
+    def do_in_background(self) -> list[tuple[str, str | None]]:
+        """Build the styled-document segments for the configured filter."""
+        encoding = "utf-8" if self._stream.is_xml_metadata() else "iso-8859-1"
+        in_stream = self._stream.get_stream(self._filter_key)
+        if in_stream is None:
+            return []
+        with in_stream as src:
+            raw = src.read()
+        if self._nice and self._filter_key == Stream.DECODED:
+            if self._stream.is_xml_metadata():
+                return self.get_xml_document(raw)
+            content_segments = self.get_content_stream_document(raw)
+            if content_segments is not None:
+                return content_segments
+        return self.get_document(raw, encoding)
+
+    def done(self) -> None:
+        """Hand the produced segments off to the target view.
+
+        Mirrors upstream's ``targetView.showStreamText(get(), tTController)``.
+        """
+        if self._result is None:
+            return
+        show = getattr(self._target_view, "show_stream_text", None)
+        if show is None:
+            return
+        try:
+            show(self._result, _default_styles(), tool_tip_controller=None)
+        except (TypeError, AttributeError) as exc:  # pragma: no cover
+            _LOG.error("show_stream_text failed: %s", exc)
+
+    def get(self) -> list[tuple[str, str | None]] | None:
+        """Mirror ``SwingWorker.get()`` — most recent result, ``None`` if unrun."""
+        return self._result
+
+    # ------------------------------------------------------------------
+    # Document builders (port of the private helpers)
+    # ------------------------------------------------------------------
+
+    def get_string_of_stream(
+        self, in_stream: Any, encoding: str
+    ) -> str | None:
+        """Read ``in_stream`` fully and decode under ``encoding``.
+
+        Mirrors upstream's private ``getStringOfStream(InputStream, String)``.
+        """
+        try:
+            with in_stream as src:
+                raw = src.read()
+            return raw.decode(encoding, errors="replace")
+        except OSError as exc:
+            _LOG.error("read stream failed: %s", exc)
+            return None
+
+    def get_document(
+        self, data: bytes, encoding: str
+    ) -> list[tuple[str, str | None]]:
+        """Build a plain-text segment list.
+
+        Mirrors upstream's private ``getDocument(InputStream, String)``;
+        CR / CRLF are normalised to LF so the raw view matches what
+        Swing's ``DefaultStyledDocument.insertString`` displays.
+        """
+        return _plain_text_segments(data, encoding)
+
+    def get_xml_document(self, data: bytes) -> list[tuple[str, str | None]]:
+        """Pretty-print ``data`` as XML.
+
+        Mirrors upstream's private ``getXMLDocument(InputStream)`` —
+        upstream uses a ``TransformerFactory``; we use
+        :mod:`xml.dom.minidom` (stdlib, no XSLT dependency).
+        """
+        return _xml_segments(data)
+
+    def get_content_stream_document(
+        self, data: bytes
+    ) -> list[tuple[str, str | None]] | None:
+        """Build the operator-tokenised "nice" view for a content stream.
+
+        Returns ``None`` when the data is not a valid content stream (so
+        the caller can fall back to ``get_document``). Mirrors upstream's
+        ``getContentStreamDocument(InputStream)``.
+        """
+        try:
+            parser = PDFStreamParser.from_bytes(data)
+            tokens = parser.parse()
+        except OSError:
+            return None
+        except Exception as exc:  # noqa: BLE001
+            _LOG.error("content-stream parse failed: %s", exc)
+            return None
+        emitter = _ContentStreamEmitter()
+        for token in tokens:
+            emitter.write_token(token)
+        return emitter.segments
+
+    # ------------------------------------------------------------------
+    # Per-token writers (kept as instance methods for upstream parity)
+    # ------------------------------------------------------------------
+
+    def write_token(
+        self,
+        obj: object,
+        emitter: _ContentStreamEmitter | None = None,
+    ) -> None:
+        """Dispatch ``obj`` through the per-token writers.
+
+        Mirrors upstream's private ``writeToken(Object, StyledDocument)``;
+        the ``emitter`` parameter takes the role of the Swing
+        ``StyledDocument`` (a private :class:`_ContentStreamEmitter` is
+        created on demand when not supplied).
+        """
+        target = emitter or _ContentStreamEmitter()
+        target.write_token(obj)
+
+    def write_operand(
+        self,
+        obj: object,
+        emitter: _ContentStreamEmitter | None = None,
+    ) -> None:
+        """Mirror upstream's ``writeOperand(Object, StyledDocument)``."""
+        target = emitter or _ContentStreamEmitter()
+        target._write_operand(obj)  # noqa: SLF001 - same-module helper
+
+    def add_operators(
+        self,
+        op: Operator,
+        emitter: _ContentStreamEmitter | None = None,
+    ) -> None:
+        """Mirror upstream's ``addOperators(Object, StyledDocument)``."""
+        target = emitter or _ContentStreamEmitter()
+        target._add_operator(op)  # noqa: SLF001
+
+    def write_indent(
+        self,
+        emitter: _ContentStreamEmitter | None = None,
+    ) -> None:
+        """Mirror upstream's ``writeIndent(StyledDocument)`` (no-op
+        when ``need_indent`` is ``False``)."""
+        target = emitter or _ContentStreamEmitter()
+        target._write_indent()  # noqa: SLF001
+
+

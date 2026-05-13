@@ -18,7 +18,7 @@ from .map_entry import MapEntry
 from .menu_base import MenuBase
 from .osx_adapter import OSXAdapter
 from .page_entry import PageEntry
-from .pdf_tree_cell_renderer import PDFTreeCellRenderer
+from .pdf_tree_cell_renderer import OverlayIcon, PDFTreeCellRenderer
 from .pdf_tree_model import PDFTreeModel
 from .print_dpi_menu import PrintDpiMenu
 from .reader_bottom_panel import ReaderBottomPanel
@@ -48,6 +48,7 @@ __all__ = [
     "MapEntry",
     "MenuBase",
     "OSXAdapter",
+    "OverlayIcon",
     "PDFTreeCellRenderer",
     "PDFTreeModel",
     "PageEntry",

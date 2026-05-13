@@ -66,3 +66,24 @@ def test_scn_invalid_operands_return_none() -> None:
 
 def test_scn_no_resources_returns_none() -> None:
     assert SCNToolTip(None, "/CS0", "1 0 0 scn").get_tool_tip_text() is None
+
+
+def test_scn_color_space_name_without_leading_slash() -> None:
+    """If the caller already stripped the slash, the constructor falls
+    through the ``else`` branch and trims whitespace (line 36)."""
+    resources = _FakeResources({"CS0": _FakePDColorSpaceRGB()})
+    payload = SCNToolTip(resources, "CS0", "1 0 0 scn").get_tool_tip_text()
+    assert payload is not None
+    assert payload.segments[0].color_hex == "ff0000"
+
+
+def test_scn_color_space_returning_too_few_rgb_values() -> None:
+    """A color-space whose ``to_rgb`` returns fewer than 3 channels
+    triggers the early-return guard on line 71."""
+
+    class _ShortRGB:
+        def to_rgb(self, _value: list[float]) -> list[float]:
+            return [0.5, 0.5]  # only 2 channels
+
+    resources = _FakeResources({"CS0": _ShortRGB()})
+    assert SCNToolTip(resources, "/CS0", "1 0 0 scn").get_tool_tip_text() is None

@@ -207,6 +207,84 @@ class FontEncodingView(ttk.Frame):
         return photo
 
 
+class GlyphCellRenderer:
+    """Renders a single glyph cell as a PIL image.
+
+    Port of the private inner class
+    ``FontEncodingView.GlyphCellRenderer`` (PDFBox 3.0). Upstream
+    implements ``TableCellRenderer`` and returns a ``JLabel`` carrying a
+    centred ``HighResolutionImageIcon``; the PIL path is a one-to-one
+    analogue — the produced ``PilImage`` is wrapped into a Tk
+    ``PhotoImage`` by :meth:`FontEncodingView._render_glyph`.
+
+    Carried as a top-level class (instead of an inline helper) for
+    surface parity with the upstream debugger; it is the actual workhorse
+    behind :meth:`FontEncodingView._render_glyph`.
+    """
+
+    def __init__(self, y_bounds: tuple[float, float] | None) -> None:
+        """Construct the renderer with the shared y-bounds for vector glyphs.
+
+        ``y_bounds`` is the ``(min_y, max_y)`` over the font's whole
+        glyph corpus, used to render each glyph at a consistent baseline.
+        ``None`` disables vector rendering (used by Type3 fonts where
+        rasters are pre-baked).
+        """
+        self._y_bounds = y_bounds
+
+    def get_y_bounds(self) -> tuple[float, float] | None:
+        """Return the shared ``(min_y, max_y)`` glyph-space bounds."""
+        return self._y_bounds
+
+    def render_glyph(self, value: Any) -> PilImage | None:
+        """Render ``value`` to a PIL image; ``None`` for sentinels / empty paths.
+
+        Accepts:
+
+        * an iterable of glyph segments (vector outline), or
+        * a PIL ``Image`` (Type3 raster), or
+        * ``None`` / a ``NO_GLYPH_TEXTS`` sentinel string (returns ``None``).
+
+        Mirrors upstream's ``renderGlyph(GeneralPath, Rectangle2D, Rectangle)``
+        + the ``BufferedImage`` branch inside
+        ``getTableCellRendererComponent``.
+        """
+        if value is None or (isinstance(value, str) and value in NO_GLYPH_TEXTS):
+            return None
+        # Pre-baked image — resize and return.
+        if hasattr(value, "size") and callable(getattr(value, "resize", None)):
+            try:
+                from PIL import Image  # noqa: PLC0415
+            except ImportError:  # pragma: no cover - PIL declared in deps
+                return None
+            try:
+                return value.resize((_CELL_WIDTH, _CELL_HEIGHT), Image.LANCZOS)
+            except Exception:  # noqa: BLE001 - defensive
+                return None
+        # Vector path: delegate to the module-level rasteriser.
+        return _rasterise_path(value, self._y_bounds)
+
+    def get_table_cell_renderer_component(
+        self,
+        table: Any,
+        value: Any,
+        is_selected: bool = False,  # noqa: ARG002 - upstream signature parity
+        has_focus: bool = False,  # noqa: ARG002
+        row: int = 0,  # noqa: ARG002
+        column: int = 0,  # noqa: ARG002
+    ) -> PilImage | None:
+        """Return the per-cell rendering.
+
+        Mirrors upstream's
+        ``getTableCellRendererComponent(JTable, Object, boolean, boolean,
+        int, int)``. ``table`` and selection-state arguments are accepted
+        for signature parity but not used — Tk's ``ttk.Treeview`` paints
+        per-row images, not per-cell components.
+        """
+        del table
+        return self.render_glyph(value)
+
+
 def _render_cell_text(value: Any) -> str:
     if value is None:
         return ""

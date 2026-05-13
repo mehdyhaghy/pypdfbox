@@ -79,3 +79,32 @@ def test_throwable_routed_via_exc_info(caplog: pytest.LogCaptureFixture) -> None
     record = next(r for r in caplog.records if "with exc" in r.getMessage())
     assert record.exc_info is not None
     assert record.exc_info[1] is err
+
+
+def test_fatal_forwards_to_python_logging(caplog: pytest.LogCaptureFixture) -> None:
+    log = DebugLog("pypdfbox.testfatal")
+    with caplog.at_level(logging.CRITICAL, logger="pypdfbox.testfatal"):
+        log.fatal("the end")
+    assert any("the end" in r.getMessage() for r in caplog.records)
+
+
+def test_debug_enabled_when_module_flag_set(
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(module, "_DEBUG", True)
+    log = DebugLog("pypdfbox.testdebug")
+    with caplog.at_level(logging.DEBUG, logger="pypdfbox.testdebug"):
+        log.debug("dbg-msg")
+    assert any("dbg-msg" in r.getMessage() for r in caplog.records)
+
+
+def test_trace_enabled_when_module_flag_set(
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(module, "_TRACE", True)
+    log = DebugLog("pypdfbox.testtrace")
+    with caplog.at_level(logging.DEBUG, logger="pypdfbox.testtrace"):
+        log.trace("trc-msg")
+    assert any("trc-msg" in r.getMessage() for r in caplog.records)

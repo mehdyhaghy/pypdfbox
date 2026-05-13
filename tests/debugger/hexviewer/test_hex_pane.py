@@ -215,3 +215,103 @@ def test_get_chars_and_get_byte_round_trip(tk_root: tk.Tk) -> None:
     chars = pane._get_chars(0xAB)  # noqa: SLF001
     assert chars == "AB"
     assert pane._get_byte(["A", "B"]) == 0xAB  # noqa: SLF001
+
+
+# ---- additional rendering / click / arrow branches ------------------------
+
+
+def test_render_in_edit_state_low_nibble_tags_edit_high_on_right(
+    tk_root: tk.Tk,
+) -> None:
+    """When the caret is on the low nibble (``selected_char == 1``),
+    the rendered tags are reversed: ``edit_low`` on the left half,
+    ``edit_high`` on the right half (lines 145-146)."""
+    model = HexModel(b"\x00\x01")
+    pane = HexPane(tk_root, model)
+    pane.set_selected(0)
+    # Manually enter the low-nibble edit state then force a re-render.
+    pane._state = pane.EDIT  # noqa: SLF001
+    pane._selected_char = 1  # noqa: SLF001
+    pane._render()  # noqa: SLF001
+    # Both edit_high & edit_low ranges should now exist.
+    assert pane.tag_ranges("edit_high")
+    assert pane.tag_ranges("edit_low")
+
+
+def test_index_for_click_returns_neg_one_for_tk_error(tk_root: tk.Tk) -> None:
+    """If ``self.index(...)`` raises ``tk.TclError``, the helper returns -1."""
+    model = HexModel(b"\x00")
+    pane = HexPane(tk_root, model)
+    import types
+
+    # Replace ``index`` so it always raises.
+    def boom(_spec: str) -> str:
+        raise tk.TclError("invalid")
+
+    pane.index = boom  # type: ignore[method-assign]
+    assert pane._index_for_click(types.SimpleNamespace(x=0, y=0)) == -1  # noqa: SLF001
+
+
+def test_index_for_click_returns_neg_one_for_out_of_range_line(
+    tk_root: tk.Tk,
+) -> None:
+    """A click on a line index past the model's total_line yields -1."""
+    model = HexModel(b"\x00\x01")
+    pane = HexPane(tk_root, model)
+    import types
+
+    pane.index = lambda _spec: "999.0"  # type: ignore[method-assign]
+    assert pane._index_for_click(types.SimpleNamespace(x=0, y=0)) == -1  # noqa: SLF001
+
+
+def test_index_for_click_returns_neg_one_for_out_of_range_element(
+    tk_root: tk.Tk,
+) -> None:
+    """A click past column 15 (element>15) yields -1."""
+    model = HexModel(b"\x00")
+    pane = HexPane(tk_root, model)
+    import types
+
+    # Column 100 / _CELL_WIDTH (3) = 33 → element>15 branch.
+    pane.index = lambda _spec: "1.100"  # type: ignore[method-assign]
+    assert pane._index_for_click(types.SimpleNamespace(x=0, y=0)) == -1  # noqa: SLF001
+
+
+def test_index_for_click_returns_neg_one_when_past_model_size(
+    tk_root: tk.Tk,
+) -> None:
+    """A click past the last byte (within the row but past size) yields -1."""
+    model = HexModel(b"\x00")  # 1 byte
+    pane = HexPane(tk_root, model)
+    import types
+
+    # Column 6 / 3 = element 2, but the model only has 1 byte → past size.
+    pane.index = lambda _spec: "1.6"  # type: ignore[method-assign]
+    assert pane._index_for_click(types.SimpleNamespace(x=0, y=0)) == -1  # noqa: SLF001
+
+
+def test_on_click_with_invalid_index_fires_none_event(tk_root: tk.Tk) -> None:
+    """``_on_click`` for an invalid position fires a NONE-navigation event."""
+    model = HexModel(b"\x00")
+    pane = HexPane(tk_root, model)
+    recorder = _SelectionRecorder()
+    pane.add_selection_change_listener(recorder)
+    import types
+
+    pane.index = lambda _spec: "999.0"  # type: ignore[method-assign]
+    pane._on_click(types.SimpleNamespace(x=0, y=0))  # type: ignore[arg-type]  # noqa: SLF001
+    assert recorder.events
+    assert recorder.events[-1].get_hex_index() == -1
+
+
+def test_arrow_in_selected_state_fires_navigation_event(tk_root: tk.Tk) -> None:
+    """In the SELECTED state, an arrow fires a selection-changed event with
+    the navigation token (line 194 branch)."""
+    model = HexModel(bytes(range(32)))
+    pane = HexPane(tk_root, model)
+    pane.set_selected(5)
+    recorder = _SelectionRecorder()
+    pane.add_selection_change_listener(recorder)
+    pane._handle_arrow(SelectEvent.NEXT)  # noqa: SLF001
+    assert recorder.events
+    assert recorder.events[-1].get_navigation() == SelectEvent.NEXT

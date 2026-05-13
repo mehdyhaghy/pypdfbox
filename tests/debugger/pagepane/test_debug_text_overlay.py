@@ -205,10 +205,10 @@ def _make_stripper(
     scale: float = 1.0,
     crop_height: float = 200.0,
 ):
-    """Return a ``(_DebugTextStripper, overlay)`` pair primed with a
+    """Return a ``(DebugTextStripper, overlay)`` pair primed with a
     realistic crop-box height so ``_flip_y`` produces sensible coordinates.
     """
-    from pypdfbox.debugger.pagepane.debug_text_overlay import _DebugTextStripper
+    from pypdfbox.debugger.pagepane.debug_text_overlay import DebugTextStripper
 
     doc = _make_one_page_doc_with_text()
     overlay = DebugTextOverlay(
@@ -220,7 +220,7 @@ def _make_stripper(
         show_font_bbox=show_font_bbox,
         show_glyph_bounds=show_glyph_bounds,
     )
-    stripper = _DebugTextStripper(overlay=overlay)
+    stripper = DebugTextStripper(overlay=overlay)
     stripper._crop_box_height = crop_height  # noqa: SLF001
     return stripper, overlay, doc
 
@@ -350,7 +350,7 @@ def _stub_super_show_glyph(monkeypatch) -> None:
     directly in unit tests without the full content-stream engine plumbing.
 
     The production ``PDFTextStripper`` does not (yet) expose ``show_glyph``
-    so ``super().show_glyph(...)`` inside ``_DebugTextStripper.show_glyph``
+    so ``super().show_glyph(...)`` inside ``DebugTextStripper.show_glyph``
     raises ``AttributeError`` if called without the host engine. We stub
     it for the duration of each test.
     """
@@ -687,7 +687,7 @@ def test_collect_font_bbox_rect_skips_when_bbox_coord_raises() -> None:
 def test_write_string_runs_font_bbox_branch_when_flag_enabled() -> None:
     """End-to-end: enable both ``show_text_stripper`` and ``show_font_bbox``
     on a real synthetic page so the conditional at line 213-214 of
-    ``_DebugTextStripper.write_string`` evaluates the ``True`` branch.
+    ``DebugTextStripper.write_string`` evaluates the ``True`` branch.
     """
     doc = _make_one_page_doc_with_text()
     try:
@@ -731,7 +731,7 @@ def test_strip_page_handles_get_text_oserror(monkeypatch) -> None:
         def _boom(self, _doc):  # noqa: ANN001
             raise OSError("simulated")
 
-        monkeypatch.setattr(mod._DebugTextStripper, "get_text", _boom)
+        monkeypatch.setattr(mod.DebugTextStripper, "get_text", _boom)
         rects = overlay.render_to(draw=None)
         assert rects == []
     finally:

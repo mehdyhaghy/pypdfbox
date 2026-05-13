@@ -127,3 +127,47 @@ def test_save_path_passes_parent_and_filter(tmp_path: Path) -> None:
     assert ok is True
     assert captured.get("parent") is sentinel
     assert captured.get("filetypes") == [("PDF", "*.pdf")]
+
+
+def test_default_open_routes_through_filedialog(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``_default_open`` lazily imports ``tkinter.filedialog`` and forwards
+    to ``askopenfilename``."""
+    import sys
+    import types
+
+    captured: list[dict[str, Any]] = []
+    fake = types.ModuleType("tkinter.filedialog")
+
+    def fake_askopenfilename(**kwargs: Any) -> str:
+        captured.append(dict(kwargs))
+        return "/tmp/opened.pdf"
+
+    fake.askopenfilename = fake_askopenfilename  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "tkinter.filedialog", fake)
+
+    assert module._default_open(initialdir="/tmp") == "/tmp/opened.pdf"
+    assert captured == [{"initialdir": "/tmp"}]
+
+
+def test_default_save_routes_through_filedialog(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``_default_save`` lazily imports ``tkinter.filedialog`` and forwards
+    to ``asksaveasfilename``."""
+    import sys
+    import types
+
+    captured: list[dict[str, Any]] = []
+    fake = types.ModuleType("tkinter.filedialog")
+
+    def fake_asksaveasfilename(**kwargs: Any) -> str:
+        captured.append(dict(kwargs))
+        return "/tmp/saved.pdf"
+
+    fake.asksaveasfilename = fake_asksaveasfilename  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "tkinter.filedialog", fake)
+
+    assert module._default_save(initialdir="/tmp") == "/tmp/saved.pdf"
+    assert captured == [{"initialdir": "/tmp"}]

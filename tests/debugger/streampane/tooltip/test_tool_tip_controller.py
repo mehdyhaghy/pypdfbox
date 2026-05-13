@@ -211,3 +211,42 @@ def test_scn_without_recognised_cs_returns_none() -> None:
     controller = ToolTipController(None)
     # No ``<name> cs`` row to anchor the colorspace → None.
     assert controller.get_tool_tip(text.index("scn"), text) is None
+
+
+def test_uppercase_scn_without_cs_returns_none() -> None:
+    """The stroking-color SCN branch returns None when no CS row precedes it."""
+    text = "1 0 0 SCN\n"
+    controller = ToolTipController(None)
+    # ``SCN`` is the first token in the stream → ``_find_color_space``
+    # never finds a /<name> CS row → branch returns None (line 92).
+    assert controller.get_tool_tip(text.index("SCN"), text) is None
+
+
+def test_get_row_text_returns_none_for_out_of_range_offset() -> None:
+    """Direct call on the helper to cover the bounds-check branch (line 186)."""
+    assert ToolTipController._get_row_text("abc\n", -1) is None
+    assert ToolTipController._get_row_text("abc\n", 999) is None
+
+
+def test_get_row_text_returns_whole_text_when_no_newline() -> None:
+    """A buffer without a trailing newline still returns its content
+    (line 190 — ``end = len(text)``)."""
+    out = ToolTipController._get_row_text("noeol", 2)
+    assert out == "noeol"
+
+
+def test_get_word_returns_none_when_start_equals_end() -> None:
+    """A buffer that's exactly a single whitespace char triggers
+    ``start == end`` after the boundary walk (line 173)."""
+    # Caret at offset 0 on " " — single whitespace, no prev word.
+    assert ToolTipController._get_word(" ", 0) is None
+
+
+def test_find_color_space_returns_none_when_walking_off_top() -> None:
+    """``_find_color_space`` returns None when the upward walk runs out
+    of lines without ever hitting a matching CS row (line 222)."""
+    text = "first\nsecond\n/CS0 scn\n"
+    controller = ToolTipController(None)
+    offset = text.index("scn")
+    # No upstream ``<name> cs`` row → walker returns None.
+    assert controller._find_color_space(text, offset, "cs") is None

@@ -45,3 +45,41 @@ def test_selection_changed_ignores_out_of_range(tk_root: tk.Tk) -> None:
     editor.selection_changed(SelectEvent(0, SelectEvent.PREVIOUS))
     # Index would go to -1; selected_index must stay at default -1.
     assert editor.get_selected_index() == -1
+
+
+def test_scrollbar_sync_callbacks_fire(tk_root: tk.Tk) -> None:
+    """The internal scrollbar wiring relays yview/yscrollcommand calls
+    across the three column panes; exercising both directions ensures the
+    closures are reached."""
+    model = HexModel(bytes(range(64)))
+    editor = HexEditor(tk_root, model)
+    editor.update_idletasks()
+
+    hex_pane = editor.get_hex_pane()
+    address_pane = editor.get_address_pane()
+    ascii_pane = editor.get_ascii_pane()
+    assert hex_pane is not None
+    assert address_pane is not None
+    assert ascii_pane is not None
+
+    # Drive the hex pane's yview to fire ``_on_scrollbar_set``.
+    hex_pane.yview_moveto(0.5)
+    editor.update_idletasks()
+
+    # Drive the scrollbar itself to fire ``_on_yview``: ``yview_moveto``
+    # is the canonical "scroll-to-fraction" command exposed by Tk's
+    # scrollbar -> bound command.
+    # ``scrollbar.invoke`` doesn't exist for a Scrollbar; instead we
+    # query the configured command and call it directly.
+    body = hex_pane.master  # the inner Frame
+    # Find the scrollbar child by traversing the body's children.
+    scrollbars = [
+        w for w in body.winfo_children() if isinstance(w, tk.ttk.Scrollbar)
+    ]
+    assert scrollbars
+    scrollbar = scrollbars[0]
+    cmd = scrollbar.cget("command")
+    # Tk reports the command name; calling it via tk.call works.
+    if cmd:
+        scrollbar.tk.call(cmd, "moveto", "0.25")
+    editor.update_idletasks()

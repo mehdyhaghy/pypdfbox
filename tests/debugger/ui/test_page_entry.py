@@ -50,3 +50,34 @@ def test_get_path_walks_to_root() -> None:
 def test_get_path_with_no_parent() -> None:
     entry = PageEntry(_make_leaf_page(), 1, None)
     assert entry.get_path() == "Root/Pages"
+
+
+def test_get_path_returns_empty_when_parent_value_not_dict() -> None:
+    """``/Parent`` resolves to a non-dictionary → walker bails out with ``""``."""
+    page = _make_leaf_page()
+    # ``get_cos_dictionary`` returns ``None`` when /Parent is not a dict.
+    page.set_item(COSName.PARENT, COSName.get_pdf_name("BogusNonDict"))
+    entry = PageEntry(page, 1, None)
+    assert entry.get_path() == ""
+
+
+def test_get_path_returns_empty_when_parent_has_no_kids() -> None:
+    """``/Parent`` dict missing ``/Kids`` → walker bails out with ``""``."""
+    page = _make_leaf_page()
+    parent = COSDictionary()  # no /Kids
+    page.set_item(COSName.PARENT, parent)
+    entry = PageEntry(page, 1, None)
+    assert entry.get_path() == ""
+
+
+def test_get_path_breaks_when_page_not_in_kids() -> None:
+    """``/Kids`` array doesn't include the page → loop breaks; partial path."""
+    page = _make_leaf_page()
+    parent = COSDictionary()
+    kids = COSArray()
+    kids.add(COSDictionary())  # an unrelated entry
+    parent.set_item(COSName.KIDS, kids)
+    page.set_item(COSName.PARENT, parent)
+    entry = PageEntry(page, 1, None)
+    # Walker breaks without appending → just the root.
+    assert entry.get_path() == "Root/Pages"

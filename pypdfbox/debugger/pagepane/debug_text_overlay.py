@@ -107,7 +107,7 @@ class DebugTextOverlay:
         collected rectangles in draw order so callers can inspect them.
         """
         page = self._document.get_page(self._page_index)
-        stripper = _DebugTextStripper(overlay=self)
+        stripper = DebugTextStripper(overlay=self)
         rectangles = stripper.strip_page(
             self._document, page, self._page_index, self._scale
         )
@@ -142,7 +142,7 @@ class DebugTextOverlay:
         return self._show_glyph_bounds
 
 
-class _DebugTextStripper(PDFTextStripper):
+class DebugTextStripper(PDFTextStripper):
     """``PDFTextStripper`` subclass that records rectangles per glyph run.
 
     Upstream paints directly via the supplied ``Graphics2D``; here we

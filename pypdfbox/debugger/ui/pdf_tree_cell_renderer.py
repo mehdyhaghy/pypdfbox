@@ -79,6 +79,44 @@ class PDFTreeCellRenderer:
         styling = style_for(node_value)
         return {"text": text, **styling}
 
+    def get_tree_cell_renderer_component(
+        self,
+        tree: Any,
+        node_value: Any,
+        selected: bool = False,  # noqa: ARG002 - upstream signature passthrough
+        expanded: bool = False,  # noqa: ARG002
+        leaf: bool = False,  # noqa: ARG002
+        row: int = 0,  # noqa: ARG002
+        has_focus: bool = False,  # noqa: ARG002
+    ) -> dict[str, Any]:
+        """Return the per-node render dict.
+
+        Mirrors upstream's
+        ``getTreeCellRendererComponent(JTree, Object, boolean, boolean,
+        boolean, int, boolean)``. ``tree`` and the selection-state args
+        are accepted for signature parity but unused — Tk's
+        ``ttk.Treeview`` resolves visuals through tags, not per-call
+        return values.
+        """
+        del tree  # not used; mirrors Swing's ignored ``JTree`` arg
+        return self.__call__(node_value)
+
+    def to_tree_object(self, node_value: Any) -> str:
+        """Return the text representation used in the tree.
+
+        Mirrors upstream's private ``toTreeObject(Object)``. Exposed here
+        as a public method so callers (and parity tooling) can recognise
+        the upstream surface.
+        """
+        return render_value(node_value)
+
+    def lookup_icon(self, node_value: Any) -> str | None:
+        """Return the logical icon name for ``node_value`` (``None`` = no icon).
+
+        Mirrors upstream's private ``lookupIcon(Object)``.
+        """
+        return _lookup_icon(node_value)
+
 
 # --- pure-data helpers ----------------------------------------------------
 
@@ -246,3 +284,57 @@ def _indirect_overlay(node_value: Any) -> tuple[bool, bool]:
     if isinstance(node_value, XrefEntry):
         return True, False
     return False, False
+
+
+class OverlayIcon:
+    """An icon that paints other icons over a base image.
+
+    Port of the private inner class
+    ``org.apache.pdfbox.debugger.ui.PDFTreeCellRenderer.OverlayIcon``
+    (PDFBox 3.0). Upstream extends ``javax.swing.ImageIcon`` and overrides
+    ``paintIcon`` so the indirect-object / stream overlays compose on top
+    of the base node icon. Tk has no ``ImageIcon`` hierarchy — the
+    renderer is data-only — so we expose the same composition surface as
+    a tiny container the Tk renderer can consult to paint a base
+    ``PhotoImage`` with one or more overlays on top.
+    """
+
+    def __init__(self, base: Any) -> None:
+        """Wrap ``base`` (a PIL image / Tk ``PhotoImage``-like)."""
+        self._base: Any = base
+        self._overlays: list[Any] = []
+
+    def get_base(self) -> Any:
+        """Return the underlying base icon (mirrors upstream ``base`` field)."""
+        return self._base
+
+    def get_overlays(self) -> list[Any]:
+        """Return the list of overlay icons (in paint order)."""
+        return list(self._overlays)
+
+    def add(self, overlay: Any) -> None:
+        """Append ``overlay`` to the paint queue.
+
+        Mirrors upstream's package-private ``add(ImageIcon)``.
+        """
+        self._overlays.append(overlay)
+
+    def paint_icon(self, component: Any, graphics: Any, x: int, y: int) -> None:
+        """Paint the base then each overlay at ``(x, y)``.
+
+        Mirrors upstream's ``paintIcon(Component, Graphics, int, int)``.
+        ``component`` and ``graphics`` are duck-typed pass-throughs so a
+        Tk caller can supply any object that exposes a ``paint_icon``
+        method (e.g. a PhotoImage adapter).
+        """
+        self._paint_one(self._base, component, graphics, x, y)
+        for overlay in self._overlays:
+            self._paint_one(overlay, component, graphics, x, y)
+
+    @staticmethod
+    def _paint_one(
+        icon: Any, component: Any, graphics: Any, x: int, y: int
+    ) -> None:
+        painter = getattr(icon, "paint_icon", None)
+        if painter is not None:
+            painter(component, graphics, x, y)

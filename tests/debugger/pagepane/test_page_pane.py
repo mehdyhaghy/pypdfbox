@@ -1524,3 +1524,66 @@ def test_present_image_returns_when_canvas_is_none(tk_root: tk.Tk) -> None:
         assert pane.get_image() is before
     finally:
         doc.close()
+
+
+# ----------------------------------------------------------------------
+# RenderWorker (port of PagePane.RenderWorker inner class)
+# ----------------------------------------------------------------------
+
+
+def test_render_worker_execute_renders_to_canvas(tk_root: tk.Tk) -> None:
+    """``RenderWorker.execute`` runs the pipeline and presents the image."""
+    from pypdfbox.debugger.pagepane.page_pane import RenderWorker
+
+    doc = _make_one_page_doc()
+    try:
+        page_dict = doc.get_page(0).get_cos_object()
+        pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
+        pane.init()
+        # Clear whatever the implicit ``init()`` render painted so we can
+        # assert the worker rewires the canvas.
+        pane._photo_image = None  # noqa: SLF001
+        pane._image = None  # noqa: SLF001
+        worker = RenderWorker(pane)
+        image = worker.execute()
+        assert image is not None
+        # The worker should have called ``done`` which calls
+        # ``_present_image``; the pane now holds a PhotoImage.
+        assert pane.get_image() is image
+        assert pane._photo_image is not None  # noqa: SLF001
+    finally:
+        doc.close()
+
+
+def test_render_worker_get_returns_last_result(tk_root: tk.Tk) -> None:
+    """``get()`` returns the most recent ``do_in_background`` output."""
+    from pypdfbox.debugger.pagepane.page_pane import RenderWorker
+
+    doc = _make_one_page_doc()
+    try:
+        page_dict = doc.get_page(0).get_cos_object()
+        pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
+        pane.init()
+        worker = RenderWorker(pane)
+        assert worker.get() is None
+        image = worker.execute()
+        assert worker.get() is image
+    finally:
+        doc.close()
+
+
+def test_render_worker_done_is_no_op_before_execute(tk_root: tk.Tk) -> None:
+    """``done()`` with no result must not crash (mirrors SwingWorker)."""
+    from pypdfbox.debugger.pagepane.page_pane import RenderWorker
+
+    doc = _make_one_page_doc()
+    try:
+        page_dict = doc.get_page(0).get_cos_object()
+        pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
+        pane.init()
+        worker = RenderWorker(pane)
+        # Should not raise.
+        worker.done()
+        assert worker.get() is None
+    finally:
+        doc.close()
