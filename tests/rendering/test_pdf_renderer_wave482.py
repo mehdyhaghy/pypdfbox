@@ -84,6 +84,39 @@ def test_show_string_handles_zero_consumed_code_and_spacing(monkeypatch: Any) ->
 
 
 def test_standard14_placeholder_warning_is_once_per_font(caplog: Any) -> None:
+    """Symbol / ZapfDingbats have no Liberation substitute — the
+    placeholder log fires exactly once per font, never per glyph.
+
+    Wave 1303 swapped the Helvetica / Times / Courier branch over to
+    bundled Liberation TTFs, so only the two symbolic Standard 14 names
+    still travel through the placeholder-warn path.
+    """
+    class _Font:
+        def get_name(self) -> str:
+            return "Symbol"
+
+    doc, renderer = _prepared_renderer()
+    font = _Font()
+    try:
+        caplog.set_level(logging.DEBUG, logger="pypdfbox.rendering.pdf_renderer")
+
+        renderer._maybe_warn_standard14(font)  # noqa: SLF001
+        renderer._maybe_warn_standard14(font)  # noqa: SLF001
+
+        assert caplog.text.count("Symbol is a Standard 14 font") == 1
+        assert id(font) in renderer._warned_standard14_fonts  # noqa: SLF001
+    finally:
+        _finish(renderer)
+        doc.close()
+
+
+def test_standard14_warn_suppressed_for_helvetica_with_liberation(
+    caplog: Any,
+) -> None:
+    """Helvetica (and the other Standard 14 names with a Liberation
+    substitute) must not trigger the placeholder log — the renderer
+    resolves the outline through the bundled Liberation TTF instead.
+    """
     class _Font:
         def get_name(self) -> str:
             return "Helvetica"
@@ -96,8 +129,10 @@ def test_standard14_placeholder_warning_is_once_per_font(caplog: Any) -> None:
         renderer._maybe_warn_standard14(font)  # noqa: SLF001
         renderer._maybe_warn_standard14(font)  # noqa: SLF001
 
-        assert caplog.text.count("Helvetica is a Standard 14 font") == 1
-        assert id(font) in renderer._warned_standard14_fonts  # noqa: SLF001
+        assert "Helvetica is a Standard 14 font" not in caplog.text
+        # The cache entry is only added when the warning fires, so it
+        # should still be absent.
+        assert id(font) not in renderer._warned_standard14_fonts  # noqa: SLF001
     finally:
         _finish(renderer)
         doc.close()

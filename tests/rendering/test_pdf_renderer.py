@@ -775,12 +775,19 @@ def test_type1_pfb_text_show_renders_filled_pixels() -> None:
     assert dark > 200, f"expected Type1 glyph fill, got dark_count={dark}"
 
 
-def test_standard14_no_embedded_program_renders_placeholder_and_warns_once(
+def test_standard14_no_embedded_program_renders_without_warning(
     caplog,
 ) -> None:
-    """A Type1 font naming a Standard 14 family (e.g. Helvetica) with no
-    embedded /FontFile must render a placeholder and emit exactly one
-    debug log per font, not one per glyph."""
+    """A Type1 font naming a Standard 14 family with a Liberation
+    substitute (Helvetica / Times-Roman / Courier and their variants)
+    must render without emitting the placeholder-rectangle debug log —
+    the bundled Liberation TTF supplies real glyph outlines.
+
+    Wave 1303 replaced the placeholder branch for Helvetica with full
+    Liberation substitution; the debug log only fires for the two
+    Standard 14 names with no Liberation equivalent (Symbol /
+    ZapfDingbats).
+    """
     import logging  # noqa: PLC0415
 
     from pypdfbox.cos import COSDictionary, COSName
@@ -800,20 +807,62 @@ def test_standard14_no_embedded_program_renders_placeholder_and_warns_once(
         cs.begin_text()
         cs.set_font(font, 12.0)
         cs.new_line_at_offset(10.0, 50.0)
-        cs.show_text("hello")  # 5 glyphs — should warn ONCE, not 5x
+        cs.show_text("hello")
         cs.end_text()
 
     caplog.set_level(logging.DEBUG, logger="pypdfbox.rendering.pdf_renderer")
     img = PDFRenderer(doc).render_image(0)
     assert img.size == (200, 100)  # didn't crash
-    # Exactly one Standard 14 fallback log message, despite 5 placeholder
-    # glyphs being drawn.
+    # Liberation substitution kicks in — no placeholder log for Helvetica.
     standard14_msgs = [
         r
         for r in caplog.records
         if "Standard 14" in r.getMessage() and "Helvetica" in r.getMessage()
     ]
+    assert standard14_msgs == [], (
+        "Helvetica should resolve through the bundled Liberation TTF, "
+        f"not the placeholder log path: {[r.getMessage() for r in standard14_msgs]}"
+    )
+
+
+def test_standard14_symbol_warns_once_no_liberation_equivalent(
+    caplog,
+) -> None:
+    """Symbol / ZapfDingbats have no Liberation equivalent — the
+    placeholder log still fires (exactly once per font, not per glyph)
+    for these two names.
+    """
+    import logging  # noqa: PLC0415
+
+    from pypdfbox.cos import COSDictionary, COSName
+    from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
+
+    doc, page = _make_doc(200.0, 100.0)
+    font_dict = COSDictionary()
+    font_dict.set_item(COSName.TYPE, COSName.get_pdf_name("Font"))
+    font_dict.set_item(COSName.SUBTYPE, COSName.get_pdf_name("Type1"))
+    font_dict.set_item(
+        COSName.get_pdf_name("BaseFont"), COSName.get_pdf_name("Symbol")
+    )
+    font = PDType1Font(font_dict)
+
+    with PDPageContentStream(doc, page) as cs:
+        cs.set_non_stroking_color_rgb(0.0, 0.0, 0.0)
+        cs.begin_text()
+        cs.set_font(font, 12.0)
+        cs.new_line_at_offset(10.0, 50.0)
+        cs.show_text("abc")  # 3 glyphs — should warn ONCE, not 3x
+        cs.end_text()
+
+    caplog.set_level(logging.DEBUG, logger="pypdfbox.rendering.pdf_renderer")
+    img = PDFRenderer(doc).render_image(0)
+    assert img.size == (200, 100)
+    standard14_msgs = [
+        r
+        for r in caplog.records
+        if "Standard 14" in r.getMessage() and "Symbol" in r.getMessage()
+    ]
     assert len(standard14_msgs) == 1, (
-        f"expected one Standard 14 log, got {len(standard14_msgs)}: "
+        f"expected one Symbol log, got {len(standard14_msgs)}: "
         f"{[r.getMessage() for r in standard14_msgs]}"
     )

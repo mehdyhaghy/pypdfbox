@@ -4169,12 +4169,20 @@ class PDFRenderer(PDFStreamEngine):
     @staticmethod
     def _get_type1_units_per_em(font: Any) -> int | None:
         """Return ``units_per_em`` for a Type1/Type1C font when an embedded
-        program is available, ``None`` otherwise.
+        program is available, falling back to the bundled Liberation
+        substitute's UPEM for non-embedded Standard 14 references.
 
         Routes through ``font._get_type1_font()`` (PFB) or
-        ``font._get_cff_font()`` (CFF) — whichever exists. If neither
-        embedded program is present (e.g. Standard 14 reference) the
-        caller falls back to the placeholder rectangle path.
+        ``font._get_cff_font()`` (CFF) — whichever exists. When neither
+        embedded program is present *and* ``/BaseFont`` resolves to one of
+        the 14 Standard PostScript names with a Liberation substitute
+        mapped (Helvetica / Times-Roman / Courier families), the
+        Liberation TTF's UPEM is returned so the caller can drive the
+        Type 1 path-fill branch over
+        :meth:`PDType1Font.get_glyph_path`'s Liberation-backed outlines.
+        Symbol / ZapfDingbats have no Liberation equivalent, so this
+        returns ``None`` for them and the caller falls back to the
+        placeholder rectangle.
         """
         from pypdfbox.pdmodel.font.pd_type1_font import (  # noqa: PLC0415
             PDType1Font,
@@ -4187,12 +4195,29 @@ class PDFRenderer(PDFStreamEngine):
             cff_program = font._get_cff_font()  # noqa: SLF001
             if cff_program is not None:
                 return cff_program.units_per_em
-            return None
+            # Falls through to the Liberation branch below — PDType1CFont
+            # is a subclass of PDType1Font so the isinstance check there
+            # would match too if we didn't return early.
         if isinstance(font, PDType1Font):
             type1_program = font._get_type1_font()  # noqa: SLF001
             if type1_program is not None:
                 return type1_program.units_per_em
-            return None
+            # No embedded program — try the Liberation substitute when the
+            # font is one of the Standard 14.
+            from pypdfbox.pdmodel.font.standard14_fonts import (  # noqa: PLC0415
+                Standard14Fonts,
+            )
+
+            base_font = font.get_name()
+            if base_font is None:
+                return None
+            substitute = Standard14Fonts.get_substitute_ttf(base_font)
+            if substitute is None:
+                return None
+            try:
+                return int(substitute.get_units_per_em())
+            except Exception:  # noqa: BLE001
+                return None
         return None
 
     def _resolve_font_program(self, font: Any) -> Any | None:
@@ -4450,9 +4475,15 @@ class PDFRenderer(PDFStreamEngine):
         return width
 
     def _maybe_warn_standard14(self, font: Any) -> None:
-        """Emit a one-time debug log for Standard 14 fonts without an
-        embedded program. The placeholder rectangle is the visible signal;
-        this log makes the gap explicit for renderer consumers."""
+        """Emit a one-time debug log for Standard 14 fonts that even
+        Liberation substitution can't cover (Symbol / ZapfDingbats).
+
+        Helvetica / Times-Roman / Courier families now resolve through
+        the bundled Liberation TTFs in :mod:`pypdfbox.resources.ttf` (see
+        :meth:`Standard14Fonts.get_substitute_ttf`), so the placeholder
+        rectangle only ever fires for the two symbolic Standard 14 names
+        — those are the cases the log keeps flagging.
+        """
         key = id(font)
         if key in self._warned_standard14_fonts:
             return
@@ -4466,11 +4497,19 @@ class PDFRenderer(PDFStreamEngine):
             return
         if base_font is None or not Standard14Fonts.contains_name(base_font):
             return
+        # When a Liberation substitute exists, this draw path is a bug —
+        # the Type 1 branch above should have caught it. Skip the warn so
+        # we don't generate noise for the Helvetica/Times/Courier
+        # families; only Symbol / ZapfDingbats still legitimately fall
+        # through here.
+        if Standard14Fonts.get_substitute_ttf(base_font) is not None:
+            return
         self._warned_standard14_fonts.add(key)
         _log.debug(
-            "rendering: %s is a Standard 14 font with no embedded "
-            "program; using placeholder rectangle (Liberation TTF "
-            "substitution not yet bundled — see CHANGES.md)",
+            "rendering: %s is a Standard 14 font with no Liberation "
+            "substitute available; using placeholder rectangle "
+            "(Symbol / ZapfDingbats have no metric-compatible "
+            "Liberation equivalent — see CHANGES.md)",
             base_font,
         )
 

@@ -62,6 +62,36 @@ Includes the Zapf Dingbats Glyph List
 
 ----------------------------------------------------------------------
 
+Liberation Fonts
+  Digitized data copyright (c) 2010 Google Corporation
+    with Reserved Font Arimo, Tinos and Cousine.
+  Copyright (c) 2012 Red Hat, Inc.
+    with Reserved Font Name Liberation.
+
+  pypdfbox bundles the 12 Liberation TTFs (Sans / Serif / Mono families,
+  Regular / Bold / Italic / BoldItalic) under
+  ``pypdfbox/resources/ttf/`` as metric-compatible substitution targets
+  for the Helvetica / Times-Roman / Courier families of the PDF Standard
+  14 (PDF 32000-1:2008 §9.6.2.2). When a PDF references one of those
+  canonical PostScript names without embedding a font program (no
+  /FontFile, no /FontFile3), the renderer falls back to the matching
+  Liberation TTF so glyphs render with real outlines instead of the
+  placeholder rectangle.
+
+  Files are redistributed verbatim from the upstream Liberation Fonts
+  2.1.5 release (https://github.com/liberationfonts/liberation-fonts)
+  under the SIL Open Font License, Version 1.1
+  (https://scripts.sil.org/OFL). The full OFL text travels in
+  ``pypdfbox/resources/ttf/LICENSE.txt``. The OFL Reserved Font Name
+  clause is honoured — pypdfbox redistributes the fonts unchanged under
+  their existing "Liberation" names; no derivative font under any other
+  name is created.
+
+  Liberation is a trademark of Red Hat, Inc. registered in U.S. Patent
+  and Trademark Office and certain other jurisdictions.
+
+----------------------------------------------------------------------
+
 Runtime dependencies (declared, not bundled — installed by pip from PyPI):
 
   jbig2-parser (Python: jbig2_parser)

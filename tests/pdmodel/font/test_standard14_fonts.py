@@ -519,17 +519,111 @@ def test_get_glyph_path_unknown_font_returns_empty() -> None:
 
 
 def test_get_glyph_path_returns_list_type() -> None:
-    """Bundled wrapper carries no outlines — every glyph hits the empty
-    fallback. The contract: result is always a ``list`` of segment tuples
-    (the upstream ``GeneralPath`` analogue)."""
+    """Wave 1303 wired up Liberation substitution — the result is a
+    non-empty list of segment tuples for any glyph that exists in the
+    Liberation TTF (the upstream ``GeneralPath`` analogue)."""
     path = Standard14Fonts.get_glyph_path("Helvetica", "A")
     assert isinstance(path, list)
+    assert path  # Liberation has 'A' — Helvetica path is non-empty.
+    # Each segment is a tagged tuple ("moveto", x, y) / ("lineto", ...)
+    # / ("curveto", ...) / ("closepath",).
+    tags = {cmd[0] for cmd in path}
+    assert tags.issubset({"moveto", "lineto", "curveto", "closepath"})
 
 
 def test_get_glyph_path_resolves_alias() -> None:
-    """``ArialMT`` lookup goes through the canonical Helvetica wrapper."""
-    path = Standard14Fonts.get_glyph_path("ArialMT", "A")
-    assert isinstance(path, list)
+    """``ArialMT`` lookup goes through the canonical Helvetica wrapper
+    and hits the same Liberation substitute outline."""
+    direct = Standard14Fonts.get_glyph_path("Helvetica", "A")
+    alias = Standard14Fonts.get_glyph_path("ArialMT", "A")
+    assert isinstance(alias, list)
+    assert alias == direct
+
+
+# ---------- Liberation TTF substitution (wave 1303) ----------
+
+
+_LIBERATION_MAPPED = [
+    ("Helvetica", "LiberationSans"),
+    ("Helvetica-Bold", "LiberationSans-Bold"),
+    ("Helvetica-Oblique", "LiberationSans-Italic"),
+    ("Helvetica-BoldOblique", "LiberationSans-BoldItalic"),
+    ("Times-Roman", "LiberationSerif"),
+    ("Times-Bold", "LiberationSerif-Bold"),
+    ("Times-Italic", "LiberationSerif-Italic"),
+    ("Times-BoldItalic", "LiberationSerif-BoldItalic"),
+    ("Courier", "LiberationMono"),
+    ("Courier-Bold", "LiberationMono-Bold"),
+    ("Courier-Oblique", "LiberationMono-Italic"),
+    ("Courier-BoldOblique", "LiberationMono-BoldItalic"),
+]
+
+
+@pytest.mark.parametrize(("canonical", "ttf_name"), _LIBERATION_MAPPED)
+def test_get_substitute_ttf_maps_all_12_proportional_and_mono_families(
+    canonical: str, ttf_name: str
+) -> None:
+    """Every Standard 14 name in the Helvetica / Times-Roman / Courier
+    families must resolve to its bundled Liberation TTF substitute."""
+    ttf = Standard14Fonts.get_substitute_ttf(canonical)
+    assert ttf is not None, f"{canonical} should have a Liberation substitute"
+    assert ttf.get_name() == ttf_name
+
+
+@pytest.mark.parametrize("canonical", ["Symbol", "ZapfDingbats"])
+def test_get_substitute_ttf_returns_none_for_symbol_and_zapf(
+    canonical: str,
+) -> None:
+    """Symbol / ZapfDingbats have no Liberation equivalent — caller must
+    keep using the placeholder rectangle for these two families."""
+    assert Standard14Fonts.get_substitute_ttf(canonical) is None
+
+
+def test_get_substitute_ttf_resolves_aliases() -> None:
+    """Alias inputs (Arial / TimesNewRoman / CourierNew) resolve through
+    the canonical-name table and reach the same TTF instance."""
+    assert (
+        Standard14Fonts.get_substitute_ttf("Arial")
+        is Standard14Fonts.get_substitute_ttf("Helvetica")
+    )
+    assert (
+        Standard14Fonts.get_substitute_ttf("TimesNewRoman")
+        is Standard14Fonts.get_substitute_ttf("Times-Roman")
+    )
+    assert (
+        Standard14Fonts.get_substitute_ttf("CourierNew")
+        is Standard14Fonts.get_substitute_ttf("Courier")
+    )
+
+
+def test_get_substitute_ttf_is_cached() -> None:
+    """Successive calls hand back the same parsed TTF instance — the
+    SFNT parse cost is paid once."""
+    first = Standard14Fonts.get_substitute_ttf("Helvetica")
+    second = Standard14Fonts.get_substitute_ttf("Helvetica")
+    assert first is second
+
+
+def test_get_substitute_ttf_returns_none_for_unknown_name() -> None:
+    """Names outside the Standard 14 / alias set return ``None`` rather
+    than raising."""
+    assert Standard14Fonts.get_substitute_ttf("CompletelyMadeUp") is None
+
+
+def test_get_glyph_path_for_courier_returns_monospace_outline() -> None:
+    """LiberationMono substitution covers Courier — 'A' resolves to a
+    real outline, not the AFM-empty fallback."""
+    path = Standard14Fonts.get_glyph_path("Courier", "A")
+    assert path
+    assert any(cmd[0] == "moveto" for cmd in path)
+
+
+def test_get_glyph_path_for_symbol_returns_empty() -> None:
+    """Symbol stays on the placeholder branch — Liberation has no
+    matching glyph repertoire so we keep returning an empty list."""
+    # Symbol's encoding has no 'A' glyph (it uses 'Alpha' instead);
+    # check a name the Symbol AFM does carry but Liberation does not.
+    assert Standard14Fonts.get_glyph_path("Symbol", "Alpha") == []
 
 
 def test_uni_name_helper_pads_short_hex() -> None:

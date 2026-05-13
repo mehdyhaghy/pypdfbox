@@ -271,10 +271,13 @@ class CCITTFaxDecode(Filter):
         ``/Columns`` and ``/Rows`` to be known up front (we cannot
         introspect the row count from raw packed bits without it).
 
-        Group 3 1D (``K = 0``) and Group 4 (``K < 0``) are emitted via
-        Pillow's libtiff bridge. Mixed Group 3 2D (``K > 0``) remains
-        unsupported because Pillow does not expose a stable T.4 2D
-        encoder option.
+        Group 3 1D (``K = 0``), mixed Group 3 2D (``K > 0``) and Group 4
+        (``K < 0``) are all emitted via Pillow's libtiff bridge. The
+        2D-coding bit of the T.4 ``T4Options`` tag is set for ``K > 0``
+        so libtiff produces a mixed 2D stream; libtiff picks its own
+        2D-line interval internally, which decoders treat as opaque
+        framing under PDF §7.4.9 (the ``K`` parameter governs decoding,
+        not the precise encoder line-batching).
         """
         decode_params = _resolve_decode_params(parameters, 0)
 
@@ -291,11 +294,7 @@ class CCITTFaxDecode(Filter):
             raise OSError(
                 f"CCITTFaxDecode.encode: /Rows must be > 0, got {rows}"
             )
-        if k > 0:
-            raise NotImplementedError(
-                f"CCITTFaxDecode.encode: Group 3 2D (K>0) is not supported, got K={k}"
-            )
-        compression = "group3" if k == 0 else "group4"
+        compression = "group4" if k < 0 else "group3"
 
         raw_bytes = raw.read()
         row_bytes = (columns + 7) // 8
@@ -323,7 +322,22 @@ class CCITTFaxDecode(Filter):
         try:
             image = Image.frombytes("1", (columns, rows), raw_bytes)
             buf = io.BytesIO()
-            image.save(buf, format="TIFF", compression=compression)
+            save_kwargs: dict[str, Any] = {
+                "format": "TIFF",
+                "compression": compression,
+            }
+            if k > 0:
+                # Set T4Options bit 0 (2D coding) so libtiff emits a
+                # mixed Group 3 2D stream. libtiff selects the
+                # 2D-coded/1D-coded line interval internally — this is
+                # opaque to PDF decoders, which treat ``K`` as a coarse
+                # upper bound rather than a precise framing knob.
+                from PIL.TiffImagePlugin import ImageFileDirectory_v2
+
+                ifd = ImageFileDirectory_v2()
+                ifd[_TIFF_T4_OPTIONS] = _T4_TWO_DIMENSIONAL
+                save_kwargs["tiffinfo"] = ifd
+            image.save(buf, **save_kwargs)
             tiff_bytes = buf.getvalue()
         except Exception as exc:
             raise OSError(f"CCITTFaxDecode.encode: libtiff encode failed: {exc}") from exc

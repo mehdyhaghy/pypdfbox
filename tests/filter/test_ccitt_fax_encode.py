@@ -150,11 +150,17 @@ def test_encode_short_payload_raises() -> None:
         CCITTFaxDecode().encode(io.BytesIO(b"\x00" * 16), io.BytesIO(), params)
 
 
-def test_encode_group3_2d_not_implemented() -> None:
-    """Pillow/libtiff does not expose a stable T.4 2D encoder option."""
-    params = _params(K=1, Columns=8, Rows=4)
-    with pytest.raises(NotImplementedError):
-        CCITTFaxDecode().encode(io.BytesIO(b"\x00" * 4), io.BytesIO(), params)
+def test_encode_group3_2d_round_trips() -> None:
+    """K>0 emits CCITT Group 3 2D (T4Options bit 0 set) via Pillow's
+    libtiff bridge and decodes back to the same scanlines."""
+    img = Image.new("1", (32, 16), 1)
+    for x in range(32):
+        img.putpixel((x, x % 16), 0)
+    raw = img.tobytes()
+
+    decoded = _round_trip(raw, 32, 16, k=1)
+
+    assert decoded == raw
 
 
 # ---------- /DecodeParms shapes --------------------------------------

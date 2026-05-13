@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import logging
 from enum import Enum
+from importlib import resources
 from typing import TYPE_CHECKING, Any
 
 from .afm_loader import AfmMetrics, load_standard14
@@ -12,6 +14,9 @@ from .encoding.zapf_dingbats_encoding import ZapfDingbatsEncoding
 if TYPE_CHECKING:
     from pypdfbox.fontbox.encoding.glyph_list import GlyphList
     from pypdfbox.fontbox.font_mapper import Standard14FontWrapper
+    from pypdfbox.fontbox.ttf import TrueTypeFont
+
+_LOG = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Per-family flag bits + default-encoding map.
@@ -150,6 +155,265 @@ _AVG_WIDTHS_CACHE: dict[str, list[float]] = {}
 # ``GENERIC_FONTS`` ``EnumMap`` (Standard14Fonts.java line 67) — the wrapper
 # is built once on first access and reused for the lifetime of the process.
 _GENERIC_FONTS_CACHE: dict[str, Standard14FontWrapper] = {}
+
+
+# Canonical Standard-14 name -> bundled Liberation TTF basename. The
+# Liberation families are metric-compatible with Arial / Times New Roman /
+# Courier New (themselves metric-compatible with the Adobe core fonts) so
+# the SIL-OFL Liberation set is the de-facto substitution target for any
+# Standard-14 reference shipped without a font program. Symbol and
+# ZapfDingbats have no Liberation equivalent — callers continue through
+# the placeholder-rectangle path for those.
+#
+# Files live in :mod:`pypdfbox.resources.ttf` (see ``NOTICE`` /
+# ``PROVENANCE.md`` for the upstream SIL-OFL attribution chain).
+_LIBERATION_TTF_NAMES: dict[str, str] = {
+    "Helvetica": "LiberationSans-Regular.ttf",
+    "Helvetica-Bold": "LiberationSans-Bold.ttf",
+    "Helvetica-Oblique": "LiberationSans-Italic.ttf",
+    "Helvetica-BoldOblique": "LiberationSans-BoldItalic.ttf",
+    "Times-Roman": "LiberationSerif-Regular.ttf",
+    "Times-Bold": "LiberationSerif-Bold.ttf",
+    "Times-Italic": "LiberationSerif-Italic.ttf",
+    "Times-BoldItalic": "LiberationSerif-BoldItalic.ttf",
+    "Courier": "LiberationMono-Regular.ttf",
+    "Courier-Bold": "LiberationMono-Bold.ttf",
+    "Courier-Oblique": "LiberationMono-Italic.ttf",
+    "Courier-BoldOblique": "LiberationMono-BoldItalic.ttf",
+    # Symbol / ZapfDingbats deliberately absent — the Liberation families
+    # carry no symbol or dingbats glyph repertoire, so substitution would
+    # be visibly wrong. Callers keep using the placeholder rectangle for
+    # these two names (CHANGES.md flags this remaining gap).
+}
+
+
+# Per-canonical-name cache for the parsed Liberation substitute. Parsing a
+# TTF allocates the entire fontTools ``TTFont`` object graph and walks the
+# SFNT directory; we eat that cost once per font for the lifetime of the
+# process. ``False`` marks "tried, no substitute available" (Symbol /
+# ZapfDingbats path, or bundled resource missing).
+_LIBERATION_TTF_CACHE: dict[str, TrueTypeFont | bool] = {}
+
+
+def _ttf_glyph_path(
+    ttf: TrueTypeFont, glyph_name: str
+) -> list[tuple[Any, ...]]:
+    """Walk the Liberation substitute's outline for ``glyph_name``.
+
+    Returns ``[]`` when the substitute carries no glyph by that PostScript
+    name. The returned commands are 7-tuples in the same shape produced by
+    :class:`Type1Font.get_path` — ``("moveto", x, y)``, ``("lineto", x, y)``,
+    ``("curveto", x1, y1, x2, y2, x, y)``, ``("closepath",)`` — so the
+    renderer's Type 1 path branch can consume them without a per-source
+    type switch.
+    """
+    try:
+        gid = ttf.name_to_gid(glyph_name)
+    except Exception:  # noqa: BLE001
+        return []
+    if gid <= 0:
+        return []
+    return _ttf_glyph_path_for_gid(ttf, gid)
+
+
+def _ttf_glyph_path_for_code_point(
+    ttf: TrueTypeFont, code_point: int
+) -> list[tuple[Any, ...]]:
+    """Walk the Liberation substitute's outline for the Unicode codepoint.
+
+    Mirrors the upstream "AGL miss → re-probe via Unicode" fallback in
+    :meth:`Standard14Fonts.get_glyph_path`. Returns ``[]`` when the
+    substitute's Unicode cmap doesn't map the codepoint.
+    """
+    cmap = ttf.get_unicode_cmap_subtable()
+    if cmap is None:
+        return []
+    try:
+        gid = int(cmap.get_glyph_id(code_point))
+    except Exception:  # noqa: BLE001
+        return []
+    if gid <= 0:
+        return []
+    return _ttf_glyph_path_for_gid(ttf, gid)
+
+
+def _ttf_glyph_path_for_gid(
+    ttf: TrueTypeFont, gid: int
+) -> list[tuple[Any, ...]]:
+    """Walk the TTF glyph outline at ``gid`` into PDFBox-shape commands.
+
+    Uses fontTools' pen protocol (the same path the renderer uses for
+    embedded ``/FontFile2`` glyphs). Returns an empty list when the
+    glyph carries no contours or when the pen raises mid-walk.
+    """
+    try:
+        glyph_set = ttf._tt.getGlyphSet()  # noqa: SLF001
+        glyph_name = ttf._tt.getGlyphName(gid)  # noqa: SLF001
+        glyph = glyph_set[glyph_name]
+    except Exception:  # noqa: BLE001
+        return []
+    pen = _CommandRecordingPen()
+    try:
+        glyph.draw(pen)
+    except Exception:  # noqa: BLE001
+        return []
+    return pen.commands
+
+
+class _CommandRecordingPen:
+    """fontTools pen that records :class:`Type1Font`-shape commands.
+
+    Mirrors the contract :meth:`Standard14Fonts.get_glyph_path` is
+    documented to return — a list of tagged tuples consumable by
+    :meth:`pypdfbox.rendering.pdf_renderer._build_aggdraw_path_from_commands`.
+    """
+
+    __slots__ = ("commands",)
+
+    def __init__(self) -> None:
+        self.commands: list[tuple[Any, ...]] = []
+
+    def moveTo(self, pt: tuple[float, float]) -> None:  # noqa: N802
+        self.commands.append(("moveto", float(pt[0]), float(pt[1])))
+
+    def lineTo(self, pt: tuple[float, float]) -> None:  # noqa: N802
+        self.commands.append(("lineto", float(pt[0]), float(pt[1])))
+
+    def curveTo(
+        self,
+        *points: tuple[float, float],
+    ) -> None:
+        # fontTools may pass multiple Bézier off-curve points; emit each
+        # segment as a 7-tuple ``("curveto", x1, y1, x2, y2, x, y)``.
+        # Cubic curves arrive as three points; the rare TrueType
+        # higher-order variant is decomposed by fontTools before we see it.
+        if len(points) == 3:
+            (x1, y1), (x2, y2), (x, y) = points
+            self.commands.append(
+                ("curveto", float(x1), float(y1), float(x2), float(y2),
+                 float(x), float(y))
+            )
+
+    def qCurveTo(  # noqa: N802
+        self,
+        *points: tuple[float, float] | None,
+    ) -> None:
+        # TrueType quadratic Béziers — convert each on-the-fly to two cubic
+        # segments using the standard 2/3 weighting. fontTools' default pen
+        # emits a single ``qCurveTo`` per on-curve span, optionally with
+        # implicit-on-curve sequences (a trailing ``None`` denotes "back to
+        # start", used by closed TrueType contours).
+        # Filter out the trailing ``None`` and walk pairs.
+        pts = [p for p in points if p is not None]
+        if not pts:
+            return
+        # The pen API spec: qCurveTo(c1, c2, ..., end). We need the previous
+        # on-curve point as the starting anchor; track it from our last
+        # emitted command.
+        last_on = self._last_point()
+        if last_on is None:
+            return
+        for i, end in enumerate(pts):
+            if i < len(pts) - 1:
+                # Implicit on-curve between two consecutive off-curves.
+                next_off = pts[i + 1]
+                on = (
+                    (end[0] + next_off[0]) / 2.0,
+                    (end[1] + next_off[1]) / 2.0,
+                )
+            else:
+                on = end
+            # Quadratic (last_on, end, on) -> cubic with control points
+            # ``last_on + 2/3 (end - last_on)`` and ``on + 2/3 (end - on)``.
+            cx1 = last_on[0] + (2.0 / 3.0) * (end[0] - last_on[0])
+            cy1 = last_on[1] + (2.0 / 3.0) * (end[1] - last_on[1])
+            cx2 = on[0] + (2.0 / 3.0) * (end[0] - on[0])
+            cy2 = on[1] + (2.0 / 3.0) * (end[1] - on[1])
+            self.commands.append(
+                ("curveto", cx1, cy1, cx2, cy2, float(on[0]), float(on[1]))
+            )
+            last_on = on
+
+    def closePath(self) -> None:  # noqa: N802
+        self.commands.append(("closepath",))
+
+    def endPath(self) -> None:  # noqa: N802
+        # Open contours close implicitly in PDF stroking; nothing to emit.
+        pass
+
+    def addComponent(  # noqa: N802
+        self,
+        glyphName: str,  # noqa: N803
+        transformation: tuple[float, float, float, float, float, float],
+    ) -> None:
+        # Composite glyphs are decomposed by fontTools' ``DecomposingPen``
+        # before they reach us in the typical path; this no-op is the
+        # safety net for direct-pen invocations.
+        del glyphName, transformation
+
+    def _last_point(self) -> tuple[float, float] | None:
+        for cmd in reversed(self.commands):
+            tag = cmd[0]
+            if tag == "moveto" or tag == "lineto":
+                return (cmd[1], cmd[2])
+            if tag == "curveto":
+                return (cmd[5], cmd[6])
+        return None
+
+
+def _load_substitution_ttf(canonical: str) -> TrueTypeFont | None:
+    """Return the bundled Liberation :class:`TrueTypeFont` substitute for the
+    named Standard-14 canonical font, or ``None`` when none is mapped (or
+    the bundled resource fails to load).
+
+    Mirrors the spirit of upstream's
+    ``FontMapperImpl.getTrueTypeFont(Standard14Fonts.FontName.*)`` chain
+    which, in PDFBox, reaches for the Liberation TTFs shipped under
+    ``org/apache/pdfbox/resources/ttf/`` — pypdfbox carries the same
+    Liberation set under :mod:`pypdfbox.resources.ttf` (SIL OFL 1.1, see
+    ``NOTICE`` and :file:`pypdfbox/resources/ttf/LICENSE.txt`).
+
+    The parsed font is cached per canonical name and reused on every
+    subsequent call. Symbol / ZapfDingbats return ``None`` — Liberation
+    has no symbol or dingbats coverage so substitution would be visibly
+    wrong (renderers continue to draw the placeholder rectangle for
+    those families).
+    """
+    cached = _LIBERATION_TTF_CACHE.get(canonical)
+    if cached is not None:
+        return cached if not isinstance(cached, bool) else None
+    ttf_name = _LIBERATION_TTF_NAMES.get(canonical)
+    if ttf_name is None:
+        _LIBERATION_TTF_CACHE[canonical] = False
+        return None
+    try:
+        # ``importlib.resources.files`` returns a Traversable that resolves
+        # to the on-disk path inside the installed wheel (or the source tree
+        # for editable installs) — works identically under both.
+        resource = resources.files("pypdfbox.resources.ttf") / ttf_name
+        raw = resource.read_bytes()
+    except (FileNotFoundError, OSError, ModuleNotFoundError) as exc:
+        _LOG.debug(
+            "Standard 14 Liberation substitute %r missing: %s", ttf_name, exc
+        )
+        _LIBERATION_TTF_CACHE[canonical] = False
+        return None
+    # Lazy import — fontbox.ttf pulls in fontTools, which is heavy and
+    # most pypdfbox use-cases never touch the rendering pipeline.
+    from pypdfbox.fontbox.ttf import TrueTypeFont  # noqa: PLC0415
+
+    try:
+        parsed = TrueTypeFont.from_bytes(raw)
+    except Exception as exc:  # noqa: BLE001
+        _LOG.warning(
+            "Standard 14 Liberation substitute %r failed to parse: %s",
+            ttf_name,
+            exc,
+        )
+        _LIBERATION_TTF_CACHE[canonical] = False
+        return None
+    _LIBERATION_TTF_CACHE[canonical] = parsed
+    return parsed
 
 
 def _uni_name_of_code_point(code_point: int) -> str:
@@ -598,6 +862,31 @@ class Standard14Fonts:
         return GlyphList.get_adobe_glyph_list()
 
     @classmethod
+    def get_substitute_ttf(cls, base_name: str) -> TrueTypeFont | None:
+        """Return the parsed Liberation TTF substitute for the named font,
+        or ``None`` when none is mapped (Symbol / ZapfDingbats / unknown).
+
+        pypdfbox extension — upstream PDFBox ships only
+        ``LiberationSans-Regular.ttf`` in
+        ``pdfbox/src/main/resources/org/apache/pdfbox/resources/ttf/`` and
+        reaches for it through the ``FontMapperImpl`` indirection;
+        pypdfbox bundles the full 12-file Liberation set
+        (Sans/Serif/Mono × Regular/Bold/Italic/BoldItalic) under
+        :mod:`pypdfbox.resources.ttf` so the Helvetica / Times-Roman /
+        Courier families all get metric-compatible glyph outlines without
+        any system-font scanning.
+
+        Aliases (``Arial``, ``TimesNewRoman``, ``CourierNew``, …) are
+        normalised on the input. Symbol / ZapfDingbats return ``None`` —
+        Liberation has no symbol or dingbats coverage so substitution
+        would be visibly wrong.
+        """
+        canonical = cls.get_mapped_font_name(base_name)
+        if canonical is None:
+            return None
+        return _load_substitution_ttf(canonical)
+
+    @classmethod
     def get_glyph_path(cls, base_name: str, glyph_name: str) -> list[tuple[Any, ...]]:
         """Return the glyph outline for ``glyph_name`` in the named font.
 
@@ -627,6 +916,25 @@ class Standard14Fonts:
             mapped_font = cls.get_mapped_font(base_name)
         except ValueError:
             return []
+        # Preferred outline source — the bundled Liberation TTF when one is
+        # mapped for this canonical name. Standard14FontWrapper.get_path
+        # always returns ``[]`` (AFMs ship no outlines), so without this
+        # branch a Standard-14 reference with no embedded program would
+        # always fall through to the placeholder rectangle in the renderer.
+        substitute_ttf = cls.get_substitute_ttf(base_name)
+        if substitute_ttf is not None:
+            path = _ttf_glyph_path(substitute_ttf, glyph_name)
+            if path:
+                return path
+            # AGL / ZapfDingbats fallback through the Liberation cmap.
+            unicodes = cls.get_glyph_list(base_name).to_unicode(glyph_name)
+            if unicodes is not None and len(unicodes) == 1:
+                code_point = ord(unicodes)
+                path = _ttf_glyph_path_for_code_point(
+                    substitute_ttf, code_point
+                )
+                if path:
+                    return path
         if mapped_font.has_glyph(glyph_name):
             return list(mapped_font.get_path(glyph_name))
         # AGL / ZapfDingbats fallback — upstream re-probes under the

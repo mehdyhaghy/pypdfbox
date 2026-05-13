@@ -147,19 +147,31 @@ def test_code_to_gid_falls_back_to_unicode_cmap_when_font_methods_fail(
 
 
 def test_maybe_warn_standard14_only_logs_once(caplog: Any) -> None:
-    class _Font:
+    """Symbol triggers the once-per-font placeholder log; Helvetica does
+    not (it now resolves through the bundled Liberation TTF). See wave
+    1303 substitution work for context."""
+    class _SymbolFont:
+        def get_name(self) -> str:
+            return "Symbol"
+
+    class _HelveticaFont:
         def get_name(self) -> str:
             return "Helvetica"
 
     doc, renderer = _prepared_renderer()
     try:
-        font = _Font()
+        symbol_font = _SymbolFont()
+        helvetica_font = _HelveticaFont()
         caplog.set_level("DEBUG", logger="pypdfbox.rendering.pdf_renderer")
 
-        renderer._maybe_warn_standard14(font)  # noqa: SLF001
-        renderer._maybe_warn_standard14(font)  # noqa: SLF001
+        # Symbol — placeholder branch, exactly one log entry.
+        renderer._maybe_warn_standard14(symbol_font)  # noqa: SLF001
+        renderer._maybe_warn_standard14(symbol_font)  # noqa: SLF001
+        assert caplog.text.count("Symbol is a Standard 14 font") == 1
 
-        assert caplog.text.count("Helvetica is a Standard 14 font") == 1
+        # Helvetica — Liberation substitute available, no log entry.
+        renderer._maybe_warn_standard14(helvetica_font)  # noqa: SLF001
+        assert "Helvetica is a Standard 14 font" not in caplog.text
     finally:
         _finish(renderer)
         doc.close()

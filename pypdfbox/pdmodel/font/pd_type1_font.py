@@ -310,17 +310,58 @@ class PDType1Font(PDSimpleFont):
     def get_glyph_path(self, code: int) -> list[tuple]:
         """Glyph outline for character ``code``, in *font units*.
 
-        Returns an empty list when the font has no embedded program,
-        when ``code`` does not resolve to a known glyph, or when the
-        charstring cannot be drawn.
+        Resolution order:
+
+        1. Embedded ``/FontFile`` program (the usual Type 1 path) — returns
+           the program's outline for the encoding-resolved glyph name.
+        2. **Liberation substitute** for non-embedded Standard 14 fonts —
+           when ``/BaseFont`` resolves to one of the 14 canonical
+           PostScript names (Helvetica, Times-Roman, Courier, … families)
+           and the dict ships no font program, fall through to the
+           bundled Liberation TTF outline via
+           :meth:`Standard14Fonts.get_glyph_path`. Symbol / ZapfDingbats
+           have no Liberation equivalent — those return an empty list and
+           the renderer continues to draw the placeholder rectangle.
+
+        Returns an empty list when ``code`` does not resolve to a known
+        glyph, or when no outline source is available.
         """
         program = self._get_type1_font()
-        if program is None:
+        if program is not None:
+            name = self._code_to_glyph_name(code)
+            if name is None:
+                return []
+            return program.get_path(name)
+        # No embedded program — fall back to Liberation when the font is
+        # one of the Standard 14.
+        base_font = self.get_name()
+        if base_font is None or not Standard14Fonts.contains_name(base_font):
             return []
-        name = self._code_to_glyph_name(code)
-        if name is None:
+        encoding = self.get_encoding_typed()
+        if encoding is not None:
+            glyph_name = encoding.get_name(code)
+        else:
+            # Standard 14 PDF font dict with no /Encoding — fall back to
+            # the PostScript default encoding for the family (PDF
+            # 32000-1 §9.6.2.4). Symbol uses SymbolEncoding,
+            # ZapfDingbats uses ZapfDingbatsEncoding, everything else
+            # uses StandardEncoding.
+            from .encoding.standard_encoding import StandardEncoding  # noqa: PLC0415
+            from .encoding.symbol_encoding import SymbolEncoding  # noqa: PLC0415
+            from .encoding.zapf_dingbats_encoding import (  # noqa: PLC0415
+                ZapfDingbatsEncoding,
+            )
+
+            canonical = Standard14Fonts.get_mapped_font_name(base_font)
+            if canonical == "Symbol":
+                glyph_name = SymbolEncoding.INSTANCE.get_name(code)
+            elif canonical == "ZapfDingbats":
+                glyph_name = ZapfDingbatsEncoding.INSTANCE.get_name(code)
+            else:
+                glyph_name = StandardEncoding.INSTANCE.get_name(code)
+        if glyph_name == ".notdef":
             return []
-        return program.get_path(name)
+        return Standard14Fonts.get_glyph_path(base_font, glyph_name)
 
     # ---------- code -> glyph name ----------
 
