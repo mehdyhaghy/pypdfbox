@@ -545,6 +545,26 @@ Tkinter/Ttk port of the upstream Swing-based debugger (PDF tree explorer / hex v
 | `pypdfbox/debugger/streampane/stream_pane.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/streampane/StreamPane.java` |
 | `pypdfbox/debugger/stringpane/string_pane.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/stringpane/StringPane.java` |
 | `pypdfbox/debugger/signaturepane/signature_pane.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/signaturepane/SignaturePane.java` |
+| `pypdfbox/debugger/ui/menu_base.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/MenuBase.java` |
+| `pypdfbox/debugger/ui/zoom_menu.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/ZoomMenu.java` |
+| `pypdfbox/debugger/ui/rotation_menu.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/RotationMenu.java` |
+| `pypdfbox/debugger/ui/render_destination_menu.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/RenderDestinationMenu.java` |
+| `pypdfbox/debugger/ui/view_menu.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/ViewMenu.java` |
+| `pypdfbox/debugger/ui/image_type_menu.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/ImageTypeMenu.java` |
+| `pypdfbox/debugger/ui/print_dpi_menu.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/PrintDpiMenu.java` |
+| `pypdfbox/debugger/ui/text_stripper_menu.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/TextStripperMenu.java` |
+| `pypdfbox/debugger/ui/tree_view_menu.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/TreeViewMenu.java` |
+| `pypdfbox/debugger/ui/recent_files.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/RecentFiles.java` |
+| `pypdfbox/debugger/pagepane/page_pane.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/pagepane/PagePane.java` |
+| `pypdfbox/debugger/pagepane/debug_text_overlay.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/pagepane/DebugTextOverlay.java` |
+| `pypdfbox/debugger/ui/error_dialog.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/ErrorDialog.java` |
+| `pypdfbox/debugger/ui/file_open_save_dialog.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/FileOpenSaveDialog.java` |
+| `pypdfbox/debugger/ui/text_dialog.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/TextDialog.java` |
+| `pypdfbox/debugger/ui/log_dialog.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/LogDialog.java` |
+| `pypdfbox/debugger/ui/reader_bottom_panel.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/ReaderBottomPanel.java` |
+| `pypdfbox/debugger/ui/pdf_tree_cell_renderer.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/PDFTreeCellRenderer.java` |
+| `pypdfbox/debugger/ui/tree.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/Tree.java` |
+| `pypdfbox/debugger/ui/osx_adapter.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/OSXAdapter.java` |
 
 ---
 

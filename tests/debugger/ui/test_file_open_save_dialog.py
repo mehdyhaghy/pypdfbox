@@ -1,0 +1,111 @@
+"""Hand-written tests for ``pypdfbox.debugger.ui.FileOpenSaveDialog``."""
+
+from __future__ import annotations
+
+from collections.abc import Iterator
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from pypdfbox.debugger.ui import FileOpenSaveDialog
+from pypdfbox.debugger.ui import file_open_save_dialog as module
+
+
+@pytest.fixture(autouse=True)
+def _reset_impls() -> Iterator[None]:
+    module.set_open_impl(None)
+    module.set_save_impl(None)
+    yield
+    module.set_open_impl(None)
+    module.set_save_impl(None)
+
+
+def test_open_file_returns_chosen_path(tmp_path: Path) -> None:
+    target = tmp_path / "foo.pdf"
+    target.write_bytes(b"data")
+    captured: dict[str, Any] = {}
+
+    def fake_open(**kwargs: Any) -> str:
+        captured.update(kwargs)
+        return str(target)
+
+    module.set_open_impl(fake_open)
+    dialog = FileOpenSaveDialog(None, [("PDF", "*.pdf")])
+    result = dialog.open_file()
+    assert result == str(target)
+    assert captured["filetypes"] == [("PDF", "*.pdf")]
+
+
+def test_open_file_returns_none_on_cancel() -> None:
+    module.set_open_impl(lambda **kwargs: "")
+    dialog = FileOpenSaveDialog(None)
+    assert dialog.open_file() is None
+
+
+def test_save_file_writes_bytes(tmp_path: Path) -> None:
+    target = tmp_path / "out.bin"
+    module.set_save_impl(lambda **kwargs: str(target))
+    dialog = FileOpenSaveDialog(None)
+    ok = dialog.save_file(b"hello", None)
+    assert ok is True
+    assert target.read_bytes() == b"hello"
+
+
+def test_save_file_appends_extension(tmp_path: Path) -> None:
+    target = tmp_path / "out"
+    module.set_save_impl(lambda **kwargs: str(target))
+    dialog = FileOpenSaveDialog(None)
+    ok = dialog.save_file(b"x", "bin")
+    assert ok is True
+    assert (tmp_path / "out.bin").exists()
+
+
+def test_save_file_returns_false_on_cancel() -> None:
+    module.set_save_impl(lambda **kwargs: "")
+    dialog = FileOpenSaveDialog(None)
+    assert dialog.save_file(b"", "pdf") is False
+
+
+def test_save_document_uses_extension_and_security_removal(tmp_path: Path) -> None:
+    target = tmp_path / "doc"
+    module.set_save_impl(lambda **kwargs: str(target))
+    calls: list[tuple[str, Any]] = []
+
+    class DummyDoc:
+        def set_all_security_to_be_removed(self, flag: bool) -> None:
+            calls.append(("security", flag))
+
+        def save(self, path: str) -> None:
+            calls.append(("save", path))
+
+    dialog = FileOpenSaveDialog(None)
+    ok = dialog.save_document(DummyDoc(), "pdf")
+    assert ok is True
+    assert calls == [
+        ("security", True),
+        ("save", str(target) + ".pdf"),
+    ]
+
+
+def test_save_document_returns_false_on_cancel() -> None:
+    module.set_save_impl(lambda **kwargs: "")
+
+    class DummyDoc:
+        def set_all_security_to_be_removed(self, flag: bool) -> None:
+            raise AssertionError("not called")
+
+        def save(self, path: str) -> None:
+            raise AssertionError("not called")
+
+    dialog = FileOpenSaveDialog(None)
+    assert dialog.save_document(DummyDoc(), "pdf") is False
+
+
+def test_open_file_passes_parent_when_provided() -> None:
+    captured: dict[str, Any] = {}
+    module.set_open_impl(lambda **kw: (captured.update(kw), "")[-1])
+    sentinel = object()
+    dialog = FileOpenSaveDialog(sentinel)
+    dialog.open_file()
+    assert captured.get("parent") is sentinel

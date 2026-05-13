@@ -2565,3 +2565,43 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
 - `StreamPane` XML pretty-printer uses `xml.dom.minidom` instead of TrAX (minidom does not resolve external DTDs by default — secure-processing flags unnecessary in Python).
 - `StreamTextView`: `Searcher` / find-menu integration and `AncestorListener` menu wiring deferred to the eventual `PDFDebugger` shell wave (global menus are a debugger-frame concern). Tooltip controller plumbing is wired but no concrete controller is yet supplied.
 - `StreamImageView`: global `ZoomMenu` / `RotationMenu` singletons not ported — zoom / rotation exposed as constructor kwargs + `set_zoom` / `set_rotation` setters.
+
+## Wave 1294 — debugger ui menus / dialogs / pagepane + splitter destination-identity fix
+
+### Ui menus part 1 (`pypdfbox/debugger/ui/{menu_base,zoom_menu,rotation_menu,render_destination_menu,view_menu}.py`)
+
+- `JMenu` / `JMenuItem` / `JRadioButtonMenuItem` + `ButtonGroup` → `tk.Menu(tearoff=0)` / `menu.add_command` / `menu.add_radiobutton(variable=tk.StringVar)`.
+- `ViewMenu` is a partial port: only the *Zoom*, *Rotation*, *Render destination* cascades plus the *Allow subsampling* checkbutton are wired in. Upstream additionally registers `TreeViewMenu`, `ImageTypeMenu`, `TextStripperMenu`, the four show-bounds/beads/text-positions/glyph-bounds checkbuttons, the *Extract Text* command and the *Repair AcroForm* checkbutton — the rest will be wired up when those classes land.
+- Method-overload disambiguation: `RotationMenu.getRotationDegrees(String)` → `get_rotation_degrees_for(action_command)`; `RenderDestinationMenu.getRenderDestination(String)` → `get_render_destination_for(action_command)` (zero-arg overload keeps the upstream name).
+- `MenuBase.set_enable_menu` greys out every entry of the wrapped `tk.Menu` (Tk has no menu-level state flag), instead of toggling a single `JMenu.setEnabled` — observable result is identical.
+- Singletons add a private `_reset_instance()` classmethod for test isolation (not part of the upstream API).
+
+### Ui menus part 2 (`pypdfbox/debugger/ui/{image_type_menu,print_dpi_menu,text_stripper_menu,tree_view_menu,recent_files}.py`)
+
+- `RecentFiles`: storage moved from `java.util.prefs.Preferences` to a JSON file under `~/.config/pypdfbox/recent-files.json` (POSIX) / `%APPDATA%/pypdfbox/recent-files.json` (Windows) — same pattern as `WindowPrefs`. Path overridable via constructor kwarg `path=`. `close()` on an empty history is a no-op (matches upstream) and does not clobber other slugs in the shared file.
+- `PrintDpiMenu` / `ImageTypeMenu` / `TextStripperMenu` / `TreeViewMenu`: Swing radio / check-box menu items reimplemented as `tk.Menu.add_radiobutton` / `add_checkbutton` sharing a single `StringVar` / `IntVar` / `BooleanVar`. Static getters that previously dereferenced `instance.menu` directly now raise `RuntimeError` (instead of Java's `NullPointerException`) when the singleton has not been built.
+
+### Pagepane (`pypdfbox/debugger/pagepane/`)
+
+- `PagePane`: Swing `JLabel.setIcon(BufferedImage)` painting → `tk.Canvas.create_image(...)` of a `PIL.ImageTk.PhotoImage`; mouse listeners are Tk `<Motion>` / `<Button-1>` / `<Leave>` bindings. Rendering runs inline on the Tk thread (no `SwingWorker`); `RenderWorker.done()` is folded into `_present_image`.
+- `PagePane._init_rect_map`: collects only URI link annotations and AcroForm widget rectangles; `PDActionGoTo` / `PDNamedDestination` / `PDPageDestination` resolution is not wired (upstream's branch was rarely exercised and our destination port surface differs).
+- `DebugTextOverlay.show_glyph`: cyan glyph-bounds rectangles use a best-effort font-bbox projection rather than upstream's full `getNormalizedPath` glyph-path projection — the latter requires a vector-font surface (`PDVectorFont.getNormalizedPath`) we don't yet expose universally.
+- `Desktop.browse` URI launching delegated to `webbrowser.open` (equivalent on macOS / Linux / Windows).
+- HiDPI / `defaultTransform` scale compensation (PDFBOX-3665) is not ported; PIL + Tk handle high-DPI rendering implicitly via the OS.
+- `ImageType` / `RenderDestination` / `TextStripperMenu` toggles are not piped through — `PagePane._render_image` always renders at 72 DPI × zoom in RGB. Will be wired when those menus' integration lands.
+- `ancestorAdded` / `ancestorRemoved` menu attach / detach lifecycle (Swing-specific) is omitted; Tk has no direct equivalent.
+
+### Splitter destination-identity (`pypdfbox/multipdf/splitter.py`)
+
+- `Splitter.fix_destinations` now snapshots the source destination target page dict at staging time instead of reading it back from the cloned destination array after `PDDocument.import_page`'s deep copy minted a fresh `COSDictionary` per indirect-ref target. Upstream gets identity matching for free via its shallow page-graph copy; our deep copy required passing the source link dict through `_process_annotations` → `_stage_link_destination` so the post-pass `_page_dict_map` lookup hits on the source-page `id()` rather than a clone-side dict.
+- `_dest_to_fix` is now a 3-tuple `(cloned_destination_array, source_page_dict, source_target_page_dict)`. A two-tuple fallback path is preserved so subclasses that still construct staged destinations the old way (waves 624 / 543 / 387 / 654 / 665) keep working.
+- Test unskipped: `test_split_with_structure_tree_and_destinations` (PDFBOX-5762 fixture).
+
+### Ui dialogs / tree / osx adapter (`pypdfbox/debugger/ui/{error_dialog,file_open_save_dialog,text_dialog,log_dialog,reader_bottom_panel,pdf_tree_cell_renderer,tree,osx_adapter}.py`)
+
+- `ErrorDialog`: message + (optional) stack trace shown as a single `messagebox.showerror` body. The Swing "Show Details" toggle preserved as `set_show_details(bool)` state rather than an in-dialog button.
+- `FileOpenSaveDialog`: relies on the platform's native overwrite-confirmation dialog from `asksaveasfilename` instead of a custom Yes/No popup. Module-level `set_open_impl` / `set_save_impl` test hooks for headless testing.
+- `PDFTreeCellRenderer`: exposed as a data-only renderer — `render_value` / `style_for` return text + logical icon name; the consumer wires those into `ttk.Treeview` tags. No `OverlayIcon` / `paintIcon` — the overlay is communicated via an `indirect=True` flag.
+- `Tree`: `build_menu_items()` is pure data (list of `(label, callback)` tuples) for testability; the runtime widget composes the actual `tk.Menu` from that list. Right-click is bound on both `<Button-2>` and `<Button-3>` for cross-platform parity. `Desktop.getDesktop().open(file)` integration exposed via an `open_handler` callback (no stdlib equivalent to `Desktop.open`); the temp-file write uses `tempfile.mkdtemp(prefix="pdfbox-")` with `chmod 0o700`.
+- `OSXAdapter`: uses Tk's native macOS commands (`::tk::mac::Quit`, `tk::mac::standardAboutPanel`, `::tk::mac::ShowPreferences`, `::tk::mac::OpenDocument`) instead of reflective `com.apple.eawt` calls. Every method is a deliberate no-op when `sys.platform != "darwin"`, matching the upstream `ClassNotFoundException` fallback path.
+- `LogDialog`: records are buffered when the toplevel hasn't been built yet and replayed on first `show()`. Counters update immediately regardless of widget state so headless tests can assert on them. Auto-registers itself with `DebugLog.set_dialog_sink`.

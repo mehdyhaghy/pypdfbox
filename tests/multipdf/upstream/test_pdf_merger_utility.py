@@ -474,19 +474,63 @@ def test_split_with_structure_tree() -> None:
             assert len(structure_tree_root.get_role_map()) == 6
 
 
-@pytest.mark.skip(
-    reason=(
-        "Splitter.fix_destinations: with PDFBOX-5762-722238.pdf the link "
-        "destinations expected to retarget to pages 0/1 of the chunk are "
-        "nulled instead. The destination's /D[0] page-dict identity "
-        "doesn't match the source-page snapshot registered in "
-        "_page_dict_map. Hybrid-xref-resolution makes the chunk's "
-        "/StructTreeRoot, parent-tree size (7) and role-map size (4) "
-        "match upstream — only the destination-page identity matching "
-        "remains broken."
+def test_split_with_structure_tree_and_destinations() -> None:
+    # PDFBOX-5762: Splitter must rewrite cross-page link destinations.
+    # The chunk keeps the first two pages, so only the first two of the
+    # five link annotations should retarget to chunk-local pages; the
+    # remaining three point at pages that didn't follow the split and
+    # have their /D[0] nulled out.
+    from pypdfbox.pdmodel.interactive.action.pd_action_go_to import (
+        PDActionGoTo,
     )
-)
-def test_split_with_structure_tree_and_destinations() -> None: ...
+    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (  # noqa: E501
+        PDPageDestination,
+    )
+
+    with PDDocument.load(str(_FIXTURE_DIR / "PDFBOX-5762-722238.pdf")) as doc:
+        splitter = Splitter()
+        splitter.set_start_page(1)
+        splitter.set_end_page(2)
+        splitter.set_split_at_page(2)
+        split_result = splitter.split(doc)
+        assert len(split_result) == 1
+        with split_result[0] as dst_doc:
+            assert dst_doc.get_number_of_pages() == 2
+            # Status-quo structure-tree assertions — match upstream
+            # ``testSplitWithStructureTreeAndDestinations``.
+            structure_tree_root = (
+                dst_doc.get_document_catalog().get_structure_tree_root()
+            )
+            assert (
+                len(
+                    PDFMergerUtility.get_number_tree_as_map(
+                        structure_tree_root.get_parent_tree()
+                    )
+                )
+                == 7
+            )
+            assert len(structure_tree_root.get_role_map()) == 4
+
+            # Check that destinations are fixed — only the first two
+            # point at pages in the chunk; the remaining three are nulled.
+            annotations = dst_doc.get_page(0).get_annotations()
+            assert len(annotations) == 5
+            links = []
+            for ann in annotations:
+                assert isinstance(ann, PDAnnotationLink)
+                links.append(ann)
+            actions = [link.get_action() for link in links]
+            for action in actions:
+                assert isinstance(action, PDActionGoTo)
+            destinations = [action.get_destination() for action in actions]
+            for destination in destinations:
+                assert isinstance(destination, PDPageDestination)
+            page_tree = dst_doc.get_pages()
+            assert page_tree.index_of(destinations[0].get_page()) == 0
+            assert page_tree.index_of(destinations[1].get_page()) == 1
+            assert destinations[2].get_page() is None
+            assert destinations[3].get_page() is None
+            assert destinations[4].get_page() is None
 
 
 def test_split_with_structure_tree_and_destinations_and_removed_annotations() -> None:

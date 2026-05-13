@@ -118,12 +118,21 @@ class Splitter:
         self._struct_dict_map: dict[int, COSDictionary] = {}
         self._id_set: set[str] = set()
         self._role_set: set[str] = set()
-        # destToFixMap mirror — list of (cloned_dest_array, source_page_dict)
-        # per chunk. Deferred to after the page walk so we can decide
-        # whether each destination's target page lives in the chunk.
-        self._dest_to_fix: list[tuple[COSArray, COSDictionary]] = []
+        # destToFixMap mirror — list of (cloned_dest_array, source_host_page_dict,
+        # source_target_page_dict) per chunk. Deferred to after the page walk
+        # so we can decide whether each destination's target page lives in
+        # the chunk.
+        #
+        # ``source_target_page_dict`` is the page the destination *points to*,
+        # captured before ``import_page``'s deep-copy replaced the indirect
+        # ref's resolved target with a fresh COSDictionary instance. Without
+        # that snapshot, the post-pass ``_page_dict_map`` lookup keyed by
+        # ``id()`` misses cross-page targets (wave 1294).
+        self._dest_to_fix: list[
+            tuple[COSArray, COSDictionary, COSDictionary | None]
+        ] = []
         self._dest_to_fix_per_chunk: list[
-            list[tuple[COSArray, COSDictionary]]
+            list[tuple[COSArray, COSDictionary, COSDictionary | None]]
         ] = []
 
         self._current_page_number: int = 0
@@ -561,9 +570,27 @@ class Splitter:
             # remember the cloned destination so the post-pass can either
             # rewrite its /D[0] to the cloned destination page or null it
             # out when the target page is in a different chunk.
+            #
+            # Pass the *source* annot dict (when available) so the staging
+            # step can resolve the destination's target page through the
+            # un-deep-copied source object graph. ``import_page``'s deep-copy
+            # replaces each indirect-ref target with a fresh COSDictionary,
+            # so reading ``/A /D [0]`` off ``cloned_ann`` (which wraps the
+            # imported annot's clone) would lose source-page identity and
+            # break the post-pass ``_page_dict_map`` lookup.
             if isinstance(cloned_ann, PDAnnotationLink):
+                source_link_dict: COSDictionary | None = None
+                if (
+                    source_annots_array is not None
+                    and index < source_annots_array.size()
+                ):
+                    candidate = source_annots_array.get_object(index)
+                    if isinstance(candidate, COSDictionary):
+                        source_link_dict = candidate
                 self._stage_link_destination(
-                    cloned_ann, source_page.get_cos_object()
+                    cloned_ann,
+                    source_page.get_cos_object(),
+                    source_link_dict,
                 )
 
             # Rewrite the cloned annot's /P back-pointer to the imported
@@ -784,7 +811,10 @@ class Splitter:
             cos_catalog.remove_item(_ACROFORM)
 
     def _stage_link_destination(
-        self, link: Any, source_page_dict: COSDictionary
+        self,
+        link: Any,
+        source_page_dict: COSDictionary,
+        source_link_dict: COSDictionary | None = None,
     ) -> None:
         """Clone the link's destination array, install the clone, and
         remember it for the :meth:`fix_destinations` post-pass.
@@ -796,9 +826,22 @@ class Splitter:
         then legacy catalog ``/Dests`` flat dictionary) so the cloned
         destination is a concrete :class:`PDPageDestination` rather than
         a name that won't resolve in the chunk's name tree.
+
+        ``source_link_dict`` is the *un-deep-copied* link annot dict from
+        the source document. When supplied, the destination's target page
+        is resolved through that source dict so the captured page-dict
+        identity stays stable across ``import_page``'s deep-copy. Upstream
+        gets this for free (its ``import_page`` does a shallow page-graph
+        copy that preserves indirect-ref identities); our deep-copy clones
+        each indirect-ref target into a fresh ``COSDictionary``, so reading
+        the destination off the imported link would point at that fresh
+        dict instead of the source page (wave 1294).
         """
         from pypdfbox.pdmodel.interactive.action.pd_action_go_to import (
             PDActionGoTo,
+        )
+        from pypdfbox.pdmodel.interactive.annotation.pd_annotation_link import (
+            PDAnnotationLink,
         )
         from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
             PDDestination,
@@ -810,8 +853,17 @@ class Splitter:
             PDPageDestination,
         )
 
+        # Prefer the source-side link wrapper for destination resolution so
+        # we don't trip over ``import_page``'s deep-copied page targets. Fall
+        # back to the cloned link when no source dict was supplied (e.g.
+        # subclass override that calls this directly).
+        if source_link_dict is not None:
+            resolution_link: Any = PDAnnotationLink(source_link_dict)
+        else:
+            resolution_link = link
+
         try:
-            src_destination = link.get_destination()
+            src_destination = resolution_link.get_destination()
         except Exception:  # noqa: BLE001
             _LOG.warning(
                 "Incorrect destination in link annotation on page %d "
@@ -824,7 +876,7 @@ class Splitter:
         action = None
         if src_destination is None:
             try:
-                action = link.get_action()
+                action = resolution_link.get_action()
             except Exception:  # noqa: BLE001
                 action = None
             if isinstance(action, PDActionGoTo):
@@ -870,6 +922,19 @@ class Splitter:
         if not isinstance(src_dest_array, COSArray):
             return
 
+        # Snapshot the *source* target-page dict before any cloning. This
+        # is what ``_page_dict_map`` is keyed by (every ``process_page``
+        # stores ``id(page.get_cos_object())``); reading the deep-copied
+        # ``cloned_array.get_object(0)`` later would miss because the deep
+        # copy minted a fresh dict per indirect-ref target.
+        source_target_page_dict: COSDictionary | None = None
+        try:
+            candidate_target = src_destination.get_page()
+            if isinstance(candidate_target, COSDictionary):
+                source_target_page_dict = candidate_target
+        except Exception:  # noqa: BLE001
+            source_target_page_dict = None
+
         # Clone destination as a flat shallow array (just rewrite /D[0]
         # later — leave fit / params alone).
         cloned_array = COSArray()
@@ -882,17 +947,34 @@ class Splitter:
         if cloned_destination is None:
             return
 
+        # Re-read the *cloned* link's action when we have one, so the
+        # cloned destination installs onto the chunk-side annot rather
+        # than mutating the source link.
+        cloned_action = None
+        if action is not None:
+            try:
+                cloned_action = link.get_action()
+            except Exception:  # noqa: BLE001
+                cloned_action = None
+
         if isinstance(action, PDActionGoTo):
-            cloned_action_dict = COSDictionary(list(action.get_cos_object().entry_set()))
-            cloned_action = PDActionGoTo(cloned_action_dict)
-            cloned_action.set_destination(cloned_destination)
+            base_action_dict = (
+                cloned_action.get_cos_object()
+                if isinstance(cloned_action, PDActionGoTo)
+                else action.get_cos_object()
+            )
+            cloned_action_dict = COSDictionary(list(base_action_dict.entry_set()))
+            cloned_action_wrapper = PDActionGoTo(cloned_action_dict)
+            cloned_action_wrapper.set_destination(cloned_destination)
             with contextlib.suppress(Exception):
-                link.set_action(cloned_action)
+                link.set_action(cloned_action_wrapper)
         else:
             with contextlib.suppress(Exception):
                 link.set_destination(cloned_destination)
 
-        self._dest_to_fix.append((cloned_array, source_page_dict))
+        self._dest_to_fix.append(
+            (cloned_array, source_page_dict, source_target_page_dict)
+        )
 
     # ---------- destination fix-up post-pass ----------
 
@@ -913,7 +995,14 @@ class Splitter:
         from pypdfbox.cos import COSNull
 
         page_tree = destination_document.get_pages()
-        for cloned_array, source_page_dict in self._dest_to_fix:
+        for entry in self._dest_to_fix:
+            # Backwards-compatible unpacking — older subclass overrides that
+            # called the pre-wave-1294 two-tuple form still work.
+            if len(entry) == 3:
+                cloned_array, source_page_dict, source_target_page_dict = entry
+            else:  # pragma: no cover - legacy two-tuple form
+                cloned_array, source_page_dict = entry  # type: ignore[misc]
+                source_target_page_dict = None
             # Where did the link itself originate? If the host page isn't
             # in this chunk, skip — another chunk owns this rewrite.
             cloned_host_dict = self._page_dict_map.get(id(source_page_dict))
@@ -921,14 +1010,21 @@ class Splitter:
                 continue
             if page_tree.index_of(cloned_host_dict) < 0:
                 continue
-            # /D[0] is currently the *source* page dict (verbatim copy).
-            # Look up its clone via the page-dict map, and decide whether
-            # the cloned page is in this chunk.
-            target = cloned_array.get_object(0) if cloned_array.size() > 0 else None
-            if not isinstance(target, COSDictionary):
-                # Already an integer or null target — nothing to fix.
+            # Resolve the target page through the source-side snapshot
+            # captured at staging time (wave 1294) — the deep-copied
+            # cloned_array[0] doesn't keep source-page identity, so we
+            # can't key ``_page_dict_map`` off it.
+            target_source: COSDictionary | None = source_target_page_dict
+            if target_source is None and cloned_array.size() > 0:
+                # Legacy fallback: if no source snapshot, try the cloned
+                # array's first entry. Matches pre-wave-1294 behavior.
+                raw_target = cloned_array.get_object(0)
+                if isinstance(raw_target, COSDictionary):
+                    target_source = raw_target
+            if target_source is None:
+                # Integer / null target — nothing to fix.
                 continue
-            cloned_target = self._page_dict_map.get(id(target))
+            cloned_target = self._page_dict_map.get(id(target_source))
             if cloned_target is not None and page_tree.index_of(cloned_target) >= 0:
                 cloned_array.set(0, cloned_target)
             else:
