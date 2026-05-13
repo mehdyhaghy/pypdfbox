@@ -239,19 +239,16 @@ class PagePane:
         scale = _resolve_zoom_scale()
         image_type = _resolve_image_type()
         destination = _resolve_render_destination()
-        # The renderer's render_image_with_dpi does not yet accept a
-        # ``destination`` kwarg directly; upstream's three-arg overload
-        # threads it through. We propagate the user's choice via the
-        # renderer-level default destination setter so the page drawer
-        # and OCG visibility logic see it. The four-arg renderImage
-        # parity is tracked as a renderer-side gap.
-        if destination is not None:
-            dest_setter = getattr(renderer, "set_default_destination", None)
-            if dest_setter is not None:
-                with contextlib.suppress(TypeError, ValueError):
-                    dest_setter(destination)
+        # Thread the resolved destination through the four-arg
+        # ``render_image`` overload (mirrors upstream's
+        # ``renderImage(int, float, ImageType, RenderDestination)``);
+        # passing ``None`` defers to the renderer-level default so this
+        # call site no longer has to mutate ``set_default_destination``.
         return renderer.render_image(
-            self._page_index, scale=scale, image_type=image_type
+            self._page_index,
+            scale=scale,
+            image_type=image_type,
+            destination=destination,
         )
 
     def _draw_debug_overlays(self, image: PilImage) -> None:

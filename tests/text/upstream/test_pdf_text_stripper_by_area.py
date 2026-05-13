@@ -50,7 +50,6 @@ def _to_pdf_user_space_rect(
     pypdfbox's :class:`PDFTextStripperByArea` consumes user-space rects
     where ``y`` is the lower-left edge. See ``CHANGES.md``.
     """
-    awt_top = awt_y
     awt_bottom = awt_y + awt_h
     pdf_y_lower_left = page_height - awt_bottom
     return (awt_x, pdf_y_lower_left, awt_w, awt_h)

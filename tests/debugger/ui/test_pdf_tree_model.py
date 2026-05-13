@@ -179,3 +179,133 @@ def test_cos_object_parent() -> None:
 
 def test_value_for_path_changed_is_noop() -> None:
     PDFTreeModel().value_for_path_changed(("dummy",), None)
+
+
+# --- ArrayEntry delegation in get_child -----------------------------------
+
+
+def test_array_entry_get_child_delegates() -> None:
+    inner = COSArray()
+    inner.add(COSInteger.get(11))
+    ae = ArrayEntry()
+    ae.set_value(inner)
+    model = PDFTreeModel()
+    child = model.get_child(ae, 0)
+    assert isinstance(child, ArrayEntry)
+    assert child.get_value().int_value() == 11
+
+
+# --- XrefEntries / XrefEntry / PageEntry / COSObject branches -------------
+
+
+def test_xref_entries_navigation() -> None:
+    doc = PDDocument()
+    try:
+        xrefs = XrefEntries(doc)
+        model = PDFTreeModel(xrefs)
+        count = model.get_child_count(xrefs)
+        assert count >= 0  # may legitimately be zero on a fresh doc
+        if count > 0:
+            child = model.get_child(xrefs, 0)
+            assert model.get_index_of_child(xrefs, child) == 0
+            # XrefEntry has count == 1 + child resolves to its target.
+            assert model.get_child_count(child) == 1
+    finally:
+        doc.close()
+
+
+def test_page_entry_get_child_delegates_to_dict() -> None:
+    doc = PDDocument()
+    doc.add_page(PDPage())
+    try:
+        entry = DocumentEntry(doc, "x.pdf")
+        page_entry = entry.get_page(0)
+        assert isinstance(page_entry, PageEntry)
+        model = PDFTreeModel(entry)
+        count = model.get_child_count(page_entry)
+        assert count > 0  # delegates to the underlying COSDictionary
+        child = model.get_child(page_entry, 0)
+        assert isinstance(child, MapEntry)
+        # And ``get_index_of_child`` delegates likewise.
+        assert model.get_index_of_child(page_entry, child) == 0
+    finally:
+        doc.close()
+
+
+def test_cos_object_unwraps_in_get_child() -> None:
+    target = COSInteger.get(123)
+    obj = COSObject(2, 0, resolved=target)
+    model = PDFTreeModel()
+    assert model.get_child(obj, 0) is target
+    assert model.get_index_of_child(obj, target) == 0
+
+
+def test_xref_entry_get_child_returns_array_entry() -> None:
+    from pypdfbox.cos import COSObjectKey
+    from pypdfbox.debugger.ui import XrefEntry
+
+    target = COSInteger.get(42)
+    cos_obj = COSObject(3, 0, resolved=target)
+    xe = XrefEntry(0, COSObjectKey(3, 0), 100, cos_obj)
+    model = PDFTreeModel()
+    child = model.get_child(xe, 0)
+    assert isinstance(child, ArrayEntry)
+    assert child.get_value() is target
+
+
+# --- is_leaf branches ------------------------------------------------------
+
+
+def test_is_leaf_for_xref_entry_unwraps() -> None:
+    from pypdfbox.cos import COSObjectKey
+    from pypdfbox.debugger.ui import XrefEntry
+
+    cos_obj = COSObject(4, 0, resolved=COSInteger.get(0))
+    xe = XrefEntry(0, COSObjectKey(4, 0), 50, cos_obj)
+    model = PDFTreeModel()
+    # XrefEntry → its COSObject → leaf check uses the wrapped object.
+    assert model.is_leaf(xe) is False  # COSObject is not a leaf
+
+
+def test_is_leaf_for_map_entry_unwraps() -> None:
+    me = MapEntry()
+    me.set_key(COSName.get_pdf_name("K"))
+    me.set_value(COSInteger.get(5))
+    model = PDFTreeModel()
+    assert model.is_leaf(me) is True
+
+
+def test_is_leaf_for_array_entry_unwraps() -> None:
+    ae = ArrayEntry()
+    ae.set_value(COSInteger.get(5))
+    model = PDFTreeModel()
+    assert model.is_leaf(ae) is True
+
+
+def test_get_index_of_child_for_cos_array_with_array_entry() -> None:
+    arr = COSArray()
+    arr.add(COSInteger.get(1))
+    model = PDFTreeModel()
+    child = model.get_child(arr, 0)
+    assert isinstance(child, ArrayEntry)
+    assert model.get_index_of_child(arr, child) == 0
+
+
+def test_get_index_of_child_raises_for_unknown_type() -> None:
+    model = PDFTreeModel()
+    with pytest.raises(ValueError):
+        model.get_index_of_child("bogus parent", "bogus child")
+
+
+def test_get_child_count_for_unknown_type_returns_zero() -> None:
+    model = PDFTreeModel()
+    # The unknown-type branch returns 0 rather than raising — mirrors upstream.
+    assert model.get_child_count("not a cos object") == 0
+
+
+def test_get_index_of_child_for_dict_with_non_map_entry() -> None:
+    d = COSDictionary()
+    d.set_item(COSName.get_pdf_name("Foo"), COSInteger.get(1))
+    model = PDFTreeModel()
+    # A non-MapEntry child resolves to -1.
+    assert model.get_index_of_child(d, COSInteger.get(1)) == -1

@@ -162,19 +162,20 @@ def test_function_type_constants_match_spec_values() -> None:
 
 
 def test_function_type_constants_align_with_subclasses() -> None:
-    assert PDFunctionType0(COSStream()).get_function_type() == PDFunction.FUNCTION_TYPE_SAMPLED
-    assert PDFunctionType2(COSDictionary()).get_function_type() == PDFunction.FUNCTION_TYPE_EXPONENTIAL
-    assert PDFunctionType3(COSDictionary()).get_function_type() == PDFunction.FUNCTION_TYPE_STITCHING
-    assert PDFunctionType4(COSStream()).get_function_type() == PDFunction.FUNCTION_TYPE_POSTSCRIPT
+    type0 = PDFunctionType0(COSStream()).get_function_type()
+    type2 = PDFunctionType2(COSDictionary()).get_function_type()
+    type3 = PDFunctionType3(COSDictionary()).get_function_type()
+    type4 = PDFunctionType4(COSStream()).get_function_type()
+    assert type0 == PDFunction.FUNCTION_TYPE_SAMPLED
+    assert type2 == PDFunction.FUNCTION_TYPE_EXPONENTIAL
+    assert type3 == PDFunction.FUNCTION_TYPE_STITCHING
+    assert type4 == PDFunction.FUNCTION_TYPE_POSTSCRIPT
 
 
 def test_function_type_constants_usable_in_branching() -> None:
     """Smoke: the constants compose with the predicate accessors."""
     fn = PDFunctionType2(COSDictionary())
-    if fn.get_function_type() == PDFunction.FUNCTION_TYPE_EXPONENTIAL:
-        triggered = True
-    else:  # pragma: no cover - defensive
-        triggered = False
+    triggered = fn.get_function_type() == PDFunction.FUNCTION_TYPE_EXPONENTIAL
     assert triggered is True
 
 

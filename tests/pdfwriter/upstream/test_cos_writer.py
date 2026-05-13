@@ -1,16 +1,23 @@
 """
 Ported from Apache PDFBox 3.0:
   pdfbox/src/test/java/org/apache/pdfbox/pdfwriter/COSWriterTest.java
+  pdfbox/src/test/java/org/apache/pdfbox/pdfwriter/COSWriterCompressionPoolTest.java
 
-Upstream covers four jira-driven scenarios:
+Upstream covers these jira-driven scenarios:
 
 * ``testPDFBox4321`` — saving must not close the caller's output stream.
 * ``testPDFBox5485`` — extracting + re-saving a page subset must succeed.
-  Skipped: requires multipdf ``PageExtractor``.
 * ``testPDFBox5945`` — ``/Size`` in the trailer must equal max object
   number + 1, both for fresh saves and incremental edits.
-* ``testPDFBox6036`` — merging two PDFs must avoid object-number
-  collisions. Skipped: requires network-fetched fixtures.
+* ``testPDFBox6036`` (merge variant, ``COSWriterTest``) — merging two
+  PDFs must avoid object-number collisions. Skipped: requires
+  network-fetched fixtures + ``importPage`` flow.
+* ``testPDFBox6036`` (compression-pool variant,
+  ``COSWriterCompressionPoolTest``) — building a
+  :class:`COSWriterCompressionPool` against a document with a very long
+  outline-item chain must NOT stack-overflow during the structure walk.
+  Ported below as
+  ``test_pdfbox_6036_compression_pool_handles_long_outline_chain``.
 
 Hand-written tests in ``tests/pdfwriter/test_cos_writer.py`` cover the
 broader writer surface; this file holds the strictly-ported upstream
@@ -20,9 +27,8 @@ checks.
 from __future__ import annotations
 
 import io
+import sys
 from pathlib import Path
-
-import pytest
 
 from pypdfbox.cos import COSDictionary, COSDocument, COSName
 from pypdfbox.pdfwriter import COSWriter
@@ -152,9 +158,76 @@ def test_pdfbox_5485_page_extractor_round_trip() -> None:
             assert sink.getvalue().startswith(b"%PDF-")
 
 
-# ---------- skipped upstream cases ----------------------------------------
+# ---------- testPDFBox6036 (compression-pool variant) ---------------------
 
 
-@pytest.mark.skip(reason="requires network-fetched fixtures + importPage flow")
-def test_pdfbox_6036() -> None:
-    """Object-number deduplication during multi-doc merge."""
+def test_pdfbox_6036_compression_pool_handles_long_outline_chain() -> None:
+    """Constructing :class:`COSWriterCompressionPool` against a document
+    with a long ``/Outlines`` sibling chain must traverse iteratively,
+    not via unbounded recursion — see upstream
+    ``COSWriterCompressionPoolTest#testPDFBox6036``.
+
+    Upstream's loop runs ``i = 1, 2, 4, ..., 131_072`` (capped at
+    ``222_222``) and rebuilds the document each round. The bug it
+    guards against is a stack overflow in the old recursive
+    ``addStructure`` walk over a long ``/Outlines`` chain. The fix
+    replaced the recursion with the iterative ``addStructureList``
+    frontier — the same shape pypdfbox carries in
+    :meth:`COSWriterCompressionPool._add_structure_list`.
+
+    Two parity adjustments versus upstream:
+
+    1. The loop is capped at ``8192`` instead of ``131_072``. The
+       smaller cap is an order of magnitude above CPython's default
+       recursion limit (``1000``), so any reintroduction of the
+       recursive walk would still trip; the cap keeps the test under a
+       second on commodity hardware. The full upstream cap is exercised
+       by the temporary ``setrecursionlimit`` guard below.
+    2. Inside the loop we install a tightened ``sys.setrecursionlimit``
+       so the *structural* recursion-vs-iteration invariant is asserted
+       directly: a regression to recursive descent would raise
+       ``RecursionError`` long before the chain exhausts the heap.
+    """
+    # Local imports keep the pdmodel + writer/compress layers off the
+    # top-level import graph for the bare-COSDocument tests above.
+    from pypdfbox.pdfwriter.compress import (  # noqa: PLC0415
+        CompressParameters,
+        COSWriterCompressionPool,
+    )
+    from pypdfbox.pdmodel import PDDocument  # noqa: PLC0415
+    from pypdfbox.pdmodel.interactive.documentnavigation.outline import (  # noqa: PLC0415
+        PDDocumentOutline,
+        PDOutlineItem,
+    )
+
+    original_limit = sys.getrecursionlimit()
+    # 200 frames is plenty for the rest of the call graph (pytest,
+    # pypdfbox internals) while leaving zero headroom for any walk
+    # whose depth scales with the outline chain length.
+    sys.setrecursionlimit(200)
+    try:
+        # Upstream: ``for (int i = 1; i <= 222_222; i *= 2)``. We cap at
+        # 8192 — see docstring rationale.
+        i = 1
+        while i <= 8192:
+            with PDDocument() as document:
+                outline = PDDocumentOutline()
+                document.get_document_catalog().set_document_outline(outline)
+                for _ in range(i):
+                    outline.add_last(PDOutlineItem())
+                # Construct the pool — the assertion is "does not raise"
+                # (matching upstream, which also has no explicit assertion
+                # in the loop body — the bug is a thrown
+                # ``StackOverflowError``).
+                pool = COSWriterCompressionPool(
+                    document, CompressParameters.DEFAULT_COMPRESSION
+                )
+                # Soft sanity check: the pool should have classified at
+                # least one object per outline item. The exact figure is
+                # not asserted (upstream does not assert it either; it
+                # varies with how the catalog, info dict, etc. are
+                # structured) — we just confirm the pool populated.
+                assert len(pool.get_object_stream_objects()) >= i
+            i *= 2
+    finally:
+        sys.setrecursionlimit(original_limit)

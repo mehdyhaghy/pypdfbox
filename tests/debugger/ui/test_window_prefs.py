@@ -72,3 +72,123 @@ def test_corrupt_file_returns_defaults(tmp_path: Path) -> None:
     prefs = WindowPrefs("test", path=path)
     # No crash; returns defaults seeded from the requested screen size.
     assert prefs.get_extended_state() == 0
+
+
+def test_non_dict_payload_returns_defaults(tmp_path: Path) -> None:
+    """A JSON file that doesn't decode to a dict at the top level is ignored."""
+    path = tmp_path / "list.json"
+    path.write_text("[1, 2, 3]", encoding="utf-8")
+    prefs = WindowPrefs("test", path=path)
+    assert prefs.get_extended_state() == 0
+    # Persisting from defaults should still work.
+    prefs.set_extended_state(2)
+    assert WindowPrefs("test", path=path).get_extended_state() == 2
+
+
+def test_payload_with_non_dict_slug_falls_back(tmp_path: Path) -> None:
+    """When the slug key resolves to something other than a dict, the
+    pref store quietly resets that slug's bucket without nuking siblings."""
+    import json
+
+    path = tmp_path / "mixed.json"
+    path.write_text(
+        json.dumps({"test": "not-a-dict", "other": {"k": {"V": 1}}}),
+        encoding="utf-8",
+    )
+    prefs = WindowPrefs("test", path=path)
+    # ``_data`` reset to empty for this slug.
+    assert prefs.get_extended_state() == 0
+
+
+def test_payload_filters_non_dict_inner_values(tmp_path: Path) -> None:
+    """The inner dictionary keeps only dict-valued entries."""
+    import json
+
+    path = tmp_path / "mixed-inner.json"
+    path.write_text(
+        json.dumps({"test": {"window_prefs_": {"X": 1, "Y": 2}, "junk": 7}}),
+        encoding="utf-8",
+    )
+    prefs = WindowPrefs("test", path=path)
+    # Junk key skipped; valid window_prefs_ dict preserved.
+    assert prefs.get_bounds()[0:2] == (1, 2)
+
+
+def test_corrupt_existing_payload_is_replaced_on_save(tmp_path: Path) -> None:
+    """``_save`` should not nuke existing well-formed siblings of the
+    new slug even if it sees garbage on first read."""
+    path = tmp_path / "weird.json"
+    path.write_text("not-json", encoding="utf-8")
+    prefs = WindowPrefs("test", path=path)
+    prefs.set_bounds((1, 2, 3, 4))
+    # File now contains our valid payload.
+    again = WindowPrefs("test", path=path)
+    assert again.get_bounds() == (1, 2, 3, 4)
+
+
+def test_coerce_int_on_non_numeric_data(tmp_path: Path) -> None:
+    """A non-numeric stored value falls back to the requested default."""
+    import json
+
+    path = tmp_path / "nonnumeric.json"
+    path.write_text(
+        json.dumps({"test": {"window_prefs_": {"X": "garbage"}}}),
+        encoding="utf-8",
+    )
+    prefs = WindowPrefs("test", path=path)
+    # ``_coerce_int`` returns default when the stored value can't parse.
+    x = prefs.get_bounds(screen_width=400, screen_height=400)[0]
+    assert x == 100  # 400 // 4 default
+
+
+def test_node_get_int_with_invalid_value(tmp_path: Path) -> None:
+    """``_node_get_int`` returns the default when the stored value
+    cannot be converted to ``int``."""
+    import json
+
+    path = tmp_path / "div.json"
+    path.write_text(
+        json.dumps({"test": {"window_prefs_": {"DIV": "xx"}}}),
+        encoding="utf-8",
+    )
+    prefs = WindowPrefs("test", path=path)
+    assert prefs.get_divider_location(screen_width=400) == 50  # 400 // 8
+
+
+def test_default_prefs_path_uses_xdg_on_posix(monkeypatch, tmp_path: Path) -> None:
+    """``_default_prefs_path`` honours ``XDG_CONFIG_HOME`` on non-Windows."""
+    from pypdfbox.debugger.ui import window_prefs
+
+    monkeypatch.setattr(window_prefs.sys, "platform", "linux")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    path = window_prefs._default_prefs_path()  # noqa: SLF001
+    assert path == tmp_path / "pypdfbox" / "debugger.json"
+
+
+def test_default_prefs_path_falls_back_to_home_on_posix(monkeypatch) -> None:
+    from pypdfbox.debugger.ui import window_prefs
+
+    monkeypatch.setattr(window_prefs.sys, "platform", "linux")
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    path = window_prefs._default_prefs_path()  # noqa: SLF001
+    assert path.name == "debugger.json"
+    assert "pypdfbox" in path.parts
+
+
+def test_default_prefs_path_on_windows(monkeypatch, tmp_path: Path) -> None:
+    from pypdfbox.debugger.ui import window_prefs
+
+    monkeypatch.setattr(window_prefs.sys, "platform", "win32")
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    path = window_prefs._default_prefs_path()  # noqa: SLF001
+    assert path == tmp_path / "pypdfbox" / "debugger.json"
+
+
+def test_default_prefs_path_on_windows_no_appdata(monkeypatch) -> None:
+    from pypdfbox.debugger.ui import window_prefs
+
+    monkeypatch.setattr(window_prefs.sys, "platform", "win32")
+    monkeypatch.delenv("APPDATA", raising=False)
+    path = window_prefs._default_prefs_path()  # noqa: SLF001
+    assert path.name == "debugger.json"
+    assert "pypdfbox" in path.parts

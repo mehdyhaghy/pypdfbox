@@ -153,3 +153,85 @@ def test_add_none_is_a_noop(store: Path) -> None:
     recent = RecentFiles("scope.a", 5, path=store)
     recent.add_file(None)
     assert recent.is_empty()
+
+
+def test_non_dict_payload_yields_empty(tmp_path: Path) -> None:
+    """A JSON file whose top-level is not a dict is treated as empty."""
+    path = tmp_path / "list.json"
+    path.write_text("[1, 2, 3]", encoding="utf-8")
+    recent = RecentFiles("scope.a", 5, path=path)
+    assert recent.is_empty()
+
+
+def test_non_list_slug_returns_empty_history(tmp_path: Path) -> None:
+    import json
+
+    path = tmp_path / "non-list.json"
+    path.write_text(
+        json.dumps({"scope.a": {"unexpected": "value"}}),
+        encoding="utf-8",
+    )
+    recent = RecentFiles("scope.a", 5, path=path)
+    assert recent.is_empty()
+
+
+def test_default_recent_files_path_posix(monkeypatch, tmp_path: Path) -> None:
+    from pypdfbox.debugger.ui import recent_files
+
+    monkeypatch.setattr(recent_files.sys, "platform", "linux")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    path = recent_files._default_recent_files_path()  # noqa: SLF001
+    assert path == tmp_path / "pypdfbox" / "recent-files.json"
+
+
+def test_default_recent_files_path_windows(monkeypatch, tmp_path: Path) -> None:
+    from pypdfbox.debugger.ui import recent_files
+
+    monkeypatch.setattr(recent_files.sys, "platform", "win32")
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    path = recent_files._default_recent_files_path()  # noqa: SLF001
+    assert path == tmp_path / "pypdfbox" / "recent-files.json"
+
+
+def test_default_recent_files_path_windows_no_appdata(monkeypatch) -> None:
+    from pypdfbox.debugger.ui import recent_files
+
+    monkeypatch.setattr(recent_files.sys, "platform", "win32")
+    monkeypatch.delenv("APPDATA", raising=False)
+    path = recent_files._default_recent_files_path()  # noqa: SLF001
+    assert path.name == "recent-files.json"
+    assert "pypdfbox" in path.parts
+
+
+def test_default_recent_files_path_posix_no_xdg(monkeypatch) -> None:
+    from pypdfbox.debugger.ui import recent_files
+
+    monkeypatch.setattr(recent_files.sys, "platform", "linux")
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    path = recent_files._default_recent_files_path()  # noqa: SLF001
+    assert path.name == "recent-files.json"
+
+
+def test_close_swallows_write_error(tmp_path: Path) -> None:
+    """When the target directory cannot be created, ``close()`` quietly
+    fails instead of propagating the OS error."""
+    blocker = tmp_path / "blocker"
+    blocker.write_bytes(b"not-a-dir")
+    # ``blocker`` is a file, so ``mkdir(blocker/sub, parents=True)`` raises.
+    store = blocker / "recent.json"
+    recent = RecentFiles("scope.a", 5, path=store)
+    # Pretend we added an existing file so the queue isn't empty.
+    real = tmp_path / "real.pdf"
+    real.write_bytes(b"%PDF-1.4\n")
+    recent.add_file(str(real))
+    # No exception expected.
+    recent.close()
+
+
+def test_corrupt_history_file_returns_empty_payload(tmp_path: Path) -> None:
+    """A path that cannot be JSON-decoded yields an empty payload."""
+    path = tmp_path / "broken.json"
+    path.write_text("{{{", encoding="utf-8")
+    # Construction surfaces ``_load_payload`` → returns ``{}``.
+    recent = RecentFiles("scope.a", 5, path=path)
+    assert recent.is_empty()

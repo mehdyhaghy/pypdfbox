@@ -80,7 +80,14 @@ def test_zero_operands_raises() -> None:
 
 def test_non_number_operand_silently_drops() -> None:
     p, engine = _bind()
-    bad = [COSFloat(1.0), COSString(b"x"), COSFloat(0.0), COSFloat(1.0), COSFloat(0.0), COSFloat(0.0)]
+    bad = [
+        COSFloat(1.0),
+        COSString(b"x"),
+        COSFloat(0.0),
+        COSFloat(1.0),
+        COSFloat(0.0),
+        COSFloat(0.0),
+    ]
     p.process(Operator.get_operator("Tm"), bad)
     assert engine.text_matrix is None
 

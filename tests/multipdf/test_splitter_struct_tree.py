@@ -147,7 +147,7 @@ def test_chunk_parent_tree_only_keys_chunk_pages() -> None:
         assert set(numbers.keys()) == expected_keys
         # Sanity: each value resolves to a /StructElem dict with the
         # expected /S role.
-        for key, value in numbers.items():
+        for _key, value in numbers.items():
             assert isinstance(value, COSDictionary)
             assert value.get_name(COSName.get_pdf_name("S")) == "P"
         chunk.close()

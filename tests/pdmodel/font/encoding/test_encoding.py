@@ -96,7 +96,8 @@ def test_code_to_name_and_name_to_code_maps_are_snapshots():
 def test_get_instance_resolves_predefined_names():
     assert Encoding.get_instance("WinAnsiEncoding") is WinAnsiEncoding.INSTANCE
     assert Encoding.get_instance("StandardEncoding") is StandardEncoding.INSTANCE
-    assert Encoding.get_instance(COSName.get_pdf_name("MacRomanEncoding")) is MacRomanEncoding.INSTANCE
+    mac_roman_name = COSName.get_pdf_name("MacRomanEncoding")
+    assert Encoding.get_instance(mac_roman_name) is MacRomanEncoding.INSTANCE
     assert Encoding.get_instance("BogusEncoding") is None
     assert Encoding.get_instance(None) is None
 

@@ -102,3 +102,58 @@ def test_unknown_node_type_raises() -> None:
     with pytest.raises(ValueError):
         # ``_get_object_name`` should reject random types.
         status.get_string_for_path((object(), object()))
+
+
+def test_map_entry_with_null_key_renders_blank_segment() -> None:
+    """A ``MapEntry`` whose key was never set should render as an empty
+    string in the path. Mirrors upstream's tolerant behaviour."""
+    null_entry = MapEntry()  # no set_key call → key is None
+    status = TreeStatus(_make_doc())
+    result = status.get_string_for_path((_make_doc(), null_entry))
+    # Empty key produces an empty segment, which trims to "".
+    assert result == ""
+
+
+def test_page_entry_path_component() -> None:
+    """A ``PageEntry`` exposes its own path string."""
+    from pypdfbox.debugger.ui import DocumentEntry
+    from pypdfbox.pdmodel import PDDocument, PDPage
+
+    doc = PDDocument()
+    doc.add_page(PDPage())
+    try:
+        entry = DocumentEntry(doc, "x.pdf")
+        page_entry = entry.get_page(0)
+        status = TreeStatus(entry)
+        rendered = status.get_string_for_path((entry, page_entry))
+        # PageEntry's get_path returns a non-empty identifier.
+        assert rendered  # truthy
+    finally:
+        doc.close()
+
+
+def test_xref_entry_path_component() -> None:
+    """An ``XrefEntry`` likewise contributes a non-empty path component."""
+    from pypdfbox.cos import COSInteger, COSObject, COSObjectKey
+    from pypdfbox.debugger.ui import XrefEntry
+
+    cos_obj = COSObject(13, 0, resolved=COSInteger(0))
+    xe = XrefEntry(0, COSObjectKey(13, 0), 100, cos_obj)
+    status = TreeStatus(_make_doc())
+    rendered = status.get_string_for_path((_make_doc(), xe))
+    assert rendered  # truthy
+
+
+def test_resolution_through_xref_entry_unwraps_cos_object() -> None:
+    """``_search_node`` follows an :class:`XrefEntry` → :class:`COSObject`
+    chain so paths that start at a cross-reference can keep navigating."""
+    from pypdfbox.cos import COSDictionary, COSInteger, COSObject
+
+    inner_dict = COSDictionary()
+    inner_dict.set_item("X", COSInteger(99))
+    # COSObject wrapping the dict to exercise the unwrap branch.
+    cos_obj = COSObject(20, 0, resolved=inner_dict)
+    # Search inside a COSObject's resolved dict.
+    out = TreeStatus._search_node(cos_obj, "X")  # noqa: SLF001
+    assert out is not None
+    assert out.get_value().int_value() == 99

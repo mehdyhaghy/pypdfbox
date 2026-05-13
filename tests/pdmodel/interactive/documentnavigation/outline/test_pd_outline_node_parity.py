@@ -16,7 +16,9 @@ from pypdfbox.pdmodel.interactive.documentnavigation.outline import (
 # ---------- helpers ----------
 
 
-def _build_three_item_chain() -> tuple[PDDocumentOutline, PDOutlineItem, PDOutlineItem, PDOutlineItem]:
+def _build_three_item_chain() -> tuple[
+    PDDocumentOutline, PDOutlineItem, PDOutlineItem, PDOutlineItem,
+]:
     parent = PDDocumentOutline()
     a = PDOutlineItem()
     a.set_title("A")

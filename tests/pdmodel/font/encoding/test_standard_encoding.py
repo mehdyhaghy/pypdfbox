@@ -94,7 +94,8 @@ def test_dunder_contains():
 
 def test_factory_resolves_to_singleton():
     assert Encoding.get_instance("StandardEncoding") is StandardEncoding.INSTANCE
-    assert Encoding.get_instance(COSName.get_pdf_name("StandardEncoding")) is StandardEncoding.INSTANCE
+    name = COSName.get_pdf_name("StandardEncoding")
+    assert Encoding.get_instance(name) is StandardEncoding.INSTANCE
 
 
 def test_snapshot_maps_are_independent():

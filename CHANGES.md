@@ -2717,3 +2717,34 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
 
 - `CFFTable.read()` upstream parity test (`tests/fontbox/ttf/test_ttc_cluster_wave1279.py`) unskipped by synthesizing a minimal CFF-flavoured OTF in-memory via `fontTools.fontBuilder.FontBuilder`, extracting the CFF table bytes, and feeding them through `CFFTable.read` — closes a parity gap that no downstream test exercised (`OpenTypeFont.get_cff()` uses fontTools directly).
 - PDFBOX-3319 SimHei subsetter test converted from unconditional skip to system-font-conditional: probes 10 standard macOS / Linux / Windows SimHei locations and runs whenever the font is installed on the host (mirrors upstream's `Files.exists` guard). Stays skipped on dev hosts without SimHei.
+
+## Wave 1298 — code polish (lint cleanup + renderer destination kwarg + coverage + PDFBOX-6036)
+
+### pypdfbox/ lint cleanup
+
+- Dropped redundant forward-reference quotes in `pypdfbox/io/io_utils.py` (UP037 ×4) — `from __future__ import annotations` already defers evaluation.
+- Migrated `pypdfbox/fontbox/font_mapping.py` `FontMapping` to PEP 695 generic syntax: `class FontMapping[T: FontBoxFont]` (was `class FontMapping(Generic[T])` with a separate `T = TypeVar(...)`). Project requires Python 3.14+ per `pyproject.toml`. Dropped now-unused `Generic` / `TypeVar` imports.
+- Collapsed nested `isinstance` check in `pypdfbox/pdmodel/pd_document_name_destination_dictionary.py:get_destination` (SIM102) into a single `and`-joined condition.
+
+### Renderer `destination=` kwarg (`pypdfbox/rendering/pdf_renderer.py`)
+
+- `PDFRenderer.render_image` / `render_image_with_dpi` (and their `renderImage` / `renderImageWithDPI` Java aliases) now accept a `destination=` keyword argument that threads a `RenderDestination` (or bare string `"View"` / `"Print"` / `"Export"`) straight into `PageDrawerParameters` for this render only, mirroring upstream's four-arg `renderImage(int, float, ImageType, RenderDestination)` overload.
+- `None` (the default) defers to `set_default_destination`. A non-None per-call value never mutates `_default_destination`.
+- `PagePane._render_image` (debugger) now uses the kwarg directly; the `set_default_destination` workaround from wave 1294 is removed.
+
+### PDFBOX-6036 — long outline chain compression pool
+
+- Ported `COSWriterCompressionPoolTest#testPDFBox6036` as `test_pdfbox_6036_compression_pool_handles_long_outline_chain` (replaces the prior network-fixture skip in `tests/pdfwriter/upstream/test_cos_writer.py`).
+- Verifies `COSWriterCompressionPool` walks long `/Outlines` chains iteratively — guarded by `sys.setrecursionlimit(200)` clamp during the doubling loop. Caps at 8192 (vs upstream 131,072) to keep the test under 1s while still exceeding CPython's default recursion limit by an order of magnitude.
+- **No production code change needed**: the iterative `_add_structure_list` frontier (`pypdfbox/pdfwriter/compress/cos_writer_compression_pool.py:112-116`) already matches the upstream PDFBOX-6036 fix.
+
+### tests/ lint cleanup
+
+- Fixed 34 pre-existing lint errors across `tests/`: E501 (20), E402 (7), B017 (2), F841 (1), E741 (1), B007 (1), SIM105 (1), SIM108 (1). One `# noqa: E501` added for a 103-char PDFBox dotted-package import path in `test_pd_action_embedded_goto.py`.
+- Tightened `pytest.raises(Exception)` → `pytest.raises(dataclasses.FrozenInstanceError)` in `test_pdfa_flavour.py` and `test_pdfua_flavour.py` (stronger contract).
+- Moved out-of-order `from __future__ import annotations` / module docstrings in two files so docstrings retain docstring semantics.
+
+### Debugger coverage spot-check
+
+- Raised line coverage on `pypdfbox.debugger` from 80% → 87% (+167 new hand-written tests, 557 → 724 debugger tests). Targets: `tree.py`, `pdf_tree_model.py`, `pdf_tree_cell_renderer.py`, `menu_base.py`, `window_prefs.py`, `recent_files.py`, `log_dialog.py`, `tree_status.py` / `tree_status_pane.py`, `stream.py`, `stream_text_view.py`, `tool_tip_controller.py`, `hex_pane.py`, `font_pane.py`, `font_encoding_pane_controller.py`, `type0_font.py`, `cs_separation.py`, `signature_pane.py`, and `pd_debugger.py` static helpers.
+- Remaining sub-90% files are Tkinter paint pipelines, rendering integrations, or require embedded font programs that aren't fixturable from synthetic `COSDictionary` tests — categorized in the wave-1298 task transcript.

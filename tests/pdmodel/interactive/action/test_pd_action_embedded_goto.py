@@ -18,7 +18,7 @@ from pypdfbox.pdmodel.interactive.action.pd_action_embedded_go_to import (
 from pypdfbox.pdmodel.interactive.action.pd_target_directory import (
     PDTargetDirectory,
 )
-from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_destination_name_tree_node import (
+from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_destination_name_tree_node import (  # noqa: E501 — upstream dotted path
     PDDestinationNameTreeNode,
 )
 from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_named_destination import (

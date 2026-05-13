@@ -151,7 +151,7 @@ def test_has_change_xs_true_for_empty_array() -> None:
     assert rl.get_change_xs() == []
 
 
-# --------------------------------------------------------------------------- predicates inspect COS layer only
+# ----- predicates inspect COS layer only -----
 def test_has_predicates_do_not_materialise_wrappers() -> None:
     """Predicates must only touch ``contains_key`` — never wrap the value.
 

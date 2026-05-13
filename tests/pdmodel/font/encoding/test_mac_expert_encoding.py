@@ -49,7 +49,8 @@ def test_typographic_glyphs_are_present():
 
 def test_factory_resolves_to_singleton():
     assert Encoding.get_instance("MacExpertEncoding") is MacExpertEncoding.INSTANCE
-    assert Encoding.get_instance(COSName.get_pdf_name("MacExpertEncoding")) is MacExpertEncoding.INSTANCE
+    name = COSName.get_pdf_name("MacExpertEncoding")
+    assert Encoding.get_instance(name) is MacExpertEncoding.INSTANCE
 
 
 def test_uppercase_a_is_not_in_expert():

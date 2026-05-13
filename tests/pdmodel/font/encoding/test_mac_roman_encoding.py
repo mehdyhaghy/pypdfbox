@@ -57,7 +57,8 @@ def test_round_trip_get_code():
 
 def test_factory_resolves_to_singleton():
     assert Encoding.get_instance("MacRomanEncoding") is MacRomanEncoding.INSTANCE
-    assert Encoding.get_instance(COSName.get_pdf_name("MacRomanEncoding")) is MacRomanEncoding.INSTANCE
+    name = COSName.get_pdf_name("MacRomanEncoding")
+    assert Encoding.get_instance(name) is MacRomanEncoding.INSTANCE
 
 
 def test_unmapped_low_control_returns_notdef():

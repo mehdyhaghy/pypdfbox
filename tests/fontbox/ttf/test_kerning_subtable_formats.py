@@ -13,6 +13,7 @@ import struct
 import pytest
 
 from pypdfbox.fontbox.ttf.kerning_subtable import KerningSubtable
+from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
 
 # ---------- Format 0 -------------------------------------------------------
 
@@ -255,8 +256,6 @@ def test_from_bytes_apple_version_consumes_8_byte_header() -> None:
 
 
 # ---------- KerningSubtable#read(stream, version) parity ------------------
-
-from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
 
 
 def test_read_stream_version_0_format_0() -> None:

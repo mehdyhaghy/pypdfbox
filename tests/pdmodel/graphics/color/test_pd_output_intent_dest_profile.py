@@ -67,7 +67,8 @@ def test_set_data_without_acsp_magic_is_lenient(
 ) -> None:
     intent = PDOutputIntent()
     blob = b"not an icc profile, no magic here"
-    with caplog.at_level(logging.WARNING, logger="pypdfbox.pdmodel.graphics.color.pd_output_intent"):
+    logger_name = "pypdfbox.pdmodel.graphics.color.pd_output_intent"
+    with caplog.at_level(logging.WARNING, logger=logger_name):
         intent.set_data(blob, num_components=4)
     cos = intent.get_cos_object().get_dictionary_object(_DEST_OUTPUT_PROFILE)
     assert isinstance(cos, COSStream)

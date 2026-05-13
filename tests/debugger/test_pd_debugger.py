@@ -284,3 +284,196 @@ def test_first_array_name_returns_none_for_empty() -> None:
     entry = MapEntry()
     entry.set_value(COSDictionary())
     assert PDFDebugger._first_array_name(entry) is None  # noqa: SLF001
+
+
+# ---- additional static helper coverage ----------------------------------
+
+
+def test_is_string_helper() -> None:
+    entry = MapEntry()
+    entry.set_value(COSString("hi"))
+    assert PDFDebugger._is_string(entry) is True  # noqa: SLF001
+    assert PDFDebugger._is_string(MapEntry()) is False  # noqa: SLF001
+
+
+def test_is_font_helper_with_font_dict() -> None:
+    d = COSDictionary()
+    d.set_item(COSName.TYPE, COSName.get_pdf_name("Font"))
+    d.set_item(COSName.SUBTYPE, COSName.get_pdf_name("Type1"))
+    entry = MapEntry()
+    entry.set_value(d)
+    assert PDFDebugger._is_font(entry) is True  # noqa: SLF001
+
+
+def test_is_font_excludes_cid_subtypes() -> None:
+    d = COSDictionary()
+    d.set_item(COSName.TYPE, COSName.get_pdf_name("Font"))
+    d.set_item(COSName.SUBTYPE, COSName.get_pdf_name("CIDFontType2"))
+    entry = MapEntry()
+    entry.set_value(d)
+    assert PDFDebugger._is_font(entry) is False  # noqa: SLF001
+
+
+def test_is_font_returns_false_for_non_dictionary() -> None:
+    entry = MapEntry()
+    entry.set_value(COSString("not a font"))
+    assert PDFDebugger._is_font(entry) is False  # noqa: SLF001
+
+
+def test_is_flag_node_matches_well_known_names() -> None:
+    parent_value = COSDictionary()
+    parent_value.set_item(COSName.TYPE, COSName.get_pdf_name("FontDescriptor"))
+    parent = MapEntry()
+    parent.set_value(parent_value)
+    flag = MapEntry()
+    flag.set_key(COSName.get_pdf_name("Flags"))
+    assert PDFDebugger._is_flag_node(flag, parent) is True  # noqa: SLF001
+
+
+def test_is_flag_node_panose_always_true() -> None:
+    parent = MapEntry()
+    parent.set_value(COSDictionary())
+    node = MapEntry()
+    node.set_key(COSName.get_pdf_name("Panose"))
+    assert PDFDebugger._is_flag_node(node, parent) is True  # noqa: SLF001
+
+
+def test_is_flag_node_rejects_non_map_entry() -> None:
+    assert PDFDebugger._is_flag_node(object(), object()) is False  # noqa: SLF001
+
+
+def test_is_flag_node_handles_null_key() -> None:
+    parent = MapEntry()
+    parent.set_value(COSDictionary())
+    node = MapEntry()  # key is None
+    assert PDFDebugger._is_flag_node(node, parent) is False  # noqa: SLF001
+
+
+def test_is_annot_helper() -> None:
+    d = COSDictionary()
+    d.set_item(COSName.TYPE, COSName.get_pdf_name("Annot"))
+    entry = MapEntry()
+    entry.set_value(d)
+    assert PDFDebugger._is_annot(entry) is True  # noqa: SLF001
+
+
+def test_is_font_descriptor_helper() -> None:
+    d = COSDictionary()
+    d.set_item(COSName.TYPE, COSName.get_pdf_name("FontDescriptor"))
+    entry = MapEntry()
+    entry.set_value(d)
+    assert PDFDebugger._is_font_descriptor(entry) is True  # noqa: SLF001
+
+
+def test_is_encrypt_helper() -> None:
+    entry = MapEntry()
+    entry.set_key(COSName.get_pdf_name("Encrypt"))
+    entry.set_value(COSDictionary())
+    assert PDFDebugger._is_encrypt(entry) is True  # noqa: SLF001
+
+
+def test_is_signature_helper() -> None:
+    parent_value = COSDictionary()
+    parent_value.set_item(COSName.TYPE, COSName.get_pdf_name("Sig"))
+    parent = MapEntry()
+    parent.set_key(COSName.get_pdf_name("V"))
+    parent.set_value(parent_value)
+    node = MapEntry()
+    node.set_key(COSName.get_pdf_name("Contents"))
+    assert PDFDebugger._is_signature(node, parent) is True  # noqa: SLF001
+
+
+def test_is_signature_rejects_when_parent_is_not_sig() -> None:
+    parent_value = COSDictionary()
+    parent_value.set_item(COSName.TYPE, COSName.get_pdf_name("Annot"))
+    parent = MapEntry()
+    parent.set_key(COSName.get_pdf_name("V"))
+    parent.set_value(parent_value)
+    node = MapEntry()
+    node.set_key(COSName.get_pdf_name("Contents"))
+    assert PDFDebugger._is_signature(node, parent) is False  # noqa: SLF001
+
+
+def test_node_label_for_array_entry() -> None:
+    from pypdfbox.debugger.pd_debugger import _node_label
+    from pypdfbox.debugger.ui.array_entry import ArrayEntry
+
+    ae = ArrayEntry()
+    ae.set_index(3)
+    assert _node_label(ae) == "[3]"
+
+
+def test_node_label_for_map_entry_with_null_key() -> None:
+    from pypdfbox.debugger.pd_debugger import _node_label
+
+    me = MapEntry()
+    # No set_key call.
+    assert _node_label(me) == "(null)"
+
+
+def test_convert_to_string_basics() -> None:
+    from pypdfbox.cos import COSBoolean, COSFloat, COSInteger, COSNull
+    from pypdfbox.debugger.pd_debugger import _convert_to_string
+
+    assert _convert_to_string(COSBoolean.TRUE) == "true"
+    assert _convert_to_string(COSBoolean.FALSE) == "false"
+    assert _convert_to_string(COSFloat(2.5)) == "2.5"
+    assert _convert_to_string(COSInteger(7)) == "7"
+    assert _convert_to_string(COSNull.NULL) == "null"
+    assert _convert_to_string(COSName.get_pdf_name("X")) == "X"
+
+
+def test_convert_to_string_for_control_string_emits_hex() -> None:
+    from pypdfbox.debugger.pd_debugger import _convert_to_string
+
+    rendered = _convert_to_string(COSString("\x01ctrl"))
+    assert rendered.startswith("<") and rendered.endswith(">")
+
+
+def test_convert_to_string_for_dictionary_and_array() -> None:
+    from pypdfbox.cos import COSArray
+    from pypdfbox.debugger.pd_debugger import _convert_to_string
+
+    assert _convert_to_string(COSDictionary()) == "COSDictionary"
+    assert _convert_to_string(COSArray()) == "COSArray"
+
+
+def test_convert_to_string_for_unknown_type_returns_none() -> None:
+    from pypdfbox.debugger.pd_debugger import _convert_to_string
+
+    assert _convert_to_string(object()) is None
+
+
+def test_read_stream_bytes_returns_empty_for_missing_creator() -> None:
+    from pypdfbox.debugger.pd_debugger import _read_stream_bytes
+
+    class _NoCreator:
+        pass
+
+    assert _read_stream_bytes(_NoCreator(), raw=False) == b""  # type: ignore[arg-type]
+    assert _read_stream_bytes(_NoCreator(), raw=True) == b""  # type: ignore[arg-type]
+
+
+def test_read_stream_bytes_handles_oserror() -> None:
+    from pypdfbox.debugger.pd_debugger import _read_stream_bytes
+
+    assert _read_stream_bytes(COSStream(), raw=False) == b""  # empty body
+
+
+def test_selection_route_page_dispatch(tk_root: tk.Tk, synthetic_pdf) -> None:
+    """Selecting a page node mounts a PagePane."""
+    import contextlib
+
+    debugger = PDFDebugger(tk_root)
+    try:
+        debugger.open_document(synthetic_pdf)
+        # First child of the root should be the document's pages branch;
+        # navigate to find a page dict.
+        root_children = debugger.get_tree().get_children("")
+        assert root_children
+    finally:
+        if debugger.get_document() is not None:
+            with contextlib.suppress(Exception):
+                debugger.get_document().close()
+        with contextlib.suppress(tk.TclError):
+            debugger._main_frame.destroy()  # noqa: SLF001

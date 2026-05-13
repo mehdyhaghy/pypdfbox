@@ -121,3 +121,180 @@ def test_renderer_callable_returns_dict() -> None:
     assert result["text"] == "5"
     assert result["icon"] == ICON_INTEGER
     assert result["indirect"] is False
+
+
+# ---- additional dictionary postfix branches ------------------------------
+
+
+def test_dictionary_postfix_includes_widget_name() -> None:
+    """A field-widget annotation surfaces the ``/T`` field name in postfix."""
+    inner = COSDictionary()
+    inner.set_name(COSName.get_pdf_name("Type"), "Annot")
+    inner.set_name(COSName.get_pdf_name("Subtype"), "Widget")
+    inner.set_string(COSName.get_pdf_name("T"), "FieldA")
+    entry = MapEntry()
+    entry.set_key(COSName.get_pdf_name("X"))
+    entry.set_value(inner)
+    rendered = render_value(entry)
+    assert "Name: FieldA" in rendered
+
+
+def test_dictionary_postfix_only_s_when_no_subtype() -> None:
+    inner = COSDictionary()
+    inner.set_name(COSName.get_pdf_name("Type"), "Action")
+    inner.set_name(COSName.get_pdf_name("S"), "URI")
+    entry = MapEntry()
+    entry.set_key(COSName.get_pdf_name("A"))
+    entry.set_value(inner)
+    rendered = render_value(entry)
+    # Both /T: and /S: should appear once each.
+    assert "/T:Action" in rendered
+    assert "/S:URI" in rendered
+
+
+def test_dictionary_postfix_pattern_type() -> None:
+    inner = COSDictionary()
+    inner.set_int(COSName.get_pdf_name("PatternType"), 2)
+    entry = MapEntry()
+    entry.set_key(COSName.get_pdf_name("P"))
+    entry.set_value(inner)
+    rendered = render_value(entry)
+    assert "/PatternType:2" in rendered
+
+
+def test_dictionary_postfix_shading_type() -> None:
+    inner = COSDictionary()
+    inner.set_int(COSName.get_pdf_name("ShadingType"), 5)
+    entry = MapEntry()
+    entry.set_key(COSName.get_pdf_name("Sh"))
+    entry.set_value(inner)
+    rendered = render_value(entry)
+    assert "/ShadingType:5" in rendered
+
+
+def test_map_entry_postfix_includes_indirect_reference_label() -> None:
+    """A map entry whose item is a ``COSObject`` shows ``[N gen R]``."""
+    from pypdfbox.cos import COSObject
+
+    inner = COSDictionary()
+    inner.set_name(COSName.get_pdf_name("Type"), "Annot")
+    inner.set_name(COSName.get_pdf_name("Subtype"), "Widget")
+    cos_obj = COSObject(5, 0, resolved=inner)
+    entry = MapEntry()
+    entry.set_key(COSName.get_pdf_name("Field"))
+    entry.set_value(inner)
+    entry.set_item(cos_obj)
+    rendered = render_value(entry)
+    # Indirect-object label appears between the rendered value and postfix.
+    assert "[" in rendered
+
+
+# ---- additional icon branches -------------------------------------------
+
+
+def test_stream_icon() -> None:
+    from pypdfbox.cos import COSStream
+    from pypdfbox.debugger.ui.pdf_tree_cell_renderer import ICON_STREAM_DICT
+
+    stream = COSStream()
+    assert style_for(stream)["icon"] == ICON_STREAM_DICT
+
+
+def test_document_entry_icon() -> None:
+    from pypdfbox.debugger.ui import DocumentEntry
+    from pypdfbox.debugger.ui.pdf_tree_cell_renderer import ICON_PDF
+    from pypdfbox.pdmodel import PDDocument
+
+    doc = PDDocument()
+    try:
+        entry = DocumentEntry(doc, "x.pdf")
+        assert style_for(entry)["icon"] == ICON_PDF
+    finally:
+        doc.close()
+
+
+def test_page_entry_icon() -> None:
+    from pypdfbox.debugger.ui import DocumentEntry, PageEntry
+    from pypdfbox.debugger.ui.pdf_tree_cell_renderer import ICON_PAGE
+    from pypdfbox.pdmodel import PDDocument, PDPage
+
+    doc = PDDocument()
+    doc.add_page(PDPage())
+    try:
+        entry = DocumentEntry(doc, "x.pdf")
+        page = entry.get_page(0)
+        assert isinstance(page, PageEntry)
+        assert style_for(page)["icon"] == ICON_PAGE
+    finally:
+        doc.close()
+
+
+def test_xref_entry_icon_is_indirect() -> None:
+    from pypdfbox.cos import COSObject, COSObjectKey
+    from pypdfbox.debugger.ui import XrefEntry
+    from pypdfbox.debugger.ui.pdf_tree_cell_renderer import ICON_INDIRECT
+
+    cos_obj = COSObject(7, 0, resolved=COSInteger(0))
+    xe = XrefEntry(0, COSObjectKey(7, 0), 100, cos_obj)
+    assert style_for(xe)["icon"] == ICON_INDIRECT
+
+
+def test_cos_object_icon_is_dict() -> None:
+    from pypdfbox.cos import COSObject
+    from pypdfbox.debugger.ui.pdf_tree_cell_renderer import ICON_DICT
+
+    obj = COSObject(8, 0, resolved=COSInteger(0))
+    assert style_for(obj)["icon"] == ICON_DICT
+
+
+def test_unknown_node_icon_returns_none() -> None:
+    sentinel = object()
+    assert style_for(sentinel)["icon"] is None
+
+
+# ---- indirect overlay flag ----------------------------------------------
+
+
+def test_indirect_overlay_for_map_entry_with_cos_object() -> None:
+    from pypdfbox.cos import COSObject
+
+    inner = COSInteger(5)
+    cos_obj = COSObject(9, 0, resolved=inner)
+    entry = MapEntry()
+    entry.set_key(COSName.get_pdf_name("K"))
+    entry.set_value(inner)
+    entry.set_item(cos_obj)
+    assert style_for(entry)["indirect"] is True
+
+
+def test_indirect_overlay_suppressed_for_stream_value() -> None:
+    from pypdfbox.cos import COSObject, COSStream
+
+    inner = COSStream()
+    cos_obj = COSObject(10, 0, resolved=inner)
+    entry = MapEntry()
+    entry.set_key(COSName.get_pdf_name("S"))
+    entry.set_value(inner)
+    entry.set_item(cos_obj)
+    # Stream icon already implies indirection — the overlay is suppressed.
+    assert style_for(entry)["indirect"] is False
+
+
+def test_xref_entry_indirect_overlay() -> None:
+    from pypdfbox.cos import COSObject, COSObjectKey
+    from pypdfbox.debugger.ui import XrefEntry
+
+    cos_obj = COSObject(11, 0, resolved=COSInteger(0))
+    xe = XrefEntry(0, COSObjectKey(11, 0), 100, cos_obj)
+    assert style_for(xe)["indirect"] is True
+
+
+def test_xref_entry_renders_as_string() -> None:
+    from pypdfbox.cos import COSObject, COSObjectKey
+    from pypdfbox.debugger.ui import XrefEntry
+
+    cos_obj = COSObject(12, 0, resolved=COSInteger(0))
+    xe = XrefEntry(0, COSObjectKey(12, 0), 100, cos_obj)
+    # render_value uses str() for XrefEntry; non-empty result.
+    rendered = render_value(xe)
+    assert rendered  # truthy

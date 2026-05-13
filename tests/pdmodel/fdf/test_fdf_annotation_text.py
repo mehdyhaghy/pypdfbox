@@ -8,9 +8,8 @@ def test_default_constructor_stamps_subtype_text() -> None:
     a = FDFAnnotationText()
     assert a.get_subtype() == "Text"
     # /Type Annot inherited from base.
-    assert a.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Type")) is COSName.get_pdf_name(
-        "Annot"
-    )
+    type_key = COSName.get_pdf_name("Type")
+    assert a.get_cos_object().get_dictionary_object(type_key) is COSName.get_pdf_name("Annot")
 
 
 def test_existing_subtype_preserved() -> None:

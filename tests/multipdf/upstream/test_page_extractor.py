@@ -10,6 +10,8 @@ the fly — the assertions translate verbatim.
 
 from __future__ import annotations
 
+import contextlib
+
 from pypdfbox import PDDocument, PDPage
 from pypdfbox.multipdf import PageExtractor
 
@@ -24,10 +26,8 @@ def _build_10_page_doc() -> PDDocument:
 def _close_doc(doc: PDDocument | None) -> None:
     """Mirrors upstream ``closeDoc`` — swallows close errors."""
     if doc is not None:
-        try:
+        with contextlib.suppress(Exception):
             doc.close()
-        except Exception:  # noqa: BLE001
-            pass
 
 
 def test_extract() -> None:

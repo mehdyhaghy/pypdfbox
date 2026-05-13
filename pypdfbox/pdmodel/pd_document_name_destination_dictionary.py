@@ -50,9 +50,8 @@ class PDDocumentNameDestinationDictionary:
         item = self._dict.get_dictionary_object(name)
         if isinstance(item, COSArray):
             return PDDestination.create(item)
-        if isinstance(item, COSDictionary):
-            if item.get_dictionary_object(_D) is not None:
-                return PDDestination.create(item.get_dictionary_object(_D))
+        if isinstance(item, COSDictionary) and item.get_dictionary_object(_D) is not None:
+            return PDDestination.create(item.get_dictionary_object(_D))
         return None
 
     def set_destination(

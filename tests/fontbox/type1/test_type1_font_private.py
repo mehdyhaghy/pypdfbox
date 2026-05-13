@@ -22,7 +22,10 @@ class _FakeT1:
         return self.font[key]
 
 
-def _font_with(top: dict[str, Any] | None = None, private: dict[str, Any] | None = None) -> Type1Font:
+def _font_with(
+    top: dict[str, Any] | None = None,
+    private: dict[str, Any] | None = None,
+) -> Type1Font:
     fd: dict[str, Any] = {"FontName": "TestPS"}
     if top:
         fd.update(top)

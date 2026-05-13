@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Ported upstream tests for PDFDocEncoding.
 
 Translated from
@@ -16,6 +14,8 @@ below 256 round-trips through ``COSString(text) → getString() → ...``
 without information loss — we compare ``get_string()`` results instead
 of raw equals, which matches what upstream's equals actually evaluates.
 """
+
+from __future__ import annotations
 
 from pypdfbox.cos import COSString
 

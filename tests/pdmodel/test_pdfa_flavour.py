@@ -61,9 +61,11 @@ def test_flavour_str_renders_human_readable() -> None:
 
 
 def test_flavour_is_hashable_and_frozen() -> None:
+    import dataclasses
+
     f = PDFAFlavour(2, "B")
     # frozen dataclass: assignment fails.
-    with pytest.raises(Exception):
+    with pytest.raises(dataclasses.FrozenInstanceError):
         f.part = 3  # type: ignore[misc]
     # hashable: usable as a dict / set key.
     assert {f: "ok"}[PDFAFlavour(2, "B")] == "ok"

@@ -19,14 +19,10 @@ TYPE_CHECKING-only annotations.
 
 from __future__ import annotations
 
-from typing import Generic, TypeVar
-
 from .font_box_font import FontBoxFont
 
-T = TypeVar("T", bound=FontBoxFont)
 
-
-class FontMapping(Generic[T]):
+class FontMapping[T: FontBoxFont]:
     """A resolved (font, is_fallback) pair returned by a FontMapper.
 
     Upstream Java is a final-fields container with two getters; this

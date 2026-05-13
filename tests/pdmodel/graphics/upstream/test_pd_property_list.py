@@ -17,9 +17,12 @@ markedcontent/PDPropertyList.java``)::
     public static PDPropertyList create(COSDictionary dict)
     {
         COSBase item = dict.getItem(COSName.TYPE);
-        if (COSName.OCG.equals(item))            return new PDOptionalContentGroup(dict);
-        else if (COSName.OCMD.equals(item))      return new PDOptionalContentMembershipDictionary(dict);
-        else                                     return new PDPropertyList(dict);
+        if (COSName.OCG.equals(item))
+            return new PDOptionalContentGroup(dict);
+        else if (COSName.OCMD.equals(item))
+            return new PDOptionalContentMembershipDictionary(dict);
+        else
+            return new PDPropertyList(dict);
     }
 """
 

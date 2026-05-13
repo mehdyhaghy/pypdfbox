@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """Tests for ``DigitalSignatureTable`` / ``TrueTypeFont.get_dsig``.
 
 The ``DSIG`` table is rarely shipped in real-world fonts (the bundled
@@ -7,6 +5,8 @@ The ``DSIG`` table is rarely shipped in real-world fonts (the bundled
 a DSIG-bearing TTF on the fly via ``fontTools`` to exercise both the
 present-table and absent-table paths. No new fixtures are committed.
 """
+
+from __future__ import annotations
 
 import io
 from pathlib import Path

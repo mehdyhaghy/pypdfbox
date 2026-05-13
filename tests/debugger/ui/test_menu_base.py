@@ -86,3 +86,70 @@ def test_add_menu_listeners_replaces_commands(tk_root: tk.Tk) -> None:
     assert received == ["First", "Second"]
     # Original callbacks should not fire after replacement.
     assert fired == []
+
+
+def test_set_enable_menu_without_menu_is_noop() -> None:
+    base = MenuBase()
+    # No exception when no menu is bound.
+    base.set_enable_menu(False)
+
+
+def test_add_menu_listeners_without_menu_is_noop() -> None:
+    base = MenuBase()
+    # No exception when no menu is bound.
+    base.add_menu_listeners(lambda _: None)
+
+
+def test_add_menu_listeners_on_empty_menu(tk_root: tk.Tk) -> None:
+    base = MenuBase()
+    menu = tk.Menu(tk_root, tearoff=0)
+    base.set_menu(menu)
+    # Empty menu: ``index('end')`` returns ``None`` and we early-out.
+    base.add_menu_listeners(lambda _: None)
+
+
+def test_add_menu_listeners_skips_separators(tk_root: tk.Tk) -> None:
+    base = MenuBase()
+    menu = tk.Menu(tk_root, tearoff=0)
+    base.set_menu(menu)
+    base.add_menu("First", None)
+    menu.add_separator()
+    base.add_menu("Second", None)
+    received: list[str] = []
+    base.add_menu_listeners(received.append)
+    # Only the two real entries should respond when invoked.
+    menu.invoke(0)
+    menu.invoke(2)
+    assert received == ["First", "Second"]
+
+
+def test_add_menu_without_menu_raises() -> None:
+    base = MenuBase()
+    with pytest.raises(RuntimeError):
+        base.add_menu("Foo", None)
+
+
+def test_add_radio_group_without_menu_raises() -> None:
+    base = MenuBase()
+    with pytest.raises(RuntimeError):
+        base.add_radio_group(["A"], None, None)
+
+
+def test_add_radio_group_reuses_existing_variable(tk_root: tk.Tk) -> None:
+    base = MenuBase()
+    menu = tk.Menu(tk_root, tearoff=0)
+    base.set_menu(menu)
+    var = tk.StringVar(value="seed")
+    returned = base.add_radio_group(["A", "B"], current="B", on_change=None, variable=var)
+    # Same StringVar is returned, current was applied to it.
+    assert returned is var
+    assert var.get() == "B"
+
+
+def test_safely_invoke_handles_none() -> None:
+    from pypdfbox.debugger.ui.menu_base import _safely_invoke
+
+    _safely_invoke(None)  # no exception
+    seen: list[int] = []
+    _safely_invoke(lambda x, y: seen.append(x + y), 2, 3)
+    assert seen == [5]

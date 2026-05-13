@@ -106,3 +106,63 @@ def test_empty_resources_returns_none(tk_root):
     )
     assert ctrl.font_pane is None
     assert ctrl.get_pane() is None
+
+
+def test_font_load_oserror_returns_no_pane(tk_root, monkeypatch):
+    """When ``PDResources.get_font`` raises ``OSError`` the controller
+    swallows the error and surfaces ``None`` for the pane (mirrors
+    upstream's IOException handler)."""
+    from pypdfbox.pdmodel.pd_resources import PDResources
+
+    def _boom(self, _name):
+        raise OSError("forced")
+
+    monkeypatch.setattr(PDResources, "get_font", _boom)
+    resources = _resources_with("F1", _type1_dict())
+    ctrl = FontEncodingPaneController(
+        COSName.get_pdf_name("F1"), resources, tk_root
+    )
+    assert ctrl.font_pane is None
+    assert ctrl.get_pane() is None
+
+
+def test_direct_cos_dict_wrap_failure_returns_no_pane(tk_root, monkeypatch):
+    """``PDFontFactory.create_font`` raising ``OSError`` on a direct font
+    entry falls through to the early-return branch."""
+    from pypdfbox.pdmodel.font import PDFontFactory
+    from pypdfbox.pdmodel.pd_resources import PDResources
+
+    direct_dict = _type1_dict()
+
+    def _direct_font(self, _name):
+        return direct_dict
+
+    def _boom(_d):
+        raise OSError("forced create_font failure")
+
+    monkeypatch.setattr(PDResources, "get_font", _direct_font)
+    monkeypatch.setattr(PDFontFactory, "create_font", staticmethod(_boom))
+    resources = _resources_with("F1", _type1_dict())
+    ctrl = FontEncodingPaneController(
+        COSName.get_pdf_name("F1"), resources, tk_root
+    )
+    assert ctrl.font_pane is None
+
+
+def test_pane_construction_oserror_swallowed(tk_root, monkeypatch):
+    """An OSError raised by the pane constructor itself (rare, but
+    upstream catches it) leaves the controller's pane as ``None``."""
+    from pypdfbox.debugger.fontencodingpane import (
+        font_encoding_pane_controller as mod,
+    )
+
+    class _BoomPane:
+        def __init__(self, *args, **kwargs):
+            raise OSError("pane build failed")
+
+    monkeypatch.setattr(mod, "SimpleFont", _BoomPane)
+    resources = _resources_with("F1", _type1_dict())
+    ctrl = FontEncodingPaneController(
+        COSName.get_pdf_name("F1"), resources, tk_root
+    )
+    assert ctrl.font_pane is None

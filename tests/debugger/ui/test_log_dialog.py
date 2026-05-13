@@ -105,3 +105,101 @@ def test_log_label_updates_when_provided(tk_root: tk.Tk) -> None:
     dialog = LogDialog(owner=tk_root, log_label=label)
     dialog.log("x", "error", "e")
     assert "error" in label.cget("text")
+
+
+# ---- direct exercise of more LogDialog branches -------------------------
+
+
+def test_set_text_font_height_applies_when_text_widget_exists(
+    tk_root: tk.Tk,
+) -> None:
+    dialog = LogDialog(owner=tk_root)
+    dialog.show()  # builds the toplevel + text widget
+    dialog.set_text_font_height(11)
+    # Re-application must not crash.
+    dialog.set_text_font_height(12)
+
+
+def test_set_visible_false_withdraws(tk_root: tk.Tk) -> None:
+    dialog = LogDialog(owner=tk_root)
+    dialog.show()
+    dialog.set_visible(False)
+    # No exception ⇒ withdrawn cleanly.
+
+
+def test_pack_invokes_idletasks_when_toplevel_exists(tk_root: tk.Tk) -> None:
+    dialog = LogDialog(owner=tk_root)
+    dialog.show()
+    dialog.pack()  # exercises the toplevel-exists branch
+
+
+def test_pack_when_no_toplevel_is_noop() -> None:
+    LogDialog(owner=None).pack()  # must not raise
+
+
+def test_get_content_pane_returns_toplevel_when_built(tk_root: tk.Tk) -> None:
+    dialog = LogDialog(owner=tk_root)
+    assert dialog.get_content_pane() is None
+    dialog.show()
+    assert dialog.get_content_pane() is not None
+
+
+def test_clear_with_widget_resets_text_widget(tk_root: tk.Tk) -> None:
+    from tkinter import ttk
+
+    label = ttk.Label(tk_root, text="seeded")
+    dialog = LogDialog(owner=tk_root, log_label=label)
+    dialog.show()
+    dialog.log("pypdfbox.x", "error", "boom")
+    dialog.clear()
+    assert dialog.get_error_count() == 0
+    text_widget = dialog._text  # noqa: SLF001
+    assert text_widget is not None
+    assert text_widget.get("1.0", "end-1c") == ""
+    assert label.cget("text") == ""
+
+
+def test_show_after_init_pre_seeded_records(tk_root: tk.Tk) -> None:
+    dialog = LogDialog(owner=tk_root)
+    dialog.log("pypdfbox.routed", "warn", "w1")
+    # ``show`` first build runs the replay loop for pending records.
+    dialog.show()
+    text_widget = dialog._text  # noqa: SLF001
+    assert text_widget is not None
+    contents = text_widget.get("1.0", "end")
+    assert "w1" in contents
+
+
+def test_show_with_preset_font_height_applies_to_text(tk_root: tk.Tk) -> None:
+    dialog = LogDialog(owner=tk_root)
+    dialog.set_text_font_height(15)  # set before show — exercises the
+    # ``_text is None`` branch then later the ``apply on build`` branch.
+    dialog.show()
+    text_widget = dialog._text  # noqa: SLF001
+    assert text_widget is not None
+
+
+def test_log_with_throwable_renders_traceback(tk_root: tk.Tk) -> None:
+    dialog = LogDialog(owner=tk_root)
+    dialog.show()
+    try:
+        raise RuntimeError("oh no")
+    except RuntimeError as exc:
+        dialog.log("pypdfbox.routed", "error", "outer", exc)
+    text_widget = dialog._text  # noqa: SLF001
+    assert text_widget is not None
+    contents = text_widget.get("1.0", "end")
+    assert "RuntimeError" in contents
+    assert "oh no" in contents
+
+
+def test_render_record_invalid_level_raises(tk_root: tk.Tk) -> None:
+    """Direct exercise of ``_render_record`` with an invalid level.
+
+    ``_render_record`` is normally guarded by ``_bump_counters``; calling
+    it directly without bumping covers the ``style is None`` branch.
+    """
+    dialog = LogDialog(owner=tk_root)
+    dialog.show()
+    with pytest.raises(ValueError):
+        dialog._render_record("name", "unknown", "msg", None)  # noqa: SLF001

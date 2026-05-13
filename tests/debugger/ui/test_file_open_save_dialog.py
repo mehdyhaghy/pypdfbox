@@ -109,3 +109,21 @@ def test_open_file_passes_parent_when_provided() -> None:
     dialog = FileOpenSaveDialog(sentinel)
     dialog.open_file()
     assert captured.get("parent") is sentinel
+
+
+def test_save_path_passes_parent_and_filter(tmp_path: Path) -> None:
+    """When parent + file_filter are provided, both flow into the save impl."""
+    target = tmp_path / "out.pdf"
+    captured: dict[str, Any] = {}
+
+    def fake_save(**kw: Any) -> str:
+        captured.update(kw)
+        return str(target)
+
+    module.set_save_impl(fake_save)
+    sentinel = object()
+    dialog = FileOpenSaveDialog(sentinel, [("PDF", "*.pdf")])
+    ok = dialog.save_file(b"x", "pdf")
+    assert ok is True
+    assert captured.get("parent") is sentinel
+    assert captured.get("filetypes") == [("PDF", "*.pdf")]

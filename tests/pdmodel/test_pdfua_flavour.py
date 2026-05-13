@@ -60,9 +60,11 @@ def test_flavour_default_rev_is_none() -> None:
 
 
 def test_flavour_is_hashable_and_frozen() -> None:
+    import dataclasses
+
     f = PDFUAFlavour(1, "2014")
     # frozen dataclass: assignment fails.
-    with pytest.raises(Exception):
+    with pytest.raises(dataclasses.FrozenInstanceError):
         f.part = 2  # type: ignore[misc]
     # hashable: usable as a dict / set key.
     assert {f: "ok"}[PDFUAFlavour(1, "2014")] == "ok"

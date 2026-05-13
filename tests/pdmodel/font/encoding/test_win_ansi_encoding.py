@@ -78,7 +78,8 @@ def test_round_trip_get_code():
 
 def test_factory_resolves_to_singleton():
     assert Encoding.get_instance("WinAnsiEncoding") is WinAnsiEncoding.INSTANCE
-    assert Encoding.get_instance(COSName.get_pdf_name("WinAnsiEncoding")) is WinAnsiEncoding.INSTANCE
+    name = COSName.get_pdf_name("WinAnsiEncoding")
+    assert Encoding.get_instance(name) is WinAnsiEncoding.INSTANCE
 
 
 def test_table_size_is_complete():

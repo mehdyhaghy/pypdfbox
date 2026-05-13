@@ -169,9 +169,6 @@ def test_set_destination_rejects_page_object_form() -> None:
     import pytest
 
     from pypdfbox.cos import COSDictionary
-    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_fit_destination import (
-        PDPageFitDestination,
-    )
 
     action = PDActionEmbeddedGoTo()
     dest = PDPageFitDestination()
@@ -187,9 +184,6 @@ def test_set_d_rejects_page_object_form_too() -> None:
     import pytest
 
     from pypdfbox.cos import COSDictionary
-    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_fit_destination import (
-        PDPageFitDestination,
-    )
 
     action = PDActionEmbeddedGoTo()
     dest = PDPageFitDestination()
@@ -200,10 +194,6 @@ def test_set_d_rejects_page_object_form_too() -> None:
 
 def test_set_destination_accepts_integer_page_index() -> None:
     """A page destination with an integer page index is valid for /GoToE."""
-    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_fit_destination import (
-        PDPageFitDestination,
-    )
-
     action = PDActionEmbeddedGoTo()
     dest = PDPageFitDestination()
     dest.set_page_number(3)
@@ -219,10 +209,6 @@ def test_set_destination_accepts_fresh_page_destination() -> None:
     """A fresh PDPageDestination (whose first array slot is COSNull) is
     treated as 'no page set yet' and accepted — matches upstream's behaviour
     on an empty destination array (where ``size() < 1`` skips validation)."""
-    from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_fit_destination import (
-        PDPageFitDestination,
-    )
-
     action = PDActionEmbeddedGoTo()
     # Fresh destination — no page assigned.
     action.set_destination(PDPageFitDestination())

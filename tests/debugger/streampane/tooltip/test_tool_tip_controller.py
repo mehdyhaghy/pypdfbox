@@ -164,3 +164,50 @@ def test_text_component_adapter_accepts_get_method() -> None:
 def test_none_text_component_returns_none() -> None:
     controller = ToolTipController(None)
     assert controller.get_tool_tip(0, None) is None
+
+
+# ---- additional edge cases ----------------------------------------------
+
+
+def test_get_tool_tip_for_negative_offset_returns_none() -> None:
+    text = "1 0 0 rg\n"
+    controller = ToolTipController(None)
+    assert controller.get_tool_tip(-1, text) is None
+
+
+def test_get_tool_tip_for_offset_past_end_returns_none() -> None:
+    text = "1 0 0 rg\n"
+    controller = ToolTipController(None)
+    # ``_get_word`` clamps caret past end: walks left to last char and yields
+    # a meaningful word when present, or ``None`` otherwise. Past EOL +
+    # whitespace runs hit the ``return None`` branch.
+    assert controller.get_tool_tip(10_000, text) is None
+
+
+def test_text_component_adapter_returns_none_when_no_get() -> None:
+    class _NoGet:
+        pass
+
+    controller = ToolTipController(None)
+    assert controller.get_tool_tip(0, _NoGet()) is None
+
+
+def test_word_at_eol_when_caret_immediately_after_word() -> None:
+    """Caret immediately after the last char of ``rg`` (offset 8 == EOL
+    newline position) still picks up the operator and dispatches."""
+    text = "1 0 0 rg\n"
+    controller = ToolTipController(None)
+    # Index of '\n' is 8 — caret sits *on* whitespace but the char to its
+    # left is 'g' (part of 'rg'). The fall-back logic in ``_get_word``
+    # rewinds the caret onto the last word.
+    payload = controller.get_tool_tip(8, text)
+    assert payload is not None
+    assert payload.segments[0].color_hex == "ff0000"
+
+
+def test_scn_without_recognised_cs_returns_none() -> None:
+    """When the scan upward finds only blank rows, dispatch returns None."""
+    text = "\n\n1 0 0 scn\n"
+    controller = ToolTipController(None)
+    # No ``<name> cs`` row to anchor the colorspace → None.
+    assert controller.get_tool_tip(text.index("scn"), text) is None

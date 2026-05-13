@@ -141,7 +141,7 @@ def test_xref_dump_lists_pool(
     # Each entry is "  N G R" — assert at least the first one is present.
     assert " 0 R" in out
     # At least one indirect object should be in the table after a real save.
-    lines = [l for l in out.splitlines() if l.strip().endswith(" R")]
+    lines = [line for line in out.splitlines() if line.strip().endswith(" R")]
     assert len(lines) >= 1
 
 

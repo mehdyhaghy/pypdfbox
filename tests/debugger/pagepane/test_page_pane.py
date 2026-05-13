@@ -308,9 +308,12 @@ def test_page_pane_uses_image_type_menu_mode(
 def test_page_pane_propagates_render_destination_to_renderer(
     tk_root: tk.Tk, _reset_menus: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``_render_image`` should call ``set_default_destination`` with the
-    enum selected on ``RenderDestinationMenu``. We hijack the renderer
-    class via monkeypatch to inspect what the page pane wired in.
+    """``_render_image`` should thread the enum selected on
+    ``RenderDestinationMenu`` straight through to ``render_image`` via
+    the ``destination=`` kwarg (mirrors upstream's four-arg
+    ``renderImage(int, float, ImageType, RenderDestination)``). We
+    hijack the renderer class via monkeypatch to inspect what the page
+    pane wired in.
     """
     from pypdfbox.debugger.ui.render_destination_menu import RenderDestinationMenu
 
@@ -327,9 +330,20 @@ def test_page_pane_propagates_render_destination_to_renderer(
     real_renderer_cls = rendering_module.PDFRenderer
 
     class _SpyRenderer(real_renderer_cls):  # type: ignore[misc, valid-type]
-        def set_default_destination(self, destination):  # type: ignore[override]
+        def render_image(  # type: ignore[override]
+            self,
+            page_index,
+            scale=1.0,
+            image_type=None,
+            destination=None,
+        ):
             seen["destination"] = destination
-            return super().set_default_destination(destination)
+            return super().render_image(
+                page_index,
+                scale=scale,
+                image_type=image_type,
+                destination=destination,
+            )
 
     monkeypatch.setattr(rendering_module, "PDFRenderer", _SpyRenderer)
 

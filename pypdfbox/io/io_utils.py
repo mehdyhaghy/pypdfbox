@@ -40,7 +40,7 @@ class IOUtils:
         return to_byte_array(in_stream, buffer_size)
 
     @staticmethod
-    def close_quietly(closeable: "_Closeable | None") -> None:
+    def close_quietly(closeable: _Closeable | None) -> None:
         close_quietly(closeable)
 
     @staticmethod
@@ -48,11 +48,11 @@ class IOUtils:
         return populate_buffer(in_stream, buffer)
 
     @staticmethod
-    def create_memory_only_stream_cache() -> "StreamCacheCreateFunction":
+    def create_memory_only_stream_cache() -> StreamCacheCreateFunction:
         return create_memory_only_stream_cache()
 
     @staticmethod
-    def create_temp_file_only_stream_cache() -> "StreamCacheCreateFunction":
+    def create_temp_file_only_stream_cache() -> StreamCacheCreateFunction:
         return create_temp_file_only_stream_cache()
 
     @staticmethod
@@ -61,7 +61,7 @@ class IOUtils:
 
     @staticmethod
     def close_and_log_exception(
-        closeable: "_Closeable | None",
+        closeable: _Closeable | None,
         log_name: str | None = None,
         resource_name: str | None = None,
     ) -> None:

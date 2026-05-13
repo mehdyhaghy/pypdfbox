@@ -333,18 +333,31 @@ class PDFRenderer(PDFStreamEngine):
         page_index: int,
         scale: float = 1.0,
         image_type: ImageType | None = None,
+        destination: str | RenderDestination | None = None,
     ) -> Image.Image:
         """Render at 72 DPI base * ``scale``. Mirrors upstream
-        ``PDFRenderer.renderImage(int, float, ImageType)`` (and its
-        one-/two-arg overloads).
+        ``PDFRenderer.renderImage(int, float, ImageType)`` and the
+        four-arg ``renderImage(int, float, ImageType, RenderDestination)``
+        overload (plus the one-/two-arg variants).
 
         ``image_type`` selects the Pillow mode of the returned image
         (RGB, RGBA, L, "1"). When ``None`` the lite renderer keeps its
         historical white-RGB canvas behaviour.
+
+        ``destination`` mirrors upstream's ``RenderDestination`` argument
+        that drives OCG visibility and annotation appearance selection.
+        ``None`` (the default) defers to the renderer-level default set
+        via :meth:`set_default_destination`. A bare string
+        (``"View"`` / ``"Print"`` / ``"Export"``) is accepted alongside
+        the :class:`RenderDestination` enum value for parity with the
+        renderer-level setter.
         """
         scale = _require_positive_finite(scale, "scale")
         return self.render_image_with_dpi(
-            page_index, dpi=72.0 * scale, image_type=image_type
+            page_index,
+            dpi=72.0 * scale,
+            image_type=image_type,
+            destination=destination,
         )
 
     def renderImage(  # noqa: N802 - upstream Java alias
@@ -352,15 +365,22 @@ class PDFRenderer(PDFStreamEngine):
         page_index: int,
         scale: float = 1.0,
         image_type: ImageType | None = None,
+        destination: str | RenderDestination | None = None,
     ) -> Image.Image:
         """Java-style alias for ``render_image``."""
-        return self.render_image(page_index, scale=scale, image_type=image_type)
+        return self.render_image(
+            page_index,
+            scale=scale,
+            image_type=image_type,
+            destination=destination,
+        )
 
     def render_image_with_dpi(
         self,
         page_index: int,
         dpi: float = 72.0,
         image_type: ImageType | None = None,
+        destination: str | RenderDestination | None = None,
     ) -> Image.Image:
         """Render the page at the given DPI. Mirrors upstream
         ``PDFRenderer.renderImageWithDPI``.
@@ -370,6 +390,15 @@ class PDFRenderer(PDFStreamEngine):
         Pillow mode of the returned image (RGB, RGBA, L, "1"). When
         ``None`` (the default), the lite renderer keeps its historical
         white-RGB canvas behaviour.
+
+        ``destination`` mirrors the four-arg ``renderImage(int, float,
+        ImageType, RenderDestination)`` overload — it threads through to
+        the :class:`PageDrawerParameters` constructed for this render so
+        OCG visibility and annotation appearance selection see the
+        caller's choice without mutating the renderer-level default.
+        ``None`` defers to that default. Accepts either a
+        :class:`RenderDestination` enum value or the bare string
+        equivalent.
 
         Upstream allocates a ``BufferedImage`` and constructs a
         ``PageDrawer`` via :meth:`create_page_drawer`, then calls
@@ -408,13 +437,23 @@ class PDFRenderer(PDFStreamEngine):
 
         # Bundle the renderer-level options into a PageDrawerParameters
         # (mirrors upstream PDFRenderer.renderImageWithDPI which builds
-        # parameters → createPageDrawer → drawPage).
-        destination = RenderDestination(self._default_destination)
+        # parameters → createPageDrawer → drawPage). When the caller
+        # provided an explicit ``destination`` we honour that for this
+        # render only — without mutating ``_default_destination``,
+        # matching upstream's four-arg
+        # ``renderImage(int, float, ImageType, RenderDestination)``
+        # which threads ``destination`` straight into PageDrawerParameters.
+        if destination is None:
+            resolved_destination = RenderDestination(self._default_destination)
+        elif isinstance(destination, RenderDestination):
+            resolved_destination = destination
+        else:
+            resolved_destination = RenderDestination(destination)
         parameters = PageDrawerParameters(
             renderer=self,
             page=page,
             subsampling_allowed=self._subsampling_allowed,
-            destination=destination,
+            destination=resolved_destination,
             rendering_hints=self._rendering_hints,
             image_downscaling_optimization_threshold=(
                 self._image_downscaling_optimization_threshold
@@ -548,9 +587,15 @@ class PDFRenderer(PDFStreamEngine):
         page_index: int,
         dpi: float = 72.0,
         image_type: ImageType | None = None,
+        destination: str | RenderDestination | None = None,
     ) -> Image.Image:
         """Java-style alias for ``render_image_with_dpi``."""
-        return self.render_image_with_dpi(page_index, dpi=dpi, image_type=image_type)
+        return self.render_image_with_dpi(
+            page_index,
+            dpi=dpi,
+            image_type=image_type,
+            destination=destination,
+        )
 
     def _get_page_for_render(self, page_index: int) -> PDPage:
         if page_index < 0 or page_index >= self._document.get_number_of_pages():
