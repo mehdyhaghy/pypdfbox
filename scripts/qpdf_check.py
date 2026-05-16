@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Differential validation of pypdfbox-generated PDFs via ``qpdf``.
 
-PRD §12 calls for a release-time validation stack:
-``qpdf --check``, ``qpdf --qdf``, veraPDF, PAC. This script is the
+PRD §12 calls for release-time structural validation. This script is the
 ``qpdf`` portion — it builds representative PDFs through the pypdfbox
-writer, then shells out to the system ``qpdf`` to confirm the bytes are
-structurally valid and can be normalized round-trip.
+writer, then shells out to the system ``qpdf`` (Apache 2.0) to confirm the
+bytes are structurally valid and can be normalized round-trip. ``qpdf`` is
+the only external validator pypdfbox ships scaffolding for; PDF/A / PDF/UA
+conformance checking is out of scope and is the downstream user's choice.
 
 ``qpdf`` is a *system* tool (Homebrew on macOS, ``apt install qpdf`` on
 Debian). It is intentionally **not** added to ``pyproject.toml`` — the

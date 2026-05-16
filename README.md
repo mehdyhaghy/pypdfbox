@@ -94,7 +94,7 @@ Everything in scope ships. The only `planned` rows are subsystems whose underlyi
 | XMP metadata (`xmpbox`: parser, schemas, structured types, PDF 2.0 schemas) | done | `xml.etree` with hardened entity rejection. No `defusedxml` dependency. |
 | Tools / CLI (`info`, `merge`, `split`, `decrypt`, `version`, `texttopdf`, `overlay`, `extract`, …) | done | Mirrors upstream `org.apache.pdfbox.tools.PDFBox` dispatcher. |
 | Debugger (PDFDebugger UI port: tree model, page pane, stream pane, hex viewer) | done | Swing-equivalent UI ported on a Python-native widget toolkit. |
-| PDF/A & PDF/UA validation | out of scope | Per PRD §13 and PDFBox 4.0 alignment: delegate to **veraPDF** / **PAC**. No `preflight` module ships. |
+| PDF/A & PDF/UA validation | out of scope | Per PRD §13 and PDFBox 4.0 alignment: no `preflight` module ships. Downstream users wire up whichever external validator they choose — pypdfbox itself stays permissive-license-only and ships no scaffolding for any specific validator. |
 | JBIG2 / JPEG 2000 / advanced JPEG decode-quality knobs | partial / planned | Awaiting explicit user decision on which Python codec backend to depend on (see PRD §3.7.1 "Pending user decision"). Default decode paths work today. |
 
 ## Status
@@ -112,7 +112,7 @@ All numbers below come from `.parity/snapshot.txt` (recomputed every wave agains
 
 A handful of behavioural divergences are intentional. The full list lives in [`CHANGES.md`](CHANGES.md); the high-level ones are:
 
-- **No `preflight` module.** Apache PDFBox 4.0 removes Preflight; we follow that decision. Use [veraPDF](https://verapdf.org/) for PDF/A and PAC for PDF/UA.
+- **No `preflight` module.** Apache PDFBox 4.0 removes Preflight; we follow that decision. PDF/A and PDF/UA conformance validation is out of scope — pypdfbox ships permissive-license components only, so the choice of external validator is left to the downstream user.
 - **No commons-logging / log4j.** Python `logging` (stdlib) is used throughout.
 - **Method naming.** Java `camelCase` → Python `snake_case` across the entire API surface. Semantics unchanged.
 - **AWT-free rendering.** `java.awt.Color` is represented as a tuple of floats; `BufferedImage` returns are Pillow `Image` instances. `Matrix`, `Vector`, `GeneralPath`, `BoundingBox` widen to `Any` on font protocols.

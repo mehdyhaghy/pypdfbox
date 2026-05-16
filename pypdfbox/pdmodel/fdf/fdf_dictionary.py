@@ -17,6 +17,8 @@ from pypdfbox.pdmodel.common.filespecification.pd_file_specification import (
 
 from .fdf_annotation import FDFAnnotation
 from .fdf_field import FDFField
+from .fdf_java_script import FDFJavaScript
+from .fdf_page import FDFPage
 
 _FIELDS: COSName = COSName.get_pdf_name("Fields")
 _F: COSName = COSName.get_pdf_name("F")
@@ -251,31 +253,51 @@ class FDFDictionary:
     def set_embedded_fd_fs(self, arr: COSArray | None) -> None:
         self.set_embedded_fdfs(arr)
 
-    # ---------- /Pages (FDFPage list — surfaced as raw COSArray) ----------
+    # ---------- /Pages (FDFPage list) ----------
 
-    def get_pages(self) -> COSArray | None:
-        """Return the raw ``/Pages`` array, or ``None`` when unset.
+    def get_pages(self) -> list[FDFPage] | None:
+        """Return the ``/Pages`` entry as a list of :class:`FDFPage`, or
+        ``None`` when unset. Mirrors upstream
+        ``FDFDictionary.getPages() -> List<FDFPage>``.
+        """
+        v = self._fdf.get_dictionary_object(_PAGES)
+        if not isinstance(v, COSArray):
+            return None
+        pages: list[FDFPage] = []
+        for i in range(v.size()):
+            entry = v.get_object(i)
+            if isinstance(entry, COSDictionary):
+                pages.append(FDFPage(entry))
+        return pages
 
-        Upstream ``FDFDictionary.getPages`` returns ``List<FDFPage>`` wrapped
-        in a ``COSArrayList``. pypdfbox has not yet ported ``FDFPage``, so
-        we surface the underlying ``COSArray`` directly. The accessor name
-        and "missing entry returns ``None``" semantics still match upstream.
+    def set_pages(self, pages: list[FDFPage] | None) -> None:
+        """Set the ``/Pages`` entry from a list of :class:`FDFPage`.
+
+        Pass ``None`` to drop the entry. Mirrors upstream
+        ``FDFDictionary.setPages(List<FDFPage>)``.
+        """
+        if pages is None:
+            self._fdf.remove_item(_PAGES)
+            return
+        arr = COSArray()
+        for page in pages:
+            arr.add(page.get_cos_object())
+        self._fdf.set_item(_PAGES, arr)
+
+    def get_pages_cos_array(self) -> COSArray | None:
+        """Return the raw ``/Pages`` :class:`COSArray`, or ``None`` when
+        unset.
+
+        Deprecated low-level accessor: prefer :meth:`get_pages`, which wraps
+        each entry in :class:`FDFPage` matching upstream PDFBox. Retained
+        for back-compat with callers that need direct COS access (e.g.
+        XFDF serialisation helpers); new code should migrate to the typed
+        accessor.
         """
         v = self._fdf.get_dictionary_object(_PAGES)
         if isinstance(v, COSArray):
             return v
         return None
-
-    def set_pages(self, pages: COSArray | None) -> None:
-        """Set the ``/Pages`` array. Pass ``None`` to drop the entry.
-
-        Accepts a ``COSArray`` directly (since ``FDFPage`` is not yet
-        ported). Mirrors upstream ``FDFDictionary.setPages``.
-        """
-        if pages is None:
-            self._fdf.remove_item(_PAGES)
-        else:
-            self._fdf.set_item(_PAGES, pages)
 
     # ---------- /Differences (incremental updates stream) ----------
 
@@ -299,37 +321,48 @@ class FDFDictionary:
         else:
             self._fdf.set_item(_DIFFERENCES, diff)
 
-    # ---------- /JavaScript (FDFJavaScript sub-dict — surfaced as raw COSDictionary) ----------
+    # ---------- /JavaScript (FDFJavaScript sub-dict) ----------
 
-    def get_javascript(self) -> COSDictionary | None:
-        """Return the raw ``/JavaScript`` sub-dictionary, or ``None``.
+    def get_javascript(self) -> FDFJavaScript | None:
+        """Return the ``/JavaScript`` entry wrapped in
+        :class:`FDFJavaScript`, or ``None`` when unset. Mirrors upstream
+        ``FDFDictionary.getJavaScript() -> FDFJavaScript``.
+        """
+        v = self._fdf.get_dictionary_object(_JAVA_SCRIPT)
+        if isinstance(v, COSDictionary):
+            return FDFJavaScript(v)
+        return None
 
-        Upstream ``FDFDictionary.getJavaScript`` returns ``FDFJavaScript``;
-        pypdfbox has not yet ported that class, so we surface the underlying
-        ``COSDictionary`` directly. Accessor name matches upstream.
+    def set_javascript(self, js: FDFJavaScript | None) -> None:
+        """Set the ``/JavaScript`` entry from an :class:`FDFJavaScript`;
+        ``None`` removes the entry. Mirrors upstream
+        ``FDFDictionary.setJavaScript(FDFJavaScript)``.
+        """
+        if js is None:
+            self._fdf.remove_item(_JAVA_SCRIPT)
+        else:
+            self._fdf.set_item(_JAVA_SCRIPT, js.get_cos_object())
+
+    def get_javascript_cos_dictionary(self) -> COSDictionary | None:
+        """Return the raw ``/JavaScript`` :class:`COSDictionary`, or ``None``.
+
+        Deprecated low-level accessor: prefer :meth:`get_javascript`, which
+        wraps the entry in :class:`FDFJavaScript` matching upstream PDFBox.
+        Retained for back-compat with callers that need direct COS access;
+        new code should migrate to the typed accessor.
         """
         v = self._fdf.get_dictionary_object(_JAVA_SCRIPT)
         if isinstance(v, COSDictionary):
             return v
         return None
 
-    def set_javascript(self, js: COSDictionary | None) -> None:
-        """Set the ``/JavaScript`` sub-dictionary; ``None`` removes the entry.
-
-        Mirrors upstream ``FDFDictionary.setJavaScript``.
-        """
-        if js is None:
-            self._fdf.remove_item(_JAVA_SCRIPT)
-        else:
-            self._fdf.set_item(_JAVA_SCRIPT, js)
-
     # Strict mechanical-snake_case aliases for upstream ``getJavaScript`` /
     # ``setJavaScript``. The pythonic ``get_javascript`` / ``set_javascript``
     # remain primary.
-    def get_java_script(self) -> COSDictionary | None:
+    def get_java_script(self) -> FDFJavaScript | None:
         return self.get_javascript()
 
-    def set_java_script(self, js: COSDictionary | None) -> None:
+    def set_java_script(self, js: FDFJavaScript | None) -> None:
         self.set_javascript(js)
 
     # ---------- XFDF XML serialisation ----------

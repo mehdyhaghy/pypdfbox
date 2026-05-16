@@ -362,6 +362,64 @@ class PDICCBased(PDColorSpace):
 
     # ---------- profile inspection ----------
 
+    def _read_header_signature(self, offset: int) -> str | None:
+        """Decode a 4-byte ASCII signature from the embedded ICC profile
+        header at ``offset``. Returns ``None`` when the profile is absent
+        or shorter than ``offset + 4`` bytes.
+
+        Mirrors the ICC.1:2010 §7.2 header layout — bytes 12..15 carry
+        the device class (table 16), bytes 16..19 the data colour space
+        (table 18), and bytes 20..23 the profile connection space (PCS)
+        signature. Signatures preserve trailing spaces verbatim so they
+        round-trip exactly into the four-byte form expected by ICC
+        consumers (e.g. ``"RGB "``, ``"Lab "``, ``"XYZ "``).
+        """
+        profile = self.get_iccprofile_bytes()
+        if len(profile) < offset + 4:
+            return None
+        try:
+            return profile[offset : offset + 4].decode("ascii", errors="replace")
+        except UnicodeDecodeError:  # pragma: no cover — errors='replace' covers it
+            return None
+
+    def get_device_class(self) -> str | None:
+        """Return the ICC profile's device-class signature (4 bytes at
+        header offset 12, per ICC.1:2010 §7.2 table 16). Common values:
+        ``"scnr"`` (input), ``"mntr"`` (display), ``"prtr"`` (output),
+        ``"link"`` (DeviceLink), ``"spac"`` (ColorSpace), ``"abst"``
+        (Abstract), ``"nmcl"`` (NamedColor). Returns ``None`` when the
+        embedded profile is absent or shorter than 16 bytes.
+
+        Note: upstream PDFBox 3.0 routes this through ``ICC_Profile.
+        getProfileClass()`` and returns the AWT integer constant —
+        pypdfbox enrichment surfaces the raw four-char signature so
+        callers can read it without an AWT dependency."""
+        return self._read_header_signature(12)
+
+    def get_color_space_signature(self) -> str | None:
+        """Return the ICC profile's data colour-space signature (4 bytes
+        at header offset 16, per ICC.1:2010 §7.2 table 18). Common
+        values: ``"RGB "``, ``"CMYK"``, ``"GRAY"``, ``"Lab "``,
+        ``"XYZ "``. Returns ``None`` when the embedded profile is
+        absent or shorter than 20 bytes.
+
+        Note: upstream PDFBox 3.0 surfaces this through
+        ``ICC_Profile.getColorSpaceType()`` as an AWT integer — see
+        :meth:`get_color_space_type` for the integer form."""
+        return self._read_header_signature(16)
+
+    def get_pcs_signature(self) -> str | None:
+        """Return the ICC profile-connection-space (PCS) signature
+        (4 bytes at header offset 20, per ICC.1:2010 §7.2). Only two
+        PCS values are legal: ``"XYZ "`` and ``"Lab "``. Returns
+        ``None`` when the embedded profile is absent or shorter than
+        24 bytes.
+
+        Note: upstream PDFBox 3.0 routes this through ``ICC_Profile.
+        getPCSType()`` and returns the AWT integer constant — pypdfbox
+        enrichment exposes the raw signature directly."""
+        return self._read_header_signature(20)
+
     def is_srgb(self) -> bool:
         """Return ``True`` when this ICCBased color space carries the
         embedded sRGB profile or its alternate resolves to DeviceRGB.

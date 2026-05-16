@@ -312,10 +312,26 @@ class PDOutputIntent:
         return self.get_dest_output_profile_cos()
 
     def set_dest_output_profile(
-        self, profile: PDStream | COSStream | None
+        self, profile: PDStream | COSStream | object | None
     ) -> None:
         """Set ``/DestOutputProfile``. Accepts ``None`` (removes the
-        entry), a typed :class:`PDStream`, or a raw ``COSStream``."""
+        entry), a typed :class:`PDStream`, a raw ``COSStream``, or a
+        typed :class:`PDICCBased` (the embedded ICC stream is unwrapped
+        and written under ``/DestOutputProfile``).
+
+        When a :class:`PDICCBased` is supplied, the second slot of the
+        ICCBased array is the ``COSStream`` carrying the ICC profile —
+        we write that stream directly so the ``/N`` recorded on the
+        ICC stream's dictionary travels with it (matching upstream's
+        ``configureOutputProfile`` shape, which writes ``/N`` on the
+        stream dictionary rather than on the output-intent dict)."""
+        # Local import to avoid a hard cycle with the broader color
+        # subpackage — PDICCBased imports PDColorSpace which can pull in
+        # the colour-space factory.
+        from pypdfbox.pdmodel.graphics.color.pd_icc_based import (  # noqa: PLC0415
+            PDICCBased,
+        )
+
         if profile is None:
             self._dictionary.remove_item(_DEST_OUTPUT_PROFILE)
             return
@@ -325,10 +341,55 @@ class PDOutputIntent:
         if isinstance(profile, PDStream):
             self._dictionary.set_item(_DEST_OUTPUT_PROFILE, profile.get_cos_object())
             return
+        if isinstance(profile, PDICCBased):
+            stream = profile.get_pdstream()
+            if stream is None:
+                raise ValueError(
+                    "set_dest_output_profile: PDICCBased has no embedded "
+                    "ICC stream (slot 1 of the ICCBased array is empty)"
+                )
+            self._dictionary.set_item(_DEST_OUTPUT_PROFILE, stream)
+            return
         raise TypeError(
-            f"set_dest_output_profile expected PDStream, COSStream, or None; "
-            f"got {type(profile).__name__}"
+            f"set_dest_output_profile expected PDStream, COSStream, or None "
+            f"(or PDICCBased); got {type(profile).__name__}"
         )
+
+    def get_dest_output_profile_pdiccbased(self) -> object | None:
+        """Return ``/DestOutputProfile`` wrapped as a typed
+        :class:`~pypdfbox.pdmodel.graphics.color.pd_icc_based.PDICCBased`,
+        or ``None`` when the entry is absent.
+
+        Builds a synthetic ``[/ICCBased <stream>]`` ``COSArray`` around
+        the embedded ICC stream so the returned ``PDICCBased`` exposes
+        the same ``/N`` / ``/Alternate`` / ``/Range`` / ``/Metadata``
+        accessors as one parsed from a content-stream ColorSpace
+        reference. The header signature accessors
+        (:meth:`PDICCBased.get_device_class`,
+        :meth:`PDICCBased.get_color_space_signature`,
+        :meth:`PDICCBased.get_pcs_signature`) then read directly off
+        the ICC profile body.
+
+        pypdfbox enrichment — Apache PDFBox 3.0 only exposes the raw
+        ``COSStream`` via :meth:`get_dest_output_intent`, leaving
+        callers to hand-roll the ICCBased wrapping themselves."""
+        cos = self._dictionary.get_dictionary_object(_DEST_OUTPUT_PROFILE)
+        if cos is None:
+            return None
+        if not isinstance(cos, COSStream):
+            raise TypeError(
+                f"unexpected /DestOutputProfile type: {type(cos).__name__}"
+            )
+        # Local import — see set_dest_output_profile for rationale.
+        from pypdfbox.cos import COSArray  # noqa: PLC0415
+        from pypdfbox.pdmodel.graphics.color.pd_icc_based import (  # noqa: PLC0415
+            PDICCBased,
+        )
+
+        icc_array = COSArray()
+        icc_array.add(COSName.get_pdf_name("ICCBased"))
+        icc_array.add(cos)
+        return PDICCBased(icc_array)
 
     # ---------- /DestOutputProfileRef (ISO 32000-2 / PDF 2.0) ----------
 

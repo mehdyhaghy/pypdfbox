@@ -135,15 +135,23 @@ def test_embedded_fd_fs_strict_alias() -> None:
 
 
 def test_pages_round_trip() -> None:
+    from pypdfbox.pdmodel.fdf import FDFPage
+
     fdf = FDFDictionary()
     assert fdf.get_pages() is None
-    arr = COSArray()
-    arr.add(COSDictionary())
-    arr.add(COSDictionary())
-    fdf.set_pages(arr)
-    assert fdf.get_pages() is arr
+    p1 = FDFPage()
+    p2 = FDFPage()
+    fdf.set_pages([p1, p2])
+    pages = fdf.get_pages()
+    assert pages is not None and len(pages) == 2
+    assert pages[0].get_cos_object() is p1.get_cos_object()
+    assert pages[1].get_cos_object() is p2.get_cos_object()
+    arr = fdf.get_pages_cos_array()
+    assert isinstance(arr, COSArray)
+    assert arr.size() == 2
     fdf.set_pages(None)
     assert fdf.get_pages() is None
+    assert fdf.get_pages_cos_array() is None
 
 
 def test_differences_round_trip() -> None:
@@ -157,24 +165,37 @@ def test_differences_round_trip() -> None:
 
 
 def test_javascript_round_trip() -> None:
+    from pypdfbox.pdmodel.fdf import FDFJavaScript
+
     fdf = FDFDictionary()
     assert fdf.get_javascript() is None
-    js = COSDictionary()
+    js = FDFJavaScript()
     fdf.set_javascript(js)
-    assert fdf.get_javascript() is js
+    got = fdf.get_javascript()
+    assert isinstance(got, FDFJavaScript)
+    assert got.get_cos_object() is js.get_cos_object()
+    raw = fdf.get_javascript_cos_dictionary()
+    assert isinstance(raw, COSDictionary)
+    assert raw is js.get_cos_object()
     fdf.set_javascript(None)
     assert fdf.get_javascript() is None
+    assert fdf.get_javascript_cos_dictionary() is None
 
 
 def test_java_script_strict_alias() -> None:
     """``get_java_script`` is the strict mechanical translation of upstream
     ``getJavaScript`` and must round-trip with the pythonic
     ``get_javascript`` form."""
+    from pypdfbox.pdmodel.fdf import FDFJavaScript
+
     fdf = FDFDictionary()
-    js = COSDictionary()
+    js = FDFJavaScript()
     fdf.set_java_script(js)
-    assert fdf.get_java_script() is js
-    assert fdf.get_javascript() is js
+    got_strict = fdf.get_java_script()
+    got_pythonic = fdf.get_javascript()
+    assert got_strict is not None and got_pythonic is not None
+    assert got_strict.get_cos_object() is js.get_cos_object()
+    assert got_pythonic.get_cos_object() is js.get_cos_object()
 
 
 def test_write_xml_empty_dictionary_emits_nothing() -> None:

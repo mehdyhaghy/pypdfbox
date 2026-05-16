@@ -3,17 +3,16 @@ Passive PDF/UA flavour detector.
 
 This module is a pypdfbox addition with **no upstream PDFBox equivalent**.
 PDFBox 3.0 ships no PDF/UA flavour-detection helper, and 4.0 dropped the
-``preflight`` module entirely (see CLAUDE.md). The closest analogue in the
-open-source ecosystem is veraPDF's PDF/UA validator helpers; this module
-mimics the data shape (``part`` + ``rev``) without taking on any validation
+``preflight`` module entirely (see CLAUDE.md). This module surfaces the
+flavour data shape (``part`` + ``rev``) without taking on any validation
 responsibility.
 
 Scope: read the document's XMP metadata, look up
 ``pdfuaid:part`` / ``pdfuaid:rev`` via
 :class:`pypdfbox.xmpbox.pdfua_identification_schema.PDFUAIdentificationSchema`,
 and report what the metadata claims. **It is not a validator**. A document
-that *says* it is PDF/UA-1 may not actually conform to ISO 14289-1; use
-external tools (veraPDF, PAC) for real validation.
+that *says* it is PDF/UA-1 may not actually conform to ISO 14289-1; real
+conformance validation is out of scope and is the downstream user's choice.
 
 Entry points:
 
@@ -58,8 +57,8 @@ class PDFUAFlavour:
         return self.part in KNOWN_PARTS
 
     def __str__(self) -> str:
-        # PDF/UA-1, PDF/UA-2 — matches the human-readable form used by ISO
-        # and veraPDF.
+        # PDF/UA-1, PDF/UA-2 — matches the human-readable form used by the
+        # ISO 14289 standards.
         if self.rev:
             return f"PDF/UA-{self.part} ({self.rev})"
         return f"PDF/UA-{self.part}"

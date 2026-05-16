@@ -417,8 +417,8 @@ class XMPMetadata:
         Return the registered :class:`PDFUAIdentificationSchema` instance, or
         ``None`` when the packet declares none. PDF/UA-1 (ISO 14289-1) is
         identified by ``pdfuaid:part = 1``; this is a pypdfbox addition (no
-        upstream PDFBox class) and is read/identification only — validation is
-        deferred to external tools (veraPDF, PAC).
+        upstream PDFBox class) and is read/identification only — conformance
+        validation is out of scope and is the downstream user's choice.
         """
         from .pdfua_identification_schema import PDFUAIdentificationSchema
 

@@ -3,17 +3,16 @@ Passive PDF/A flavour detector.
 
 This module is a pypdfbox addition with **no upstream PDFBox equivalent**.
 PDFBox 3.0 ships no PDF/A flavour-detection helper (and 4.0 has dropped the
-``preflight`` module entirely — see CLAUDE.md). The closest analogue in the
-open-source ecosystem is veraPDF's ``org.verapdf.pdfa.flavours.PDFAFlavour``;
-this module mimics the data shape (part + conformance) without taking on any
-validation responsibility.
+``preflight`` module entirely — see CLAUDE.md). This module surfaces the
+flavour data shape (part + conformance) without taking on any validation
+responsibility.
 
 Scope: read the document's XMP metadata, look up
 ``pdfaid:part`` / ``pdfaid:conformance`` via
 :class:`pypdfbox.xmpbox.pdfa_identification_schema.PDFAIdentificationSchema`,
 and report what the metadata claims. **It is not a validator**. A document
-that *says* it is PDF/A-2B may not actually conform to PDF/A-2B; use external
-tools (veraPDF, PAC) for real validation.
+that *says* it is PDF/A-2B may not actually conform to PDF/A-2B; real
+conformance validation is out of scope and is the downstream user's choice.
 
 Entry points:
 
@@ -69,7 +68,7 @@ class PDFAFlavour:
 
     def __str__(self) -> str:
         # PDF/A-2B, PDF/A-4, PDF/A-4E, etc. Matches the human-readable form
-        # used by veraPDF and the ISO standards.
+        # used by the ISO 19005 standards.
         if self.conformance:
             return f"PDF/A-{self.part}{self.conformance}"
         return f"PDF/A-{self.part}"

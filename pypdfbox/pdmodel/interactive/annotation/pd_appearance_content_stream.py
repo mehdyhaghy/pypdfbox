@@ -50,36 +50,27 @@ class PDAppearanceContentStream(PDPageContentStream):
                 "PDAppearanceContentStream requires a PDAppearanceStream; got "
                 f"{type(appearance).__name__}"
             )
-        # Bypass PDPageContentStream's PDPage/PDFormXObject branching —
-        # PDAppearanceStream isn't a PDFormXObject in the lite port. We
-        # populate the same attributes the parent uses so all inherited
-        # operator helpers (move_to, set_font, draw_image, ...) work.
-        self._document = None  # type: ignore[assignment]  # upstream passes null too
-        self._closed = False
-        self._buffer = bytearray()
-        self._reset_context = False
-        self._in_text_mode = False
+        # Delegate to the parent's ``PDFormXObject`` branch — now that
+        # :class:`PDAppearanceStream` extends :class:`PDFormXObject` the
+        # inherited constructor populates ``_target_stream`` (the
+        # underlying ``COSStream``), ``_resources`` (creating + attaching
+        # a fresh ``/Resources`` when the appearance has none), and the
+        # ``_buffer``/``_in_text_mode``/``_closed``/``_compress`` state
+        # the operator helpers expect. ``document=None`` matches
+        # upstream's ``new PDAppearanceContentStream(...)`` which passes
+        # null for the owning document.
+        super().__init__(None, appearance, compress=bool(compress))
 
         self._appearance = appearance
-        self._target_stream = appearance.get_stream()
-
-        # Resources: reuse the appearance's existing /Resources if present;
-        # otherwise create a fresh one and attach. Mirrors upstream's
-        # ``appearance.getResources()`` falling back via
-        # ``PDAbstractContentStream`` on first use.
-        existing = appearance.get_resources()
-        if existing is None:
-            self._resources = PDResources()
-            appearance.set_resources(self._resources)
-        else:
-            self._resources = existing
 
         # Custom output_stream short-circuits compression handling.
         self._external_output: BinaryIO | None = output_stream
-        # ``compress=True`` selects FlateDecode at flush time. The
-        # external-output branch ignores ``compress`` because the caller
-        # owns the filter chain.
-        self._compress = bool(compress) and output_stream is None
+        if output_stream is not None:
+            # The caller owns the filter chain when an explicit output
+            # stream is supplied — drop the inherited ``_compress``
+            # flag so :meth:`close` does not Flate-encode the bytes
+            # before handing them to the caller's stream.
+            self._compress = False
 
     # ------------------------------------------------------------------
     # lifecycle — overridden to support the explicit-output-stream path

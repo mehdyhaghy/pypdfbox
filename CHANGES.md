@@ -13,7 +13,7 @@ Per-release notes go here; trivial naming changes (camelCase → snake_case) are
 
 ## Project-wide deviations vs upstream
 
-- **No `preflight` module.** Apache PDFBox 4.0 removes Preflight; we follow that decision. PDF/A and PDF/UA validation is performed via external veraPDF / PAC.
+- **No `preflight` module.** Apache PDFBox 4.0 removes Preflight; we follow that decision. PDF/A and PDF/UA validation is out of scope — users can plug in any external validator they choose. The pypdfbox repo intentionally has no dependency on, nor scaffolding for, any specific validator (GPL-licensed tools in particular are not used, per PRD §4 forbidden-license list).
 - **No commons-logging / log4j.** Python `logging` (stdlib) is used throughout.
 - **Method naming.** Java camelCase → Python snake_case across the entire API surface. Semantics unchanged.
 
@@ -25,7 +25,7 @@ Per-release notes go here; trivial naming changes (camelCase → snake_case) are
 - **Tests**: 30,134 passing, 12 skipped (each with a documented reason), 0 known regressions in the stable core.
 - **Line coverage**: 90.22% global; ~99% on the stable parser+writer+pdmodel+contentstream+text+fontbox+rendering+xmpbox+tools core.
 - **Local TODOs**: 0.
-- **Out of scope (permanent)**: `org.apache.pdfbox.preflight.*` (106 classes — superseded by external veraPDF per PRD §13 and PDFBox 4.0 alignment).
+- **Out of scope (permanent)**: `org.apache.pdfbox.preflight.*` (106 classes — removed in PDFBox 4.0 per PRD §13; PDF/A / PDF/UA validation delegated to whichever external validator the user chooses).
 - **Phase**: Phase 3 closeout. Approaching release-candidate (3-5 waves to RC).
 
 ## Wave summary 1238-1301
@@ -676,7 +676,7 @@ Driven by porting upstream JUnit tests (PRD §12.1):
 - `pypdfbox/pdmodel/interactive/form/pd_appearance_generator.py` (NEW): lite `PDAppearanceGenerator` — text-field flat-text `/AP /N` regeneration only. `_parse_default_appearance(da)` extracts `Tf` font+size and `g` / `rg` / `k` non-stroking color; `_resolve_font(name)` maps `/DA` aliases (`Helv`, `HeBo`, `TiRo`, `CoRo`, `ZaDb`, …) to Standard 14. `_regenerate_widget(...)` builds a `PDAppearanceStream` with `/Tx BMC … BT … Tj ET … EMC` and installs as `/AP /N`. `pd_text_field.py` `set_value(value, regenerate_appearance: bool = False)` — default unchanged; `True` invokes the generator. **Deferred**: button on/off-state appearances, choice (combo / list) appearances, signature visual appearances; multi-line / comb / quadding layout; custom-embedded `/DA` fonts; `/MK` border/background painting; rich-text (`/RV`) rendering. Auto-size font heuristic (`height * 0.7`, clamped 4–12) replaces upstream's iterative `calculateFontSize`.
 - `pypdfbox/tools/texttopdf.py` (NEW): port of `TextToPDF`. Mirrors upstream's wrap-by-words / page-break-on-form-feed layout. CLI flags `-i/--input`, `-o/--output`, `-pageSize` (Letter/Legal/A0–A6), `-fontSize`, `-standardFont` (alias `-font`), `-landscape`, `-lineSpacing`, `-margins`, `-mediaBox`, `-charset`. **Internal `_readlines()` helper** mirrors Java's `BufferedReader.readLine()` semantics — splits only on `\r\n\r\n` (Python's `str.splitlines()` would also split on `\f`, silently consuming the form-feed page-break trigger upstream relies on). Standard 14 font bounding box read via `Standard14Fonts.get_font_descriptor(name)["FontBBox"]`. UTF-8 BOM handled transparently via `utf-8-sig`. **`-ttf` not wired** — `PDType0Font.load(doc, ttf)` not yet exposed at the tools layer.
 - `pypdfbox/tools/writedecodedstream.py` (NEW): port of upstream `WriteDecodedDoc`. Iterates `cos_doc.get_objects()`, runs `create_input_stream()` on each `COSStream`, removes `/Filter` and `/DecodeParms`, writes decoded bytes back. Forces `set_xref_stream(False)` before save (parity with upstream's `setIsXRefStream(false)` + `NO_COMPRESSION`). `-skipImages` flag honoured for `/XObject /Image` streams. Default output filename `<input>_unc.pdf` matches upstream.
-- `pypdfbox/pdmodel/pdfa_flavour.py` (NEW): passive PDF/A flavour detector — `PDFAFlavour(part, conformance)` frozen dataclass + `KNOWN_FLAVOURS` frozenset (11 canonical combinations: 1A/1B, 2A/2B/2U, 3A/3B/3U, 4 / 4E / 4F). `from_xmp(metadata)` reads from a parsed `XMPMetadata` via `PDFAIdentificationSchema.get_part()` / `get_conformance()`; `from_document(doc)` reads `catalog.get_metadata()`, parses the XMP packet, then delegates. Returns `None` for missing metadata, missing pdfaid schema, missing `pdfaid:part`, malformed XMP, or empty stream — never raises. **No upstream PDFBox equivalent** — closest analogue is `org.verapdf.pdfa.flavours.PDFAFlavour` from veraPDF; pypdfbox provides a passive detector only per CLAUDE.md "no preflight".
+- `pypdfbox/pdmodel/pdfa_flavour.py` (NEW): passive PDF/A flavour detector — `PDFAFlavour(part, conformance)` frozen dataclass + `KNOWN_FLAVOURS` frozenset (11 canonical combinations: 1A/1B, 2A/2B/2U, 3A/3B/3U, 4 / 4E / 4F). `from_xmp(metadata)` reads from a parsed `XMPMetadata` via `PDFAIdentificationSchema.get_part()` / `get_conformance()`; `from_document(doc)` reads `catalog.get_metadata()`, parses the XMP packet, then delegates. Returns `None` for missing metadata, missing pdfaid schema, missing `pdfaid:part`, malformed XMP, or empty stream — never raises. **No upstream PDFBox equivalent** — pypdfbox provides a passive detector only per CLAUDE.md "no preflight"; actual conformance validation is delegated to whichever external validator the user wires up.
 - `pypdfbox/pdmodel/documentinterchange/logicalstructure/pd_structure_element.py`: pypdfbox-only traversal helpers — `iter_kids() -> Iterator[Any]` (yields `PDStructureElement` / `PDMarkedContentReference` / `PDObjectReference` / int MCID), `iter_descendants() -> Iterator[PDStructureElement]` (pre-order DFS, identity-set guards against malformed cycles), `find_by_role(role)` / `find_first_by_role(role)` (matches against the role-map–resolved standard structure type so `/RoleMap` aliases match too), `get_alt_text` / `set_alt_text` short-name aliases for `get_alternate_description` / `set_alternate_description`. Upstream uses Java Stream API on `getKids()` for similar walks.
 
 ## Wave 32 — 20 parallel agents: xmpbox structured-type foundation + schema migrations, renderer enrichments, multipdf struct-tree, TTF subsetter integration, more
@@ -2825,7 +2825,7 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
 
 - New `scripts/qpdf_check.py` + `tests/integration/test_qpdf_validation.py` wire `qpdf --check` and `qpdf --qdf --object-streams=disable` as a pytest-gated validation pass over pypdfbox-generated PDFs. Skips cleanly when `qpdf` isn't on `$PATH` (install via `brew install qpdf`).
 - Covers ~5-10 distinct save flows: basic save, encrypted save, incremental save, merge, split, overlay, content-stream writer.
-- On the dev machine `qpdf` isn't installed, so the suite skips. CI will need to install qpdf to gate on actual qpdf-validity. This is one of the PRD §12 validation-stack pillars (alongside veraPDF + PAC, which remain TBD).
+- On the dev machine `qpdf` isn't installed, so the suite skips. CI will need to install qpdf to gate on actual qpdf-validity. `qpdf` (Apache 2.0) is the only external validation pillar pypdfbox ships scaffolding for; PDF/A / PDF/UA conformance checking is left to whichever external validator the downstream user chooses.
 
 ### Fontencodingpane coverage re-attempt (bounded)
 
@@ -2909,14 +2909,51 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   - `test_high_resolution_image_icon.py`: switched per-test `tk.Tk()` to the session-scoped fixture (eliminating extra Tk roots).
 - **Verified**: 2 concurrent shells × 5 iterations = 10/10 processes finish exit 0; 3 shells × 6 iterations = 18/18 exit 0; `PYPDFBOX_SKIP_TK=1` → 357 tests skip cleanly.
 
-## Wave 1305 — veraPDF integration scaffold + more deferred closures
+## Wave 1306 — appearance-stream inheritance + FDF / ICC / output-intent typed accessors + veraPDF scrub
 
-### veraPDF integration scaffold (PRD §13)
+### veraPDF scaffold removal (permissive-license-only policy)
 
-- New `scripts/verapdf_check.py` with `run_verapdf()` + `VeraPDFResult` NamedTuple and a `NOT_INSTALLED` sentinel. Defensive JSON parser handles veraPDF 1.24+ (`report.jobs[0].validationResult`) and older flat layouts. CLI distinguishes pipeline failures from conformance failures.
-- New `tests/integration/test_verapdf_validation.py` — module-level `shutil.which("verapdf")` skip with `allow_module_level=True`, mirroring the qpdf pattern from wave 1301. Tests cover invocation/parse pipeline (not PDF/A conformance — pypdfbox writer isn't yet PDF/A-compliant; that's a separate cluster).
-- CI install: veraPDF ships as an upstream IzPack-installer zip on Linux (`https://software.verapdf.org/releases/verapdf-greenfield-1.26.2.zip` + an `auto-install.xml`), `brew install --cask verapdf` on macOS. Existing `pytest.skip` guard flips from skip to run automatically when the binary becomes available — no test-side change needed.
-- veraPDF is GPL-3 — treated strictly as an external subprocess (no Python dep). PRD §4 forbidden-license list still respected.
+- Deleted `scripts/verapdf_check.py` and `tests/integration/test_verapdf_validation.py` (added in wave 1305). veraPDF is GPL-3 — even as an external subprocess, the project ships permissive-license components only, so all coupling to it (scripts, tests, CI install plumbing, documentation recommendations) has been stripped.
+- Documentation pass: removed veraPDF mentions from `README.md`, `CLAUDE.md`, `PROVENANCE.md`, `RELEASE_NOTES_v0.9.0rc1.md`, `pypdfbox_full_prd_v_1.md`, `scripts/qpdf_check.py`, `pypdfbox/pdmodel/pdfa_flavour.py`, `pypdfbox/pdmodel/pdfua_flavour.py`, `pypdfbox/xmpbox/pdfua_identification_schema.py`, `pypdfbox/xmpbox/xmp_metadata.py`. PDF/A / PDF/UA conformance validation is now explicitly **out of scope** — downstream users can wire up whichever external validator they choose (the choice no longer ships in this repo).
+- `qpdf` (Apache 2.0) remains the only external validation pillar pypdfbox ships scaffolding for, since it is the only one that fits the permissive-license rule.
+
+
+
+### PDAppearanceStream now extends PDFormXObject (true upstream inheritance)
+
+- `pypdfbox/pdmodel/interactive/annotation/pd_appearance_stream.py`: replaced the lite ``COSStream``-wrapper port with the upstream ``PDAppearanceStream extends PDFormXObject`` shape. Two constructor arities now match upstream: ``PDAppearanceStream(cos_stream | PDStream)`` (read existing) and ``PDAppearanceStream(PDDocument)`` (create empty new). ~140 lines of duplicated ``/BBox`` / ``/Matrix`` / ``/Resources`` / ``/FormType`` / ``/StructParents`` accessors removed — all inherited.
+- Compatibility-preserving overrides for ``get_stream`` / ``get_content_stream``: return the raw ``COSStream`` (not the ``PDStream`` wrapper that ``PDFormXObject.getStream()`` returns) so the long tail of pypdfbox call sites — ``PDAppearanceContentStream``, the appearance generator, and ~80 tests — keep working unchanged. New ``get_pd_stream()`` accessor exposes the typed wrapper for callers that want the upstream shape.
+- ``get_contents`` / ``get_contents_for_random_access`` overridden for the empty-body path — ``COSStream.create_input_stream()`` raises ``OSError`` on an empty body but ``PDFormXObject``'s contract is to hand back an empty stream; we route through ``BytesIO(b"")`` / ``RandomAccessReadBuffer.from_bytes(b"")`` for fresh streams.
+- `pypdfbox/pdmodel/interactive/annotation/pd_appearance_content_stream.py`: simplified — now delegates to ``PDPageContentStream.__init__(None, appearance, compress=...)``'s ``PDFormXObject`` branch instead of hand-populating ``_target_stream`` / ``_resources`` / ``_buffer`` / ``_in_text_mode`` / ``_closed``. The external-output branch still drops ``_compress`` after super-init (the caller owns the filter chain).
+- `pypdfbox/pdmodel/graphics/form/pd_form_x_object.py::set_b_box`: now raises ``TypeError`` up front for non-``PDRectangle`` input rather than ``AttributeError`` from the failed ``bbox.to_cos_array()`` call (preserves the type-check contract the appearance-dictionary tests pin).
+- All 4751 tests across `tests/pdmodel/interactive/` + `tests/pdmodel/graphics/` pass against the new inheritance.
+
+### FDFDictionary `/Pages` and `/JavaScript` — typed FDFPage / FDFJavaScript accessors
+
+- `pypdfbox/pdmodel/fdf/fdf_dictionary.py::get_pages` / ``set_pages`` now return / accept ``list[FDFPage]`` instead of raw ``COSArray`` (matches upstream ``FDFDictionary.getPages() -> List<FDFPage>`` / ``setPages(List<FDFPage>)``). ``FDFPage`` / ``FDFJavaScript`` were already ported in earlier waves; the dictionary now wires them through.
+- ``get_javascript`` / ``set_javascript`` (+ ``get_java_script`` / ``set_java_script`` alias) now return / accept ``FDFJavaScript`` instead of raw ``COSDictionary`` (matches upstream ``FDFDictionary.getJavaScript() -> FDFJavaScript``).
+- Deprecated low-level shims retained for callers that need raw COS access: ``get_pages_cos_array()`` and ``get_javascript_cos_dictionary()`` — primarily XFDF serialisation helpers and a handful of existing tests.
+- 18 hand-written tests at `tests/pdmodel/fdf/test_fdf_dictionary_typed.py` covering the typed round-trip + the deprecated-shim back-compat.
+
+### PDICCBased — ICC profile header signature accessors (`get_device_class` / `get_color_space_signature` / `get_pcs_signature`)
+
+- `pypdfbox/pdmodel/graphics/color/pd_icc_based.py`: three new accessors reading the ICC.1:2010 §7.2 header — device class (offset 12, "scnr"/"mntr"/"prtr"/"link"/"spac"/"abst"/"nmcl"), data colour space (offset 16, "RGB "/"CMYK"/"GRAY"/"Lab "/"XYZ "), and profile-connection-space (offset 20, "XYZ " or "Lab "). All return ``None`` for absent / truncated profiles.
+- pypdfbox enrichment vs upstream PDFBox 3.0 — upstream surfaces these only as AWT integer constants via ``ICC_Profile.getProfileClass()`` / ``getColorSpaceType()`` / ``getPCSType()``. We expose the raw four-char signatures (preserving trailing spaces) so callers can read them without an AWT dependency. Documented inline.
+
+### PDOutputIntent — `set_dest_output_profile(PDICCBased)` + `get_dest_output_profile_pdiccbased()`
+
+- `pypdfbox/pdmodel/graphics/color/pd_output_intent.py::set_dest_output_profile` now accepts a ``PDICCBased`` in addition to ``PDStream`` / ``COSStream`` / ``None`` — the embedded ICC stream is unwrapped and written under ``/DestOutputProfile``, preserving the ``/N`` recorded on the stream dictionary (matches upstream's ``configureOutputProfile`` shape).
+- New ``get_dest_output_profile_pdiccbased()`` returns ``/DestOutputProfile`` wrapped as a typed ``PDICCBased`` by synthesising the ``[/ICCBased <stream>]`` array shape — so the ICC header accessors land directly on the output-intent profile.
+- pypdfbox enrichment vs upstream — Apache PDFBox 3.0 only exposes the raw ``COSStream`` via ``getDestOutputIntent``, leaving the ICCBased wrapping to the caller. Both shapes preserved here; the typed accessor is the convenience path.
+- Joint coverage at `tests/pdmodel/graphics/color/test_pd_icc_based_output_intent.py` — 28 tests covering header signatures across embedded sRGB + custom profiles, ``PDICCBased`` round-trip through ``/DestOutputProfile``, ``/N`` preservation, malformed-header guards.
+
+### PDMMType1Font — pin upstream-parity contract (marker subclass, delegates to PDType1Font)
+
+- 4 hand-written tests at `tests/pdmodel/font/test_pd_mm_type1_font.py` pin that ``PDMMType1Font`` is a marker subclass — ``/Subtype /MMType1`` + ``/FontFile`` via ``/FontDescriptor`` flows through the inherited Type 1 ``get_width`` / ``get_path`` / ``get_glyph_path`` path without MM-axis interpolation, matching upstream ``PDMMType1Font.java`` (whose body is just constructor forwarders to ``super``). Closes the "deferred MM-axis interpolation" wording that was misleading — pypdfbox already matches upstream behaviour bit for bit.
+
+## Wave 1305 — more deferred closures
+
+**Closed (Wave 1306 audit):** the wave 1305 veraPDF integration scaffold (`scripts/verapdf_check.py`, `tests/integration/test_verapdf_validation.py`, CI install plumbing) was reverted in wave 1306 because veraPDF is GPL-3 and the project ships permissive-license components only — see the wave 1306 entry below.
 
 ### Public-key encryption per-recipient envelope grouping (closes line 362)
 

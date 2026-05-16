@@ -115,8 +115,13 @@ class PDFormXObject(PDXObject):
         cos = self.get_cos_object()
         if bbox is None:
             cos.remove_item(_BBOX)
-        else:
-            cos.set_item(_BBOX, bbox.to_cos_array())
+            return
+        if not isinstance(bbox, PDRectangle):
+            raise TypeError(
+                "set_bbox requires a PDRectangle or None; got "
+                f"{type(bbox).__name__}"
+            )
+        cos.set_item(_BBOX, bbox.to_cos_array())
 
     def set_bbox(self, bbox: PDRectangle | None) -> None:
         self.set_b_box(bbox)

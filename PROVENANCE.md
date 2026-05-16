@@ -975,7 +975,7 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `pypdfbox/pdmodel/interactive/form/pd_appearance_generator.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/form/AppearanceGeneratorHelper.java` (text-field flat-text path only — button/choice/signature appearances deferred) |
 | `pypdfbox/tools/texttopdf.py` | 3.0.x | `pdfbox-tools/src/main/java/org/apache/pdfbox/tools/TextToPDF.java` |
 | `pypdfbox/tools/writedecodedstream.py` | 3.0.x | `pdfbox-tools/src/main/java/org/apache/pdfbox/tools/WriteDecodedDoc.java` |
-| `pypdfbox/pdmodel/pdfa_flavour.py` | 3.0.x | original (no upstream PDFBox class — closest analogue is `org.verapdf.pdfa.flavours.PDFAFlavour` from veraPDF; pypdfbox provides a passive *detector* per CLAUDE.md "no preflight, no veraPDF reimplementation") |
+| `pypdfbox/pdmodel/pdfa_flavour.py` | 3.0.x | original (no upstream PDFBox class — pypdfbox provides a passive *detector* per CLAUDE.md "no preflight"; actual conformance validation is out of scope) |
 | `tests/xmpbox/type/upstream/test_attribute.py` | 3.0.x | `xmpbox/src/test/java/org/apache/xmpbox/type/AttributeTest.java` |
 | `tests/xmpbox/type/upstream/test_simple_metadata_properties.py` | 3.0.x | `xmpbox/src/test/java/org/apache/xmpbox/type/TestSimpleMetadataProperties.java` |
 | `tests/pdmodel/graphics/image/upstream/test_jpeg_factory.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/image/JPEGFactoryTest.java` |
@@ -1033,7 +1033,7 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `tests/fontbox/afm/upstream/test_char_metric.py` | 3.0.x | `fontbox/src/test/java/org/apache/fontbox/afm/CharMetricTest.java` |
 | `tests/fontbox/afm/upstream/test_composite.py` | 3.0.x | `fontbox/src/test/java/org/apache/fontbox/afm/CompositeTest.java` |
 | `tests/fontbox/afm/upstream/test_kern_pair.py` | 3.0.x | `fontbox/src/test/java/org/apache/fontbox/afm/KernPairTest.java` |
-| `pypdfbox/pdmodel/pdfua_flavour.py` | 3.0.x | pypdfbox addition (no upstream Java class — modeled on veraPDF PDF/UA flavour metadata) |
+| `pypdfbox/pdmodel/pdfua_flavour.py` | 3.0.x | pypdfbox addition (no upstream Java class — passive PDF/UA flavour metadata holder; actual conformance validation is out of scope) |
 | `pypdfbox/tools/listbookmarks.py` | 3.0.x | `pdfbox-examples/src/main/java/org/apache/pdfbox/examples/pdmodel/PrintBookmarks.java` |
 | `pypdfbox/xmpbox/pdfua_identification_schema.py` | 3.0.x | pypdfbox addition (no upstream Java class — mirrors `PDFAIdentificationSchema` shape for PDF/UA `pdfuaid` namespace) |
 | `pypdfbox/xmpbox/type/gps_coordinate_type.py` | 3.0.x | pypdfbox addition (no upstream Java class — D,M,Sk / D,M.mmk EXIF GPS coordinate parser) |
