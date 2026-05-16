@@ -2909,6 +2909,48 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   - `test_high_resolution_image_icon.py`: switched per-test `tk.Tk()` to the session-scoped fixture (eliminating extra Tk roots).
 - **Verified**: 2 concurrent shells × 5 iterations = 10/10 processes finish exit 0; 3 shells × 6 iterations = 18/18 exit 0; `PYPDFBOX_SKIP_TK=1` → 357 tests skip cleanly.
 
+## Wave 1318 — coverage-boost pass #5 (5 parallel agents, +302 hand-written tests)
+
+Twelve modules from 42–67% to **81–100%**.
+
+### cos_increment + cos_output_stream — coverage boost
+
+- `cos/cos_increment.py` **48% → 91%**: 21 tests covering public alias surface (`collect`/`add`/`add_processed_object`/`exclude`/`is_excluded`/`update_different_origin`), lazy `get_objects()`, dict/array/object collection branches, exclusion behavior, cross-document origin propagation. **Surfaced a real defect**: `_collect_dictionary` calls `entry.is_need_to_be_updated()` but concrete COS types expose `is_needs_to_be_updated` — direct-child / dirty-child dict & array branches (lines 160–171, 177, 185) raise `AttributeError` at runtime.
+- `cos/cos_output_stream.py` **53% → 100%**: 12 tests covering filter-less direct-write, single/multi-filter `_apply_filter_chain` reverse-order encoding, `write(int)` masking, idempotent `close`, buffered-vs-unbuffered `flush`, `TypeError` when stream cache lacks `create_buffer`.
+
+### cff_table + xmp_serializer — coverage boost
+
+- `fontbox/ttf/cff_table.py` **50% → 98%**: 12 tests covering `_CFFByteSource.get_bytes` (table-present, table-missing, None bytes, bytearray coercion); full `read()` (Type1 dispatch via fontTools FontBuilder, OTF-wrapped payload, empty-parser-output via monkeypatch); `read_headers()` `create_sub_view` branch + no-sub-view fallback + parser error capture; `get_font()` pre-read; `_NoSubViewTTFDataStream` to force the fallback path.
+- `xmpbox/xml/xmp_serializer.py` **42% → 99%**: 23 tests covering simple text round-trip, missing-about default, with/without xpacket, three Cardinality flavours (Bag/Seq/Alt), schema-level namespaced + unqualified attributes, None-valued attribute, structured top-level field, structured child inside array, `_FakeArrayWithoutCardinality` for the Bag fallback, nameless-field fallback, public mirrors (`create_rdf_element`, `fill_element_with_attributes`, `normalize_attributes`, `save`).
+
+### Five mid-coverage modules — boost
+
+66 hand-written tests across 5 files.
+
+- `pdmodel/interactive/digitalsignature/signature_options.py` **54% → 100%**: 12 tests. `set_visual_signature` for Path / str / BinaryIO / `PDVisibleSigProperties`-duck; `init_from_random_access_read` for length+read + bare-stream paths; close-time double-cleanup; non-positive-size guard. Flagged a latent bug in `_init_from_input` (feeds BinaryIO to PDFParser which expects RandomAccessRead).
+- `util/iterative_merge_sort.py` **52% → 100%**: 11 tests covering the private `merge` helper across all run-exhaustion branches plus sub-range / stability / reverse-comparator variants.
+- `pdmodel/graphics/color/pd_jpx_color_space.py` **59% → 100%**: 9 tests. All three `get_number_of_components` fallbacks, unit-decode default, Pillow `to_rgb_image` happy-path with clamping, ImportError-Pillow branch.
+- `pdmodel/interactive/annotation/handlers/pd_polyline_appearance_handler.py` **62% → 97%**: 22 tests. Every early-return guard, short/angled line-ending combinations, rectangle growth, `_interior_components` helper across tuple/`to_float_array`/`size()`/iterable shapes.
+- `pdfparser/fdf_parser.py` **62% → 94%**: 12 tests. `initial_parse` success + missing-root; `parse` success + header-failure + post-header missing-root cleanup; `parse_fdf_header` / `has_fdf_header`. Flagged latent gap: `FDFParser.parse` references `self.source` which the `COSParser` base does not expose.
+
+### Four 56-67%-coverage modules — boost
+
+57 hand-written tests across 4 files.
+
+- `filter/jpx_filter.py` **52% → 92%**: 6 tests covering `read_jpx` happy + result-arg branches, `decode`/`encode` forwarding, registry parity. Pillow JPEG-2000 feature-check skips for environments without OpenJPEG.
+- `pdmodel/font/fs_font_info.py` **57% → 81%**: 14 tests covering parent-cache add, real-TTF load via Liberation fixture, null-on-error for garbage TTF/OTF/PFB/TTC, public TTF/OTF/Type1 loader wrappers, `.ttc` extension dispatch, hash/mtime properties.
+- `xmpbox/xml/pdfa_extension_helper.py` **64% → 99%**: 20 tests covering `validate_naming` (happy + prefix/URI mismatch + no-attrs + non-xmlns-attr), `check_namespace_declaration` (accept/skip/raise/missing), `transform_value_type` prefix table + non-string, `require_non_null` both message forms, utility-class constructor guard.
+- `pdmodel/font/true_type_embedder.py` **67% → 91%**: 17 tests covering full-embed constructor (Liberation TTF), descriptor across italic/script/serif/missing-OS-2/missing-post, `add_to_subset` / `add_glyph_ids` / `needs_subset`, `subset()` end-to-end (mocked fontTools `Subsetter` — production bug: real subsetter with empty options drops `head`/`maxp`), fsType embed/subset blocks, `build_font_file2` bytes + TTC rejection, `_compute_gid_to_cid`. Same `COSName.BASE_FONT` static-attr gap as earlier embedder tests.
+
+### Four 61-63%-coverage modules — boost
+
+111 hand-written tests across 4 files.
+
+- `pdmodel/interactive/digitalsignature/visible/pd_visible_sign_designer.py` **62% → 100%**: 27 tests covering image-ingest overloads, fluent setters, page-size discovery routes incl. loader-stub, `NotImplementedError` parity stubs, `_IdentityAffineTransform`.
+- `io/non_seekable_random_access_read_input_stream.py` **61% → 93%**: 21 tests covering close/check-closed lifecycle, `read_fully` overloads incl. int form + `read_fully_int`, multi-buffer rewind + salvage-fetch, `length`/`available` against a Java-style `available()` stream.
+- `tools/extract_text.py` **61% → 99%**: 37 tests using the wave-1314 `_PDLoaderShim` to drive `call`'s text/html/md/console/append/debug branches, `extract_pages` per-page iteration + `always_next` gating, helper classes (`NullWriter` / `AngleCollector` / `Filtered*`) and `main` argparse plumbing.
+- `fontbox/ttf/random_access_read_non_closing_input_stream.py` **63% → 99%**: 26 tests covering all `read` / `readinto` / `seek` (SET/CUR/END/invalid) variants, memoryview alias vs slice-copy branches, `skip` clamp/no-op paths, non-propagating `close` contract.
+
 ## Wave 1317 — coverage-boost pass #4 (5 parallel agents, +243 hand-written tests)
 
 Nine more substantive modules from ~39–52% to **96–100%**.
