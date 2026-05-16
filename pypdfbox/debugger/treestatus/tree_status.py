@@ -42,7 +42,7 @@ class TreeStatus:
         :param path: tuple representing a tree path (root first, leaf last).
         :return: the slash-separated status string.
         """
-        return self._generate_path_string(path)
+        return self.generate_path_string(path)
 
     def get_path_for_string(self, status_string: str) -> TreePath | None:
         """Return the tree path for ``status_string``.
@@ -52,11 +52,11 @@ class TreeStatus:
         :return: the resolved tree path, or ``None`` when the string cannot
             be resolved against the current tree.
         """
-        return self._generate_path(status_string)
+        return self.generate_path(status_string)
 
-    # ---- helpers -------------------------------------------------------
+    # ---- helpers (upstream-named) --------------------------------------
 
-    def _generate_path_string(self, path: TreePath) -> str:
+    def generate_path_string(self, path: TreePath) -> str:
         """Construct a status string from ``path``.
 
         Mirrors the upstream walk up the parent chain, popping the leaf
@@ -68,7 +68,7 @@ class TreeStatus:
         current: TreePath = tuple(path)
         while len(current) > 1:
             obj = current[-1]
-            parts.insert(0, "/" + self._get_object_name(obj))
+            parts.insert(0, "/" + self.get_object_name(obj))
             current = current[:-1]
         if not parts:
             return ""
@@ -76,22 +76,22 @@ class TreeStatus:
         joined = "".join(parts)
         return joined[1:]
 
-    def _generate_path(self, path_string: str) -> TreePath | None:
+    def generate_path(self, path_string: str) -> TreePath | None:
         """Construct a tree path from ``path_string`` against the root."""
-        nodes = self._parse_path_string(path_string)
+        nodes = self.parse_path_string(path_string)
         if nodes is None:
             return None
         obj: Any = self._root_node
         tree_path: TreePath = (obj,)
         for node in nodes:
-            obj = self._search_node(obj, node)
+            obj = self.search_node(obj, node)
             if obj is None:
                 return None
             tree_path = (*tree_path, obj)
         return tree_path
 
     @staticmethod
-    def _get_object_name(tree_node: Any) -> str:
+    def get_object_name(tree_node: Any) -> str:
         """Return the textual identifier used for ``tree_node`` in the path."""
         if isinstance(tree_node, MapEntry):
             key = tree_node.get_key()
@@ -112,7 +112,7 @@ class TreeStatus:
         )
 
     @staticmethod
-    def _parse_path_string(path: str) -> list[str] | None:
+    def parse_path_string(path: str) -> list[str] | None:
         """Split the status string into individual node identifiers."""
         nodes: list[str] = []
         for raw in path.split("/"):
@@ -125,7 +125,7 @@ class TreeStatus:
         return nodes
 
     @staticmethod
-    def _search_node(obj: Any, search_str: str) -> Any:
+    def search_node(obj: Any, search_str: str) -> Any:
         """Resolve one step of the path inside ``obj``."""
         if isinstance(obj, (MapEntry, ArrayEntry)):
             obj = obj.get_value()
@@ -154,3 +154,12 @@ class TreeStatus:
                 entry.set_item(obj.get(index))
                 return entry
         return None
+
+    # ---- backward-compat private aliases -------------------------------
+    # The methods were originally private; keep underscore-prefixed
+    # references working for any in-tree callers.
+    _generate_path_string = generate_path_string
+    _generate_path = generate_path
+    _get_object_name = get_object_name
+    _parse_path_string = parse_path_string
+    _search_node = search_node

@@ -398,6 +398,225 @@ def displacement_or_one(displacement: Any) -> float:
         return 1.0
 
 
+# ---------------------------------------------------------------------------
+# AffineTransform helpers (upstream ``transform`` / ``calculateGlyphBounds``)
+# ---------------------------------------------------------------------------
+#
+# Upstream stores transforms as ``java.awt.geom.AffineTransform`` and shapes
+# as ``java.awt.Shape``. The python port has neither — we represent:
+#
+#  - an affine transform as the 6-tuple ``(sx, hy, hx, sy, tx, ty)`` returned
+#    by :meth:`Matrix.create_affine_transform` (Java ``AffineTransform``
+#    constructor order);
+#  - a shape as a ``list[tuple[float, float]]`` of corner points (the same
+#    representation :meth:`PDRectangle.to_general_path` and
+#    :meth:`PDRectangle.transform` already produce).
+#
+# This keeps :func:`transform` and :func:`calculate_glyph_bounds` aligned
+# with the surrounding codebase and lets the helpers compose with
+# :class:`pypdfbox.util.matrix.Matrix` without dragging in an AWT shim.
+
+
+def _concatenate_at(
+    a: tuple[float, float, float, float, float, float],
+    b: tuple[float, float, float, float, float, float],
+) -> tuple[float, float, float, float, float, float]:
+    """Compose two affine transforms in Java ``AffineTransform.concatenate``
+    order — the result first applies ``b`` and then ``a``.
+
+    Each tuple is ``(sx, hy, hx, sy, tx, ty)`` matching
+    :meth:`Matrix.create_affine_transform`. Pure helper, kept private.
+    """
+    a0, a1, a2, a3, a4, a5 = a
+    b0, b1, b2, b3, b4, b5 = b
+    return (
+        a0 * b0 + a2 * b1,
+        a1 * b0 + a3 * b1,
+        a0 * b2 + a2 * b3,
+        a1 * b2 + a3 * b3,
+        a0 * b4 + a2 * b5 + a4,
+        a1 * b4 + a3 * b5 + a5,
+    )
+
+
+def _bounds2d(points: Sequence[tuple[float, float]]) -> tuple[float, float, float, float]:
+    """Return the axis-aligned bounding box ``(llx, lly, urx, ury)`` of a
+    list of ``(x, y)`` points. Mirrors Java's ``Shape.getBounds2D``.
+    """
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
+def transform(
+    shape: Sequence[tuple[float, float]],
+    at: tuple[float, float, float, float, float, float],
+) -> list[tuple[float, float]]:
+    """Apply an affine transform ``at`` to ``shape``.
+
+    Mirrors upstream's ``AffineTransform.createTransformedShape(Shape)``
+    used throughout ``DebugTextOverlay``. ``at`` is a 6-float tuple in Java
+    ``AffineTransform`` order — ``(sx, hy, hx, sy, tx, ty)`` — i.e. the
+    same order returned by :meth:`Matrix.create_affine_transform`. ``shape``
+    is a sequence of ``(x, y)`` corner points (the representation produced
+    by :meth:`PDRectangle.to_general_path` and used everywhere else in the
+    pypdfbox port).
+
+    Returns a new list of transformed points; the input is not mutated.
+    """
+    sx, hy, hx, sy, tx, ty = at
+    return [(sx * x + hx * y + tx, hy * x + sy * y + ty) for x, y in shape]
+
+
+def calculate_glyph_bounds(
+    at: tuple[float, float, float, float, float, float],
+    font: Any,
+    code: int,
+    displacement: Any,
+) -> list[tuple[float, float]] | None:
+    """Compute the transformed glyph bounding box for ``code`` under ``font``.
+
+    Mirrors upstream's ``DebugTextStripper.calculateGlyphBounds(AffineTransform,
+    PDFont, int, Vector)``. Parameter order matches upstream exactly.
+
+    ``at`` is the text rendering matrix as a 6-tuple Java AT; ``font`` is
+    any object exposing ``get_font_matrix`` (and either the Type3 surface
+    via ``get_char_proc`` / ``get_bounding_box`` or the vector-font surface
+    via ``get_normalized_path``). Returns the four transformed corners of
+    the glyph's axis-aligned bounding box, or ``None`` when the glyph has
+    no resolvable bbox.
+
+    **Upstream deviation.** Java reaches for a real ``GeneralPath`` via
+    ``PDVectorFont.getNormalizedPath`` to compute a tight visual bbox; the
+    pypdfbox font port exposes ``get_normalized_path`` but its return type
+    is not uniform across font subclasses (some return a sequence of
+    contour tuples, others a Type1c ``GlyphPath``). To stay implementation
+    agnostic we accept the loss and fall back to ``font.get_bounding_box``
+    when ``get_normalized_path`` is not available — the resulting rect is
+    looser than upstream's per-glyph path but matches it for monospace /
+    bbox-based outlines, which is what the overlay uses it for.
+    """
+    if font is None:
+        return None
+
+    # at = at · font_matrix    (Java: at.concatenate(font.getFontMatrix()...))
+    try:
+        fm = list(font.get_font_matrix())
+    except (AttributeError, TypeError, ValueError):
+        fm = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+    if len(fm) >= 6:
+        at = _concatenate_at(at, (fm[0], fm[1], fm[2], fm[3], fm[4], fm[5]))
+
+    # Type3 fonts have a per-glyph bbox routed through PDType3CharProc.
+    from pypdfbox.pdmodel.font.pd_type3_font import PDType3Font
+
+    if isinstance(font, PDType3Font):
+        try:
+            char_proc = font.get_char_proc(code)
+        except (AttributeError, TypeError, ValueError):
+            return None
+        if char_proc is None:
+            return None
+        try:
+            font_bbox = font.get_bounding_box()
+            glyph_bbox = char_proc.get_glyph_bbox()
+        except (AttributeError, OSError, ValueError):
+            return None
+        if glyph_bbox is None:
+            return None
+        # PDFBOX-3850: clamp the glyph bbox to the font bbox so out-of-range
+        # entries don't blow up the overlay.
+        if font_bbox is not None:
+            try:
+                glyph_bbox.set_lower_left_x(
+                    max(font_bbox.get_lower_left_x(), glyph_bbox.get_lower_left_x())
+                )
+                glyph_bbox.set_lower_left_y(
+                    max(font_bbox.get_lower_left_y(), glyph_bbox.get_lower_left_y())
+                )
+                glyph_bbox.set_upper_right_x(
+                    min(font_bbox.get_upper_right_x(), glyph_bbox.get_upper_right_x())
+                )
+                glyph_bbox.set_upper_right_y(
+                    min(font_bbox.get_upper_right_y(), glyph_bbox.get_upper_right_y())
+                )
+            except (AttributeError, TypeError, ValueError):
+                pass
+        rect_points = glyph_bbox.to_general_path()
+    else:
+        # Non-Type3 path: prefer a real glyph path when the font exposes
+        # ``get_normalized_path`` and the result is a non-empty point list,
+        # otherwise fall back to the font's bounding box. See the docstring
+        # for the upstream-deviation rationale.
+        path_points: Sequence[tuple[float, float]] | None = None
+        get_norm = getattr(font, "get_normalized_path", None)
+        if callable(get_norm):
+            try:
+                raw_path = get_norm(code)
+            except (AttributeError, OSError, ValueError, TypeError):
+                raw_path = None
+            if raw_path is not None:
+                # Accept either a flat list of 2-tuples or a sequence of
+                # ``(op, *args)`` contour tuples — extract just the (x, y)
+                # pairs we can use for a bbox.
+                pts: list[tuple[float, float]] = []
+                for item in raw_path:
+                    if (
+                        isinstance(item, tuple)
+                        and len(item) == 2
+                        and isinstance(item[0], (int, float))
+                    ):
+                        pts.append((float(item[0]), float(item[1])))
+                if pts:
+                    path_points = pts
+
+        if path_points is None:
+            try:
+                bbox = font.get_bounding_box()
+            except (AttributeError, OSError, ValueError):
+                return None
+            if bbox is None:
+                return None
+            try:
+                path_points = [
+                    (bbox.get_lower_left_x(), bbox.get_lower_left_y()),
+                    (bbox.get_upper_right_x(), bbox.get_lower_left_y()),
+                    (bbox.get_upper_right_x(), bbox.get_upper_right_y()),
+                    (bbox.get_lower_left_x(), bbox.get_upper_right_y()),
+                ]
+            except (AttributeError, TypeError, ValueError):
+                return None
+
+        # Stretch non-embedded glyph if its advance width differs from
+        # what's recorded in the PDF (mirrors upstream PDFBOX-3450 fix).
+        try:
+            stretch_needed = (
+                not font.is_embedded()
+                and not font.is_vertical()
+                and not font.is_standard14()
+                and font.has_explicit_width(code)
+            )
+        except (AttributeError, TypeError, ValueError):
+            stretch_needed = False
+        if stretch_needed:
+            try:
+                font_width = float(font.get_width_from_font(code))
+                disp_x = float(displacement.get_x()) if displacement is not None else 0.0
+                pdf_width = disp_x * 1000.0
+                if font_width > 0 and abs(font_width - pdf_width) > 0.0001:
+                    scale_x = pdf_width / font_width
+                    at = _concatenate_at(at, (scale_x, 0.0, 0.0, 1.0, 0.0, 0.0))
+            except (AttributeError, TypeError, ValueError, ZeroDivisionError):
+                pass
+
+        # Java computes the bbox of the path then transforms that rect;
+        # we do the same so the result is an axis-aligned 4-corner shape.
+        llx, lly, urx, ury = _bounds2d(path_points)
+        rect_points = [(llx, lly), (urx, lly), (urx, ury), (llx, ury)]
+
+    return transform(rect_points, at)
+
+
 def _normalize_rect(
     x0: float, y0: float, x1: float, y1: float
 ) -> tuple[float, float, float, float]:

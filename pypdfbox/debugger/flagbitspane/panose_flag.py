@@ -204,21 +204,21 @@ class PanoseFlag(Flag):
         midline = pc.get_midline()
         x_height = pc.get_x_height()
         return [
-            [2, "Family Kind", family_kind, self._get_family_kind_value(family_kind)],
-            [3, "Serif Style", serif_style, self._get_serif_style_value(serif_style)],
-            [4, "Weight", weight, self._get_weight_value(weight)],
-            [5, "Proportion", proportion, self._get_proportion_value(proportion)],
-            [6, "Contrast", contrast, self._get_contrast_value(contrast)],
+            [2, "Family Kind", family_kind, self.get_family_kind_value(family_kind)],
+            [3, "Serif Style", serif_style, self.get_serif_style_value(serif_style)],
+            [4, "Weight", weight, self.get_weight_value(weight)],
+            [5, "Proportion", proportion, self.get_proportion_value(proportion)],
+            [6, "Contrast", contrast, self.get_contrast_value(contrast)],
             [
                 7,
                 "Stroke Variation",
                 stroke_variation,
-                self._get_stroke_variation_value(stroke_variation),
+                self.get_stroke_variation_value(stroke_variation),
             ],
-            [8, "Arm Style", arm_style, self._get_arm_style_value(arm_style)],
-            [9, "Letterform", letterform, self._get_letterform_value(letterform)],
-            [10, "Midline", midline, self._get_midline_value(midline)],
-            [11, "X-height", x_height, self._get_x_height_value(x_height)],
+            [8, "Arm Style", arm_style, self.get_arm_style_value(arm_style)],
+            [9, "Letterform", letterform, self.get_letterform_value(letterform)],
+            [10, "Midline", midline, self.get_midline_value(midline)],
+            [11, "X-height", x_height, self.get_x_height_value(x_height)],
         ]
 
     def get_column_names(self) -> list[str]:
@@ -227,43 +227,43 @@ class PanoseFlag(Flag):
     # ---- per-byte description lookups -------------------------------------
 
     @staticmethod
-    def _get_family_kind_value(index: int) -> str:
+    def get_family_kind_value(index: int) -> str:
         return _FAMILY_KIND[index]
 
     @staticmethod
-    def _get_serif_style_value(index: int) -> str:
+    def get_serif_style_value(index: int) -> str:
         return _SERIF_STYLE[index]
 
     @staticmethod
-    def _get_weight_value(index: int) -> str:
+    def get_weight_value(index: int) -> str:
         return _WEIGHT[index]
 
     @staticmethod
-    def _get_proportion_value(index: int) -> str:
+    def get_proportion_value(index: int) -> str:
         return _PROPORTION[index]
 
     @staticmethod
-    def _get_contrast_value(index: int) -> str:
+    def get_contrast_value(index: int) -> str:
         return _CONTRAST[index]
 
     @staticmethod
-    def _get_stroke_variation_value(index: int) -> str:
+    def get_stroke_variation_value(index: int) -> str:
         return _STROKE_VARIATION[index]
 
     @staticmethod
-    def _get_arm_style_value(index: int) -> str:
+    def get_arm_style_value(index: int) -> str:
         return _ARM_STYLE[index]
 
     @staticmethod
-    def _get_letterform_value(index: int) -> str:
+    def get_letterform_value(index: int) -> str:
         return _LETTERFORM[index]
 
     @staticmethod
-    def _get_midline_value(index: int) -> str:
+    def get_midline_value(index: int) -> str:
         return _MIDLINE[index]
 
     @staticmethod
-    def _get_x_height_value(index: int) -> str:
+    def get_x_height_value(index: int) -> str:
         return _X_HEIGHT[index]
 
     # ---- raw byte extraction ----------------------------------------------

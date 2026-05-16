@@ -44,6 +44,13 @@ def _default_recent_files_path() -> Path:
 class RecentFiles:
     """Maintains an LRU-style history of recently-opened file paths."""
 
+    #: Mirror of ``java.util.prefs.Preferences.MAX_VALUE_LENGTH`` (8192).
+    #: Upstream splits each path into pieces of this length so a single
+    #: preference value never exceeds the limit imposed by the Java prefs
+    #: backend. Our JSON backend has no such constraint, but ``break_string``
+    #: still chunks identically for API parity.
+    MAX_VALUE_LENGTH = 8192
+
     def __init__(
         self,
         class_name: str | type,
@@ -58,7 +65,7 @@ class RecentFiles:
         self._slug = slug
         self._maximum = int(maximum_file)
         self._path = path if path is not None else _default_recent_files_path()
-        self._file_paths: deque[str] = deque(self._read_history_from_pref())
+        self._file_paths: deque[str] = deque(self.read_history_from_pref())
 
     # --- I/O --------------------------------------------------------------
 
@@ -77,7 +84,28 @@ class RecentFiles:
             return {}
         return payload
 
-    def _read_history_from_pref(self) -> list[str]:
+    def break_string(self, full_path: str) -> list[str]:
+        """Split ``full_path`` into chunks of at most ``MAX_VALUE_LENGTH``.
+
+        Mirrors upstream's private ``breakString`` helper: walks the input in
+        fixed-size windows and returns the pieces in order. An empty input
+        yields an empty list (Java returns ``String[0]`` in the same case
+        because the ``while`` loop never executes).
+        """
+        allowed = self.MAX_VALUE_LENGTH
+        pieces: list[str] = []
+        begin = 0
+        remaining = len(full_path)
+        end = 0
+        while remaining > 0:
+            end += min(remaining, allowed)
+            pieces.append(full_path[begin:end])
+            begin = end
+            remaining = len(full_path) - end
+        return pieces
+
+    def read_history_from_pref(self) -> list[str]:
+        """Load the persisted MRU list for this scope from disk."""
         payload = self._load_payload()
         node = payload.get(self._slug)
         if not isinstance(node, list):
@@ -85,7 +113,15 @@ class RecentFiles:
         # Filter out any non-string detritus to be safe.
         return [item for item in node if isinstance(item, str)]
 
-    def _write_history_to_pref(self, file_paths: Iterable[str]) -> None:
+    def write_history_to_pref(self, file_paths: Iterable[str] | None = None) -> None:
+        """Persist the MRU list for this scope to disk.
+
+        When ``file_paths`` is omitted the current in-memory queue is used;
+        passing it explicitly mirrors upstream's ``writeHistoryToPref(Queue)``
+        signature.
+        """
+        if file_paths is None:
+            file_paths = self._file_paths
         entries = list(file_paths)
         if not entries:
             # Upstream returns early on an empty queue; mirror that behavior so
@@ -97,7 +133,10 @@ class RecentFiles:
         except OSError:
             return
         payload = self._load_payload()
-        payload[self._slug] = entries
+        # Apply break_string per entry to mirror upstream chunking semantics,
+        # then rejoin for storage. With JSON the join is a no-op, but doing
+        # the round-trip keeps the code path identical to upstream.
+        payload[self._slug] = ["".join(self.break_string(entry)) for entry in entries]
         try:
             self._path.write_text(
                 json.dumps(payload, indent=2, sort_keys=True),
@@ -105,6 +144,11 @@ class RecentFiles:
             )
         except OSError:
             return
+
+    # Private aliases kept for any legacy callers; both names dispatch to the
+    # same public method.
+    _read_history_from_pref = read_history_from_pref
+    _write_history_to_pref = write_history_to_pref
 
     # --- public API -------------------------------------------------------
 
@@ -144,7 +188,7 @@ class RecentFiles:
 
     def close(self) -> None:
         """Persist the in-memory history to the JSON file."""
-        self._write_history_to_pref(self._file_paths)
+        self.write_history_to_pref(self._file_paths)
 
 
 __all__ = ["RecentFiles"]

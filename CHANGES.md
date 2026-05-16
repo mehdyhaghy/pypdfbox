@@ -2909,6 +2909,33 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   - `test_high_resolution_image_icon.py`: switched per-test `tk.Tk()` to the session-scoped fixture (eliminating extra Tk roots).
 - **Verified**: 2 concurrent shells × 5 iterations = 10/10 processes finish exit 0; 3 shells × 6 iterations = 18/18 exit 0; `PYPDFBOX_SKIP_TK=1` → 357 tests skip cleanly.
 
+## Wave 1307 — debugger parity round-out (5 parallel agents)
+
+### PanoseFlag — expose per-byte accessors on public surface
+
+- `pypdfbox/debugger/flagbitspane/panose_flag.py`: promoted the ten per-PANOSE-byte lookup helpers from `_`-prefixed privates to upstream-named public statics — `get_family_kind_value`, `get_serif_style_value`, `get_weight_value`, `get_proportion_value`, `get_contrast_value`, `get_stroke_variation_value`, `get_arm_style_value`, `get_letterform_value`, `get_midline_value`, `get_x_height_value`. Lookup tables already matched `PanoseFlag.java` verbatim; only the visibility (and the parity-tool's view of the class surface) changed. Internal `get_flag_bits` dispatch updated to call the public form. Java `private` → Python `@staticmethod` is the standard visibility translation for parity-tool discoverability.
+- Tests: 29 hand-written tests at `tests/debugger/flagbitspane/test_panose_flag_values.py` (three per accessor — `0 = "Any"` floor, mid-range known value, out-of-range raises `IndexError` — plus a PANOSE byte-vector shape test and a `get_flag_bits` integration test). 39/39 pass.
+
+### FieldFlag — expose per-field-type flag-bit accessors
+
+- `pypdfbox/debugger/flagbitspane/field_flag.py`: promoted `get_button_field_flag_bits`, `get_text_field_flag_bits`, `get_choice_field_flag_bits`, `get_field_flag_bits`, and `is_flag_bit_set` from `_`-prefixed privates to public methods. Upstream Java declares them `private`; we expose them for parity-tool visibility and external reuse. Internal `get_flag_bits()` dispatch updated to call the public form.
+- Tests: 11 hand-written tests at `tests/debugger/flagbitspane/test_field_flag_bits.py` (row count + label per accessor + `is_flag_bit_set` round-trip). 22/22 pass.
+
+### TreeStatus — expose path generate / parse / search helpers
+
+- `pypdfbox/debugger/treestatus/tree_status.py`: promoted `generate_path`, `generate_path_string`, `get_object_name`, `parse_path_string`, `search_node` to public methods matching upstream `TreeStatus.java`; the previously-private `_`-prefixed names kept as class-level aliases for back-compat with the existing test that pokes `_search_node`. `TreePath` is represented as a Python tuple of nodes (root first, leaf last) rather than `javax.swing.tree.TreePath`, since pypdfbox debugger is Tkinter-based. `MapEntry` with a `None` key renders as the empty segment (upstream NPE'd — this is a Python-language-fitting fix).
+- Tests: 19 hand-written tests at `tests/debugger/treestatus/test_tree_status_path.py` (generate / parse round-trip, search-by-path, get_object_name slug per payload type). Whole `tests/debugger/treestatus/` suite: 42/42 pass. No upstream `TreeStatusTest.java` exists in 3.0 source.
+
+### RecentFiles — port `break_string` + promote read/write_history_to_pref
+
+- `pypdfbox/debugger/ui/recent_files.py`: new `break_string(full_path)` helper — chunks input into `MAX_VALUE_LENGTH` (8192) pieces matching upstream `RecentFiles.breakString` (which exists to fit values under `java.util.prefs.Preferences.MAX_VALUE_LENGTH`). Promoted `read_history_from_pref` and `write_history_to_pref` from `_`-prefixed privates to public; `_`-prefixed names kept as class-level aliases. `write_history_to_pref(file_paths=None)` defaults to the in-memory queue so callers can use either upstream's `writeHistoryToPref(Queue)` form or a Pythonic no-arg call. Storage backend stays JSON-on-disk (existing pypdfbox design — Python stdlib has no `java.util.prefs.Preferences` analogue); `break_string` still chunks per-entry before being rejoined for JSON serialization to keep the code path upstream-shaped.
+- Tests: 14 hand-written tests at `tests/debugger/ui/test_recent_files_persistence.py` (`break_string` boundary lengths + empty input; round-trip MRU list via `tmp_path` + monkeypatched storage; empty/missing pref file → empty list). 34/34 pass (14 new + 20 pre-existing).
+
+### DebugTextOverlay — port `calculate_glyph_bounds` + `transform`
+
+- `pypdfbox/debugger/pagepane/debug_text_overlay.py`: new module-level helpers `transform(shape, at)` (applies a 6-tuple Java-style `AffineTransform` to a point list) and `calculate_glyph_bounds(at, font, code, displacement)` (mirrors upstream parameter order; handles Type3 path via `PDType3CharProc` with PDFBOX-3850 clamping, and the non-Type3 path with PDFBOX-3450 non-embedded explicit-width stretch). Java `AffineTransform` is modelled as the 6-float tuple returned by `Matrix.create_affine_transform`; Java `Shape` is modelled as `list[tuple[float, float]]` (matching `PDRectangle.to_general_path`) — no AWT shim. For non-Type3 fonts the helper prefers `get_normalized_path` when the font returns a flat point list and falls back to `font.get_bounding_box` otherwise (looser than upstream's per-glyph CFF path bounds, sufficient for the overlay's bbox-rendering use case; documented in the function docstring).
+- Tests: 25 hand-written tests at `tests/debugger/pagepane/test_debug_text_overlay_bounds.py` (identity / translate / scale / rotate transforms, parameter-order parity, Type3 + non-Type3 branches, error swallowing, real Liberation Sans bundled-font integration). All 131 pagepane tests still pass.
+
 ## Wave 1306 — appearance-stream inheritance + FDF / ICC / output-intent typed accessors + permissive-license-only validator policy
 
 ### Validator scaffold scrub (permissive-license-only policy)
