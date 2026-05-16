@@ -44,7 +44,7 @@ class AddressPane(tk.Text):
             "selected", foreground="blue", font=self._bold
         )
 
-        self._render()
+        self.paint_component()
         self.configure(state="disabled")
 
     # ------------------------------------------------------------------ API
@@ -56,22 +56,45 @@ class AddressPane(tk.Text):
             return
         self._selected_line = HexModel.line_number(index)
         self._selected_index = index
-        self._render()
+        self.paint_component()
 
     # -------------------------------------------------------------- helpers
 
-    def _render(self) -> None:
-        """Rebuild the body of the text widget."""
+    def paint_component(self) -> None:
+        """Rebuild the body of the text widget.
 
+        Mirrors upstream ``AddressPane.paintComponent``. The Swing
+        original iterates the visible rectangle and draws each row with
+        ``Graphics.drawString``; the Tkinter port writes one offset per
+        line into the underlying ``tk.Text`` widget. The selected row
+        is delegated to :meth:`paint_selected`.
+
+        Renamed from the previous private ``_render``; the alias is
+        preserved below for back-compat.
+        """
         self.configure(state="normal")
         self.delete("1.0", "end")
         for line in range(1, self._total_line + 1):
             if line == self._selected_line:
-                offset = f"{self._selected_index:08X}"
-                start = self.index("end-1c")
-                self.insert("end", offset + "\n")
-                end = self.index("end-1c")
-                self.tag_add("selected", start, end)
+                self.paint_selected()
             else:
                 self.insert("end", f"{(line - 1) * 16:08X}\n")
         self.configure(state="disabled")
+
+    # Back-compat alias for the previous private spelling.
+    _render = paint_component
+
+    def paint_selected(self) -> None:
+        """Insert and tag the currently-selected address row.
+
+        Mirrors upstream ``AddressPane.paintSelected`` which switches
+        to ``BOLD_FONT`` and ``SELECTED_COLOR`` for one row. The
+        Tkinter analogue inserts the offset text and applies the
+        ``selected`` tag (which carries the bold font + foreground
+        colour configured in ``__init__``).
+        """
+        offset = f"{self._selected_index:08X}"
+        start = self.index("end-1c")
+        self.insert("end", offset + "\n")
+        end = self.index("end-1c")
+        self.tag_add("selected", start, end)

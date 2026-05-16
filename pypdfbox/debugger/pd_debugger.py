@@ -127,6 +127,11 @@ class PDFDebugger:
 
     TITLE = "Apache PDFBox Debugger"
 
+    # Mirrors upstream's ``public static final Properties configuration``.
+    # A class-level mapping shared by all instances; populated lazily by
+    # :meth:`_load_configuration` when ``config.properties`` is present.
+    configuration: dict[str, str] = {}
+
     def __init__(
         self,
         master: tk.Misc | None = None,
@@ -352,7 +357,6 @@ class PDFDebugger:
         return file_menu
 
     def _create_edit_menu(self, parent: tk.Menu) -> tk.Menu:
-        modifier = "Command" if _is_mac_os() else "Ctrl"
         edit_menu = tk.Menu(parent, tearoff=0)
         edit_menu.add_command(label="Cut", state="disabled")
         edit_menu.add_command(label="Copy", state="disabled")
@@ -365,27 +369,39 @@ class PDFDebugger:
         )
         edit_menu.add_separator()
 
-        self._find_menu = tk.Menu(edit_menu, tearoff=0)
-        self._find_menu.add_command(
+        find_menu = self._create_find_menu(edit_menu)
+        edit_menu.add_cascade(label="Find", menu=find_menu, state="disabled")
+        return edit_menu
+
+    def _create_find_menu(self, parent: tk.Menu) -> tk.Menu:
+        """Build the ``Edit > Find`` cascade and stash the menu indices.
+
+        Mirrors upstream's ``createFindMenu()`` — split out of
+        :meth:`_create_edit_menu` so external callers and tests can
+        reuse it without going through the full Edit menu.
+        """
+        modifier = "Command" if _is_mac_os() else "Ctrl"
+        find_menu = tk.Menu(parent, tearoff=0)
+        find_menu.add_command(
             label="Find...",
             command=self._find_menu_item_action_performed,
             accelerator=f"{modifier}+F",
         )
-        self._find_menu_index = self._find_menu.index("end")
-        self._find_menu.add_command(
+        self._find_menu = find_menu
+        self._find_menu_index = find_menu.index("end")
+        find_menu.add_command(
             label="Find Next",
             command=self._find_next_menu_item_action_performed,
             accelerator="Cmd+G" if _is_mac_os() else "F3",
         )
-        self._find_next_menu_index = self._find_menu.index("end")
-        self._find_menu.add_command(
+        self._find_next_menu_index = find_menu.index("end")
+        find_menu.add_command(
             label="Find Previous",
             command=self._find_previous_menu_item_action_performed,
             accelerator="Cmd+Shift+G" if _is_mac_os() else "Shift+F3",
         )
-        self._find_previous_menu_index = self._find_menu.index("end")
-        edit_menu.add_cascade(label="Find", menu=self._find_menu, state="disabled")
-        return edit_menu
+        self._find_previous_menu_index = find_menu.index("end")
+        return find_menu
 
     def _init_global_event_handlers(self) -> None:
         """Install macOS hooks via :class:`OSXAdapter` (no-op elsewhere)."""
@@ -440,6 +456,68 @@ class PDFDebugger:
     def get_find_menu(self) -> tk.Menu | None:
         """Return the ``Edit > Find`` cascade (for ``Searcher`` wiring)."""
         return self._find_menu
+
+    def get_find_menu_item(self) -> tuple[tk.Menu, int] | None:
+        """Return the ``Edit > Find > Find...`` (menu, index) tuple.
+
+        Mirrors upstream's ``getFindMenuItem`` accessor. Swing's
+        ``JMenuItem`` does not have a direct Tk equivalent — Tk uses
+        the ``(menu, entry-index)`` pair to configure a row — so we
+        surface that pair to callers wiring up :class:`Searcher`.
+        Returns ``None`` if the menu has not been built yet.
+        """
+        if self._find_menu is None or self._find_menu_index is None:
+            return None
+        return self._find_menu, self._find_menu_index
+
+    def get_find_next_menu_item(self) -> tuple[tk.Menu, int] | None:
+        """Return the ``Edit > Find > Find Next`` (menu, index) tuple."""
+        if self._find_menu is None or self._find_next_menu_index is None:
+            return None
+        return self._find_menu, self._find_next_menu_index
+
+    def get_find_previous_menu_item(self) -> tuple[tk.Menu, int] | None:
+        """Return the ``Edit > Find > Find Previous`` (menu, index) tuple."""
+        if self._find_menu is None or self._find_previous_menu_index is None:
+            return None
+        return self._find_menu, self._find_previous_menu_index
+
+    @classmethod
+    def get_configuration(cls) -> dict[str, str]:
+        """Return the shared configuration mapping.
+
+        Mirrors upstream's ``public static final Properties configuration``
+        — a class-level key/value store loaded from ``config.properties``
+        at startup. Java ``Properties`` is effectively a
+        ``Map<String, String>``; we use a plain ``dict``.
+        """
+        return cls.configuration
+
+    @staticmethod
+    def get_page_label(document: PDDocument, page_index: int) -> str | None:
+        """Return the page label for ``page_index`` (0-based), or ``None``.
+
+        Mirrors upstream's ``getPageLabel(PDDocument, int)`` —
+        convenience accessor used by :class:`PagePane` and the page
+        tree to show e.g. ``"i"`` / ``"ii"`` / ``"3"`` instead of bare
+        zero-based indices.
+        """
+        try:
+            catalog = document.get_document_catalog()
+            page_labels = catalog.get_page_labels()
+        except OSError as ex:
+            return str(ex)
+        except Exception:  # noqa: BLE001 - mirrors upstream's broad catch
+            return None
+        if page_labels is None or page_index < 0:
+            return None
+        try:
+            labels = page_labels.get_labels_by_page_indices()
+        except OSError:
+            return None
+        if labels is None or page_index >= len(labels):
+            return None
+        return labels[page_index]
 
     def init_tree(self) -> None:
         """Rebuild the tree for the current document and view mode."""
@@ -676,13 +754,25 @@ class PDFDebugger:
         if isinstance(underneath, COSDictionary):
             type_name = underneath.get_cos_name(COSName.TYPE)
             if type_name is not None and type_name.get_name() == "Font":
-                # Exclude CIDFont* (those are dealt with via Type0 wrapping).
-                subtype = underneath.get_cos_name(COSName.SUBTYPE)
-                return not (
-                    subtype is not None
-                    and subtype.get_name() in ("CIDFontType0", "CIDFontType2")
-                )
+                return not cls.is_cid_font(underneath)
         return False
+
+    @classmethod
+    def is_cid_font(cls, dic: COSDictionary) -> bool:
+        """Return ``True`` iff ``dic`` is a ``CIDFontType0`` / ``CIDFontType2``.
+
+        Mirrors upstream's ``isCIDFont(COSDictionary)`` predicate used by
+        :meth:`_is_font` to exclude CID font dictionaries (those are
+        only meaningful when wrapped in a ``Type0`` font).
+        """
+        subtype = dic.get_cos_name(COSName.SUBTYPE)
+        if subtype is None:
+            return False
+        return subtype.get_name() in ("CIDFontType0", "CIDFontType2")
+
+    # Underscore alias preserved for internal call sites that already used
+    # the protected name. New code should call :meth:`is_cid_font`.
+    _is_cid_font = is_cid_font
 
     @classmethod
     def _is_special_colorspace(cls, node: Any) -> bool:
@@ -1042,8 +1132,7 @@ class PDFDebugger:
         ):
             self._recent_files.add_file(self._current_file_path)
         self._recent_files.close()
-        with contextlib.suppress(Exception):
-            self._toplevel.destroy()
+        self.perform_application_exit()
 
     def _find_menu_item_action_performed(self) -> None:
         # Search wiring is delegated to ``Searcher`` — but no concrete
@@ -1103,6 +1192,160 @@ class PDFDebugger:
     # ------------------------------------------------------------------
     # Document loading
     # ------------------------------------------------------------------
+
+    def _read_pdf_file_from_path(
+        self, file: str | Path, password: str | bytes = ""
+    ) -> None:
+        """Open a PDF given a :class:`pathlib.Path`. Mirrors upstream's
+        ``readPDFFile(File, String)`` overload — the Java code has two
+        ``readPDFFile`` signatures (``String``/``File``) that funnel into
+        the same logic. Python's duck-typing makes the distinction less
+        meaningful, so this is a thin wrapper that normalises ``file``
+        to a string and delegates.
+        """
+        self._read_pdf_file(str(file), password)
+
+    @classmethod
+    def _load_configuration(cls) -> None:
+        """Load ``config.properties`` into :attr:`configuration`, if present.
+
+        Mirrors upstream's ``loadConfiguration`` — the Java code uses
+        ``Properties.load(InputStream)``; here we parse the
+        ``key=value`` syntax directly so we don't pull in a third-party
+        ``configparser``-style helper.
+        """
+        config_path = Path("config.properties")
+        if not config_path.exists():
+            return
+        try:
+            text = config_path.read_text(encoding="utf-8")
+        except OSError as ex:
+            _LOG.error("failed to read config.properties: %s", ex)
+            return
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith(("#", "!")):
+                continue
+            # Java Properties accepts both ``=`` and ``:`` as separators.
+            for sep in ("=", ":"):
+                if sep in line:
+                    key, _, value = line.partition(sep)
+                    cls.configuration[key.strip()] = value.strip()
+                    break
+
+    load_configuration = _load_configuration
+
+    def call(self) -> int:
+        """Run the application lifecycle (init + optional load + show).
+
+        Mirrors upstream's ``Integer call()`` method (the Picocli
+        ``Callable<Integer>`` hook). Returns ``0`` on success, ``4`` on
+        any uncaught exception — same exit codes upstream uses. The
+        actual ``System.setProperty(...)`` / ``UIManager.setLookAndFeel``
+        calls are no-ops here because Tk handles look-and-feel
+        natively, but the load + show contract is preserved.
+        """
+        try:
+            self._load_configuration()
+            if (
+                self._current_file_path is not None
+                and Path(self._current_file_path).exists()
+            ):
+                self._read_pdf_file(self._current_file_path, "")
+            with contextlib.suppress(AttributeError, tk.TclError):
+                self._toplevel.deiconify()  # type: ignore[union-attr]
+        except Exception as ex:  # noqa: BLE001 - mirrors upstream broad catch
+            _LOG.error("PDFDebugger.call failed: %s", ex)
+            with contextlib.suppress(Exception):
+                ErrorDialog(ex).set_visible(True)
+            return 4
+        return 0
+
+    def _osx_quit(self) -> None:
+        """Mac OS X Quit hook. Mirrors upstream's reflectively-invoked
+        ``osxQuit()`` — delegates straight to the regular exit handler.
+        """
+        self._exit_menu_item_action_performed()
+
+    def perform_application_exit(self) -> None:
+        """Final-stage exit hook. Subclasses override to keep the
+        interpreter alive when embedding the debugger; the upstream
+        Swing app calls ``System.exit(0)`` here.
+
+        Mirrors upstream's ``protected void performApplicationExit()``.
+        """
+        with contextlib.suppress(Exception):
+            self._toplevel.destroy()
+
+    def _text_dialog(self, title: str, resource: str) -> None:
+        """Open ``resource`` (URL or local path) as a modal HTML viewer.
+
+        Mirrors upstream's private ``textDialog(String, URL)`` — used
+        by the About / License menu entries. We render the body in a
+        read-only :class:`tkinter.Text` because Tk has no HTML widget;
+        anchors are passed through verbatim. The dialog is sized
+        identically to upstream (400x250) and centred over the master.
+        """
+        try:
+            from urllib.parse import urlparse  # noqa: PLC0415
+            from urllib.request import urlopen  # noqa: PLC0415
+
+            parsed = urlparse(resource)
+            if parsed.scheme in ("", "file"):
+                body = Path(parsed.path or resource).read_text(encoding="utf-8")
+            else:
+                with urlopen(resource) as response:  # noqa: S310
+                    body = response.read().decode("utf-8", errors="replace")
+        except OSError as ex:
+            ErrorDialog(ex).set_visible(True)
+            return
+        dialog = tk.Toplevel(self._toplevel)
+        dialog.title(title)
+        text = tk.Text(dialog, width=60, height=15, wrap="word", background="white")
+        text.insert("1.0", body)
+        text.configure(state="disabled")
+        text.pack(fill="both", expand=True)
+        dialog.transient(self._toplevel)
+
+    def _hyperlink_update(self, url: str) -> None:
+        """Open ``url`` in a secondary read-only Toplevel as plain text.
+
+        Mirrors upstream's ``hyperlinkUpdate(HyperlinkEvent)``. Swing
+        passes a ``HyperlinkEvent`` which carries the URL plus an
+        ``EventType``; Tk's ``Text`` widget does not have a built-in
+        hyperlink event, so callers pass the URL string directly.
+        Only the ACTIVATED branch is implemented (others were no-ops
+        upstream).
+        """
+        try:
+            from urllib.request import urlopen  # noqa: PLC0415
+
+            with urlopen(url) as response:  # noqa: S310 - user-supplied URL
+                body = response.read().decode("utf-8", errors="replace")
+        except OSError as ex:
+            ErrorDialog(ex).set_visible(True)
+            return
+        name = url.rsplit("/", 1)[-1] or url
+        dialog = tk.Toplevel(self._toplevel)
+        dialog.title(f"Apache PDFBox: {name}")
+        text = tk.Text(dialog, width=80, height=25, wrap="word", background="white")
+        text.insert("1.0", body)
+        text.configure(state="disabled")
+        text.pack(fill="both", expand=True)
+        dialog.transient(self._toplevel)
+
+    @staticmethod
+    def convert_to_string(node: Any) -> str | None:
+        """Render ``node`` as a one-line string for the generic details panel.
+
+        Mirrors upstream's private ``convertToString(Object)`` —
+        promoted to a public ``@staticmethod`` so external pane
+        controllers can reuse the same node-to-string logic without
+        duplicating the type-dispatch ladder.
+        """
+        return _convert_to_string(node)
+
+    _convert_to_string = convert_to_string
 
     def _read_pdf_file(self, file_path: str, password: str | bytes = "") -> None:
         """Open ``file_path`` and rebuild the tree."""

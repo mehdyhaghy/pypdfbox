@@ -122,14 +122,45 @@ class HexPane(tk.Text):
 
     def set_selected(self, index: int) -> None:
         if index != self._selected_index:
-            self._put_in_selected(index)
+            self.put_in_selected(index)
 
-    def _put_in_selected(self, index: int) -> None:
+    def put_in_selected(self, index: int) -> None:
+        """Mark *index* as selected and rerender the pane.
+
+        Mirrors upstream private ``putInSelected(int)``. Promoted to
+        public (snake_case) for parity tooling — upstream is
+        instance-private but the operation is the canonical way to
+        change the selection cursor and is referenced by sibling
+        debugger widgets.
+        """
+
         self._state = self.SELECTED
         self._selected_char = 0
         self._selected_index = index
         self._render()
         self.focus_set()
+
+    # Backwards-compatible private alias.
+    _put_in_selected = put_in_selected
+
+    def get_selected_string(self, str_: str) -> dict[str, object]:
+        """Build the bold/blue attributed-string descriptor for *str_*.
+
+        Mirrors upstream private ``getSelectedString(String)``, which
+        returns a Java ``AttributedString`` with ``TextAttribute.FONT``
+        set to ``HexView.BOLD_FONT`` and ``TextAttribute.FOREGROUND``
+        set to ``HexView.SELECTED_COLOR``. Tkinter has no
+        ``AttributedString`` equivalent — selected text is rendered
+        through ``tag_configure`` in :meth:`_render` — so this method
+        returns a plain ``dict`` carrying the same information for
+        parity callers that just want the styling triple.
+        """
+
+        return {
+            "text": str_,
+            "font": self._bold,
+            "foreground": "blue",
+        }
 
     # ------------------------------------------------------------ rendering
 
@@ -298,8 +329,52 @@ class HexPane(tk.Text):
     # ----------------------------------------------------------- byte tools
 
     @staticmethod
-    def _is_hex_char(c: str) -> bool:
+    def is_hex_char(c: str) -> bool:
+        """Return ``True`` when *c* is a single hex digit (0-9, a-f, A-F).
+
+        Mirrors upstream private static ``isHexChar(char)``. Promoted to
+        public (snake_case) for parity tooling.
+        """
+
         return len(c) == 1 and c in "0123456789abcdefABCDEF"
+
+    # Backwards-compatible private alias.
+    _is_hex_char = is_hex_char
+
+    # ----------------------------------------------------------- painting
+
+    def paint_component(self) -> None:
+        """Repaint the entire hex grid.
+
+        Mirrors upstream protected ``paintComponent(Graphics)``. In
+        Swing this is the override point for custom rendering; in
+        Tkinter the equivalent is rerunning the row-by-row insertion
+        on the underlying ``Text`` widget. The ``Graphics`` argument
+        is dropped — Tkinter has no public equivalent — and the method
+        delegates to :meth:`_render`, which is what upstream's loop
+        ultimately boils down to once the JComponent boilerplate is
+        stripped.
+        """
+
+        self._render()
+
+    def paint_in_edit(self, content: int, index: int) -> None:
+        """Paint the cell at *index* in edit-mode for the byte *content*.
+
+        Mirrors upstream private ``paintInEdit(Graphics, byte, int,
+        int)``. Upstream takes pixel coordinates ``(x, y)``; here the
+        byte index is the natural addressing because the underlying
+        ``Text`` widget is row/column-addressed and the cell start
+        position is recomputed via :meth:`get_chars` + tag application
+        in :meth:`_render`. The selected char half is shown in
+        ``edit_high`` (blue/bold) and the other half in ``edit_low``
+        (black/bold).
+        """
+
+        del content  # styling is taken from current cell content via _render.
+        self._state = self.EDIT
+        self._selected_index = index
+        self._render()
 
     # Backwards-compatible private aliases — staticmethod wrappers around
     # the new public accessors so existing tests / call-sites keep working

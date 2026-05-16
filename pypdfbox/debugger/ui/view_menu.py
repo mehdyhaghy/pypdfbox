@@ -242,11 +242,31 @@ class ViewMenu(MenuBase):
         return bool(ViewMenu._instance._show_text_positions_var.get())
 
     @staticmethod
+    def is_show_text_stripper() -> bool:
+        """Return whether the *Show TextStripper TextPositions* toggle is on.
+
+        Mirrors upstream ``ViewMenu.isShowTextStripper()`` — upstream's
+        field is named ``showTextStripper`` even though the menu label
+        reads ``Show TextStripper TextPositions``. Equivalent to
+        :py:meth:`is_show_text_positions`.
+        """
+        return ViewMenu.is_show_text_positions()
+
+    @staticmethod
     def is_show_text_strip_beads() -> bool:
         """Return whether the *Show TextStripper Beads* toggle is on."""
         if ViewMenu._instance is None:
             return False
         return bool(ViewMenu._instance._show_text_strip_beads_var.get())
+
+    @staticmethod
+    def is_show_text_stripper_beads() -> bool:
+        """Return whether the *Show TextStripper Beads* toggle is on.
+
+        Mirrors upstream ``ViewMenu.isShowTextStripperBeads()``.
+        Equivalent to :py:meth:`is_show_text_strip_beads`.
+        """
+        return ViewMenu.is_show_text_strip_beads()
 
     @staticmethod
     def is_show_approximate_text_bounds() -> bool:

@@ -2909,6 +2909,48 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   - `test_high_resolution_image_icon.py`: switched per-test `tk.Tk()` to the session-scoped fixture (eliminating extra Tk roots).
 - **Verified**: 2 concurrent shells × 5 iterations = 10/10 processes finish exit 0; 3 shells × 6 iterations = 18/18 exit 0; `PYPDFBOX_SKIP_TK=1` → 357 tests skip cleanly.
 
+## Wave 1312 — debugger parity round-out (5 parallel agents, ~15 classes, 82 new tests)
+
+### Four small tooltip / pane closures
+
+- `KToolTip`: promoted `_create_markup` to `create_mark_up`; added `get_icc_profile` (delegates to `PDDeviceCMYK`) and `get_icc_color_space` (raises `OSError` instead of Java `IOException` when no profile is bundled). `PDDeviceCMYK.to_rgb` (subtractive approximation) remains the runtime path — no Python `java.awt.color.ICC_ColorSpace` analogue is in our approved dep set.
+- `FontToolTip`: promoted `_init_ui` and `_extract_font_reference` to public `init_ui` / `extract_font_reference` (`@staticmethod`); old spellings kept as class-level aliases.
+- `AddressPane`: promoted `_render` to `paint_component` and split out a `paint_selected` instance method mirroring the upstream Swing paint methods.
+- `SignaturePane`: promoted `_create_asn1_view` to `create_text_view` and extracted `get_text_string` (`@staticmethod`) mirroring upstream's `createTextView` / `getTextString`; uses `hex_dump` instead of Bouncy Castle's `ASN1Dump` (no permissive Python port in our dep set).
+- Tests: 17 hand-written tests across 4 files; full debugger suite 1408/1408.
+
+### PDFDebugger — port 15 highest-leverage methods
+
+- `pypdfbox/debugger/pd_debugger.py`: ported 15 methods covering main lifecycle + menu helpers — `call`, `load_configuration`, `_create_find_menu`, `get_find_menu_item`, `get_find_next_menu_item`, `get_find_previous_menu_item`, `get_configuration` (classmethod), `get_page_label` (staticmethod), `_osx_quit`, `perform_application_exit`, `_read_pdf_file_from_path`, `_text_dialog`, `_hyperlink_update`, `convert_to_string` (staticmethod, promoted from module-level), `is_cid_font` (classmethod, extracted from inline check). Class-level `configuration: dict[str, str]` mirrors Java's `public static final Properties configuration`. `_exit_menu_item_action_performed` now routes through `perform_application_exit`.
+- Deviations: `text_dialog` drops Swing modal grab (keeps pytest unblocked; Tk parent transient suffices); `hyperlink_update` takes a `str` URL instead of `HyperlinkEvent`; `perform_application_exit` destroys the toplevel rather than `System.exit(0)` so embedded callers don't lose the interpreter; `call` is a no-op for `UIManager`/`apple.laf.useScreenMenuBar` (Tk handles look-and-feel natively); `get_find_*_menu_item` return `(menu, index)` tuples (Tk's `tk.Menu` has no per-entry handle equivalent to `JMenuItem`); `load_configuration` parses Java `.properties` syntax inline (no `configparser` dep).
+- Tests: 30 hand-written tests at `tests/debugger/test_pd_debugger_methods.py`; existing 111 `test_pd_debugger.py` tests still pass.
+- Deferred to later waves: ~35 remaining upstream methods (mostly Swing listener stubs, internal layout sub-pieces, anonymous `actionPerformed` lambdas).
+
+### HexPane part 2 + Stream.is_xml_metadata_stream + MapEntry.to_string
+
+- `pypdfbox/debugger/hexviewer/hex_pane.py`: added 5 upstream-aligned methods — `get_selected_string` (returns `dict {text, font, foreground}` instead of Java `AttributedString` — Tkinter has no equivalent; styling triple preserved for parity callers), `is_hex_char`, `paint_component` (drops Swing `Graphics` arg, delegates to `_render` — Tk `Text` has no public paint hook), `paint_in_edit` (takes `(content, index)` instead of `(Graphics, byte, x, y)` — pixel coordinates not meaningful on row/column-addressed `Text` widget), `put_in_selected`. Private aliases preserved.
+- `pypdfbox/debugger/streampane/stream.py`: promoted `_is_xml_metadata_stream` to public `is_xml_metadata_stream` for parity tooling; private alias kept; constructor updated to the public spelling.
+- `pypdfbox/debugger/ui/map_entry.py`: added `to_string()` mirroring upstream `toString`; `__str__` now delegates so both spellings agree.
+- Tests: 10 hand-written tests across 3 files; full debugger suite 285/285.
+
+### OSXAdapter + DebugTextStripper — re-expose wave-1307/1310 helpers as class methods
+
+- Wave 1310 ported `OSXAdapter` helpers and wave 1307 ported `DebugTextOverlay.calculate_glyph_bounds` + `transform` as module-level functions. The parity tool only counts class methods, so the gaps still showed up as "missing".
+- `pypdfbox/debugger/ui/osx_adapter.py`: added 5 `@staticmethod`s on the `OSXAdapter` class (`is_min_jdk9`, `is_correct_method`, `invoke`, `call_target`, `set_application_event_handled`) that delegate to the existing module-level functions. Restores upstream Java shape (`public static` members of the class) without changing semantics; module-level callables retained for back-compat.
+- `pypdfbox/debugger/pagepane/debug_text_overlay.py`: added 2 `@staticmethod`s on `DebugTextStripper` (`transform`, `calculate_glyph_bounds`) that delegate to the module-level functions.
+- Parity coverage jumped: `OSXAdapter` 0.40 → 0.90 (only `set_handler` remaining), `DebugTextStripper` 0.60 → 1.00.
+- Tests: 9 hand-written tests across 2 files (presence + delegation/behavior per static).
+
+### Seven single-method gap closures
+
+- `PagePane`: promoted `_start_rendering` to public `start_rendering`; added `start_extracting` (PDFTextStripper + TextDialog dispatch, mirroring upstream `PagePane.startExtracting`). Synchronous Tk dispatch — upstream `RenderWorker` deviation already documented; matches existing port idiom.
+- `SimpleFont` (debugger font-encoding pane): promoted `_get_glyphs` to public `get_glyphs`, mirroring upstream `SimpleFont.getGlyphs(PDSimpleFont)`.
+- `CSSeparation`: promoted `_on_slider` to public `state_changed` and `_update_color_bar` to public `update_color_bar`, mirroring upstream `CSSeparation.stateChanged` / `updateColorBar`.
+- `ViewMenu`: added upstream-named aliases `is_show_text_stripper` / `is_show_text_stripper_beads` delegating to the existing snake-case getters (upstream's actual field name is `showTextStripper`).
+- `ErrorDialog`: added `to_string(traces)` mirroring upstream `ErrorDialog.toString(StackTraceElement[])` — renders filtered frames with `"    "` indent and `\r\n` terminator.
+- `RotationMenu`: verified — all upstream methods already present from prior waves; no changes.
+- Tests: 16 hand-written tests across 5 files; full debugger suite 1454/1454.
+
 ## Wave 1311 — debugger parity round-out (5 parallel agents, 15 classes)
 
 ### Type0Font (debugger pane) — port get_encoding_name + read_cid_to_gid_map + read_map

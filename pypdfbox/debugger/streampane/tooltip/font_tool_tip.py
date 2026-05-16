@@ -24,9 +24,16 @@ class FontToolTip(ToolTip):
 
     def __init__(self, resources: PDResources | None, row_text: str) -> None:
         self._markup: ToolTipText | None = None
-        self._init_ui(self._extract_font_reference(row_text), resources)
+        self.init_ui(self.extract_font_reference(row_text), resources)
 
-    def _init_ui(self, font_reference_name: str, resources: PDResources | None) -> None:
+    def init_ui(
+        self, font_reference_name: str, resources: PDResources | None
+    ) -> None:
+        """Populate ``self._markup`` from the resource dictionary.
+
+        Mirrors upstream ``FontToolTip.initUI``. Renamed from the
+        previous private ``_init_ui``; the alias is preserved below.
+        """
         if resources is None or not font_reference_name:
             return
         font = None
@@ -44,8 +51,11 @@ class FontToolTip(ToolTip):
                     segments=(ToolTipSegment(text=font_name, color_hex=None),),
                 )
 
+    # Back-compat alias for the previous private spelling.
+    _init_ui = init_ui
+
     @staticmethod
-    def _extract_font_reference(row_text: str) -> str:
+    def extract_font_reference(row_text: str) -> str:
         """Return the font reference name from a ``/Fxx <size> Tf`` row.
 
         Upstream: ``rowText.trim().split(" ")[0].substring(1)`` — i.e.
@@ -58,6 +68,9 @@ class FontToolTip(ToolTip):
         if not tokens or not tokens[0]:
             return ""
         return tokens[0][1:]
+
+    # Back-compat alias for the previous private spelling.
+    _extract_font_reference = extract_font_reference
 
     def get_tool_tip_text(self) -> ToolTipText | None:
         return self._markup

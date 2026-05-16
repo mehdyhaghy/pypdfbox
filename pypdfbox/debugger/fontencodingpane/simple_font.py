@@ -44,7 +44,7 @@ class SimpleFont(FontPane):
         self._font = font
         self._total_available_glyphs = 0
 
-        table_data = self._get_glyphs(font)
+        table_data = self.get_glyphs(font)
         y_bounds = self.get_y_bounds(table_data, 3)
 
         attributes: dict[str, str] = {
@@ -80,9 +80,14 @@ class SimpleFont(FontPane):
 
     # ---- helpers -----------------------------------------------------------
 
-    def _get_glyphs(self, font: PDSimpleFont) -> list[list[Any]]:
+    def get_glyphs(self, font: PDSimpleFont) -> list[list[Any]]:
         """Build the ``Object[256][4]`` table upstream's ``getGlyphs``
         constructs. Each row is ``[code, glyph_name, unicode, glyph_path]``.
+
+        Mirrors upstream ``SimpleFont.getGlyphs(PDSimpleFont)`` (package-
+        private). Promoted to a public method here so parity tooling
+        recognises it; the underscore-prefixed name is retained as a
+        back-compat alias.
         """
         rows: list[list[Any]] = []
         encoding = font.get_encoding_typed()
@@ -129,6 +134,9 @@ class SimpleFont(FontPane):
                     notdef = []
                 rows.append([code, NO_GLYPH, NO_GLYPH, notdef])
         return rows
+
+    # Back-compat private alias (was the original name before parity promotion).
+    _get_glyphs = get_glyphs
 
     @staticmethod
     def get_encoding_name(font: PDSimpleFont) -> str:

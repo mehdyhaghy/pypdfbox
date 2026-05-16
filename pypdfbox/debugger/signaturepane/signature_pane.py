@@ -134,7 +134,7 @@ class SignaturePane:
                 width=self.DEFAULT_WIDTH, height=self.DEFAULT_HEIGHT
             )
 
-        self._asn1_text = self._create_asn1_view(cos_string)
+        self._asn1_text = self.create_text_view(cos_string)
         self._cert_tree = self._create_cert_view(cos_string)
         self._tabbed_pane.add(self._asn1_text.master, text=self._ASN1_TAB)
         self._tabbed_pane.add(self._cert_tree.master, text=self._CERTS_TAB)
@@ -157,7 +157,19 @@ class SignaturePane:
 
     # ---- internals ---------------------------------------------------------
 
-    def _create_asn1_view(self, cos_string: COSString) -> tk.Text:
+    def create_text_view(self, cos_string: COSString) -> tk.Text:
+        """Create the ASN.1-view text widget for ``cos_string``.
+
+        Mirrors upstream ``SignaturePane.createTextView``. The Swing
+        original returns a ``JTextPane`` showing the ASN.1 dump; the
+        Tkinter port returns a scrollable ``tk.Text`` containing the
+        :func:`hex_dump` output (or the hex-string fallback when the
+        blob is empty), matching upstream's ``IOException`` fallback
+        path. The body comes from :meth:`get_text_string`.
+
+        Renamed from the previous private ``_create_asn1_view``; the
+        alias is preserved below for back-compat.
+        """
         wrapper = ttk.Frame(self._tabbed_pane)
         text = tk.Text(wrapper, wrap="none", font=("TkFixedFont", 11))
         scrollbar = ttk.Scrollbar(wrapper, orient="vertical", command=text.yview)
@@ -167,14 +179,35 @@ class SignaturePane:
         wrapper.rowconfigure(0, weight=1)
         wrapper.columnconfigure(0, weight=1)
 
-        blob = cos_string.get_bytes()
         try:
-            dump = hex_dump(blob)
-            text.insert("1.0", dump if dump else "<" + cos_string.to_hex_string() + ">")
+            body = self.get_text_string(cos_string)
         except Exception as exc:  # noqa: BLE001 — surface but never crash widget
-            text.insert("1.0", f"<failed to dump signature: {exc}>")
+            body = f"<failed to dump signature: {exc}>"
+        text.insert("1.0", body)
         text.configure(state="disabled")
         return text
+
+    # Back-compat alias for the previous private spelling.
+    _create_asn1_view = create_text_view
+
+    @staticmethod
+    def get_text_string(cos_string: COSString) -> str:
+        """Return the ASN.1 text body for ``cos_string``.
+
+        Mirrors upstream ``SignaturePane.getTextString``. Upstream
+        parses the bytes with Bouncy Castle's ``ASN1StreamParser`` and
+        falls back to ``"<" + cosString.toHexString() + ">"`` on
+        ``IOException``. pypdfbox uses :func:`hex_dump` for the textual
+        view (Bouncy Castle has no Python equivalent in our approved
+        dependency set), and falls back to the upstream hex-string
+        format when the blob is empty so the upstream fallback shape
+        is still observable.
+        """
+        blob = cos_string.get_bytes()
+        dump = hex_dump(blob)
+        if dump:
+            return dump
+        return "<" + cos_string.to_hex_string() + ">"
 
     def _create_cert_view(self, cos_string: COSString) -> ttk.Treeview:
         wrapper = ttk.Frame(self._tabbed_pane)

@@ -245,6 +245,45 @@ class OSXAdapter:
             adapter.set_file_handler(file_cb)  # type: ignore[arg-type]
         return adapter
 
+    # --- upstream-shape static helpers ------------------------------------
+    #
+    # Upstream Java exposes these as ``public static`` members of
+    # ``OSXAdapter``. The Python port keeps the implementations as
+    # module-level functions (so callers can use them without importing the
+    # class), but also re-exposes them as ``@staticmethod``s on the class
+    # for parity-tool detection and for callers that prefer the
+    # ``OSXAdapter.<name>`` spelling. These are thin delegations — the
+    # logic lives in the module-level functions above.
+
+    @staticmethod
+    def is_min_jdk9() -> bool:
+        """Class-surface alias for :func:`is_min_jdk9` (upstream-shape)."""
+        return is_min_jdk9()
+
+    @staticmethod
+    def is_correct_method(
+        method: Any,
+        name: str,
+        types: Sequence[type] | None = None,
+    ) -> bool:
+        """Class-surface alias for :func:`is_correct_method` (upstream-shape)."""
+        return is_correct_method(method, name, types)
+
+    @staticmethod
+    def invoke(target: Any, method_name: str, *args: Any) -> Any:
+        """Class-surface alias for :func:`invoke` (upstream-shape)."""
+        return invoke(target, method_name, *args)
+
+    @staticmethod
+    def call_target(target: Any, method_name: str, event: Any = None) -> Any:
+        """Class-surface alias for :func:`call_target` (upstream-shape)."""
+        return call_target(target, method_name, event)
+
+    @staticmethod
+    def set_application_event_handled(event: Any, handled: bool) -> None:
+        """Class-surface alias for :func:`set_application_event_handled`."""
+        return set_application_event_handled(event, handled)
+
     # --- internals --------------------------------------------------------
 
     def _create_command(

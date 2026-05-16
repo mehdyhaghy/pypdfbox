@@ -52,7 +52,7 @@ class Stream:
         self._strm = cos_stream
         self._is_thumb = is_thumb
         self._is_image = self.is_image_stream(cos_stream, is_thumb)
-        self._is_xml_metadata = self._is_xml_metadata_stream(cos_stream)
+        self._is_xml_metadata = self.is_xml_metadata_stream(cos_stream)
         self._filters: OrderedDict[str, list[str] | None] = self.create_filter_list(
             cos_stream
         )
@@ -216,8 +216,20 @@ class Stream:
         return subtype == COSName.get_pdf_name("Image")
 
     @staticmethod
-    def _is_xml_metadata_stream(dic: COSDictionary) -> bool:
+    def is_xml_metadata_stream(dic: COSDictionary) -> bool:
+        """Return ``True`` when ``dic`` is an XML metadata stream.
+
+        Mirrors upstream private ``isXmlMetadataStream(COSDictionary)``.
+        Promoted to public (snake_case) for parity tooling — upstream
+        Java treats the method as instance-private but the predicate is
+        useful to debugger callers that need to short-circuit decoding
+        for XMP packets.
+        """
+
         if not dic.contains_key(COSName.SUBTYPE):
             return False
         subtype = dic.get_cos_name(COSName.SUBTYPE)
         return subtype == COSName.get_pdf_name("XML")
+
+    # Backwards-compatible private alias.
+    _is_xml_metadata_stream = is_xml_metadata_stream

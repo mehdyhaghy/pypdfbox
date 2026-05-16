@@ -336,6 +336,27 @@ class ErrorDialog:
     def _is_suppressed(class_name: str) -> bool:
         return any(class_name.startswith(prefix) for prefix in _FILTERS)
 
+    def to_string(
+        self, traces: list[traceback.FrameSummary] | None = None
+    ) -> str:
+        """Render filtered stack-frame entries as one indented string.
+
+        Mirrors upstream ``ErrorDialog.toString(StackTraceElement[])``.
+        Each frame is rendered as ``"<file>:<lineno> in <name>"``;
+        filtered frames are dropped when :py:meth:`is_filtering` is on.
+        When ``traces`` is ``None``, the bound exception's traceback is
+        used.
+        """
+        if traces is None:
+            tb = self._error.__traceback__
+            traces = traceback.extract_tb(tb) if tb is not None else []
+        out: list[str] = []
+        for frame in traces:
+            if self._is_filtering and self._is_suppressed(frame.filename):
+                continue
+            out.append(f"    {frame.filename}:{frame.lineno} in {frame.name}\r\n")
+        return "".join(out)
+
 
 def set_show_error_impl(
     impl: Callable[[str, str], Any] | None,

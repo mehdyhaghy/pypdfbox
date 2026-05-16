@@ -108,7 +108,7 @@ class CSSeparation:
         # Slider 0..100 with label markers — Tkinter's ``ttk.Scale``
         # has no built-in tick-label support so we approximate with a
         # row of ``ttk.Label`` widgets beneath the scale.
-        slider = ttk.Scale(input_panel, from_=0, to=100, command=self._on_slider)
+        slider = ttk.Scale(input_panel, from_=0, to=100, command=self.state_changed)
         slider.grid(row=0, column=0, columnspan=3, sticky="ew", padx=2, pady=2)
 
         ttk.Label(input_panel, text="lightest", font=small_font).grid(
@@ -171,23 +171,28 @@ class CSSeparation:
         finally:
             self._syncing = False
         with contextlib.suppress(OSError):
-            self._update_color_bar()
+            self.update_color_bar()
 
     # Back-compat private alias.
     _init_values = init_values
 
     # ---- listeners --------------------------------------------------------
 
-    def _on_slider(self, raw_value: str) -> None:
+    def state_changed(self, raw_value: str | None = None) -> None:
         """Slider moved — update tint, entry and color bar.
 
-        Mirrors upstream ``stateChanged(ChangeEvent)``.
+        Mirrors upstream ``stateChanged(ChangeEvent)``. The Tk port
+        receives the slider's current value as a string (Tk's
+        ``command=`` callback signature); the optional ``None`` default
+        lets callers re-trigger a sync from the live slider value.
         """
         if self._syncing:
             return
+        if raw_value is None and self._slider is not None:
+            raw_value = str(self._slider.get())
         try:
             value = int(float(raw_value))
-        except ValueError:
+        except (TypeError, ValueError):
             return
         self._tint_value = self.get_float_representation(value)
         self._syncing = True
@@ -197,10 +202,13 @@ class CSSeparation:
         finally:
             self._syncing = False
         try:
-            self._update_color_bar()
+            self.update_color_bar()
         except OSError as ex:
             assert self._tint_var is not None
             self._tint_var.set(str(ex))
+
+    # Back-compat private alias for the slider callback wiring.
+    _on_slider = state_changed
 
     def _on_tint_entry(self, _event: tk.Event | None = None) -> None:
         """User pressed Enter (or left the field) — parse tint and refresh.
@@ -227,13 +235,19 @@ class CSSeparation:
         finally:
             self._syncing = False
         try:
-            self._update_color_bar()
+            self.update_color_bar()
         except OSError as ex:
             self._tint_var.set(str(ex))
 
     # ---- color-bar helpers ------------------------------------------------
 
-    def _update_color_bar(self) -> None:
+    def update_color_bar(self) -> None:
+        """Recolor the color-bar canvas from the current tint value.
+
+        Mirrors upstream ``CSSeparation.updateColorBar()`` (private). The
+        underscore-prefixed alias is retained for callers that depended
+        on the original name.
+        """
         assert self._color_bar is not None
         rgb_values = self._separation.to_rgb([self._tint_value])
         # PDSeparation.to_rgb returns ``None`` when the alternate /
@@ -247,6 +261,9 @@ class CSSeparation:
         hex_color = self._renderer.to_hex(color)
         with contextlib.suppress(tk.TclError):
             self._color_bar.configure(background=hex_color)
+
+    # Back-compat private alias.
+    _update_color_bar = update_color_bar
 
     def set_color_bar_border(self, border: object | None = None) -> None:
         """Set a border around the colour bar.

@@ -378,6 +378,34 @@ class DebugTextStripper(PDFTextStripper):
                 )
             )
 
+    # ---- upstream-shape static helpers ------------------------------
+    #
+    # Upstream Java nests ``transform`` and ``calculateGlyphBounds`` as
+    # methods of ``DebugTextOverlay.DebugTextStripper`` (the inner
+    # class). The Python port keeps the implementations as module-level
+    # functions (re-usable without instantiating the stripper), but also
+    # re-exposes them as ``@staticmethod``s on this class for parity-tool
+    # detection and upstream-shape spelling. Thin delegations — logic
+    # lives in the module-level helpers below.
+
+    @staticmethod
+    def transform(
+        shape: Sequence[tuple[float, float]],
+        at: tuple[float, float, float, float, float, float],
+    ) -> list[tuple[float, float]]:
+        """Class-surface alias for :func:`transform` (upstream-shape)."""
+        return transform(shape, at)
+
+    @staticmethod
+    def calculate_glyph_bounds(
+        at: tuple[float, float, float, float, float, float],
+        font: Any,
+        code: int,
+        displacement: Any,
+    ) -> list[tuple[float, float]] | None:
+        """Class-surface alias for :func:`calculate_glyph_bounds`."""
+        return calculate_glyph_bounds(at, font, code, displacement)
+
     # ---- coordinate helpers -----------------------------------------
 
     def _flip_y(self, y: float) -> float:

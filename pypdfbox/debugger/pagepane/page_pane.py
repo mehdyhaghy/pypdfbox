@@ -133,7 +133,7 @@ class PagePane:
         # Kick off rendering immediately so that `set_page(...)` is not
         # strictly required before the user sees a page. Tests that
         # don't want rendering can pass an empty page (no contents).
-        self._start_rendering()
+        self.start_rendering()
 
     def init_rect_map(self) -> None:
         """Re-build the click-resolution rect map from scratch.
@@ -292,7 +292,16 @@ class PagePane:
     # Rendering
     # ------------------------------------------------------------------
 
-    def _start_rendering(self) -> None:
+    def start_rendering(self) -> None:
+        """Kick off the rendering pipeline for the current page.
+
+        Mirrors upstream ``PagePane.startRendering()`` (private). Upstream
+        delegates to ``new RenderWorker().execute()`` so the page renders
+        off the EDT; the Tk port runs synchronously because :class:`RenderWorker`
+        below also executes synchronously (see its docstring). The underscore-
+        prefixed alias :py:meth:`_start_rendering` is retained for callers
+        / tests that used the original name.
+        """
         if self._page_index < 0:
             return
         try:
@@ -302,6 +311,66 @@ class PagePane:
             return
         self._draw_debug_overlays(image)
         self._present_image(image)
+
+    def start_extracting(self) -> None:
+        """Run the PDF text stripper for the current page and surface the result.
+
+        Mirrors upstream ``PagePane.startExtracting()`` (private): builds
+        a :class:`PDFTextStripper`, restricts it to the current page,
+        applies the *sort by position* / *ignore content stream space
+        glyphs* toggles from :class:`TextStripperMenu`, and feeds the
+        extracted text into a :class:`TextDialog`. The upstream version
+        also positions the dialog and sets its size; we omit the screen-
+        sizing math because the Tk port's :class:`TextDialog` manages
+        its own geometry. Errors are logged and swallowed (upstream
+        catches ``IOException``).
+        """
+        if self._page_index < 0:
+            return
+        try:
+            from pypdfbox.debugger.ui.text_dialog import TextDialog  # noqa: PLC0415
+            from pypdfbox.debugger.ui.text_stripper_menu import (  # noqa: PLC0415
+                TextStripperMenu,
+            )
+            from pypdfbox.text.pdf_text_stripper import PDFTextStripper  # noqa: PLC0415
+        except ImportError as exc:
+            _LOG.error("text extraction dependencies missing: %s", exc)
+            return
+        try:
+            stripper = PDFTextStripper()
+            stripper.set_start_page(self._page_index + 1)
+            stripper.set_end_page(self._page_index + 1)
+            sorted_getter = getattr(TextStripperMenu, "is_sorted", None)
+            if sorted_getter is not None:
+                with contextlib.suppress(Exception):
+                    stripper.set_sort_by_position(bool(sorted_getter()))
+            ignore_getter = getattr(TextStripperMenu, "is_ignore_spaces", None)
+            if ignore_getter is not None:
+                setter = getattr(
+                    stripper, "set_ignore_content_stream_space_glyphs", None
+                )
+                if setter is not None:
+                    with contextlib.suppress(Exception):
+                        setter(bool(ignore_getter()))
+            text = stripper.get_text(self._document)
+        except OSError as exc:
+            _LOG.error("text extraction failed: %s", exc)
+            return
+        instance_getter = getattr(TextDialog, "instance", None)
+        dialog = instance_getter() if instance_getter is not None else None
+        if dialog is None:
+            return
+        setter = getattr(dialog, "set_text", None)
+        if setter is not None:
+            with contextlib.suppress(Exception):
+                setter(text)
+        visible_setter = getattr(dialog, "set_visible", None)
+        if visible_setter is not None:
+            with contextlib.suppress(Exception):
+                visible_setter(True)
+
+    # Back-compat private alias.
+    _start_rendering = start_rendering
 
     def _render_image(self) -> PilImage:
         # Lazy import — pulls the full rendering stack on first use.
@@ -412,7 +481,7 @@ class PagePane:
         # ``init_rect_map`` clears + repopulates atomically; no separate
         # clear needed here.
         self.init_rect_map()
-        self._start_rendering()
+        self.start_rendering()
 
     def get_image(self) -> PilImage | None:
         """Return the most recently rendered ``PIL.Image``, if any."""

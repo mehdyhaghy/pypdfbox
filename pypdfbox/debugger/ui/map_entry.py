@@ -46,7 +46,18 @@ class MapEntry:
         """Set the raw item for this entry."""
         self._item = val
 
-    def __str__(self) -> str:
+    def to_string(self) -> str:
+        """Return a string representation of this entry.
+
+        Mirrors upstream ``toString()``: returns the key's name when set,
+        otherwise ``"(null)"``. ``__str__`` delegates here so both the
+        upstream-aligned method name and Python's ``str()`` give the
+        same result.
+        """
+
         if self._key is not None:
             return self._key.get_name()
         return "(null)"
+
+    def __str__(self) -> str:
+        return self.to_string()
