@@ -2909,6 +2909,33 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   - `test_high_resolution_image_icon.py`: switched per-test `tk.Tk()` to the session-scoped fixture (eliminating extra Tk roots).
 - **Verified**: 2 concurrent shells × 5 iterations = 10/10 processes finish exit 0; 3 shells × 6 iterations = 18/18 exit 0; `PYPDFBOX_SKIP_TK=1` → 357 tests skip cleanly.
 
+## Wave 1308 — debugger parity round-out (5 parallel agents)
+
+### PagePane — port field/link rect-map helpers
+
+- `pypdfbox/debugger/pagepane/page_pane.py`: promoted `_init_ui` / `_init_rect_map` / `_collect_field_locations` / `_collect_link_locations` to public + added the missing single-annotation `collect_link_location(link_annotation)`. The single-annotation form now resolves `PDActionURI`, `PDActionGoTo`, and `PDNamedDestination` → `PDPageDestination` (previously only URIs were inlined). `init_rect_map` now clears the map before re-populating so successive calls don't double-map. `set_page` updated to call `init_rect_map` instead of a separate clear + private call. Private `_`-prefixed aliases retained for back-compat with the monkeypatch-based existing tests. Following upstream's "store rect in user space, transform at hover" design — the rotation/scale transform happens inside `_on_mouse_moved`, not in the rect collectors.
+- Tests: 18 hand-written tests at `tests/debugger/pagepane/test_page_pane_rect_map.py`; full pagepane suite passes (149/149).
+
+### HexPane — port byte/chars/point accessors + listener fan-out
+
+- `pypdfbox/debugger/hexviewer/hex_pane.py`: promoted `_fire_selection_changed` and `_fire_hex_value_changed` to public; added `get_byte(chars)`, `get_chars(b)`, `get_index_for_point((x, y))`, `get_point_for_index(index)` matching upstream `HexPane` signatures. Java `Point` → `(x, y)` tuple (Tkinter has no Point class; call sites already pass `(event.x, event.y)`). Java `char[]` → `str`/`list[str]`. Java `NumberFormatException` → Python `ValueError` per CLAUDE.md translation table. `_fire_*` / `_get_byte` / `_get_chars` aliases kept so existing call sites still pass.
+- Tests: 16 hand-written tests at `tests/debugger/hexviewer/test_hex_pane_accessors.py`; full hexviewer suite passes (79/79).
+
+### Stream — port filter-list / image-stream helpers
+
+- `pypdfbox/debugger/streampane/stream.py`: promoted upstream-private helpers `create_filter_list`, `get_filtered_label`, `get_partial_stream_command`, `get_stop_filter_list`, and `is_image_stream` to public snake_case; updated the three internal call sites in `__init__` / `get_stream` to the public form. `_is_xml_metadata_stream` stays private (not on the missing-methods list).
+- Tests: 13 hand-written tests at `tests/debugger/streampane/test_stream_filter_helpers.py`.
+
+### ToolTipController — port get_word / get_row_text / is_color_space / find_color_space
+
+- `pypdfbox/debugger/streampane/tooltip/tool_tip_controller.py`: promoted `_get_word` to public `get_word(text, caret_position)`. Added new public helpers: `get_row_text(text_pane, line_number)` (1-based, Tk-style addressing), `is_color_space(word)` (recognises the 11 canonical PDF colour-space names — `/DeviceGray`, `/DeviceRGB`, `/DeviceCMYK`, `/Pattern`, `/CalGray`, `/CalRGB`, `/Lab`, `/ICCBased`, `/Indexed`, `/Separation`, `/DeviceN`), and `find_color_space(word, resources=None)` (resolves a name or resource-dict alias to a `PDColorSpace` via `PDColorSpace.create`). Internal upstream-mirror helpers preserved as `_is_color_space_row` / `_find_color_space_row` (with `_is_color_space` / `_find_color_space` back-compat aliases) so the operator-row dispatcher stays upstream-faithful. Deviation: upstream's `getRowText` / `isColorSpace` / `findColorSpace` use offset-based / row-form signatures; the public Python surface follows the parity-tool descriptions for line-number / Tk addressing and higher-level colour-space resolution.
+- Tests: 22 hand-written tests at `tests/debugger/streampane/tooltip/test_tool_tip_helpers.py`; full tooltip suite passes.
+
+### ViewMenu — port create_view_menu + predicates
+
+- `pypdfbox/debugger/ui/view_menu.py`: promoted `create_view_menu()` to a public builder method (mirrors upstream's `createViewMenu`, called by the constructor). Added the upstream-named static predicates `is_extract_text_event`, `is_repair_acroform_event`, `is_repair_acroform_selected`, and `is_show_font_b_box` (the SHOW_FONT_BBOX label string maps to the existing `"Show Approximate Text Bounds"` checkbox; `is_show_font_b_box` aliases `is_show_approximate_text_bounds`). The event predicates accept either a Tk label string (the payload `MenuBase.add_menu_listeners` dispatches) or any object exposing `action_command`/`label`, because Tk has no `ActionEvent` analogue.
+- Tests: 14 hand-written tests at `tests/debugger/ui/test_view_menu_predicates.py`; existing `test_view_menu.py` (20 tests) still passes.
+
 ## Wave 1307 — debugger parity round-out (5 parallel agents)
 
 ### PanoseFlag — expose per-byte accessors on public surface

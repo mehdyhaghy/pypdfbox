@@ -70,10 +70,25 @@ class ViewMenu(MenuBase):
             msg = "tkinter is not available"
             raise RuntimeError(msg)
         self._pdf_debugger = pdf_debugger
+        self._master = master
         self._extract_text_callback: Callable[[], None] | None = None
 
+        # Upstream's constructor body is one line: ``setMenu(createViewMenu())``.
+        # Mirror that exactly so the upstream method exists on the Python class.
+        self.set_menu(self.create_view_menu())
+
+    def create_view_menu(self) -> tk.Menu:  # type: ignore[name-defined]
+        """Build the *View* ``tk.Menu`` and return it.
+
+        Direct port of upstream's private ``createViewMenu`` (promoted to
+        ``public`` here so the menu wiring is observable by consumers that
+        want to rebuild the cascade — e.g. tests that exercise singleton
+        recycling). The returned menu is *also* bound via :py:meth:`set_menu`
+        by the constructor, matching upstream's
+        ``setMenu(createViewMenu())`` one-liner.
+        """
+        master = self._master
         menu = tk.Menu(master, tearoff=0)
-        self.set_menu(menu)
 
         # 1. TreeViewMenu cascade.
         self._tree_view_menu = TreeViewMenu.get_instance(master=master)
@@ -172,6 +187,7 @@ class ViewMenu(MenuBase):
             variable=self._repair_acro_form_var,
             state="disabled",
         )
+        return menu
 
     # ------------------------------------------------------------------
     # Singleton accessor
@@ -268,6 +284,67 @@ class ViewMenu(MenuBase):
             ViewMenu.SHOW_GLYPH_BOUNDS,
             ViewMenu.ALLOW_SUBSAMPLING,
         }
+
+    # ------------------------------------------------------------------
+    # Event predicates (upstream-named static helpers)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _action_command_of(action_event: Any) -> str:
+        """Extract the action-command label from a Tk-or-Swing-shaped event.
+
+        Tk listeners installed by :py:class:`MenuBase.add_menu_listeners`
+        already pass the entry label (a ``str``). Some debugger call sites
+        still wrap that label in a lightweight event-like object that
+        exposes ``action_command`` or ``label`` (mirroring Swing's
+        ``ActionEvent.getActionCommand``); accept either shape so the
+        predicate behaves the same regardless of dispatch style.
+        """
+        if isinstance(action_event, str):
+            return action_event
+        for attr in ("action_command", "label"):
+            value = getattr(action_event, attr, None)
+            if isinstance(value, str):
+                return value
+        return ""
+
+    @staticmethod
+    def is_extract_text_event(action_event: Any) -> bool:
+        """Return ``True`` when ``action_event`` was dispatched by *Extract Text*.
+
+        Mirrors upstream ``isExtractTextEvent(ActionEvent)``.
+        """
+        return ViewMenu._action_command_of(action_event) == ViewMenu.EXTRACT_TEXT
+
+    @staticmethod
+    def is_repair_acroform_event(action_event: Any) -> bool:
+        """Return ``True`` when ``action_event`` was dispatched by *Repair AcroForm*.
+
+        Mirrors upstream ``isRepairAcroformEvent(ActionEvent)``.
+        """
+        return ViewMenu._action_command_of(action_event) == ViewMenu.REPAIR_ACROFORM
+
+    @staticmethod
+    def is_repair_acroform_selected() -> bool:
+        """Return the current checkbox state of the *Repair AcroForm* entry.
+
+        Upstream-named alias for :py:meth:`is_repair_acro_form` — kept
+        because upstream exposes ``isRepairAcroformSelected()`` as the
+        public accessor used by the debugger shell.
+        """
+        return ViewMenu.is_repair_acro_form()
+
+    @staticmethod
+    def is_show_font_b_box() -> bool:
+        """Return the current checkbox state of the *Show Font BBox* entry.
+
+        Upstream-named alias for :py:meth:`is_show_approximate_text_bounds`
+        — upstream's symbol is ``isShowFontBBox`` (the constant label is
+        ``"Show Approximate Text Bounds"`` even though the field is named
+        ``showFontBBox``). The snake_case translation is
+        ``is_show_font_b_box`` (two adjacent capitals ``BB`` → ``_b_b``).
+        """
+        return ViewMenu.is_show_approximate_text_bounds()
 
 
 __all__ = ["ViewMenu"]

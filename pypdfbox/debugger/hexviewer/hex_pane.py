@@ -88,14 +88,30 @@ class HexPane(tk.Text):
     def add_hex_change_listeners(self, listener: HexChangeListener) -> None:
         self._hex_change_listeners.append(listener)
 
-    def _fire_selection_changed(self, event: SelectEvent) -> None:
+    def fire_selection_changed(self, event: SelectEvent) -> None:
+        """Notify every registered ``SelectionChangeListener`` of *event*.
+
+        Mirrors upstream ``fireSelectionChanged(SelectEvent)``.
+        """
+
         for listener in self._selection_change_listeners:
             listener.selection_changed(event)
 
-    def _fire_hex_value_changed(self, value: int, index: int) -> None:
+    def fire_hex_value_changed(self, value: int, index: int) -> None:
+        """Build a :class:`HexChangedEvent` and dispatch to every listener.
+
+        Mirrors upstream ``fireHexValueChanged(byte, int)``.
+        """
+
         evt = HexChangedEvent(value, index)
         for listener in self._hex_change_listeners:
             listener.hex_changed(evt)
+
+    # Backwards-compatible private aliases — earlier waves landed the
+    # private spellings; keep them so existing call-sites keep working
+    # until they migrate to the upstream-aligned public names.
+    _fire_selection_changed = fire_selection_changed
+    _fire_hex_value_changed = fire_hex_value_changed
 
     # ---------------------------------------------------------------- model
 
@@ -150,6 +166,68 @@ class HexPane(tk.Text):
                 index += 1
             self.insert("end", "\n")
         self.configure(state="disabled")
+
+    # ---------------------------------------------------- geometry accessors
+
+    def get_index_for_point(self, point: tuple[int, int]) -> int:
+        """Return the byte index for a *(x, y)* viewport point, or ``-1``.
+
+        Mirrors upstream ``getIndexForPoint(Point)``. The upstream Java type
+        is ``java.awt.Point``; here we accept a two-tuple ``(x, y)`` because
+        Tkinter has no equivalent and Pythonic call sites already pass
+        ``(event.x, event.y)``. The geometry math (line/element derivation,
+        20-px gutter offset, ``CHAR_WIDTH``/``CHAR_HEIGHT`` divisors) is a
+        direct translation.
+        """
+
+        from pypdfbox.debugger.hexviewer.hex_view import HexView
+
+        x, y = point
+        if x <= 20 or x >= (16 * HexView.CHAR_WIDTH) + 20:
+            return -1
+        line_number = (
+            y + (HexView.CHAR_HEIGHT - (y % HexView.CHAR_HEIGHT))
+        ) // HexView.CHAR_HEIGHT
+        x_rel = x - 20
+        element_number = x_rel // HexView.CHAR_WIDTH
+        return (line_number - 1) * 16 + element_number
+
+    def get_point_for_index(self, index: int) -> tuple[int, int]:
+        """Return the upper-left ``(x, y)`` of the cell at *index*.
+
+        Mirrors upstream ``getPointForIndex(int)``.
+        """
+
+        from pypdfbox.debugger.hexviewer.hex_view import HexView
+
+        x = (
+            HexView.LINE_INSET
+            + HexModel.element_index_in_line(index) * HexView.CHAR_WIDTH
+        )
+        y = HexModel.line_number(index) * HexView.CHAR_HEIGHT
+        return (x, y)
+
+    # --------------------------------------------------------- byte accessors
+
+    def get_byte(self, chars: list[str]) -> int:
+        """Decode a two-character hex sequence to a byte (0..255).
+
+        Mirrors upstream ``getByte(char[] chars)``. Raises ``ValueError``
+        (Python translation of Java ``NumberFormatException``) for
+        non-hex input.
+        """
+
+        return int("".join(chars), 16) & 0xFF
+
+    def get_chars(self, b: int) -> str:
+        """Return the two-character upper-case hex spelling of byte *b*.
+
+        Mirrors upstream ``getChars(byte b)``. Upstream returns a
+        ``char[]``; a Python ``str`` is the natural equivalent and
+        indexes identically for the call-sites in ``_render``.
+        """
+
+        return f"{b & 0xFF:02X}"
 
     # --------------------------------------------------------------- events
 
@@ -223,6 +301,9 @@ class HexPane(tk.Text):
     def _is_hex_char(c: str) -> bool:
         return len(c) == 1 and c in "0123456789abcdefABCDEF"
 
+    # Backwards-compatible private aliases — staticmethod wrappers around
+    # the new public accessors so existing tests / call-sites keep working
+    # until they migrate to the upstream-aligned public names.
     @staticmethod
     def _get_chars(b: int) -> str:
         return f"{b & 0xFF:02X}"

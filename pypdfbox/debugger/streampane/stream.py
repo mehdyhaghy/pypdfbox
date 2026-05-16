@@ -51,9 +51,9 @@ class Stream:
         """
         self._strm = cos_stream
         self._is_thumb = is_thumb
-        self._is_image = self._is_image_stream(cos_stream, is_thumb)
+        self._is_image = self.is_image_stream(cos_stream, is_thumb)
         self._is_xml_metadata = self._is_xml_metadata_stream(cos_stream)
-        self._filters: OrderedDict[str, list[str] | None] = self._create_filter_list(
+        self._filters: OrderedDict[str, list[str] | None] = self.create_filter_list(
             cos_stream
         )
 
@@ -85,7 +85,7 @@ class Stream:
         try:
             if key == self.DECODED:
                 return self._strm.create_input_stream()
-            if key == self._get_filtered_label():
+            if key == self.get_filtered_label():
                 return self._strm.create_raw_input_stream()
             if key not in self._filters:
                 return None
@@ -127,10 +127,16 @@ class Stream:
             _LOG.error("image decode failed: %s", exc)
         return None
 
-    # ---- internals ---------------------------------------------------------
+    # ---- helpers (ported from upstream private API) ------------------------
 
-    def _get_filtered_label(self) -> str:
-        """Build the ``"Encoded (<chain>)"`` label."""
+    def get_filtered_label(self) -> str:
+        """Build the ``"Encoded (<chain>)"`` label.
+
+        Mirrors upstream private ``getFilteredLabel()``. Promoted to
+        public (snake_case) for parity tooling — upstream Java treats
+        the method as instance-private but the label is also useful to
+        debugger callers comparing the dropdown selection.
+        """
         parts: list[str] = []
         base = self._strm.get_filters()
         if isinstance(base, COSName):
@@ -140,9 +146,17 @@ class Stream:
                 parts.append(base.get(i).get_name())
         return "Encoded (" + ", ".join(parts) + ")"
 
-    def _create_filter_list(
+    def create_filter_list(
         self, stream: COSStream
     ) -> OrderedDict[str, list[str] | None]:
+        """Build the ordered dropdown map of view-label → stop-filter list.
+
+        Mirrors upstream private ``createFilterList(COSStream)``. The
+        first entry is ``IMAGE`` (only when the stream is an image),
+        followed by ``DECODED``, then a ``Keep <chain> ...`` entry for
+        every intermediate filter in reverse, finishing with the
+        ``"Encoded (...)"`` raw view.
+        """
         filters: OrderedDict[str, list[str] | None] = OrderedDict()
         if self._is_image:
             filters[self.IMAGE] = None
@@ -155,24 +169,45 @@ class Stream:
         # reverse order to match upstream (which iterates "filtersSize - 1
         # down to 1").
         for i in range(len(chain) - 1, 0, -1):
-            filters[self._get_partial_stream_command(i)] = self._get_stop_filter_list(i)
+            filters[self.get_partial_stream_command(i)] = self.get_stop_filter_list(i)
 
-        filters[self._get_filtered_label()] = None
+        filters[self.get_filtered_label()] = None
         return filters
 
-    def _get_partial_stream_command(self, index_of_stop_filter: int) -> str:
+    def get_partial_stream_command(self, index_of_stop_filter: int) -> str:
+        """Return the ``"Keep <name> & <name> ..."`` label for a stop index.
+
+        Mirrors upstream private ``getPartialStreamCommand(int)``.
+        ``index_of_stop_filter`` is the position in the ``/Filter``
+        chain where decoding should stop; the label lists every filter
+        from that index onward, joined by ``" & "``.
+        """
         available_filters = PDStream(self._strm).get_filters()
         names: list[str] = []
         for i in range(index_of_stop_filter, len(available_filters)):
             names.append(available_filters[i].get_name())
         return "Keep " + " & ".join(names) + " ..."
 
-    def _get_stop_filter_list(self, stop_filter_index: int) -> list[str]:
+    def get_stop_filter_list(self, stop_filter_index: int) -> list[str]:
+        """Return the single-element stop-filter list for a given index.
+
+        Mirrors upstream private ``getStopFilterList(int)``. Upstream
+        returns a one-element ``List<String>`` containing the name of
+        the filter at ``stop_filter_index``; that list is fed to
+        ``PDStream.create_input_stream`` to halt decoding before that
+        filter runs.
+        """
         available_filters = PDStream(self._strm).get_filters()
         return [available_filters[stop_filter_index].get_name()]
 
     @staticmethod
-    def _is_image_stream(dic: COSDictionary, is_thumb: bool) -> bool:
+    def is_image_stream(dic: COSDictionary, is_thumb: bool) -> bool:
+        """Return ``True`` when ``dic`` is an Image XObject (or thumb).
+
+        Mirrors upstream private static ``isImageStream(COSDictionary,
+        boolean)``. Thumbnails are always treated as image streams even
+        when ``/Subtype`` is absent.
+        """
         if is_thumb:
             return True
         if not dic.contains_key(COSName.SUBTYPE):

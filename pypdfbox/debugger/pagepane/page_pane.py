@@ -95,8 +95,8 @@ class PagePane:
         Called immediately after construction so tests can assert against
         a populated widget tree.
         """
-        self._init_ui()
-        self._init_rect_map()
+        self.init_ui()
+        self.init_rect_map()
         self._initialized = True
 
     def get_panel(self) -> ttk.Frame:
@@ -104,10 +104,10 @@ class PagePane:
         return self._panel
 
     # ------------------------------------------------------------------
-    # Internals
+    # UI / rect-map construction (public — matches upstream surface)
     # ------------------------------------------------------------------
 
-    def _init_ui(self) -> None:
+    def init_ui(self) -> None:
         if self._page_index < 0:
             page_label_text = "Page number not found (may be an orphan page)"
         else:
@@ -135,24 +135,37 @@ class PagePane:
         # don't want rendering can pass an empty page (no contents).
         self._start_rendering()
 
-    def _init_rect_map(self) -> None:
+    def init_rect_map(self) -> None:
+        """Re-build the click-resolution rect map from scratch.
+
+        Mirrors upstream's ``initRectMap()``. Calls the field collector
+        first (upstream order), then the link collector. Always wipes
+        :attr:`_rect_map` before re-populating so successive calls don't
+        double-map widgets/links.
+        """
+        self._rect_map.clear()
         try:
+            # Dispatch via the underscore-prefixed back-compat names so
+            # tests monkeypatching ``_collect_link_locations`` /
+            # ``_collect_field_locations`` continue to observe their
+            # patched implementation.
             self._collect_field_locations()
             self._collect_link_locations()
         except OSError as exc:
             _LOG.error("collecting rect map failed: %s", exc)
 
-    def _collect_link_locations(self) -> None:
+    def collect_link_locations(self) -> None:
+        """Walk every link annotation on the page and record its rect
+        in :attr:`_rect_map` via :meth:`collect_link_location`. Mirrors
+        upstream's ``collectLinkLocations()``.
+        """
         try:
             annotations = self._page.get_annotations()
         except (AttributeError, OSError):
             return
-        # Local imports — avoid pulling annotation/action machinery at
-        # module load time.
+        # Local import — avoid pulling annotation machinery at module
+        # load time.
         try:
-            from pypdfbox.pdmodel.interactive.action.pd_action_uri import (  # noqa: PLC0415
-                PDActionURI,
-            )
             from pypdfbox.pdmodel.interactive.annotation.pd_annotation_link import (  # noqa: PLC0415
                 PDAnnotationLink,
             )
@@ -161,15 +174,82 @@ class PagePane:
         for annotation in annotations:
             if not isinstance(annotation, PDAnnotationLink):
                 continue
-            rect = annotation.get_rectangle()
-            if rect is None:
-                continue
-            action = annotation.get_action()
-            if isinstance(action, PDActionURI):
-                uri = action.get_uri()
-                self._rect_map[rect] = f"URI: {uri}"
+            self.collect_link_location(annotation)
 
-    def _collect_field_locations(self) -> None:
+    def collect_link_location(self, link_annotation: Any) -> None:
+        """Record one link annotation in :attr:`_rect_map`.
+
+        Mirrors upstream's ``collectLinkLocation(PDAnnotationLink)``.
+        Stores the link's user-space ``/Rect`` (unchanged — upstream does
+        no screen-space transform here; the hover handler applies the
+        zoom/rotation transform when checking ``rect.contains``) keyed by
+        the rectangle object, with a label of ``"URI: <uri>"`` for
+        ``PDActionURI`` and ``"Page destination: <n>"`` for go-to /
+        named-destination actions resolving to a known page number.
+        """
+        rect = link_annotation.get_rectangle()
+        if rect is None:
+            return
+        try:
+            from pypdfbox.pdmodel.interactive.action.pd_action_go_to import (  # noqa: PLC0415
+                PDActionGoTo,
+            )
+            from pypdfbox.pdmodel.interactive.action.pd_action_uri import (  # noqa: PLC0415
+                PDActionURI,
+            )
+            from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_named_destination import (  # noqa: PLC0415
+                PDNamedDestination,
+            )
+            from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (  # noqa: PLC0415
+                PDPageDestination,
+            )
+        except ImportError:
+            # Action/destination machinery isn't loadable — fall back to
+            # the URI-only path used by the original code.
+            PDActionGoTo = None  # noqa: N806
+            PDNamedDestination = None  # noqa: N806
+            PDPageDestination = None  # noqa: N806
+            try:
+                from pypdfbox.pdmodel.interactive.action.pd_action_uri import (  # noqa: PLC0415
+                    PDActionURI,
+                )
+            except ImportError:
+                return
+        try:
+            action = link_annotation.get_action()
+        except (AttributeError, OSError):
+            return
+        if isinstance(action, PDActionURI):
+            uri = action.get_uri()
+            self._rect_map[rect] = f"URI: {uri}"
+            return
+        if PDActionGoTo is None or PDPageDestination is None:
+            return
+        destination = None
+        try:
+            if isinstance(action, PDActionGoTo):
+                destination = action.get_destination()
+            else:
+                getter = getattr(link_annotation, "get_destination", None)
+                destination = getter() if getter is not None else None
+            if PDNamedDestination is not None and isinstance(
+                destination, PDNamedDestination
+            ):
+                catalog = self._document.get_document_catalog()
+                resolver = getattr(catalog, "find_named_destination_page", None)
+                if resolver is not None:
+                    destination = resolver(destination)
+        except (AttributeError, OSError) as exc:
+            _LOG.error("resolving link destination failed: %s", exc)
+        if isinstance(destination, PDPageDestination):
+            try:
+                page_num = destination.retrieve_page_number()
+            except (AttributeError, OSError):
+                return
+            if page_num != -1:
+                self._rect_map[rect] = f"Page destination: {page_num + 1}"
+
+    def collect_field_locations(self) -> None:
         try:
             catalog = self._document.get_document_catalog()
             acroform = catalog.get_acro_form()
@@ -329,8 +409,9 @@ class PagePane:
             self._page_index = self._document.get_pages().index_of(page)
         except (AttributeError, ValueError):
             self._page_index = -1
-        self._rect_map.clear()
-        self._init_rect_map()
+        # ``init_rect_map`` clears + repopulates atomically; no separate
+        # clear needed here.
+        self.init_rect_map()
         self._start_rendering()
 
     def get_image(self) -> PilImage | None:
@@ -408,6 +489,18 @@ class PagePane:
             return
         with contextlib.suppress(tk.TclError):
             self._statuslabel.configure(text=text)
+
+    # ------------------------------------------------------------------
+    # Back-compat private aliases (wave 1308 promoted these to public)
+    # ------------------------------------------------------------------
+
+    # Tests written against the original underscore-prefixed names keep
+    # working; the public surface above matches upstream PagePane.
+    _init_ui = init_ui
+    _init_rect_map = init_rect_map
+    _collect_link_locations = collect_link_locations
+    _collect_link_location = collect_link_location
+    _collect_field_locations = collect_field_locations
 
 
 # ---------------------------------------------------------------------------

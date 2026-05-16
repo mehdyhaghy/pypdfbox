@@ -16,7 +16,7 @@ change.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pypdfbox.contentstream.operator_name import OperatorName
 from pypdfbox.pdmodel.pd_resources import PDResources
@@ -28,7 +28,30 @@ from .rg_tool_tip import RGToolTip
 from .scn_tool_tip import SCNToolTip
 from .tool_tip import ToolTipText
 
+if TYPE_CHECKING:
+    from pypdfbox.pdmodel.graphics.color.pd_color_space import PDColorSpace
+
 _LOG = logging.getLogger(__name__)
+
+
+# Color-space names recognised by ``is_color_space``. Covers the three
+# device spaces, the CIE-based spaces, and the special spaces. Stored as
+# the leading-slash forms as they appear in content streams.
+_COLOR_SPACE_NAMES: frozenset[str] = frozenset(
+    {
+        "/DeviceGray",
+        "/DeviceRGB",
+        "/DeviceCMYK",
+        "/Pattern",
+        "/CalGray",
+        "/CalRGB",
+        "/Lab",
+        "/ICCBased",
+        "/Indexed",
+        "/Separation",
+        "/DeviceN",
+    }
+)
 
 
 class ToolTipController:
@@ -59,7 +82,7 @@ class ToolTipController:
         if text is None:
             return None
 
-        word = self._get_word(text, offset)
+        word = self.get_word(text, offset)
         if word is None:
             return None
 
@@ -82,7 +105,7 @@ class ToolTipController:
             return FontToolTip(self._resources, row_text).get_tool_tip_text()
 
         if word == OperatorName.STROKING_COLOR_N:
-            color_space_name = self._find_color_space(
+            color_space_name = self._find_color_space_row(
                 text, offset, OperatorName.STROKING_COLORSPACE
             )
             if color_space_name is not None:
@@ -92,7 +115,7 @@ class ToolTipController:
             return None
 
         if word == OperatorName.NON_STROKING_COLOR_N:
-            color_space_name = self._find_color_space(
+            color_space_name = self._find_color_space_row(
                 text, offset, OperatorName.NON_STROKING_COLORSPACE
             )
             if color_space_name is not None:
@@ -146,14 +169,17 @@ class ToolTipController:
         return None
 
     @staticmethod
-    def _get_word(text: str, offset: int) -> str | None:
-        """Return the whitespace-delimited word containing ``offset``.
+    def get_word(text: str, caret_position: int) -> str | None:
+        """Return the whitespace-delimited word containing ``caret_position``.
 
-        Approximates ``javax.swing.text.Utilities.getWordStart`` /
-        ``getWordEnd`` against a plain string: walk left and right
-        until a whitespace boundary is found. Returns ``None`` when
-        ``offset`` is out of range or sits on whitespace.
+        Public mirror of upstream
+        ``ToolTipController.getWord(int offset)``. Approximates
+        ``javax.swing.text.Utilities.getWordStart`` / ``getWordEnd``
+        against a plain string: walk left and right until a whitespace
+        boundary is found. Returns ``None`` when ``caret_position`` is
+        out of range or sits on whitespace with no adjacent word.
         """
+        offset = caret_position
         if offset < 0 or offset > len(text):
             return None
         # Clamp the right boundary; caret can sit just past the last char.
@@ -173,14 +199,54 @@ class ToolTipController:
             return None
         return text[start:end].strip() or None
 
+    # Back-compat shim — older internal callers and tests reference
+    # ``_get_word``. Kept as a thin alias so renames stay non-breaking.
+    _get_word = get_word
+
+    @staticmethod
+    def get_row_text(text_pane: Any, line_number: int) -> str | None:
+        """Return the source-line text for ``line_number`` in ``text_pane``.
+
+        Public mirror of upstream
+        ``ToolTipController.getRowText(int offset)``, recast for
+        Tkinter (and plain strings) where lines are addressed by 1-based
+        line number rather than by character offset.
+
+        ``text_pane`` may be:
+
+        * a ``str`` — the raw buffer, split on ``"\\n"`` and indexed
+          by ``line_number`` (1-based, matching Tk's ``"N.0"`` form);
+        * any object with a ``get(start, end)`` method (e.g.
+          ``tk.Text``), which is queried for the line via
+          ``get(f"{line_number}.0", f"{line_number}.end")``.
+
+        Returns ``None`` when ``line_number`` is out of range or
+        ``text_pane`` is unsupported.
+        """
+        if text_pane is None or line_number < 1:
+            return None
+        if isinstance(text_pane, str):
+            lines = text_pane.split("\n")
+            if line_number > len(lines):
+                return None
+            return lines[line_number - 1]
+        getter = getattr(text_pane, "get", None)
+        if not callable(getter):
+            return None
+        try:
+            return getter(f"{line_number}.0", f"{line_number}.end")
+        except Exception as exc:  # pragma: no cover - tk error guard
+            _LOG.error("%s", exc)
+            return None
+
     @staticmethod
     def _get_row_text(text: str, offset: int) -> str | None:
         """Return the line of ``text`` containing ``offset``.
 
-        Approximates ``javax.swing.text.Utilities.getRowStart`` /
-        ``getRowEnd``. Returns the full line including a trailing
-        newline when present (mirrors upstream's
-        ``getText(rowStart, rowEnd - rowStart + 1)``).
+        Internal helper used by the dispatcher. Approximates
+        ``javax.swing.text.Utilities.getRowStart`` / ``getRowEnd``:
+        returns the full line including a trailing newline when present
+        (mirrors upstream's ``getText(rowStart, rowEnd - rowStart + 1)``).
         """
         if offset < 0 or offset > len(text):
             return None
@@ -192,12 +258,74 @@ class ToolTipController:
             end += 1  # include the newline, matching upstream's +1.
         return text[start:end]
 
+    @staticmethod
+    def is_color_space(word: str) -> bool:
+        """Return ``True`` when ``word`` is a colour-space name.
+
+        Recognises the eleven PDF colour-space names (PDF 32000-1
+        §8.6): the three device spaces (``/DeviceGray``, ``/DeviceRGB``,
+        ``/DeviceCMYK``), the CIE-based spaces (``/CalGray``,
+        ``/CalRGB``, ``/Lab``, ``/ICCBased``) and the special spaces
+        (``/Pattern``, ``/Indexed``, ``/Separation``, ``/DeviceN``).
+
+        Names are matched in their leading-slash form as they appear in
+        a content stream. This is the parity-tool surface — upstream's
+        Java equivalent is the package-private
+        ``isColorSpace(colorSpaceType, rowText)`` predicate used to
+        anchor an ``scn``/``SCN`` operand to the active CS row; that
+        row-form check is preserved as :meth:`_is_color_space_row`.
+        """
+        if not isinstance(word, str):
+            return False
+        return word in _COLOR_SPACE_NAMES
+
     @classmethod
-    def _is_color_space(cls, color_space_type: str, row_text: str) -> bool:
+    def _is_color_space_row(cls, color_space_type: str, row_text: str) -> bool:
+        """Return ``True`` when ``row_text`` is a ``<name> cs`` /
+        ``<name> CS`` row matching ``color_space_type``. Internal
+        helper used by :meth:`_find_color_space_row`.
+        """
         words = cls.get_words(row_text)
         return len(words) == 2 and words[1] == color_space_type
 
-    def _find_color_space(
+    # Back-compat alias for tests/callers using the original name.
+    _is_color_space = _is_color_space_row
+
+    def find_color_space(
+        self,
+        word: str,
+        resources: PDResources | None = None,
+    ) -> PDColorSpace | None:
+        """Resolve a colour-space ``word`` against ``resources``.
+
+        ``word`` may be either:
+
+        * one of the eleven canonical colour-space names recognised by
+          :meth:`is_color_space` (``/DeviceGray`` etc.), in which case
+          the corresponding device / Pattern singleton is returned via
+          :class:`pypdfbox.pdmodel.graphics.color.pd_color_space.PDColorSpace`;
+          or
+        * a resource-dict alias (e.g. ``/CS0``) — looked up in the
+          page's ``/Resources/ColorSpace`` dictionary.
+
+        ``resources`` defaults to the controller's bound resources
+        (passed to ``__init__``) when omitted. Returns ``None`` when
+        ``word`` is malformed or unknown.
+        """
+        if not isinstance(word, str) or not word.startswith("/"):
+            return None
+        from pypdfbox.cos import COSName
+        from pypdfbox.pdmodel.graphics.color.pd_color_space import (
+            PDColorSpace,
+        )
+
+        if resources is None:
+            resources = self._resources
+
+        name = COSName.get_pdf_name(word[1:])
+        return PDColorSpace.create(name, resources)
+
+    def _find_color_space_row(
         self,
         text: str,
         offset: int,
@@ -217,9 +345,12 @@ class ToolTipController:
             if previous_row is None:
                 return None
             previous_row = previous_row.strip()
-            if self._is_color_space(color_space_type, previous_row):
+            if self._is_color_space_row(color_space_type, previous_row):
                 return previous_row.split(" ")[0]
         return None
+
+    # Back-compat alias for tests/callers using the original name.
+    _find_color_space = _find_color_space_row
 
     @staticmethod
     def _position_above(text: str, offset: int) -> int:
