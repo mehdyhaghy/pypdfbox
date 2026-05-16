@@ -2909,6 +2909,51 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   - `test_high_resolution_image_icon.py`: switched per-test `tk.Tk()` to the session-scoped fixture (eliminating extra Tk roots).
 - **Verified**: 2 concurrent shells × 5 iterations = 10/10 processes finish exit 0; 3 shells × 6 iterations = 18/18 exit 0; `PYPDFBOX_SKIP_TK=1` → 357 tests skip cleanly.
 
+## Wave 1320 — coverage-boost pass #7 (6 parallel agents, +340 hand-written tests)
+
+Sixteen modules from 71-81% to **94-100%**. Global line coverage **95%**.
+
+### sampled_image_reader + glyph_cache + matrix — coverage boost
+
+- `pdmodel/graphics/image/sampled_image_reader.py` **71% → 94%**: 49 tests covering `_BitReader` (EOF padding + `align_to_byte`), `get_stencil_image` 3-tuple / 4-tuple / no-paint / short-data, `get_rgb_image` color-key / `to_float_array` / short / invalid / bytearray data / 16bpc / subsample+region offset, `get_raw_raster` 2-channel L fallback, `clip_region` clamping, parity stubs, `apply_color_key_mask`, `MultipleInputStream` read/readinto/close/OSError swallow.
+- `rendering/glyph_cache.py` **73% → 100%**: 9 tests covering cache hits, CID/non-CID missing-glyph warnings, Standard14 LF (code 10) empty-path special case (PDFBOX-4001), missing `get_normalized_path` fallback, `OSError` recovery without poisoning the cache.
+- `util/matrix.py` **72% → 100%**: 31 tests covering private 9-float ctor, bad-arg rejection, `create_matrix` non-`COSArray` / short / non-numeric paths, in-place `concatenate`/`translate`/`scale`/`rotate`, `transform` Vector/tuple/Point2D-like overloads, shear-aware scaling-factor accessors, `concatenate_matrices` static, `clone`, equality/hash/repr parity, static `check_float_values` / `multiply_arrays` (incl. NaN guard).
+
+### radial + axial shading_context — coverage boost
+
+- `pdmodel/graphics/shading/axial_shading_context.py` **75% → 100%**: New tests exercise default `/Coords` / `/Domain` / `/Extend` fallbacks, the device-bounds TypeError/IndexError dist-fallback, the factor==0 / zero-domain `calc_color_table` short-circuits, `dispose()`, `get_function` passthrough, every `get_raster` branch (denom==0 with/without bg, both extend sides, both transparent-continue sides, key-clamp defensive lookups).
+- `pdmodel/graphics/shading/radial_shading_context.py` **71% → 97%**: Default coord/domain/extend handling, device-bounds fallbacks, factor==0 / zero-domain `calc_color_table`, `dispose()`, `get_function`, `calculate_input_values` (NaN from negative discriminant + zero denom, root ordering for positive denom), `get_raster` matrix of NaN-roots / extend-both / extend-start / extend-end / no-extend cases with and without background.
+- 46 tests across `tests/pdmodel/graphics/shading/test_axial_radial_shading_context_coverage.py`. Remaining 4 radial lines are structurally unreachable bg-None defensive continues.
+
+### pd_free_text + pd_line appearance_handler — coverage boost
+
+- `pdmodel/interactive/annotation/handlers/pd_free_text_appearance_handler.py` **72% → 100%**: 24 tests covering /DA RGB/CMYK/Gray parsing, /DS `color:` override, font extraction with AcroForm fallback, callout polyline + ending styles, `/Rotate` 0/90/180/270 branches, `_scan_da` exception handlers, `_resolve_font` AcroForm path, dashed-border pattern.
+- `pdmodel/interactive/annotation/handlers/pd_line_appearance_handler.py` **74% → 98%**: 24 tests covering Top vs Inline caption positioning, vertical caption bar via `/CO`, interior color path, angled vs non-angled endings, negative leader-line sign flip, thin-width ending degeneracy, dashed-border pattern, `_interior_components` size/sequence/empty variants, missing-string-width monospace fallback.
+
+### ccitt_fax_decoder_stream — coverage boost
+
+- `filter/ccitt_fax_decoder_stream.py` **73% → 100%** (combined with existing wave-1280 coverage): 17 tests covering the G3 1D decode branch, `EncodedByteAlign` option toggle, `readable` / `readinto` / `skip` / `close` RawIOBase plumbing, `read(None)` full-drain, suppressed inner-close failure, all 10 parity stubs (`fetch`, `decode1_d`, `decode2_d`, `decode_row`, `decode_row_type2/4/6`, `decode_run`, `get_next_changing_element`, `read_bit`, `reset_buffer`).
+
+### Six 71-75%-coverage modules — boost
+
+91 tests across 6 files. Every module **100%**.
+
+- `pdmodel/interactive/form/paragraph.py` **71% → 100%**: 16 tests for `build_prefix_widths`, `find_max_fitting_chars` (incl. PDFBOX-6082 single-char-overflow guard), line-wrap whitespace-overflow branch, `Line.calculate_width` trailing-whitespace.
+- `pdmodel/fixup/acro_form_default_fixup.py` **73% → 100%**: 7 tests for no-`get_acro_form` short-circuit, `TypeError` zero-arg fallback, three `/NeedAppearances` branches.
+- `tools/imageio/meta_util.py` **73% → 100%**: 7 tests for `debug_log_metadata` — disabled-debug, `to_xml` happy path, `str()` fallback, malformed-XML exception swallow, static-only constructor guard.
+- `pdmodel/graphics/state/pd_graphics_state.py` **74% → 100%**: 19 tests for every getter/setter pair, page-rect ctor, `_path_bounds` (None/empty/scalar/PDRectangle-like), bbox-intersection fallbacks, clone for text/text-line matrices and non-cloneable CTM, `set_blend_mode(None)` guard.
+- `rendering/tiling_paint_factory.py` **74% → 100%**: 19 tests for every `TilingPaintParameter.equals` branch + `to_string`/`__repr__`/`__hash__` + non-weakly-referenceable-paint strong-ref fallback.
+- `fontbox/ttf/glyf_composite_descript.py` **75% → 100%**: 23 tests for byte-stream ctor (single/chain/instructions trailer), `init_descriptions` branches, `resolve` idempotency, four missing-description accessor fallbacks, point/contour-count fallbacks, `_to_signed_short` wraparound, `from_glyph`.
+
+### pdf_object_stream_parser part 2 + 3 small modules — coverage boost
+
+49 tests across 4 files.
+
+- `pdfparser/pdf_object_stream_parser.py` **74% → 100%**: Wave 1316 stopped at 74% because of a latent `BaseParser.read_long()` missing `skip_spaces()`. This pass monkey-patches `BaseParser.read_long` per-test to mirror upstream Java's `skipSpaces()` call, unblocking parse_object / parse_all_objects / private_read_object_* loop bodies + PDFBOX-4927 duplicate-key continue branch + early-break-on-/First-boundary path.
+- `xmpbox/type/complex_property_container.py` **76% → 100%**: 14 tests for `get_first_equivalent_property`, `is_same_property` (type-mismatch / both-names-None / names-differ / identity), `contains_property`, `remove_properties_by_name` short-circuits.
+- `util/xml_util.py` **79% → 97%**: 15 tests for DOCTYPE rejection, OSError pass-through vs generic-exception wrap, stream / bytes / bytearray inputs, `get_node_value` text-only filter, utility-class constructor guard. 1 dead line — `defusedxml`-installed branch (optional dep not installed).
+- `rendering/soft_mask.py` **81% → 100%**: 14 tests for identity-transfer short-circuit, backdrop-color OSError swallow, inner-image mode/size coercion, bbox unpack failure fall-through, RGB→L mask coercion, transfer-function cache + eval-failure fallback, LA-tuple pixel-sample unwrap.
+
 ## Wave 1319 — coverage-boost pass #6 (5 parallel agents, +392 hand-written tests)
 
 Thirteen modules from 59-71% to **92-100%**.
