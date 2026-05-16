@@ -2909,6 +2909,46 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   - `test_high_resolution_image_icon.py`: switched per-test `tk.Tk()` to the session-scoped fixture (eliminating extra Tk roots).
 - **Verified**: 2 concurrent shells × 5 iterations = 10/10 processes finish exit 0; 3 shells × 6 iterations = 18/18 exit 0; `PYPDFBOX_SKIP_TK=1` → 357 tests skip cleanly.
 
+## Wave 1316 — coverage-boost pass #3 (6 parallel agents, +283 hand-written tests, +3 source bug fixes)
+
+Eight more substantive modules from ~28–39% to **74–100%**. Also fixed 3 latent source bugs surfaced by the test work.
+
+### group_graphics — coverage boost
+
+- 83 hand-written tests at `tests/rendering/test_group_graphics_coverage.py` covering: isolated vs non-isolated group composition (`composite_onto` for RGBA→RGBA, translucent RGBA→RGB, RGB-source conversion, generic-mode `L` alpha-mask fallback); knockout-group accumulation; soft-mask alpha compositing; blend-mode composite state (`set_xor_mode` / `set_paint_mode` / `set_composite`, paint-vs-color stroke precedence); group bbox clipping; backdrop removal (§11.4.5.3 — RGB subtract, zero-saturation underflow, RGBA branch entry, no-image / no-bg / invalid-bg / unsupported-mode early returns); shape primitives (arc / oval / polygon / polyline / round-rect, fill/draw overloads); `draw_image` overloads + paste-failure path; glyph-vector delegation; full transform algebra (translate / scale / rotate-two-arg / rotate-about-point / shear / transform-compose); `dispose` / `create` clone independence.
+- `pypdfbox/rendering/group_graphics.py`: **33% → 99%** line coverage (+66pp). Uncovered: 4 lines in the RGBA backdrop-removal reassignment that's dead code under current Pillow because `ImageChops.subtract(RGB, RGBA)` raises before reaching them — flagged as a latent production bug (mode mismatch at lines 556 vs. 559).
+
+### file_system_font_provider — coverage boost
+
+- 37 hand-written tests at `tests/pdmodel/font/test_file_system_font_provider_coverage.py` covering: per-platform `_default_font_dirs` dispatch (darwin / linux / win32 with/without `LOCALAPPDATA` / unknown); `_collect_font_files` (TTF/OTF/TTC/OTC/PFB suffix filter, recursion, `is_dir` and `rglob` OSError paths); real TTF scan via bundled Liberation fonts (TTF + OTF-suffix variant); corrupt-file swallow path; `compute_hash` (stream + bytes); `create_fs_ignored`; `is_bad_path`; `get_disk_cache_file` (env / home / tempdir / bad-env fallbacks); `save_disk_cache` round-trip + OSError swallow; `write_font_info`; `add_true_type_font_impl` with precomputed hash + missing-name-table early return.
+- `pypdfbox/pdmodel/font/file_system_font_provider.py`: **35% → 88%** line coverage (+53pp). Full font suite 3149/3149. Uncovered: Type 1 PFB success path (no PFB bundled), `_add_true_type_collection` success path (no TTC bundled), fontTools `ImportError` branches (hard dep, hard to simulate).
+
+### pd_cie_based_color_space — coverage boost
+
+- 8 hand-written tests at `tests/pdmodel/graphics/color/test_pd_cie_based_color_space_coverage.py` covering: `to_rgb_image(None)` short-circuit; `to_rgb_image` happy path (1×1, 2×2 rasters, identity colour space); clamp branches for `to_rgb` values below 0 and above 1; zero-size raster; `to_raw_image` returning `None`; `to_string` / `__str__` delegation.
+- `pypdfbox/pdmodel/graphics/color/pd_cie_based_color_space.py`: **35% → 94%** line coverage (+59pp). The `/WhitePoint`/`/BlackPoint`/`/Gamma` accessors live in the subclass `pd_cie_dictionary_based_color_space.py` — out of scope here.
+
+### pdf_object_stream_parser — coverage boost
+
+- 22 hand-written tests at `tests/pdfparser/test_pdf_object_stream_parser_coverage.py` covering: constructor header validation (missing/negative `/N` and `/First`, well-formed acceptance, zero-N degenerate case); empty offset-table walkers (`read_object_numbers`, `private_read_object_numbers`, `private_read_object_offsets`, `parse_all_objects`, `parse_object`) with cleanup side-effect verification (`_document` cleared in finally); `get_object_key` (empty xref fallback, identity-reuse from xref, fresh construction); finally-block cleanup on PDFParseError propagation.
+- `pypdfbox/pdfparser/pdf_object_stream_parser.py`: **36% → 74%** line coverage (+38pp). Uncovered: parse_object / parse_all_objects body past the first successful offset read — flagged as a latent parser bug (`BaseParser.read_long()` does not call `skip_spaces()`, but the loop emits `read_object_number()` followed by `read_long()`; upstream Java's `readLong()` begins with `skipSpaces()`). Out of scope to fix here.
+
+### Five 30-40%-coverage modules — boost
+
+- `pdmodel/resource_cache.py` **28% → 94%**: 8 tests covering the `ResourceCache.put(key, value)` type-dispatch (PDFont / PDColorSpace / PDFormXObject / PDXObject + TypeError fallback). **Fixed three latent source bugs**: `from pypdfbox.pdmodel.graphics import PDColorSpace` (wrong path), `from pypdfbox.pdmodel.graphics.image import PDXObject` (wrong submodule), and `put_form` slot routed to non-existent name (fixed to delegate to `put_x_object`).
+- `pdmodel/graphics/image/png_converter.py` **37% → 97%**: 45 tests covering `parse_png_chunks` (RGB / palettised / truncated / non-PNG), `Chunk.get_data` + CRC validation, `make_crc_table` / `update_crc` / `crc` parity vs `zlib.crc32`, `build_decode_params`, dispatcher stubs, `map_png_render_intent` table, `read_int` / `read_png_float`, full `MultipleInputStream` semantics (empty / multi-chunk / byte-by-byte / empty-chunk skip).
+- `tools/pdf_text2_html.py` **35% → 100%**: 35 tests covering module-level `_escape` / `_append_escaped`, full `FontState` state machine (open / close-with-reopen / clear / push variants), HTML-wrapping overrides (start/end document, start/end article, write_string with and without positions, write_paragraph_end, get_title heuristic). Bridges a 1-arg → 3-arg `write_string` signature divergence via per-test `PDFTextStripper.write_string` patch (documented).
+- `tools/decompress_objectstreams.py` **38% → 94%**: 10 tests using the wave-1314 `_PDLoaderShim` pattern — happy path against `rot0.pdf` / `rot90.pdf`, OSError → exit-4 mapping, direct `call()` API, argparse wiring via `call` capture stub.
+
+### content-stream operators — coverage boost
+
+- 35 hand-written tests at `tests/contentstream/operator/test_operators_coverage_wave1316.py` covering 5 operators:
+  - `DrawObject` (`Do`) **39% → 96%**: image-xobject short-circuit, form / transparency-group dispatch, attribute-based form sniff, recursion guard at depth 50, no-context / no-resources / unknown-xobject early returns.
+  - `SetColor` base (`sc/scn/SC/SCN`) **52% → 100%**: null color space, pattern-colorspace short-circuit, valid component build, missing-operand raise, PDFBOX-5851 non-number → empty-PDColor branch via concrete subclass.
+  - `MarkedContentPointWithProperties` (`DP`) **65% → 97%**: missing operand, non-name tag silent skip, no-context guard, inline-dict path, named-property resolution via resources, unresolvable named drop.
+  - `BeginMarkedContentSequenceWithProperties` (`BDC`) **68% → 97%**: same six branches as `DP` plus no-resources path.
+  - `Concatenate` (`cm`) **76% → 100%**: missing operand, non-number skip, six-float transform dispatch, integer operand acceptance, graphics-state CTM fallback when engine lacks `transform`, no-context guard, `get_name`.
+
 ## Wave 1315 — coverage-boost pass #2 (5 parallel agents, +271 hand-written tests)
 
 Continues the wave-1314 trajectory. Nine more substantive modules go from ~29–33% line coverage to **87–100%**.

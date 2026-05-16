@@ -20,16 +20,17 @@ class ResourceCache(PDResourceCache):
         :class:`PDResourceCache`. Mirrors upstream
         ``ResourceCache.put`` (Java line 287)."""
         from pypdfbox.pdmodel.font import PDFont
-        from pypdfbox.pdmodel.graphics import PDColorSpace
+        from pypdfbox.pdmodel.graphics.color.pd_color_space import PDColorSpace
         from pypdfbox.pdmodel.graphics.form import PDFormXObject
-        from pypdfbox.pdmodel.graphics.image import PDXObject
+        from pypdfbox.pdmodel.graphics.pd_x_object import PDXObject
 
         if isinstance(value, PDFont):
             self.put_font(key, value)
         elif isinstance(value, PDColorSpace):
             self.put_color_space(key, value)
         elif isinstance(value, PDFormXObject):
-            self.put_form(key, value)
+            # PDFormXObject extends PDXObject — both land in the same slot.
+            self.put_x_object(key, value)
         elif isinstance(value, PDXObject):
             self.put_x_object(key, value)
         else:
