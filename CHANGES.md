@@ -2909,12 +2909,12 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   - `test_high_resolution_image_icon.py`: switched per-test `tk.Tk()` to the session-scoped fixture (eliminating extra Tk roots).
 - **Verified**: 2 concurrent shells × 5 iterations = 10/10 processes finish exit 0; 3 shells × 6 iterations = 18/18 exit 0; `PYPDFBOX_SKIP_TK=1` → 357 tests skip cleanly.
 
-## Wave 1306 — appearance-stream inheritance + FDF / ICC / output-intent typed accessors + veraPDF scrub
+## Wave 1306 — appearance-stream inheritance + FDF / ICC / output-intent typed accessors + permissive-license-only validator policy
 
-### veraPDF scaffold removal (permissive-license-only policy)
+### Validator scaffold scrub (permissive-license-only policy)
 
-- Deleted `scripts/verapdf_check.py` and `tests/integration/test_verapdf_validation.py` (added in wave 1305). veraPDF is GPL-3 — even as an external subprocess, the project ships permissive-license components only, so all coupling to it (scripts, tests, CI install plumbing, documentation recommendations) has been stripped.
-- Documentation pass: removed veraPDF mentions from `README.md`, `CLAUDE.md`, `PROVENANCE.md`, `RELEASE_NOTES_v0.9.0rc1.md`, `pypdfbox_full_prd_v_1.md`, `scripts/qpdf_check.py`, `pypdfbox/pdmodel/pdfa_flavour.py`, `pypdfbox/pdmodel/pdfua_flavour.py`, `pypdfbox/xmpbox/pdfua_identification_schema.py`, `pypdfbox/xmpbox/xmp_metadata.py`. PDF/A / PDF/UA conformance validation is now explicitly **out of scope** — downstream users can wire up whichever external validator they choose (the choice no longer ships in this repo).
+- Removed the wave-1305 GPL-3 PDF/A validator integration scaffold (one `scripts/` script + one `tests/integration/` test file) and stripped all named mentions of the validator from documentation (`README.md`, `CLAUDE.md`, `PROVENANCE.md`, `RELEASE_NOTES_v0.9.0rc1.md`, `pypdfbox_full_prd_v_1.md`) and source-file comments (`scripts/qpdf_check.py`, `pypdfbox/pdmodel/pdfa_flavour.py`, `pypdfbox/pdmodel/pdfua_flavour.py`, `pypdfbox/xmpbox/pdfua_identification_schema.py`, `pypdfbox/xmpbox/xmp_metadata.py`). Even an external subprocess to a copyleft tool counts as coupling under the PRD §4 forbidden-license rule; the project ships permissive-license components only.
+- PDF/A / PDF/UA conformance validation is now explicitly **out of scope** — downstream users wire up whichever external validator they choose; the project itself stays validator-agnostic and bundles no scaffolding for any specific copyleft tool.
 - `qpdf` (Apache 2.0) remains the only external validation pillar pypdfbox ships scaffolding for, since it is the only one that fits the permissive-license rule.
 
 
@@ -2953,7 +2953,7 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
 
 ## Wave 1305 — more deferred closures
 
-**Closed (Wave 1306 audit):** the wave 1305 veraPDF integration scaffold (`scripts/verapdf_check.py`, `tests/integration/test_verapdf_validation.py`, CI install plumbing) was reverted in wave 1306 because veraPDF is GPL-3 and the project ships permissive-license components only — see the wave 1306 entry below.
+**Closed (Wave 1306 audit):** the wave 1305 PDF/A-validator integration scaffold (one `scripts/` script + one `tests/integration/` test file + CI install plumbing) was reverted in wave 1306 because the tool was copyleft-licensed (GPL-3) and the project ships permissive-license components only — see the wave 1306 entry below.
 
 ### Public-key encryption per-recipient envelope grouping (closes line 362)
 
