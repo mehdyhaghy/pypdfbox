@@ -2909,6 +2909,44 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   - `test_high_resolution_image_icon.py`: switched per-test `tk.Tk()` to the session-scoped fixture (eliminating extra Tk roots).
 - **Verified**: 2 concurrent shells × 5 iterations = 10/10 processes finish exit 0; 3 shells × 6 iterations = 18/18 exit 0; `PYPDFBOX_SKIP_TK=1` → 357 tests skip cleanly.
 
+## Wave 1315 — coverage-boost pass #2 (5 parallel agents, +271 hand-written tests)
+
+Continues the wave-1314 trajectory. Nine more substantive modules go from ~29–33% line coverage to **87–100%**.
+
+### brute_force_parser — coverage boost
+
+- 32 hand-written tests at `tests/pdfparser/test_brute_force_parser_coverage.py` covering: `bf_search_for_objects` (single / multi-marker, empty source, `endobj`-substring rejection), `bf_search_for_xref` + `bf_search_for_x_ref` alias, all 8 `getattr(super(), …, None)` delegator fallback paths (`bf_search_for_last_eof_marker`, `bf_search_for_obj_stream_offsets`, `bf_search_for_obj_streams`, `bf_search_for_x_ref_streams`, `bf_search_for_x_ref_tables`, `find_string`, `get_bfcos_object_offsets`, `search_for_trailer_items`, `bf_search_for_trailer`), `compare_cos_objects` (eq / lt / gt / missing-attr default), `is_catalog` / `is_info` heuristics, `search_nearest_value` edge cases, `bf_search_triggered` state mutation. Uncovered (9 lines): the "callable impl present" branches inside each `getattr` delegator — unreachable by design (the fallback path is the live one).
+- `pypdfbox/pdfparser/brute_force_parser.py`: **31% → 90%** line coverage (+59pp). Full pdfparser suite 1177/1177.
+
+### appearance_generator_helper — coverage boost
+
+- 59 hand-written tests at `tests/pdmodel/interactive/form/test_appearance_generator_helper_coverage.py` covering: constructor exception paths (OSError re-raise + generic swallow + DA resolved with proper /DR); `set_appearance_value` (None → "", real value emits Tj); `get_formatted_value` (newline collapse with LF/CR/CRLF); `validate_and_ensure_acro_form_resources` (no acroform / AttributeError / None DR / widget stream None / widget resources None / hoist into form); `is_valid_appearance_stream` (None / non-stream / missing bbox / real rect / AttributeError); `prepare_normal_appearance_stream`; `resolve_rotation` (no chars + with chars); `calculate_matrix` (0/90/180/270 with translations); `is_multi_line` / `shall_comb` (all 5 negative branches); `calculate_font_size` (no DA → default / explicit size / zero → auto-size / AttributeError on rect); `resolve_glyph_height` (path missing / OSError / AttributeError / bounds_2d / height attr / no height); `resolve_cap_height`, `resolve_descent`, `resolve_bounding_box` (stream bbox + widget fallback); `write_to_stream`. Two latent source bugs pinned via tests: `COSName.DA` / `COSName.Q` missing constants; `apply_padding` imports `PDRectangle` from `pypdfbox.pdmodel.common` (not re-exported) — out of scope to fix, documented for a future wave.
+- `pypdfbox/pdmodel/interactive/form/appearance_generator_helper.py`: **31% → 98%** line coverage (+67pp).
+
+### page_drawer — coverage boost
+
+- 65 hand-written tests at `tests/rendering/test_page_drawer_coverage.py` covering: path-building (`move_to` / `line_to` / `curve_to` / `close_path` / `append_rectangle` with `_XYPoint`-shaped points, "no prior subpath" fallback); path-painting (`stroke_path` / `fill_path` even-odd + non-zero / `fill_and_stroke_path` / `clip` (W / W*) / `end_path` / `set_clip`); image/form/shading/glyph delegation (`draw_image` decoded PIL + `get_image` raising + None + paste raising, `show_form`, `show_annotation` filter on/off, `show_font_glyph`, `show_type3_glyph` with + without renderer helper, `shading_fill` no resources / resolved / helper-raising / get-shading-raising); transparency stack (`show_transparency_group` push/pop + early-return when `_image` is None, `show_transparency_group_on_graphics` image-swap + restore, `has_transparency`, `TransparencyGroup` getters/setters + `create2_byte_gray_alpha_image`); misc surface (`get_paint` stroking/non-stroking, `get_stroke`, `apply_transfer_function`, `get_dash_array`, `is_all_zero_dash`, `is_rectangular`, `clamp_color`, `transfer_clip`, `get_inv_lookup_table`, `set_rendering_hints`, OCG visibility predicates, marked-content delegation, tiling-pattern fill, `begin/end_text_clip`, `get_subsampling`, blend-mode predicate).
+- `pypdfbox/rendering/page_drawer.py`: **33% → 99%** line coverage (+66pp). Full rendering suite 682/682. Uncovered: `draw_page` integration entry (needs a full PDF fixture; covered indirectly by other tests), `BlendMode` import-failure branch, two `is_rectangular` synthetic-non-list-input edge cases.
+
+### Five 30%-coverage modules — boost
+
+87 hand-written tests across 4 files. Each module ≥88% coverage.
+
+- `pdfwriter/compress/cos_writer_object_stream.py`: **30% → 95%**. Covers `prepare_stream_object` validation (None key/obj, COSObject unwrap), every `write_cos_*` token writer, container writers (`[]` and `<<>>`), `write_object` dispatch (pool hit, indirect-with-key reference, top-level unwrap, unknown type → `OSError`, COSNull), full `write_objects_to_stream` header assembly with offsets, plus all back-compat aliases. 27 tests.
+- `pdmodel/fixup/processor/acro_form_orphan_widgets_processor.py`: **29% → 88%**. Covers `process` early-return paths, per-page annotation-read OSError tolerance, `add_font_from_widget` branches, `resolve_non_root_field` parent-chain + cached map hit, `ensure_font_resources` DA parsing (empty / no slash / font present / font missing / ValueError on missing space). 22 tests.
+- `pdmodel/interactive/annotation/handlers/pd_ink_appearance_handler.py`: **30% → 98%**. Covers type / color / zero-border / missing-InkList / empty-paths guards plus single + multi-path stroke happy paths with rectangle expansion and dashed-border path. 10 tests.
+- `pdmodel/graphics/shading/pd_mesh_based_shading_type.py`: **30% → 100%**. Covers `generate_patch` / `read_patch` / `collect_patches` raising `NotImplementedError` on the abstract base; `get_bounds` returning `None` for missing/empty patches and aggregating triangle corners across patches.
+- `pdmodel/graphics/shading/pd_triangle_based_shading_type.py`: **32% → 99%**. Covers bits-per-coordinate / -component cached getters and setters, `interpolate` (zero-span and normal-span), `/Decode` accessors including out-of-range / plain-list AttributeError fallback / cached-list short branch, abstract `read_vertex` + `collect_triangles`, `get_bounds`. (28 tests combined for the two shading modules in one file.)
+
+### tools/ — coverage boost on 4 more CLI scripts
+
+- 28 hand-written tests at `tests/tools/test_tools_coverage_wave1315.py` covering:
+  - `text_to_pdf` (32% → **91%**): default PDF write, landscape + A4 + custom margins, form-feed (\f) page-break path, empty input (blank-page fallback), missing infile/outfile guard, OSError → exit 4, both `create_pdf_from_text` overloads, every setter, every PageSizes enum member.
+  - `write_decoded_doc` (32% → **87%**): full round-trip via `_PDLoaderShim`, default outfile derivation (`_unc.pdf`), `-skipImages` flag, load-error → exit 4, missing-infile guard, non-stream `process_object` no-op, plain-stream decode + `/Filter` removal.
+  - `export_xfdf` (29% → **90%**): form PDF → `.xfdf`, no-form warning path (returns 0), load error → exit 4, missing-infile guard, default outfile derivation.
+  - `import_xfdf` (29% → **96%**): full round-trip with form PDF, default outfile overwrites input, no-form silent return, load error → exit 4, `import_fdf` helper short-circuit when AcroForm is None.
+- Combined for the 4 modules: **31% → 91%**. Reuses the wave 1314 `_PDLoaderShim` (Loader → PDDocument context manager) and adds a `_StubType1` `PDType1Font` subclass that lets the text-to-PDF layout loop run without the unported standard-14 font factory. Two latent runner bugs documented out of scope: `text_to_pdf` calls `PDType1Font(FontName.HELVETICA)` but the constructor expects `COSDictionary`; `write_decoded_doc` references `COSName.XOBJECT` / `COSName.IMAGE` which aren't defined on the lite COSName surface (the `-skipImages` branch only hits these on streams with those keys — not present in any current test fixture).
+
 ## Wave 1314 — coverage-boost pass (5 parallel agents, +314 hand-written tests)
 
 This wave switches from method-parity round-out to test-coverage extension on previously under-tested substantive modules. Six modules go from ~20-28% line coverage to **78-100%**.
