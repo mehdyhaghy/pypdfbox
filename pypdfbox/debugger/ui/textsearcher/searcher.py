@@ -83,16 +83,16 @@ class Searcher:
     def _previous_action(self) -> None:
         if self._total_match != 0 and self._current_match != 0:
             self._current_match -= 1
-            self._scroll_to_word(self._highlights[self._current_match].start_offset)
-            self._update_highlighter(self._current_match, self._current_match + 1)
-            self._update_navigation_buttons()
+            self.scroll_to_word(self._highlights[self._current_match].start_offset)
+            self.update_high_lighter(self._current_match, self._current_match + 1)
+            self.update_navigation_buttons()
 
     def _next_action(self) -> None:
         if self._total_match != 0 and self._current_match != self._total_match - 1:
             self._current_match += 1
-            self._scroll_to_word(self._highlights[self._current_match].start_offset)
-            self._update_highlighter(self._current_match, self._current_match - 1)
-            self._update_navigation_buttons()
+            self.scroll_to_word(self._highlights[self._current_match].start_offset)
+            self.update_high_lighter(self._current_match, self._current_match - 1)
+            self.update_navigation_buttons()
 
     # ------------------------------------------------------------------
     # Document listener equivalents
@@ -117,10 +117,29 @@ class Searcher:
             self._search_panel.reset()
             self._remove_all_highlights()
             return
-        self._search(word)
+        self.search(word)
 
-    def _search(self, word: str) -> None:
-        assert self._search_panel is not None
+    def search(self, word: str) -> list[Highlight]:
+        """Run the search for ``word`` and refresh highlight/nav state.
+
+        Mirrors the private ``search(String word)`` overload in upstream
+        ``Searcher``. Returns the resulting highlight list so tests can
+        observe matches without reaching into private state; upstream is
+        ``void`` so the addition is a non-breaking extension.
+        """
+        if self._search_panel is None:
+            # Direct invocation without a panel: search using the engine
+            # in literal, case-sensitive mode (mirrors the no-flags default
+            # the upstream JTextComponent test harness uses).
+            highlights = self._search_engine.search(word, True)
+            self._highlights = highlights
+            if highlights:
+                self._total_match = len(highlights)
+                self._current_match = 0
+            else:
+                self._total_match = 0
+                self._current_match = -1
+            return highlights
         if self._search_panel.is_regex():
             highlights = self._search_engine.search_regex(
                 word, self._search_panel.is_case_sensitive()
@@ -133,12 +152,16 @@ class Searcher:
         if highlights:
             self._total_match = len(highlights)
             self._current_match = 0
-            self._scroll_to_word(highlights[0].start_offset)
-            self._update_highlighter(self._current_match, self._current_match - 1)
-            self._update_navigation_buttons()
+            self.scroll_to_word(highlights[0].start_offset)
+            self.update_high_lighter(self._current_match, self._current_match - 1)
+            self.update_navigation_buttons()
         else:
             self._search_panel.update_counter_label(0, 0)
             self._total_match = 0
+        return highlights
+
+    # Backwards-compatible private alias retained for in-tree callers.
+    _search = search
 
     # ------------------------------------------------------------------
     # Change listener (checkbox state) and component listener equivalents
@@ -147,7 +170,7 @@ class Searcher:
     def state_changed(self, _event: Any = None) -> None:
         if self._search_panel is None:
             return
-        self._search(self._search_panel.get_search_word())
+        self.search(self._search_panel.get_search_word())
 
     # Component listener: only ``componentShown`` / ``componentHidden`` did
     # anything meaningful upstream.
@@ -169,7 +192,11 @@ class Searcher:
     # Helpers
     # ------------------------------------------------------------------
 
-    def _update_navigation_buttons(self) -> None:
+    def update_navigation_buttons(self) -> None:
+        """Sync Prev/Next enabled state and the counter label.
+
+        Mirrors ``Searcher.updateNavigationButtons`` upstream.
+        """
         if self._current_match == 0:
             self._previous_enabled = False
         elif 1 <= self._current_match <= self._total_match - 1:
@@ -185,19 +212,59 @@ class Searcher:
             self._search_panel.set_next_enabled(self._next_enabled)
             self._search_panel.set_previous_enabled(self._previous_enabled)
 
-    def _scroll_to_word(self, offset: int) -> None:
+    _update_navigation_buttons = update_navigation_buttons
+
+    def scroll_to_word(self, offset: int) -> None:
+        """Scroll the text widget so the character at ``offset`` is visible.
+
+        Mirrors ``Searcher.scrollToWord``. Upstream calls
+        ``scrollRectToVisible(modelToView(offset))``; Tk's ``Text.see``
+        is the direct equivalent.
+        """
         try:
             self._text_component.see(self._offset_to_index(offset))
         except Exception:  # pragma: no cover
             LOG.exception("failed to scroll to offset %s", offset)
 
-    def _update_highlighter(self, present_index: int, previous_index: int) -> None:
-        if previous_index != -1 and 0 <= previous_index < len(self._highlights):
-            self._change_highlighter(previous_index, PAINTER)
-        if 0 <= present_index < len(self._highlights):
-            self._change_highlighter(present_index, SELECTION_PAINTER)
+    _scroll_to_word = scroll_to_word
 
-    def _change_highlighter(self, index: int, new_painter: str) -> None:
+    def update_high_lighter(
+        self, present_index: int = -1, previous_index: int = -1
+    ) -> None:
+        """Re-apply highlight tags around the current/previous match.
+
+        Mirrors ``Searcher.updateHighLighter``. When called with the
+        defaults (``-1``/``-1``) re-applies the default ``PAINTER`` tag
+        to every known highlight — useful after a tag reset.
+        """
+        if present_index == -1 and previous_index == -1:
+            for idx in range(len(self._highlights)):
+                self.change_highlighter(idx, PAINTER)
+            return
+        if previous_index != -1 and 0 <= previous_index < len(self._highlights):
+            self.change_highlighter(previous_index, PAINTER)
+        if 0 <= present_index < len(self._highlights):
+            self.change_highlighter(present_index, SELECTION_PAINTER)
+
+    _update_highlighter = update_high_lighter
+
+    def change_highlighter(self, index_or_strategy: Any, new_painter: str | None = None) -> None:
+        """Swap the painter on one highlight, or replace the search strategy.
+
+        Two-argument form mirrors upstream ``changeHighlighter(int, painter)``:
+        re-tags ``self._highlights[index]`` with ``new_painter``.
+
+        Single-argument form is a project extension: if a ``SearchEngine``
+        instance (or any object exposing ``search``/``search_regex``) is
+        passed, it replaces the underlying engine — letting callers swap
+        between literal, regex, case-sensitive, or whole-word strategies
+        without rebuilding the :class:`Searcher`.
+        """
+        if new_painter is None:
+            # Strategy-swap form (project extension).
+            self._search_engine = index_or_strategy
+            return
+        index = int(index_or_strategy)
         existing = self._highlights[index]
         # Remove the old span by clearing both tag names on that range.
         try:
@@ -212,6 +279,8 @@ class Searcher:
         self._highlights[index] = Highlight(
             existing.start_offset, existing.end_offset, new_painter
         )
+
+    _change_highlighter = change_highlighter
 
     def _remove_all_highlights(self) -> None:
         try:

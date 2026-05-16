@@ -51,11 +51,24 @@ class ImageTypeMenu(MenuBase):
         if tk is None:  # pragma: no cover - defensive
             msg = "tkinter is not available"
             raise RuntimeError(msg)
-        menu = tk.Menu(master, tearoff=0)
-        self.set_menu(menu)
-        self._var = tk.StringVar(master=master, value=self.IMAGETYPE_RGB)
+        self._master = master
+        self.set_menu(self.create_menu())
+
+    def create_menu(self) -> tk.Menu:  # type: ignore[name-defined]
+        """Build and return the radio-group ``tk.Menu`` used by this menubar entry.
+
+        Mirrors upstream ``ImageTypeMenu.createMenu``. The four labels share
+        a single :class:`tk.StringVar` so selecting one entry deselects the
+        others (the Tk analogue of Swing's ``ButtonGroup``).
+        """
+        menu = tk.Menu(self._master, tearoff=0)
+        self._var = tk.StringVar(master=self._master, value=self.IMAGETYPE_RGB)
         for label in self._LABELS:
             menu.add_radiobutton(label=label, value=label, variable=self._var)
+        return menu
+
+    # Back-compat alias for the previously-private builder.
+    _create_menu = create_menu
 
     # --- singleton --------------------------------------------------------
 

@@ -88,7 +88,7 @@ class TreeStatusPane:
             raise RuntimeError("init() must be called before update_tree_status()")
         self._status_field.configure(state="normal")
         self._status_obj = status_obj
-        self._update_text(None)
+        self.update_text(None)
 
     # --- event handlers -------------------------------------------------
 
@@ -100,7 +100,7 @@ class TreeStatusPane:
         """
         if self._status_obj is None:
             return
-        self._update_text(self._status_obj.get_string_for_path(path))
+        self.update_text(self._status_obj.get_string_for_path(path))
 
     # --- internals ------------------------------------------------------
 
@@ -112,7 +112,7 @@ class TreeStatusPane:
             return
         item = selection[0]
         path: TreePath = tuple(self._build_path(item))
-        self._update_text(self._status_obj.get_string_for_path(path))
+        self.update_text(self._status_obj.get_string_for_path(path))
 
     def _on_text_input(self, _event: tk.Event[Any]) -> str:
         if self._status_obj is None or self._status_var is None or self._status_field is None:
@@ -136,11 +136,20 @@ class TreeStatusPane:
             self._status_field.configure(style=self._error_style)
         return "break"
 
-    def _update_text(self, status_string: str | None) -> None:
+    def update_text(self, status_string: str | None) -> None:
+        """Set the status entry's text and clear any error styling.
+
+        Mirrors upstream ``TreeStatusPane.updateText(String)``. ``None``
+        clears the field (matches Swing ``JTextField.setText(null)``,
+        which renders as the empty string).
+        """
         if self._status_var is None or self._status_field is None:
             return
         self._status_var.set(status_string or "")
         self._status_field.configure(style=self._default_style)
+
+    # Back-compat alias for the previously-private helper.
+    _update_text = update_text
 
     def _build_path(self, item: str) -> list[Any]:
         """Walk from ``item`` up to the tree root, returning a list of nodes."""

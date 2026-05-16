@@ -35,16 +35,31 @@ class RenderDestinationMenu(MenuBase):
             msg = "tkinter is not available"
             raise RuntimeError(msg)
 
-        menu = tk.Menu(master, tearoff=0)
-        self.set_menu(menu)
+        self._master = master
+        self.set_menu(self.create_menu())
+
+    def create_menu(self) -> tk.Menu:  # type: ignore[name-defined]
+        """Build and return the radio-group menu used by this singleton.
+
+        Mirrors upstream ``RenderDestinationMenu.createMenu``. The three
+        labels share a single :class:`tk.StringVar` so the menu acts as a
+        Tk-equivalent ``ButtonGroup`` with ``EXPORT`` pre-selected.
+        """
+        menu = tk.Menu(self._master, tearoff=0)
         # Upstream selects EXPORT by default.
-        self._destination_var = tk.StringVar(value=self.RENDER_DESTINATION_EXPORT)
+        self._destination_var = tk.StringVar(
+            master=self._master, value=self.RENDER_DESTINATION_EXPORT
+        )
         for label in (
             self.RENDER_DESTINATION_EXPORT,
             self.RENDER_DESTINATION_PRINT,
             self.RENDER_DESTINATION_VIEW,
         ):
             menu.add_radiobutton(label=label, value=label, variable=self._destination_var)
+        return menu
+
+    # Back-compat alias for the previously-private builder.
+    _create_menu = create_menu
 
     # ------------------------------------------------------------------
     # Singleton accessor

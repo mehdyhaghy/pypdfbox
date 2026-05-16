@@ -43,9 +43,18 @@ class RotationMenu(MenuBase):
             msg = "tkinter is not available"
             raise RuntimeError(msg)
 
-        menu = tk.Menu(master, tearoff=0)
-        self.set_menu(menu)
-        self._rotation_var = tk.StringVar(value=self.ROTATE_0_DEGREES)
+        self._master = master
+        self.set_menu(self.create_rotation_menu())
+
+    def create_rotation_menu(self) -> tk.Menu:  # type: ignore[name-defined]
+        """Build and return the rotation radio-group menu.
+
+        Mirrors upstream ``RotationMenu.createRotationMenu``. The four
+        labels share a single :class:`tk.StringVar` (Tk's analogue of
+        Swing's ``ButtonGroup``) with ``0°`` pre-selected.
+        """
+        menu = tk.Menu(self._master, tearoff=0)
+        self._rotation_var = tk.StringVar(master=self._master, value=self.ROTATE_0_DEGREES)
         for label in (
             self.ROTATE_0_DEGREES,
             self.ROTATE_90_DEGREES,
@@ -53,6 +62,10 @@ class RotationMenu(MenuBase):
             self.ROTATE_270_DEGREES,
         ):
             menu.add_radiobutton(label=label, value=label, variable=self._rotation_var)
+        return menu
+
+    # Back-compat alias for the previously-private builder.
+    _create_rotation_menu = create_rotation_menu
 
     # ------------------------------------------------------------------
     # Singleton accessor

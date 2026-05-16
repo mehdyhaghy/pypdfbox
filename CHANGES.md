@@ -2909,6 +2909,41 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   - `test_high_resolution_image_icon.py`: switched per-test `tk.Tk()` to the session-scoped fixture (eliminating extra Tk roots).
 - **Verified**: 2 concurrent shells × 5 iterations = 10/10 processes finish exit 0; 3 shells × 6 iterations = 18/18 exit 0; `PYPDFBOX_SKIP_TK=1` → 357 tests skip cleanly.
 
+## Wave 1310 — debugger parity round-out (5 parallel agents)
+
+### Searcher — port search / scroll / highlighter / nav-buttons
+
+- `pypdfbox/debugger/ui/textsearcher/searcher.py`: promoted `_search`, `_scroll_to_word`, `_update_highlighter`, `_update_navigation_buttons`, `_change_highlighter` to public snake_case (`search`, `scroll_to_word`, `update_high_lighter`, `update_navigation_buttons`, `change_highlighter`). `_`-prefixed aliases retained; internal callers updated. `search(word)` now returns `list[Highlight]` (upstream is `void`) — non-breaking, tests-friendly. `update_high_lighter()` accepts default `-1`/`-1` to re-tag all highlights. `change_highlighter` overloaded: single-arg = strategy swap (case-sensitive / regex / whole-word), two-arg = upstream painter swap.
+- Tests: 8 hand-written tests at `tests/debugger/ui/textsearcher/test_searcher_navigation.py`; full textsearcher suite 47/47.
+
+### OSXAdapter — port reflection-dispatch helpers as Python equivalents
+
+- `pypdfbox/debugger/ui/osx_adapter.py`: added `is_min_jdk9`, `is_correct_method`, `invoke`, `call_target`, `set_application_event_handled` as module-level functions. Heavy deviation from upstream — Java reflection (`Method.invoke`, `Method.getName`, `Proxy.newProxyInstance`) is replaced by Python `getattr` + `inspect.signature`. `is_min_jdk9()` returns `sys.platform == "darwin" and sys.version_info >= (3, 8)` (the gate the Tk-based port actually needs). `set_application_event_handled` is a documented no-op — Tk's `createcommand` dispatch already consumes the event with no `setHandled` flag to mirror. All deviations documented inline.
+- Tests: 17 hand-written tests at `tests/debugger/ui/test_osx_adapter_dispatch.py`; 26/26 with the existing osx_adapter suite.
+
+### PDFTreeCellRenderer — port get_image_url / lookup_icon_with_overlay / to_tree_postfix
+
+- `pypdfbox/debugger/ui/pdf_tree_cell_renderer.py`: added module-level `get_image_url(name) -> Path | None` + `RESOURCES_DIR` constant resolving icon PNGs under `pypdfbox/debugger/ui/resources/` (returns `None` for missing files, matching Java's `null` for missing classpath resources). Added `lookup_icon_with_overlay(base, overlay=None)` — dual-mode: node-form (returns `OverlayIcon` / icon-name for indirect non-stream values, mirrors upstream `lookupIconWithOverlay(Object)`) and image-form (Pillow alpha-composites two images for the Tk renderer). Promoted `_to_tree_postfix` to public `to_tree_postfix`. All three mirrored as `PDFTreeCellRenderer` methods for upstream surface parity.
+- Tests: 17 hand-written tests at `tests/debugger/ui/test_pdf_tree_cell_renderer_helpers.py`; 35 existing tests still pass.
+
+### Eight single-method gap closures
+
+- `pypdfbox.debugger.streampane.tooltip.ColorToolTip` — added `get_mark_up` (upstream `getMarkUp` spelling alias of `get_markup`).
+- `pypdfbox.debugger.ui.ImageTypeMenu` — extracted public `create_menu()` from constructor; `_create_menu` retained.
+- `pypdfbox.debugger.ui.MenuBase` — added public `remove_action_listeners(entry_index)` and routed `add_menu_listeners` through it, mirroring upstream's per-item `removeActionListeners` loop body. Previously the python port relied on `entryconfigure` to overwrite the command and skipped the upstream removal step.
+- `pypdfbox.debugger.ui.RenderDestinationMenu` — extracted public `create_menu()` from constructor.
+- `pypdfbox.debugger.ui.RotationMenu` — extracted public `create_rotation_menu()` mirroring upstream `createRotationMenu`.
+- `pypdfbox.debugger.ui.TreeViewMenu` — extracted public `create_tree_view_menu()` mirroring upstream `createTreeViewMenu`.
+- `pypdfbox.debugger.ui.textsearcher.SearchPanel` — promoted `_init_ui` to public `init_ui`.
+- `pypdfbox.debugger.treestatus.TreeStatusPane` — promoted `_update_text` to public `update_text` and updated 3 internal callers (`update_tree_status`, `value_changed`, `_on_tree_select`).
+- Tests: 32 hand-written tests across 8 files in `tests/debugger/streampane/tooltip/`, `tests/debugger/treestatus/`, `tests/debugger/ui/`; full debugger suite passes.
+
+### XrefEntry.to_string + PDFTreeModel listeners
+
+- `pypdfbox/debugger/ui/xref_entry.py`: split `__str__` into a public `to_string()` returning the upstream `toString` rendering (`"Offset: ... [key]"`, `"Compressed object stream: ... [key]"`, `"(null)"`); `__str__` now delegates so Python idioms keep working. (Note: `XrefEntry` lives under `debugger/ui/` in both upstream PDFBox and the port — it's a debugger tree-view abstraction, not a COS primitive.)
+- `pypdfbox/debugger/ui/pdf_tree_model.py`: added `add_tree_model_listener` / `remove_tree_model_listener` for parity with Swing's `TreeModel`; backed by a real listener list with idempotent registration plus a `_fire_tree_changed` helper (upstream's registry is a no-op, but we keep change-event fan-out working for embedders that wire it up).
+- Tests: 7 hand-written tests across `tests/debugger/ui/test_xref_entry_to_string.py` and `test_pdf_tree_model_listeners.py`; 37 existing tests still pass.
+
 ## Wave 1309 — debugger parity round-out (5 parallel agents)
 
 ### CSSeparation — port int/float conversions + init helpers

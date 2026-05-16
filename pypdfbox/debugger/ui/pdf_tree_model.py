@@ -8,7 +8,7 @@ no-op listener registry has no analogue here.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from pypdfbox.cos import (
     COSArray,
@@ -47,6 +47,10 @@ class PDFTreeModel:
         else:
             # ``root`` is a PDDocument; the upstream API roots at the trailer.
             self._root = root.get_document().get_trailer()
+        # Listener fan-out mirrors Swing's ``TreeModelListener`` registry; the
+        # Tkinter view does not subscribe today, but the surface is kept for
+        # API parity so embedders can hook tree-change events.
+        self._tree_model_listeners: list[Callable[[PDFTreeModel], None]] = []
 
     # --- root --------------------------------------------------------------
 
@@ -179,6 +183,35 @@ class PDFTreeModel:
         # Mirrors the Swing API surface. Tkinter editing is handled directly
         # by the view, not the model.
 
-    # Swing's add_tree_model_listener / remove_tree_model_listener are not
-    # ported; the surrounding Tkinter view binds to ``ttk.Treeview`` events
-    # rather than relying on TreeModelEvent fan-out.
+    # --- listener fan-out --------------------------------------------------
+
+    def add_tree_model_listener(
+        self, listener: Callable[[PDFTreeModel], None]
+    ) -> None:
+        """Register ``listener`` for tree-change notifications.
+
+        Mirrors Swing's ``TreeModel.addTreeModelListener``. The upstream
+        implementation is a no-op (the registry exists but is never fired);
+        we keep a real list so embedders can opt in to change events via
+        :meth:`_fire_tree_changed`.
+        """
+        if listener not in self._tree_model_listeners:
+            self._tree_model_listeners.append(listener)
+
+    def remove_tree_model_listener(
+        self, listener: Callable[[PDFTreeModel], None]
+    ) -> None:
+        """Unregister a previously added ``listener``.
+
+        Mirrors Swing's ``TreeModel.removeTreeModelListener``. Silently
+        ignores listeners that were never registered.
+        """
+        try:
+            self._tree_model_listeners.remove(listener)
+        except ValueError:
+            pass
+
+    def _fire_tree_changed(self) -> None:
+        """Notify all registered listeners that the tree has changed."""
+        for listener in list(self._tree_model_listeners):
+            listener(self)

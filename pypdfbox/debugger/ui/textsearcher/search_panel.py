@@ -55,13 +55,19 @@ class SearchPanel:
         self._counter_var = tk.StringVar(value="")
 
         self._panel = ttk.Frame(parent)
-        self._init_ui()
+        self.init_ui()
 
     # ------------------------------------------------------------------
     # Construction
     # ------------------------------------------------------------------
 
-    def _init_ui(self) -> None:
+    def init_ui(self) -> None:
+        """Build the inner widgets and wire all listener plumbing.
+
+        Mirrors upstream ``SearchPanel.initUI``. Idempotency is *not*
+        guaranteed — like the upstream, the method assumes it is called
+        once from the constructor against an empty frame.
+        """
         self._search_field = ttk.Entry(self._panel, textvariable=self._search_var)
         self._counter_label = ttk.Label(self._panel, textvariable=self._counter_var)
         self._previous_button = ttk.Button(
@@ -244,3 +250,7 @@ class SearchPanel:
             self._panel.pack(fill="x")
         else:
             self.re_focus()
+
+
+# Back-compat alias for the previously-private builder.
+SearchPanel._init_ui = SearchPanel.init_ui  # type: ignore[attr-defined]

@@ -46,9 +46,13 @@ class XrefEntry:
 
         return f"{XrefEntries.PATH}/{self}"
 
-    def __str__(self) -> str:
+    def to_string(self) -> str:
+        """Return the upstream ``toString`` rendering of this entry."""
         if self._key is None:
             return "(null)"
         if self._offset >= 0:
             return f"Offset: {self._offset} [{self._key}]"
         return f"Compressed object stream: {-self._offset} [{self._key}]"
+
+    def __str__(self) -> str:
+        return self.to_string()

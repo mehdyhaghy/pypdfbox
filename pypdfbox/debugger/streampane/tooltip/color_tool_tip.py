@@ -78,6 +78,14 @@ class ColorToolTip(ToolTip):
             segments=(ToolTipSegment(text="", color_hex=hex_value),),
         )
 
+    # Upstream's method is spelled ``getMarkUp`` (capital U on "Up"); the
+    # natural snake_case is ``get_mark_up``. We keep ``get_markup`` as the
+    # ergonomic primary name and expose ``get_mark_up`` as the upstream-
+    # spelling alias so PDFBox developers can rely on either form.
+    def get_mark_up(self, hex_value: str) -> ToolTipText:
+        """Alias of :meth:`get_markup` matching upstream ``getMarkUp``."""
+        return self.get_markup(hex_value)
+
     def set_tool_tip_text(self, tool_tip: ToolTipText | None) -> None:
         """Store the tooltip payload for :meth:`get_tool_tip_text`."""
         self._tool_tip_text = tool_tip

@@ -106,6 +106,10 @@ class MenuBase:
                 continue
             if entry_type in {"separator", "tearoff"}:
                 continue
+            # Replace any previously-attached command before re-binding;
+            # this is the loop body of upstream's per-item
+            # ``removeActionListeners(menuItem)`` call.
+            self.remove_action_listeners(index)
             try:
                 label = self._menu.entrycget(index, "label")
             except tk.TclError:  # pragma: no cover - defensive
@@ -114,6 +118,29 @@ class MenuBase:
                 index,
                 command=lambda value=label: listener(value),
             )
+
+    def remove_action_listeners(self, entry_index: int) -> None:
+        """Clear any command previously attached to ``entry_index``.
+
+        Mirrors upstream ``MenuBase.removeActionListeners(JMenuItem)``.
+        Swing keeps a list of listeners per menu item and the upstream
+        helper iterates and detaches each. In Tk a menu entry has at most
+        one ``command`` callback — so clearing it (``command=""``) is the
+        functional equivalent.
+
+        Silently ignores indices that are out of range, separators, or
+        anything else that does not support a ``command`` option (matches
+        the defensive ``try/except`` style used elsewhere in this class).
+        """
+        if self._menu is None:
+            return
+        try:
+            self._menu.entryconfigure(entry_index, command="")
+        except tk.TclError:  # pragma: no cover - separators / bad index
+            return
+
+    # Back-compat alias for the previously-private helper.
+    _remove_action_listeners = remove_action_listeners
 
     # ------------------------------------------------------------------
     # Convenience builders shared by concrete menus

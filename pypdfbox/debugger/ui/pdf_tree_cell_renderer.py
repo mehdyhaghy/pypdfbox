@@ -18,6 +18,7 @@ mirrors the original ``getTreeCellRendererComponent`` shape.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from pypdfbox.cos import (
@@ -55,6 +56,10 @@ ICON_STREAM_DICT = "stream-dict"
 ICON_STRING = "string"
 ICON_PDF = "pdf"
 ICON_PAGE = "page"
+
+#: Directory that holds the icon PNGs bundled with the debugger. Mirrors
+#: upstream's classpath location ``/org/apache/pdfbox/debugger/``.
+RESOURCES_DIR: Path = Path(__file__).resolve().parent / "resources"
 
 
 def _is_iso_control(c: str) -> bool:
@@ -116,6 +121,60 @@ class PDFTreeCellRenderer:
         Mirrors upstream's private ``lookupIcon(Object)``.
         """
         return _lookup_icon(node_value)
+
+    def to_tree_postfix(self, node_value: Any) -> str:
+        """Return the right-side postfix string for ``node_value``.
+
+        Mirrors upstream's private ``toTreePostfix(Object)``. For a
+        dictionary node this emits ``/T:<type> /S:<subtype>`` fragments
+        plus ``/PatternType``, ``/ShadingType`` and a widget ``Name:``
+        annotation; for any other node it returns ``""``.
+        """
+        return _to_tree_postfix(node_value)
+
+    def lookup_icon_with_overlay(
+        self, base: Any, overlay: Any = None
+    ) -> Any:
+        """Compose ``base`` and ``overlay`` into a single icon.
+
+        Mirrors upstream's private ``lookupIconWithOverlay`` but with a
+        more useful Python signature. Two calling conventions are
+        supported:
+
+        * **Node form** (``overlay is None``): ``base`` is a tree node;
+          we resolve its icon name + indirect-overlay flag and return an
+          :class:`OverlayIcon` instance for indirect non-stream values
+          (or the bare icon name otherwise). Matches the upstream Java
+          ``lookupIconWithOverlay(Object)`` semantics, just returning a
+          data-only object instead of a Swing ``ImageIcon``.
+        * **Image form** (``overlay`` provided): ``base`` and ``overlay``
+          are PIL-compatible images; we alpha-composite ``overlay`` on
+          top of ``base`` and return the resulting ``PIL.Image.Image``.
+          Used by the Tk renderer (and tests) to build composite icons
+          out of the indirect-arrow glyph stacked on a base icon.
+        """
+        if overlay is None:
+            icon = _lookup_icon(base)
+            is_indirect, is_stream = _indirect_overlay(base)
+            if is_indirect and not is_stream:
+                wrapper = OverlayIcon(icon)
+                wrapper.add(ICON_INDIRECT)
+                return wrapper
+            return icon
+        return _compose_overlay(base, overlay)
+
+    def get_image_url(self, name: str) -> Path | None:
+        """Return a filesystem path for the icon file named ``name``.
+
+        Mirrors upstream's static ``getImageUrl(String)``. Upstream
+        resolves a classpath URL under
+        ``/org/apache/pdfbox/debugger/<name>.png``; we resolve to a
+        :class:`pathlib.Path` under
+        :data:`RESOURCES_DIR`, returning ``None`` if the file isn't
+        bundled (matches Java's behaviour of returning ``null`` for a
+        missing classpath resource).
+        """
+        return get_image_url(name)
 
 
 # --- pure-data helpers ----------------------------------------------------
@@ -187,6 +246,18 @@ def _is_xref_dict(dictionary: COSDictionary) -> bool:
         return dictionary.get_cos_name("Type") == COSName.XREF
     except Exception:  # pragma: no cover - defensive
         return False
+
+
+def to_tree_postfix(node_value: Any) -> str:
+    """Return the right-side postfix string for a tree node.
+
+    Public counterpart to the private ``_to_tree_postfix`` helper. For
+    ``COSDictionary`` values this emits ``/T:<type> /S:<subtype>``,
+    ``/PatternType``, ``/ShadingType`` and (for widget annotations) a
+    ``Name: <T>`` annotation, matching upstream's ``toTreePostfix``.
+    Returns ``""`` for any other value.
+    """
+    return _to_tree_postfix(node_value)
 
 
 def _to_tree_postfix(node_value: Any) -> str:
@@ -284,6 +355,68 @@ def _indirect_overlay(node_value: Any) -> tuple[bool, bool]:
     if isinstance(node_value, XrefEntry):
         return True, False
     return False, False
+
+
+# --- icon resolution / composition ---------------------------------------
+
+
+def get_image_url(name: str) -> Path | None:
+    """Return the on-disk path for the icon named ``name`` (or ``None``).
+
+    Mirrors upstream's ``PDFTreeCellRenderer.getImageUrl(String)`` which
+    resolves a classpath URL under
+    ``/org/apache/pdfbox/debugger/<name>.png``. Returns ``None`` if the
+    file isn't bundled — matches Java's behaviour of returning ``null``
+    for a missing classpath resource.
+    """
+    candidate = RESOURCES_DIR / f"{name}.png"
+    if candidate.is_file():
+        return candidate
+    return None
+
+
+def lookup_icon_with_overlay(base: Any, overlay: Any = None) -> Any:
+    """Compose ``base`` and ``overlay`` into a single icon.
+
+    See :meth:`PDFTreeCellRenderer.lookup_icon_with_overlay` for the two
+    supported calling conventions.
+    """
+    if overlay is None:
+        icon = _lookup_icon(base)
+        is_indirect, is_stream = _indirect_overlay(base)
+        if is_indirect and not is_stream:
+            wrapper = OverlayIcon(icon)
+            wrapper.add(ICON_INDIRECT)
+            return wrapper
+        return icon
+    return _compose_overlay(base, overlay)
+
+
+def _compose_overlay(base: Any, overlay: Any) -> Any:
+    """Alpha-composite ``overlay`` on top of ``base`` and return the result.
+
+    Both arguments must be PIL ``Image`` objects (or anything that
+    implements the same ``size`` / ``convert`` / ``resize`` /
+    ``alpha_composite`` surface). The base is converted to RGBA, the
+    overlay resized to match if needed, and the two are alpha-composited
+    so the overlay's transparent pixels show the base through.
+    """
+    try:
+        from PIL import Image
+    except ImportError as exc:  # pragma: no cover - dependency declared in pyproject
+        raise RuntimeError(
+            "Pillow (PIL) is required for lookup_icon_with_overlay() with two images"
+        ) from exc
+
+    base_rgba = base.convert("RGBA") if base.mode != "RGBA" else base.copy()
+    if overlay.mode != "RGBA":
+        overlay_rgba = overlay.convert("RGBA")
+    else:
+        overlay_rgba = overlay
+    if overlay_rgba.size != base_rgba.size:
+        overlay_rgba = overlay_rgba.resize(base_rgba.size, Image.LANCZOS)
+    base_rgba.alpha_composite(overlay_rgba)
+    return base_rgba
 
 
 class OverlayIcon:

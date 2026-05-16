@@ -37,11 +37,24 @@ class TreeViewMenu(MenuBase):
         if tk is None:  # pragma: no cover - defensive
             msg = "tkinter is not available"
             raise RuntimeError(msg)
-        menu = tk.Menu(master, tearoff=0)
-        self.set_menu(menu)
-        self._var = tk.StringVar(master=master, value=self.VIEW_PAGES)
+        self._master = master
+        self.set_menu(self.create_tree_view_menu())
+
+    def create_tree_view_menu(self) -> tk.Menu:  # type: ignore[name-defined]
+        """Build and return the tree-view radio-group menu.
+
+        Mirrors upstream ``TreeViewMenu.createTreeViewMenu``. The three
+        labels share a single :class:`tk.StringVar` so the menu acts as a
+        Tk-equivalent ``ButtonGroup`` with ``VIEW_PAGES`` pre-selected.
+        """
+        menu = tk.Menu(self._master, tearoff=0)
+        self._var = tk.StringVar(master=self._master, value=self.VIEW_PAGES)
         for label in self._VALID_MODES:
             menu.add_radiobutton(label=label, value=label, variable=self._var)
+        return menu
+
+    # Back-compat alias for the previously-private builder.
+    _create_tree_view_menu = create_tree_view_menu
 
     # --- singleton --------------------------------------------------------
 
