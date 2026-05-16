@@ -48,5 +48,9 @@ class XrefEntries:
                 return idx
         return 0
 
-    def __str__(self) -> str:
+    def to_string(self) -> str:
+        """Return the upstream ``toString`` rendering — the constant ``CRT``."""
         return self.PATH
+
+    def __str__(self) -> str:
+        return self.to_string()

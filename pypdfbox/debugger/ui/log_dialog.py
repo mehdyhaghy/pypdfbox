@@ -127,10 +127,10 @@ class LogDialog:
         self._bump_counters(level, throwable)
         if self._text is None:
             self._pending.append((name, level, message, throwable))
-            self._update_status_bar()
+            self.update_status_bar()
             return
         self._render_record(name, level, message, throwable)
-        self._update_status_bar()
+        self.update_status_bar()
 
     def clear(self) -> None:
         """Reset all counters and clear the dialog and status label."""
@@ -278,7 +278,15 @@ class LogDialog:
             )
         return ", ".join(infos)
 
-    def _update_status_bar(self) -> None:
+    def update_status_bar(self) -> None:
+        """Refresh the status-bar label with the current counter summary.
+
+        Mirrors the upstream private helper. Public so callers — and tests —
+        can resync the label after manipulating counters directly.
+        """
         info = self._build_status_text()
         if self._log_label is not None:
             self._log_label.configure(text=info)
+
+    # Backwards-compatible private alias.
+    _update_status_bar = update_status_bar

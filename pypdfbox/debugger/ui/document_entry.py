@@ -36,8 +36,12 @@ class DocumentEntry:
         """Return the 0-based index of ``page`` in this document."""
         return page.get_page_num() - 1
 
-    def __str__(self) -> str:
+    def to_string(self) -> str:
+        """Return the upstream ``toString`` rendering — the wrapped filename."""
         return self._filename
+
+    def __str__(self) -> str:
+        return self.to_string()
 
 
 def _get_page_label(doc: PDDocument, index: int) -> str | None:

@@ -51,7 +51,19 @@ class StreamTextView(ttk.Frame):
         super().__init__(master)
         self._tool_tip_controller = tool_tip_controller
         self._tool_tip_window: tk.Toplevel | None = None
+        self.init_ui(segments, styles)
 
+    def init_ui(
+        self,
+        segments: Sequence[tuple[str, str | None]],
+        styles: Iterable[tuple[str, dict[str, Any]]] | None = None,
+    ) -> None:
+        """Build the inner ``tk.Text`` widget, scrollbar, tags, and content.
+
+        Mirrors the upstream ``initUI(StyledDocument)`` private helper:
+        the constructor delegates to this method so subclasses (and tests)
+        can rebuild the surface after the wrapper has been instantiated.
+        """
         text = tk.Text(
             self,
             wrap="none",
@@ -82,7 +94,7 @@ class StreamTextView(ttk.Frame):
         self.columnconfigure(0, weight=1)
 
         self._text = text
-        if tool_tip_controller is not None:
+        if self._tool_tip_controller is not None:
             text.bind("<Motion>", self._on_motion)
             text.bind("<Leave>", self._hide_tooltip)
 

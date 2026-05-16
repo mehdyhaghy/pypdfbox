@@ -47,7 +47,7 @@ class HexModel:
         for i in range(length):
             byte_value = self._data[start + i] & 0xFF
             c = chr(byte_value)
-            if not self._is_ascii_printable(c):
+            if not HexModel.is_ascii_printable(c):
                 c = "."
             chars.append(c)
         return chars
@@ -78,11 +78,15 @@ class HexModel:
         return index % 16
 
     @staticmethod
-    def _is_ascii_printable(ch: str) -> bool:
+    def is_ascii_printable(ch: str) -> bool:
+        """Return ``True`` for printable-ASCII characters (codes 32..126)."""
         if not ch:
             return False
         code = ord(ch)
         return 32 <= code < 127
+
+    # Backwards-compatible private alias.
+    _is_ascii_printable = is_ascii_printable
 
     # --------------------------------------------------------------- updates
 
@@ -95,7 +99,7 @@ class HexModel:
         value &= 0xFF
         if self._data[index] != value:
             self._data[index] = value
-            self._fire_model_changed(index)
+            self.fire_model_changed(index)
 
     # ----------------------------------------- HexChangeListener interface
 
@@ -103,11 +107,15 @@ class HexModel:
         index = event.get_byte_index()
         if index != -1 and self.get_byte(index) != event.get_new_value():
             self._data[index] = event.get_new_value() & 0xFF
-        self._fire_model_changed(index)
+        self.fire_model_changed(index)
 
     # ----------------------------------------------------------- dispatch
 
-    def _fire_model_changed(self, index: int) -> None:
+    def fire_model_changed(self, index: int) -> None:
+        """Notify every registered listener of a single-byte change at ``index``."""
         evt = HexModelChangedEvent(index, HexModelChangedEvent.SINGLE_CHANGE)
         for listener in self._model_change_listeners:
             listener.hex_model_changed(evt)
+
+    # Backwards-compatible private alias.
+    _fire_model_changed = fire_model_changed

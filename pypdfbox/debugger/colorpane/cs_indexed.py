@@ -47,16 +47,16 @@ class CSIndexed:
             cannot be created (mirrors upstream's ``throws IOException``).
         """
         self._indexed = PDIndexed(array)
-        self._color_count = self._get_hival(array) + 1
+        self._color_count = self.get_hival(array) + 1
         self._panel: ttk.Frame | None = None
-        colorants = self._get_colorant_data()
+        colorants = self.get_colorant_data()
         self._table_model = IndexedTableModel(colorants)
         self._tree: ttk.Treeview | None = None
-        self._init_ui(master, colorants)
+        self.init_ui(master, colorants)
 
     # ---- data extraction --------------------------------------------------
 
-    def _get_colorant_data(self) -> list[IndexedColorant]:
+    def get_colorant_data(self) -> list[IndexedColorant]:
         """Build one :class:`IndexedColorant` per palette entry.
 
         Mirrors upstream ``CSIndexed.getColorantData()`` — for every
@@ -73,7 +73,7 @@ class CSIndexed:
         return colorants
 
     @staticmethod
-    def _get_hival(array: COSArray) -> int:
+    def get_hival(array: COSArray) -> int:
         """Read the ``/Indexed`` array's hival entry.
 
         Mirrors upstream ``getHival(COSArray)`` — clamps to 255.
@@ -88,7 +88,7 @@ class CSIndexed:
 
     # ---- UI ---------------------------------------------------------------
 
-    def _init_ui(
+    def init_ui(
         self, master: tk.Misc | None, colorants: list[IndexedColorant]
     ) -> None:
         panel = ttk.Frame(master)
@@ -172,3 +172,11 @@ class CSIndexed:
     def table_model(self) -> IndexedTableModel:
         """The :class:`IndexedTableModel` backing the treeview."""
         return self._table_model
+
+    # ---- back-compat aliases --------------------------------------------
+    # Earlier revisions exposed these as ``_``-prefixed private helpers.
+    # The names were promoted in wave 1311 to mirror upstream's accessors;
+    # keep the aliases live so existing callers continue to resolve.
+    _get_colorant_data = get_colorant_data
+    _get_hival = get_hival
+    _init_ui = init_ui

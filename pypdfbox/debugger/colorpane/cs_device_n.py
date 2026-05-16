@@ -48,14 +48,14 @@ class CSDeviceN:
         """
         self._device_n = PDDeviceN(array)
         self._panel: ttk.Frame | None = None
-        colorants = self._get_colorant_data()
+        colorants = self.get_colorant_data()
         self._table_model = DeviceNTableModel(colorants)
         self._tree: ttk.Treeview | None = None
-        self._init_ui(master, colorants)
+        self.init_ui(master, colorants)
 
     # ---- data extraction --------------------------------------------------
 
-    def _get_colorant_data(self) -> list[DeviceNColorant]:
+    def get_colorant_data(self) -> list[DeviceNColorant]:
         """Parse colorant data from the wrapped DeviceN color space.
 
         Mirrors upstream ``CSDeviceN.getColorantData()`` — for every
@@ -73,13 +73,13 @@ class CSDeviceN:
             maximum = [0.0] * component_count
             minimum = [0.0] * component_count
             maximum[i] = 1.0
-            colorant.set_maximum(self._get_color_obj(self._device_n.to_rgb(maximum)))
-            colorant.set_minimum(self._get_color_obj(self._device_n.to_rgb(minimum)))
+            colorant.set_maximum(self.get_color_obj(self._device_n.to_rgb(maximum)))
+            colorant.set_minimum(self.get_color_obj(self._device_n.to_rgb(minimum)))
             colorants.append(colorant)
         return colorants
 
     @staticmethod
-    def _get_color_obj(
+    def get_color_obj(
         rgb_values: list[float] | tuple[float, ...] | None,
     ) -> tuple[float, float, float]:
         """Wrap an ``[r, g, b]`` float list as a 3-tuple.
@@ -96,7 +96,7 @@ class CSDeviceN:
 
     # ---- UI ---------------------------------------------------------------
 
-    def _init_ui(
+    def init_ui(
         self, master: tk.Misc | None, colorants: list[DeviceNColorant]
     ) -> None:
         panel = ttk.Frame(master)
@@ -170,3 +170,11 @@ class CSDeviceN:
     def table_model(self) -> DeviceNTableModel:
         """The :class:`DeviceNTableModel` backing the treeview."""
         return self._table_model
+
+    # ---- back-compat aliases --------------------------------------------
+    # Earlier revisions exposed these as ``_``-prefixed private helpers.
+    # The names were promoted in wave 1311 to mirror upstream's accessors;
+    # keep the aliases live so existing callers continue to resolve.
+    _get_colorant_data = get_colorant_data
+    _get_color_obj = get_color_obj
+    _init_ui = init_ui

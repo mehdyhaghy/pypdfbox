@@ -49,13 +49,13 @@ class Type0Font(FontPane):
         self._parent_font = parent_font
         self._total_available_glyphs = 0
 
-        cid_to_gid = self._read_cid_to_gid_map(descendant_font, parent_font)
+        cid_to_gid = self.read_cid_to_gid_map(descendant_font, parent_font)
         attributes: dict[str, str] = {"Font": str(descendant_font.get_name())}
 
         if cid_to_gid is not None:
             attributes["CIDs"] = str(len(cid_to_gid))
             attributes["Embedded"] = str(bool(descendant_font.is_embedded()))
-            attributes["Encoding"] = self._get_encoding_name(parent_font)
+            attributes["Encoding"] = self.get_encoding_name(parent_font)
             self._view: FontEncodingView | None = FontEncodingView(
                 master,
                 cid_to_gid,
@@ -64,12 +64,12 @@ class Type0Font(FontPane):
                 self.get_y_bounds(cid_to_gid, 3),
             )
         else:
-            tab = self._read_map(descendant_font, parent_font)
+            tab = self.read_map(descendant_font, parent_font)
             attributes["CIDs"] = str(len(tab))
             attributes["Glyphs"] = str(self._total_available_glyphs)
             attributes["Standard 14"] = str(bool(parent_font.is_standard14()))
             attributes["Embedded"] = str(bool(descendant_font.is_embedded()))
-            attributes["Encoding"] = self._get_encoding_name(parent_font)
+            attributes["Encoding"] = self.get_encoding_name(parent_font)
             self._view = FontEncodingView(
                 master,
                 tab,
@@ -99,7 +99,7 @@ class Type0Font(FontPane):
 
     # ---- helpers -----------------------------------------------------------
 
-    def _read_map(
+    def read_map(
         self, descendant_font: PDCIDFont, parent_font: PDType0Font
     ) -> list[list[Any]]:
         """Mirror upstream ``readMap`` — one row per code with a glyph."""
@@ -125,7 +125,7 @@ class Type0Font(FontPane):
                 self._total_available_glyphs += 1
         return rows
 
-    def _read_cid_to_gid_map(
+    def read_cid_to_gid_map(
         self, font: PDCIDFont, parent_font: PDFont
     ) -> list[list[Any]] | None:
         """Mirror upstream ``readCIDToGIDMap`` — parse ``/CIDToGIDMap``
@@ -174,13 +174,18 @@ class Type0Font(FontPane):
             return None
 
     @staticmethod
-    def _get_encoding_name(font: PDFont) -> str:
+    def get_encoding_name(font: PDFont) -> str:
         """Mirror upstream ``getEncodingName(PDFont)``."""
         cos_dict = font.get_cos_object()
         encoding_name = cos_dict.get_name_as_string(_ENCODING)
         if encoding_name is None:
             return type(cos_dict).__name__
         return encoding_name
+
+    # Back-compat aliases for the previously private helpers.
+    _get_encoding_name = get_encoding_name
+    _read_cid_to_gid_map = read_cid_to_gid_map
+    _read_map = read_map
 
 
 def _path_non_empty(path: Any) -> bool:

@@ -53,9 +53,9 @@ class Type3Font(FontPane):
         self._font = font
         self._resources = resources
         self._total_available_glyphs = 0
-        self._font_bbox: PDRectangle = self._calc_bbox(font)
+        self._font_bbox: PDRectangle = self.calc_b_box(font)
 
-        table_data = self._get_glyphs(font)
+        table_data = self.get_glyphs(font)
 
         name = font.get_name()
         descriptor = font.get_font_descriptor()
@@ -95,10 +95,16 @@ class Type3Font(FontPane):
 
     # ---- helpers -----------------------------------------------------------
 
-    def _calc_bbox(self, font: PDType3Font) -> PDRectangle:
+    def calc_b_box(self, font: PDType3Font) -> PDRectangle:
         """Mirror upstream ``calcBBox``: take the union of per-CharProc
         glyph BBoxes, falling back to the font's overall BBox when the
         per-glyph union is empty (PDF.js issue 10717).
+
+        Upstream stores the result on the ``fontBBox`` instance field
+        and returns ``void``; the Python port returns the rectangle so
+        callers (including the constructor) can capture it. The pane
+        also memoises it on ``self._font_bbox`` for the
+        :pyattr:`font_bbox` property.
         """
         min_x = 0.0
         max_x = 0.0
@@ -137,9 +143,19 @@ class Type3Font(FontPane):
                 )
         return bbox
 
-    def _get_glyphs(self, font: PDType3Font) -> list[list[Any]]:
+    # Underscore alias preserved for internal callers that pre-dated the
+    # public promotion.
+    _calc_bbox = calc_b_box
+
+    def get_glyphs(self, font: PDType3Font) -> list[list[Any]]:
         """Mirror upstream ``getGlyphs``: walk codes 0..255, populate a
         4-column row per code, dedupe rendered images on glyph name.
+
+        Upstream returns ``Object[][]`` (a 256-row × 4-column array). The
+        Python port returns a ``list[list[Any]]`` of the same shape: row
+        ``i`` is ``[code, glyph_name, unicode_char, glyph_image]``, with
+        ``NO_GLYPH`` strings filling the columns for codes that are not
+        in the font's encoding and do not have a ``/ToUnicode`` mapping.
         """
         is_empty = (
             self._font_bbox.get_width() <= 0 or self._font_bbox.get_height() <= 0
@@ -163,7 +179,7 @@ class Type3Font(FontPane):
                 elif glyph_name in image_cache:
                     glyph_value = image_cache[glyph_name]
                 else:
-                    glyph_value = _render_type3_glyph_label(glyph_name)
+                    glyph_value = self.render_type3_glyph(glyph_name)
                     image_cache[glyph_name] = glyph_value
                 rows.append([code, glyph_name, unicode_char, glyph_value])
                 self._total_available_glyphs += 1
@@ -171,8 +187,41 @@ class Type3Font(FontPane):
                 rows.append([code, NO_GLYPH, NO_GLYPH, NO_GLYPH])
         return rows
 
+    _get_glyphs = get_glyphs
 
-def _render_type3_glyph_label(name: str) -> Any:
+    def render_type3_glyph(self, glyph_name: str, size: int = 40) -> Any:
+        """Rasterise a single Type 3 glyph procedure into a Pillow image.
+
+        Mirrors upstream ``renderType3Glyph(PDType3Font, int)`` —
+        upstream builds a single-page ``PDDocument`` containing the
+        glyph (via ``PDPageContentStream.appendRawCommands`` emitting
+        ``<hh> Tj``), then rasterises page 0 with ``PDFRenderer`` and
+        returns the resulting ``BufferedImage``.
+
+        pypdfbox's deviation: the lite ``PDFRenderer`` explicitly
+        deferred Type 3 char-proc rasterisation (the rendering cluster
+        paints a placeholder rectangle for Type 3 glyphs — see the
+        renderer's class docstring under "Deferred"), so spinning up a
+        full document round-trip per glyph would produce an empty page.
+        Instead we render a small Pillow text-label thumbnail of the
+        glyph *name*, sized to ``size``×``size`` pixels. The result is
+        still a :class:`PIL.Image.Image` so the
+        :class:`FontEncodingView` row layout is unchanged.
+
+        ``glyph_name`` is the glyph's PostScript name (e.g. ``"A"``,
+        ``"zerosuperior"``); call sites that have a character *code*
+        should resolve it through ``font.get_encoding_typed().get_name``
+        first. ``size`` is the square side length in pixels; defaults to
+        the historical 40-pixel cell.
+
+        Returns the sentinel :data:`NO_GLYPH` string when Pillow is
+        unavailable so callers always have a value to render in the
+        table cell.
+        """
+        return _render_type3_glyph_label(glyph_name, size=size)
+
+
+def _render_type3_glyph_label(name: str, size: int = 40) -> Any:
     """Render the glyph *name* as small Pillow image.
 
     Upstream rasterises the actual Type3 content stream via PDFRenderer.
@@ -180,18 +229,23 @@ def _render_type3_glyph_label(name: str) -> Any:
     visibly distinct from ``"No glyph"`` rows. Returns ``NO_GLYPH``
     when Pillow is unavailable so the caller still has a sentinel to
     show.
+
+    ``size`` is the square side length in pixels (defaults to the
+    historical 40-pixel cell). The :meth:`Type3Font.render_type3_glyph`
+    wrapper threads its public ``size`` argument through here.
     """
     try:
         from PIL import Image, ImageDraw
     except ImportError:  # pragma: no cover
         return NO_GLYPH
-    img = Image.new("RGB", (40, 40), "white")
+    side = max(1, int(size))
+    img = Image.new("RGB", (side, side), "white")
     draw = ImageDraw.Draw(img)
-    # Truncate the displayed name to fit a 40px-wide cell.
+    # Truncate the displayed name to fit a narrow cell.
     display = name[:4] if len(name) > 4 else name
     # Pillow's default font subsystem may be unavailable on stripped
     # installs (no default bitmap). In that case leave the image blank
     # rather than failing the build.
     with contextlib.suppress(Exception):
-        draw.text((2, 12), display, fill="black")
+        draw.text((2, max(0, side // 3)), display, fill="black")
     return img

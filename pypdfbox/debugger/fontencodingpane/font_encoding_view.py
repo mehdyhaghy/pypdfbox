@@ -85,7 +85,7 @@ class FontEncodingView(ttk.Frame):
         self._tree: ttk.Treeview | None = None
         self._header_frame: ttk.Frame | None = None
 
-        self._create_view()
+        self.create_view()
 
     # ---- public surface ----------------------------------------------------
 
@@ -102,22 +102,36 @@ class FontEncodingView(ttk.Frame):
         """The underlying ``ttk.Treeview`` (``None`` until built)."""
         return self._tree
 
-    # ---- internals ---------------------------------------------------------
+    # ---- view construction (upstream parity) ------------------------------
 
-    def _create_view(self) -> None:
+    def create_view(self) -> None:
+        """Build the header + table layout.
+
+        Port of upstream's private ``createView(JPanel, JTable)``. In
+        Swing the header panel and table are constructed by the caller
+        and passed in; here we build them in-place using
+        :meth:`get_header_panel` and :meth:`get_table` so the parameters
+        come from the instance state.
+        """
         with contextlib.suppress(tk.TclError):
             self.configure(width=300, height=500)
 
-        self._header_frame = self._build_header(self._header_attributes)
+        self._header_frame = self.get_header_panel(self._header_attributes)
         if self._header_frame is not None:
             self._header_frame.pack(fill="x", padx=4, pady=(4, 0))
 
-        self._tree = self._build_table()
+        self._tree = self.get_table()
         self._tree.pack(fill="both", expand=True, padx=4, pady=4)
 
-    def _build_header(
-        self, attributes: Mapping[str, str]
+    def get_header_panel(
+        self, attributes: Mapping[str, str] | None
     ) -> ttk.Frame | None:
+        """Build and return the labelled header panel.
+
+        Port of upstream's private ``getHeaderPanel(Map)``. Returns
+        ``None`` (rather than an empty frame) when ``attributes`` is
+        ``None`` or empty — :meth:`create_view` then skips packing it.
+        """
         if not attributes:
             return None
         frame = ttk.Frame(self)
@@ -126,7 +140,15 @@ class FontEncodingView(ttk.Frame):
             label.grid(row=row, column=0, sticky="w", padx=2, pady=1)
         return frame
 
-    def _build_table(self) -> ttk.Treeview:
+    def get_table(self) -> ttk.Treeview:
+        """Build and return the glyph table.
+
+        Port of upstream's private
+        ``getTable(Object[][], String[], double[])``. The upstream
+        signature takes the data, column names, and y-bounds as
+        parameters; here those live on ``self`` so the method is
+        nullary, matching the in-tree construction model.
+        """
         # Use the first column as the implicit ``#0`` column so its rows
         # carry the row text/image directly. The remaining columns become
         # ``ttk.Treeview`` "columns" with ``values=`` per row.
@@ -146,6 +168,12 @@ class FontEncodingView(ttk.Frame):
         for row in self._table_data:
             self._insert_row(tree, row)
         return tree
+
+    # ---- private aliases (for in-tree call sites that still expect them) --
+
+    _create_view = create_view
+    _build_header = get_header_panel
+    _build_table = get_table
 
     def _insert_row(
         self, tree: ttk.Treeview, row: Sequence[Any]

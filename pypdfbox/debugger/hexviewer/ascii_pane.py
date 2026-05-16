@@ -51,30 +51,50 @@ class ASCIIPane(tk.Text):
     # ----------------------------------------------------------- listeners
 
     def hex_model_changed(self, event: HexModelChangedEvent) -> None:  # noqa: ARG002
-        self._render()
+        self.paint_component()
 
     # ------------------------------------------------------------------ API
 
     def set_selected(self, index: int) -> None:
         self._selected_line = HexModel.line_number(index)
         self._selected_index_in_line = HexModel.element_index_in_line(index)
-        self._render()
+        self.paint_component()
 
     # ------------------------------------------------------------ rendering
 
-    def _render(self) -> None:
+    def paint_component(self) -> None:
+        """Repaint every visible line.
+
+        Upstream Swing iterates over the visible-rect line range; the Tk
+        ``Text`` widget already clips lines outside the viewport, so we
+        rewrite the whole buffer and let Tk handle visibility. The selected
+        line is delegated to :meth:`paint_in_selected`, matching the
+        upstream method split.
+        """
         self.configure(state="normal")
         self.delete("1.0", "end")
         for line in range(1, self._model.total_line() + 1):
-            chars = self._model.get_line_chars(line)
-            text = "".join(chars)
             line_start = self.index("end-1c")
-            self.insert("end", text + "\n")
-            if (
-                line == self._selected_line
-                and 0 <= self._selected_index_in_line < len(chars)
-            ):
-                sel_start = f"{line_start}+{self._selected_index_in_line}c"
-                sel_end = f"{line_start}+{self._selected_index_in_line + 1}c"
-                self.tag_add("selected", sel_start, sel_end)
+            if line == self._selected_line:
+                self.paint_in_selected(line, line_start)
+            else:
+                chars = self._model.get_line_chars(line)
+                self.insert("end", "".join(chars) + "\n")
         self.configure(state="disabled")
+
+    def paint_in_selected(self, line: int, line_start: str) -> None:
+        """Render the selected line and highlight the selected character.
+
+        :param line: 1-based line number being rendered.
+        :param line_start: Tk ``Text`` index where the line begins (used
+            as the offset for the ``selected`` tag).
+        """
+        chars = self._model.get_line_chars(line)
+        self.insert("end", "".join(chars) + "\n")
+        if 0 <= self._selected_index_in_line < len(chars):
+            sel_start = f"{line_start}+{self._selected_index_in_line}c"
+            sel_end = f"{line_start}+{self._selected_index_in_line + 1}c"
+            self.tag_add("selected", sel_start, sel_end)
+
+    # Backwards-compatible alias for the previous private helper name.
+    _render = paint_component

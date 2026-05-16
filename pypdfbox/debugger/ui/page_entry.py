@@ -29,11 +29,15 @@ class PageEntry:
         """Return the 1-based page number."""
         return self._page_num
 
-    def __str__(self) -> str:
+    def to_string(self) -> str:
+        """Return the upstream ``toString`` rendering — ``Page: N`` plus label."""
         label = ""
         if self._page_label is not None:
             label = f" - {self._page_label}"
         return f"Page: {self._page_num}{label}"
+
+    def __str__(self) -> str:
+        return self.to_string()
 
     def get_path(self) -> str:
         """Reconstruct the tree path from the document root to this page."""

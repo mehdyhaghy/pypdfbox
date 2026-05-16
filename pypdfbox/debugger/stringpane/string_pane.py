@@ -54,8 +54,8 @@ class StringPane:
                 width=self.DEFAULT_WIDTH, height=self.DEFAULT_HEIGHT
             )
 
-        text_widget = self._create_text_view(cos_string)
-        hex_widget = self._create_hex_view(cos_string)
+        text_widget = self.create_text_view(cos_string)
+        hex_widget = self.create_hex_view(cos_string)
         self._tabbed_pane.add(text_widget, text=self._TEXT_TAB)
         self._tabbed_pane.add(hex_widget, text=self._HEX_TAB)
 
@@ -72,14 +72,39 @@ class StringPane:
         """The underlying ``tk.Text`` for the "Text View" tab."""
         return self._text_widget
 
-    # ---- internals ---------------------------------------------------------
+    # ---- view construction (upstream parity) ------------------------------
 
-    def _create_text_view(self, cos_string: COSString) -> tk.Text:
+    def create_text_view(self, cos_string: COSString) -> tk.Text:
+        """Build the "Text View" widget for ``cos_string``.
+
+        Port of upstream's private ``createTextView``. Produces a
+        read-only ``tk.Text`` widget whose content is the decoded text
+        (or a hex literal when control characters are present).
+        """
         text = tk.Text(self._tabbed_pane, wrap="word")
-        text.insert("1.0", get_text_string(cos_string))
+        text.insert("1.0", self.get_text_string(cos_string))
         text.configure(state="disabled")
         return text
 
-    def _create_hex_view(self, cos_string: COSString) -> ttk.Frame:
+    def create_hex_view(self, cos_string: COSString) -> ttk.Frame:
+        """Build the "Hex view" widget for ``cos_string``.
+
+        Port of upstream's private ``createHexView``. Wraps a
+        :class:`HexView` over the raw bytes and returns its outer pane.
+        """
         hex_view = HexView(self._tabbed_pane, cos_string.get_bytes())
         return hex_view.get_pane()
+
+    def get_text_string(self, cos_string: COSString) -> str:
+        """Return the decoded text representation of ``cos_string``.
+
+        Port of upstream's private ``getTextString`` (instance method).
+        Delegates to the module-level :func:`get_text_string` helper.
+        """
+        return get_text_string(cos_string)
+
+    # ---- private aliases (for in-tree call sites that still expect them) --
+
+    _create_text_view = create_text_view
+    _create_hex_view = create_hex_view
+    _get_text_string = get_text_string

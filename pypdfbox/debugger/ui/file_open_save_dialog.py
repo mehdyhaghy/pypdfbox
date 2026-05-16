@@ -26,6 +26,12 @@ _open_impl: Callable[..., str] | None = None
 #: Test hook -- replaced via :func:`set_save_impl` to avoid blocking dialogs.
 _save_impl: Callable[..., str] | None = None
 
+#: Dialog type passed to :meth:`FileOpenSaveDialog.approve_selection` — used
+#: to gate the overwrite-confirmation logic that upstream applies only to
+#: save dialogs.
+SAVE_DIALOG = "save"
+OPEN_DIALOG = "open"
+
 
 def _default_open(**kwargs: Any) -> str:
     from tkinter import filedialog
@@ -105,6 +111,43 @@ class FileOpenSaveDialog:
         document.set_all_security_to_be_removed(True)
         document.save(chosen)
         return True
+
+    # --- approve / cancel selection -------------------------------------
+
+    def approve_selection(
+        self,
+        selected_file: str | None,
+        dialog_type: str = SAVE_DIALOG,
+        confirm_overwrite: Callable[[str], bool] | None = None,
+    ) -> str | None:
+        """Validate a user-picked path before accepting it.
+
+        Ports the upstream ``JFileChooser.approveSelection`` override: when
+        the dialog is a save dialog and the chosen file already exists,
+        ``confirm_overwrite`` is invoked. Returning ``False`` (or omitting
+        the hook entirely) cancels the selection — equivalent to
+        ``JFileChooser.cancelSelection``.
+
+        :param selected_file: the path the user picked, or ``None`` /
+            empty string when no file was chosen.
+        :param dialog_type: :data:`SAVE_DIALOG` (default) or
+            :data:`OPEN_DIALOG`. Only save dialogs prompt on overwrite,
+            matching upstream behaviour.
+        :param confirm_overwrite: optional ``(path) -> bool`` callback
+            asking the user whether to overwrite an existing file. When
+            ``None``, the selection is cancelled if the file exists.
+        :return: the validated path, or ``None`` if the selection was
+            cancelled (file missing or overwrite declined).
+        """
+        if not selected_file:
+            return None
+        if (
+            dialog_type == SAVE_DIALOG
+            and Path(selected_file).exists()
+        ):
+            if confirm_overwrite is None or not confirm_overwrite(selected_file):
+                return None
+        return selected_file
 
     # --- internals -------------------------------------------------------
 

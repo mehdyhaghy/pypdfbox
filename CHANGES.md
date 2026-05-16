@@ -2909,6 +2909,42 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   - `test_high_resolution_image_icon.py`: switched per-test `tk.Tk()` to the session-scoped fixture (eliminating extra Tk roots).
 - **Verified**: 2 concurrent shells × 5 iterations = 10/10 processes finish exit 0; 3 shells × 6 iterations = 18/18 exit 0; `PYPDFBOX_SKIP_TK=1` → 357 tests skip cleanly.
 
+## Wave 1311 — debugger parity round-out (5 parallel agents, 15 classes)
+
+### Type0Font (debugger pane) — port get_encoding_name + read_cid_to_gid_map + read_map
+
+- `pypdfbox/debugger/fontencodingpane/type0_font.py`: promoted `_get_encoding_name`, `_read_cid_to_gid_map`, `_read_map` to public matching upstream `getEncodingName / readCIDToGIDMap / readMap`. Back-compat aliases retained. `read_cid_to_gid_map` keeps the pre-existing dual-path read (`to_byte_array` then `create_input_stream` fallback) — upstream uses only `createInputStream`, but pypdfbox's `COSStream` exposes both and the existing tests pinned the dual path.
+- Tests: 10 hand-written tests at `tests/debugger/fontencodingpane/test_type0_font_pane.py`; full pane suite 83/83 green.
+
+### Type3Font (debugger pane) — port calc_b_box + get_glyphs + render_type3_glyph
+
+- `pypdfbox/debugger/fontencodingpane/type3_font.py`: promoted `_calc_bbox` to public `calc_b_box` (returns `PDRectangle` instead of writing to a field — upstream Java is `void` with field-side-effect; the Python port keeps the side-effect-free return so callers can capture, constructor still memoises onto `self._font_bbox`). Promoted `_get_glyphs` to public `get_glyphs`. Added new public `render_type3_glyph(glyph_name, size=40)` returning a `PIL.Image.Image`. Deviation: rendering a Pillow text-label thumbnail of the glyph name rather than rasterising the CharProc via `PDFRenderer` — the lite renderer's Type 3 path is a deferred placeholder rectangle (documented in the renderer's class docstring), so a full pipeline call would yield an empty page. Result type still matches upstream `BufferedImage`-equivalent.
+- Tests: 11 hand-written tests at `tests/debugger/fontencodingpane/test_type3_font_pane.py`; pane suite 98/98 green.
+
+### CSDeviceN + CSIndexed — port colorant accessors
+
+- `pypdfbox/debugger/colorpane/cs_device_n.py`: promoted `get_color_obj`, `get_colorant_data`, `init_ui` to public; `_`-prefixed aliases retained. `get_color_obj(None)` collapses to opaque black `(0.0, 0.0, 0.0)` where upstream NPE'd when `PDDeviceN.toRGB` returned null — the debugger now still renders without an alternate/tint transform.
+- `pypdfbox/debugger/colorpane/cs_indexed.py`: promoted `get_colorant_data`, `get_hival`, `init_ui` to public; `_`-prefixed aliases retained. `get_hival` raises `TypeError` for non-`COSNumber` palette entries instead of upstream's `ClassCastException` (standard Java → Python exception translation).
+- Tests: 9 hand-written tests across `tests/debugger/colorpane/test_cs_device_n_helpers.py` (4) + `test_cs_indexed_helpers.py` (5); existing 5 colorpane tests still green.
+
+### StringPane + FontEncodingView — port view-construction helpers
+
+- `pypdfbox/debugger/stringpane/string_pane.py`: promoted `_create_text_view` → `create_text_view`, `_create_hex_view` → `create_hex_view`; added `get_text_string(cos_string)` as an instance method (upstream is private; exposed as public so callers can override view text without subclassing the whole widget). `_`-prefixed aliases retained.
+- `pypdfbox/debugger/fontencodingpane/font_encoding_view.py`: promoted `_create_view` → `create_view`; renamed/promoted `_build_header` → `get_header_panel`, `_build_table` → `get_table`. Deviation: `get_table()` is nullary (state lives on `self`) and `get_header_panel(None|{})` returns `None` so `create_view` can skip packing — upstream takes data/columns/y-bounds as parameters because Swing widgets can be reused without owning layout state; Tk widgets in the port already own theirs.
+- Tests: 8 hand-written tests across `tests/debugger/stringpane/test_string_pane_views.py` (4) + `test_font_encoding_view_helpers.py` (4); 15 passed in the targeted run, 87 in the broader fontencodingpane suite.
+
+### Eight single-method gap closures
+
+- `StreamTextView`: promoted constructor body into public `init_ui(segments, styles)` matching upstream `initUI`.
+- `ASCIIPane`: split rendering into public `paint_component` + `paint_in_selected(line, line_start)`; private `_render` alias preserved.
+- `DocumentEntry`: added public `to_string()` returning the filename; `__str__` delegates.
+- `FileOpenSaveDialog`: added `approve_selection(path, dialog_type, confirm_overwrite)` plus `SAVE_DIALOG` / `OPEN_DIALOG` constants — ports the upstream JFileChooser overwrite-prompt override.
+- `PageEntry`: added public `to_string()` returning `"Page: N[ - label]"`; `__str__` delegates.
+- `XrefEntries`: added public `to_string()` returning the `"CRT"` PATH constant; `__str__` delegates.
+- `HexModel`: promoted `_fire_model_changed` → public `fire_model_changed`; promoted `_is_ascii_printable` → public static `is_ascii_printable`; private aliases retained.
+- `LogDialog`: promoted `_update_status_bar` → public `update_status_bar`; private alias retained.
+- Tests: 30 hand-written tests across 8 files in `tests/debugger/streampane/`, `tests/debugger/hexviewer/`, `tests/debugger/ui/`; full debugger suite 1372/1372.
+
 ## Wave 1310 — debugger parity round-out (5 parallel agents)
 
 ### Searcher — port search / scroll / highlighter / nav-buttons
