@@ -2909,6 +2909,44 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   - `test_high_resolution_image_icon.py`: switched per-test `tk.Tk()` to the session-scoped fixture (eliminating extra Tk roots).
 - **Verified**: 2 concurrent shells × 5 iterations = 10/10 processes finish exit 0; 3 shells × 6 iterations = 18/18 exit 0; `PYPDFBOX_SKIP_TK=1` → 357 tests skip cleanly.
 
+## Wave 1317 — coverage-boost pass #4 (5 parallel agents, +243 hand-written tests)
+
+Nine more substantive modules from ~39–52% to **96–100%**.
+
+### legacy_pdf_stream_engine — coverage boost
+
+- 12 hand-written tests at `tests/text/test_legacy_pdf_stream_engine_coverage.py` covering: `process_page` with crop box at origin (`_translate_matrix` stays `None`) vs offset (builds `Matrix.get_translate_instance(-llx, -lly)`); rotation capture from `page.get_rotation()`; `compute_font_height` bbox sentinel repair (`lly < -32768` → `set_lower_left_y(-(lly + 65536))`); cap-height clamp variants (taken / ignored / zero / glyph-height-zero); ascent/descent average override; Type3 font-matrix transform path.
+- `pypdfbox/text/legacy_pdf_stream_engine.py`: **39% → 100%** line coverage (+61pp). Full text suite 585/585. Pinned a latent engine mismatch: real `PDType3Font.get_font_matrix()` returns `list[float]`, not a `Matrix`, so the Type3 path would `AttributeError` in production — the test mocks `transform_point` to exercise the branch; flagged for a separate audit fix.
+
+### font_mapper_impl — coverage boost
+
+- 64 hand-written tests at `tests/pdmodel/font/test_font_mapper_impl_coverage.py` covering: all `_find_font` walks (hyphen-stripped, substitute table, comma → dash, comma-short, `-Regular` suffix, miss-path); `_get_fallback_font_name` flag matrix (Courier/Times/Helvetica × {plain, Bold, Italic, BoldItalic} including `AttributeError` on `get_font_name`); `_is_charset_match` (empty ordering, info-CID match/mismatch, GB1/CNS1/Japan1/Korea1 wansung+johab via code-page bits, unknown-ordering, MalgunGothic-Semilight mask); `get_cid_font` scoring path (Adobe-Japan1), TTF/OTF direct hits, non-Adobe collection skip; `probably_barcode_font` all four positive branches + AttributeError fallback; `_score_weight` + close-weight delta; `print_matches`; `get_font_cache` provider-cache + fresh-cache; provider auto-init; format-mismatch in `_get_font`.
+- `pypdfbox/pdmodel/font/font_mapper_impl.py`: **44% → 99%** line coverage (+55pp). Uncovered: 3 tiny gaps in `get_provider` first-touch (would scan real system fonts) + last-resort `_get_last_resort_font` (always None per current impl).
+
+### blend_composite + k_cloner — coverage boost
+
+- `pypdfbox/pdmodel/graphics/blend/blend_composite.py`: **45% → 100%** line coverage. 28 tests at `tests/pdmodel/graphics/blend/test_blend_composite_coverage.py` covering every separable formula (Multiply/Screen/Darken/Lighten/Difference/Exclusion/ColorDodge/ColorBurn/HardLight/Overlay/SoftLight), `get_instance` (Normal sentinel + MULTIPLY + alpha clamping + None mode raise), `create_context` + hints + dispose, `compose` per-pixel across RGBA vs RGB pixel paths, zero/non-zero constant alpha, both-alphas-zero (result_alpha=0 branch), multi-pixel raster, empty raster no-op, non-separable branch with callable / object-with-`.blend` / None fn. Surfaced a production-bug — `compose`'s non-separable branch calls `fn(s[:3], d[:3], rgb_result)` but `BlendMode.get_blend_function()` returns the raw 6-arg HSL helpers (real HSL modes would `TypeError`); covered via a stub mode, flagged for follow-up.
+- `pypdfbox/multipdf/k_cloner.py`: **44% → 100%** line coverage. 27 tests at `tests/multipdf/test_k_cloner_coverage.py` covering splitter-less passthrough (None / scalar / dict / array); `create_array_clone` empty-result returns None + drop-empty-children + keep-mixed; full `has_mci_ds` matrix (None / bare-int / dict-int-K / dict-array-K / dict-dict-K recursion / no-K / array variants); `remove_possible_orphan_annotation` fallback; splitter-delegation paths with map state-sync into `_page_dict_map` / `_struct_dict_map`.
+
+### Four mid-coverage modules — boost
+
+60 hand-written tests across 4 files. Each module ≥99%.
+
+- `pdmodel/fdf/fdf_annotation_stamp.py` **40% → 99%**: 14 tests covering `parse_dict_element` / `parse_array_element` / `parse_stream_element` / `parse_stamp_annotation_appearance_xml` across None / invalid-base64 / nested-dict / nested-array / stream-child branches via synthetic XFDF XML payloads.
+- `pdmodel/font/pd_type1_font_embedder.py` **49% → 99%**: 14 tests. Monkey-patched `fontTools.t1Lib.T1Font` to drive constructor end-to-end across encoding=None, explicit encoding, BytesIO input, and `T1Font` raising `OSError`. Also covers segment-padding, accessors via `__new__`, and the truthy-charset branch of `build_font_descriptor_from_metrics`. Pinned same `COSName.{FONT_DESC, BASE_FONT, ENCODING}` static-attribute gap as wave 1314's PDCIDFontType2 test; autouse fixture installs them at test time.
+- `pdmodel/interactive/form/plain_text_formatter.py` **49% → 100%**: 15 tests. Fake `PDFont` + `PDAppearanceContentStream` exercise `format` across no-text / no-style / no-wrap LEFT/CENTER/RIGHT / line-wider-than-width, and `process_lines` across LEFT/CENTER/RIGHT/JUSTIFY (multi- and single-word) + wrap-mode multi-paragraph.
+- `printing/pdf_printable.py` **52% → 100%**: 17 tests. Monkey-patched `PDFRenderer` covers `render`/`print` happy + IndexError paths, draw-image suppression, and `_rotated_box` across None-page / None-box / 90°/180° rotation / non-int rotation / crop-vs-media getter.
+
+### tools/ — coverage boost on 5 more CLI scripts
+
+- 52 hand-written tests at `tests/tools/test_tools_coverage_wave1317.py` covering:
+  - `decrypt_tool` (40% → **98%**): round-trip via `encrypt_pdf` → `Decrypt.main`, missing-infile OSError, load-error → exit 4, default outfile fallback, keystore/alias attr plumbing.
+  - `encrypt_tool` (43% → **98%**): round-trip (user+owner+keyLength=128), missing-infile, load-error → exit 4, default-outfile fallback (via patched `encrypt_pdf` to avoid same-path corruption), `_access_permission` for all 8 perm flags, `-certFile` repeat plumbing.
+  - `image_to_pdf` (42% → **99%**): single PNG, landscape, auto-orientation (wider-than-tall), resize, multi-input multi-page, missing-file → exit 4, all setters/getters.
+  - `import_fdf` (42% → **96%**): round-trip form PDF + tiny FDF, default outfile fallback, no-AcroForm early return, missing infile/fdffile, load-error → exit 4.
+  - `pdf_text2_markdown` (44% → **100%**): module-level `_append_escaped` + `_escape` + static proxies, full `FontState` state machine (open/close/clear/close-reopen, is_bold/is_italic for force/flag/name including oblique), `push` matched/empty/no-positions/fallback paths, constructor separator wiring, `start_article` / `end_article` / `write_string` (both branches) / `write_paragraph_end` via `patched_parent` fixture mirroring wave 1316 pattern.
+- Aggregate for the 5 modules: **42% → 99%**. Only remaining uncovered lines are each module's `if __name__ == "__main__":` entry point.
+
 ## Wave 1316 — coverage-boost pass #3 (6 parallel agents, +283 hand-written tests, +3 source bug fixes)
 
 Eight more substantive modules from ~28–39% to **74–100%**. Also fixed 3 latent source bugs surfaced by the test work.
