@@ -2909,6 +2909,44 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   - `test_high_resolution_image_icon.py`: switched per-test `tk.Tk()` to the session-scoped fixture (eliminating extra Tk roots).
 - **Verified**: 2 concurrent shells × 5 iterations = 10/10 processes finish exit 0; 3 shells × 6 iterations = 18/18 exit 0; `PYPDFBOX_SKIP_TK=1` → 357 tests skip cleanly.
 
+## Wave 1314 — coverage-boost pass (5 parallel agents, +314 hand-written tests)
+
+This wave switches from method-parity round-out to test-coverage extension on previously under-tested substantive modules. Six modules go from ~20-28% line coverage to **78-100%**.
+
+### cff_parser — coverage boost
+
+- 75 hand-written tests at `tests/fontbox/cff/test_cff_parser_coverage.py` covering: DICT integer / real / operator decoders (all 5 `b0` ranges incl. 28/29 wide; decimal / negative / exponent variants; missing-exponent patch); INDEX readers (`read_header`, `read_off_size` + both out-of-range branches, `read_index_data` zero-count + EOF); Format0 / Format1 encodings + supplement; Format0 / Format1 / Format2 charsets (Type 1 + CID variants); Format0 / Format3 FDSelect + dispatcher; OTF wrapper helpers (`_strip_otf_wrapper` + `_extract_cff_table` happy + truncated-header / truncated-directory / missing-CFF-tag); ROS dispatch (`parse_ros`); SID resolution (`read_string` standard / custom-index / fallback / negative guard); `read_private_dict` (defaults + overrides); `parse_font` matching + fallback to first; `parse_first_sub_font_ros` error reporting + non-CID skip.
+- `pypdfbox/fontbox/cff/cff_parser.py`: **24% → 78%** line coverage (+54pp). Whole CFF suite 754/754.
+- Intentionally left uncovered: `skip_header` / `create_tagged_cff_data_input` (Java-port wrappers superseded by `_strip_otf_wrapper` / `_extract_cff_table` already covered); `parse_cid_font_dicts` / `parse_type1_dicts` (Java-port wrappers superseded by the fontTools delegation in `parse`); a couple of defensive `parse` error branches that need fontTools-internal mocking for marginal value.
+
+### pd_abstract_content_stream — coverage boost
+
+- 128 hand-written byte-parity tests at `tests/pdmodel/test_pd_abstract_content_stream_coverage.py` exercising every operator emitter on the abstract base directly: low-level writers (`write` / `write_line` / `write_bytes` / `write_operand` / `write_operator` / `write_affine_transform` / `_format_decimal` covering int/float/bool/inf/nan); text-state (`begin_text` / `end_text` + nested/missing guards, `set_font`, `Tj`, `TJ`, `TL`, `T*`, `Td`, `Tm`, `Tc`, `Tw`, `Tz`, `Tr` int + enum, `Ts`); graphics-state + image/form (`q`/`Q` + stack duplication/pop, `cm`, `gs`, `draw_image` + AttributeError fallback, `draw_form`, `get_name` device / non-device / no-resources); path + painting (`re`, `m`, `l`, `c`, `v`, `y`, `h`, `S`, `s`, `f`, `f*`, `B`, `B*`, `b`, `b*`, `W n`, `W* n`, `sh`); line state (`w`, `J`, `j` + invalid, `d`, `M` + invalid); marked content + colour (`BMC` / `BDC` with MCID + property-list + no-resources, `EMC`, `MP`, `DP`, `% comment`, `G`/`g`/`RG`/`rg`/`K`/`k`/`SCN`/`scn` gray/rgb/cmyk/PDColor + out-of-range guards, CS stack mgmt, `is_outside255_interval`, `is_outside_one_interval`); GSUB helpers (`encode_for_gsub`, `apply_gsub_rules` worker present/missing/no-glyphs/encode_glyph_id fallback); `close` + context manager.
+- `pypdfbox/pdmodel/pd_abstract_content_stream.py`: **26% → 100%** line coverage (+74pp).
+
+### pd_cid_font_type2_embedder — coverage boost
+
+- 50 hand-written tests at `tests/pdmodel/font/test_pd_cid_font_type2_embedder_coverage.py` covering: full-embed + subset constructor flows (`/Subtype /Type0`, Identity-H encoding, DescendantFonts array, ToUnicode CMap timing); descendant CIDFontType2 build (Adobe-Identity `/CIDSystemInfo`, Identity `/CIDToGIDMap`, `/W`); `build_subset` end-to-end (`/FontFile2` embed, CIDToGIDMap stream replacement, 6-letter tag, ToUnicode rebuild, CIDSet write); the three-state /W width compressor across all FIRST / BRACKET / SERIAL transitions (gap / repeat / scaling fallback); `check_for_cid_gid_identity` (no-CFF, no-charset, mismatch raises, charset IndexError silent return); vertical-metrics happy path with stubbed `vhea` / `vmtx` / `glyf` test-only TTF proxies; ToUnicode CMap supplementary-plane code points triggering PDF version bump to 1.5; subset/full builder KeyError fallbacks (missing `head` / `hmtx` / `maxp` tables). Driven by bundled Liberation Sans/Serif/Mono.
+- `pypdfbox/pdmodel/font/pd_cid_font_type2_embedder.py`: **27% → 88%** line coverage (+61pp). Whole font suite 3112/3112.
+- Pinned two pre-existing module bugs behind `pytest.raises` for visibility — to be patched in a later wave: (a) `_create_cid_font` references `self._cid_font` before assignment in vertical mode; (b) `get_cid_font()` calls `PDCIDFontType2(dict, parent, ttf)` against a 1-arg constructor. Also pinned a `COSName` static-attribute gap: embedder references `COSName.{BASE_FONT, FONT, FONT_DESC, IDENTITY, ENCODING}` which aren't pre-registered in `pypdfbox/cos/cos_name.py`; autouse fixture installs them at test time so the constructor can be exercised at all.
+
+### pd_true_type_font_embedder + pdf_template_creator — coverage boost
+
+- `tests/pdmodel/font/test_pd_true_type_font_embedder_coverage.py` (14 tests): constructor wiring (`/Subtype /TrueType`, `/Encoding`, `/FontDescriptor`, `/BaseFont`, symbolic ↔ non-symbolic descriptor flip), `get_font_encoding` identity-stable accessor, `build_subset` `NotImplementedError` (subset routes through `PDType0Font`), `set_widths` happy-path (32–255 WinAnsi, 224 entries, sensible space advance) + both early-return guards (missing `head` / `hmtx`, empty encoding map), `_get_unicode_cmap` happy-path + both empty-dict guards (missing `cmap`, `getBestCmap()` returns None). Driven by `LiberationSans-Regular.ttf`.
+- `pypdfbox/pdmodel/font/pd_true_type_font_embedder.py`: **20% → 95%** line coverage (+75pp). Remaining 4 uncovered lines are defensive `ImportError` / `AttributeError` fallback guards that require monkeypatching the import system to trigger.
+- `tests/pdmodel/interactive/digitalsignature/visible/test_pdf_template_creator_coverage.py` (14 tests): `get_pdf_structure` identity passthrough, full `build_pdf` walk producing `%PDF-…` byte stream with spy-builder ordering checks confirming Java sequence (`create_page → create_template`, `create_signature_field → create_signature`, `create_formatter_rectangle` called once with `[0,0,100,50]`), `try/finally` `close_template` on both normal exit + mid-pipeline raise, `get_visual_signature_as_stream` `COSWriter` round-trip + fresh `BytesIO` per call, `PDFTemplateBuilder` abstract guard.
+- `pypdfbox/pdmodel/interactive/digitalsignature/visible/pdf_template_creator.py`: **21% → 100%** line coverage (+79pp).
+
+### tools/ — coverage boost on 5 CLI scripts
+
+- 33 hand-written tests in one file `tests/tools/test_tools_coverage_wave1314.py` covering 5 CLI tools:
+  - `pdf_to_image` (26% → **94%**): default/explicit page, jpg + png + time + subsampling flags, cropbox path, `change_crop_box` static helper, unsupported-format → exit 2, missing-infile OSError, load-error → exit 4.
+  - `extract_images` (27% → **61%**): no-image walk (rot0), explicit prefix + `-useDirectJPEG` + `-noColorConvert`, load-error → exit 4, missing-infile, every empty-stub override, `has_masks` non-XObject branch.
+  - `export_fdf` (28% → **91%**): form-bearing PDF round-trip, no-form → exit 1, load-error → exit 4, missing-infile, default-outfile derivation.
+  - `extract_xmp` (28% → **98%**): catalog metadata to file, page-level metadata, page out-of-range → exit 1, no-metadata → exit 1, console output, load-error → exit 4, default-outfile derivation.
+  - `overlay_pdf` (28% → **95%**): default-overlay round-trip, first/last + FOREGROUND position, odd/even/useAllPages + adjustRotation setters, missing-infile, load-error → exit 4.
+- Tests wrap the `Loader.load_pdf` `COSDocument` in a `PDDocument` shim so the PD-layer calls in these class-port modules resolve. `pdf_to_image`'s renderer is stubbed since the real renderer requires an `ImageType` enum (the port hard-codes the string `"RGB"`); the substantive logic — file naming, page loop, `ImageIOUtil` call, quality default — is still exercised.
+
 ## Wave 1313 — close last substantive parity gaps + release-notes refresh + audit pass
 
 Method parity rose from 98.5% to **99.2%** (8,748 / 8,817). PDFDebugger class coverage rose from ~24% to ~85% (3 batches across this wave).
