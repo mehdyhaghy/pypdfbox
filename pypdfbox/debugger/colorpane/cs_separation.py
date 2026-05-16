@@ -61,12 +61,19 @@ class CSSeparation:
         # is a no-op when the value is unchanged, but Tk's ``StringVar``
         # always fires.
         self._syncing: bool = False
-        self._init_ui(master)
-        self._init_values()
+        self.init_ui(master)
+        self.init_values()
 
     # ---- UI ---------------------------------------------------------------
 
-    def _init_ui(self, master: tk.Misc | None) -> None:
+    def init_ui(self, master: tk.Misc | None) -> None:
+        """Initialise all UI elements and arrange them.
+
+        Mirrors upstream ``CSSeparation.initUI()``. Public so headless
+        callers / tests can rebuild the widget tree on demand. Note the
+        signature deviates from upstream which took no arguments —
+        Tkinter requires the parent widget here.
+        """
         bold_font = tkfont.Font(family="Courier", size=20, weight=tkfont.BOLD)
         header_font = tkfont.Font(family="Courier", size=30, weight=tkfont.BOLD)
         small_font = tkfont.Font(family="Courier", size=10, weight=tkfont.BOLD)
@@ -143,20 +150,31 @@ class CSSeparation:
         # and skip border styling (matches upstream's IOException
         # tolerance in initUI).
         with contextlib.suppress(OSError, tk.TclError):
-            self._set_color_bar_border()
+            self.set_color_bar_border()
 
-    def _init_values(self) -> None:
-        """Sync slider/text-field/color-bar with the default tint of 1.0."""
+    # Back-compat private alias.
+    _init_ui = init_ui
+
+    def init_values(self) -> None:
+        """Sync slider/text-field/color-bar with the current tint value.
+
+        Mirrors upstream ``CSSeparation.initValues()``. Used at
+        construction time and any time callers want to re-display the
+        current ``tint_value`` (e.g. after programmatic mutation).
+        """
         assert self._slider is not None
         assert self._tint_var is not None
         self._syncing = True
         try:
-            self._slider.set(self._get_int_representation(self._tint_value))
+            self._slider.set(self.get_int_representation(self._tint_value))
             self._tint_var.set(str(self._tint_value))
         finally:
             self._syncing = False
         with contextlib.suppress(OSError):
             self._update_color_bar()
+
+    # Back-compat private alias.
+    _init_values = init_values
 
     # ---- listeners --------------------------------------------------------
 
@@ -171,7 +189,7 @@ class CSSeparation:
             value = int(float(raw_value))
         except ValueError:
             return
-        self._tint_value = self._get_float_representation(value)
+        self._tint_value = self.get_float_representation(value)
         self._syncing = True
         try:
             assert self._tint_var is not None
@@ -205,7 +223,7 @@ class CSSeparation:
             return
         self._syncing = True
         try:
-            self._slider.set(self._get_int_representation(self._tint_value))
+            self._slider.set(self.get_int_representation(self._tint_value))
         finally:
             self._syncing = False
         try:
@@ -230,7 +248,18 @@ class CSSeparation:
         with contextlib.suppress(tk.TclError):
             self._color_bar.configure(background=hex_color)
 
-    def _set_color_bar_border(self) -> None:
+    def set_color_bar_border(self, border: object | None = None) -> None:
+        """Set a border around the colour bar.
+
+        Mirrors upstream ``CSSeparation.setColorBarBorder()``. The
+        upstream method takes no arguments and uses the darkest colour
+        of the colorant as the border colour via a ``BevelBorder``.
+        Tkinter has no direct ``BevelBorder`` analogue, so we use
+        ``relief="sunken"`` with ``highlightbackground`` set to the
+        darkest colour. The optional ``border`` argument is accepted for
+        API-symmetry with potential overrides — when provided it is
+        passed through to ``Canvas.configure(relief=border)``.
+        """
         assert self._color_bar is not None
         rgb_values = self._separation.to_rgb([1.0])
         color: tuple[float, float, float] = (
@@ -239,25 +268,43 @@ class CSSeparation:
             else (0.0, 0.0, 0.0)
         )
         darkest_hex = self._renderer.to_hex(color)
+        relief = border if isinstance(border, str) else "sunken"
         # ``BevelBorder.LOWERED`` has no direct Tkinter equivalent;
         # ``relief="sunken"`` is the closest analogue. The darkest
         # color drives the border color via ``highlightbackground``.
         with contextlib.suppress(tk.TclError):
             self._color_bar.configure(
-                relief="sunken",
+                relief=relief,
                 highlightthickness=2,
                 highlightbackground=darkest_hex,
             )
 
+    # Back-compat private alias.
+    _set_color_bar_border = set_color_bar_border
+
     # ---- value conversion helpers ----------------------------------------
 
     @staticmethod
-    def _get_float_representation(value: int) -> float:
+    def get_float_representation(value: int) -> float:
+        """Convert slider int (0..100) to tint float (0.0..1.0).
+
+        Mirrors upstream ``CSSeparation.getFloatRepresentation(int)``.
+        """
         return value / 100
 
     @staticmethod
-    def _get_int_representation(value: float) -> int:
+    def get_int_representation(value: float) -> int:
+        """Convert tint float (0.0..1.0) to slider int (0..100).
+
+        Mirrors upstream ``CSSeparation.getIntRepresentation(float)``.
+        Upstream uses Java's ``(int) (value*100)`` cast which truncates
+        toward zero; we match that with Python's ``int()``.
+        """
         return int(value * 100)
+
+    # Back-compat private aliases.
+    _get_float_representation = get_float_representation
+    _get_int_representation = get_int_representation
 
     # ---- public surface ---------------------------------------------------
 

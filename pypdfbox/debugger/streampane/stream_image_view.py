@@ -46,9 +46,32 @@ class StreamImageView(ttk.Frame):
         self._zoom_scale = zoom_scale
         self._rotation_degrees = rotation_degrees
         self._photo: Any | None = None
+        self._current_image: Any | None = None
+
+        self.init_ui()
+
+    # ---- public API --------------------------------------------------------
+
+    def init_ui(self) -> None:
+        """Build the scrollable canvas widget tree.
+
+        Mirrors upstream ``initUI()`` which assembles a ``JPanel`` +
+        ``JLabel`` inside a ``JScrollPane``; here a ``tk.Canvas`` with
+        horizontal + vertical ``ttk.Scrollbar`` widgets fills the same
+        role. Safe to invoke more than once — subsequent calls rebuild
+        the canvas in place.
+        """
 
         with contextlib.suppress(tk.TclError):
             self.configure(width=self.DEFAULT_WIDTH, height=self.DEFAULT_HEIGHT)
+
+        # If a previous canvas exists, drop it so we don't stack widgets
+        # on repeated init_ui() calls.
+        existing = getattr(self, "_canvas", None)
+        if existing is not None:
+            with contextlib.suppress(tk.TclError):
+                for child in list(self.winfo_children()):
+                    child.destroy()
 
         canvas = tk.Canvas(self, background="white")
         h_scroll = ttk.Scrollbar(self, orient="horizontal", command=canvas.xview)
@@ -66,6 +89,42 @@ class StreamImageView(ttk.Frame):
 
         self._canvas = canvas
         self._render()
+
+    def add_image(self, image: object) -> None:
+        """Replace the displayed image with *image* and re-render.
+
+        Mirrors upstream ``addImage(Image)`` — assigns the supplied
+        ``PIL.Image.Image`` as the currently shown bitmap, then refreshes
+        the canvas at the current zoom and rotation.
+        """
+
+        self._image = image
+        self._render()
+
+    def zoom_image(
+        self,
+        scale: float | None = None,
+        rotation: int | None = None,
+    ) -> Any:
+        """Return the source image resampled at *scale* and *rotation*.
+
+        Mirrors upstream ``zoomImage(BufferedImage origin, float scale,
+        int rotation)`` which rotates first, then scales. When *scale*
+        or *rotation* is ``None`` the corresponding stored value (set
+        via the constructor / ``set_zoom`` / ``set_rotation``) is used.
+
+        Side effect: updates the displayed canvas so the rendered image
+        matches the returned ``PIL.Image.Image``. Returns the rendered
+        image so callers can inspect dimensions (parity with upstream's
+        return of ``java.awt.Image``).
+        """
+
+        if scale is not None:
+            self._zoom_scale = scale
+        if rotation is not None:
+            self._rotation_degrees = rotation
+        self._render()
+        return self._current_image
 
     # ---- public accessors --------------------------------------------------
 
@@ -88,6 +147,11 @@ class StreamImageView(ttk.Frame):
         """The underlying ``tk.Canvas`` (exposed for tests)."""
         return self._canvas
 
+    @property
+    def current_image(self) -> Any | None:
+        """The most recently rendered ``PIL.Image.Image`` (or ``None``)."""
+        return self._current_image
+
     # ---- internals ---------------------------------------------------------
 
     def _render(self) -> None:
@@ -106,6 +170,8 @@ class StreamImageView(ttk.Frame):
             rendered = rotated.resize((new_width, new_height), _Image.LANCZOS)
         else:
             rendered = rotated
+
+        self._current_image = rendered
 
         # Build the PhotoImage and stash it on ``self`` so the GC does
         # not reclaim it after this method returns (Tk holds only a weak

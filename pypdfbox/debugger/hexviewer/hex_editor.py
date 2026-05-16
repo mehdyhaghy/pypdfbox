@@ -31,17 +31,26 @@ class HexEditor(ttk.Frame):
         self._ascii_pane: ASCIIPane | None = None
         self._address_pane: AddressPane | None = None
         self._status_pane: StatusPane | None = None
+        self._scroll_pane: ttk.Frame | None = None
 
-        self._create_view()
+        self.create_view()
 
     # ----------------------------------------------------------- creation
 
-    def _create_view(self) -> None:
+    def create_view(self) -> None:
+        """Build the full widget hierarchy.
+
+        Mirrors upstream ``createView()``: upper pane on row 0, the
+        scrollable hex/address/ASCII triple on row 1 (returned by
+        :meth:`get_scroll_pane`), status pane on row 2, and a ``Ctrl+G``
+        accelerator that invokes :meth:`create_jump_dialog`.
+        """
+
         upper_pane = UpperPane(self)
         upper_pane.grid(row=0, column=0, sticky="ew")
 
         # Scrollable middle row hosting the three column panes.
-        body = ttk.Frame(self)
+        body = self.get_scroll_pane()
         body.grid(row=1, column=0, sticky="nsew")
 
         self._address_pane = AddressPane(body, self._model.total_line())
@@ -59,11 +68,16 @@ class HexEditor(ttk.Frame):
 
         # Synchronise vertical scrolling across all three text panes.
         def _on_yview(*args: str) -> None:
+            assert self._address_pane is not None
+            assert self._hex_pane is not None
+            assert self._ascii_pane is not None
             self._address_pane.yview(*args)
             self._hex_pane.yview(*args)
             self._ascii_pane.yview(*args)
 
         def _on_scrollbar_set(first: str, last: str) -> None:
+            assert self._address_pane is not None
+            assert self._ascii_pane is not None
             scrollbar.set(first, last)
             self._address_pane.yview_moveto(first)
             self._ascii_pane.yview_moveto(first)
@@ -86,6 +100,28 @@ class HexEditor(ttk.Frame):
         self.bind_all(
             "<Control-g>", lambda _e: self._show_jump_dialog()
         )
+
+    # Backwards-compatible private alias — earlier waves landed the
+    # private spelling; keep it so existing call-sites keep working until
+    # they migrate to the upstream-aligned public name.
+    _create_view = create_view
+
+    def get_scroll_pane(self) -> ttk.Frame:
+        """Return the container that scrolls the three column panes.
+
+        Mirrors upstream ``getScrollPane()`` which builds a
+        ``JScrollPane`` for the column panel. Tkinter has no built-in
+        scroll-pane widget, so the equivalent is a plain ``ttk.Frame``
+        coupled to a sibling ``ttk.Scrollbar`` (wired in
+        :meth:`create_view`). The frame is created lazily on first call
+        and cached so successive callers receive the same instance —
+        upstream behaviour, where ``getScrollPane`` is invoked once from
+        ``createView``.
+        """
+
+        if self._scroll_pane is None:
+            self._scroll_pane = ttk.Frame(self)
+        return self._scroll_pane
 
     # ----------------------------------------- SelectionChangeListener
 
@@ -115,7 +151,75 @@ class HexEditor(ttk.Frame):
 
     # ------------------------------------------------------- jump-to-index
 
+    def create_jump_dialog(self) -> tk.Toplevel:
+        """Build the modal "Jump to index" dialog.
+
+        Mirrors upstream ``createJumpDialog()`` — a top-level window with
+        a ``Present index`` label, an ``Index to go`` entry, and an OK
+        button that parses the entry, dispatches a
+        ``SelectEvent(index, IN)`` to :meth:`selection_changed` when the
+        value is in range, then destroys the dialog.
+
+        Two intentional deviations from upstream:
+
+        * The entry uses a plain ``ttk.Entry`` instead of Swing's
+          ``JFormattedTextField(NumberFormat.getIntegerInstance())``
+          because Tkinter has no formatted-field analogue. We accept
+          ``0x``/``0X``-prefixed hexadecimal in addition to decimal so
+          callers can paste byte offsets directly from the hex pane —
+          a strict superset of upstream input.
+        * An explicit ``OK`` button replaces the Swing ``ActionListener``
+          on the entry (which fires on Enter). The Enter key is also
+          bound to the same callback, preserving the upstream UX.
+        """
+
+        dialog = tk.Toplevel(self)
+        dialog.title("Jump to index")
+        dialog.transient(self.winfo_toplevel())
+
+        now_label = ttk.Label(
+            dialog, text=f"Present index: {self._selected_index}"
+        )
+        now_label.pack(anchor="w", padx=8, pady=(8, 0))
+
+        input_row = ttk.Frame(dialog)
+        input_row.pack(anchor="w", padx=8, pady=8)
+        ttk.Label(input_row, text="Index to go:").pack(side="left")
+        entry = ttk.Entry(input_row, width=14)
+        entry.pack(side="left", padx=(4, 0))
+
+        def _commit(_event: object = None) -> None:
+            text = entry.get().strip()
+            if not text:
+                return
+            try:
+                index = (
+                    int(text, 16)
+                    if text.lower().startswith("0x")
+                    else int(text, 10)
+                )
+            except ValueError:
+                return
+            if 0 <= index <= self._model.size() - 1:
+                self.selection_changed(SelectEvent(index, SelectEvent.IN))
+                dialog.destroy()
+
+        ok_button = ttk.Button(input_row, text="OK", command=_commit)
+        ok_button.pack(side="left", padx=(4, 0))
+        entry.bind("<Return>", _commit)
+
+        # Expose internals to test code without leaking back to callers.
+        dialog._pypdfbox_entry = entry  # type: ignore[attr-defined]
+        dialog._pypdfbox_ok = ok_button  # type: ignore[attr-defined]
+        dialog._pypdfbox_commit = _commit  # type: ignore[attr-defined]
+
+        return dialog
+
     def _show_jump_dialog(self) -> None:  # pragma: no cover - dialog
+        # Preserved for the Ctrl+G accelerator path. The upstream Swing
+        # action calls ``createJumpDialog().setVisible(true)``; we use
+        # the simpledialog convenience here because it auto-centres on
+        # the parent and blocks correctly without a tk event loop.
         value = simpledialog.askinteger(
             "Jump to index",
             f"Present index: {self._selected_index}\nIndex to go:",

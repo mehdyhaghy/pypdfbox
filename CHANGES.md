@@ -2909,6 +2909,33 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   - `test_high_resolution_image_icon.py`: switched per-test `tk.Tk()` to the session-scoped fixture (eliminating extra Tk roots).
 - **Verified**: 2 concurrent shells × 5 iterations = 10/10 processes finish exit 0; 3 shells × 6 iterations = 18/18 exit 0; `PYPDFBOX_SKIP_TK=1` → 357 tests skip cleanly.
 
+## Wave 1309 — debugger parity round-out (5 parallel agents)
+
+### CSSeparation — port int/float conversions + init helpers
+
+- `pypdfbox/debugger/colorpane/cs_separation.py`: promoted `_get_float_representation`, `_get_int_representation`, `_init_ui`, `_init_values`, `_set_color_bar_border` to public matching upstream `CSSeparation`. Internal call sites updated; `_`-prefixed aliases retained for back-compat with the legacy `test_cs_separation.py` callers. `init_ui(master)` takes a `master` Tk-parent arg (upstream Java is no-arg — Tkinter widgets need a parent). `set_color_bar_border(border=None)` accepts an optional relief override; default still maps to `relief="sunken"` (upstream's `BevelBorder.LOWERED` has no Tk analogue).
+- Tests: 11 hand-written tests at `tests/debugger/colorpane/test_cs_separation_helpers.py`; 19/19 with the legacy suite.
+
+### StreamImageView — port add_image / init_ui / zoom_image
+
+- `pypdfbox/debugger/streampane/stream_image_view.py`: promoted the inline widget-build block from `__init__` into a public `init_ui()` (idempotent — safe to call repeatedly, rebuilds canvas); added public `add_image(image)` to replace the displayed bitmap, and public `zoom_image(scale=None, rotation=None)` returning the rendered `PIL.Image.Image` (mirrors upstream `StreamImageView.zoomImage` but public and Pillow-typed — upstream returns `java.awt.Image`). Added `current_image` property + `_current_image` cache so callers / tests can inspect the rendered bitmap.
+- Tests: 5 new tests in `tests/debugger/streampane/test_stream_image_view.py`; 8/8 with the existing tests.
+
+### ErrorDialog — port create_content / create_*_message / is_suppressed / position
+
+- `pypdfbox/debugger/ui/error_dialog.py`: filled the remaining Swing helper surface — `create_content`, `create_error_message`, `create_detailed_message` (Tk widgets returning `None` on headless systems), `detailed_text` (headless string rendering via `traceback.format_exception`), `position` (Swing `setLocationRelativeTo` analog via `winfo_rootx` / `wm_geometry`), and a session-level `is_suppressed` / `mark_suppressed` pair backed by module-level `_SUPPRESSED_TYPES: set[type[BaseException]]` plus `clear_suppressed_types()` for tests. Upstream's `isSuppressed(String className)` (stack-frame filtering) preserved as `_is_suppressed`. Widgets are Tk (`Label`, `ScrolledText`, `Frame`) instead of Swing (`JEditorPane`, `JTextPane`, `JPanel`); helpers return `None` if Tk isn't available so the module remains importable on headless CI.
+- Tests: 11 hand-written tests at `tests/debugger/ui/test_error_dialog_helpers.py`; 27/27 total with the legacy suite.
+
+### HexEditor — port create_view / create_jump_dialog / get_scroll_pane
+
+- `pypdfbox/debugger/hexviewer/hex_editor.py`: promoted `_create_view` to public `create_view` (alias retained). Added `get_scroll_pane()` (lazy `ttk.Frame` container for the address/hex/ASCII triple — Tk has no `JScrollPane` analogue; scrollbar wiring stays in `create_view` as in the original Tkinter port) and `create_jump_dialog()` (real `tk.Toplevel` with Present-index label, entry, OK button, and Enter accelerator). Jump-dialog input accepts `0x...` hex in addition to decimal — Tk has no `JFormattedTextField` analogue and hex offsets match what the hex pane displays.
+- Tests: 8 hand-written tests at `tests/debugger/hexviewer/test_hex_editor_helpers.py`; 13/13 with the legacy suite.
+
+### StreamPane — port create_header_panel + request_image_showing/request_stream_text
+
+- `pypdfbox/debugger/streampane/stream_pane.py`: promoted `request_image_showing` and `request_stream_text` from `_`-prefixed privates to public; aliases kept. Added new `create_header_panel(available_filters, selected, action_listener=None)` returning a `ttk.Frame` (mirrors upstream's `JPanel` return — old `_build_header` retained as a thin pack-it-here shim for back-compat). `request_stream_text` accepts `int | str` — upstream is `String` only; added integer-index acceptance to let callers select dropdown position 0 without knowing the filter vocabulary.
+- Tests: 7 hand-written tests at `tests/debugger/streampane/test_stream_pane_dispatch.py`; 16/16 with the legacy suite.
+
 ## Wave 1308 — debugger parity round-out (5 parallel agents)
 
 ### PagePane — port field/link rect-map helpers

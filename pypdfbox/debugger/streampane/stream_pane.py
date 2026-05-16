@@ -111,11 +111,17 @@ class StreamPane:
         """Mirror upstream's ``init()`` — must be called after construction."""
         if self._stream.is_image():
             self._panel.pack_propagate(False)
-            self._build_header(self._stream.get_filter_list(), Stream.IMAGE)
-            self._request_image_showing()
+            header = self.create_header_panel(
+                self._stream.get_filter_list(), Stream.IMAGE
+            )
+            header.pack(fill="x")
+            self.request_image_showing()
         else:
-            self._build_header(self._stream.get_filter_list(), Stream.DECODED)
-            self._request_stream_text(Stream.DECODED)
+            header = self.create_header_panel(
+                self._stream.get_filter_list(), Stream.DECODED
+            )
+            header.pack(fill="x")
+            self.request_stream_text(Stream.DECODED)
 
         if self._stream.is_image():
             self._notebook.add(self._raw_view.get_stream_panel(), text="Image view")
@@ -135,7 +141,27 @@ class StreamPane:
 
     # ---- internals ---------------------------------------------------------
 
-    def _build_header(self, available_filters: list[str], selected: str) -> None:
+    def create_header_panel(
+        self,
+        available_filters: list[str],
+        selected: str,
+        action_listener: Any | None = None,
+    ) -> ttk.Frame:
+        """Build and return the top filter-selector header.
+
+        Mirrors upstream's private ``createHeaderPanel(List<String>,
+        String, ActionListener)``: assembles a combobox of filter view
+        labels with ``selected`` preselected, and returns the
+        :class:`ttk.Frame` container. Callers are responsible for
+        ``pack``/``grid``ing the returned frame.
+
+        The ``action_listener`` parameter is accepted for upstream API
+        parity (upstream takes a Swing ``ActionListener``) — Tk has no
+        direct equivalent. When ``None`` (default) the internal
+        ``<<ComboboxSelected>>`` handler is wired up, which dispatches
+        through :meth:`request_image_showing` / :meth:`request_stream_text`
+        the same way upstream's ``actionPerformed`` does.
+        """
         header = ttk.Frame(self._panel)
         combo = ttk.Combobox(
             header,
@@ -144,10 +170,18 @@ class StreamPane:
         )
         if selected in available_filters:
             combo.set(selected)
-        combo.bind("<<ComboboxSelected>>", self._on_filter_changed)
+        if action_listener is None:
+            combo.bind("<<ComboboxSelected>>", self._on_filter_changed)
+        else:
+            combo.bind("<<ComboboxSelected>>", action_listener)
         combo.pack(side="left", padx=4, pady=4)
-        header.pack(fill="x")
         self._filter_combo = combo
+        return header
+
+    # Back-compat private alias — existing call sites used ``_build_header``.
+    def _build_header(self, available_filters: list[str], selected: str) -> None:
+        header = self.create_header_panel(available_filters, selected)
+        header.pack(fill="x")
 
     def _on_filter_changed(self, _event: tk.Event[Any] | None = None) -> None:
         if self._filter_combo is None:
@@ -155,7 +189,7 @@ class StreamPane:
         current_filter = self._filter_combo.get()
         try:
             if current_filter == Stream.IMAGE:
-                self._request_image_showing()
+                self.request_image_showing()
                 self._rebuild_notebook([
                     (self._raw_view.get_stream_panel(), "Image view"),
                 ])
@@ -171,7 +205,7 @@ class StreamPane:
                     (self._raw_view.get_stream_panel(), "Text view"),
                     (self._hex_view.get_pane(), "Hex view"),
                 ])
-            self._request_stream_text(current_filter)
+            self.request_stream_text(current_filter)
         except OSError as exc:
             _LOG.error("%s", exc)
 
@@ -181,20 +215,46 @@ class StreamPane:
         for widget, label in tabs:
             self._notebook.add(widget, text=label)
 
-    def _request_image_showing(self) -> None:
+    def request_image_showing(self) -> None:
+        """Decode the underlying stream as an image and display it.
+
+        Mirrors upstream's private ``requestImageShowing()``. No-op when
+        the stream is not an image. On decode failure, upstream pops a
+        Swing ``JOptionPane``; we log and leave the image tab empty so
+        the debugger main loop / headless tests are not blocked by a
+        modal dialog (deviation noted in CHANGES.md).
+        """
         if not self._stream.is_image():
             return
         image = self._stream.get_image(self._resources)
         if image is None:
-            # Upstream pops a Swing ``JOptionPane`` here. Modal dialogs
-            # block headless test runs and the debugger main loop; we
-            # log instead and leave the image tab empty (matching the
-            # behaviour callers expect on a decode failure).
             _LOG.warning("image not available (filter missing?)")
             return
         self._raw_view.show_stream_image(image)
 
-    def _request_stream_text(self, command: str) -> None:
+    # Back-compat private alias.
+    _request_image_showing = request_image_showing
+
+    def request_stream_text(self, command: str | int) -> None:
+        """Populate the text + hex views with the bytes at ``command``.
+
+        Mirrors upstream's private ``requestStreamText(String)``. The
+        ``command`` is a filter-list label (typically ``Stream.DECODED``
+        or one of the partial-decode entries). As a pypdfbox convenience
+        (and to match parity tooling), an integer is accepted as an
+        index into :meth:`Stream.get_filter_list` — ``0`` selects the
+        first filter view (``Stream.DECODED`` for non-image streams,
+        ``Stream.IMAGE`` for image streams). On read failure, upstream
+        pops a Swing ``JOptionPane``; we log and return (see CHANGES.md).
+        """
+        if isinstance(command, int):
+            filter_list = self._stream.get_filter_list()
+            if 0 <= command < len(filter_list):
+                command = filter_list[command]
+            else:
+                _LOG.warning("filter index %d out of range", command)
+                return
+
         # Populate raw view (always plain bytes).
         segments_raw = self._build_segments(command, nice=False)
         self._raw_view.show_stream_text(
@@ -210,13 +270,14 @@ class StreamPane:
         # Update hex view with the raw bytes for this filter view.
         in_stream = self._stream.get_stream(command)
         if in_stream is None:
-            # Same rationale as ``_request_image_showing`` — log rather
-            # than pop a modal dialog. See CHANGES.md.
             _LOG.warning("%s text not available (filter missing?)", command)
             return
         with in_stream as src:
             data = src.read()
         self._hex_view.change_data(data)
+
+    # Back-compat private alias.
+    _request_stream_text = request_stream_text
 
     # ---- segment construction ---------------------------------------------
 
