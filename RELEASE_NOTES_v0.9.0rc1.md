@@ -15,8 +15,8 @@
 Numbers from `.parity/snapshot.txt` against upstream Apache PDFBox 3.0 HEAD:
 
 - **Class parity: 1,116 / 1,222 — 100% of the in-scope surface.** The unmapped remainder is `org.apache.pdfbox.preflight.*`, removed from PDFBox 4.0 and intentionally out of scope. PDF/A / PDF/UA conformance validation is similarly out of scope — pypdfbox ships permissive-license components only and stays validator-agnostic; downstream users wire up whichever validator they choose.
-- **Method parity: 97.3%** (8,548 / 8,788 matched).
-- **Tests: 30,000+ passing, 14 skipped** (each skip carries a one-line documented reason in the test source).
+- **Method parity: 99.0%** (8,725 / 8,817 matched).
+- **Tests: 30,958+ passing, 14 skipped** (each skip carries a one-line documented reason in the test source).
 - **Line coverage: 90.22% global**, ~99% on the stable parser + writer + pdmodel + contentstream + text + fontbox + rendering + xmpbox + tools core.
 - **All 14 Standard 14 fonts substitute properly** out of the box via bundled Liberation Sans/Serif/Mono (regular, bold, italic, bold-italic) and DejaVuSans for symbolic glyph coverage.
 - **Tkinter debugger fully ported.** The Swing `PDFDebugger` UI (tree model, page pane, stream pane, hex viewer) ships as a Python-native widget toolkit equivalent.
@@ -140,6 +140,6 @@ This RC exists to surface integration issues against real-world PDF corpora. Bet
 
 - Close the ICC color-math gap so rendered raster output matches PDFBox at pixel parity on color-managed inputs.
 - Tighten writer output so a clean PDF/A round-trip is achievable without external remediation for the common conformance levels.
-- Drive method parity from 97.3% toward 100% on the remaining debugger inner-helper surface.
+- Drive method parity from 99.0% toward 100% on the remaining debugger inner-helper surface.
 
 No public API breakage is planned between this RC and `0.9.0`.

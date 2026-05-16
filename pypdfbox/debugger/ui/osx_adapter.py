@@ -284,6 +284,64 @@ class OSXAdapter:
         """Class-surface alias for :func:`set_application_event_handled`."""
         return set_application_event_handled(event, handled)
 
+    @staticmethod
+    def set_handler(adapter: Any) -> bool:
+        """Register *adapter*'s ``handle_*`` methods with Tk's mac hooks.
+
+        Mirrors upstream ``setHandler(OSXAdapter)``, which built a Java
+        reflection proxy that bridged ``com.apple.eawt.Application``
+        events to the adapter's ``handle*`` instance methods. In the
+        Tkinter port the same wiring is done by calling
+        ``root.createcommand(...)`` for each Tcl/Tk macOS pseudo-event
+        the adapter chooses to handle.
+
+        Supported adapter callbacks (each optional):
+
+        * ``handle_reopen_application`` → ``::tk::mac::ReopenApplication``
+        * ``handle_quit``               → ``::tk::mac::Quit``
+        * ``handle_about``              → ``tk::mac::standardAboutPanel``
+        * ``handle_preferences``        → ``::tk::mac::ShowPreferences``
+        * ``handle_open_file``          → ``::tk::mac::OpenDocument``
+
+        The adapter must expose a ``_root`` attribute pointing at the
+        Tk root (the same shape :class:`OSXAdapter` instances already
+        have). Returns ``True`` on a successful registration of at
+        least one handler, ``False`` (and logs a warning) if the root
+        does not support ``createcommand``.
+        """
+
+        root = getattr(adapter, "_root", None)
+        if root is None or not hasattr(root, "createcommand"):
+            _LOG.warning(
+                "OSXAdapter.set_handler: adapter root %r has no createcommand",
+                root,
+            )
+            return False
+
+        bindings = (
+            ("::tk::mac::ReopenApplication", "handle_reopen_application"),
+            ("::tk::mac::Quit", "handle_quit"),
+            ("tk::mac::standardAboutPanel", "handle_about"),
+            ("::tk::mac::ShowPreferences", "handle_preferences"),
+            ("::tk::mac::OpenDocument", "handle_open_file"),
+        )
+        installed = False
+        for command_name, method_name in bindings:
+            handler = getattr(adapter, method_name, None)
+            if handler is None or not callable(handler):
+                continue
+            try:
+                root.createcommand(command_name, handler)
+            except (tk.TclError, AttributeError) as exc:  # pragma: no cover - depends on platform
+                _LOG.warning(
+                    "OSXAdapter.set_handler: createcommand(%r) failed: %s",
+                    command_name,
+                    exc,
+                )
+                continue
+            installed = True
+        return installed
+
     # --- internals --------------------------------------------------------
 
     def _create_command(

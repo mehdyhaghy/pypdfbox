@@ -170,13 +170,13 @@ def test_get_find_previous_menu_item_distinct_from_next(
 
 
 # ----------------------------------------------------------------------
-# 4. _create_find_menu
+# 4. create_find_menu
 # ----------------------------------------------------------------------
 
 
 def test_create_find_menu_builds_three_entries(debugger: PDFDebugger) -> None:
     parent = tk.Menu(debugger._toplevel)  # noqa: SLF001
-    find = debugger._create_find_menu(parent)  # noqa: SLF001
+    find = debugger.create_find_menu(parent)
     assert isinstance(find, tk.Menu)
     # Three entries: Find / Find Next / Find Previous.
     assert find.index("end") == 2
@@ -184,7 +184,7 @@ def test_create_find_menu_builds_three_entries(debugger: PDFDebugger) -> None:
 
 def test_create_find_menu_resets_internal_state(debugger: PDFDebugger) -> None:
     parent = tk.Menu(debugger._toplevel)  # noqa: SLF001
-    debugger._create_find_menu(parent)  # noqa: SLF001
+    debugger.create_find_menu(parent)
     assert debugger._find_menu is not None  # noqa: SLF001
     assert debugger._find_menu_index is not None  # noqa: SLF001
     assert debugger._find_previous_menu_index is not None  # noqa: SLF001

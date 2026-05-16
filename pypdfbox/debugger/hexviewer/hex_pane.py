@@ -358,6 +358,24 @@ class HexPane(tk.Text):
 
         self._render()
 
+    def set_default(self) -> None:
+        """Reset transient edit/selection styling to the default state.
+
+        Mirrors upstream private ``setDefault(Graphics)``, which restores
+        the Graphics context to black foreground + the pane's default
+        font after :meth:`paint_in_edit` had switched to bold/coloured
+        glyphs. In the Tkinter port the same effect is achieved by
+        clearing the per-edit cursor state — ``_state`` returns to
+        :attr:`NORMAL`, ``_selected_char`` to ``0`` — and then re-running
+        :meth:`_render`, which re-applies the default (un-tagged) styling
+        for every byte cell. The upstream ``Graphics`` argument has no
+        Tkinter equivalent and is dropped.
+        """
+
+        self._state = self.NORMAL
+        self._selected_char = 0
+        self._render()
+
     def paint_in_edit(self, content: int, index: int) -> None:
         """Paint the cell at *index* in edit-mode for the byte *content*.
 

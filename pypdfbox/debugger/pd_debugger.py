@@ -248,24 +248,20 @@ class PDFDebugger:
         self._toplevel = toplevel
 
         menubar = tk.Menu(toplevel)
-        self._file_menu = self._create_file_menu(menubar)
+        self._file_menu = self.create_file_menu(menubar)
         menubar.add_cascade(label="File", menu=self._file_menu, underline=0)
 
-        edit_menu = self._create_edit_menu(menubar)
+        edit_menu = self.create_edit_menu(menubar)
         menubar.add_cascade(label="Edit", menu=edit_menu, underline=0)
         self._edit_menu_index = menubar.index("end")
 
-        # Reset the singleton ViewMenu so multiple tests can instantiate
-        # the debugger without inheriting stale state.
-        ViewMenu._reset_instance()  # noqa: SLF001
-        view_menu = ViewMenu.get_instance(pdf_debugger=self, master=toplevel)
-        menubar.add_cascade(label="View", menu=view_menu.get_menu(), underline=0)
+        view_menu = self.create_view_menu(menubar)
+        menubar.add_cascade(label="View", menu=view_menu, underline=0)
 
-        self._window_menu = tk.Menu(menubar, tearoff=0)
+        self._window_menu = self.create_window_menu(menubar)
         menubar.add_cascade(label="Window", menu=self._window_menu, underline=0)
 
-        help_menu = tk.Menu(menubar, tearoff=0)
-        help_menu.add_command(label="About PDFBox", command=self._show_about_dialog)
+        help_menu = self.create_help_menu(menubar)
         menubar.add_cascade(label="Help", menu=help_menu, underline=0)
 
         # Install on the toplevel.
@@ -290,7 +286,16 @@ class PDFDebugger:
             f"<{modifier}-p>", lambda _evt: self._print_menu_item_action_performed()
         )
 
-    def _create_file_menu(self, parent: tk.Menu) -> tk.Menu:
+    def create_file_menu(self, parent: tk.Menu) -> tk.Menu:
+        """Build the ``File`` cascade and return the menu.
+
+        Mirrors upstream's private ``createFileMenu()`` — promoted to a
+        public method here so tests and downstream embedders can rebuild
+        the cascade without having to instantiate the full debugger.
+        Tk has no ``JMenuBar``, so the menubar is passed in as ``parent``
+        and the freshly-built :class:`tkinter.Menu` is returned for the
+        caller to attach via ``add_cascade``.
+        """
         modifier = "Command" if _is_mac_os() else "Ctrl"
         file_menu = tk.Menu(parent, tearoff=0)
         file_menu.add_command(
@@ -356,7 +361,14 @@ class PDFDebugger:
             )
         return file_menu
 
-    def _create_edit_menu(self, parent: tk.Menu) -> tk.Menu:
+    def create_edit_menu(self, parent: tk.Menu) -> tk.Menu:
+        """Build the ``Edit`` cascade and return the menu.
+
+        Mirrors upstream's private ``createEditMenu()`` — promoted here
+        because the cascade hosts the ``Find`` submenu, and external
+        ``Searcher`` callers want a way to install their own ``Edit``
+        cascade without instantiating the full menubar.
+        """
         edit_menu = tk.Menu(parent, tearoff=0)
         edit_menu.add_command(label="Cut", state="disabled")
         edit_menu.add_command(label="Copy", state="disabled")
@@ -369,15 +381,15 @@ class PDFDebugger:
         )
         edit_menu.add_separator()
 
-        find_menu = self._create_find_menu(edit_menu)
+        find_menu = self.create_find_menu(edit_menu)
         edit_menu.add_cascade(label="Find", menu=find_menu, state="disabled")
         return edit_menu
 
-    def _create_find_menu(self, parent: tk.Menu) -> tk.Menu:
+    def create_find_menu(self, parent: tk.Menu) -> tk.Menu:
         """Build the ``Edit > Find`` cascade and stash the menu indices.
 
         Mirrors upstream's ``createFindMenu()`` — split out of
-        :meth:`_create_edit_menu` so external callers and tests can
+        :meth:`create_edit_menu` so external callers and tests can
         reuse it without going through the full Edit menu.
         """
         modifier = "Command" if _is_mac_os() else "Ctrl"
@@ -403,6 +415,86 @@ class PDFDebugger:
         self._find_previous_menu_index = find_menu.index("end")
         return find_menu
 
+    def create_view_menu(self, parent: tk.Menu) -> tk.Menu:
+        """Build the ``View`` cascade and return the underlying Tk menu.
+
+        Upstream Swing simply calls ``ViewMenu.getInstance(this)`` and
+        adds the result to the menubar — there is no ``createViewMenu``
+        helper in PDFBox. We factor the same wiring out so the menubar
+        builder, tests, and downstream embedders can swap a custom
+        ``ViewMenu`` in by overriding this hook. Returns the
+        :class:`tkinter.Menu` (not the :class:`ViewMenu` wrapper) for
+        consistency with the other ``create_*_menu`` builders.
+        """
+        # Reset the singleton ViewMenu so multiple tests can instantiate
+        # the debugger without inheriting stale state.
+        ViewMenu._reset_instance()  # noqa: SLF001
+        view_menu = ViewMenu.get_instance(pdf_debugger=self, master=parent)
+        return view_menu.get_menu()
+
+    def create_window_menu(self, parent: tk.Menu) -> tk.Menu:
+        """Build the ``Window`` cascade and return the menu.
+
+        The PDFBox Swing original does not have a dedicated Window menu
+        — it relies on the OS-native window management. pypdfbox keeps a
+        stub Window cascade so the menubar layout matches the Tk port's
+        existing widget tree; subclasses can override to add per-window
+        items.
+        """
+        return tk.Menu(parent, tearoff=0)
+
+    def create_help_menu(self, parent: tk.Menu) -> tk.Menu:
+        """Build the ``Help`` cascade and return the menu.
+
+        Mirrors upstream's inline ``JMenu help = new JMenu("Help")``
+        snippet inside the menubar-construction block — factored out so
+        callers can replace the ``About`` handler without rebuilding the
+        whole menubar.
+        """
+        help_menu = tk.Menu(parent, tearoff=0)
+        help_menu.add_command(label="About PDFBox", command=self._show_about_dialog)
+        return help_menu
+
+    def add_recent_file_items(self) -> None:
+        """Rebuild the ``File > Open Recent`` submenu from ``RecentFiles``.
+
+        Mirrors upstream's ``addRecentFileItems()`` — the Java method
+        wires each freshly-loaded entry to a shared ``AbstractAction``
+        whose ``actionPerformed`` reads back the menu item's ``"path"``
+        client property and dispatches into ``readPDFFile``. Tk
+        ``Menu`` entries have no client-property bag, so we capture
+        ``path`` in a default-argument closure instead. The submenu is
+        wiped + repopulated each call so newly-opened files surface at
+        the top without the caller having to track deltas.
+        """
+        if self._recent_files_menu is None or self._file_menu is None:
+            return
+        if self._recent_files.is_empty():
+            return
+        # Wipe + repopulate.
+        self._recent_files_menu.delete(0, "end")
+        files = self._recent_files.get_files()
+        # Java iterates ``for (int i = files.size() - 1; i >= 0; i--)`` so
+        # the most-recently-added file appears at the top of the cascade;
+        # ``reversed(files)`` reproduces that ordering.
+        for path in reversed(files):
+            name = Path(path).name
+
+            def _opener(path: str = path) -> None:
+                try:
+                    self._read_pdf_file(path, "")
+                except OSError as ex:
+                    ErrorDialog(ex).set_visible(True)
+
+            self._recent_files_menu.add_command(label=name, command=_opener)
+        # Enable the cascade itself — its position is ``reopen + 1``
+        # per :meth:`create_file_menu`.
+        if self._reopen_menu_index is not None:
+            with contextlib.suppress(tk.TclError):
+                self._file_menu.entryconfigure(
+                    self._reopen_menu_index + 1, state="normal"
+                )
+
     def _init_global_event_handlers(self) -> None:
         """Install macOS hooks via :class:`OSXAdapter` (no-op elsewhere)."""
         if not _is_mac_os():
@@ -415,6 +507,60 @@ class PDFDebugger:
                 "file": self._osx_open_file,
             },
         )
+
+    def init_components(self) -> None:
+        """Rebuild the split-pane body + status bar widgets.
+
+        Mirrors upstream's private ``initComponents()``. The constructor
+        wires this up once via :meth:`_init_components` (the protected
+        spelling kept for the original call sites); this public wrapper
+        exists so external callers can trigger a re-layout — useful for
+        embedded hosts that swap the master after construction.
+        """
+        # Tear down everything mounted under ``_main_frame`` first.
+        for child in self._main_frame.winfo_children():
+            with contextlib.suppress(tk.TclError):
+                child.destroy()
+        self._init_components()
+
+    def init_global_event_handlers(self) -> None:
+        """Install application-global event handlers (macOS adapter).
+
+        Mirrors upstream's protected ``initGlobalEventHandlers()`` — the
+        Swing version registers ``osxOpenFiles`` + ``osxQuit`` via
+        reflection on macOS only. We delegate to :meth:`_init_global_event_handlers`
+        so external subclasses can override the public spelling exactly
+        as the upstream subclassing contract suggests.
+        """
+        self._init_global_event_handlers()
+
+    # ------------------------------------------------------------------
+    # Window listener hooks (mirrors upstream's WindowAdapter inner class)
+    # ------------------------------------------------------------------
+
+    def window_opened(self, _event: Any = None) -> None:
+        """Window-opened hook. Mirrors upstream's
+        ``WindowAdapter.windowOpened(WindowEvent)`` — focuses the tree so
+        keyboard navigation works immediately after the window appears.
+
+        :param _event: ignored; matches the Swing ``WindowEvent``
+            signature shape. Tk fires the same kind of hook via
+            ``<Map>`` bindings; subclasses pass through the
+            ``tk.Event[Any]`` directly.
+        """
+        with contextlib.suppress(tk.TclError):
+            self._tree.focus_set()
+
+    def window_closing(self, _event: Any = None) -> None:
+        """Window-closing hook. Mirrors upstream's
+        ``WindowAdapter.windowClosing(WindowEvent)`` — delegates to the
+        regular exit path so the prefs/recent-files state is persisted.
+
+        Bind via ``toplevel.protocol("WM_DELETE_WINDOW",
+        debugger.window_closing)`` to wire this up against Tk's
+        equivalent of Swing's close-button event.
+        """
+        self._exit_menu_item_action_performed()
 
     # ------------------------------------------------------------------
     # Public API mirroring upstream
@@ -1182,6 +1328,19 @@ class PDFDebugger:
         with contextlib.suppress(OSError):
             self._read_pdf_file(filename, "")
 
+    def osx_open_files(self, filename: str) -> None:
+        """macOS file-open hook. Mirrors upstream's reflectively-invoked
+        ``osxOpenFiles(String)`` — the macOS application bus dispatches a
+        single filename per event, so the plural in the upstream name is a
+        historical artifact (Java AWT's ``Desktop.setOpenFileHandler`` is
+        plural-shaped, but the underlying reflection target on
+        ``PDFDebugger`` takes one filename at a time).
+        """
+        try:
+            self._read_pdf_file(filename, "")
+        except OSError as ex:
+            ErrorDialog(ex).set_visible(True)
+
     def _show_about_dialog(self) -> None:
         messagebox.showinfo(
             "About Apache PDFBox",
@@ -1206,7 +1365,7 @@ class PDFDebugger:
         self._read_pdf_file(str(file), password)
 
     @classmethod
-    def _load_configuration(cls) -> None:
+    def load_configuration(cls) -> None:
         """Load ``config.properties`` into :attr:`configuration`, if present.
 
         Mirrors upstream's ``loadConfiguration`` — the Java code uses
@@ -1233,7 +1392,11 @@ class PDFDebugger:
                     cls.configuration[key.strip()] = value.strip()
                     break
 
-    load_configuration = _load_configuration
+    # Internal-use alias retained for callers that still spell it with the
+    # underscore prefix.
+    @classmethod
+    def _load_configuration(cls) -> None:
+        cls.load_configuration()
 
     def call(self) -> int:
         """Run the application lifecycle (init + optional load + show).
@@ -1267,6 +1430,15 @@ class PDFDebugger:
         """
         self._exit_menu_item_action_performed()
 
+    def osx_quit(self) -> None:
+        """Public spelling of :meth:`_osx_quit`. Mirrors upstream's
+        ``osxQuit()`` Mac quit hook; both names route to the same exit
+        path for parity with the upstream public API surface (the Java
+        method is private but is invoked reflectively from
+        :class:`OSXAdapter`).
+        """
+        self._osx_quit()
+
     def perform_application_exit(self) -> None:
         """Final-stage exit hook. Subclasses override to keep the
         interpreter alive when embedding the debugger; the upstream
@@ -1276,6 +1448,91 @@ class PDFDebugger:
         """
         with contextlib.suppress(Exception):
             self._toplevel.destroy()
+
+    def text_dialog(self, title: str, resource: str) -> None:
+        """Public spelling of :meth:`_text_dialog`. Mirrors upstream's
+        private ``textDialog(String, URL)`` — exposed publicly here so
+        embedding hosts can pop the same "About" / "License" viewer
+        without poking at the underscore-prefixed name.
+        """
+        self._text_dialog(title, resource)
+
+    def hyperlink_update(self, url: str) -> None:
+        """Public spelling of :meth:`_hyperlink_update`. Mirrors
+        upstream's ``hyperlinkUpdate(HyperlinkEvent)``. Callers pass the
+        URL string; the only Swing branch upstream forwards anything to
+        is the ``ACTIVATED`` event type, so a string is sufficient.
+        """
+        self._hyperlink_update(url)
+
+    def replace_right_component(self, widget: tk.Widget | None) -> None:
+        """Public spelling of :meth:`_replace_right_component`. Mirrors
+        upstream's private ``replaceRightComponent(Component)`` — swaps
+        the right-hand-side detail pane to ``widget`` (or clears it when
+        ``None``).
+        """
+        self._replace_right_component(widget)
+
+    @staticmethod
+    def get_node_key(node: Any) -> COSName | None:
+        """Public spelling of :meth:`_get_node_key`. Mirrors upstream's
+        ``getNodeKey(Object)`` — returns the ``COSName`` key of a
+        :class:`MapEntry` node, or ``None`` for any other node shape.
+        """
+        return PDFDebugger._get_node_key(node)
+
+    @staticmethod
+    def get_underneath_object(node: Any) -> Any:
+        """Public spelling of :meth:`_get_underneath_object`. Mirrors
+        upstream's ``getUnderneathObject(Object)`` — unwraps tree-entry
+        wrappers (:class:`MapEntry`, :class:`ArrayEntry`, :class:`PageEntry`,
+        :class:`XrefEntry`, :class:`COSObject`) to their underlying COS
+        value.
+        """
+        return PDFDebugger._get_underneath_object(node)
+
+    def action_performed(self, file_path: str) -> None:
+        """Recent-file action handler.
+
+        Mirrors the anonymous ``AbstractAction`` declared inside
+        upstream's ``addRecentFileItems()`` — the Swing original reads
+        the chosen path from the source ``JComponent``'s client property
+        and dispatches :meth:`_read_pdf_file`. Tk has no equivalent
+        client-property bus, so callers (the recent-files menu) pass
+        the resolved path directly.
+
+        :param file_path: absolute path of the recent file to (re)load.
+        """
+        try:
+            self._read_pdf_file(file_path, "")
+        except OSError as ex:
+            ErrorDialog(ex).set_visible(True)
+
+    def open(self) -> PDDocument | None:  # noqa: A003 - mirrors upstream name
+        """Open a document via the currently selected source path.
+
+        Mirrors the anonymous overrides of
+        :meth:`DocumentOpener.open` that the upstream code constructs
+        inside ``readPDFFile`` / ``readPDFurl`` to drive the
+        password-retry loop. The Python port surfaces a single
+        ``open()`` here on :class:`PDFDebugger` so external callers
+        that mirror the upstream call-shape (``debugger.open()``) get
+        the currently-loaded document or trigger a load against
+        :attr:`_current_file_path` if one is set.
+
+        Returns the loaded :class:`PDDocument` (or ``None`` when no
+        source path is configured). Mirrors upstream's
+        ``PDDocument open() throws IOException`` signature shape.
+        """
+        if self._document is not None:
+            return self._document
+        if self._current_file_path is None:
+            return None
+        if self._current_file_path.startswith(("http", "file:")):
+            self._read_pdf_url(self._current_file_path, "")
+        else:
+            self._read_pdf_file(self._current_file_path, "")
+        return self._document
 
     def _text_dialog(self, title: str, resource: str) -> None:
         """Open ``resource`` (URL or local path) as a modal HTML viewer.
@@ -1461,7 +1718,7 @@ class PDFDebugger:
             self._recent_files_menu.add_command(label=name, command=_opener)
         state = "normal" if files else "disabled"
         # Locate the Recent menu in the file menu — its index is
-        # ``reopen + 1`` per :meth:`_create_file_menu`.
+        # ``reopen + 1`` per :meth:`create_file_menu`.
         if self._reopen_menu_index is not None:
             with contextlib.suppress(tk.TclError):
                 self._file_menu.entryconfigure(
@@ -1479,6 +1736,229 @@ class PDFDebugger:
         node = self._tree.get_node(selection[0])
         underneath = self._get_underneath_object(node)
         return underneath if isinstance(underneath, COSStream) else None
+
+    # ------------------------------------------------------------------
+    # State accessors + file lifecycle (wave 1313)
+    # ------------------------------------------------------------------
+
+    def get_current_file_path(self) -> str | None:
+        """Return the path or URL of the currently-loaded document.
+
+        Mirrors the implicit ``currentFilePath`` accessor used by
+        upstream's reopen handler (Java field-access on ``currentFilePath``).
+        ``None`` when no document has been loaded yet.
+        """
+        return self._current_file_path
+
+    def get_pdf_file(self) -> Path | None:
+        """Return the current file as :class:`pathlib.Path`, or ``None``.
+
+        Helper companion to :meth:`get_current_file_path`. URLs (anything
+        beginning with ``http`` or ``file:``) return ``None`` since they
+        do not have a stable on-disk :class:`Path` equivalent. Mirrors
+        the conceptual ``getCurrentFile`` accessor present in
+        sibling debugger panes.
+        """
+        if self._current_file_path is None:
+            return None
+        if self._current_file_path.startswith(("http", "file:")):
+            return None
+        return Path(self._current_file_path)
+
+    def read_pdf_file(
+        self, file_path: str | Path, password: str | bytes = ""
+    ) -> None:
+        """Load ``file_path`` and rebuild the tree.
+
+        Public wrapper around the existing private
+        :meth:`_read_pdf_file` — mirrors upstream's
+        ``readPDFFile(String, String)`` / ``readPDFFile(File, String)``
+        overloads, both of which are private in Java but exposed here so
+        external tooling can drive the debugger headlessly without
+        going through :meth:`open_document` (which only takes a path).
+        ``file_path`` may be a string or :class:`pathlib.Path`.
+        """
+        self._read_pdf_file(str(file_path), password)
+
+    def read_pdf_url(
+        self, url_string: str, password: str | bytes = ""
+    ) -> None:
+        """Load a remote PDF over HTTP(S) and rebuild the tree.
+
+        Public wrapper around :meth:`_read_pdf_url`. Mirrors upstream's
+        private ``readPDFurl(String, String)`` — promoted to a public
+        surface so callers can drive URL-based loads without going via
+        the ``Open URL`` menu handler.
+        """
+        self._read_pdf_url(url_string, password)
+
+    def parse_document(
+        self,
+        source: str | Path | bytes,
+        password: str | bytes = "",
+    ) -> PDDocument:
+        """Drive :class:`DocumentOpener`-style password retries.
+
+        Mirrors upstream's ``DocumentOpener.parse()`` flow but accepts
+        any of three input shapes: a filesystem path, a URL string, or
+        an in-memory ``bytes`` buffer. Returns the loaded
+        :class:`PDDocument` — the debugger's own ``_document`` is *not*
+        mutated so callers can inspect a document without disturbing
+        the UI state. Raises whatever the underlying
+        :meth:`PDDocument.load` raises after exhausting password
+        retries.
+        """
+        from pypdfbox.pdmodel import PDDocument  # noqa: PLC0415
+
+        opener = DocumentOpener(password=password, master=self._toplevel)
+
+        def _open() -> PDDocument:
+            if isinstance(source, bytes):
+                return (
+                    PDDocument.load(source, opener.password)
+                    if opener.password
+                    else PDDocument.load(source)
+                )
+            text = str(source)
+            if text.startswith(("http://", "https://", "file:")):
+                from urllib.request import urlopen  # noqa: PLC0415
+
+                with urlopen(text) as response:  # noqa: S310 - user-supplied URL
+                    data = response.read()
+                return (
+                    PDDocument.load(data, opener.password)
+                    if opener.password
+                    else PDDocument.load(data)
+                )
+            return (
+                PDDocument.load(text, opener.password)
+                if opener.password
+                else PDDocument.load(text)
+            )
+
+        opener.open = _open  # type: ignore[method-assign]
+        return opener.parse()
+
+    def flush_to_disk(
+        self, target: str | Path, *, remove_security: bool = True
+    ) -> None:
+        """Save the current document to ``target`` on disk.
+
+        Headless companion to :meth:`_save_as_menu_item_action_performed`
+        — the latter pops a Tk file-chooser, this one just writes. The
+        ``remove_security`` toggle mirrors upstream's
+        ``document.setAllSecurityToBeRemoved(true)`` call inside the
+        Save-as handler. No-op when no document is loaded.
+        """
+        if self._document is None:
+            return
+        if remove_security:
+            with contextlib.suppress(Exception):
+                self._document.set_all_security_to_be_removed(True)
+        self._document.save(str(target))
+
+    def value_changed(self, _event: tk.Event[Any] | None = None) -> None:
+        """Dispatch a tree-selection-changed event.
+
+        Mirrors upstream's private ``jTree1ValueChanged(TreeSelectionEvent)``
+        — promoted here as a public entry point so tests and external
+        callers can trigger the selection-dispatch ladder without
+        having to synthesise a Tk virtual event. Reads the current
+        :class:`Tree` selection state internally; ``_event`` is accepted
+        for signature parity with the ``<<TreeviewSelect>>`` binding but
+        is otherwise unused.
+        """
+        self._on_tree_selection_changed(_event)  # type: ignore[arg-type]
+
+    def process_tree_selection(self, iid: str) -> None:
+        """Select ``iid`` in the tree and dispatch its detail pane.
+
+        Programmatic equivalent of the user clicking a tree row.
+        Combines :meth:`Tree.selection_set` with the
+        selection-dispatch ladder, so headless tests can verify the
+        full ``select + show_*`` flow in a single call. Silently
+        ignores unknown ``iid`` values rather than raising — matches
+        upstream's defensive null-check inside
+        ``jTree1ValueChanged``.
+        """
+        with contextlib.suppress(tk.TclError):
+            self._tree.selection_set(iid)
+        self._on_tree_selection_changed(None)  # type: ignore[arg-type]
+
+    def update_title(self, title: str | None = None) -> None:
+        """Update the toplevel window title.
+
+        Mirrors upstream's inline ``setTitle(...)`` calls inside
+        :meth:`_read_pdf_file` and :meth:`_read_pdf_url` — factored out
+        so subclasses can override how the title is composed. ``None``
+        recomputes the title from :attr:`_current_file_path`; an
+        explicit string is installed verbatim.
+        """
+        if title is None:
+            if self._current_file_path is None:
+                title = self.TITLE
+            elif _is_mac_os():
+                title = (
+                    self._current_file_path
+                    if self._current_file_path.startswith(("http", "file:"))
+                    else Path(self._current_file_path).name
+                )
+            else:
+                title = f"PDF Debugger - {self._current_file_path}"
+        with contextlib.suppress(AttributeError, tk.TclError):
+            self._toplevel.title(title)  # type: ignore[union-attr]
+
+    def update_status(self, message: str = "") -> None:
+        """Replace the status-bar text with ``message``.
+
+        Thin wrapper around ``ReaderBottomPanel.get_status_label`` that
+        the dispatch ladder uses internally — exposed here so external
+        panes (e.g. :class:`PagePane`) can surface progress messages
+        without reaching into ``get_status_bar`` themselves. Silently
+        no-ops if the status label has not been built yet.
+        """
+        label = self._status_bar.get_status_label()
+        if label is None:
+            return
+        with contextlib.suppress(tk.TclError):
+            label.configure(text=message)
+
+    def update_tree_pane(self) -> None:
+        """Rebuild the tree from the current document + view mode.
+
+        Public alias for :meth:`init_tree`. Upstream Swing rebuilds the
+        tree by re-invoking the ``initTree()`` private — we keep that
+        method for source-port parity and add this one as the
+        intent-revealing name. No-op when no document is loaded.
+        """
+        if self._document is None:
+            return
+        self.init_tree()
+
+    def can_import(self, _transfer_support: Any = None) -> bool:
+        """Drag-and-drop import predicate.
+
+        Mirrors upstream's ``TransferHandler.canImport(TransferSupport)``
+        — Swing answers ``true`` iff the dragged payload carries a
+        ``javaFileListFlavor``. Tk's stdlib does not expose drag-and-drop
+        (the upstream-equivalent ``tkdnd`` is a third-party package not
+        in scope here), so this is documented as a no-op returning
+        ``False`` and recorded in CHANGES.md alongside the rest of the
+        drag-drop deviation. Subclasses backed by ``tkdnd`` can
+        override.
+        """
+        return False
+
+    def import_data(self, _transfer_support: Any = None) -> bool:
+        """Drag-and-drop import handler.
+
+        Mirrors upstream's ``TransferHandler.importData(TransferSupport)``
+        — Swing reads the first file from the dropped list and
+        dispatches into ``readPDFFile``. We have no stdlib drag-drop
+        surface to drive (see :meth:`can_import`), so this is a no-op
+        returning ``False`` and intentionally documents the deviation.
+        """
+        return False
 
     # ------------------------------------------------------------------
     # CLI entry point

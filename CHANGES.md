@@ -2909,6 +2909,38 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   - `test_high_resolution_image_icon.py`: switched per-test `tk.Tk()` to the session-scoped fixture (eliminating extra Tk roots).
 - **Verified**: 2 concurrent shells × 5 iterations = 10/10 processes finish exit 0; 3 shells × 6 iterations = 18/18 exit 0; `PYPDFBOX_SKIP_TK=1` → 357 tests skip cleanly.
 
+## Wave 1313 — close last substantive parity gaps + release-notes refresh + audit pass
+
+Method parity rose from 98.5% to **99.2%** (8,748 / 8,817). PDFDebugger class coverage rose from ~24% to ~85% (3 batches across this wave).
+
+### PDFDebugger — menu builders
+
+- `pypdfbox/debugger/pd_debugger.py`: promoted `_create_file_menu` / `_create_edit_menu` / `_create_find_menu` to public `create_file_menu` / `create_edit_menu` / `create_find_menu` to mirror upstream's `createFileMenu` / `createEditMenu` / `createFindMenu` JMenu factories; added `create_view_menu`, `create_window_menu`, `create_help_menu`, and `add_recent_file_items` (port of `addRecentFileItems`). Window + Help builders have no upstream counterpart — they factor previously-inline construction out of `_init_menu_bar` so subclasses can override them.
+- Tests: 10 hand-written tests at `tests/debugger/test_pd_debugger_menus.py`.
+
+### PDFDebugger — state accessors and file lifecycle
+
+- Ported 13 PDFDebugger methods: `get_current_file_path`, `get_pdf_file`, `read_pdf_file`, `read_pdf_url`, `parse_document`, `flush_to_disk` (headless save-as), `value_changed`, `process_tree_selection`, `update_title`, `update_status`, `update_tree_pane`, `can_import`, `import_data`. Drag-drop methods are documented no-ops returning `False` — Tk has no stdlib DnD surface (`tkdnd` is third-party, out of scope per the deps rule).
+- Tests: 29 hand-written tests at `tests/debugger/test_pd_debugger_methods_part2.py`.
+
+### PDFDebugger — window / mac / action handlers
+
+- Ported 13 PDFDebugger methods: `window_opened` (Tk `<Map>` hook focuses tree), `window_closing` (`WM_DELETE_WINDOW` delegate), `init_components`, `init_global_event_handlers`, `load_configuration` (converted from class-attr alias to real `def`), `osx_open_files` (mac open-file hook), `osx_quit`, `text_dialog`, `hyperlink_update`, `replace_right_component`, `get_node_key` (static, MapEntry key extractor), `get_underneath_object` (static, node unwrapper), `action_performed` (recent-files `AbstractAction` body), `open` (anonymous `DocumentOpener` override surface).
+- Tests: 27 hand-written tests at `tests/debugger/test_pd_debugger_methods_part3.py`.
+
+### Final method-gap closures + release-notes refresh
+
+- `pypdfbox/debugger/hexviewer/hex_pane.py`: implemented `HexPane.set_default()` (instance method). Drops upstream `Graphics` arg — Tk has no equivalent; resets `_state` / `_selected_char` and re-renders.
+- `pypdfbox/debugger/ui/osx_adapter.py`: added `OSXAdapter.set_handler(adapter)` (`@staticmethod`) — replaces upstream's `com.apple.eawt.Application` reflection proxy with `root.createcommand(...)` bindings for `::tk::mac::ReopenApplication`, `::tk::mac::Quit`, `tk::mac::standardAboutPanel`, `::tk::mac::ShowPreferences`, `::tk::mac::OpenDocument`. Returns `False` (with logged warning) when the root lacks `createcommand` — matches upstream's "Apple EAWT absent" branch.
+- `RELEASE_NOTES_v0.9.0rc1.md`: refreshed parity numbers (method parity 97.3% → 99.0% / 8,725 of 8,817; tests 30,000+ → 30,958+) — class parity (1,116 / 1,222) and line coverage (90.22%) left unchanged.
+- Tests: 6 hand-written tests across `test_hex_pane_set_default.py` and `test_osx_adapter_set_handler.py`.
+
+### Wave 1313 audit — 18 stale deferred annotations closed
+
+(Committed separately as `3394252` ahead of this commit to keep the audit diff readable.)
+
+- Appended `**Closed (Wave 1313 audit):**` annotations to 18 historical `CHANGES.md` lines whose "deferred" wording was silently superseded by later waves: `Loader.load_pdf(password=...)`, `PDOutputIntent.get_dest_output_profile_pdiccbased` + ICC header parsing, `/MK /BC` / `/BG` typed `PDColor` + `/I` / `/RI` / `/IX` typed `PDFormXObject`, `PDAppearanceStream extends PDFormXObject` (2 entries — wave 1306), `PDEmbeddedFile` `/CreationDate` / `/ModDate` datetime, `PDOutlineItem.get/set_structure_element`, `PDFunction` Type 0/2/3/4 numeric `eval()` + `_instruction_cache`, `PDOCMD.evaluate_visibility` / `is_visible` / `evaluate_ve` / `is_visible_with`, `/CF` crypt-filter sub-dictionary (`PDCryptFilterDictionary`), typed `PDAnnotationScreen`, `XmpSerializer`, typed `FDFPage` / `FDFJavaScript`, `FDFDocument.set_xfdf` Element-based front-end, `PDExtendedGraphicsState` `/SMask` / `/TR` / `/TR2` / `copy_into_graphics_state` / `PDFontSetting` / `BlendMode`, `DomXmpParser._strict_parsing`. Original wording preserved; no code changes.
+
 ## Wave 1312 — debugger parity round-out (5 parallel agents, ~15 classes, 82 new tests)
 
 ### Four small tooltip / pane closures
