@@ -2909,6 +2909,56 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   - `test_high_resolution_image_icon.py`: switched per-test `tk.Tk()` to the session-scoped fixture (eliminating extra Tk roots).
 - **Verified**: 2 concurrent shells × 5 iterations = 10/10 processes finish exit 0; 3 shells × 6 iterations = 18/18 exit 0; `PYPDFBOX_SKIP_TK=1` → 357 tests skip cleanly.
 
+## Wave 1321 — coverage-boost pass #8 (6 parallel agents, +487 hand-written tests)
+
+19 more modules lifted from 76-85% to **97-100%**. Global line coverage holding at 95% (most modules small contribution to global total).
+
+### Three IO modules — coverage boost
+
+- `cos/cos_input_stream.py` **76% → 100%**: 7 tests covering `readinto`, `readable`, `seekable` (true + non-seekable fallback), `seek`/`tell` proxy, populated filter-chain path via `IdentityFilter`.
+- `io/random_access_input_stream.py` **77% → 100%**: 9 tests covering `readable`/`seekable`/`read(0)`/`read1`, both `readinto` branches (memoryview + bytearray), stub-driven defensive paths.
+- `io/random_access_read_memory_mapped_file.py` **78% → 100%**: 3 tests covering `check_closed` open path + closed `OSError` + class-name in message.
+
+### security_handler + cos_object_pool — coverage boost
+
+- `pdmodel/encryption/security_handler.py` **76% → 98%**: 64 tests covering AES IV plumbing (custom RNG read / `__call__` / fallback, zero/partial/full decrypt paths), `encrypt_data_rc4` / `encrypt_data_ae_sother` / `encrypt_data_aes256` input + output sink + round-trip, `decrypt()` dispatch (COSString / COSDictionary / COSArray / passthrough), signature-dict detection (`/Type Sig` + DocTimeStamp + `/ByteRange` heuristic), `/CF` skip, identity-filter short-circuit, `decrypt_stream_in_place` (XRef / Metadata / legacy-accessor branches), public-name aliases, `compute_version_number` TypeError fallback, `compute_*_password` TypeError guards.
+- `pdfwriter/compress/cos_object_pool.py` **77% → 100%**: 22 tests covering `put()` with None obj/key, fresh-number minting on key collision, `set_key` AttributeError swallow on non-COSBase, COSObject indirection paths through `get_key` / `contains_object` (resolved / unregistered / None referent), overloaded `contains()` type dispatch, negative-seed clamping.
+
+### cff_parser part 2 + type1_char_string_parser — coverage boost
+
+- `fontbox/cff/cff_parser.py` **78% → 99%**: 34 tests covering `skip_header` (OTTO / ttcf / TTF / plain-CFF branches), `create_tagged_cff_data_input` (happy path + missing CFF tag), synthetic-base + empty name-index rejection in `parse`, full `parse_cid_font_dicts` walk + 4 error branches, full `parse_type1_dicts` (standard / expert / embedded encoding + missing/short Private entries), BCD edge cases in `read_real_number`, Format1 encoding supplement-bit branch.
+- `fontbox/cff/type1_char_string_parser.py` **76% → 100%**: 19 tests covering CALLSUBR / CALLOTHERSUBR safety branches (empty stack, non-int, out-of-range, othersubr 0/1/3/N, trailing-POP loop, leftover-stack warning), `remove_integer` DIV expansion + error paths, `read_number` truncation guards.
+
+### Five 76-78%-coverage modules — boost
+
+80 tests across 5 files. Every module **100%**.
+
+- `pdmodel/common/function/rinterpol.py` **76% → 100%**: 7 tests — 2D function fixture covering branch step of `_rinterpol`, public `calc_sample_index` / `_calc_sample_index` accessors, `get_samples` proxy.
+- `pdmodel/graphics/shading/tensor_patch.py` **76% → 100%**: 13 tests — flat rectangular patches at 50/300/500/900-px drive every level-reduction branch on both axes; `is_on_same_side_cc`/`dd` predicates; `get_flag*_edge` accessors.
+- `pdmodel/graphics/image/predictor_encoder.py` **77% → 100%**: 20 tests covering `encode()` guards, `LosslessFactory` import-failure fallback, every PNG filter helper (sub/up/average + all three paeth branches), `est_compress_sum`, `choose_data_row_to_write`, the `copy_image_bytes` / `copy_int_to_bytes` / `copy_shorts_to_bytes` per-pixel helpers across 1/2/3-byte-per-pixel widths.
+- `filter/tree.py` **78% → 100%**: 16 tests pinning all 11 debugger-UI parity stubs (`NotImplementedError`) + Huffman-insertion semantics for `Tree.fill` (leaf, all-zero `can_be_fill`, prebuilt Node splice, intermediate-leaf OSError, shared-prefix reuse).
+- `pdmodel/common/cos_dictionary_map.py` **78% → 100%**: 24 tests covering `is_empty` / `contains_value` / `key_set` / `values` / `entry_set`, every Python dunder, `equals` / `hash_code` / `to_string` parity, all 7 branches of `_to_cos`.
+
+### xmpbox + ascii85 + 2 more — coverage boost
+
+103 tests across 5 files.
+
+- `xmpbox/dom_xmp_parser.py` **78% → 99%**: 50 tests covering 20+ upstream-named helpers (`parse_initial_xpacket`, `parse_end_packet`, `find_descriptions_parent` / `expect_naming`, `load_attributes`, `check_property_definition`, `create_property`, `manage_*` placeholders, `parse_description_root[_attr]`, `parse_children_as_properties`, `parse_schema_extensions`, `parse_li_*`, `instanciate_structured`, `try_parse_attributes_as_properties`) plus typed-array fallback arms + PDFBOX-6126 nested-`rdf:Description` builder path. 1 dead line (line 549 — unreachable through public API).
+- `xmpbox/type/abstract_complex_property.py` **78% → 100%**: 10 tests covering `get_container`, `remove_property`, `get_array_property` (match / non-array / missing), `get_first_equivalent_property`, namespace-prefix accessors.
+- `filter/ascii85_input_stream.py` **79% → 100%**: 14 tests covering `_ensure_decoded` short-circuit + missing-terminator whitespace strip + `ValueError → OSError` translation, chunked reads + EOF re-read, `readinto`, close idempotency, Java-parity stubs.
+- `filter/ascii85_output_stream.py` **83% → 100%**: 19 tests covering int/bytes write paths, flush short-circuit + pristine no-op + line-folding, `set_terminator` validation, close + `transform_ascii85` zero-group + regular-group + bytearray/memoryview inputs.
+- `filter/ccitt_fax_encoder_stream.py` **80% → 100%**: 10 tests covering int/bytes write, flush short-circuit + full libtiff G4 round-trip through `CCITTFaxDecode`, close idempotency, G4 inner-loop parity stubs.
+
+### Five 79-85%-coverage modules — boost
+
+145 tests across 5 files. Every module **100%**.
+
+- `cos/cos_object_key.py` **81% → 100%**: 22 tests covering legacy property aliases, `equals`/`hash_code`/`to_string`/`compare_to` Java-name parity, all six ordering dunders + `NotImplemented` fallbacks, constructor guards.
+- `pdmodel/encryption/sasl_prep.py` **84% → 100%**: 22 tests covering the 11 RFC 3454 classmethod predicate wrappers (tagging, change-display-properties, surrogate, non-character, private-use, etc.) + bidi RandALCat/LCat violation + prohibited-character + unassigned-codepoint rejection paths.
+- `util/filetypedetector/file_type_detector.py` **84% → 100%**: 22 tests covering BufferedReader `peek`, BytesIO `tell+seek`, both empty-stream OSError raises, mark-less rejection, signature parity for all 10+ supported magic numbers, `_wrap`, utility-class guard.
+- `io/io_utils.py` **82% → 100%**: 36 tests covering every `IOUtils.*` static facade, `_apply_owner_only_permissions` Windows no-op, `create_protected_temp_dir`/`_file` (None-arg paths), `close_and_log_exception` happy/failure/initial-exception preservation, `unmap`, `delete_path_recursively` OSError swallow, `populate_buffer` early-EOF.
+- `pdmodel/fdf/xfdf_parser.py` **83% → 100%**: 43 tests covering the full annotation-factory dispatch (caret/freetext/circle/square/polygon/polyline/line/ink/stamp/text/fileattachment + 4 text-markup subtype mappings), every optional `_populate_annotation_base` attribute, `init_vertices`/`init_styles`/`init_fringe`/`init_callout` wiring, lenient error-handling arms.
+
 ## Wave 1320 — coverage-boost pass #7 (6 parallel agents, +340 hand-written tests)
 
 Sixteen modules from 71-81% to **94-100%**. Global line coverage **95%**.
