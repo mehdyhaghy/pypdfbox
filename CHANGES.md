@@ -2909,6 +2909,44 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   - `test_high_resolution_image_icon.py`: switched per-test `tk.Tk()` to the session-scoped fixture (eliminating extra Tk roots).
 - **Verified**: 2 concurrent shells × 5 iterations = 10/10 processes finish exit 0; 3 shells × 6 iterations = 18/18 exit 0; `PYPDFBOX_SKIP_TK=1` → 357 tests skip cleanly.
 
+## Wave 1319 — coverage-boost pass #6 (5 parallel agents, +392 hand-written tests)
+
+Thirteen modules from 59-71% to **92-100%**.
+
+### cos_array_list + small_map — coverage boost
+
+- `pdmodel/common/cos_array_list.py` **59% → 100%**: 45 tests covering all four constructor shapes, filtered-mode guards, lazy-dict promotion across add/add_all/set/clear, indexed insertion, remove/remove_all/retain_all, `converter_to_cos_array`, every `_to_cos` dispatch branch, full Python dunder + equals/hash_code/to_string parity surface.
+- `util/small_map.py` **69% → 100%**: 23 tests covering init_map constructor, find_key/find_value empty+None+missing paths, put None-guards, remove of only/mid entries, contains_key/value, empty key_set/values/entry_set, SmallMapEntry set_value + equals + hash_code, MutableMapping dunders including KeyError paths.
+
+### type4 operators + glyph_substitution_table — coverage boost
+
+- `pdmodel/common/function/type4/operators.py` **68% → 100%**: 24 tests covering `_LegacyOperatorAdapter` (happy path + NotImplementedError fallback), `_BuiltinIf` / `_BuiltinIfElse` true/false branches + all TypeError validation paths, `_resolve_class` four return-None branches (ModuleNotFoundError / missing attribute / non-class / non-Operator-subclass), `_build` fallback dispatch to built-in shims + legacy adapter via monkey-patched `_resolve_class`.
+- `fontbox/ttf/glyph_substitution_table.py` **69% → 94%**: 47 tests targeting the SFNT byte-level reader surface (`read_script_list`, `read_script_table`, `read_lang_sys_table`, `read_feature_list/table`, `read_lookup_list/table/subtable`, `read_single/multiple/alternate/ligature_substitution_subtable`, `read_ligature_set_table`, `read_ligature_table`, `read_coverage_table` formats 1+2+unknown) plus type-7 ExtensionSubst unwrap, mark-filtering-set bit handling, PDFBOX-6146 dedup, and corrupt-input short-circuits — all via hand-crafted `MemoryTTFDataStream` payloads, no new fixtures.
+
+### xref parser/writer modules — coverage boost
+
+- `pdfparser/pdf_xref_stream_parser.py` **69% → 98%**: 15 tests covering parse loop for in-use / free / compressed entries, `/W[0]==0` default-type path, `parse_value` + `read_next_value` helpers, `close()` lifecycle, public `init_parser_values` delegate, zero-size `/Index`, EOF-before-`/Index`-exhaustion guard.
+- `pdfparser/xref/x_reference_entry.py` **68% → 100%**: 13 tests covering `compare_to` None-handling branches and all four rich-comparison dunders + `NotImplemented` returns for foreign operands.
+- `pdfwriter/compress/cos_writer_compression_pool.py` **71% → 100%**: 26 tests covering trailer walk (Root + Info), all non-compressible branches (gen!=0, COSStream, encryption identity, trailer-root identity), both `put`-returns-None early-outs, `set_key` propagation to COSObject wrappers, full `filter_element` decision table, all accessors, `create_object_streams` batching with custom `CompressParameters`.
+
+### Five 67-69%-coverage modules — boost
+
+131 tests across 5 files.
+
+- `xmpbox/date_converter.py` **67% → 93%**: 39 tests exercising ParsePosition/`_GregLike` shims, all private TZ/parse helpers (`parse_t_zoffset`, `parse_big_endian_date`, `parse_simple_date`, `parse_date`, `restrain_t_zoffset`, `format_t_zoffset`, `update_zone_id`, `adjust_time_zone_nicely`, `from_iso8601`), plus `to_string`/`to_iso8601` edge cases.
+- `pdmodel/interactive/pagenavigation/pd_transition_direction.py` **68% → 100%**: 9 tests covering `values()` enum-style tuple and full `get_cos_base()` switch over all 6 declared directions + arbitrary-int passthrough.
+- `pdmodel/graphics/color/pd_cie_dictionary_based_color_space.py` **68% → 100%**: 24 tests covering all 3 `__init__` source branches (None / COSName / COSArray), `get_black_point` default + read + non-array fallback, `set_white_point` None-rejection, `set_black_point` no-op-for-None, `fill_whitepoint_cache`, `conv_xy_zto_rgb` clamp branches, `_xyz_to_rgb_clamp` linear/gamma/clamp branches.
+- `tools/imageio/image_io_util.py` **69% → 99%**: 24 tests covering `_to_pil` for every accepted input type, `write_image` failure + unsupported-target paths, TIFF CCITT-T.6/LZW branches, `has_icc_profile` exception path, `get_or_create_child_node` non-dict reject, `set_dpi` PNG vs non-PNG resolution math.
+- `filter/jbig2_filter.py` **69% → 92%**: 8 tests covering `log_levigo_donated` one-shot guard, `decode`/`encode` delegation, registration under upstream long name, reload safety.
+
+### Three more modules — coverage boost
+
+68 tests across 3 files.
+
+- `tools/extract_images.py` **61% → 98%**: 21 tests covering `write2file` (png/jb2→png/jpx→jp2/has-masks/AttributeError), `draw_image` (seen-COS dedup, stencil, non-PDImageXObject), `process_color` PDPattern→tiling dispatch, `run()` ext-g-state soft-mask loop, `has_masks` AttributeError swallow, permission-denied → rc=1. **Flagged latent bug** (not fixed): `extract_images.write2file` passes `(image, suffix, out)` to `ImageIOUtil.write_image` but the latter's positional order is `(image, target, dpi_or_format)` — `target=suffix` is treated as a filename and the opened file handle goes unused.
+- `tools/pdf_split.py` **67% → 97%**: 10 tests covering `-split N` template, default per-page split, `-startPage`/`-endPage` setters (+ split-wins), default output-prefix derivation, missing-input → rc=4, doc.close() finally cleanup via stubbed Splitter.
+- `debugger/streampane/stream_pane.py` **70% → 97%**: 37 tests covering `_on_filter_changed` (image / decoded / text+hex / no-combo / OSError-swallow), `_rebuild_notebook`, XML-metadata nice-view dispatch, `_xml_segments` parse-failure fallback, `_ContentStreamEmitter` operand + operator coverage (Boolean / Array / String escapes / Float / Integer / Dictionary / Null / repr fallback; BT-ET / q-Q / BMC-EMC indent; BI/ID/EI inline image with + without params), `DocumentCreator` empty-stream / done-without-result / done-without-method / nice XML metadata / `get_string_of_stream` OSError, all four per-token writer wrappers.
+
 ## Wave 1318 — coverage-boost pass #5 (5 parallel agents, +302 hand-written tests)
 
 Twelve modules from 42–67% to **81–100%**.
