@@ -280,3 +280,5 @@ COSName.TRANSFORM_METHOD = _static_name("TransformMethod")  # type: ignore[attr-
 COSName.TRANSFORM_PARAMS = _static_name("TransformParams")  # type: ignore[attr-defined]
 COSName.DIGEST_METHOD = _static_name("DigestMethod")  # type: ignore[attr-defined]
 COSName.DOC_TIME_STAMP = _static_name("DocTimeStamp")  # type: ignore[attr-defined]
+# Form-resources convenience names (Helvetica is the AcroForm fallback font).
+COSName.HELV = _static_name("Helv")  # type: ignore[attr-defined]

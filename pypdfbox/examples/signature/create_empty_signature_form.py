@@ -22,20 +22,22 @@ class CreateEmptySignatureForm:
     def create(output_path: Path | str) -> None:
         """Write a PDF with an empty signature field to ``output_path``."""
         from pypdfbox.cos.cos_name import COSName
-        from pypdfbox.pdmodel.common.pd_rectangle import PDRectangle
-        from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
+        from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
         from pypdfbox.pdmodel.font.standard14_fonts import Standard14Fonts
         from pypdfbox.pdmodel.interactive.form.pd_acro_form import PDAcroForm
         from pypdfbox.pdmodel.interactive.form.pd_signature_field import PDSignatureField
         from pypdfbox.pdmodel.pd_document import PDDocument
         from pypdfbox.pdmodel.pd_page import PDPage
+        from pypdfbox.pdmodel.pd_rectangle import PDRectangle
         from pypdfbox.pdmodel.pd_resources import PDResources
 
         with PDDocument() as document:
             page = PDPage(PDRectangle.A4)
             document.add_page(page)
 
-            font = PDType1Font(Standard14Fonts.FontName.HELVETICA)
+            font = PDFontFactory.create_default_font(
+                Standard14Fonts.FontName.HELVETICA.value,
+            )
             resources = PDResources()
             resources.put(COSName.HELV, font)
 

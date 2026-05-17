@@ -108,7 +108,7 @@ def patched_workload(monkeypatch):
         return doc
 
     monkeypatch.setattr(
-        "pypdfbox.benchmark.text_extraction.Loader.load_pdf",
+        "pypdfbox.benchmark.text_extraction.PDDocument.load",
         staticmethod(_load),
     )
     monkeypatch.setattr(
@@ -154,7 +154,7 @@ def test_extract_unsorted_closes_doc_on_stripper_error(monkeypatch) -> None:
             raise RuntimeError("strip-boom")
 
     monkeypatch.setattr(
-        "pypdfbox.benchmark.text_extraction.Loader.load_pdf",
+        "pypdfbox.benchmark.text_extraction.PDDocument.load",
         staticmethod(lambda _p: doc),
     )
     monkeypatch.setattr(
@@ -178,7 +178,7 @@ def test_extract_sorted_closes_doc_on_stripper_error(monkeypatch) -> None:
             raise RuntimeError("sort-boom")
 
     monkeypatch.setattr(
-        "pypdfbox.benchmark.text_extraction.Loader.load_pdf",
+        "pypdfbox.benchmark.text_extraction.PDDocument.load",
         staticmethod(lambda _p: doc),
     )
     monkeypatch.setattr(

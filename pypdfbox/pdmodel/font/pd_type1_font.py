@@ -17,6 +17,7 @@ from .standard14_fonts import Standard14Fonts
 _BASE_FONT_KEY = COSName.get_pdf_name("BaseFont")
 
 if TYPE_CHECKING:
+    from pypdfbox.pdmodel.pd_document import PDDocument
     from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
     from .encoding.encoding import Encoding
@@ -111,6 +112,32 @@ class PDType1Font(PDSimpleFont):
         # encoded bytes so repeated :meth:`encode` calls for the same
         # unicode value don't re-walk the encoding's name->code table.
         self._code_to_bytes: dict[int, bytes] = {}
+
+    @classmethod
+    def load(
+        cls,
+        document: PDDocument,
+        pfb_stream: BinaryIO | bytes,
+        encoding: object | None = None,
+    ) -> PDType1Font:
+        """Build a :class:`PDType1Font` that embeds the Type 1 font program
+        from ``pfb_stream``.
+
+        Mirrors upstream PDFBox's
+        ``PDType1Font(PDDocument, InputStream, Encoding)`` constructor —
+        wires a new font dictionary through :class:`PDType1FontEmbedder`,
+        then wraps the dict in a fresh :class:`PDType1Font`. ``encoding``
+        may be ``None`` to take the font program's built-in encoding.
+        """
+        # Local import to avoid a circular dependency
+        # (pd_type1_font_embedder imports from this module).
+        from pypdfbox.pdmodel.font.pd_type1_font_embedder import (
+            PDType1FontEmbedder,
+        )
+
+        font_dict = COSDictionary()
+        PDType1FontEmbedder(document, font_dict, pfb_stream, encoding)
+        return cls(font_dict)
 
     # ---------- Type 1 program access ----------
 

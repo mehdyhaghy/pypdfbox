@@ -85,18 +85,15 @@ def test_hello_world_ttf_two_args_prints_usage() -> None:
 def test_hello_world_type1_main_writes_pdf_with_stub_font(
     tmp_path, monkeypatch, capsys
 ) -> None:
-    """Cover lines 37-45 of the example by stubbing the broken two-arg
-    :class:`PDType1Font` invocation with a factory that returns a real
-    Helvetica instance. The stub absorbs the unsupported ``(doc, stream)``
-    arguments and constructs a Standard-14 backed font dict that the
-    content stream can consume."""
+    """Cover the end-to-end ``HelloWorldType1.main`` happy path by
+    stubbing ``PDType1Font.load`` (which would otherwise need a valid
+    PFB) with a factory returning a Standard-14 Helvetica instance."""
     from pypdfbox.cos.cos_dictionary import COSDictionary
     from pypdfbox.cos.cos_name import COSName
-    from pypdfbox.examples.pdmodel import hello_world_type1 as _mod
     from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
 
-    def _stub_factory(doc, stream):
-        _ = (doc, stream)
+    def _stub_load(cls, doc, stream, encoding=None):
+        _ = (doc, stream, encoding)
         d = COSDictionary()
         d.set_item(COSName.SUBTYPE, COSName.get_pdf_name("Type1"))
         d.set_item(
@@ -105,7 +102,7 @@ def test_hello_world_type1_main_writes_pdf_with_stub_font(
         )
         return PDType1Font(d)
 
-    monkeypatch.setattr(_mod, "PDType1Font", _stub_factory)
+    monkeypatch.setattr(PDType1Font, "load", classmethod(_stub_load))
     pfb = tmp_path / "dummy.pfb"
     pfb.write_bytes(b"placeholder")
     out = tmp_path / "out.pdf"

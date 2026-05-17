@@ -3339,6 +3339,32 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   grayscale / CMYK paths, base `generate_rollover_appearance` /
   `generate_down_appearance` no-ops (agent E, wave 1339).
 
+## Wave 1342 — fix 4 latent source bugs flagged during wave 1341
+
+- **benchmark.text_extraction**: replaced `Loader.load_pdf` (returns
+  `COSDocument`) with `PDDocument.load`. Final benchmark sibling
+  cleaned up — `load_and_save` (1336/1338), `rendering` (1340), and now
+  `text_extraction` all use the wrapped `PDDocument`.
+- **examples.signature.create_empty_signature_form**: fixed the broken
+  `pypdfbox.pdmodel.common.pd_rectangle` import (same class as the
+  wave-1336 fix in `create_visible_signature2`). Plus replaced
+  `PDType1Font(FontName.HELVETICA)` (enum passed where `COSDictionary`
+  expected) with `PDFontFactory.create_default_font(name.value)`. Added
+  the missing `COSName.HELV` predefine used by the example.
+- **examples.pdmodel.hello_world_type1**: replaced
+  `PDType1Font(doc, stream)` (two-arg constructor doesn't exist) with
+  `PDType1Font.load(doc, stream)`. Added the new classmethod
+  `PDType1Font.load(document, pfb_stream, encoding=None)` mirroring
+  upstream PDFBox's `PDType1Font(PDDocument, InputStream, Encoding)`
+  constructor (wires a new font dict through `PDType1FontEmbedder`).
+- **cos.cos_increment:165**: fixed singular/plural inconsistency:
+  `entry.is_need_to_be_updated()` → `entry.is_needs_to_be_updated()`.
+  Same class as wave 1334 fixed for the `set_*` variant.
+
+Overall coverage: 98.94% (steady). Tests: 36,604.
+`create_empty_signature_form` body coverage is back to 26% (existing
+tests only hit the dispatcher); next coverage wave will sweep it.
+
 ## Wave 1340 — fix 2 latent source bugs flagged during wave 1339
 
 - **benchmark.rendering**: replaced `Loader.load_pdf(path)` (returns

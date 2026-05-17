@@ -162,7 +162,7 @@ class COSIncrement:
             from .cos_array import COSArray  # noqa: PLC0415
             from .cos_object import COSObject  # noqa: PLC0415
 
-            if entry.is_need_to_be_updated() and (
+            if entry.is_needs_to_be_updated() and (
                 (not isinstance(entry, COSObject) and entry.is_direct())
                 or isinstance(entry, COSArray)
             ):

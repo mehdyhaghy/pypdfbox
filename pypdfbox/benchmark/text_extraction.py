@@ -13,7 +13,7 @@ import logging
 import time
 from typing import Any
 
-from pypdfbox.loader import Loader
+from pypdfbox.pdmodel.pd_document import PDDocument
 from pypdfbox.text.pdf_text_stripper import PDFTextStripper
 
 
@@ -39,7 +39,7 @@ class TextExtraction:
         """Mirror of ``extractPDFSpecUnsorted`` (line 46)."""
 
         def _body() -> None:
-            pdf = Loader.load_pdf(self.PDF32000_2008)
+            pdf = PDDocument.load(self.PDF32000_2008)
             try:
                 stripper = PDFTextStripper()
                 stripper.set_sort_by_position(False)
@@ -54,7 +54,7 @@ class TextExtraction:
         """Mirror of ``extractPDFSpecSorted`` (line 58)."""
 
         def _body() -> None:
-            pdf = Loader.load_pdf(self.PDF32000_2008)
+            pdf = PDDocument.load(self.PDF32000_2008)
             try:
                 stripper = PDFTextStripper()
                 stripper.set_sort_by_position(True)

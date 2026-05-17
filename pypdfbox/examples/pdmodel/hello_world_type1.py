@@ -34,7 +34,7 @@ class HelloWorldType1:
             page = PDPage()
             doc.add_page(page)
             with Path(pfb_path).open("rb") as is_:
-                font = PDType1Font(doc, is_)
+                font = PDType1Font.load(doc, is_)
             with PDPageContentStream(doc, page) as contents:
                 contents.begin_text()
                 contents.set_font(font, 12)
