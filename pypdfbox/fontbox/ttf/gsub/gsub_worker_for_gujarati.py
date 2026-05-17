@@ -172,7 +172,14 @@ class GsubWorkerForGujarati(GsubWorker):
         found_index = list_size - 1
         next_index = list_size - 2
         while next_index > -1:
-            if found_index >= len(repositioned) or found_index < 0:
+            # Defensive parity with upstream Java — see the matching note
+            # in :class:`GsubWorkerForDevanagari.reposition_glyphs`. The
+            # Python port's bounds-drift guard and matra-virama swap
+            # branch are unreachable on natural input but retained
+            # verbatim to mirror the upstream loop shape.
+            if (
+                found_index >= len(repositioned) or found_index < 0
+            ):  # pragma: no cover -- defensive parity with upstream
                 found_index = next_index
                 next_index -= 1
                 continue
@@ -190,7 +197,9 @@ class GsubWorkerForGujarati(GsubWorker):
                 and prev_index < len(repositioned)
             ):
                 prev_glyph = repositioned[prev_index]
-                if prev_glyph in self._before_half_glyph_ids:
+                if (
+                    prev_glyph in self._before_half_glyph_ids
+                ):  # pragma: no cover -- defensive parity with upstream
                     repositioned.pop(prev_index)
                     repositioned.insert(next_index, prev_glyph)
                     next_index -= 1

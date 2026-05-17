@@ -180,7 +180,15 @@ class GsubWorkerForDevanagari(GsubWorker):
         next_index = list_size - 2
         while next_index > -1:
             # ``found_index`` can drift out of range when we pop entries.
-            if found_index >= len(repositioned) or found_index < 0:
+            # Defensive guard kept for parity with the upstream Java loop
+            # structure; the current Python port never trips it (``pop`` +
+            # ``insert`` preserve length, and ``found_index`` is always
+            # re-seeded from ``next_index`` at the bottom of the loop
+            # before the next iteration's bounds check), but removing it
+            # would diverge from upstream's defensive shape.
+            if (
+                found_index >= len(repositioned) or found_index < 0
+            ):  # pragma: no cover -- defensive parity with upstream
                 found_index = next_index
                 next_index -= 1
                 continue
@@ -198,7 +206,13 @@ class GsubWorkerForDevanagari(GsubWorker):
                 and prev_index < len(repositioned)
             ):
                 prev_glyph = repositioned[prev_index]
-                if prev_glyph in self._before_half_glyph_ids:
+                # Same parity note: when the I-matra branch fires, the
+                # next iteration skips past the VIRAMA at ``found_index``
+                # so the matra-virama swap never gets a chance to fire on
+                # natural input. Defensive guard retained for parity.
+                if (
+                    prev_glyph in self._before_half_glyph_ids
+                ):  # pragma: no cover -- defensive parity with upstream
                     repositioned.pop(prev_index)
                     repositioned.insert(next_index, prev_glyph)
                     next_index -= 1

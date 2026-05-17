@@ -3339,6 +3339,268 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   grayscale / CMYK paths, base `generate_rollover_appearance` /
   `generate_down_appearance` no-ops (agent E, wave 1339).
 
+## Wave 1345 — coverage-boost pass #13 (parallel agents)
+
+### Agent A — six examples to 100% coverage
+
+- New file `tests/examples/pdmodel/test_examples_wave1345.py` (22 tests).
+- `examples/pdmodel/add_metadata_from_doc_info.py` 93.2% → 100%
+  (encrypted-guard, modification/creation-date branches, `_emit_value`
+  None short-circuit, `_stringify` datetime via direct helper calls).
+- `examples/pdmodel/embedded_multiple_fonts.py` 92.8% → 100%
+  (`_load_font` TTC tuple branch happy-path + missing-font OSError via
+  monkeypatched `TrueTypeCollection`, `.notdef` short-circuit in
+  `is_win_ansi_encoding` via stubbed glyph list).
+- `examples/rendering/custom_page_drawer.py` 88.3% → 100%
+  (successful `main()` happy path via patched `Loader.load_pdf` +
+  stubbed `MyPDFRenderer.render_image`).
+- `examples/util/print_text_locations.py` 79.4% → 100%
+  (`main([file])` happy path, `write_string` per-position diagnostics
+  emit, `<unknown>` font fallback when `get_font` raises).
+- `examples/interactive/form/determine_text_fits_field.py` 87.5% → 100%
+  (widget normal-appearance with /Resources/Font/Helv exercises the
+  `resources.get_font` branch; broken-appearance exception branch via
+  monkeypatched `get_normal_appearance_stream`; NaN fallback when
+  `font.get_string_width` raises).
+- `examples/pdmodel/bengali_pdf_generation_hello_world.py` 95.8% → 100%
+  (`[skipped]` placeholder when `contents.show_text` raises;
+  `importlib.resources.files` bundled-resource branch via stubbed
+  `Traversable`/`as_file`; `AttributeError` strategy-1-suppress arm).
+- Latent bug flagged: `examples.rendering.custom_page_drawer` and its
+  sibling `custom_graphics_stream_engine` both pass the
+  `Loader.load_pdf` result (a `COSDocument`) directly to
+  `MyPDFRenderer(doc)` / `CustomGraphicsStreamEngine(page)` whose
+  constructors expect a `PDDocument`. Construction doesn't raise (no
+  isinstance check) but `render_image` would fail when it tries to
+  call `PDDocument`-shaped methods on the COSDocument. Same class of
+  bug as the wave-1336/1342 `Loader.load_pdf` → `PDDocument.load`
+  swaps; not fixed in this wave because Agent A's brief is coverage
+  only, but a follow-up fix wave should address.
+
+### Agent B — eight tools/examples to ~100% coverage
+
+- New `tests/tools/test_pdf_to_image_wave1345.py` (5 tests),
+  `tests/examples/ant/test_pdf_to_text_task_wave1345.py` (6 tests),
+  `tests/examples/util/test_extract_text_simple_wave1345.py` (6 tests),
+  `tests/examples/printing/test_printing_wave1345.py` (4 tests),
+  `tests/examples/signature/cert/test_crl_verifier_wave1345.py`
+  (7 tests), `tests/examples/signature/validation/test_cert_information_helper_wave1345.py`
+  (4 tests), `tests/examples/pdmodel/test_extract_metadata_wave1345.py`
+  (3 tests), `tests/examples/interactive/form/test_create_check_box_wave1345.py`
+  (3 tests). Total +38 tests.
+- `tools/pdf_to_image.py` 94.1% → 100% (derived-prefix fallback,
+  refresh-appearances rescue for both `AttributeError` and
+  `NotImplementedError`, ImageIOUtil writer-failure exit-code-1 branch,
+  module `__main__` dispatch via `runpy.run_module`).
+- `examples/pdmodel/extract_metadata.py` 93.3% → 100% (`__init__` body,
+  populated `list_calendar` branch with `datetime.date` entries, and
+  the `XmpParsingException` rescue via a stubbed `DomXmpParser`).
+- `examples/signature/cert/crl_verifier.py` 89.3% → 100% (warning +
+  continue when no CRL override is supplied, the
+  `verify_certificate_cr_ls` snake-case alias, post-sign-date silent
+  return in `check_revocation`, all three offline `download_crl*`
+  placeholders, and the `if not full_name` continue via a CRL DP
+  carrying `relative_name` only).
+- `examples/ant/pdf_to_text_task.py` 92.3% → 100% (`_iter_fileset`'s
+  three alternate shapes: `DirectoryScanner`-alike with/without
+  `get_basedir`, single `str | Path`, `TypeError` fall-through).
+- `examples/printing/printing.py` 86.1% → 100% (`main(None)`
+  consults `sys.argv`, single-arg load-and-close happy path,
+  `finally` close still runs when `print` raises).
+- `examples/signature/validation/cert_information_helper.py` 88.1% →
+  100% (`hashlib.sha1` RuntimeError rescue, `extract_crl_url_from_sequence`
+  placeholder, post-loop `return None` when the CRL DP has no http
+  URI — exercised via a DirectoryName-only DP).
+- `examples/util/extract_text_simple.py` 87.8% → 100% (`__init__`
+  body, single-arg `main` delegates to `extract`,
+  `(AttributeError, NotImplementedError)` rescue around the access-
+  permission probe, plus the `can_extract_content()` → False
+  `OSError` raise branch via a monkey-patched permission stand-in).
+- `examples/interactive/form/create_check_box.py` 91.9% → 100%
+  (`__init__` body, `get_line_width` static helper both branches —
+  border style present + `None` fallback).
+- Latent bug flagged: `examples.printing.printing.main` calls
+  `Loader.load_pdf(args[0])` and forwards the result to
+  `Printing.print`, which constructs `PDFPageable(document)`.
+  `PDFPageable.__init__` calls `document.get_number_of_pages()`,
+  a `PDDocument` method that does not exist on the raw
+  `COSDocument` returned by `Loader.load_pdf`. Same class of bug as
+  the wave-1336/1342/1345-Agent-A `Loader.load_pdf` → `PDDocument.load`
+  swaps. Not fixed in this wave (coverage-only brief); the test
+  patches `Loader` to a `_FakePDDocument` stand-in to exercise the
+  load+close try/finally without papering over the bug.
+
+### Agent C — annotation handlers + visible-sig + coons-patch tail
+
+- New `tests/pdmodel/interactive/annotation/handlers/test_text_markup_handlers_wave1345_branches.py`
+  (24 tests), `tests/pdmodel/graphics/shading/test_coons_patch_level_branches_wave1345.py`
+  (6 tests), and `tests/pdmodel/interactive/digitalsignature/visible/test_visible_sig_wave1345_coverage.py`
+  (8 tests). Total +38 tests.
+- `pdmodel/interactive/annotation/handlers/pd_highlight_appearance_handler.py`
+  92.1% → 100% (wrong-subtype guard, missing-rect/quadpoints/color
+  early returns, vertical-quad rounded-corner branch, diagonal-quad
+  `line_to` fallback for both upper-half and lower-half corners).
+- `pdmodel/interactive/annotation/handlers/pd_strikeout_appearance_handler.py`
+  91.9% → 100% (four early-return guards, zero-width `/Border` →
+  `_ADOBE_DEFAULT_WIDTH` (1.5pt) fallback, dashed `/BS` →
+  `set_dash_pattern` emission).
+- `pdmodel/interactive/annotation/handlers/pd_underline_appearance_handler.py`
+  91.9% → 100% (same four guards, default-width fallback, dash array).
+- `pdmodel/interactive/annotation/handlers/pd_squiggly_appearance_handler.py`
+  93.6% → 100% (four guards, default-width fallback, zero-length quad
+  `continue` skip).
+- `pdmodel/graphics/shading/coons_patch.py` 92.9% → 100% (filled in the
+  `calc_level` subdivision-bucket branches: edges ∈ (200, 400] →
+  level=2, (400, 800] → level=3, >800 → `pass` keeps default 4 — both
+  for `level[0]` rows c1/c2 and `level[1]` rows d1/d2).
+- `pdmodel/interactive/digitalsignature/visible/pdf_template_structure.py`
+  95.1% → 100% (round-trip getter coverage for the 7 missing pairs:
+  `acro_form_dictionary`, `appearance_dictionary`, `image_form`,
+  `image_form_name`, `image_name`, `acro_form_fields`,
+  `widget_dictionary`).
+- `pdmodel/interactive/digitalsignature/visible/pd_visible_sig_properties.py`
+  91.4% → 100% (`build_signature` orchestration: monkeypatched
+  `PDFTemplateCreator` returns a sentinel `io.BytesIO` so the test
+  verifies the wiring without driving the full builder pipeline,
+  which would need a real `PDDocument`).
+- No latent source bugs flagged in any of the seven files.
+
+### Agent D — debugger colorpane + textsearcher + cff + ttf-gsub tail (8 files to 100% coverage)
+
+- New files: `tests/debugger/colorpane/test_cs_array_based_wave1345.py`
+  (2 tests), `tests/debugger/colorpane/test_cs_separation_wave1345.py`
+  (3 tests), `tests/debugger/ui/textsearcher/test_search_engine_wave1345.py`
+  (5 tests), `tests/fontbox/cff/test_char_string_command_wave1345.py`
+  (5 tests), `tests/fontbox/ttf/gsub/test_gsub_worker_wave1345.py`
+  (5 tests), `tests/fontbox/ttf/gsub/test_gsub_worker_factory_wave1345.py`
+  (6 tests). Total +26 tests (one duplicates as a sanity-export).
+- `debugger/colorpane/cs_array_based.py` 90.6% → 100% (OSError catch
+  via monkeypatched `PDColorSpace.create`; ICC-based pane labels via a
+  minimal valid `[/ICCBased <stream with /N 3>]` array exercising
+  `get_color_space_type` + `is_srgb`).
+- `debugger/colorpane/cs_separation.py` 95.9% → 100% (slider-`None`
+  re-read via `str(self._slider.get())`; OSError caught inside
+  `state_changed` writing the exception to the entry; same OSError
+  catch inside `_on_tint_entry`).
+- `debugger/ui/textsearcher/search_engine.py` 91.7% → 100% (camelCase
+  `Highlight.get_*` getters; `search_regex(None, ...)` /
+  `search_regex("", ...)` early returns; defensive
+  `search_key_length == 0` guard after lower-casing via a `str`
+  subclass whose `.lower()` collapses to empty).
+- `fontbox/cff/char_string_command.py` 94.4% → 100%
+  (`_COMMAND_UNKNOWN`'s `get_key` / `name` None paths; Type-1-only
+  command (b0=12 / `DOTSECTION`-shaped) exercising the Type-1 arm in
+  both `get_key` and `name`; `__repr__` round-trip via
+  `to_string`; `COMMAND_RLINETO` exercising the Type-2 arm).
+- `fontbox/ttf/gsub/gsub_worker.py` 91.2% → 100%
+  (`_DictScriptFeature.get_name`; `_adapt_feature` short-circuit for
+  conformant feature; `_adapt_feature` `TypeError` for unsupported
+  shapes; `_split_into_chunks` empty-substitution-keys per-glyph
+  chunk path; `_iterable_to_list` defensive copy).
+- `fontbox/ttf/gsub/gsub_worker_factory.py` 90.6% → 100%
+  (`_normalize_language(None)` empty fallback; the missing-language-
+  module `ImportError` rescue via a `find_spec`-driven `meta_path`
+  finder; `_resolve_language_from_scripts` swallowing `AttributeError`
+  / `TypeError` from a broken `get_script_list`; the "scripts present
+  but none belong to any known language" empty-fallback for fonts
+  carrying only `taml` / `thai`).
+- `fontbox/ttf/gsub/gsub_worker_for_devanagari.py` 94.6% → 100%
+  (defensive bounds-drift + matra-virama swap branches marked
+  `# pragma: no cover` with comments noting the upstream-parity
+  rationale — see latent bug note below).
+- `fontbox/ttf/gsub/gsub_worker_for_gujarati.py` 94.6% → 100% (same
+  pragma + comment in the structurally-identical Gujarati worker).
+- Latent dead-branch flagged:
+  `fontbox/ttf/gsub/gsub_worker_for_devanagari.reposition_glyphs` (and
+  the identical Gujarati twin) carries two defensive arms inherited
+  from upstream Java that the Python port can never hit on natural
+  input: (1) the `found_index >= len(repositioned) or found_index < 0`
+  bounds-drift guard, because `pop` + `insert` preserve length and
+  `found_index` is always reseeded from `next_index` at the bottom of
+  the loop before the next bounds check; (2) the matra-virama swap
+  arm, because the I-matra branch decrements `next_index` twice
+  (inline + fall-through) which skips `found_index` past the VIRAMA
+  position on the next iteration. Both branches retained with
+  `# pragma: no cover` annotations to mirror the upstream loop shape
+  rather than collapse the defensive guards. A future audit pass
+  could either rebuild the loop in the upstream's exact-Java shape
+  (so the guards become live) or strip them outright; behavior is
+  identical either way for current inputs.
+
+### Agent E — nine module tail-end files to 100% coverage
+
+- New files: `tests/pdfwriter/compress/test_cos_writer_object_stream_wave1345.py`
+  (7 tests), `tests/multipdf/test_pdf_clone_utility_wave1345.py` (8 tests),
+  `tests/pdmodel/fdf/test_fdf_java_script_wave1345.py` (7 tests),
+  `tests/pdmodel/test_page_iterator_wave1345.py` (6 tests),
+  `tests/filter/test_predictor_output_stream_wave1345.py` (5 tests),
+  `tests/fontbox/ttf/gsub/test_gsub_worker_for_bengali_wave1345.py` (3 tests),
+  `tests/fontbox/ttf/test_random_access_read_unbuffered_data_stream_wave1345.py` (4 tests),
+  `tests/pdmodel/encryption/test_access_permission_wave1345.py` (7 tests),
+  `tests/util/test_number_format_util_wave1345.py` (13 tests). Total +60 tests.
+- `pdfwriter/compress/cos_writer_object_stream.py` 95.5% → 100% (each
+  `write_object` dispatch arm — string/float/boolean/array/dictionary —
+  reached via the top-level dispatch path rather than the typed helpers;
+  `_write_pdf` missing-method `OSError` path via a bespoke `COSBase`
+  subclass without `write_pdf`; the `None`-value `continue` in
+  `write_cos_dictionary` exercised via direct `_items[name] = None`
+  mutation since the public setter deletes-on-`None`).
+- `multipdf/pdf_clone_utility.py` 95.2% → 100% (default `seen_pairs is
+  None` construct branch of `clone_merge_cos_base`; six private
+  back-compat shims `_clone_cos_*` / `_clone_merge_cos_base` /
+  `_has_self_reference` — including both the cyclic and non-cyclic arms
+  of the static self-reference helper; same-key dict-merge recursion
+  via `existing is not None`).
+- `pdmodel/fdf/fdf_java_script.py` 90.5% → 100% (`/After` value decoded
+  from `COSStream`; `set_after(None)` removes the entry; `/Doc`'s
+  `array.get_name(i)` fallback when the key half of a pair is a
+  `COSName` rather than a `COSString`; odd-length array tail-drop;
+  non-dictionary value skip; non-`COSArray` `/Doc` entry returning
+  `None`).
+- `pdmodel/page_iterator.py` 90.8% → 100% (non-`COSDictionary` kid skip
+  via `COSNull` entry; leaf-shaped node with no `/Type` and no `/Kids`
+  enqueued as a page; `_is_page_tree_node(None)` shortcut; `__next__`
+  `/Type`-missing repair to `/Page`; `/Type`-mismatch `RuntimeError`
+  via post-construction override).
+- `filter/predictor_output_stream.py` 92.3% → 100% (negative-row-length
+  `OSError` via `columns=-1`; `writable()` accessor; flush-pad of an
+  incomplete final row with TIFF-2 predictor; idempotent `close()` and
+  the `contextlib.suppress` of a sink-side `close()` exception).
+- `fontbox/ttf/gsub/gsub_worker_for_bengali.py` 93.4% → 100%
+  (`script_feature is None` continue branch via a feature dict whose
+  value is literally `None`; `init`-feature glyph-id harvesting for
+  single-glyph substitution clusters including the augmented before-half
+  swap path; multi-glyph-only init that produces no augmentation).
+- `fontbox/ttf/random_access_read_unbuffered_data_stream.py` 91.1% → 100%
+  (`read_long` defensive sign-extension via an unsigned-high
+  `read_int` override — see latent-bug note below; `get_original_data`
+  early-EOF break via a view stand-in returning `-1` after a partial
+  read; `get_original_input_stream` non-closing-view helper;
+  `create_sub_view` `OSError → None` fallback).
+- `pdmodel/encryption/access_permission.py` 95.1% → 100%
+  (`is_permission_bit_on` against default and all-zero instances;
+  `set_permission_bit` true/false arms returning the new state;
+  upstream-parity bypass of read-only gate on `set_permission_bit`;
+  1-based indexing sanity).
+- `util/number_format_util.py` 90.2% → 100% (`_get_exponent` saturation
+  tail for >= 10**18; negative-value minus-prefix branch; fraction-
+  carry-into-integer via 0.99999 @ 4-digit precision; public
+  `get_exponent` / `format_positive_number` upstream-parity wrappers;
+  `inf` / over-LONG_MAX / over-MAX_FRACTION_DIGITS rejection arms;
+  zero-fraction-digits / trailing-zero-strip paths).
+- Latent dead branch flagged:
+  `fontbox/ttf/random_access_read_unbuffered_data_stream.read_long`
+  lines 83-84 (`if combined >= 0x8000_0000_0000_0000: combined -=
+  2**64`) is unreachable through normal use because the upstream
+  `read_int` already sign-extends to a signed Python int — once `high`
+  is negative the bit-or with an unsigned `low` cannot reach the
+  positive threshold the clamp guards against. The wave-1345 test
+  reaches the branch only by patching `read_int` to return the
+  unsigned high-word. Either remove the clamp (and document that
+  `read_int` is signed) or remove the sign-extension in `read_int`
+  and rely solely on `read_long`'s clamp — Java's signed-32 → signed-64
+  pattern lives in exactly one place upstream; we mirror it in two.
+
 ## Wave 1344 — fix snapshot-list-append bug flagged during wave 1343
 
 - **examples.signature.create_empty_signature_form**: replaced
