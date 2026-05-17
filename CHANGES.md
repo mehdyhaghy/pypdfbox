@@ -3164,6 +3164,181 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   `feedback_no_camelcase_aliases` these should be stripped in a
   follow-up cleanup wave once the dependent test is migrated.
 
+## Wave 1339 — coverage-boost pass #16 (5 parallel agents)
+
+- examples.interactive.form + examples.util + benchmark + fontbox.util.autodetect:
+  bumped `pypdfbox/examples/interactive/form/set_field.py` 66.0% → 100%,
+  `pypdfbox/examples/util/draw_print_text_locations.py` 70.6% → 100%,
+  `pypdfbox/examples/interactive/form/create_radio_buttons.py` 82.7% → 100%,
+  `pypdfbox/fontbox/util/autodetect/windows_font_dir_finder.py` 21.4% → 100%,
+  and `pypdfbox/benchmark/rendering.py` 55.3% → 100% — 58 new hand-written
+  tests covering CLI usage/main arg-count branches, AcroForm-missing /
+  field-missing stderr warnings, PDCheckBox check / un_check arms, the
+  `*_filled.pdf` end-to-end save, glyph callbacks (`show_glyph`
+  AttributeError swallow, `calculate_glyph_bounds` None return, `write_string`
+  happy + font-raises fallback), radio button `__init__` / `get_line_width`
+  with-/without-border / `draw_circle` four-Bezier emission /
+  `create_appearance_stream` None / fallback-when-`set_widgets`-raises
+  paths, Windows font dir finder with mocked `%windir%` (with/without
+  trailing separator, PSFONTS branch, drive-letter probe, OSError swallow)
+  + `%LOCALAPPDATA%` branches, and the rendering benchmark workload bodies
+  via stubbed `Loader.load_pdf` + `PDFRenderer` (loop coverage, PNG-output
+  arm, `finally` close-on-error guarantee) (agent D, wave 1339).
+- **Latent bug flagged (NOT fixed this wave)** in
+  `pypdfbox/benchmark/rendering.py:50` (`_render_pages`):
+  `Loader.load_pdf(path)` returns a `COSDocument`, but the next lines
+  call `PDFRenderer(pdf)` and `pdf.get_number_of_pages()` which only
+  exist on `PDDocument` — same class of bug wave 1336 fixed in
+  `benchmark/load_and_save.py`. Should be `PDDocument.load(path)` (or
+  wrap the result). Tests stub the loader + renderer so the surrounding
+  code paths remain covered; left for a follow-up source-fix wave.
+- examples.util + examples.printing + examples.interactive.form:
+  bumped `pypdfbox/examples/util/print_text_colors.py` 51.1% → 100%,
+  `pypdfbox/examples/printing/opaque_draw_object.py` 54.8% → 100%,
+  `pypdfbox/examples/interactive/form/field_triggers.py` 59.1% → 100%,
+  `pypdfbox/examples/util/pdf_highlighter.py` 72.1% → 97%, and
+  `pypdfbox/examples/interactive/form/print_fields.py` 65.2% → 96% —
+  56 new hand-written tests covering CLI usage/main arg-count branches,
+  `process_text_position` stubbed-graphics-state path coverage
+  (full state, raises swallow, missing text-state, None gs),
+  `OpaqueDrawObject.process` dispatch against fake contexts (image /
+  form / recursion-too-deep / unknown-type / context-None / xobject-
+  missing arms with balanced level counter), all-six-trigger AA
+  verification + ImportError fallback for both action modules via
+  `__import__` monkey-patch, `PDFHighlighter.end_page` directly driven
+  against a populated buffer (match / case-insensitive / no-match /
+  uninitialised), and `PrintFields.process_field` two-level non-terminal
+  nesting + value-raises swallow + None-partial-name + empty/no-AcroForm
+  branches (agent C, wave 1339).
+- **Latent integration gap flagged (NOT fixed this wave)** in
+  `pypdfbox/examples/util/pdf_highlighter.py`: the upstream Java
+  `PDFHighlighter` overrides `endPage` to consume the per-page text
+  buffer that the base `PDFTextStripper.writeText` populates
+  incrementally. pypdfbox's `PDFTextStripper.write_text` instead does
+  `output.write(self.get_text(document))` — building the full text
+  string once at the end — so by the time `end_page` is invoked for
+  each page the `_text_writer` buffer the example reads is empty.
+  Result: no `<loc>` lines are ever emitted against real PDFs. The
+  `end_page` logic is covered by directly populating the buffer in
+  tests; a follow-up wave should plumb per-page incremental writes
+  through `PDFTextStripper.write_text` (likely by writing each `chunk`
+  to `self._output` after `process_page` returns, mirroring upstream's
+  `writeString` -> `writePageEnd` -> `endPage` ordering) to unblock the
+  example end-to-end (agent C, wave 1339).
+- **Latent bug fixed**: `pypdfbox/examples/interactive/form/field_triggers.py`
+  imported `pypdfbox.pdmodel.interactive.action.pd_action_javascript` but
+  the actual module is `pd_action_java_script` (snake-case-converted from
+  upstream `PDActionJavaScript`). The wrong import silently fell through
+  the `except ImportError: PDActionJavaScript = None` branch, which then
+  short-circuited the entire trigger-attachment block — the example
+  saved an unchanged PDF with no /AA dictionary. Corrected the import
+  so the example actually attaches all six triggers; verified end-to-end
+  via `test_attach_triggers_writes_all_six_handlers` (E/X/D/U/Fo/Bl all
+  present on the widget's `/AA` after round-trip). Same class of bug as
+  the `Loader.load_pdf` / `set_need_to_be_updated` typos fixed in waves
+  1334/1336/1338 (agent C, wave 1339).
+- debugger.pd_debugger + fontbox.ttf.ttf_subsetter + pdmodel.font.pd_cid_font_type0:
+  bumped `pypdfbox/debugger/pd_debugger.py` 94.6% → 99%,
+  `pypdfbox/fontbox/ttf/ttf_subsetter.py` 93.0% → 100%, and
+  `pypdfbox/pdmodel/font/pd_cid_font_type0.py` 93.8% → 100% — 83 new
+  hand-written tests covering non-mac File menu Exit entry,
+  `add_recent_file_items` menu-unbuilt / file-menu-unbuilt / no-files
+  / repopulate branches, `get_find_*_menu_item` pre-build None
+  returns, `_on_tree_open` empty-selection + sentinel-node-None
+  paths, `_show_color_pane` array-empty / first-not-name / CalGray
+  (CSArrayBased) branches + `_dispatch_selection` colorspace route,
+  `_show_flag_pane` underneath-not-dict / key-None / view-None /
+  get_panel-fallback (via stubbed FlagBitsPane) edges, `_show_stream`
+  Contents-with-page-resources / CharProcs-grandparent / Form-with-
+  resources / PatternType-1 / Thumb / Image-with-grandparent-resources
+  / not-a-stream branches, `_show_font` no-key / no-resources-dict /
+  pane-None (via stubbed FontEncodingPaneController) fallbacks,
+  `_save_as` / `_save_decoded_stream` / `_save_raw_stream` OSError
+  recovery + no-stream + user-cancel arms, `_text_dialog` urlopen
+  happy + OSError swallow, `update_title` non-mac prefix,
+  `_read_stream_bytes` data-without-`read` `bytes(data)` path,
+  `_is_font_descriptor` / `_is_annot` non-dict-underneath returns,
+  `_init_global_event_handlers` non-mac no-op,
+  `_convert_to_string` COSStream OSError swallow,
+  TTFSubsetter `_apply_prefix` empty/already-tagged/non-PS-name/
+  no-name-table edges, `log2(0)` / `log2(<0)` zero short-circuit,
+  `to_u_int32` short-buffer pad + TypeError, `write_long_date_time`
+  int/aware-datetime/naive-datetime/timeInMillis/unsupported
+  paths, `write_table_header` short/long tag padding, `copy_bytes`
+  non-seekable OSError fallback + AttributeError fallback + EOFError,
+  `_build_subset_font` prefix+invisible application, `_encoded_table`
+  keep_tables-allowlist miss / tag-not-in-tt (DSIG) / tag-not-in-reader
+  edge branches, plus `_uni_name_of_code_point` short/wide/uppercase
+  hex paths, `PDCIDFontType0.get_glyph_name` parent-empty /
+  parent-None / parent-resolved arms, `get_path` CIDToGIDMap
+  remapping + charstring-exception swallow + charstring-None tail,
+  `has_glyph` cs-None / get_gid-exception arms (agent B, wave 1339).
+- text.pdf_text_stripper + pdmodel.graphics.image.pd_image_x_object:
+  bumped `pypdfbox/text/pdf_text_stripper.py` 93.0% → 100% and
+  `pypdfbox/pdmodel/graphics/image/pd_image_x_object.py` 94.5% → 100% — 65
+  new hand-written tests covering `_compute_avg_advance` user-space
+  conversion, `has_font_or_size_changed` font-name comparison branches
+  (incl. id-based fallback for nameless fonts), `remove_contained_spaces`
+  empty-list guard, `fill_bead_rectangles` happy path + defensive
+  exception swallows on `get_thread_beads` / `get_rectangle`,
+  `process_pages` start/end bookmark resolution + collapse-to-empty-range
+  for shared unresolvable outline items + per-page content-stream gate,
+  `write_page` empty-article short-circuit + emit-through-`_emit_group`
+  happy path, `normalize_word` Allah-with-alif U+FDF2 insertion + FB1D
+  long-NFKC reversal, `parse_bidi_file` malformed-hex ValueError swallow,
+  `handle_line_separation` paragraph-mark heuristic, and
+  `begin_marked_content_sequence` `get_string`-raises defensive swallow;
+  on the image side, `create_from_file_by_extension` extensionless / unknown-
+  extension / TIFF→PNG fallback, `create_from_file_by_content` OSError-on-
+  missing + unknown-magic, `create_from_byte_array` non-bytes / unknown-
+  magic / TIFF→PNG / custom-factory / dead-branch ValueError,
+  `create_raw_stream` happy + non-bytes-read defensive guard, `get_filter`
+  name / array / absent, `get_image` to-pil-None short-circuit + region +
+  opaque variants, `get_raw_raster` non-stream + happy path, `extract_matte`
+  no-color-space / no-`to_rgb` / `to_rgb`-raises / `to_rgb`-returns-None /
+  identity-transform paths, `to_pil_image` unsupported-bpc / DeviceRGB
+  invalid-decode / DeviceGray sub-byte short-raster guards, and the full
+  set of `_apply_decode_*` / `_unpack_*` / `_clamp` / `_clamp01` /
+  `_detect_file_type` short-input + zero-bpc + wrong-decode-length guards
+  (agent A, wave 1339).
+- pdmodel.graphics.color.pd_device_n + pdmodel.graphics.image.sampled_image_reader
+  + pdmodel.font.true_type_embedder + fontbox.encoding.glyph_list +
+  xmpbox.xml.xmp_serializer + pdmodel.interactive.annotation.handlers.pd_abstract_appearance_handler:
+  bumped `pypdfbox/pdmodel/graphics/color/pd_device_n.py` 94.3% → 100%,
+  `pypdfbox/pdmodel/graphics/image/sampled_image_reader.py` 94.0% → 99%,
+  `pypdfbox/pdmodel/font/true_type_embedder.py` 91.4% → 100%,
+  `pypdfbox/fontbox/encoding/glyph_list.py` 91.8% → 100%,
+  `pypdfbox/xmpbox/xml/xmp_serializer.py` 91.7% → 100%, and
+  `pypdfbox/pdmodel/interactive/annotation/handlers/pd_abstract_appearance_handler.py`
+  94.1% → 100% — 90 new hand-written tests covering: DeviceN
+  attribute-driven `to_rgb_with_attributes` full process-mapping +
+  missing-spot fall-back + spot-to_rgb-None fall-back + DeviceN/NChannel
+  subtype branches, raw COSBase tint-transform setter, COSNull-skip in
+  `get_colorants`; SampledImageReader Pillow-missing ImportError fall-backs
+  (4 entry points via `builtins.__import__` monkey-patch), `bytes(data)`
+  coercion on memoryview streams, non-aligned padding-bits branch,
+  two-arg color-key overload, 2-component grayscale fall-back,
+  `MultipleInputStream` exhausted-streams break + empty-streams read;
+  TrueTypeEmbedder `subset()` fontTools-ImportError → OSError wrap,
+  `get_tag` "A"-padding (via `builtins.hash` patched to 0),
+  `_create_font_descriptor` missing-hhea/head/rect-get_width error paths,
+  serif/script/italic OS/2 branches, `_build_full_font_file` save() OSError
+  + AttributeError swallow + TTC rejection, `_compute_gid_to_cid`
+  missing-maxp — all driven by a minimal `_FakeTTF` table-dict stand-in;
+  GlyphList `load` and `load_list` across all input shapes (string path,
+  file-like str/bytes, iterable-of-lines) + duplicate-name warning;
+  XmpSerializer (rewritten wave 1337) flat-dict-to-AbstractField path —
+  `_normalize_schema_fields`, `_iter_flat_typed` typed-cache hit,
+  `_wrap_primitive` every type branch (bool/int/datetime/str/list/dict/unknown),
+  `_cardinality_hint` class-mapping/method/raising/non-Enum branches,
+  `_append_field` non-AbstractField skip + raw-value fall-back; and
+  PDAbstractAppearanceHandler existing-stream-entry returns for /N/D/R,
+  `get_appearance_entry_as_content_stream` no-stream fall-back,
+  `draw_style` LE_R_OPEN_ARROW + LE_R_CLOSED_ARROW + LE_SLASH +
+  unknown-style early return, `_components_to_rgb` empty-list / 2-comp /
+  grayscale / CMYK paths, base `generate_rollover_appearance` /
+  `generate_down_appearance` no-ops (agent E, wave 1339).
+
 ## Wave 1338 — fix 5 latent source bugs flagged during wave 1337
 
 Coverage-boost pass #15 surfaced five more bugs across examples, tools,

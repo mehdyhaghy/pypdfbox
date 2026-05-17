@@ -45,7 +45,7 @@ class FieldTriggers:
         """Open ``src``, attach the upstream JS triggers to ``field_name``,
         save to ``dst``. Promoted from upstream's inline ``main`` body."""
         try:
-            from pypdfbox.pdmodel.interactive.action.pd_action_javascript import (
+            from pypdfbox.pdmodel.interactive.action.pd_action_java_script import (
                 PDActionJavaScript,
             )
         except ImportError:
