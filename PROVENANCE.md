@@ -2487,3 +2487,11 @@ Backfill of upstream Java paths for source files added in earlier waves (mostly 
 | `pypdfbox/xmpbox/xml/pdfa_extension_helper.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/xml/PdfaExtensionHelper.java` |
 | `pypdfbox/xmpbox/xml/xmp_serializer.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/xml/XmpSerializer.java` |
 
+### Wave 1333 additions — hand-written test files (agent E)
+
+| pypdfbox path | upstream PDFBox version | upstream Java path |
+|---|---|---|
+| `tests/examples/pdmodel/test_extract_embedded_files.py` | 3.0.x | hand-written coverage for `pypdfbox/examples/pdmodel/extract_embedded_files.py` — drives `main` / `extract_files_from_ef_tree` recursion / `extract_files_from_page` annotation walk / path-traversal guard / `get_embedded_file` fallback chain |
+| `tests/examples/signature/test_create_visible_signature2.py` | 3.0.x | hand-written coverage for `pypdfbox/examples/signature/create_visible_signature2.py` — drives `main` / `sign_pdf` (FileNotFoundError + tsa_url capture) / `_sign_document` DocMDP gate + signature wiring / `create_signature_rectangle` coord conversion / `create_visual_signature_template` AcroForm assembly / `find_existing_signature` four-branch lookup |
+| `tests/examples/signature/cert/test_certificate_verifier.py` | 3.0.x | hand-written coverage for `pypdfbox/examples/signature/cert/certificate_verifier.py` — multi-intermediate chain construction, no-root-anchor rejection, unexpected-exception wrapping, RSA + EC + non-RSA-non-EC `_verify_signed_by` branches, cycle break in `_build_chain`, OCSP-then-CRL fallback, recursion to self-signed anchor, AIA URL helpers |
+
