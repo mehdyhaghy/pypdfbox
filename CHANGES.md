@@ -3339,6 +3339,28 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   grayscale / CMYK paths, base `generate_rollover_appearance` /
   `generate_down_appearance` no-ops (agent E, wave 1339).
 
+## Wave 1344 — fix snapshot-list-append bug flagged during wave 1343
+
+- **examples.signature.create_empty_signature_form**: replaced
+  `page.get_annotations().append(widget)` and
+  `acro_form.get_fields().append(signature_field)` with the explicit
+  setters `page.add_annotation(widget)` /
+  `acro_form.set_fields([signature_field])`. The previous Java-style
+  mutate-the-getter idiom silently dropped both calls because the
+  getters return fresh snapshot lists each call (same class as the
+  wave-1338 fix in `examples/interactive/form/field_remover`). The
+  saved PDF now correctly carries one `/Fields` entry and one
+  `/Annots` entry, verified by a `PDDocument.load` round-trip.
+- **pdmodel.pd_page**: added new helper
+  `PDPage.add_annotation(annotation)` that appends to the page's
+  `/Annots` `COSArray` (creates the array if missing). Provided
+  because upstream Java callers reach for
+  `page.getAnnotations().add(...)`, which doesn't persist here.
+  Mirrors the `set_annotations` `TypeError` contract on non-
+  `PDAnnotation` inputs.
+
+Overall coverage: 99.03% (steady). Tests: 36,693.
+
 ## Wave 1342 — fix 4 latent source bugs flagged during wave 1341
 
 - **benchmark.text_extraction**: replaced `Loader.load_pdf` (returns

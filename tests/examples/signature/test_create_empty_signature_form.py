@@ -3,36 +3,13 @@
 Wave 1342 fixed three latent bugs that previously blocked end-to-end
 coverage of ``create()`` — the ``pd_rectangle`` import path, the
 ``PDType1Font`` enum-as-dict misuse, and the missing ``COSName.HELV``
-predefine. The body of ``create()`` is now exercisable.
+predefine.
 
-NEW latent source bug flagged for wave 1343
---------------------------------------------
-Lines 56-57 of ``create_empty_signature_form.py`` use the Java-style
-mutate-the-getter idiom::
-
-    page.get_annotations().append(widget)
-    acro_form.get_fields().append(signature_field)
-
-In Java's PDFBox both getters return the live underlying ``List``, so
-``add()`` mutates the form / page in place. The pypdfbox port returns
-a *fresh snapshot* each call (see ``PDAcroForm.get_fields`` and
-``PDPage.get_annotations``), so the ``.append()`` calls are dropped on
-the floor — the saved PDF ends up with empty ``/Fields`` and
-``/Annots`` arrays. Verified via re-load:
-
-    acro_form.get_cos_object()
-    # -> COSDictionary{/Fields:COSObject{COSNull.NULL}; /DR: ...; /DA: ...;}
-
-Fix shape (next wave, not here): the example should use ``acro_form
-.set_fields([signature_field])`` and an equivalent setter or
-``add_annotation``-style helper on ``PDPage`` (does not yet exist) for
-the page annotation list.
-
-The end-to-end tests below intentionally do **not** assert that the
-field / annotation survives round-trip, so they remain green when the
-example is fixed *and* while the bug is still in place. The other
-AcroForm setters (``set_default_appearance`` / ``set_default_resources``)
-DO write through to the COS dict, so we verify those.
+Wave 1344 fixed the snapshot-list-append bug: the example now calls
+``acro_form.set_fields([signature_field])`` and
+``page.add_annotation(widget)`` (a new helper) instead of mutating
+fresh snapshot lists returned by the getters. The round-trip
+assertions below verify that fix.
 """
 
 from __future__ import annotations
@@ -136,14 +113,17 @@ def test_create_accepts_str_path(tmp_path: Path) -> None:
     assert out.exists() and out.stat().st_size > 0
 
 
-def test_created_pdf_has_acroform_present(tmp_path: Path) -> None:
-    """Re-load the saved PDF and verify an AcroForm dictionary is set.
+def test_created_pdf_has_acroform_with_signature_field(tmp_path: Path) -> None:
+    """Re-load the saved PDF and verify the AcroForm carries exactly one
+    signature field, and the first page carries exactly one widget
+    annotation.
 
-    Note: per the latent source bug documented in the module docstring,
-    the AcroForm currently round-trips with an *empty* /Fields list. We
-    only assert the AcroForm itself is present; field-count assertion
-    is deferred until the source is fixed.
+    Wave 1344 fixed the snapshot-list-append bug; this assertion would
+    fail (empty ``/Fields``/``/Annots`` arrays) prior to that fix.
     """
+    from pypdfbox.pdmodel.interactive.form.pd_signature_field import (
+        PDSignatureField,
+    )
     from pypdfbox.pdmodel.pd_document import PDDocument
 
     out = tmp_path / "round_trip.pdf"
@@ -152,6 +132,12 @@ def test_created_pdf_has_acroform_present(tmp_path: Path) -> None:
     with PDDocument.load(str(out)) as doc:
         acro_form = doc.get_document_catalog().get_acro_form()
         assert acro_form is not None
+        fields = acro_form.get_fields()
+        assert len(fields) == 1
+        assert isinstance(fields[0], PDSignatureField)
+        page = doc.get_pages()[0]
+        annots = page.get_annotations()
+        assert len(annots) == 1
 
 
 def test_created_pdf_has_helv_default_resource(tmp_path: Path) -> None:

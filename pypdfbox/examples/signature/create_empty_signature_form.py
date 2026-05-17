@@ -53,7 +53,10 @@ class CreateEmptySignatureForm:
             widget.set_page(page)
             widget.set_printed(True)
 
-            page.get_annotations().append(widget)
-            acro_form.get_fields().append(signature_field)
+            # ``get_annotations`` / ``get_fields`` return fresh snapshot
+            # lists each call, so the upstream Java mutate-the-getter
+            # idiom wouldn't persist. Drive the explicit setters instead.
+            page.add_annotation(widget)
+            acro_form.set_fields([signature_field])
 
             document.save(str(output_path))

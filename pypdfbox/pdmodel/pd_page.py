@@ -663,6 +663,31 @@ class PDPage:
             arr.add(ann.get_cos_object())
         self._page.set_item(_ANNOTS, arr)
 
+    def add_annotation(self, annotation: Any) -> None:
+        """Append ``annotation`` to the page's ``/Annots`` array.
+
+        Creates the array if it doesn't exist. ``annotation`` must be a
+        :class:`PDAnnotation` — we append its underlying COS dictionary.
+        Provided because callers reach for the upstream Java idiom
+        ``page.getAnnotations().add(widget)``, which doesn't persist
+        here: :meth:`get_annotations` returns a fresh snapshot list each
+        call.
+        """
+        from .interactive.annotation import PDAnnotation
+
+        if not isinstance(annotation, PDAnnotation):
+            raise TypeError(
+                "PDPage.add_annotation expects a PDAnnotation; "
+                f"got {type(annotation).__name__}"
+            )
+        existing = self._page.get_dictionary_object(_ANNOTS)
+        if isinstance(existing, COSArray):
+            existing.add(annotation.get_cos_object())
+            return
+        arr = COSArray()
+        arr.add(annotation.get_cos_object())
+        self._page.set_item(_ANNOTS, arr)
+
     # ---------- stubs for later clusters ----------
 
     def get_thumb(self) -> Any:
