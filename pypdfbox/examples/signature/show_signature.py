@@ -112,9 +112,9 @@ class ShowSignature:
     ) -> list[dict[str, Any]]:
         """Parse signatures from ``pdf_path`` and return a list of summaries."""
         path = Path(pdf_path)
-        from pypdfbox.loader import Loader
+        from pypdfbox.pdmodel.pd_document import PDDocument
 
-        with path.open("rb") as fh, Loader.load_pdf(fh, password) as doc:  # type: ignore[arg-type]
+        with path.open("rb") as fh, PDDocument.load(fh, password) as doc:  # type: ignore[arg-type]
             self._results = []
             for signature in doc.get_signature_dictionaries():
                 self._results.append(self._summarize(signature))
