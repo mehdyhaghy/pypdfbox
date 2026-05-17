@@ -201,7 +201,7 @@ class EmbeddedMultipleFonts:
     @staticmethod
     def is_win_ansi_encoding(unicode: int) -> bool:
         """Mirrors ``isWinAnsiEncoding(int unicode)`` (line 155)."""
-        from pypdfbox.pdmodel.font.encoding.glyph_list import GlyphList
+        from pypdfbox.fontbox.encoding.glyph_list import GlyphList
         from pypdfbox.pdmodel.font.encoding.win_ansi_encoding import (
             WinAnsiEncoding,
         )

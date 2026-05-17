@@ -82,7 +82,7 @@ class SigUtils:
         transform_parameters.set_item(COSName.TYPE, COSName.TRANSFORM_PARAMS)
         transform_parameters.set_int(COSName.P, access_permissions)
         transform_parameters.set_name(COSName.V, "1.2")
-        transform_parameters.set_need_to_be_updated(True)
+        transform_parameters.set_needs_to_be_updated(True)
         transform_parameters.set_direct(True)
 
         reference_dict = COSDictionary()
@@ -90,13 +90,13 @@ class SigUtils:
         reference_dict.set_item(COSName.TRANSFORM_METHOD, COSName.DOCMDP)
         reference_dict.set_item(COSName.DIGEST_METHOD, COSName.get_pdf_name("SHA1"))
         reference_dict.set_item(COSName.TRANSFORM_PARAMS, transform_parameters)
-        reference_dict.set_need_to_be_updated(True)
+        reference_dict.set_needs_to_be_updated(True)
         reference_dict.set_direct(True)
 
         reference_array = COSArray()
         reference_array.add(reference_dict)
         sig_dict.set_item(COSName.REFERENCE, reference_array)
-        reference_array.set_need_to_be_updated(True)
+        reference_array.set_needs_to_be_updated(True)
         reference_array.set_direct(True)
 
         catalog_dict = doc.get_document_catalog().get_cos_object()
@@ -105,8 +105,8 @@ class SigUtils:
             perms_dict = COSDictionary()
             catalog_dict.set_item(COSName.PERMS, perms_dict)
         perms_dict.set_item(COSName.DOCMDP, signature)
-        catalog_dict.set_need_to_be_updated(True)
-        perms_dict.set_need_to_be_updated(True)
+        catalog_dict.set_needs_to_be_updated(True)
+        perms_dict.set_needs_to_be_updated(True)
 
     @staticmethod
     def check_certificate_usage(cert: x509.Certificate) -> None:

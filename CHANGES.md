@@ -2909,6 +2909,38 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   - `test_high_resolution_image_icon.py`: switched per-test `tk.Tk()` to the session-scoped fixture (eliminating extra Tk roots).
 - **Verified**: 2 concurrent shells × 5 iterations = 10/10 processes finish exit 0; 3 shells × 6 iterations = 18/18 exit 0; `PYPDFBOX_SKIP_TK=1` → 357 tests skip cleanly.
 
+## Wave 1334 — fix 6 latent source bugs flagged during wave 1333
+
+Coverage-boost pass #13 surfaced six bugs in `pypdfbox/examples/**` that silently
+`AttributeError`'d or `ImportError`'d in production. Tests had pinned the broken
+state with `pytest.raises(AttributeError)` and `sys.modules` shims; this wave
+fixes the source and rewrites the workarounds to drive the now-working paths.
+
+- **cos.cos_name**: added 10 missing predefines used by the signature helpers —
+  `P`, `V`, `PERMS`, `DOCMDP`, `REFERENCE`, `TRANSFORM_METHOD`, `TRANSFORM_PARAMS`,
+  `SIG_REF`, `DIGEST_METHOD`, `DOC_TIME_STAMP`.
+- **examples.signature.sig_utils**: replaced 6 calls to the non-existent
+  `set_need_to_be_updated()` with the canonical `set_needs_to_be_updated()`
+  (defined on `COSBase` / `COSArray` / `COSObject`). Coverage 86% → 100%.
+- **examples.signature.validation.add_validation_information**: same
+  `set_needs_to_be_updated()` fix (3 calls), plus replaced
+  `Loader.load_pdf(fh)` (returns `COSDocument`) with `PDDocument.load(fh)` so
+  the downstream `PDDocument`-only methods work.
+- **examples.signature.create_visible_signature2**: same `Loader.load_pdf`
+  → `PDDocument.load` swap, plus fixed broken import path
+  `pypdfbox.pdmodel.common.pd_rectangle` → `pypdfbox.pdmodel.pd_rectangle`.
+- **examples.pdmodel.embedded_multiple_fonts**: fixed
+  `pypdfbox.pdmodel.font.encoding.glyph_list` → `pypdfbox.fontbox.encoding.glyph_list`.
+- **examples.util.remove_all_text**: replaced the broken
+  `pypdfbox.contentstream.operator.operator.Operator` with the `Operator` class
+  actually produced by `PDFStreamParser`
+  (`pypdfbox.pdfparser.pdf_stream_parser.Operator`). Coverage 94% → 96%.
+
+Overall coverage 97.41% → 97.43%. Tests count unchanged (35,384 passing) — six
+former `pytest.raises(AttributeError)` assertions now assert the real COS-graph
+mutation, and four `sys.modules`-shim fixtures collapsed to no-op stubs kept
+only to satisfy existing test signatures.
+
 ## Wave 1333 — coverage-boost pass #13 (5 parallel agents)
 
 - examples: bumped extract_ttf_fonts coverage from 24% → 96% (agent A, wave 1333)

@@ -112,10 +112,10 @@ class RemoveAllText:
         text-show operator and its operands — mirrors upstream's private
         ``createTokensWithoutText`` (line 127)."""
         try:
-            from pypdfbox.contentstream.operator.operator import Operator
             from pypdfbox.contentstream.operator_name import OperatorName
             from pypdfbox.pdfparser.pdf_stream_parser import (
-                PDFStreamParser,  # type: ignore[import-not-found]
+                Operator,
+                PDFStreamParser,
             )
         except ImportError:
             return []

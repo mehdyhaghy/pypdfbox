@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import sys
-import types
 from pathlib import Path
 from typing import Any
 
@@ -18,24 +16,12 @@ from pypdfbox.pdmodel.pd_document import PDDocument
 
 
 @pytest.fixture
-def patched_glyph_list() -> Any:
-    """Provide the missing ``pypdfbox.pdmodel.font.encoding.glyph_list``
-    module so :meth:`is_win_ansi_encoding` can import it.
-
-    The real ``GlyphList`` lives under ``pypdfbox.fontbox.encoding``; the
-    helper re-exports it under the path the source references and tears
-    the shim down on exit.
-    """
-    mod_name = "pypdfbox.pdmodel.font.encoding.glyph_list"
-    from pypdfbox.fontbox.encoding.glyph_list import GlyphList
-
-    shim = types.ModuleType(mod_name)
-    shim.GlyphList = GlyphList
-    sys.modules[mod_name] = shim
-    try:
-        yield shim
-    finally:
-        sys.modules.pop(mod_name, None)
+def patched_glyph_list() -> None:
+    """Legacy fixture name retained so existing tests can require it; the
+    source now imports ``GlyphList`` from the real path
+    ``pypdfbox.fontbox.encoding.glyph_list`` (wave 1334), so this is a
+    no-op."""
+    yield None
 
 
 class _StrictAsciiFont:

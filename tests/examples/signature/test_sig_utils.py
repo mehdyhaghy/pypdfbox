@@ -333,22 +333,24 @@ def test_get_mdp_permission_returns_zero_for_non_docmdp_transform():
 # ---------------------------------------------------------------------------
 
 
-# NOTE: ``SigUtils.set_mdp_permission`` calls ``set_need_to_be_updated`` (no
-# trailing ``s``); ``COSDictionary``/``COSArray`` expose the method as
-# ``set_needs_to_be_updated``. Upstream PDFBox spells it ``setNeedToBeUpdated``;
-# the COS port adopted ``set_needs_to_be_updated`` instead. Until the typo is
-# reconciled in production code, we exercise as many branches as possible and
-# expect the AttributeError to surface so coverage still records lines 71-84.
-
-
 def test_set_mdp_permission_writes_perms_and_reference():
     doc = PDDocument()
     try:
         signature = PDSignature()
         doc.add_signature(signature)
 
-        with pytest.raises(AttributeError):
-            SigUtils.set_mdp_permission(doc, signature, 1)
+        SigUtils.set_mdp_permission(doc, signature, 1)
+
+        catalog = doc.get_document_catalog().get_cos_object()
+        perms = catalog.get_cos_dictionary(COSName.PERMS)
+        assert perms is not None
+        assert perms.get_dictionary_object(COSName.DOCMDP) is signature
+        ref_array = signature.get_cos_object().get_cos_array(COSName.REFERENCE)
+        assert ref_array is not None and ref_array.size() == 1
+        ref = ref_array.get_object(0)
+        assert ref.get_dictionary_object(COSName.TRANSFORM_METHOD) == COSName.DOCMDP
+        params = ref.get_dictionary_object(COSName.TRANSFORM_PARAMS)
+        assert params.get_int(COSName.P) == 1
     finally:
         doc.close()
 
@@ -359,14 +361,17 @@ def test_set_mdp_permission_reuses_existing_perms_dict():
         signature = PDSignature()
         doc.add_signature(signature)
 
-        # Pre-seed /Perms so the helper would take the "reuse" branch.
         catalog = doc.get_document_catalog().get_cos_object()
         seed = COSDictionary()
         seed.set_item(COSName.get_pdf_name("UR3"), COSDictionary())
         catalog.set_item(COSName.PERMS, seed)
 
-        with pytest.raises(AttributeError):
-            SigUtils.set_mdp_permission(doc, signature, 3)
+        SigUtils.set_mdp_permission(doc, signature, 3)
+
+        perms = catalog.get_cos_dictionary(COSName.PERMS)
+        assert perms is seed
+        assert perms.get_dictionary_object(COSName.get_pdf_name("UR3")) is not None
+        assert perms.get_dictionary_object(COSName.DOCMDP) is signature
     finally:
         doc.close()
 
@@ -390,11 +395,14 @@ def test_set_mdp_permission_skips_doctimestamp_when_scanning():
     try:
         tsa_sig = PDSignature()
         tsa_sig.get_cos_object().set_item(COSName.TYPE, COSName.DOC_TIME_STAMP)
-        # A doctimestamp with /Contents must still be skipped (no raise here).
         tsa_sig.get_cos_object().set_string(COSName.CONTENTS, "X")
         doc.add_signature(tsa_sig)
-        with pytest.raises(AttributeError):
-            SigUtils.set_mdp_permission(doc, tsa_sig, 2)
+
+        SigUtils.set_mdp_permission(doc, tsa_sig, 2)
+
+        catalog = doc.get_document_catalog().get_cos_object()
+        perms = catalog.get_cos_dictionary(COSName.PERMS)
+        assert perms.get_dictionary_object(COSName.DOCMDP) is tsa_sig
     finally:
         doc.close()
 

@@ -67,8 +67,8 @@ class AddValidationInformation:
         if existing is not None and isinstance(existing, clazz):
             return existing
         entry = clazz()
-        if hasattr(entry, "set_need_to_be_updated"):
-            entry.set_need_to_be_updated(True)
+        if hasattr(entry, "set_needs_to_be_updated"):
+            entry.set_needs_to_be_updated(True)
         parent.set_item(cos_key, entry)
         return entry
 
@@ -137,9 +137,9 @@ class AddValidationInformation:
         in_path = Path(in_file)
         out_path = Path(out_file)
 
-        from pypdfbox.loader import Loader
+        from pypdfbox.pdmodel.pd_document import PDDocument
 
-        with in_path.open("rb") as fh, Loader.load_pdf(fh) as document:  # type: ignore[arg-type]
+        with in_path.open("rb") as fh, PDDocument.load(fh) as document:
             signature = SigUtils.get_last_relevant_signature(document)
             if signature is None:
                 raise OSError("No signature found")
@@ -160,8 +160,8 @@ class AddValidationInformation:
         if dss is None:
             dss = COSDictionary()
             catalog_dict.set_item(COSName.get_pdf_name("DSS"), dss)
-        catalog_dict.set_need_to_be_updated(True)
-        dss.set_need_to_be_updated(True)
+        catalog_dict.set_needs_to_be_updated(True)
+        dss.set_needs_to_be_updated(True)
 
         certs_array = COSArray()
         for cert in self._cert_information_collector.get_certificate_set():

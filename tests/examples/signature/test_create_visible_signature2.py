@@ -202,22 +202,7 @@ def test_sign_document_drives_signature_pipeline(
     assert captured["iface"] is signer
 
 
-def _install_pd_rectangle_common_alias() -> None:
-    """The upstream port references ``pypdfbox.pdmodel.common.pd_rectangle``
-    inside :func:`create_signature_rectangle`, but the canonical module
-    location is ``pypdfbox.pdmodel.pd_rectangle``. Register a sys.modules
-    alias so the test can drive the helper without modifying the port."""
-    import sys
-
-    import pypdfbox.pdmodel.pd_rectangle as _root_rect
-
-    sys.modules.setdefault(
-        "pypdfbox.pdmodel.common.pd_rectangle", _root_rect,
-    )
-
-
 def test_create_signature_rectangle_converts_top_left_to_bottom_left():
-    _install_pd_rectangle_common_alias()
     from pypdfbox.pdmodel.pd_document import PDDocument
     from pypdfbox.pdmodel.pd_page import PDPage
 

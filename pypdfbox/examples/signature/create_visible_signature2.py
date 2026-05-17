@@ -70,11 +70,11 @@ class CreateVisibleSignature2(CreateSignatureBase):
         self.set_tsa_url(tsa_url)
         self._human_rect = human_rect  # noqa: SLF001 - captured for appearance draw
 
-        from pypdfbox.loader import Loader
+        from pypdfbox.pdmodel.pd_document import PDDocument
 
         with (
             in_path.open("rb") as fh,
-            Loader.load_pdf(fh) as doc,  # type: ignore[arg-type]
+            PDDocument.load(fh) as doc,
             out_path.open("wb") as out,
         ):
             self._sign_document(doc, out, signature_field_name)
@@ -114,7 +114,7 @@ class CreateVisibleSignature2(CreateSignatureBase):
         """
         x, y, w, h = human_rect
         # Mirror PDFBox: convert from top-left to bottom-left coordinates.
-        from pypdfbox.pdmodel.common.pd_rectangle import PDRectangle
+        from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
         page = doc.get_pages()[0]
         page_h = page.get_media_box().get_height()

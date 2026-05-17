@@ -65,7 +65,7 @@ class _FakeCatalogDict:
     def set_item(self, key, value):
         self._items[key] = value
 
-    def set_need_to_be_updated(self, value):
+    def set_needs_to_be_updated(self, value):
         self._needs_update = value
 
     def get_dictionary_object(self, key):
@@ -122,15 +122,15 @@ def _build_signed_pkcs7(pkcs12_bytes: bytes, password: bytes) -> bytes:
 
 
 def _patch_loader_to_fake_doc(monkeypatch, fake_doc):
-    """Patch ``Loader.load_pdf`` to return ``fake_doc``."""
-    from pypdfbox import loader as _loader_module
+    """Patch ``PDDocument.load`` to return ``fake_doc`` directly."""
+    from pypdfbox.pdmodel import pd_document as _pd_doc_module
 
-    def _patched(source, password=None, /):  # noqa: ARG001
+    def _patched(cls, source, password=None):  # noqa: ARG001
         return fake_doc
 
-    monkeypatch.setattr(_loader_module.Loader, "load_pdf", staticmethod(_patched))
-    # Also patch SigUtils.get_last_relevant_signature so we can control the
-    # signature returned independently of byte-range / sig-fields plumbing.
+    monkeypatch.setattr(
+        _pd_doc_module.PDDocument, "load", classmethod(_patched)
+    )
     from pypdfbox.examples.signature import sig_utils as _sig_utils
 
     def _last_sig(doc):
@@ -138,17 +138,6 @@ def _patch_loader_to_fake_doc(monkeypatch, fake_doc):
         return sigs[0] if sigs else None
 
     monkeypatch.setattr(_sig_utils.SigUtils, "get_last_relevant_signature", _last_sig)
-    # The ported source calls ``set_need_to_be_updated`` (no trailing 's')
-    # which is a transcription bug — the COSDictionary method is
-    # ``set_needs_to_be_updated``. Alias on the class for the duration of
-    # the test so the buggy code path is exercisable.
-    if not hasattr(COSDictionary, "set_need_to_be_updated"):
-        monkeypatch.setattr(
-            COSDictionary,
-            "set_need_to_be_updated",
-            COSDictionary.set_needs_to_be_updated,
-            raising=False,
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -244,14 +233,14 @@ def test_get_or_create_dictionary_entry_with_cos_name_key():
 
 
 def test_get_or_create_dictionary_entry_marks_new_entry_updated():
-    """When the new entry exposes set_need_to_be_updated it's called."""
+    """The new entry has ``set_needs_to_be_updated`` invoked on it."""
 
     class _MarkableDict(COSDictionary):
         def __init__(self):
             super().__init__()
             self.marked: bool | None = None
 
-        def set_need_to_be_updated(self, value):
+        def set_needs_to_be_updated(self, value):
             self.marked = value
 
     parent = COSDictionary()

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sys
-import types
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -24,26 +23,11 @@ from pypdfbox.pdmodel.pd_page_content_stream import PDPageContentStream
 
 
 @pytest.fixture
-def patched_operator_module() -> Any:
-    """Provide the missing ``pypdfbox.contentstream.operator.operator``
-    module so the happy-path branch of ``create_tokens_without_text`` can
-    be exercised.
-
-    The source file references a module path that does not yet exist in
-    pypdfbox; the helper re-exports the real ``Operator`` (from
-    ``pdf_stream_parser``) under that name and tears the shim down on
-    exit.
-    """
-    mod_name = "pypdfbox.contentstream.operator.operator"
-    from pypdfbox.pdfparser.pdf_stream_parser import Operator as PDFOperator
-
-    shim = types.ModuleType(mod_name)
-    shim.Operator = PDFOperator
-    sys.modules[mod_name] = shim
-    try:
-        yield shim
-    finally:
-        sys.modules.pop(mod_name, None)
+def patched_operator_module() -> None:
+    """Legacy fixture name kept so existing tests can rely on it; the
+    formerly-missing module path is now real (wave 1334), so this is a
+    no-op shim that exists purely to satisfy the test signatures."""
+    yield None
 
 
 def test_constructor_is_a_no_op() -> None:
@@ -181,15 +165,16 @@ def test_process_resources_skips_xobjects_without_get_resources() -> None:
     RemoveAllText.process_resources(Resources())
 
 
-def test_create_tokens_without_text_returns_empty_on_import_error() -> None:
-    # Without the shim in ``patched_operator_module``, the import for the
-    # parser side fails and ``create_tokens_without_text`` returns ``[]``.
-    sys.modules.pop("pypdfbox.contentstream.operator.operator", None)
+def test_create_tokens_without_text_returns_empty_on_import_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Knock out the OperatorName import target so the ``try``/``except
+    # ImportError`` branch fires and the helper returns ``[]``.
+    monkeypatch.setitem(sys.modules, "pypdfbox.contentstream.operator_name", None)
     assert RemoveAllText.create_tokens_without_text(object()) == []
 
 
 def test_create_tokens_without_text_swallows_parser_errors() -> None:
-    sys.modules.pop("pypdfbox.contentstream.operator.operator", None)
     # Pass an object the parser cannot consume — fallback returns [].
     class NotAStream:
         pass
