@@ -8,7 +8,6 @@ import pytest
 
 from pypdfbox.benchmark.load_and_save import LoadAndSave
 from pypdfbox.benchmark.null_output_stream import NullOutputStream
-from pypdfbox.loader import Loader
 from pypdfbox.pdfwriter.compress.compress_parameters import CompressParameters
 from pypdfbox.pdmodel import PDDocument
 
@@ -27,24 +26,19 @@ _FIXTURE_PDF = (
 )
 
 
-_REAL_LOAD_PDF = Loader.load_pdf
-
-
 def _loader_factory():
-    """Return a ``Loader.load_pdf`` shim that ignores the requested path
-    and instead opens our in-repo fixture wrapped in a :class:`PDDocument`.
+    """Return a ``PDDocument.load`` shim that ignores the requested path
+    and instead opens our in-repo fixture.
 
-    The upstream benchmark surface assumes ``Loader.load_pdf`` yields a
-    document that exposes ``.save`` / ``.save_incremental`` — those live
-    on :class:`PDDocument`, not the bare :class:`COSDocument` returned by
-    the current Loader. Wrapping here keeps the test driving the
-    benchmark body's exercise of those methods. (Latent bug: the
-    benchmark itself should be calling ``PDDocument.load`` — flagged in
-    the wave 1335 report.)
+    Loads via the underlying ``Loader.load_pdf`` + ``PDDocument(...)``
+    wrap rather than ``PDDocument.load`` directly, because the test that
+    uses this factory monkey-patches ``PDDocument.load`` on the benchmark
+    module — calling ``PDDocument.load`` here would recurse.
     """
+    from pypdfbox.loader import Loader as _Loader
 
-    def _load(_path):
-        return PDDocument(_REAL_LOAD_PDF(str(_FIXTURE_PDF)))
+    def _load(_path, *_args, **_kwargs):
+        return PDDocument(_Loader.load_pdf(str(_FIXTURE_PDF)))
 
     return _load
 
@@ -114,7 +108,7 @@ def patched_loader():
     real :class:`PDDocument`.
     """
     with mock.patch(
-        "pypdfbox.benchmark.load_and_save.Loader.load_pdf",
+        "pypdfbox.benchmark.load_and_save.PDDocument.load",
         side_effect=_loader_factory(),
     ) as patched:
         yield patched
@@ -257,7 +251,7 @@ def test_load_medium_file_closes_document_on_consume_error(monkeypatch) -> None:
             closed["count"] += 1
 
     monkeypatch.setattr(
-        "pypdfbox.benchmark.load_and_save.Loader.load_pdf",
+        "pypdfbox.benchmark.load_and_save.PDDocument.load",
         lambda _path: _StubDoc(),
     )
 
@@ -282,7 +276,7 @@ def test_save_medium_file_closes_document_on_save_error(monkeypatch) -> None:
             closed["count"] += 1
 
     monkeypatch.setattr(
-        "pypdfbox.benchmark.load_and_save.Loader.load_pdf",
+        "pypdfbox.benchmark.load_and_save.PDDocument.load",
         lambda _path: _StubDoc(),
     )
     with pytest.raises(RuntimeError, match="save-boom"):

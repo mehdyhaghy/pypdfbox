@@ -14,8 +14,8 @@ import time
 from typing import Any
 
 from pypdfbox.benchmark.null_output_stream import NullOutputStream
-from pypdfbox.loader import Loader
 from pypdfbox.pdfwriter.compress.compress_parameters import CompressParameters
+from pypdfbox.pdmodel.pd_document import PDDocument
 
 
 class LoadAndSave:
@@ -46,7 +46,7 @@ class LoadAndSave:
         """Mirror of ``loadMediumFile`` (line 40)."""
 
         def _body() -> None:
-            pdf = Loader.load_pdf(self.MEDIUM_SIZE_TEST_FILE)
+            pdf = PDDocument.load(self.MEDIUM_SIZE_TEST_FILE)
             try:
                 self._consume(pdf)
             finally:
@@ -58,7 +58,7 @@ class LoadAndSave:
         """Mirror of ``saveMediumFile`` (line 49)."""
 
         def _body() -> None:
-            pdf = Loader.load_pdf(self.MEDIUM_SIZE_TEST_FILE)
+            pdf = PDDocument.load(self.MEDIUM_SIZE_TEST_FILE)
             try:
                 pdf.save(NullOutputStream())
             finally:
@@ -70,7 +70,7 @@ class LoadAndSave:
         """Mirror of ``saveIncrementalMediumFile`` (line 58)."""
 
         def _body() -> None:
-            pdf = Loader.load_pdf(self.MEDIUM_SIZE_TEST_FILE)
+            pdf = PDDocument.load(self.MEDIUM_SIZE_TEST_FILE)
             try:
                 pdf.save_incremental(NullOutputStream())
             finally:
@@ -82,7 +82,7 @@ class LoadAndSave:
         """Mirror of ``saveNoCompressionMediumFile`` (line 67)."""
 
         def _body() -> None:
-            pdf = Loader.load_pdf(self.MEDIUM_SIZE_TEST_FILE)
+            pdf = PDDocument.load(self.MEDIUM_SIZE_TEST_FILE)
             try:
                 pdf.save(NullOutputStream(), CompressParameters.NO_COMPRESSION)
             finally:
@@ -94,7 +94,7 @@ class LoadAndSave:
         """Mirror of ``loadLargeFile`` (line 76)."""
 
         def _body() -> None:
-            pdf = Loader.load_pdf(self.LARGE_SIZE_TEST_FILE)
+            pdf = PDDocument.load(self.LARGE_SIZE_TEST_FILE)
             try:
                 self._consume(pdf)
             finally:
@@ -106,7 +106,7 @@ class LoadAndSave:
         """Mirror of ``saveLargeFile`` (line 85)."""
 
         def _body() -> None:
-            pdf = Loader.load_pdf(self.LARGE_SIZE_TEST_FILE)
+            pdf = PDDocument.load(self.LARGE_SIZE_TEST_FILE)
             try:
                 pdf.save(NullOutputStream())
             finally:
@@ -118,7 +118,7 @@ class LoadAndSave:
         """Mirror of ``saveIncrementalLargeFile`` (line 95)."""
 
         def _body() -> None:
-            pdf = Loader.load_pdf(self.LARGE_SIZE_TEST_FILE)
+            pdf = PDDocument.load(self.LARGE_SIZE_TEST_FILE)
             try:
                 pdf.save_incremental(NullOutputStream())
             finally:
@@ -130,7 +130,7 @@ class LoadAndSave:
         """Mirror of ``saveNoCompressionLargeFile`` (line 104)."""
 
         def _body() -> None:
-            pdf = Loader.load_pdf(self.LARGE_SIZE_TEST_FILE)
+            pdf = PDDocument.load(self.LARGE_SIZE_TEST_FILE)
             try:
                 pdf.save(NullOutputStream(), CompressParameters.NO_COMPRESSION)
             finally:

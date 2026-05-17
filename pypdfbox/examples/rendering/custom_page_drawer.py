@@ -50,7 +50,7 @@ class MyPageDrawer(PageDrawer):
             non_stroking = self.get_graphics_state().get_non_stroking_color()
         if non_stroking is color:
             try:
-                if int(color.to_rgb()) == _RED_RGB:
+                if color.to_rgb_int() == _RED_RGB:
                     return _BLUE_RGB
             except (AttributeError, ValueError, TypeError):
                 pass

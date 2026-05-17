@@ -87,6 +87,17 @@ class XmpSerializer:
         resource_ns: str,
         prefix: str | None,
     ) -> None:
+        # XMPSchema subclasses (Dublin Core, etc.) store properties as a
+        # flat ``dict[str, primitive]`` rather than as ``AbstractField``
+        # children, so ``get_all_properties()`` can yield raw Python values
+        # (str, dict, list, bool, int). The serializer's AbstractField
+        # contract doesn't apply to those; the flat representation is
+        # carried separately via XMP attributes / explicit lang-alt helpers.
+        # Skip such entries here rather than crashing — full structural
+        # serialization of flat-stored schema properties is tracked as a
+        # follow-up.
+        if not isinstance(field, AbstractField):
+            return
         prop_name = field.get_property_name() or "value"
         prefix_to_use = field.get_prefix() if hasattr(field, "get_prefix") else None
         ns_uri = field.get_namespace() if hasattr(field, "get_namespace") else None

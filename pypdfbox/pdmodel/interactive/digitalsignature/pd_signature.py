@@ -761,6 +761,31 @@ class PDSignature:
             raise IndexError("missing or malformed /ByteRange")
         return signed
 
+    def get_contents_from_bytes(self, pdf_file: bytes) -> bytes:
+        """Return the raw ``/Contents`` placeholder slice extracted from
+        ``pdf_file`` using ``/ByteRange``.
+
+        Mirrors upstream ``PDSignature.getContents(byte[] pdfFile)``: the
+        slice between the two byte-range chunks contains the hex-encoded
+        ``/Contents`` string, framed by ``<...>``. This method strips the
+        delimiters and hex-decodes the body, returning the binary
+        signature blob.
+
+        Raises :class:`IndexError` if ``/ByteRange`` is absent or
+        malformed.
+        """
+        br = self.get_byte_range()
+        if br is None or len(br) != 4:
+            raise IndexError("missing or malformed /ByteRange")
+        start1, len1, start2, _len2 = br
+        # /Contents sits between (start1 + len1) and start2, framed by `<>`.
+        gap_start = start1 + len1 + 1
+        gap_end = start2 - 1
+        if gap_start < 0 or gap_end > len(pdf_file) or gap_end < gap_start:
+            raise IndexError("missing or malformed /ByteRange")
+        hex_body = pdf_file[gap_start:gap_end]
+        return bytes.fromhex(hex_body.decode("ascii"))
+
     # ---------- verify ----------
 
     def verify(

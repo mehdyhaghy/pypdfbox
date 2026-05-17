@@ -55,9 +55,9 @@ class CreateEmbeddedTimeStamp:
             raise FileNotFoundError("Document for signing does not exist")
         out_path = in_path if out_file is None else Path(out_file)
 
-        from pypdfbox.loader import Loader
+        from pypdfbox.pdmodel.pd_document import PDDocument
 
-        with in_path.open("rb") as fh, Loader.load_pdf(fh) as doc:  # type: ignore[arg-type]
+        with in_path.open("rb") as fh, PDDocument.load(fh) as doc:
             self._document = doc
             self.process_time_stamping(in_path, out_path)
 

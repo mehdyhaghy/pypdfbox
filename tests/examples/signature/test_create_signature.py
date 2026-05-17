@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import io
 
 import pytest
@@ -137,18 +136,15 @@ def test_sign_detached_uses_in_place_when_no_out_file(
         def __exit__(self, *a):
             return False
 
-    @contextlib.contextmanager
-    def fake_load(_fh):
-        yield FakeDoc()
+    # ``PDDocument.load`` is used as a context manager inside sign_detached;
+    # replace it with a factory that yields a stub doc.
+    from pypdfbox.pdmodel import pd_document as _pd_doc_module
 
-    # ``Loader.load_pdf`` is used as a context manager inside sign_detached;
-    # we replace it with a context-manager factory that yields a stub doc.
-    class FakeLoader:
-        @staticmethod
-        def load_pdf(_fh):
-            return FakeDoc()
-
-    monkeypatch.setattr("pypdfbox.loader.Loader", FakeLoader)
+    monkeypatch.setattr(
+        _pd_doc_module.PDDocument,
+        "load",
+        classmethod(lambda cls, _fh, password=None: FakeDoc()),
+    )
 
     def fake_sign_doc(self, document, output):
         captured["doc"] = document
@@ -178,12 +174,13 @@ def test_sign_detached_writes_to_explicit_out_file(
         def __exit__(self, *a):
             return False
 
-    class FakeLoader:
-        @staticmethod
-        def load_pdf(_fh):
-            return FakeDoc()
+    from pypdfbox.pdmodel import pd_document as _pd_doc_module
 
-    monkeypatch.setattr("pypdfbox.loader.Loader", FakeLoader)
+    monkeypatch.setattr(
+        _pd_doc_module.PDDocument,
+        "load",
+        classmethod(lambda cls, _fh, password=None: FakeDoc()),
+    )
 
     captured = {}
 

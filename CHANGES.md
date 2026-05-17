@@ -2923,6 +2923,43 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
 - **Latent bug flagged (NOT fixed this wave)** in `pypdfbox/xmpbox/xml/xmp_serializer.py:90` (`_append_field`): expects `AbstractField` instances but receives raw `str` when serialising a Dublin Core `set_title` LangAlt — `AttributeError: 'str' object has no attribute 'get_property_name'`. Affects `CreatePDFA.main()` end-to-end (which calls `dc.set_title(file_)` and then `serializer.serialize(xmp, ...)`). Tests monkeypatch the serializer with a stub so the rest of `main()` covers; needs a source fix that either wraps strings as `TextType`/`LangAltField` in the LangAlt array, or makes `_append_field` tolerate plain strings.
 - **Latent bug flagged (NOT fixed this wave)** in `pypdfbox/examples/rendering/custom_page_drawer.py:53` (`MyPageDrawer.get_paint`): `int(color.to_rgb())` is unreachable for canonical `PDColor` inputs because `PDColor.to_rgb()` returns a 3-tuple of floats, not an int — `int(tuple)` always raises `TypeError`. The RED→BLUE substitution therefore never fires on real renders. The comparison should be against `color.to_rgb_int()` (which exists on `PDColor` and returns the packed sRGB int) instead of `int(color.to_rgb())`.
 
+## Wave 1336 — fix 6 latent source bugs flagged during wave 1335
+
+Coverage-boost pass #14 surfaced six more bugs across the examples, the
+benchmark, and the XMP serializer. This wave fixes the source and unwinds
+the test workarounds (monkey-patched `Loader.load_pdf` shims, `to_rgb`
+stubs, etc.) so they drive the now-working paths.
+
+- **examples.signature.create_signature** + **create_embedded_time_stamp** +
+  **create_visible_signature**: swapped `Loader.load_pdf(fh)` (returns
+  `COSDocument`) for `PDDocument.load(fh)` so the downstream
+  `add_signature` / `save_incremental*` calls actually resolve.
+- **benchmark.load_and_save**: same `Loader.load_pdf` → `PDDocument.load`
+  swap, applied to all 8 workload methods.
+- **pdmodel.interactive.digitalsignature.pd_signature**: added
+  `PDSignature.get_contents_from_bytes(pdf_file)` mirroring upstream
+  `PDSignature.getContents(byte[] pdfFile)` — extracts the `/Contents`
+  placeholder slice from raw PDF bytes via `/ByteRange`, strips the
+  `<...>` framing, and hex-decodes the body to the binary signature
+  blob. Required by `CreateEmbeddedTimeStamp.process_relevant_signatures`.
+- **examples.rendering.custom_page_drawer:53**: replaced
+  `int(color.to_rgb())` (structurally unreachable — `to_rgb` returns a
+  3-tuple, so `int(tuple)` always raised `TypeError`) with
+  `color.to_rgb_int()`. The RED→BLUE substitution branch now actually
+  fires.
+- **xmpbox.xml.xmp_serializer._append_field**: added a defensive guard
+  that skips non-`AbstractField` inputs. `XMPSchema` subclasses (Dublin
+  Core, Photoshop, etc.) store properties as a flat
+  `dict[str, primitive]` rather than as `AbstractField` children, so the
+  existing `get_all_properties()` contract returned raw values the
+  serializer couldn't consume. This unblocks `CreatePDFA.main()`
+  end-to-end; full structural serialization of flat-stored schema
+  properties is queued as a follow-up.
+
+Overall coverage 97.81% → 97.80%. Tests count unchanged at 35,592
+passing; multiple tests rewritten to drive the now-working source rather
+than asserting on the broken path.
+
 ## Wave 1334 — fix 6 latent source bugs flagged during wave 1333
 
 Coverage-boost pass #13 surfaced six bugs in `pypdfbox/examples/**` that silently

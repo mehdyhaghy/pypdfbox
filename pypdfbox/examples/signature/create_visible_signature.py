@@ -118,11 +118,11 @@ class CreateVisibleSignature(CreateSignatureBase):
             raise FileNotFoundError("Document for signing does not exist")
         self.set_tsa_url(tsa_url)
 
-        from pypdfbox.loader import Loader
+        from pypdfbox.pdmodel.pd_document import PDDocument
 
         with (
             in_path.open("rb") as fh,
-            Loader.load_pdf(fh) as doc,  # type: ignore[arg-type]
+            PDDocument.load(fh) as doc,
             out_path.open("wb") as out,
         ):
             self._sign_document(doc, out, signature_field_name)

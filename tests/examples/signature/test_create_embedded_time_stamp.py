@@ -126,12 +126,13 @@ def test_embed_time_stamp_with_no_out_file_uses_in_place(monkeypatch, tmp_path):
         def __exit__(self, *a):
             return False
 
-    class FakeLoader:
-        @staticmethod
-        def load_pdf(_fh):
-            return FakeDoc()
+    from pypdfbox.pdmodel import pd_document as _pd_doc_module
 
-    monkeypatch.setattr("pypdfbox.loader.Loader", FakeLoader)
+    monkeypatch.setattr(
+        _pd_doc_module.PDDocument,
+        "load",
+        classmethod(lambda cls, _fh, password=None: FakeDoc()),
+    )
 
     captured = {}
 
@@ -161,12 +162,13 @@ def test_embed_time_stamp_with_explicit_out_file(monkeypatch, tmp_path):
         def __exit__(self, *a):
             return False
 
-    class FakeLoader:
-        @staticmethod
-        def load_pdf(_fh):
-            return FakeDoc()
+    from pypdfbox.pdmodel import pd_document as _pd_doc_module
 
-    monkeypatch.setattr("pypdfbox.loader.Loader", FakeLoader)
+    monkeypatch.setattr(
+        _pd_doc_module.PDDocument,
+        "load",
+        classmethod(lambda cls, _fh, password=None: FakeDoc()),
+    )
 
     captured = {}
 

@@ -141,17 +141,14 @@ def test_get_paint_without_graphics_state_falls_through() -> None:
 def test_get_paint_returns_blue_when_non_stroking_is_red() -> None:
     doc, drawer = _make_drawer()
     try:
-        # Drive the RED -> BLUE substitution branch. ``to_rgb`` is
-        # documented as returning a tuple; here we return an int so the
-        # ``int(color.to_rgb())`` cast succeeds and equals _RED_RGB.
+        # Drive the RED -> BLUE substitution branch via the canonical
+        # ``color.to_rgb_int()`` int helper.
 
         class _RedColor:
-            def to_rgb(self) -> int:  # type: ignore[override]
+            def to_rgb_int(self) -> int:
                 return _RED_RGB
 
         color = _RedColor()
-        # Make the drawer's graphics state report ``color`` as the
-        # current non-stroking color.
         fake_gs = MagicMock()
         fake_gs.get_non_stroking_color.return_value = color
         drawer.get_graphics_state = lambda: fake_gs  # type: ignore[method-assign]
@@ -161,24 +158,23 @@ def test_get_paint_returns_blue_when_non_stroking_is_red() -> None:
         doc.close()
 
 
-def test_get_paint_swallows_type_error_from_to_rgb() -> None:
+def test_get_paint_swallows_type_error_from_to_rgb_int() -> None:
     doc, drawer = _make_drawer()
     try:
-        # Realistic ``PDColor.to_rgb`` returns a 3-tuple; ``int(tuple)``
-        # raises TypeError which the example suppresses.
+        # ``to_rgb_int`` is expected to raise on invalid color graphs;
+        # the example suppresses TypeError/ValueError/AttributeError.
 
-        class _TupleColor:
-            def to_rgb(self) -> tuple[float, float, float]:
-                return (1.0, 0.0, 0.0)
+        class _BadColor:
+            def to_rgb_int(self) -> int:
+                raise TypeError("bad color graph")
 
-        color = _TupleColor()
+        color = _BadColor()
         fake_gs = MagicMock()
         fake_gs.get_non_stroking_color.return_value = color
         drawer.get_graphics_state = lambda: fake_gs  # type: ignore[method-assign]
 
         # Falls through to super().get_paint without raising.
         result = drawer.get_paint(color)
-        # The PageDrawer base returns the color as-is.
         assert result is color or result is not None
     finally:
         doc.close()
