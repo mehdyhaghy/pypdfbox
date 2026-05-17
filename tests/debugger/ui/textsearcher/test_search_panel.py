@@ -297,13 +297,16 @@ def test_find_action_packs_when_hidden_then_refocuses(tk_root: tk.Tk) -> None:
     assert callable(find_command)
     # First invocation packs the (currently un-mapped) panel.
     find_command()
-    tk_root.update_idletasks()
+    # ``update_idletasks`` is enough on POSIX but on Windows the map event
+    # is processed through the full event queue — call ``update`` so
+    # ``winfo_ismapped`` returns 1 deterministically.
+    tk_root.update()
     assert panel.get_panel().winfo_ismapped()
     # Second invocation re-focuses (and re-fires the document listener).
     rec.changed = 0
     panel._search_var.set("xyz")  # type: ignore[attr-defined]
     baseline = rec.changed
     find_command()
-    tk_root.update_idletasks()
+    tk_root.update()
     # ``re_focus`` resets the var, which re-fires the document listener.
     assert rec.changed > baseline

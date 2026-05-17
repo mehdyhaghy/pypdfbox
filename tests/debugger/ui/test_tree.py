@@ -49,8 +49,8 @@ def test_register_node_round_trips(tk_root: tk.Tk) -> None:
     assert tree.get_node("missing") is None
 
 
-def test_build_menu_items_includes_copy_path() -> None:
-    tree = Tree(None)
+def test_build_menu_items_includes_copy_path(tk_root: tk.Tk) -> None:
+    tree = Tree(tk_root)
     entry = MapEntry()
     entry.set_key(COSName.get_pdf_name("Foo"))
     items = tree.build_menu_items(entry, (entry,))
@@ -58,8 +58,8 @@ def test_build_menu_items_includes_copy_path() -> None:
     assert "Copy Tree Path" in labels
 
 
-def test_build_menu_items_skips_save_for_non_stream() -> None:
-    tree = Tree(None)
+def test_build_menu_items_skips_save_for_non_stream(tk_root: tk.Tk) -> None:
+    tree = Tree(tk_root)
     entry = MapEntry()
     entry.set_key(COSName.get_pdf_name("Foo"))
     items = tree.build_menu_items(entry, (entry,))
@@ -80,8 +80,8 @@ def test_build_menu_items_adds_save_for_stream(
     assert any("Save Raw Stream" in lbl for lbl in labels)
 
 
-def test_copy_path_uses_tree_status() -> None:
-    tree = Tree(None)
+def test_copy_path_uses_tree_status(tk_root: tk.Tk) -> None:
+    tree = Tree(tk_root)
 
     class FakeStatus:
         def __init__(self) -> None:
@@ -419,8 +419,8 @@ def test_make_partial_invokes_save_dialog(
     assert captured  # callback fired
 
 
-def test_copy_path_silently_skips_without_tree_status() -> None:
-    tree = Tree(None)
+def test_copy_path_silently_skips_without_tree_status(tk_root: tk.Tk) -> None:
+    tree = Tree(tk_root)
     entry = MapEntry()
     entry.set_key(COSName.get_pdf_name("Foo"))
     items = tree.build_menu_items(entry, (entry,))

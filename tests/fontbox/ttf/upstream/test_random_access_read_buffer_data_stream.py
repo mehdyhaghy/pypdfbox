@@ -104,6 +104,11 @@ def test_ensure_read_finishes() -> None:
             assert total_amount_read == 10
         finally:
             data_stream.close()
+            # ``RandomAccessReadDataStream.close`` does not propagate to the
+            # underlying reader; close it explicitly so Windows can unlink
+            # the temp file (POSIX allows unlinking open files; Windows does
+            # not).
+            random_access_read.close()
     finally:
         Path(path_str).unlink(missing_ok=True)
 
@@ -189,5 +194,8 @@ def test_read_buffer() -> None:
             assert bytes(read_buffer[:count]) == b"012345678B012345678C012"
         finally:
             data_stream.close()
+            # See ``test_ensure_read_finishes`` for the Windows-unlink
+            # rationale: close the underlying reader before unlink.
+            random_access_read.close()
     finally:
         Path(path_str).unlink(missing_ok=True)

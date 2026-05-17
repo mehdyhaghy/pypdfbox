@@ -28,7 +28,12 @@ class RandomAccessReadMemoryMapped(RandomAccessRead):
                 # mmap rejects zero-length files; behave as an empty source.
                 self._mm: mmap.mmap | None = None
             else:
-                self._mm = mmap.mmap(self._fd, 0, prot=mmap.PROT_READ)
+                # POSIX takes ``prot=PROT_READ``; Windows takes ``access=ACCESS_READ``
+                # (the Windows ``mmap`` module exposes no PROT_* constants).
+                if hasattr(mmap, "PROT_READ"):
+                    self._mm = mmap.mmap(self._fd, 0, prot=mmap.PROT_READ)
+                else:
+                    self._mm = mmap.mmap(self._fd, 0, access=mmap.ACCESS_READ)
         except Exception:
             os.close(self._fd)
             raise

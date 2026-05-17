@@ -60,4 +60,10 @@ jobs:
         run: uv run ruff check
 
       - name: Test (pytest)
+        env:
+          # Ubuntu CI runners are headless — no $DISPLAY available. Skip Tk
+          # widget tests there rather than installing Xvfb just for them.
+          # macOS + Windows runners both have a display by default and run
+          # the Tk tests normally.
+          PYPDFBOX_SKIP_TK: ${{ runner.os == 'Linux' && '1' || '' }}
         run: uv run pytest -q --tb=short --maxfail=10

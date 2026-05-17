@@ -391,6 +391,10 @@ def test_text_dialog_opens_for_local_file(
     resource = tmp_path / "about.html"
     resource.write_text("<html><body>About</body></html>", encoding="utf-8")
     debugger._text_dialog("About", str(resource))  # noqa: SLF001
+    # Pump pending Tk events so the new Toplevel registers as a child of
+    # ``_toplevel``. On Windows ``winfo_children`` returns an empty list
+    # until the event loop has been ticked.
+    debugger._toplevel.update_idletasks()  # noqa: SLF001
     # The dialog is a Toplevel of our master — at least one extra
     # Toplevel should now exist.
     toplevels = [
