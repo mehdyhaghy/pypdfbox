@@ -2909,6 +2909,42 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   - `test_high_resolution_image_icon.py`: switched per-test `tk.Tk()` to the session-scoped fixture (eliminating extra Tk roots).
 - **Verified**: 2 concurrent shells × 5 iterations = 10/10 processes finish exit 0; 3 shells × 6 iterations = 18/18 exit 0; `PYPDFBOX_SKIP_TK=1` → 357 tests skip cleanly.
 
+## Wave 1322 — coverage-boost pass #9 (5 parallel agents, +274 hand-written tests)
+
+17 modules from 79-83% to **99-100%**. Global line coverage now **96%**.
+
+### pd_appearance_handler + pd_square_appearance_handler — coverage boost
+
+- `pdmodel/interactive/annotation/handlers/pd_appearance_handler.py` **79% → 100%**: 7 tests covering ABC instantiation guard (full + partial-subclass `TypeError`), ordered dispatch of the default `generate_appearance_streams` aggregator, idempotent re-call, override semantics, `__all__` exposure.
+- `pdmodel/interactive/annotation/handlers/pd_square_appearance_handler.py` **82% → 100%**: 23 tests covering wrong-annotation-type early-return, `/IC` non-stroking-color branch, every `get_line_width` path (`/BS` width / `/Border` `COSFloat` / `COSInteger` / default-1.0), every `_interior_components` shape (including line-123 path reached via `__getattribute__`-hidden `to_float_array`), no-op rollover/down hooks, cloudy-border `/RD` + matrix propagation, both constructor overloads.
+
+### pd_separation + type1_shading_context — coverage boost
+
+- `pdmodel/graphics/color/pd_separation.py` **79% → 99%**: 40 tests covering `set_alternate_color_space` TypeError on COS-less alt; `set_tint_transform` PDFunction-with-None-COS + raw COSBase + non-COS TypeError; `to_rgb` cache hit / None-alternate / None-function / `PDColor.to_rgb`-returns-None; `tint_transform` no-function ValueError + 8-bit scale-and-output; `to_rgb_image` super fallback / short-raster pad / `PDLab` + `PDICCBased`-wrapping-`PDLab` short-circuits; `to_rgb_image2` super fallback / `alternate.to_rgb`-returns-None / sample cache; `to_raw_image` correct `L`-mode bytes; `__str__` / `to_string` populated and placeholder paths.
+- `pdmodel/graphics/shading/type1_shading_context.py` **80% → 100%**: 17 tests covering constructor domain-from-shading vs default, `get_domain` copy semantics, `dispose`, every per-pixel `get_raster` branch (in-domain, background fallback, transparent fall-through, function-eval exception swallow incl. OSError/ValueError/ZeroDivisionError, colour-space `to_rgb` conversion + suppression + missing-method skip, short-component RGB padding, clamping, origin offsets).
+
+### Two AcroForm fixup processors — coverage boost
+
+- `pdmodel/fixup/processor/acro_form_defaults_processor.py` **81% → 100%**: 12 tests covering catalog lacking `get_acro_form`; null acro form; `TypeError` fallback; `verify_or_create_defaults` Java-parity delegate; `Exception` swallow around `get_default_appearance`; DA-already-set short-circuit; DR-creation when `get_default_resources()` is None; `_ensure_font` early-return when `contains_key(name)`; `_ensure_font` success path with stubbed `PDType1Font`.
+- `pdmodel/fixup/processor/acro_form_generate_appearances_processor.py` **81% → 100%**: 8 tests covering catalog/acro-form guards, `TypeError` fallback, happy path (refresh + `set_need_appearances(False)`), `getattr` guards for missing `refresh_appearances` / `set_need_appearances`, OSError / ValueError swallowing with DEBUG log assertion, unexpected exceptions propagating.
+
+### Six device-colour operators — coverage boost
+
+- All 6 `set_(non_)stroking_device_(gray|rgb|cmyk)_color` operators **37% → 100%** (the pre-wave number was actually 37% — older tests didn't import these classes directly; the 83% in the wave-summary table was a stale snapshot).
+- 84 parametrised tests in shared file `tests/contentstream/operator/color/test_device_color_operators_coverage_wave1322.py`: `OPERATOR_NAME` class attr + `get_name()` identity, subclass relationships, `get_color_space()` happy path + `ImportError` fallback to `super().get_color_space()` (forced via `builtins.__import__` monkeypatch), `process()` gate-disabled / no-context / no-resources / resources missing `get_color_space` / resources lookup returns None / graphics state missing setter / malformed (non-numeric) operand / too-few operands.
+
+### Seven small modules — coverage boost
+
+83 tests across 7 files. Every module **99-100%**.
+
+- `tools/print_pdf.py` **80% → 99%**: `Duplex.to_sides` matrix, all `create_print_request_attribute_set` viewer-pref branches + AttributeError fallback, permission probe, Windows OSError, TUMBLE / SIMPLEX sides, `media_size`, unknown-orientation passthrough.
+- `contentstream/operator/state/set_line_dash_pattern.py` **82% → 100%**: missing-operand, non-array / non-number guards, no-context short-circuit, context-without-setter, all-zero loop, non-number sanitization warning, float-phase truncation.
+- `fontbox/ttf/open_type_font.py` **82% → 100%**: `set_version` OTTO / NaN / `struct.error` fallback, `get_glyph_table` raise, `get_path` str-gid CFF branch, `get_cff` compile-exception fallback, empty-bytes guard, CID-keyed routing via both `ROS` attribute and `rawDict` key.
+- `io/random_access_stream_cache.py` **82% → 100%**: context-manager `__enter__` / `__exit__`, exception propagation, default `close()` no-op via minimal subclass.
+- `cos/cos_document_state.py` **83% → 100%**: initial parsing state + both Java aliases (`setParsing`, `isAcceptingUpdates`) + snake_case parity.
+- `fontbox/cff/private_type1_char_string_reader.py` **83% → 100%**: `_CFFCIDDefaultReader` "always return gid 0" override.
+- `fontbox/util/autodetect/font_file_finder.py` **83% → 100%**: all 5 platform-dispatch branches (Windows / Darwin / Mac-prefix / OS/400 / Linux), walk OSError + hidden-dir skip + recursion, `check_fontfile` extension matrix + `fonts.` prefix rejection, `find()` cached dir finder + non-directory branch.
+
 ## Wave 1321 — coverage-boost pass #8 (6 parallel agents, +487 hand-written tests)
 
 19 more modules lifted from 76-85% to **97-100%**. Global line coverage holding at 95% (most modules small contribution to global total).
