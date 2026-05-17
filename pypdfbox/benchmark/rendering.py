@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from pypdfbox.loader import Loader
+from pypdfbox.pdmodel.pd_document import PDDocument
 from pypdfbox.rendering.pdf_renderer import PDFRenderer
 
 
@@ -47,7 +47,7 @@ class Rendering:
         return (time.perf_counter() - start) * 1000.0
 
     def _render_pages(self, path: str, dpi: float, prefix: str | None) -> None:
-        pdf = Loader.load_pdf(path)
+        pdf = PDDocument.load(path)
         try:
             renderer = PDFRenderer(pdf)
             num_pages = pdf.get_number_of_pages()

@@ -148,7 +148,7 @@ def patched_workload(monkeypatch, tmp_path):
         return doc
 
     monkeypatch.setattr(
-        "pypdfbox.benchmark.rendering.Loader.load_pdf",
+        "pypdfbox.benchmark.rendering.PDDocument.load",
         _load,
     )
     monkeypatch.setattr(
@@ -223,7 +223,7 @@ def test_render_pages_closes_document_on_renderer_error(
             raise RuntimeError("render-boom")
 
     monkeypatch.setattr(
-        "pypdfbox.benchmark.rendering.Loader.load_pdf",
+        "pypdfbox.benchmark.rendering.PDDocument.load",
         lambda _p: doc,
     )
     monkeypatch.setattr(

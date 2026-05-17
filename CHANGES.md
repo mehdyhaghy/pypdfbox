@@ -3339,6 +3339,32 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   grayscale / CMYK paths, base `generate_rollover_appearance` /
   `generate_down_appearance` no-ops (agent E, wave 1339).
 
+## Wave 1340 — fix 2 latent source bugs flagged during wave 1339
+
+- **benchmark.rendering**: replaced `Loader.load_pdf(path)` (returns
+  `COSDocument`) with `PDDocument.load(path)` so the downstream
+  `PDFRenderer(pdf)` + `pdf.get_number_of_pages()` calls actually
+  resolve. Same class of bug wave 1336/1338 fixed in the sibling
+  `benchmark/load_and_save`.
+- **text.pdf_text_stripper**: `write_text` previously called
+  `output.write(self.get_text(document))`, flushing the entire
+  document's text only *after* every per-page hook had fired. Refactored
+  so `get_text` now streams each page's text into `self._output` (when
+  set) via the page-loop `_sink` callable. Subclass `end_page` hooks
+  (e.g. `PDFHighlighter`) now see the per-page buffer they're meant to
+  inspect, matching upstream PDFBox `PDFTextStripper.writeText`
+  behaviour. End-to-end verification: `PDFHighlighter` now emits
+  `<loc pg=... pos=... len=...>` entries against real PDFs.
+
+Test cleanup:
+- `tests/benchmark/test_rendering.py`: replaced two
+  `pypdfbox.benchmark.rendering.Loader.load_pdf` monkey-patches with
+  `pypdfbox.benchmark.rendering.PDDocument.load`.
+
+Overall coverage: 98.67% (steady; bug fixes don't add test lines but
+make previously-shimmed code paths in `benchmark/rendering` and
+`PDFTextStripper.end_page` subclasses actually exercisable end-to-end).
+
 ## Wave 1338 — fix 5 latent source bugs flagged during wave 1337
 
 Coverage-boost pass #15 surfaced five more bugs across examples, tools,

@@ -501,9 +501,20 @@ class PDFTextStripper:
         if first > last:
             return ""
         chunks: list[str] = []
+        # When ``write_text`` installed an output writer, stream each
+        # page's text into it as the page is processed so subclass
+        # ``end_page`` hooks can inspect the buffer (e.g. PDFHighlighter
+        # reads per-page text from a StringIO output to emit <loc>
+        # entries against the searched words). Without per-page streaming
+        # the writer would only see the joined text after the page loop
+        # exits, by which point every ``end_page`` call has already run
+        # with an empty buffer.
+        out = self._output
 
         def _sink(piece: str) -> None:
             chunks.append(piece)
+            if out is not None:
+                out.write(piece)
 
         # Mirror upstream's ``startDocument`` / ``endDocument`` hooks —
         # invoked once per ``get_text`` walk around the page loop. The
@@ -517,7 +528,7 @@ class PDFTextStripper:
                 self.write_page_start(_sink)
                 if self._article_start:
                     self.write_article_start(_sink)
-                chunks.append(self.process_page(page))
+                _sink(self.process_page(page))
                 if self._article_end:
                     self.write_article_end(_sink)
                 self.write_page_end(_sink)
@@ -534,12 +545,15 @@ class PDFTextStripper:
         Mirrors upstream ``PDFTextStripper.writeText(PDDocument, Writer)``:
         the supplied writer is exposed through :meth:`get_output` while
         document/page/string hooks run, and is cleared when the walk
-        completes or raises.
+        completes or raises. Page text streams through ``output``
+        incrementally — each page is flushed before its ``end_page``
+        hook fires, matching upstream behaviour that subclasses like
+        ``PDFHighlighter`` rely on.
         """
         previous_output = self._output
         self._output = output
         try:
-            output.write(self.get_text(document))
+            self.get_text(document)
         finally:
             self._output = previous_output
 
