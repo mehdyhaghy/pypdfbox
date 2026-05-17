@@ -2909,6 +2909,27 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   - `test_high_resolution_image_icon.py`: switched per-test `tk.Tk()` to the session-scoped fixture (eliminating extra Tk roots).
 - **Verified**: 2 concurrent shells × 5 iterations = 10/10 processes finish exit 0; 3 shells × 6 iterations = 18/18 exit 0; `PYPDFBOX_SKIP_TK=1` → 357 tests skip cleanly.
 
+## Wave 1328 — remove GitHub Actions CI workflows, move all gating local
+
+User decision: keep license + lint enforcement on the dev machine, drop the cross-platform GitHub Actions matrix entirely.
+
+### Removed
+
+- `.github/workflows/ci.yml` (matrix pytest + ruff on Ubuntu / macOS / Windows).
+- `.github/workflows/license-check.yml` (pip-licenses allow-list gate).
+- `.github/workflows/release.yml` **kept** — tag-triggered PyPI publish, not a CI gate.
+
+### Local pre-push gate (`.git/hooks/pre-push`) now enforces both
+
+- `uv run ruff check` — same as before.
+- `uv run --with pip-licenses pip-licenses --allow-only "..."` — mirrors the removed workflow's allow-list verbatim (Apache / MIT / BSD / HPND / MIT-CMU / Python (MIT style) / Apache-2.0 ORs / PSF-2.0 — all permissive per PRD §4).
+- Pytest is **not** in the hook — too slow (~70s) to gate every push. Run `.venv/bin/pytest -q --no-cov` manually before substantive changes.
+- Hook is not versioned (`.git/hooks/` is local); a recreate-from-snippet is in CLAUDE.md so a fresh clone can re-install it.
+
+### CLAUDE.md updated
+
+- The "CI lint" section is now "Local gating — no GitHub Actions for CI / lint / license-check". Walks through what the hook gates, how to re-install on a fresh clone, what's NOT gated (pytest, cross-platform), and the implication: the cross-platform Windows-incompatible-patterns checklist (already in CLAUDE.md) becomes the substitute for the lost matrix coverage.
+
 ## Wave 1327 — CI red-to-green (Windows env-var cap) + checklist 8th rule
 
 Wave 1326 closed the Tk-dialog Windows failure but the next Windows run surfaced a new error: `ValueError: the environment variable is longer than 32767 characters` at setup of `test_wave398_segmented_formats_reject_end_before_start[\x00\x08\x00\x00...]`. Windows caps env vars at 32,767 chars; pytest renders parametrize `bytes` values into the test ID and sets it as an env var for subprocess use.
