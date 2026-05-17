@@ -56,7 +56,6 @@ from pypdfbox.examples.rendering.custom_page_drawer import (
     MyPDFRenderer,
 )
 from pypdfbox.examples.util.print_text_locations import PrintTextLocations
-from pypdfbox.loader import Loader
 from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
 from pypdfbox.pdmodel.interactive.annotation.pd_appearance_dictionary import (
     PDAppearanceDictionary,
@@ -283,7 +282,7 @@ def test_custom_page_drawer_main_renders_when_pdf_present(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Drive the success branch of ``CustomPageDrawer.main`` by intercepting
-    ``Loader.load_pdf`` to hand back an in-memory document and stubbing
+    ``PDDocument.load`` to hand back an in-memory document and stubbing
     ``MyPDFRenderer.render_image`` so we don't depend on a full render
     pipeline."""
     blank = tmp_path / "demo.pdf"
@@ -291,17 +290,19 @@ def test_custom_page_drawer_main_renders_when_pdf_present(
         doc.add_page(PDPage())
         doc.save(blank)
 
-    # Pre-load through the real loader, then patch the module reference
-    # so ``main()`` picks up our shim (and we avoid re-entering the same
-    # patched callable when constructing the shim's payload).
-    real_cos_doc = Loader.load_pdf(str(blank))
+    # Pre-load through the real loader once, then patch the module
+    # reference so ``main()`` picks up our shim (recursion-safe — the
+    # shim uses the bare Loader, never the patched PDDocument.load).
+    real_pd_doc = PDDocument.load(str(blank))
     loaded_paths: list[str] = []
 
-    def _fake_load_pdf(path: str) -> Any:
+    def _fake_load(_cls, path, password=None):
         loaded_paths.append(str(path))
-        return real_cos_doc
+        return real_pd_doc
 
-    monkeypatch.setattr(cpd_mod.Loader, "load_pdf", staticmethod(_fake_load_pdf))
+    monkeypatch.setattr(
+        cpd_mod.PDDocument, "load", classmethod(_fake_load)
+    )
 
     # Patch MyPDFRenderer.render_image to dodge the full renderer cost.
     from PIL import Image as _PILImage
@@ -323,7 +324,7 @@ def test_custom_page_drawer_main_renders_when_pdf_present(
         # to call twice but we don't need a redundant close here.
         pass
 
-    assert loaded_paths, "Loader.load_pdf must have been called"
+    assert loaded_paths, "PDDocument.load must have been called"
     assert (tmp_path / "target" / "custom-render.png").is_file()
 
 

@@ -18,7 +18,7 @@ from pypdfbox.contentstream.pdf_graphics_stream_engine import (
 )
 from pypdfbox.cos.cos_array import COSArray
 from pypdfbox.cos.cos_name import COSName
-from pypdfbox.loader import Loader
+from pypdfbox.pdmodel.pd_document import PDDocument
 from pypdfbox.pdmodel.pd_page import PDPage
 
 
@@ -36,7 +36,7 @@ class CustomGraphicsStreamEngine(PDFGraphicsStreamEngine):
             Path("src/main/resources/org/apache/pdfbox/examples/rendering")
             / "custom-render-demo.pdf"
         )
-        doc = Loader.load_pdf(str(file_path))
+        doc = PDDocument.load(str(file_path))
         try:
             page = doc.get_page(0)
             engine = CustomGraphicsStreamEngine(page)

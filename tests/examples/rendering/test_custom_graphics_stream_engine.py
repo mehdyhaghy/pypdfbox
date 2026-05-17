@@ -262,7 +262,11 @@ def test_main_runs_try_finally_with_fake_document(
     def _fake_load(_path: str) -> _StubDoc:
         return _StubDoc()
 
-    monkeypatch.setattr(_mod.Loader, "load_pdf", staticmethod(_fake_load))
+    monkeypatch.setattr(
+        _mod.PDDocument,
+        "load",
+        classmethod(lambda cls, _path, password=None: _fake_load(_path)),
+    )
     # main() then constructs the engine and calls run() — on a blank page
     # with no annotations, run() completes cleanly.
     CustomGraphicsStreamEngine.main([])
@@ -288,7 +292,11 @@ def test_main_closes_document_even_when_run_raises(
         def close(self) -> None:
             closed["value"] = True
 
-    monkeypatch.setattr(_mod.Loader, "load_pdf", staticmethod(lambda _p: _StubDoc()))
+    monkeypatch.setattr(
+        _mod.PDDocument,
+        "load",
+        classmethod(lambda cls, _p, password=None: _StubDoc()),
+    )
     # The engine ctor expects a PDPage; we pass the stub anyway because
     # PDFGraphicsStreamEngine just stores the reference. ``run()`` will
     # explode when iterating annotations — finally still closes the doc.

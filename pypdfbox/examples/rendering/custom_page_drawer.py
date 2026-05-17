@@ -15,7 +15,6 @@ import contextlib
 from pathlib import Path
 from typing import Any
 
-from pypdfbox.loader import Loader
 from pypdfbox.pdmodel.pd_document import PDDocument
 from pypdfbox.rendering.page_drawer import PageDrawer
 from pypdfbox.rendering.page_drawer_parameters import PageDrawerParameters
@@ -106,7 +105,7 @@ class CustomPageDrawer:
             Path("src/main/resources/org/apache/pdfbox/examples/rendering")
             / "custom-render-demo.pdf"
         )
-        doc = Loader.load_pdf(str(file_path))
+        doc = PDDocument.load(str(file_path))
         try:
             renderer = MyPDFRenderer(doc)
             image = renderer.render_image(0)

@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import sys
 
-from pypdfbox.loader import Loader
 from pypdfbox.pdmodel.pd_document import PDDocument
 from pypdfbox.printing.pdf_pageable import PDFPageable
 from pypdfbox.printing.pdf_printable import PDFPrintable
@@ -38,7 +37,7 @@ class Printing:
                 file=sys.stderr,
             )
             raise SystemExit(1)
-        document = Loader.load_pdf(args[0])
+        document = PDDocument.load(args[0])
         try:
             Printing.print(document)
         finally:

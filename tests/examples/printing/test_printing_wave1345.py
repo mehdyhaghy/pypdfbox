@@ -42,17 +42,20 @@ class _FakePDDocument:
         self.closed = True
 
 
-class _FakeLoader:
-    @staticmethod
-    def load_pdf(source: Any, password: Any = None) -> _FakePDDocument:
-        return _FakePDDocument()
+def _patch_load(monkeypatch, factory):
+    """Patch ``printing.PDDocument.load`` to return ``factory()``."""
+    monkeypatch.setattr(
+        printing.PDDocument,
+        "load",
+        classmethod(lambda cls, source, password=None: factory()),
+    )
 
 
 def test_main_with_none_args_uses_sys_argv(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """When ``args`` is ``None`` the helper consults ``sys.argv`` — line 34."""
-    monkeypatch.setattr(printing, "Loader", _FakeLoader)
+    _patch_load(monkeypatch, _FakePDDocument)
     monkeypatch.setattr("sys.argv", ["printing", "doc.pdf"])
     # Happy path — no SystemExit, no raise.
     Printing.main(None)
@@ -72,14 +75,12 @@ def test_main_one_arg_loads_and_dispatches(
     covers lines 41-45 via a fake :class:`PDDocument`-shaped document."""
     holder: dict[str, _FakePDDocument | None] = {"doc": None}
 
-    class _CaptureLoader:
-        @staticmethod
-        def load_pdf(source: Any, password: Any = None) -> _FakePDDocument:
-            doc = _FakePDDocument()
-            holder["doc"] = doc
-            return doc
+    def _capture() -> _FakePDDocument:
+        doc = _FakePDDocument()
+        holder["doc"] = doc
+        return doc
 
-    monkeypatch.setattr(printing, "Loader", _CaptureLoader)
+    _patch_load(monkeypatch, _capture)
     Printing.main(["loaded.pdf"])
     # The try/finally close branch must have run.
     assert holder["doc"] is not None
@@ -93,17 +94,15 @@ def test_main_close_runs_even_when_print_raises(
     closes the document."""
     captured: dict[str, _FakePDDocument | None] = {"doc": None}
 
-    class _Loader:
-        @staticmethod
-        def load_pdf(source: Any, password: Any = None) -> _FakePDDocument:
-            doc = _FakePDDocument()
-            captured["doc"] = doc
-            return doc
+    def _capture() -> _FakePDDocument:
+        doc = _FakePDDocument()
+        captured["doc"] = doc
+        return doc
 
     def _boom(document: Any) -> None:
         raise RuntimeError("print broke")
 
-    monkeypatch.setattr(printing, "Loader", _Loader)
+    _patch_load(monkeypatch, _capture)
     monkeypatch.setattr(Printing, "print", staticmethod(_boom))
     with pytest.raises(RuntimeError):
         Printing.main(["boom.pdf"])

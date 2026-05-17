@@ -3601,6 +3601,26 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   and rely solely on `read_long`'s clamp — Java's signed-32 → signed-64
   pattern lives in exactly one place upstream; we mirror it in two.
 
+## Wave 1346 — fix 2 latent Loader.load_pdf bugs flagged during wave 1345
+
+Three more `Loader.load_pdf` → `PDDocument.load` swaps in the rendering
++ printing examples — same class of bug repeatedly surfaced through
+waves 1334/1336/1338/1340/1342/1344.
+
+- **examples.rendering.custom_page_drawer**: `MyPDFRenderer(doc)`
+  expects a `PDDocument`.
+- **examples.rendering.custom_graphics_stream_engine**:
+  `CustomGraphicsStreamEngine(doc.get_page(0))` needs the wrapped
+  `PDDocument` for the page accessor.
+- **examples.printing.printing**: `PDFPageable.__init__` calls
+  `get_number_of_pages()`, which only exists on `PDDocument`.
+
+Test cleanup unwinds the corresponding `Loader.load_pdf` monkey-patches
+in `tests/examples/rendering/`, `tests/examples/printing/`, and the
+`test_examples_wave1345.py` happy-path test.
+
+Overall coverage: 99.21% (steady). Tests: 36,876.
+
 ## Wave 1344 — fix snapshot-list-append bug flagged during wave 1343
 
 - **examples.signature.create_empty_signature_form**: replaced
