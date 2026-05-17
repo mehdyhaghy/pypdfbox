@@ -6,7 +6,6 @@ import logging
 from pathlib import Path
 from typing import IO
 
-from pypdfbox.cos.cos_name import COSName
 from pypdfbox.examples.signature.sig_utils import SigUtils
 from pypdfbox.examples.signature.validation_time_stamp import ValidationTimeStamp
 from pypdfbox.pdmodel.interactive.digitalsignature.pd_signature import PDSignature
@@ -73,9 +72,9 @@ class CreateSignedTimeStamp(SignatureInterface):
             )
 
         signature = PDSignature()
-        signature.set_type(COSName.DOC_TIME_STAMP)
+        signature.set_type("DocTimeStamp")
         signature.set_filter(PDSignature.FILTER_ADOBE_PPKLITE)
-        signature.set_sub_filter(COSName.get_pdf_name("ETSI.RFC3161"))
+        signature.set_sub_filter("ETSI.RFC3161")
 
         document.add_signature(signature, self)
         document.save_incremental(output)

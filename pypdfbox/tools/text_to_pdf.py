@@ -14,9 +14,10 @@ import sys
 from pathlib import Path
 from typing import IO
 
+from pypdfbox.pdmodel.font.pd_font import PDFont
+from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
 from pypdfbox.pdmodel.font.pd_type0_font import PDType0Font
-from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
-from pypdfbox.pdmodel.font.standard14_fonts import FontName
+from pypdfbox.pdmodel.font.standard14_fonts import FontName, Standard14Fonts
 from pypdfbox.pdmodel.pd_document import PDDocument
 from pypdfbox.pdmodel.pd_page import PDPage
 from pypdfbox.pdmodel.pd_page_content_stream import PDPageContentStream
@@ -26,6 +27,28 @@ FONTSCALE = 1000
 DEFAULT_FONT_SIZE = 10.0
 DEFAULT_LINE_HEIGHT_FACTOR = 1.05
 DEFAULT_MARGIN = 40.0
+
+
+def _font_bbox_height(font: PDFont) -> float:
+    """Return the font's bounding-box height in font units (1/1000 em).
+
+    Standard 14 ``PDType1Font`` instances built by
+    :func:`PDFontFactory.create_default_font` are not seeded with a
+    parsed ``/FontDescriptor``, so ``font.get_bounding_box()`` returns
+    ``None``. Pull the height directly from the bundled AFM metrics in
+    that case; otherwise read the descriptor's bounding box; finally
+    fall back to ``1000`` (one em).
+    """
+    name = font.get_name()
+    if name is not None and Standard14Fonts.contains_name(name):
+        bbox = Standard14Fonts.get_font_descriptor(name)["FontBBox"]
+        return float(bbox[3]) - float(bbox[1])
+    descriptor = font.get_font_descriptor()
+    if descriptor is not None:
+        rect = descriptor.get_font_bounding_box()
+        if rect is not None:
+            return rect.get_height()
+    return 1000.0
 
 
 class PageSizes(enum.Enum):
@@ -135,8 +158,8 @@ class TextToPDF:
 
     def _create_pdf_from_text(self, doc: PDDocument, text_reader) -> None:  # noqa: ANN001
         if self.font is None:
-            self.font = PDType1Font(self.standard_font)
-        font_height = self.font.get_bounding_box().get_height() / FONTSCALE
+            self.font = PDFontFactory.create_default_font(self.standard_font.value)
+        font_height = _font_bbox_height(self.font) / FONTSCALE
         actual_media_box = (
             PDRectangle(self.media_box.get_height(), self.media_box.get_width())
             if self.landscape else self.media_box
@@ -148,7 +171,10 @@ class TextToPDF:
         content_stream: PDPageContentStream | None = None
         y = -1.0
         max_string_length = page.get_media_box().get_width() - self.left_margin - self.right_margin
-        for next_line in content.splitlines() if content else [""]:
+        # Split on newline only, NOT ``str.splitlines`` — the latter also
+        # treats ``\f`` (form feed) as a line break and would swallow the
+        # token that the form-feed handling below relies on.
+        for next_line in content.split("\n") if content else [""]:
             text_is_empty = False
             line_words = next_line.split(" ")
             line_index = 0
@@ -234,7 +260,7 @@ class TextToPDF:
                 if self.ttf is not None:
                     self.font = PDType0Font.load(doc, str(self.ttf))
                 else:
-                    self.font = PDType1Font(self.standard_font)
+                    self.font = PDFontFactory.create_default_font(self.standard_font.value)
                 self.set_font(self.font)
                 self.set_font_size(self.font_size)
                 self.set_media_box(self.page_size.get_page_size())

@@ -98,7 +98,13 @@ class _StubType1(PDType1Font):
 
 @pytest.fixture
 def stub_font(monkeypatch: pytest.MonkeyPatch) -> type[_StubType1]:
-    monkeypatch.setattr(text_to_pdf, "PDType1Font", _StubType1)
+    """Legacy fixture kept so the existing test signatures keep working.
+
+    Wave 1338 fixed the default-font path: ``TextToPDF._create_pdf_from_text``
+    now goes through ``PDFontFactory.create_default_font`` with the real
+    Standard 14 metrics, so the previous ``PDType1Font`` monkey-patch is
+    no longer needed. This fixture is now a no-op shim.
+    """
     return _StubType1
 
 

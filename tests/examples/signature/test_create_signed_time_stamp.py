@@ -279,22 +279,23 @@ def test_sign_detached_document_creates_pd_signature_and_calls_save_incremental(
 
     sig = captured["signature"]
     assert isinstance(sig, PDSignature)
-    # Confirm the COSName instances flowed through (verifies the latent
-    # bug — these should arguably be str).
-    assert captured_setters["type"] == COSName.DOC_TIME_STAMP
-    assert captured_setters["sub_filter"] == COSName.get_pdf_name("ETSI.RFC3161")
+    # Wave 1338 fixed the source to pass plain strings to set_type /
+    # set_sub_filter (was previously passing COSName instances, which
+    # triggered TypeError inside COSDictionary.set_name).
+    assert captured_setters["type"] == "DocTimeStamp"
+    assert captured_setters["sub_filter"] == "ETSI.RFC3161"
     assert sig.get_filter() == PDSignature.FILTER_ADOBE_PPKLITE
     assert captured["signer"] is signer
     assert captured["output"] is sink
     assert sink.getvalue() == b"saved"
 
 
-def test_sign_detached_document_set_type_with_cos_name_currently_raises():
-    """Regression: prove the latent bug at ``create_signed_time_stamp.py:76``
-    is real — passing a COSName to ``PDSignature.set_type`` triggers a
-    TypeError inside ``COSDictionary.set_name``. Source should pass
-    "DocTimeStamp" / "ETSI.RFC3161" as strings (or set_type/set_sub_filter
-    should accept COSName)."""
+def test_pd_signature_set_type_rejects_cos_name():
+    """Pinning the PDSignature contract: ``set_type`` accepts ``str`` only.
+    Passing a ``COSName`` raises ``TypeError`` inside ``COSDictionary.set_name``.
+    The create_signed_time_stamp example used to pass a ``COSName``; wave 1338
+    fixed it to pass plain strings.
+    """
     sig = PDSignature()
     with pytest.raises(TypeError):
         sig.set_type(COSName.DOC_TIME_STAMP)

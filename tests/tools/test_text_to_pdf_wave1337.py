@@ -62,19 +62,12 @@ def test_create_pdf_from_text_basic_round_trip() -> None:
         doc.close()
 
 
-@pytest.mark.skip(
-    reason=(
-        "Latent bug: ``content.splitlines()`` in ``_create_pdf_from_text`` "
-        "consumes ``\\f`` (Python str.splitlines treats form-feed as a "
-        "line break), so the form-feed branches at lines 162-180 / 211-221 "
-        "never see a ``\\f`` token. Mirroring the upstream Java string "
-        "split-on-newline-only behaviour would require ``content.split('\\n')``. "
-        "Flagged in the wave 1337 report."
-    )
-)
 def test_create_pdf_from_text_form_feed_emits_extra_page() -> None:
-    """Would-be coverage of lines 166-168, 178, 180, 185, 211-221.
-    Skipped pending the splitlines vs split-on-newline fix above."""
+    """Covers the form-feed branch in ``_create_pdf_from_text`` (lines
+    166-168, 178, 180, 185, 211-221). Wave 1338 fixed the source to use
+    ``content.split('\\n')`` instead of ``str.splitlines()`` so ``\\f``
+    no longer gets swallowed.
+    """
     t = TextToPDF()
     doc = PDDocument()
     try:

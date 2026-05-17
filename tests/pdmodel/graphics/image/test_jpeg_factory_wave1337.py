@@ -258,41 +258,6 @@ def test_create_jpeg_rejects_non_pil() -> None:
         JPEGFactory.create_jpeg(None, 99, 0.7, 72)  # type: ignore[arg-type]
 
 
-# ---------- Java-style camelCase aliases ----------
-#
-# Note (wave-1337 latent-bug flag): the project rule is snake_case-only
-# (see memory `feedback_no_camelcase_aliases`). The camelCase aliases
-# below carry ``# noqa: N802`` and exist solely so the wave-350
-# regression test continues to pass. We exercise them here for parity-
-# coverage; the alias-strip is owed in a separate cleanup wave.
-
-
-def test_create_from_byte_array_camelcase_alias() -> None:
-    data = _rgb_jpeg_bytes((16, 16))
-    image = JPEGFactory.createFromByteArray(None, data)  # noqa: N802
-    assert image.get_width() == 16
-
-
-def test_create_from_stream_camelcase_alias() -> None:
-    data = _rgb_jpeg_bytes((10, 8))
-    image = JPEGFactory.createFromStream(None, io.BytesIO(data))  # noqa: N802
-    assert image.get_width() == 10
-    assert image.get_height() == 8
-
-
-def test_create_from_image_camelcase_alias() -> None:
-    img = Image.new("RGB", (8, 8), color=(255, 255, 255))
-    image = JPEGFactory.createFromImage(None, img)  # noqa: N802
-    assert image.get_width() == 8
-    assert image.get_height() == 8
-
-
-def test_create_from_image_camelcase_alias_with_quality_dpi() -> None:
-    img = Image.new("RGB", (8, 8), color=(0, 0, 0))
-    image = JPEGFactory.createFromImage(None, img, 0.95, 144)  # noqa: N802
-    assert image.get_width() == 8
-
-
 # ---------- module-level back-compat alias ----------
 
 

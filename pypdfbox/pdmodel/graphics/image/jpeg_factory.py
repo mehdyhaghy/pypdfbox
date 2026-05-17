@@ -476,39 +476,6 @@ class JPEGFactory:
             )
         return ximage
 
-    # ---------------------------------------------------------------
-    # Upstream Java-style aliases. Kept exclusively so the wave-350
-    # alias regression test continues to pass; new code must call the
-    # snake_case methods above.
-    # ---------------------------------------------------------------
-
-    @staticmethod
-    def createFromByteArray(  # noqa: N802 - upstream Java alias
-        document: PDDocument | None,
-        byte_array: bytes | bytearray | memoryview,
-    ) -> PDImageXObject:
-        """Java-style alias for :meth:`create_from_byte_array`."""
-        return JPEGFactory.create_from_byte_array(document, byte_array)
-
-    @staticmethod
-    def createFromStream(  # noqa: N802 - upstream Java alias
-        document: PDDocument | None,
-        stream: BinaryIO | bytes | bytearray | memoryview,
-    ) -> PDImageXObject:
-        """Java-style alias for :meth:`create_from_stream`."""
-        return JPEGFactory.create_from_stream(document, stream)
-
-    @staticmethod
-    def createFromImage(  # noqa: N802 - upstream Java alias
-        document: PDDocument | None,
-        image: Image.Image,
-        quality: float = 0.75,
-        dpi: int = 72,
-    ) -> PDImageXObject:
-        """Java-style alias for :meth:`create_from_image`."""
-        return JPEGFactory.create_from_image(document, image, quality, dpi)
-
-
 # Module-level back-compat alias for prior-wave tests that imported the
 # pre-class-method form of the dimensions sniffer.
 _retrieve_dimensions = JPEGFactory.retrieve_dimensions

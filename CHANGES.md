@@ -3164,6 +3164,43 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   `feedback_no_camelcase_aliases` these should be stripped in a
   follow-up cleanup wave once the dependent test is migrated.
 
+## Wave 1338 — fix 5 latent source bugs flagged during wave 1337
+
+Coverage-boost pass #15 surfaced five more bugs across examples, tools,
+and the image-factory cluster. This wave fixes the source and unwinds
+the test workarounds (in-place annotation mutation, COSName-as-string
+shims, PDType1Font monkey-patches, Java alias regression test).
+
+- **examples.interactive.form.field_remover**: widget-removal walk
+  mutated `page.get_annotations()` in place, but the helper rebuilds a
+  fresh list each call so the trim was discarded. Now writes the
+  trimmed list back via `page.set_annotations(...)` when any widget is
+  removed.
+- **examples.signature.create_signed_time_stamp**: `PDSignature.set_type`
+  and `set_sub_filter` expect `str`, but the example was passing
+  `COSName` instances which raised `TypeError` inside
+  `COSDictionary.set_name`. Switched to literal strings `"DocTimeStamp"`
+  and `"ETSI.RFC3161"`.
+- **tools.text_to_pdf**: replaced `PDType1Font(self.standard_font)`
+  (which passed a `FontName` enum into a constructor expecting
+  `COSDictionary | None`) with `PDFontFactory.create_default_font(
+  self.standard_font.value)`. Added a local `_font_bbox_height` helper
+  that reads metrics straight from `Standard14Fonts` when the default
+  font lacks a `/FontDescriptor`.
+- **tools.text_to_pdf**: replaced `content.splitlines()` with
+  `content.split("\n")` so `\f` tokens reach the form-feed-aware loop
+  (Python `str.splitlines` treats `\f` as a line break and swallowed
+  it, making ~14 lines of form-feed handling unreachable).
+- **pdmodel.graphics.image.jpeg_factory** + **lossless_factory**:
+  removed Java-style `createFromByteArray` / `createFromStream` /
+  `createFromImage` aliases that violated the project's strict
+  snake_case rule. The wave-350 regression test that only validated
+  these aliases was retired.
+
+Overall coverage 97.81% → 98.27%; `tools/text_to_pdf` jumped 91% → 97.9%
+now that the form-feed branches are reachable; the previously-skipped
+form-feed test in `tests/tools/test_text_to_pdf_wave1337.py` is now live.
+
 ## Wave 1336 — fix 6 latent source bugs flagged during wave 1335
 
 Coverage-boost pass #14 surfaced six more bugs across the examples, the

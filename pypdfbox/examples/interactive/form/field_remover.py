@@ -99,9 +99,17 @@ class FieldRemover:
             if widget_set:
                 for page in doc.get_pages():
                     annotations = page.get_annotations()
+                    mutated = False
                     for w in widget_set:
                         if w in annotations:
                             annotations.remove(w)
+                            mutated = True
+                    if mutated:
+                        # ``get_annotations`` rebuilds a fresh list from
+                        # ``/Annots`` each call, so the in-place trim
+                        # above is otherwise discarded. Write the
+                        # trimmed list back.
+                        page.set_annotations(annotations)
             if removed:
                 doc.set_all_security_to_be_removed(True)
                 doc.get_document_catalog().get_cos_object().remove_item(
