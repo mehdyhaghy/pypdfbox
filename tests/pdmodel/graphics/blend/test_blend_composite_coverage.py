@@ -15,7 +15,6 @@ from pypdfbox.pdmodel.graphics.blend.blend_composite import (
 )
 from pypdfbox.pdmodel.graphics.blend_mode import BlendMode
 
-
 # ---- BlendComposite.get_instance ----------------------------------------
 
 

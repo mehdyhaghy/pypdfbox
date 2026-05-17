@@ -22,12 +22,11 @@ from typing import Any
 
 import pytest
 
-from pypdfbox.cos import COSDictionary, COSName
+from pypdfbox.cos import COSDictionary
 from pypdfbox.pdmodel.fixup.processor import acro_form_defaults_processor as adp
 from pypdfbox.pdmodel.fixup.processor.acro_form_defaults_processor import (
     AcroFormDefaultsProcessor,
 )
-
 
 # ----------------------------------------------------------------------
 # Lightweight stand-ins
@@ -177,7 +176,9 @@ def test_da_already_set_skips_set_default_appearance() -> None:
     doc = _StubDoc(_StubCatalog(None))
     proc = AcroFormDefaultsProcessor(doc)
 
-    existing_dr = _PDResourcesLike(font_dict_present=True, fonts={"Helv": object(), "ZaDb": object()})
+    existing_dr = _PDResourcesLike(
+        font_dict_present=True, fonts={"Helv": object(), "ZaDb": object()}
+    )
     acro = _AcroForm(da="/MyFont 12 Tf 0 g ", default_resources=existing_dr)
     proc.verify_or_create_defaults(acro)
     assert acro.set_da_calls == []  # untouched

@@ -144,9 +144,9 @@ class FileOpenSaveDialog:
         if (
             dialog_type == SAVE_DIALOG
             and Path(selected_file).exists()
+            and (confirm_overwrite is None or not confirm_overwrite(selected_file))
         ):
-            if confirm_overwrite is None or not confirm_overwrite(selected_file):
-                return None
+            return None
         return selected_file
 
     # --- internals -------------------------------------------------------

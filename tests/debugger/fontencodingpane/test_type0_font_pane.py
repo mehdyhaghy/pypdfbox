@@ -14,7 +14,6 @@ from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
 from pypdfbox.debugger.fontencodingpane.type0_font import Type0Font
 from pypdfbox.pdmodel.font import PDType0Font
 
-
 # ---- get_encoding_name -----------------------------------------------------
 
 

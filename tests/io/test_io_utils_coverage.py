@@ -28,10 +28,8 @@ from pypdfbox.io.io_utils import (
     create_protected_temp_file,
     create_temp_file_only_stream_cache,
     populate_buffer,
-    to_byte_array,
     unmap,
 )
-
 
 # --- IOUtils static facade wraps module-level helpers ----------------------
 

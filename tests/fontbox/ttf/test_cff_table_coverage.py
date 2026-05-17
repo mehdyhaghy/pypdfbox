@@ -20,7 +20,6 @@ from pypdfbox.fontbox.cff.cff_type1_font import CFFType1Font
 from pypdfbox.fontbox.ttf.cff_table import CFFTable, _CFFByteSource
 from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
 
-
 # ---------------------------------------------------------------------
 # Test fixtures — minimal CFF payload + stub host font for the
 # byte-source re-read helper.

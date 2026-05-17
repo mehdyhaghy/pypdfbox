@@ -103,8 +103,6 @@ def test_write_int_masks_to_one_byte() -> None:
 
 
 def test_flush_passes_through_without_filters() -> None:
-    sink = io.BytesIO()
-
     class _RecordingSink(io.BytesIO):
         flushed = 0
 

@@ -25,7 +25,6 @@ from pypdfbox.fontbox.ttf.glyf_descript import GlyfDescript
 from pypdfbox.fontbox.ttf.glyf_simple_descript import GlyfSimpleDescript
 from pypdfbox.fontbox.ttf.ttf_data_stream import RandomAccessReadDataStream
 
-
 # ---------- Helpers -----------------------------------------------------
 
 

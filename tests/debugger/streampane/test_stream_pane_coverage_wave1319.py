@@ -26,8 +26,6 @@ from __future__ import annotations
 import io
 from typing import Any
 
-import pytest
-
 from pypdfbox.contentstream.operator import Operator
 from pypdfbox.contentstream.operator_name import OperatorName
 from pypdfbox.cos import (

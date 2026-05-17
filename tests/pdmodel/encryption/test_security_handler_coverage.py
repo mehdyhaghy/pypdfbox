@@ -23,7 +23,6 @@ from pypdfbox.pdmodel.encryption.standard_security_handler import (
     StandardSecurityHandler,
 )
 
-
 # ----------------------------------------------------------------- fixtures
 
 
@@ -37,7 +36,9 @@ class _ConcreteHandler(SecurityHandler):
         return None
 
 
-def _make_handler(*, aes: bool = False, key: bytes = b"\x00" * 16, revision: int = 4) -> _ConcreteHandler:
+def _make_handler(
+    *, aes: bool = False, key: bytes = b"\x00" * 16, revision: int = 4
+) -> _ConcreteHandler:
     handler = _ConcreteHandler()
     handler.set_encryption_key(key)
     handler.set_aes(aes)

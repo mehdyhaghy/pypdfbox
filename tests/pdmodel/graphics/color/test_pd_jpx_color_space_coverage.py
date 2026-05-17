@@ -64,7 +64,7 @@ def test_to_raw_image_returns_raster_unchanged() -> None:
 
 
 def test_to_rgb_image_builds_pillow_image_from_raster() -> None:
-    pillow = pytest.importorskip("PIL.Image")
+    pytest.importorskip("PIL.Image")
 
     class _Raster:
         def get_width(self) -> int:

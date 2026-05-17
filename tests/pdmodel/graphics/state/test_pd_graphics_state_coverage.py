@@ -21,7 +21,6 @@ from pypdfbox.pdmodel.graphics.state.pd_graphics_state import (
 )
 from pypdfbox.pdmodel.graphics.state.rendering_intent import RenderingIntent
 
-
 # ---------- Defaults ------------------------------------------------------
 
 
@@ -167,7 +166,7 @@ def test_get_current_clipping_path_with_pd_rectangle_like() -> None:
         def __init__(self, llx: float, lly: float, urx: float, ury: float) -> None:
             self._llx, self._lly, self._urx, self._ury = llx, lly, urx, ury
 
-            def _wrap(value: float) -> "_Rect._Acc":
+            def _wrap(value: float) -> _Rect._Acc:
                 return _Rect._Acc(value)
 
             self._w = _wrap
@@ -259,7 +258,7 @@ class _Cloneable:
         self.value = value
         self.cloned = False
 
-    def clone(self) -> "_Cloneable":
+    def clone(self) -> _Cloneable:
         c = _Cloneable(self.value)
         c.cloned = True
         return c

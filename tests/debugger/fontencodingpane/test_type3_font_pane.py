@@ -103,7 +103,7 @@ def test_get_glyphs_underscore_alias_matches_public(tk_root):
     upstream-named ``get_glyphs`` for internal callers that pre-dated
     the public promotion."""
     font = _type3_font_with_char_procs()
-    pane = Type3Font(font, None, tk_root)
+    Type3Font(font, None, tk_root)
     assert Type3Font._get_glyphs is Type3Font.get_glyphs
 
 

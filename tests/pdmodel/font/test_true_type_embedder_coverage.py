@@ -35,7 +35,6 @@ from pypdfbox.pdmodel.font.pd_font_descriptor import PDFontDescriptor  # noqa: E
 from pypdfbox.pdmodel.font.true_type_embedder import TrueTypeEmbedder  # noqa: E402
 from pypdfbox.pdmodel.pd_document import PDDocument  # noqa: E402
 
-
 _LIBERATION_TTF = (
     Path(__file__).resolve().parents[3]
     / "pypdfbox"

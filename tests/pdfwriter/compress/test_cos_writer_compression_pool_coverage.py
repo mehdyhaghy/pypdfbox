@@ -30,7 +30,6 @@ from pypdfbox.pdfwriter.compress.cos_writer_compression_pool import (
     COSWriterCompressionPool,
 )
 
-
 # ---------------------------------------------------------------------
 # Stub PDDocument — keeps the pool decoupled from the full pdmodel layer
 # ---------------------------------------------------------------------

@@ -14,7 +14,6 @@ from pypdfbox.cos.cos_object_key import COSObjectKey
 from pypdfbox.cos.cos_string import COSString
 from pypdfbox.pdfwriter.compress.cos_object_pool import COSObjectPool
 
-
 # ----------------------------------------------------------- put / get_key
 
 

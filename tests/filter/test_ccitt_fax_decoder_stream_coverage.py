@@ -16,7 +16,6 @@ from pypdfbox.filter import CCITTFaxDecoderStream, CCITTFaxEncoderStream
 from pypdfbox.filter.ccitt_fax_decode import CCITTFaxDecode
 from pypdfbox.filter.tiff_extension import TIFFExtension
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

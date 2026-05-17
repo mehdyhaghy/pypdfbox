@@ -20,10 +20,10 @@ from PIL import Image
 from pypdfbox.cos import COSName
 from pypdfbox.pdmodel import PDDocument
 from pypdfbox.pdmodel.graphics.image.png_converter import (
+    _CHUNK_IHDR,
     Chunk,
     MultipleInputStream,
     PNGConverter,
-    _CHUNK_IHDR,
     _PNGConverterState,
 )
 

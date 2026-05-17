@@ -11,6 +11,7 @@ Targets the branches not exercised by the existing test files:
 """
 from __future__ import annotations
 
+import contextlib
 import io
 from pathlib import Path
 from typing import Any
@@ -167,10 +168,8 @@ def test_get_path_int_gid_delegates_to_parent(cff_otf: OpenTypeFont) -> None:
     (PostScript flag) — the key invariant is that the CFF branch was
     *not* taken, so we accept either a clean result or that exception.
     """
-    try:
+    with contextlib.suppress(NotImplementedError):
         cff_otf.get_path(0)
-    except NotImplementedError:
-        pass
 
 
 def test_get_path_str_gid_with_cff(cff_otf: OpenTypeFont) -> None:

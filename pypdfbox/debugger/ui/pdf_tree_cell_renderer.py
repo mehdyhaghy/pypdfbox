@@ -409,10 +409,7 @@ def _compose_overlay(base: Any, overlay: Any) -> Any:
         ) from exc
 
     base_rgba = base.convert("RGBA") if base.mode != "RGBA" else base.copy()
-    if overlay.mode != "RGBA":
-        overlay_rgba = overlay.convert("RGBA")
-    else:
-        overlay_rgba = overlay
+    overlay_rgba = overlay.convert("RGBA") if overlay.mode != "RGBA" else overlay
     if overlay_rgba.size != base_rgba.size:
         overlay_rgba = overlay_rgba.resize(base_rgba.size, Image.LANCZOS)
     base_rgba.alpha_composite(overlay_rgba)

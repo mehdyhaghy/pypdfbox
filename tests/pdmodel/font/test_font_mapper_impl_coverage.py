@@ -31,7 +31,6 @@ from pypdfbox.pdmodel.font.font_match import FontMatch
 from pypdfbox.pdmodel.font.pd_cid_system_info import PDCIDSystemInfo
 from pypdfbox.pdmodel.font.pd_font_descriptor import PDFontDescriptor
 
-
 # ---------- fakes ----------
 
 

@@ -10,8 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.util.small_map import SmallMap, SmallMapEntry
-
+from pypdfbox.util.small_map import SmallMap
 
 # ---------------------------------------------------------------------------
 # constructor + put_all

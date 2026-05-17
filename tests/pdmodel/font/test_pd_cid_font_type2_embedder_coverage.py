@@ -13,6 +13,7 @@ mutating the package source.
 
 from __future__ import annotations
 
+import contextlib
 import io
 from pathlib import Path
 from typing import Any
@@ -23,8 +24,8 @@ from fontTools.ttLib import TTFont
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 from pypdfbox.pdmodel.font.pd_cid_font_type2_embedder import (
     PDCIDFontType2Embedder,
-    _State,
     _encode_widths,
+    _State,
     _to_cid_system_info,
 )
 from pypdfbox.pdmodel.font.pd_type0_font import PDType0Font
@@ -651,10 +652,8 @@ def test_to_unicode_cmap_bumps_pdf_version_when_surrogates_present(
 
     embedder._get_unicode_cmap_reverse = _stub_reverse  # type: ignore[assignment]
     # Force the document to start at 1.4 so the version-bump branch runs.
-    try:
+    with contextlib.suppress(AttributeError, TypeError, ValueError):
         doc.set_version(1.4)
-    except (AttributeError, TypeError, ValueError):
-        pass
     embedder.build_to_unicode_c_map({1: 1})
     # Version should now be >= 1.5.
     assert float(doc.get_version()) >= 1.5

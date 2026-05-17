@@ -20,7 +20,6 @@ import pytest
 
 from pypdfbox.util.xml_util import XMLUtil, _read_all
 
-
 # --------------------------------------------------------------- _read_all
 
 

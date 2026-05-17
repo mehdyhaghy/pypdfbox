@@ -20,7 +20,6 @@ from pypdfbox.debugger.ui.osx_adapter import (
     set_application_event_handled,
 )
 
-
 # --- is_min_jdk9 -----------------------------------------------------------
 
 

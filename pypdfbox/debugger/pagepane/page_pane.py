@@ -197,10 +197,10 @@ class PagePane:
             from pypdfbox.pdmodel.interactive.action.pd_action_uri import (  # noqa: PLC0415
                 PDActionURI,
             )
-            from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_named_destination import (  # noqa: PLC0415
+            from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_named_destination import (  # noqa: PLC0415, E501
                 PDNamedDestination,
             )
-            from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (  # noqa: PLC0415
+            from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_destination import (  # noqa: PLC0415, E501
                 PDPageDestination,
             )
         except ImportError:

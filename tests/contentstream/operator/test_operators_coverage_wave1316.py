@@ -36,7 +36,6 @@ from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.cos.cos_float import COSFloat
 from pypdfbox.cos.cos_integer import COSInteger
 
-
 # --- helpers ---------------------------------------------------------------
 
 

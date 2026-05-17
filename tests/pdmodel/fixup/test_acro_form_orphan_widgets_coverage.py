@@ -12,13 +12,13 @@ Drives:
 
 from __future__ import annotations
 
+import contextlib
 from typing import Any
 
 from pypdfbox.cos import COSName
 from pypdfbox.pdmodel.fixup.processor.acro_form_orphan_widgets_processor import (
     AcroFormOrphanWidgetsProcessor,
 )
-
 
 # ----------------------------------------------------------------------
 # Lightweight stand-ins
@@ -269,7 +269,9 @@ def test_handle_annotations_widget_with_parent_resolves_non_root() -> None:
 
     # PDFieldFactory will get invoked with a fake form — wrap to swallow it.
     fields: list[Any] = []
-    try:
+    # Real factory may reject the bare dict; we only need the branch
+    # entered, which is asserted by the get_normal_appearance call below.
+    with contextlib.suppress(Exception):
         proc.handle_annotations(
             acro_form=object(),
             acro_form_resources=resources,
@@ -277,10 +279,6 @@ def test_handle_annotations_widget_with_parent_resolves_non_root() -> None:
             annotations=[widget],
             non_terminal_fields_map={},
         )
-    except Exception:
-        # Real factory may reject the bare dict; we only need the branch
-        # entered, which is asserted by the get_normal_appearance call below.
-        pass
 
 
 # ----------------------------------------------------------------------

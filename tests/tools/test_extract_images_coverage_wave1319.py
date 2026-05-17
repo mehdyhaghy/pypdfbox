@@ -28,8 +28,6 @@ from typing import Any
 import pytest
 
 from pypdfbox.cos import (
-    COSArray,
-    COSDictionary,
     COSInteger,
     COSName,
     COSStream,

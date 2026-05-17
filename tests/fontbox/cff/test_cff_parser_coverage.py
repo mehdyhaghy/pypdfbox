@@ -38,7 +38,6 @@ from pypdfbox.fontbox.cff.format1_encoding import Format1Encoding
 from pypdfbox.fontbox.cff.format2_charset import Format2Charset
 from pypdfbox.fontbox.cff.header import Header
 
-
 # ---------------------------------------------------------------------
 # _BytesSource — module-private helper.
 # ---------------------------------------------------------------------

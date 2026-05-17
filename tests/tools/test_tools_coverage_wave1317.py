@@ -28,8 +28,8 @@ from PIL import Image
 
 from pypdfbox.loader import Loader as RealLoader
 from pypdfbox.pdmodel import PDDocument, PDPage
-from pypdfbox.pdmodel.interactive.form.pd_acro_form import PDAcroForm
 from pypdfbox.pdmodel.fdf import FDFDocument
+from pypdfbox.pdmodel.interactive.form.pd_acro_form import PDAcroForm
 from pypdfbox.text.pdf_text_stripper import PDFTextStripper
 from pypdfbox.tools import decrypt_tool, encrypt_tool, image_to_pdf, import_fdf
 from pypdfbox.tools.pdf_text2_markdown import (

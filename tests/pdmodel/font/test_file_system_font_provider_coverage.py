@@ -17,7 +17,6 @@ from __future__ import annotations
 import io
 import pathlib
 import shutil
-import sys
 from typing import Any
 
 import pytest
@@ -25,7 +24,6 @@ import pytest
 from pypdfbox.fontbox.font_format import FontFormat
 from pypdfbox.pdmodel.font import file_system_font_provider as mod
 from pypdfbox.pdmodel.font.file_system_font_provider import FileSystemFontProvider
-from pypdfbox.pdmodel.font.font_cache import FontCache
 
 # ---------- shared helpers ----------
 
@@ -383,9 +381,6 @@ def test_write_font_info_uses_writer_write(
 def test_write_font_info_handles_non_writer() -> None:
     """If the writer doesn't expose `.write`, no exception is raised."""
     provider = FileSystemFontProvider(directories=[])
-    font = _copy_liberation(
-        pathlib.Path.cwd(), "LiberationSans-Regular.ttf"
-    ) if False else None
     # Build a minimal FSFontInfo via a real scan.
 
     class Sink:

@@ -243,8 +243,6 @@ def test_interior_components_size_branch_non_empty_calls_to_float_array() -> Non
                 raise AttributeError(name)
             return object.__getattribute__(self, name)
 
-    interior = _Tricky()
-
     # Wrap the call so we toggle ``_allow`` only when the handler
     # actually calls ``to_float_array`` (not when ``hasattr`` probes).
     # Approach: patch _interior_components-friendly stub whose

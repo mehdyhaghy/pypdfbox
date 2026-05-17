@@ -22,7 +22,6 @@ from pypdfbox.cos import (
 )
 from pypdfbox.pdmodel.common.cos_array_list import COSArrayList, _to_cos
 
-
 # ---------------------------------------------------------------------------
 # constructor shapes
 # ---------------------------------------------------------------------------

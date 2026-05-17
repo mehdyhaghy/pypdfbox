@@ -13,7 +13,6 @@ import pytest
 
 from pypdfbox.tools.imageio.meta_util import MetaUtil
 
-
 # ---------- Static-only ctor & constants ---------------------------------
 
 

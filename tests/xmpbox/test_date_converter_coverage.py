@@ -25,7 +25,6 @@ from pypdfbox.xmpbox.date_converter import (
     _two_digit_year_to_full,
 )
 
-
 # ---------- ParsePosition --------------------------------------------------
 
 

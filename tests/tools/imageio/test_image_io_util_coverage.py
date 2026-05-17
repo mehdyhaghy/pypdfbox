@@ -15,7 +15,6 @@ from PIL import Image
 
 from pypdfbox.tools.imageio.image_io_util import ImageIOUtil, _to_pil
 
-
 # ---------- ``_to_pil`` ---------------------------------------------------
 
 

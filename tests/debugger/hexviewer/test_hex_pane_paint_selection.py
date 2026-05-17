@@ -12,7 +12,6 @@ import tkinter as tk
 from pypdfbox.debugger.hexviewer.hex_model import HexModel
 from pypdfbox.debugger.hexviewer.hex_pane import HexPane
 
-
 # ---- is_hex_char ---------------------------------------------------------
 
 

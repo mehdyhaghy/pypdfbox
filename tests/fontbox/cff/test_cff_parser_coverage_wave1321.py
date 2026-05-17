@@ -17,7 +17,6 @@ coverage regression bisect maps straight back to the source operation.
 
 from __future__ import annotations
 
-import io
 import struct
 from typing import Any
 from unittest.mock import patch
@@ -33,7 +32,6 @@ from pypdfbox.fontbox.cff.dict_data import DictData, Entry
 from pypdfbox.fontbox.cff.embedded_charset import EmbeddedCharset
 from pypdfbox.fontbox.cff.fd_select import Format0FDSelect
 from pypdfbox.fontbox.cff.format1_encoding import Format1Encoding
-
 
 # ---------------------------------------------------------------------
 # parse_first_sub_font_ros — empty-font-list path (lines 184-186).
@@ -664,7 +662,6 @@ def _build_type1_payload() -> tuple[bytes, DictData, Any]:
     subrs_index = bytes([0x00, 0x01, 0x01, 0x01, 0x02, 0x0E])
     padding = b"\x00\x00\x00"
     priv_offset = len(padding)
-    abs_subrs_offset = priv_offset + len(priv_body)
     payload = padding + priv_body + subrs_index
 
     # Top DICT: Private entry only — Encoding entry omitted so the

@@ -96,8 +96,8 @@ def test_start_extracting_invokes_stripper_and_dialog(
             def set_visible(self, visible: bool) -> None:
                 captured["dialog_visible"] = visible
 
-        import pypdfbox.text.pdf_text_stripper as stripper_mod
         import pypdfbox.debugger.ui.text_dialog as dialog_mod
+        import pypdfbox.text.pdf_text_stripper as stripper_mod
 
         monkeypatch.setattr(stripper_mod, "PDFTextStripper", _FakeStripper)
         monkeypatch.setattr(dialog_mod, "TextDialog", _FakeDialog)

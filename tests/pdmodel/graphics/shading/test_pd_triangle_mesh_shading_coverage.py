@@ -21,7 +21,7 @@ from typing import Any
 
 import pytest
 
-from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSFloat
 from pypdfbox.pdmodel.graphics.shading.pd_mesh_based_shading_type import (
     PDMeshBasedShadingType,
 )

@@ -25,7 +25,6 @@ from pypdfbox.rendering import (
 )
 from pypdfbox.rendering.page_drawer import PageDrawer, TransparencyGroup
 
-
 # ---------------------------------------------------------------------------
 # Test fixtures
 # ---------------------------------------------------------------------------

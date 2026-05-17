@@ -9,13 +9,13 @@ bbox clipping, and the AWT-style state mutators (clip, paint, transform).
 
 from __future__ import annotations
 
+import contextlib
 import math
 
 import pytest
 from PIL import Image
 
 from pypdfbox.rendering.group_graphics import GroupGraphics
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -639,13 +639,11 @@ def test_backdrop_removal_rgba_branch_executes() -> None:
     src = Image.new("RGBA", (4, 4), (200, 100, 50, 200))
     gg = GroupGraphics(src)
     gg.set_background((50, 25, 10))
-    try:
+    # Pillow mode-mismatch — branch was entered; that's all we need
+    # for coverage. Production callers wrap this in their own
+    # try/except (renderer side).
+    with contextlib.suppress(ValueError):
         gg.backdrop_removal()
-    except ValueError:
-        # Pillow mode-mismatch — branch was entered; that's all we need
-        # for coverage. Production callers wrap this in their own
-        # try/except (renderer side).
-        pass
 
 
 def test_backdrop_removal_rgb_mode_subtracts() -> None:

@@ -21,7 +21,6 @@ from pypdfbox.fontbox.cff.type1_char_string_parser import (
 )
 from pypdfbox.fontbox.cff.type1_keyword import Type1KeyWord
 
-
 # ---------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------

@@ -1,4 +1,4 @@
-"""Coverage backfill for :class:`pypdfbox.util.filetypedetector.file_type_detector.FileTypeDetector`.
+"""Coverage backfill for ``FileTypeDetector``.
 
 Targets the peek-based + read+seek code paths, unbuffered ``_wrap``, and
 the empty-stream OSError raises.
@@ -12,7 +12,6 @@ import pytest
 
 from pypdfbox.util.filetypedetector.file_type import FileType
 from pypdfbox.util.filetypedetector.file_type_detector import FileTypeDetector
-
 
 # --- Bytes / bytearray inputs ----------------------------------------------
 

@@ -31,7 +31,6 @@ from pypdfbox.cos.cos_name import COSName
 from pypdfbox.util.matrix import SIZE, Matrix
 from pypdfbox.util.vector import Vector
 
-
 # ---- constructor edge cases ----
 
 

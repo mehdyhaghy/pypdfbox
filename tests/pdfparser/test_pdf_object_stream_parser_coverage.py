@@ -26,7 +26,6 @@ from pypdfbox.cos import (
 from pypdfbox.pdfparser import PDFObjectStreamParser
 from pypdfbox.pdfparser.parse_error import PDFParseError
 
-
 # --------------------------------------------------------------- helpers
 
 

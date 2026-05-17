@@ -19,7 +19,6 @@ from pypdfbox.filter import FilterFactory
 from pypdfbox.filter.jbig2_decode import JBIG2Decode
 from pypdfbox.filter.jbig2_filter import JBIG2Filter
 
-
 # ---------- registration -------------------------------------------------
 
 
@@ -102,6 +101,7 @@ def test_module_reimport_does_not_re_register(monkeypatch) -> None:
     # Force is_registered → True so the ``register`` call is skipped on
     # a fresh import. Re-importing must not raise.
     import importlib
+
     import pypdfbox.filter.jbig2_filter as mod
 
     # Already registered — calling again would be a no-op.

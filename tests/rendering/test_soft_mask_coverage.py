@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.rendering.soft_mask import SoftMask, SoftPaintContext
+from pypdfbox.rendering.soft_mask import SoftMask
 
 PIL = pytest.importorskip("PIL")
 from PIL import Image  # noqa: E402

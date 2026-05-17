@@ -22,7 +22,6 @@ from pypdfbox.fontbox.util.autodetect.windows_font_dir_finder import (
     WindowsFontDirFinder,
 )
 
-
 # ---------- determine_dir_finder() platform dispatch --------------------
 
 

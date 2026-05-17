@@ -15,8 +15,6 @@ from __future__ import annotations
 
 import io
 
-import pytest
-
 from pypdfbox.cos import COSDictionary
 from pypdfbox.filter.ccitt_fax_decode import CCITTFaxDecode
 from pypdfbox.filter.ccitt_fax_encoder_stream import CCITTFaxEncoderStream

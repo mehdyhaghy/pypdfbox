@@ -18,11 +18,11 @@ from xml.etree import ElementTree as ET
 
 import pytest
 
+from pypdfbox.xmpbox.adobe_pdf_schema import AdobePDFSchema
 from pypdfbox.xmpbox.dom_xmp_parser import (
     DomXmpParser,
     XmpParsingException,
 )
-from pypdfbox.xmpbox.adobe_pdf_schema import AdobePDFSchema
 from pypdfbox.xmpbox.photoshop_schema import PhotoshopSchema
 from pypdfbox.xmpbox.type import LayerType
 from pypdfbox.xmpbox.xmp_metadata import RDF_NAMESPACE, XMPMetadata

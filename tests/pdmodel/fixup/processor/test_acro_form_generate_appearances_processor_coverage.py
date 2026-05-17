@@ -26,7 +26,6 @@ from pypdfbox.pdmodel.fixup.processor.acro_form_generate_appearances_processor i
     AcroFormGenerateAppearancesProcessor,
 )
 
-
 # ----------------------------------------------------------------------
 # Lightweight stand-ins
 # ----------------------------------------------------------------------

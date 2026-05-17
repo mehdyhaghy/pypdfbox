@@ -21,7 +21,6 @@ from pypdfbox.rendering.tiling_paint_factory import (
     TilingPaintParameter,
 )
 
-
 # ---------- Stubs ---------------------------------------------------------
 
 
@@ -31,7 +30,7 @@ class _CloneableMatrix:
     def __init__(self, value: int) -> None:
         self.value = value
 
-    def clone(self) -> "_CloneableMatrix":
+    def clone(self) -> _CloneableMatrix:
         return _CloneableMatrix(self.value)
 
     def __eq__(self, other: object) -> bool:

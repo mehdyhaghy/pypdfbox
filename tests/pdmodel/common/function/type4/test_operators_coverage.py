@@ -35,7 +35,6 @@ from pypdfbox.pdmodel.common.function.type4.operators import (
     _resolve_class,
 )
 
-
 # ---------- _resolve_class branches ----------------------------------------
 
 

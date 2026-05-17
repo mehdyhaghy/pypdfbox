@@ -51,7 +51,6 @@ from pypdfbox.pdmodel.graphics.color import (
     PDDeviceRGB,
 )
 
-
 # ---------------------------------------------------------------------------
 # Stub graphics state / resources / context.
 # ---------------------------------------------------------------------------
@@ -216,8 +215,8 @@ def test_operator_name_class_attribute(
     _operands: list[Any],
     expected_name: str,
 ) -> None:
-    assert cls.OPERATOR_NAME == expected_name
-    assert cls.OPERATOR_NAME == token
+    assert expected_name == cls.OPERATOR_NAME
+    assert token == cls.OPERATOR_NAME
 
 
 @pytest.mark.parametrize(

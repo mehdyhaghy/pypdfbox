@@ -24,7 +24,6 @@ from pypdfbox.xmpbox.xml.xmp_serializer import XmpSerializer
 from pypdfbox.xmpbox.xmp_metadata import XMPMetadata
 from pypdfbox.xmpbox.xmp_schema import XMPSchema
 
-
 _DEMO_NS = "urn:pypdfbox:demo"
 _DEMO_PREFIX = "demo"
 
@@ -275,7 +274,6 @@ def test_fill_element_with_attributes_handles_owner_without_accessor() -> None:
 def test_fill_element_with_attributes_skips_attribute_with_none_name() -> None:
     # Attribute with name=None must be skipped by the helper without
     # propagating an exception.
-    metadata = XMPMetadata.create_xmp_metadata()
 
     class _Owner:
         def get_all_attributes(self) -> list[Attribute]:

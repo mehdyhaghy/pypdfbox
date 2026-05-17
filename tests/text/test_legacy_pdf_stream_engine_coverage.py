@@ -16,7 +16,6 @@ from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 from pypdfbox.text.legacy_pdf_stream_engine import LegacyPDFStreamEngine
 from pypdfbox.util.matrix import Matrix
 
-
 # ---------- helpers ---------------------------------------------------
 
 

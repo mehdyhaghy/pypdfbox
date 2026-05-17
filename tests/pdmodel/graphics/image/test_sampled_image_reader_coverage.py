@@ -439,7 +439,10 @@ def test_get_decode_array_defaults_when_decode_empty_and_color_space_oserror() -
 
 def test_get_decode_array_handles_to_float_array_failure() -> None:
     # Decode object whose ``to_float_array`` raises -> returns [0.0, 1.0].
-    pd = _StubPDImage(1, 1, 8, b"", components=1, decode_obj=_StubDecode([0.5], raise_on_to_float=True))
+    pd = _StubPDImage(
+        1, 1, 8, b"", components=1,
+        decode_obj=_StubDecode([0.5], raise_on_to_float=True),
+    )
     assert _get_decode_array(pd) == [0.0, 1.0]
 
 

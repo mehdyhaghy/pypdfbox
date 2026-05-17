@@ -21,7 +21,6 @@ from pypdfbox.pdmodel.interactive.digitalsignature.signature_options import (
     SignatureOptions,
 )
 
-
 # ----------------------------------------------------------------------
 # helpers
 # ----------------------------------------------------------------------

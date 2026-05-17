@@ -8,7 +8,9 @@ no-op listener registry has no analogue here.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable
+import contextlib
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import (
     COSArray,
@@ -206,10 +208,8 @@ class PDFTreeModel:
         Mirrors Swing's ``TreeModel.removeTreeModelListener``. Silently
         ignores listeners that were never registered.
         """
-        try:
+        with contextlib.suppress(ValueError):
             self._tree_model_listeners.remove(listener)
-        except ValueError:
-            pass
 
     def _fire_tree_changed(self) -> None:
         """Notify all registered listeners that the tree has changed."""
