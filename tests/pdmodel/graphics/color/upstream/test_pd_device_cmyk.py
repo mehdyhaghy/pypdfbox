@@ -88,10 +88,12 @@ def test_extends_pd_device_color_space() -> None:
 
 # ---------- toRGB (PDDeviceCMYK.java line 141) ----------
 # Upstream relies on the bundled CGATS001Compat-v2-micro ICC profile;
-# pypdfbox does not bundle ICC and uses the K-zero subtractive
-# approximation, which is also what Pillow's built-in CMYK to RGB
-# transform emits (and what upstream's pure-Java path produces for
-# ``K = 0``). Endpoint cases are deterministic across both paths.
+# pypdfbox does not bundle ICC and uses the textbook subtractive
+# transform ``r = (1-c)(1-k)`` etc. (wave 1330C migrated the raster
+# path off Pillow's LittleCMS-backed ``convert('CMYK')`` to a numpy
+# vectorised implementation of the same formula). The endpoint cases
+# below — pure white, pure K, pure C/M/Y — are deterministic across
+# both paths and across upstream's pure-Java per-pixel branch.
 
 
 def test_to_rgb_white_paper() -> None:
@@ -146,7 +148,9 @@ def test_to_raw_image_returns_none() -> None:
 
 
 def test_to_rgb_image_white_paper() -> None:
-    # 1x1 raster, zero ink -> white pixel via Pillow CMYK->RGB.
+    # 1x1 raster, zero ink -> white pixel via the numpy subtractive
+    # transform (wave 1330C migration; previously routed through
+    # Pillow's LittleCMS-backed ``convert('CMYK')``).
     img = PDDeviceCMYK.INSTANCE.to_rgb_image(b"\x00\x00\x00\x00", 1, 1)
     assert img.mode == "RGB"
     assert img.size == (1, 1)
@@ -170,3 +174,34 @@ def test_to_rgb_image_awt_delegates_to_to_rgb_image() -> None:
     )
     direct = PDDeviceCMYK.INSTANCE.to_rgb_image(raster, 2, 1)
     assert list(via_awt.getdata()) == list(direct.getdata())
+
+
+def test_to_rgb_image_subtractive_midtone_pixel() -> None:
+    # Locks in the wave 1330C contract: the raster path applies the
+    # textbook subtractive transform, not Pillow's LittleCMS-backed
+    # convert('CMYK'). For CMYK(100, 50, 0, 0) the formula yields
+    # r = (255-100)*255//255 = 155, g = (255-50)*255//255 = 205,
+    # b = (255-0)*255//255 = 255.
+    img = PDDeviceCMYK.INSTANCE.to_rgb_image(
+        bytes([100, 50, 0, 0]), 1, 1
+    )
+    assert img.getpixel((0, 0)) == (155, 205, 255)
+
+
+def test_to_rgb_image_subtractive_respects_black_channel() -> None:
+    # CMYK(0, 0, 0, 128) -> 50% black ink over white paper. inv_k =
+    # 255 - 128 = 127, so each RGB channel = (255 * 127)//255 = 127.
+    img = PDDeviceCMYK.INSTANCE.to_rgb_image(
+        bytes([0, 0, 0, 128]), 1, 1
+    )
+    assert img.getpixel((0, 0)) == (127, 127, 127)
+
+
+def test_to_rgb_image_short_raster_is_zero_padded() -> None:
+    # Surface-compatibility with the previous Pillow path: an
+    # undersized buffer is padded with zero ink so the result still has
+    # the requested width x height.
+    img = PDDeviceCMYK.INSTANCE.to_rgb_image(b"\xff\xff\xff\xff", 2, 1)
+    assert img.size == (2, 1)
+    assert img.getpixel((0, 0)) == (0, 0, 0)
+    assert img.getpixel((1, 0)) == (255, 255, 255)

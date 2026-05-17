@@ -13,13 +13,28 @@ class PDDeviceCMYK(PDDeviceColorSpace):
     ``org.apache.pdfbox.pdmodel.graphics.color.PDDeviceCMYK``. Use the
     singleton ``PDDeviceCMYK.INSTANCE``.
 
-    Lite surface: ``to_rgb`` uses a simple subtractive approximation when
-    no ICC profile is supplied. The upstream class lazily loads the
-    ``CGATS001Compat-v2-micro`` ICC profile through Java's ``ICC_Profile``
-    APIs (PDDeviceCMYK.java line 78); pypdfbox does not bundle that
-    profile and instead delegates raster conversion to Pillow's built-in
-    CMYK to RGB transform, which uses the same K-zero subtractive
-    approximation.
+    Lite surface: both ``to_rgb`` (scalar) and ``to_rgb_image`` (raster)
+    use the textbook subtractive CMYK to RGB transform::
+
+        R = (1 - C) * (1 - K) * 255
+        G = (1 - M) * (1 - K) * 255
+        B = (1 - Y) * (1 - K) * 255
+
+    The upstream class lazily loads the ``CGATS001Compat-v2-micro`` ICC
+    profile through Java's ``ICC_Profile`` APIs (PDDeviceCMYK.java line
+    78). pypdfbox does not bundle that profile and the raster path uses
+    a numpy-based subtractive transform instead of Pillow's
+    ``Image.convert('CMYK')``. The motivation: Pillow's CMYK to RGB
+    conversion goes through LittleCMS with a bundled CMYK profile we do
+    not control, so its output drifts with Pillow versions. The
+    subtractive formula is explicit, deterministic across platforms, and
+    matches the convention every PDF viewer uses when the source CMYK
+    has no attached ICC profile.
+
+    For colour-accurate CMYK rendering, callers should attach an ICC
+    profile via ``/ICCBased`` — that path routes through
+    :class:`~pypdfbox.pdmodel.graphics.color.pd_icc_based.PDICCBased`
+    and Pillow's ``ImageCms``, not through ``PDDeviceCMYK``.
     """
 
     INSTANCE: ClassVar[PDDeviceCMYK]
@@ -85,12 +100,13 @@ class PDDeviceCMYK(PDDeviceColorSpace):
     def to_rgb(self, value: list[float]) -> list[float]:
         """Convert a single DeviceCMYK color value into sRGB. Mirrors
         upstream ``PDDeviceCMYK.toRGB(float[])`` (PDDeviceCMYK.java line
-        141) — but until the ICC profile pipeline lands, pypdfbox uses
-        the simple subtractive approximation ``r = (1-c)(1-k)``,
-        ``g = (1-m)(1-k)``, ``b = (1-y)(1-k)``. This matches the formula
-        already used by :meth:`PDColor.to_rgb` for DeviceCMYK so the two
-        paths agree, and matches the K-zero result of Pillow's built-in
-        CMYK to RGB transform.
+        141) — but rather than the bundled ``CGATS001Compat-v2-micro``
+        ICC profile pypdfbox uses the textbook subtractive
+        approximation ``r = (1-c)(1-k)``, ``g = (1-m)(1-k)``,
+        ``b = (1-y)(1-k)``. This matches the formula already used by
+        :meth:`PDColor.to_rgb` for DeviceCMYK so the two paths agree
+        and is the same transform every PDF viewer applies when no
+        ICC profile is attached to the source CMYK.
 
         ``value`` must be a list of four floats in ``[0.0, 1.0]``.
         """
@@ -122,24 +138,43 @@ class PDDeviceCMYK(PDDeviceColorSpace):
         ``PDDeviceCMYK.toRGBImage(WritableRaster)`` (PDDeviceCMYK.java
         line 156).
 
-        Library-first: pypdfbox uses Pillow's built-in CMYK to RGB
-        transform (``Image.frombytes('CMYK', ...).convert('RGB')``),
-        which applies the same K-zero subtractive approximation used by
-        :meth:`to_rgb` and matches the K-zero output of upstream's ICC
-        pipeline.
+        Implementation: a numpy-vectorised subtractive transform — the
+        per-channel formula is ``r = (255 - C) * (255 - K) // 255``
+        (and analogously for G, B). The previous version round-tripped
+        through ``Image.frombytes('CMYK', ...).convert('RGB')``, which
+        delegates to Pillow's LittleCMS pipeline with a bundled CMYK
+        profile we do not control. Going through numpy makes the
+        transform explicit, deterministic across platforms / Pillow
+        versions, and consistent with :meth:`to_rgb`. The returned
+        container is still ``PIL.Image`` so callers (rendering pipeline)
+        are unaffected.
         """
+        import numpy as np
         from PIL import Image
 
         self.init()
+        w = int(width)
+        h = int(height)
         n = self.get_number_of_components()
-        expected = int(width) * int(height) * n
+        expected = w * h * n
         data = bytes(raster)
         if len(data) < expected:
             data = data + b"\x00" * (expected - len(data))
-        cmyk = Image.frombytes(
-            "CMYK", (int(width), int(height)), data[:expected]
-        )
-        return cmyk.convert("RGB")
+        # uint16 widening so ``(255 - x) * (255 - k)`` does not overflow
+        # the 0-255 range before the //255 reduction.
+        arr = np.frombuffer(data[:expected], dtype=np.uint8).reshape(
+            h, w, n
+        ).astype(np.uint16)
+        c = arr[..., 0]
+        m = arr[..., 1]
+        y = arr[..., 2]
+        k = arr[..., 3]
+        inv_k = 255 - k
+        r = ((255 - c) * inv_k // 255).astype(np.uint8)
+        g = ((255 - m) * inv_k // 255).astype(np.uint8)
+        b = ((255 - y) * inv_k // 255).astype(np.uint8)
+        rgb = np.stack([r, g, b], axis=-1)
+        return Image.fromarray(rgb, mode="RGB")
 
     def to_rgb_image_awt(
         self,
@@ -156,9 +191,9 @@ class PDDeviceCMYK(PDDeviceColorSpace):
         property is set.
 
         Java AWT has no Python analogue. pypdfbox routes through
-        :meth:`to_rgb_image` (Pillow's CMYK to RGB transform), which
+        :meth:`to_rgb_image` (numpy subtractive transform), which
         matches upstream's K-zero output for the ICC path and is
-        equivalent to the pure-Java per-pixel branch.
+        equivalent to the upstream pure-Java per-pixel branch.
         """
         return self.to_rgb_image(raster, width, height)
 

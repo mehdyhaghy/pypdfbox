@@ -77,23 +77,26 @@ def test_fill_then_stroke_dispatch_uses_non_even_odd_paint(
 def test_even_odd_fill_with_stroke_runs_stroke_after_pil_fill(
     monkeypatch: Any,
 ) -> None:
+    """Wave 1330B — fill + stroke + even-odd now dispatches through a
+    single ``_draw_via_aggdraw`` call (skia honours ``even_odd`` natively
+    via ``PathFillType.kEvenOdd``).  The legacy PIL-mask helper is no
+    longer on the renderer's hot path."""
     doc, renderer = _prepared_renderer()
-    calls: list[str] = []
+    calls: list[dict[str, bool]] = []
     try:
         renderer._subpaths = [  # noqa: SLF001
             [("M", 1.0, 1.0), ("L", 4.0, 1.0), ("L", 4.0, 4.0), ("Z",)]
         ]
         renderer._current_subpath = renderer._subpaths[0]  # noqa: SLF001
-        monkeypatch.setattr(
-            renderer, "_fill_even_odd_via_pil", lambda: calls.append("fill")
-        )
-        monkeypatch.setattr(
-            renderer, "_stroke_via_aggdraw", lambda: calls.append("stroke")
-        )
+
+        def fake_draw(*, stroke: bool, fill: bool, even_odd: bool) -> None:
+            calls.append({"stroke": stroke, "fill": fill, "even_odd": even_odd})
+
+        monkeypatch.setattr(renderer, "_draw_via_aggdraw", fake_draw)
 
         renderer._paint(stroke=True, fill=True, even_odd=True)  # noqa: SLF001
 
-        assert calls == ["fill", "stroke"]
+        assert calls == [{"stroke": True, "fill": True, "even_odd": True}]
         assert renderer._subpaths == []  # noqa: SLF001
         assert renderer._current_subpath is None  # noqa: SLF001
     finally:

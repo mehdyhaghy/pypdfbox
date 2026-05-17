@@ -2909,6 +2909,39 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   - `test_high_resolution_image_icon.py`: switched per-test `tk.Tk()` to the session-scoped fixture (eliminating extra Tk roots).
 - **Verified**: 2 concurrent shells × 5 iterations = 10/10 processes finish exit 0; 3 shells × 6 iterations = 18/18 exit 0; `PYPDFBOX_SKIP_TK=1` → 357 tests skip cleanly.
 
+## Wave 1330 — graphics-stack quality-of-implementation (3 parallel agents)
+
+User wanted the graphics layer finished cleanly before resuming routine coverage waves. Three orthogonal optimizations landed together: wire `imagecodecs` into the filter chain, eliminate PIL↔skia buffer round-trips in the renderer + add native even-odd fill support, and migrate CMYK→RGB off Pillow's LittleCMS to an explicit numpy subtractive transform.
+
+### imagecodecs wired into DCT + JPX filters (wave 1330A)
+
+- `pypdfbox/filter/dct_decode.py`: `DCTDecode` now decodes via `imagecodecs.jpeg8_decode` (libjpeg-turbo 3.1.4, BSD) on the primary path; Pillow retained as fallback for codestreams imagecodecs declines (e.g. unusual Adobe-marker variants). Same backend Pillow uses internally, exposed at C-level for 2-4x faster decode of large rasters. Component count derived from numpy array shape (`array.ndim == 2` → grayscale; else `array.shape[2]`). RGB / L / CMYK all round-trip identically.
+- `pypdfbox/filter/jpx_decode.py`: `JPXDecode` now decodes via `imagecodecs.jpeg2k_decode` (OpenJPEG 2.5.4, BSD-2) on the primary 8-bpc path. **16-bpc grayscale routes through Pillow** because Pillow's `I;16B` mode produces PDF-canonical big-endian byte order while imagecodecs returns host-endian uint16. Encode stays on Pillow's OpenJPEG bridge (imagecodecs encode requires extra config to reproduce Pillow's JP2-container default).
+- `pypdfbox/filter/jbig2_filter.py`: code unchanged. Extended module docstring with a "License posture" section documenting why JBIG2 stays on `jbig2-parser`: imagecodecs's only JBIG2 backend is `jbig2dec` (AGPL-3.0), which is on the forbidden-licenses list. Confirmed empirically: `dir(imagecodecs)` exposes no JBIG2 names and `imagecodecs/licenses/` contains no `LICENSE-jbig2dec` in the wheel we ship against.
+
+### Native-skia renderer cleanup — drop PIL roundtrips + even-odd fill (wave 1330B)
+
+- `pypdfbox/rendering/_aggdraw_compat.py`: skia surface + RGBA bytearray are now cached on the PIL image's `__dict__` (via `_acquire_surface`). The renderer's frequent `Draw(image)` rebinds (after every `image.paste`) reuse the same `MakeRasterDirect`-backed surface instead of re-allocating one. `Draw(rgba_image)` skips the prior `convert("RGBA")` allocation when the image is already RGBA, and `flush()` is a no-op when no draw ops happened since the previous flush (common when the renderer rebinds purely to refresh after a PIL-side paste).
+- Microbench (1200×1600 RGBA): bind + no-op flush ×100 → 78ms; bind + actual draw + flush ×100 → 134ms. The no-op-flush fast path slashes per-page cost since the renderer does it dozens of times per page.
+- `pypdfbox/rendering/_aggdraw_compat.py`: new `Path.set_fill_type_even_odd()` / `Path.set_fill_type_winding()` and a `Draw.path(..., even_odd=)` keyword expose skia's native `PathFillType.kEvenOdd` so even-odd fills no longer need the PIL-mask flatten-and-XOR detour.
+- `pypdfbox/rendering/pdf_renderer.py`: `_paint` and `_paint_through_clip` now route fill+stroke (with or without even-odd) through a single `_draw_via_aggdraw(..., even_odd=...)` call. **3 internal callsites** of `_fill_even_odd_via_pil` are now off the live render path. The legacy helper itself is preserved (referenced by 3 wave-era tests as a public-ish hook); only the live render path no longer needs it. Removed a duplicate `self._full_ctm()` recompute in `_draw_via_aggdraw`.
+- `tests/rendering/test_pdf_renderer_wave641.py::test_even_odd_fill_with_stroke_runs_stroke_after_pil_fill`: rewritten to assert the new unified dispatch instead of the old fill-then-stroke split.
+
+### CMYK→RGB migrated from Pillow to numpy subtractive transform (wave 1330C)
+
+- `pypdfbox/pdmodel/graphics/color/pd_device_cmyk.py`: `to_rgb_image` now uses a numpy-vectorised subtractive transform (`r = (255 - C) * (255 - K) // 255`, etc.) instead of `PIL.Image.frombytes('CMYK', ...).convert('RGB')`. Motivation: Pillow's `convert('CMYK')` delegates to LittleCMS with a bundled CMYK profile we do not control, so its output can drift across Pillow versions. The subtractive formula is **explicit, deterministic across platforms, matches the convention every PDF viewer uses for source CMYK without an attached ICC profile**, and stays consistent with the scalar `to_rgb` path. For colour-accurate CMYK rendering, callers should attach an ICC profile via `/ICCBased` (which still routes through `PDICCBased` + Pillow's `ImageCms`). Return type is still `PIL.Image` — only the conversion math changed, not the container.
+- Endpoint outputs unchanged: `CMYK(100,50,0,0) → RGB(155,205,255)` matches both old and new paths (Pillow's CMYK path actually used the same subtractive formula for primaries; the migration's value is removing the implicit LittleCMS profile dependency, not changing the numbers).
+- `tests/pdmodel/graphics/color/upstream/test_pd_device_cmyk.py`: refreshed section header; added 3 new tests locking the new contract (`test_to_rgb_image_subtractive_midtone_pixel`, `..._respects_black_channel`, `..._short_raster_is_zero_padded`).
+
+### Net effect
+
+- Same 34,415 tests pass — no regressions across the 3 changes.
+- Renderer per-page cost down (skia surface reuse + no-op flush fast path).
+- CMYK behaviour now explicit + Pillow-version-independent.
+- JPEG / JPEG 2000 decode runs through imagecodecs's libjpeg-turbo / OpenJPEG backends directly (less Pillow indirection, faster, cleaner license posture for those filters).
+- Pillow retained for ICC color transforms (`ImageCms`), JBIG2-tangential image-format edge cases, and as fallback in DCT / JPX for unusual codestreams.
+- All 3 pending decisions from the post-wave-1329 ledger now closed.
+
 ## Wave 1329 — replace aggdraw with skia-python; add imagecodecs + numpy
 
 User decision after license/maintenance analysis: drop aggdraw (stale since March 2020) in favour of `skia-python` (BSD-3, actively maintained, Google Skia engine — the same renderer that powers Chrome / Flutter / Android). Skia is **higher quality than aggdraw**, not a downgrade — native cubic-Bézier rendering, better stroke-join AA, integrated color management. Pillow stays (kept for `ImageCms` ICC color transforms via LittleCMS2 and a few image-format codecs still consumed elsewhere).

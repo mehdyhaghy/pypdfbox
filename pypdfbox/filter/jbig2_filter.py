@@ -10,6 +10,29 @@ upstream class name so a direct port from PDFBox Java sources can write::
     from pypdfbox.filter.jbig2_filter import JBIG2Filter
 
 and resolve the symbol without re-deriving it.
+
+License posture — why not ``imagecodecs`` for JBIG2
+---------------------------------------------------
+
+The sibling DCT (JPEG) and JPX (JPEG 2000) filters route their primary
+decode through ``imagecodecs`` because its bundled libraries
+(libjpeg-turbo and OpenJPEG) are permissively licensed (BSD-style).
+JBIG2 is intentionally different: the only JBIG2 decoder ``imagecodecs``
+can be built against is ``jbig2dec`` from Artifex, which is **AGPL-3.0**
+— incompatible with this project's permissive-only license posture
+(see CLAUDE.md "Licensing & attribution" — forbidden list includes
+AGPL). We confirmed the ``imagecodecs`` wheel shipped at runtime has no
+``jbig2`` decoder exposed at the module level (``dir(imagecodecs)``
+returns no JBIG2 names) and no ``LICENSE-jbig2dec`` entry under
+``imagecodecs/licenses/``, so the AGPL codec is not present — but we
+still keep this route off by design so a future ``imagecodecs`` rebuild
+that adds ``jbig2dec`` cannot accidentally pull AGPL code into the
+pypdfbox decode path.
+
+The ``jbig2-parser`` library we already depend on is pure Python (slow
+for complex multi-region JBIG2 docs but adequate for the JBIG2 streams
+PDFs ship in practice) and is permissively licensed, so it remains the
+sole JBIG2 path here.
 """
 
 from __future__ import annotations

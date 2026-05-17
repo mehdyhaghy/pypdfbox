@@ -1469,12 +1469,13 @@ class PDFRenderer(PDFStreamEngine):
             self._paint_through_clip(
                 stroke=stroke, fill=fill, even_odd=even_odd, clip_mask=clip_mask
             )
-        elif fill and even_odd:
-            self._fill_even_odd_via_pil()
-            if stroke:
-                self._stroke_via_aggdraw()
         elif stroke or fill:
-            self._draw_via_aggdraw(stroke=stroke, fill=fill)
+            # Wave 1330B — skia's PathFillType.kEvenOdd is honoured natively
+            # by drawPath, so even-odd fills no longer need the
+            # PIL-flatten-and-mask detour.  The legacy
+            # ``_fill_even_odd_via_pil`` helper is preserved for parity
+            # tests that pin the old behaviour pixel-for-pixel.
+            self._draw_via_aggdraw(stroke=stroke, fill=fill, even_odd=even_odd)
 
         self._apply_pending_clip(default_even_odd=even_odd)
         self._reset_path()
@@ -1510,12 +1511,12 @@ class PDFRenderer(PDFStreamEngine):
         self._draw = layer_draw
         self._image = layer
         try:
-            if fill and even_odd:
-                self._fill_even_odd_via_pil()
-                if stroke:
-                    self._stroke_via_aggdraw()
-            elif stroke or fill:
-                self._draw_via_aggdraw(stroke=stroke, fill=fill)
+            if stroke or fill:
+                # Wave 1330B — even-odd fills go through the native
+                # skia path (PathFillType.kEvenOdd) inside the shim.
+                self._draw_via_aggdraw(
+                    stroke=stroke, fill=fill, even_odd=even_odd,
+                )
             # ensure the layer's aggdraw buffer is committed so layer's
             # alpha channel reflects the strokes/fills.
             self_draw = self._draw
@@ -1540,7 +1541,9 @@ class PDFRenderer(PDFStreamEngine):
         self._draw = aggdraw.Draw(prev_image)
         self._draw.setantialias(True)
 
-    def _draw_via_aggdraw(self, *, stroke: bool, fill: bool) -> None:
+    def _draw_via_aggdraw(
+        self, *, stroke: bool, fill: bool, even_odd: bool = False,
+    ) -> None:
         assert self._draw is not None
         path = aggdraw.Path()
         any_segments = False
@@ -1562,7 +1565,11 @@ class PDFRenderer(PDFStreamEngine):
                     path.close()
         if not any_segments:
             return
-        self._draw.settransform(_to_pil_affine(self._full_ctm()))
+        # Compute the CTM once — used both for settransform and for the
+        # stroke-width scale factor.  (Wave 1330B trim — was previously
+        # recomputed twice per draw call.)
+        full_ctm = self._full_ctm()
+        self._draw.settransform(_to_pil_affine(full_ctm))
         try:
             pen: aggdraw.Pen | None = None
             brush: aggdraw.Brush | None = None
@@ -1570,12 +1577,14 @@ class PDFRenderer(PDFStreamEngine):
                 # Convert PDF user-space line width to device-pixel width
                 # so thin strokes don't disappear at sub-pixel widths.
                 # Use a representative scale factor (sqrt(|det(CTM)|)).
-                scale = self._approx_scale(self._full_ctm())
+                scale = self._approx_scale(full_ctm)
                 width_px = max(1.0, self._gs.line_width * scale)
                 pen = aggdraw.Pen(self._gs.stroke_rgb, width=width_px)
             if fill:
                 brush = aggdraw.Brush(self._gs.fill_rgb)
-            self._draw.path(path, pen, brush)
+            # ``even_odd=`` is a wave-1330B shim extension — aggdraw had
+            # no fill-rule knob.
+            self._draw.path(path, pen, brush, even_odd=even_odd)
         finally:
             # aggdraw resets the transform when settransform is called
             # with no args (the documented "omitted" form).

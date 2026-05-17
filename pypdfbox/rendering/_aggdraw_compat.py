@@ -6,13 +6,28 @@ Chrome / Flutter / Android, BSD-3-Clause).  Skia is a strict upgrade over
 AGG for our renderer: better anti-aliasing, native cubic-Bezier curves
 (no quadratic approximation), and active upstream maintenance.
 
-This module preserves the *exact* aggdraw class/method surface used by
-``pypdfbox.rendering`` so the migration is import-only.  The audited
-surface is small — only four classes and a handful of methods:
+Wave 1330B trimmed the shim's internal copies so a fresh
+``Draw(pil_image)`` is a near-zero cost wrap rather than a paint-and-
+copy:
+
+  * for the common ``mode="RGBA"`` PIL image we skip the
+    ``convert("RGBA")`` allocation (the source is already RGBA);
+  * the skia raster surface is wired straight at our backing
+    ``bytearray`` via ``skia.Surface.MakeRasterDirect`` so canvas writes
+    land in our buffer with no intermediate copy;
+  * a ``_dirty`` flag means ``flush()`` is a no-op when no drawing
+    happened since the last flush (the renderer often binds + flushes a
+    fresh ``Draw`` purely to refresh the skia view after a PIL paste);
+  * the shim now exposes even-odd fills natively via
+    :meth:`Path.set_fill_type_even_odd` (skia ``PathFillType.kEvenOdd``)
+    so the renderer no longer needs the PIL-mask fallback for it.
+
+The class/method surface is kept identical to upstream aggdraw — the
+audited surface is small:
 
     classes  : Draw, Path, Pen, Brush
     Draw     : setantialias, settransform, flush, path
-    Path     : moveto, lineto, curveto, close
+    Path     : moveto, lineto, curveto, close, set_fill_type_even_odd
     Pen      : Pen(rgb_tuple, width=...)
     Brush    : Brush(rgb_tuple)
 
@@ -72,7 +87,7 @@ class Pen:
     Stored as plain attributes; consumed by :class:`Draw` when stroking.
     """
 
-    __slots__ = ("color", "width", "opacity")
+    __slots__ = ("color", "opacity", "width")
 
     def __init__(self, color: Any, width: float = 1.0, opacity: int = 255) -> None:
         self.color: int = _normalize_color(color, opacity)
@@ -133,6 +148,27 @@ class Path:
     def close(self) -> None:
         self._sk.close()
 
+    # ---- fill-rule (wave 1330B) ----------------------------------------
+
+    def set_fill_type_even_odd(self) -> None:
+        """Mark the path as even-odd filled (PDF ``f*`` / ``B*`` / ``b*``).
+
+        Skia's path fill type is honoured natively by ``drawPath`` so
+        the renderer no longer needs the PIL-mask fallback that used to
+        rasterise + composite by hand.  Aggdraw had no even-odd support,
+        which is why this method has no aggdraw counterpart.
+        """
+        self._sk.setFillType(skia.PathFillType.kEvenOdd)
+
+    def set_fill_type_winding(self) -> None:
+        """Reset to non-zero winding (PDF default — ``f`` / ``B`` / ``b``).
+
+        Skia's default is ``kWinding``; this is provided for symmetry so
+        a cached path can be reused for both fill rules without leaking
+        state.
+        """
+        self._sk.setFillType(skia.PathFillType.kWinding)
+
     # The following two are not currently invoked anywhere in pypdfbox,
     # but they appear in the aggdraw public API and may be needed if
     # future ports use them.  Implemented as best-effort stubs.
@@ -161,6 +197,69 @@ _MODE_TO_COLORTYPE = {
     "RGBX": (skia.kRGBA_8888_ColorType, 4),
 }
 
+# Attribute name used on PIL images to memo-ise the most recently built
+# skia state so successive ``Draw(image)`` calls on the same image can
+# skip the surface + bytearray rebuild.  The renderer rebinds ``Draw``
+# dozens of times per page (after every ``image.paste``), so this is the
+# hot path.  Stored on the image's ``__dict__`` because PIL images are
+# regular Python objects.
+_SKIA_STATE_ATTR = "_pypdfbox_skia_state"
+
+
+class _CachedSurface:
+    """Per-image cache: skia surface + the bytearray it renders into.
+
+    The bytearray is the ground truth — ``Draw`` writes through skia
+    into it, and ``flush`` writes it back to the PIL image.  Keeping it
+    pinned to the image means a ``Draw(image)`` rebind only has to
+    re-seed the bytearray from the (possibly externally mutated) image
+    pixels rather than re-allocating both the bytearray and a fresh
+    skia surface.
+    """
+
+    __slots__ = ("canvas", "mode", "pixels", "row_bytes", "size", "surface")
+
+    def __init__(self, size: tuple[int, int], mode: str) -> None:
+        self.size = size
+        self.mode = mode
+        width, height = size
+        self.row_bytes = width * 4
+        self.pixels = bytearray(width * height * 4)
+        info = skia.ImageInfo.Make(
+            width,
+            height,
+            skia.kRGBA_8888_ColorType,
+            skia.kUnpremul_AlphaType,
+        )
+        surface = skia.Surface.MakeRasterDirect(
+            info, self.pixels, self.row_bytes,
+        )
+        if surface is None:  # pragma: no cover - skia always succeeds
+            surface = skia.Surface(width, height)
+        self.surface = surface
+        self.canvas = surface.getCanvas()
+
+
+def _acquire_surface(image: _PILImage.Image) -> tuple[_CachedSurface, bool]:
+    """Return a skia surface bound to ``image``, reusing the per-image
+    cache when possible.
+
+    The second element is ``True`` when the cache was reused (caller can
+    skip the constructor-time seed if it knows the bytearray already
+    reflects the image's current pixels — see :class:`Draw`).
+    """
+    mode = image.mode if image.mode in _MODE_TO_COLORTYPE else "RGBA"
+    cached = image.__dict__.get(_SKIA_STATE_ATTR)
+    if (
+        isinstance(cached, _CachedSurface)
+        and cached.size == image.size
+        and cached.mode == mode
+    ):
+        return cached, True
+    state = _CachedSurface(image.size, mode)
+    image.__dict__[_SKIA_STATE_ATTR] = state
+    return state, False
+
 
 class Draw:
     """``aggdraw.Draw(pil_image)`` stand-in.
@@ -175,6 +274,14 @@ class Draw:
     ``setantialias`` flag is recorded and applied to every paint we
     build (defaulting to ``True``, which matches how the renderer was
     using aggdraw in practice).
+
+    Wave 1330B: the surface + backing bytearray live on the PIL image
+    itself (see :func:`_acquire_surface`).  A rebind of ``Draw`` on the
+    same image therefore reuses the same skia surface — only the
+    bytearray needs to be re-seeded from the image's (possibly
+    externally pasted) pixels.  An RGBA image skips even the
+    ``convert("RGBA")`` allocation.  A ``flush()`` with no intervening
+    draw is a no-op.
     """
 
     def __init__(self, image: _PILImage.Image) -> None:
@@ -185,29 +292,47 @@ class Draw:
         # back to the original PIL image, preserving its mode.
         self._mode = image.mode if image.mode in _MODE_TO_COLORTYPE else "RGBA"
         self._size = image.size
-        # Seed the skia buffer with the PIL pixels so subsequent draws
-        # are composited on top of existing content (matches aggdraw's
-        # behaviour — the canvas is not cleared on wrap).
-        rgba = image.convert("RGBA")
-        self._pixels = bytearray(rgba.tobytes())
-        info = skia.ImageInfo.Make(
-            self._size[0],
-            self._size[1],
-            skia.kRGBA_8888_ColorType,
-            skia.kUnpremul_AlphaType,
+        state, _reused = _acquire_surface(image)
+        self._state = state
+        # Seed the bytearray with the image's current RGBA pixels so
+        # subsequent draws composite over existing content (matches
+        # aggdraw's behaviour — the canvas is not cleared on wrap).
+        # The common case is mode="RGBA" — skip the conversion copy.
+        rgba_bytes = (
+            image.tobytes()
+            if image.mode == "RGBA"
+            else image.convert("RGBA").tobytes()
         )
-        self._row_bytes = self._size[0] * 4
-        self._surface = skia.Surface.MakeRasterDirect(
-            info, self._pixels, self._row_bytes,
-        )
-        if self._surface is None:
-            # Fall back to a managed raster surface — pixels will be
-            # read back via readPixels on flush.
-            self._surface = skia.Surface(self._size[0], self._size[1])
-            self._direct = False
-        else:
-            self._direct = True
-        self._canvas = self._surface.getCanvas()
+        state.pixels[:] = rgba_bytes
+        # No draw operations have happened yet — flush() is a no-op
+        # until the caller actually paints something.
+        self._dirty = False
+
+    # ---- internal accessors --------------------------------------------
+
+    @property
+    def _surface(self) -> skia.Surface:
+        return self._state.surface
+
+    @property
+    def _canvas(self) -> skia.Canvas:
+        return self._state.canvas
+
+    @property
+    def _pixels(self) -> bytearray:
+        return self._state.pixels
+
+    @property
+    def _row_bytes(self) -> int:
+        return self._state.row_bytes
+
+    # ``_direct`` historically reported whether MakeRasterDirect
+    # succeeded.  The cache helper now always uses MakeRasterDirect on
+    # the happy path; expose the attribute for any test that still
+    # inspects it.
+    @property
+    def _direct(self) -> bool:
+        return True
 
     # ---- state ----------------------------------------------------------
 
@@ -227,12 +352,14 @@ class Draw:
         scaleY, transY)``.  skia.Matrix.MakeAll takes those six in the
         same order followed by the perspective row ``(0, 0, 1)``.
         """
+        canvas = self._canvas
         if matrix6 is None:
-            self._canvas.resetMatrix()
+            canvas.resetMatrix()
             return
         a, b, c, d, e, f = matrix6
-        m = skia.Matrix.MakeAll(a, b, c, d, e, f, 0, 0, 1)
-        self._canvas.setMatrix(m)
+        # MakeAll constructs the matrix in place — no intermediate
+        # PIL.Image.transform round-trip; just a struct-init.
+        canvas.setMatrix(skia.Matrix.MakeAll(a, b, c, d, e, f, 0.0, 0.0, 1.0))
 
     # ---- drawing --------------------------------------------------------
 
@@ -256,6 +383,8 @@ class Draw:
         path: Path,
         pen: Pen | None = None,
         brush: Brush | None = None,
+        *,
+        even_odd: bool = False,
     ) -> None:
         """Stroke and/or fill ``path``.
 
@@ -263,14 +392,27 @@ class Draw:
         ``pen`` may be ``None`` for fill-only, ``brush`` may be ``None``
         for stroke-only.  Fill is rendered first so the stroke sits on
         top (matches aggdraw and standard PDF semantics).
+
+        The optional keyword ``even_odd`` (wave 1330B — no aggdraw
+        equivalent) switches the *fill* rule to even-odd.  This is a
+        per-call setting so the same :class:`Path` instance can be
+        reused for both rules across successive draws without leaking
+        state.
         """
         sk_path = path._sk
+        if even_odd:
+            sk_path.setFillType(skia.PathFillType.kEvenOdd)
+        else:
+            sk_path.setFillType(skia.PathFillType.kWinding)
+        canvas = self._canvas
         if brush is not None:
-            self._canvas.drawPath(sk_path, self._make_fill_paint(brush.color))
+            canvas.drawPath(sk_path, self._make_fill_paint(brush.color))
+            self._dirty = True
         if pen is not None:
-            self._canvas.drawPath(
+            canvas.drawPath(
                 sk_path, self._make_stroke_paint(pen.color, pen.width),
             )
+            self._dirty = True
 
     # The remaining methods below are NOT exercised by the renderer at
     # the time of porting (the audit in wave 1329 confirmed it), but
@@ -290,12 +432,15 @@ class Draw:
         for i in range(2, len(xy_list), 2):
             p.lineTo(float(xy_list[i]), float(xy_list[i + 1]))
         p.close()
+        canvas = self._canvas
         if brush is not None:
-            self._canvas.drawPath(p, self._make_fill_paint(brush.color))
+            canvas.drawPath(p, self._make_fill_paint(brush.color))
+            self._dirty = True
         if pen is not None:
-            self._canvas.drawPath(
+            canvas.drawPath(
                 p, self._make_stroke_paint(pen.color, pen.width),
             )
+            self._dirty = True
 
     def line(self, xy: tuple[float, float, float, float], pen: Pen) -> None:
         if pen is None:
@@ -304,6 +449,7 @@ class Draw:
             float(xy[0]), float(xy[1]), float(xy[2]), float(xy[3]),
             self._make_stroke_paint(pen.color, pen.width),
         )
+        self._dirty = True
 
     def rectangle(
         self,
@@ -314,12 +460,15 @@ class Draw:
         rect = skia.Rect.MakeLTRB(
             float(xy[0]), float(xy[1]), float(xy[2]), float(xy[3]),
         )
+        canvas = self._canvas
         if brush is not None:
-            self._canvas.drawRect(rect, self._make_fill_paint(brush.color))
+            canvas.drawRect(rect, self._make_fill_paint(brush.color))
+            self._dirty = True
         if pen is not None:
-            self._canvas.drawRect(
+            canvas.drawRect(
                 rect, self._make_stroke_paint(pen.color, pen.width),
             )
+            self._dirty = True
 
     def ellipse(
         self,
@@ -330,12 +479,15 @@ class Draw:
         rect = skia.Rect.MakeLTRB(
             float(xy[0]), float(xy[1]), float(xy[2]), float(xy[3]),
         )
+        canvas = self._canvas
         if brush is not None:
-            self._canvas.drawOval(rect, self._make_fill_paint(brush.color))
+            canvas.drawOval(rect, self._make_fill_paint(brush.color))
+            self._dirty = True
         if pen is not None:
-            self._canvas.drawOval(
+            canvas.drawOval(
                 rect, self._make_stroke_paint(pen.color, pen.width),
             )
+            self._dirty = True
 
     def symbol(self, *_args: Any, **_kwargs: Any) -> None:
         """No-op stub.
@@ -354,29 +506,21 @@ class Draw:
     # ---- flush ----------------------------------------------------------
 
     def flush(self) -> None:
-        """Commit pending draws and blit pixels back to the PIL image."""
+        """Commit pending draws and blit pixels back to the PIL image.
+
+        Fast path (wave 1330B): if no draw operations happened since the
+        last flush — common when the renderer rebinds ``Draw`` purely to
+        refresh after an external ``image.paste`` — this is a no-op.
+        """
+        if not self._dirty:
+            return
         # Force any pending GPU/CPU work to materialise in the backing
         # buffer.  For raster surfaces this is essentially a no-op but
         # we call it for parity with future GPU-backed surfaces.
         self._surface.flushAndSubmit()
-
-        if self._direct:
-            # ``_pixels`` was handed to skia via MakeRasterDirect, so it
-            # already holds the rendered RGBA bytes.
-            rgba_bytes = bytes(self._pixels)
-        else:
-            # Managed raster path: snapshot + readback.
-            snap = self._surface.makeImageSnapshot()
-            info = skia.ImageInfo.Make(
-                self._size[0],
-                self._size[1],
-                skia.kRGBA_8888_ColorType,
-                skia.kUnpremul_AlphaType,
-            )
-            out = bytearray(self._size[0] * self._size[1] * 4)
-            snap.readPixels(info, out, self._row_bytes, 0, 0)
-            rgba_bytes = bytes(out)
-
+        # ``_pixels`` was handed to skia via MakeRasterDirect, so it
+        # already holds the rendered RGBA bytes.
+        rgba_bytes = bytes(self._pixels)
         rendered = _PILImage.frombytes("RGBA", self._size, rgba_bytes)
         # Convert back to the PIL image's original mode and paste in
         # place so callers that still hold a reference see the update.
@@ -386,6 +530,7 @@ class Draw:
             self._pil.paste(rendered.convert("RGB"))
         else:
             self._pil.paste(rendered.convert(self._pil.mode))
+        self._dirty = False
 
 
 __all__ = ["Brush", "Draw", "Path", "Pen"]

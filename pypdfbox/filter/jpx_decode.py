@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 from typing import BinaryIO
 
+import imagecodecs
 from PIL import Image
 
 from pypdfbox.cos import COSDictionary
@@ -61,8 +62,14 @@ class JPXDecode(Filter):
     """``/JPXDecode`` filter (ISO 32000-1 §7.4.9).
 
     Decodes a JPEG 2000 (JP2 / JPX / raw J2K) codestream by delegating to
-    Pillow's OpenJPEG-backed ``Jpeg2KImagePlugin``. Encoding is supported
-    through the same Pillow backend.
+    :func:`imagecodecs.jpeg2k_decode` (OpenJPEG-backed, same backend
+    Pillow's plugin uses but exposed via a thin C API). Falls back to
+    Pillow's ``Jpeg2KImagePlugin`` for the 16-bit grayscale path and as
+    a general safety net so byte-order semantics for 16-bpc samples
+    remain Pillow's well-tested ``I;16B`` (big-endian, PDF-canonical).
+    Encoding stays on Pillow's OpenJPEG bridge because imagecodecs'
+    encoder requires extra configuration to reproduce Pillow's default
+    JP2-container output.
 
     Upstream ``JPXFilter`` raises on encode because Java's standard
     library has no JPEG 2000 encoder — the missing capability is
@@ -94,24 +101,53 @@ class JPXDecode(Filter):
         if not encoded_bytes:
             return DecodeResult(parameters=out_params, bytes_written=0)
 
-        try:
-            with Image.open(io.BytesIO(encoded_bytes)) as image:
-                image.load()
-                samples = image.tobytes()
-                width, height = image.size
-                mode = image.mode
-                bands = image.getbands()
-        except Exception as exc:
-            raise OSError(f"JPXDecode: OpenJPEG decode failed: {exc}") from exc
+        samples: bytes
+        width: int
+        height: int
+        num_components: int
+        bpc: int
 
-        # Pillow modes → component count + bits-per-component:
-        #   "1"     → 1 component, 1 bpc (rare for JPX, but pad to 8)
-        #   "L"     → 1 component, 8 bpc (DeviceGray)
-        #   "I;16*" → 1 component, 16 bpc (DeviceGray, high-precision)
-        #   "RGB"   → 3 components, 8 bpc (DeviceRGB)
-        #   "RGBA"  → 4 components, 8 bpc (DeviceRGB + alpha)
-        #   "CMYK"  → 4 components, 8 bpc (DeviceCMYK)
-        num_components, bpc = _mode_components_and_bpc(mode, bands)
+        # Primary path: imagecodecs (OpenJPEG, C-level decode). Only the
+        # 8-bit / uint8 case is taken — uint16 results need explicit
+        # endian handling to match PDF's MSB-first byte order, which
+        # Pillow's "I;16B" mode already produces, so we defer to Pillow
+        # for 16-bpc rasters and for anything imagecodecs cannot decode.
+        array = None
+        try:
+            decoded_array = imagecodecs.jpeg2k_decode(encoded_bytes)
+        except Exception:
+            decoded_array = None
+
+        if decoded_array is not None and decoded_array.dtype.itemsize == 1:
+            array = decoded_array
+
+        if array is not None:
+            height, width = array.shape[0], array.shape[1]
+            num_components = 1 if array.ndim == 2 else array.shape[2]
+            bpc = 8
+            samples = array.tobytes()
+        else:
+            # Fallback path — Pillow's OpenJPEG plugin. Covers 16-bpc
+            # grayscale (where Pillow's "I;16B" mode delivers PDF-correct
+            # big-endian bytes) and any variant imagecodecs declines.
+            try:
+                with Image.open(io.BytesIO(encoded_bytes)) as image:
+                    image.load()
+                    samples = image.tobytes()
+                    width, height = image.size
+                    mode = image.mode
+                    bands = image.getbands()
+            except Exception as exc:
+                raise OSError(f"JPXDecode: OpenJPEG decode failed: {exc}") from exc
+
+            # Pillow modes → component count + bits-per-component:
+            #   "1"     → 1 component, 1 bpc (rare for JPX, but pad to 8)
+            #   "L"     → 1 component, 8 bpc (DeviceGray)
+            #   "I;16*" → 1 component, 16 bpc (DeviceGray, high-precision)
+            #   "RGB"   → 3 components, 8 bpc (DeviceRGB)
+            #   "RGBA"  → 4 components, 8 bpc (DeviceRGB + alpha)
+            #   "CMYK"  → 4 components, 8 bpc (DeviceCMYK)
+            num_components, bpc = _mode_components_and_bpc(mode, bands)
 
         bytes_written = decoded.write(samples)
 
