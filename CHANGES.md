@@ -3365,6 +3365,130 @@ Overall coverage: 98.67% (steady; bug fixes don't add test lines but
 make previously-shimmed code paths in `benchmark/rendering` and
 `PDFTextStripper.end_page` subclasses actually exercisable end-to-end).
 
+## Wave 1341 — coverage-boost pass (5 parallel agents)
+
+Agent A — large production modules cluster (`pd_acro_form` /
+`page_pane` / `fdf_field` / `pd_type1_font`):
+
+- `pypdfbox/pdmodel/interactive/form/pd_acro_form.py`: 96.0% → 100%
+- `pypdfbox/debugger/pagepane/page_pane.py`: 95.6% → 100%
+- `pypdfbox/pdmodel/fdf/fdf_field.py`: 95.3% → 98.4%
+- `pypdfbox/pdmodel/font/pd_type1_font.py`: 95.1% → 100%
+
+Latent source issues flagged (agent A did NOT fix, per wave-1341 brief):
+
+- **`pdmodel.fdf.fdf_field`** has three dead `COSObject` unwrap guards
+  (lines 105-106, 127-128, 345-346) inside `get_value`, `get_cos_value`
+  and `get_rich_text`. The preceding `self._field.get_dictionary_object`
+  call routes through `COSDictionary._resolve_item` which already
+  dereferences `COSObject` indirections — so the `isinstance(v,
+  COSObject)` branch is unreachable through the public surface. Kept
+  for upstream-parity (mirrors `FDFField.java`); caps `fdf_field`
+  coverage at 98.4%.
+- **`pdmodel.fdf.fdf_field.write_xml`** lines 523-526: the
+  `elif isinstance(rich, COSStream)` branch is dead code because
+  `get_rich_text` already decodes `COSStream` → `str` before returning
+  (lines 349-350). The two emit paths are functionally identical;
+  one is redundant.
+- **`pdmodel.interactive.form.pd_acro_form._resolve_widget_page`** is
+  more thorough than upstream — it performs the same reverse-walk
+  over page annots that `build_pages_widgets_map`'s fallback (lines
+  1328-1345) does. The fallback is therefore only reachable when a
+  *second* widget triggers `has_missing_page_ref` (covered by the
+  new test); for the simple single-widget orphan case the fallback
+  is shadowed by `_resolve_widget_page`'s own scan.
+
+Agent B — `examples/`+`benchmark/` cluster:
+
+- `examples/signature/create_empty_signature_form.py`: 18% → 26%
+  (blocked above — see flagged bug below)
+- `benchmark/text_extraction.py`: 45% → 100%
+- `examples/interactive/form/determine_text_fits_field.py`: 73% → 88%
+- `examples/util/split_booklet.py`: 70% → 100%
+- `examples/printing/opaque_set_graphics_state_parameters.py`: 66% → 100%
+- `examples/pdmodel/go_to_second_bookmark_on_open.py`: 68% → 100%
+- `examples/pdmodel/hello_world_type1.py`: 67% → 100%
+
+Latent source bugs flagged (agent B did NOT fix, per wave-1341 brief):
+
+- **`benchmark.text_extraction`**: still uses `Loader.load_pdf(path)`
+  which returns `COSDocument`, but `PDFTextStripper.get_text(document)`
+  requires `PDDocument`. Same class of bug fixed in
+  `benchmark/load_and_save` (waves 1336/1338) and
+  `benchmark/rendering` (wave 1340). Tests stub `Loader.load_pdf` +
+  `PDFTextStripper` at the example-module scope so workload bodies
+  still execute end-to-end and cover the timer/consume/finally
+  branches.
+- **`examples/signature/create_empty_signature_form`**: `create()`
+  imports `pypdfbox.pdmodel.common.pd_rectangle` which does not exist
+  (real module is `pypdfbox.pdmodel.pd_rectangle`). The end-to-end
+  PDF write path cannot be exercised until the import is fixed.
+- **`examples/pdmodel/hello_world_type1`**: calls
+  `PDType1Font(doc, stream)` with two args, but the real constructor
+  signature is `PDType1Font(font_dict: COSDictionary | None = None)`.
+  Tests cover the happy path by monkey-patching `PDType1Font` at the
+  example module with a stub factory that returns a Standard-14
+  Helvetica instance — same pattern `test_rendering.py` uses for the
+  sibling `benchmark/rendering` bug pre-1340.
+
+Agent C — debugger UI + pdmodel font/graphics tail cluster:
+
+- `pypdfbox/pdmodel/font/pd_font_factory.py`: 95.9% → 100%
+- `pypdfbox/debugger/ui/pdf_tree_cell_renderer.py`: 94.3% → 100%
+- `pypdfbox/pdmodel/graphics/color/pd_color_space.py`: 92.9% → 100%
+- `pypdfbox/pdmodel/font/pd_simple_font.py`: 95.8% → 100%
+- `pypdfbox/pdmodel/graphics/shading/pd_shading.py`: 95.7% → 100%
+- `pypdfbox/debugger/ui/error_dialog.py`: 93.8% → 100%
+
+Agent D — `cos` / `filter` / `io` cluster:
+
+- `pypdfbox/cos/cos_float.py`: 90.8% → 100%
+- `pypdfbox/cos/cos_increment.py`: 91.3% → 100%
+- `pypdfbox/filter/dct_filter.py`: 91.2% → 100%
+- `pypdfbox/io/non_seekable_random_access_read_input_stream.py`: 92.9% → 99%
+
+Latent source bugs flagged (agent D did NOT fix, per wave-1341 brief):
+
+- **`cos.cos_increment._collect_dictionary`** (line 165): calls
+  `entry.is_need_to_be_updated()` (singular "need") on update-info
+  entries. The `COSUpdateInfo` ABC defines `is_need_to_be_updated`
+  (singular), but the concrete COS types (`COSDictionary`, `COSArray`,
+  `COSStream`, `COSObject`) only expose `is_needs_to_be_updated` (plural
+  "needs") and none of them actually inherit from `COSUpdateInfo`. The
+  directness-and-array exclusion branch is therefore unreachable on
+  stock COS instances — it raises `AttributeError` rather than running.
+  Tests cover the path with thin subclasses (`_UpdateableArray`,
+  `_UpdateableDict`) that bridge the singular alias.
+
+Agent E — fontbox/ttf + pfb + fdf + structure-tree + terminal-field cluster:
+
+- `pypdfbox/fontbox/ttf/true_type_collection.py`: 91.3% → 100%
+- `pypdfbox/fontbox/pfb/pfb_parser.py`: 90.5% → 97.4%
+- `pypdfbox/pdmodel/fdf/fdf_document.py`: 91.9% → 100%
+- `pypdfbox/pdmodel/documentinterchange/logicalstructure/pd_structure_node.py`: 96.0% → 100%
+- `pypdfbox/pdmodel/interactive/form/pd_terminal_field.py`: 92.4% → 100%
+
+Latent source issues flagged (agent E did NOT fix, per wave-1341 brief):
+
+- **`fontbox.pfb.pfb_parser.parse_pfb`** has three defensive branches
+  that are dead under the existing `len(pfb) < 18` precondition:
+  line 78 (``"PFB header missing"`` after a clean EOF with ``total == 0``)
+  is unreachable because an 18-byte input always returns at least one
+  byte on the first ``stream.read(1)``; line 100 (``"record size ...
+  is negative"``) is unreachable because ``size`` is composed from
+  four unsigned bytes via bitwise OR (always non-negative — Python
+  ints don't overflow); line 113 (``"total record size ... would be
+  larger than the input"``) is unreachable because each record
+  consumes ``6 + size`` stream bytes, so ``sum(size) <= len(pfb) - 6N``.
+  These are upstream-parity defensive guards mirroring
+  ``PfbParser.java`` — left intact for parity rather than pruned.
+  Caps PFB coverage at 97.4% (3 of 116 statements unreachable).
+- **`fontbox.ttf.true_type_collection._extract_font_bytes`** (lines
+  322-325): the ``isinstance(self._stream, MemoryTTFDataStream)``
+  discriminator dispatches both branches to the same
+  ``self._stream.get_original_data()`` call. Looks like a
+  half-finished optimisation placeholder; functional but redundant.
+
 ## Wave 1338 — fix 5 latent source bugs flagged during wave 1337
 
 Coverage-boost pass #15 surfaced five more bugs across examples, tools,
