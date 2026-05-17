@@ -50,7 +50,7 @@ def _make_doc_and_renderer() -> tuple[PDDocument, PDFRenderer]:
     renderer = PDFRenderer(doc)
     # Prime the renderer's per-render state without doing a full render.
     renderer._image = Image.new("RGB", (100, 100), (255, 255, 255))
-    import aggdraw  # type: ignore[import-not-found]
+    from pypdfbox.rendering import _aggdraw_compat as aggdraw  # noqa: PLC0415
 
     renderer._draw = aggdraw.Draw(renderer._image)
     renderer._draw.setantialias(True)

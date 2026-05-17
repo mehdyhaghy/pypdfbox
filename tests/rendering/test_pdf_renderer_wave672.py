@@ -3,11 +3,11 @@ from __future__ import annotations
 import types
 from typing import Any
 
-import aggdraw  # type: ignore[import-not-found]
 from PIL import Image
 
 from pypdfbox.cos import COSName
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
+from pypdfbox.rendering import _aggdraw_compat as aggdraw
 from pypdfbox.rendering.pdf_renderer import PDFRenderer, _GState
 
 

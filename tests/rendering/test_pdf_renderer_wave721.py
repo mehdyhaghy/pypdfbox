@@ -4,11 +4,11 @@ import builtins
 from collections.abc import Callable
 from typing import Any
 
-import aggdraw  # type: ignore[import-not-found]
 from PIL import Image
 
 from pypdfbox.cos import COSArray, COSFloat, COSName
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
+from pypdfbox.rendering import _aggdraw_compat as aggdraw
 from pypdfbox.rendering.pdf_renderer import PDFRenderer, _GState
 
 

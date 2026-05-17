@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
-import aggdraw  # type: ignore[import-not-found]
 from PIL import Image
 
 from pypdfbox.cos import COSName, COSStream
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.pdmodel.graphics.state.pd_soft_mask import PDSoftMask
+from pypdfbox.rendering import _aggdraw_compat as aggdraw
 from pypdfbox.rendering.pdf_renderer import PDFRenderer, _GState
 
 

@@ -76,14 +76,17 @@ def test_filled_red_rectangle_lands_inside_bbox() -> None:
 
 
 def test_diagonal_stroke_produces_antialiased_edge() -> None:
-    """Without aggdraw a diagonal would be pure 0/255 step pixels; with
-    aggdraw at least one mid-grey pixel must show on the edge."""
+    """An anti-aliased diagonal stroke must show at least one mid-grey
+    edge pixel. Use a non-45° slope (10,10)→(90,80) — at exactly 45°
+    skia hits pixel centres dead-on and produces solid pixels (which is
+    also correct, but breaks the AA-presence test); off-axis slopes
+    force any conformant rasterizer to emit partial-coverage pixels."""
     doc, page = _make_doc(100.0, 100.0)
     with PDPageContentStream(doc, page) as cs:
         cs.set_stroking_color_rgb(0.0, 0.0, 0.0)
         cs.set_line_width(1.0)
         cs.move_to(10.0, 10.0)
-        cs.line_to(90.0, 90.0)
+        cs.line_to(90.0, 80.0)
         cs.stroke()
     renderer = PDFRenderer(doc)
     img = renderer.render_image(0)

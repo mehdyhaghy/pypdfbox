@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from typing import Any
 
-import aggdraw  # type: ignore[import-not-found]
 from PIL import Image
 
 from pypdfbox.cos import COSStream
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.pdmodel.graphics.blend_mode import BlendMode
 from pypdfbox.rendering import PDFRenderer
+from pypdfbox.rendering import _aggdraw_compat as aggdraw
 from pypdfbox.rendering.pdf_renderer import _AggdrawPathPen, _GState
 
 

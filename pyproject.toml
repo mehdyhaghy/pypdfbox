@@ -52,9 +52,15 @@ classifiers = [
 # CHANGES.md for rationale.
 dependencies = [
     "cryptography>=42",   # Apache-2.0 / BSD
-    "Pillow>=12.2.0",     # HPND (BSD-style, MIT-compatible) — image canvas + codecs for pypdfbox.rendering
+    "Pillow>=12.2.0",     # HPND (MIT-CMU) — KEEP for ICC color transforms via ImageCms (LittleCMS2-backed) + a few stragglers
     "fontTools>=4",       # MIT — TTF/CFF/OTF/Type1 parsing for pypdfbox.fontbox
-    "aggdraw>=1.3",       # BSD-3 — anti-aliased path/shape drawing on top of Pillow
+    # aggdraw removed in wave 1329 — replaced by skia-python (same draw
+    # functionality, BSD-3, actively maintained). aggdraw was stale
+    # since March 2020 and its PyPI License field ("Python (MIT style)")
+    # is a legacy descriptive string rather than an SPDX identifier.
+    "skia-python>=144",   # BSD-3-Clause — canvas + path drawing + AA + ICC color spaces; PNG/JPEG/WebP I/O (replaces aggdraw)
+    "imagecodecs>=2026",  # BSD-3-Clause — TIFF + CCITT (RLE/T.4/T.6) + JPEG2K + long tail of codecs
+    "numpy>=2",           # BSD-3 AND 0BSD AND MIT AND Zlib AND CC0-1.0 (all permissive; bundled-code mix) — pixel math + CMYK conversion
     "jbig2-parser",       # MIT — JBIG2 image decoder (Rust-backed, used by /JBIG2Decode filter)
 ]
 

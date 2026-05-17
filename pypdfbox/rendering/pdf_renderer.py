@@ -8,7 +8,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
-import aggdraw  # type: ignore[import-not-found]
 from PIL import Image, ImageChops, ImageDraw
 
 from pypdfbox.contentstream.pdf_stream_engine import PDFStreamEngine
@@ -24,6 +23,7 @@ from pypdfbox.cos import (
     COSString,
 )
 from pypdfbox.io.random_access_read_buffer import RandomAccessReadBuffer
+from pypdfbox.rendering import _aggdraw_compat as aggdraw
 from pypdfbox.rendering.image_type import ImageType
 from pypdfbox.rendering.render_destination import RenderDestination
 

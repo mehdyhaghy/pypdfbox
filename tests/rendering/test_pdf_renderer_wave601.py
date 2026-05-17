@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import aggdraw  # type: ignore[import-not-found]
 from PIL import Image
 
 from pypdfbox.cos import COSFloat, COSName
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
+from pypdfbox.rendering import _aggdraw_compat as aggdraw
 from pypdfbox.rendering.pdf_renderer import PDFRenderer, _GState
 
 

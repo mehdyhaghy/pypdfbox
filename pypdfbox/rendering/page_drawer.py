@@ -580,7 +580,9 @@ class PageDrawer(PDFGraphicsStreamEngine):
             from PIL import Image  # noqa: PLC0415
 
             if isinstance(graphics, Image.Image):
-                import aggdraw  # type: ignore[import-not-found]  # noqa: PLC0415
+                from pypdfbox.rendering import (  # noqa: PLC0415
+                    _aggdraw_compat as aggdraw,
+                )
 
                 rdr._image = graphics  # noqa: SLF001
                 rdr._draw = aggdraw.Draw(graphics)  # noqa: SLF001

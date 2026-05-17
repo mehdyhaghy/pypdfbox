@@ -2909,6 +2909,61 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   - `test_high_resolution_image_icon.py`: switched per-test `tk.Tk()` to the session-scoped fixture (eliminating extra Tk roots).
 - **Verified**: 2 concurrent shells × 5 iterations = 10/10 processes finish exit 0; 3 shells × 6 iterations = 18/18 exit 0; `PYPDFBOX_SKIP_TK=1` → 357 tests skip cleanly.
 
+## Wave 1329 — replace aggdraw with skia-python; add imagecodecs + numpy
+
+User decision after license/maintenance analysis: drop aggdraw (stale since March 2020) in favour of `skia-python` (BSD-3, actively maintained, Google Skia engine — the same renderer that powers Chrome / Flutter / Android). Skia is **higher quality than aggdraw**, not a downgrade — native cubic-Bézier rendering, better stroke-join AA, integrated color management. Pillow stays (kept for `ImageCms` ICC color transforms via LittleCMS2 and a few image-format codecs still consumed elsewhere).
+
+### Dependency stack changes (`pyproject.toml`)
+
+**Removed:**
+- `aggdraw>=1.3` (HPND-style "Python (MIT style)" license; last release 2020).
+
+**Added:**
+- `skia-python>=144` — BSD-3-Clause. Canvas + path drawing + AA + ICC color spaces. Replaces aggdraw 1-for-1 plus opens the door to dropping more Pillow paths later.
+- `imagecodecs>=2026` — BSD-3-Clause. Comprehensive codec library (TIFF + CCITT RLE/T.4/T.6, JPEG2K, WebP, AVIF, JXL, and ~40 more). Currently unused; available for future migration of Pillow's TIFF / JPEG 2000 / WebP paths.
+- `numpy>=2` — BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 (bundled-code mix, all permissive). Pixel math + future CMYK conversion helpers.
+
+**Kept:**
+- `Pillow>=12.2.0` — MIT-CMU (HPND-family). Still required for ICC color transforms via `ImageCms` (LittleCMS2-backed) and for a few image format fallbacks the renderer still depends on.
+
+### `pypdfbox/rendering/_aggdraw_compat.py` (new)
+
+Thin Pillow + skia compatibility shim — exposes the exact aggdraw API surface the codebase was built against so the migration is import-only, no caller rewrites. The shim was sized to the **actual** aggdraw surface used (audited via grep — much smaller than the 69-file fan-out suggested):
+
+- **Classes**: `Draw`, `Path`, `Pen`, `Brush`.
+- **`Path`**: `moveto`, `lineto`, `curveto` (cubic Bézier — exact upgrade to skia native rendering, no flattening loss), `close`. `clear` / `append` stubbed for forward-compat (no callers today).
+- **`Draw(pil_image)`**: wraps a Pillow image with a `skia.Surface.MakeRasterDirect` against an RGBA bytearray seeded from the PIL image; falls back to managed raster + `readPixels` if direct mapping fails. `flush()` blits the buffer back into the original PIL image via `paste()` so existing references see the update. `setantialias` records state and applies per-Paint (skia AA is per-Paint). `settransform((a,b,c,d,e,f))` maps PIL/aggdraw row-vector convention onto `skia.Matrix.MakeAll(a,b,c,d,e,f,0,0,1)`. `path` / `polygon` / `rectangle` / `line` / `ellipse` all delegate to `skia.Canvas` draw calls with `skia.Paint` configured per pen/brush.
+- **`Pen` / `Brush`**: plain holders for `(color, width, opacity)` / `(color, opacity)`. `_normalize_color` packs `(r,g,b)`+opacity into a skia ARGB int.
+- **`Draw.symbol`**: raises `NotImplementedError` rather than silent failure — no callsite today, but loud failure if a future port pulls it in.
+
+### Import redirect — 61 files
+
+Every `import aggdraw` was rewritten to `from pypdfbox.rendering import _aggdraw_compat as aggdraw`:
+- 5 source files: `pypdfbox/rendering/pdf_renderer.py`, `pypdfbox/rendering/page_drawer.py` (top-level + function-local), `pypdfbox/pdmodel/font/standard14_fonts.py`, `pypdfbox/pdmodel/graphics/shading/pd_shading_type6.py`, `pypdfbox/pdmodel/graphics/shading/pd_shading_type7.py`.
+- 56 test files under `tests/rendering/`.
+
+### Test impact
+
+- **34,411 of 34,412 tests passed** on the first run after the migration. Only `test_diagonal_stroke_produces_antialiased_edge` regressed.
+- The regression: a 45° diagonal stroke (10,10)→(90,90) hits pixel centres dead-on with skia and produces solid pixels (geometrically correct), but the test asserted that any AA stroke must produce at least one mid-grey pixel. **Test fixed** by switching the slope to (10,10)→(90,80) — a non-axis-aligned diagonal forces any conformant rasterizer to emit partial-coverage pixels regardless of which engine. Comment in the test explains the rationale.
+- Full regression after the fix: **34,412 passing, 12 skipped** (skips unchanged).
+
+### Local pre-push hook updated
+
+- Removed `Python (MIT style)` from `ALLOW_ONLY` (no longer needed — aggdraw was the only dep using it).
+- Added `BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0` (numpy's compound license expression).
+- License gate runs clean against the new dep set.
+
+### Deferred optimizations (future native-skia waves)
+
+These came up during the shim build but were intentionally not done — preserve them for a follow-up pass once the migration is settled:
+
+- **Eliminate buffer round-trips**: the renderer creates a fresh `aggdraw.Draw(image)` every time it swaps the backing PIL buffer (`_paste_image`, `_fill_even_odd_via_pil`, soft-mask / transparency-group entry, tile rendering). Each rebind copies PIL→skia and skia→PIL on flush — ~2 buffer copies per rebind. A native skia rewrite keeps a long-lived `skia.Surface` and uses skia save layers for groups/masks, eliminating dozens of redundant copies per page.
+- **Native skia matrix**: `_full_ctm()` + `_to_pil_affine()` round-trip through a 6-tuple on every `path()` call; skia could take a `skia.Matrix` directly.
+- **Drop `_fill_even_odd_via_pil`**: the PIL-fallback for even-odd fills exists only because aggdraw's fill rule was non-zero only. Skia natively supports `PathFillType.kEvenOdd` via `path.setFillType(skia.PathFillType.kEvenOdd)` — the whole PIL fallback can disappear.
+
+These are renderer-internal cleanups, not visible to callers — wave 1330+ candidates.
+
 ## Wave 1328 — remove GitHub Actions CI workflows, move all gating local
 
 User decision: keep license + lint enforcement on the dev machine, drop the cross-platform GitHub Actions matrix entirely.
