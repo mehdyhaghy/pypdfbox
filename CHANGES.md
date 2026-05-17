@@ -3365,6 +3365,51 @@ Overall coverage: 98.94% (steady). Tests: 36,604.
 `create_empty_signature_form` body coverage is back to 26% (existing
 tests only hit the dispatcher); next coverage wave will sweep it.
 
+## Wave 1343 — coverage-boost pass (parallel agents)
+
+Agent A — `examples.signature.create_empty_signature_form`:
+
+- `pypdfbox/examples/signature/create_empty_signature_form.py`: 26.3% → 100%
+  (added end-to-end `create()` and `main([path])` round-trip tests now
+  that wave 1342's three bug fixes unblocked the body).
+- Flagged new latent bug: lines 56-57 use Java-style mutate-the-getter
+  idiom (`acro_form.get_fields().append(...)` / `page.get_annotations()
+  .append(...)`) which is a no-op in the Python port — the saved PDF
+  has empty `/Fields` and `/Annots` arrays. Suggested fix: switch to
+  `acro_form.set_fields([sig])` plus an `add_annotation` helper on
+  `PDPage`. Not shimmed; documented for the next bug-fix wave.
+
+Agent D — parser+util tail cluster:
+
+- `pypdfbox/pdfparser/brute_force_parser.py`: 89.7% → 100%
+- `pypdfbox/util/hex.py`: 90.1% → 100%
+
+Agent B — examples cluster:
+
+- `pypdfbox/examples/signature/create_signature_base.py`: 83.9% → 100%
+- `pypdfbox/examples/util/add_watermark_text.py`: 85.0% → 100%
+- `pypdfbox/examples/util/extract_text_by_area.py`: 72.7% → 100%
+- `pypdfbox/examples/interactive/form/add_border_to_field.py`: 75.8% → 100%
+
+Agent C — `cos.cos_name` / `fontbox.ttf.glyf_simple_descript` /
+`pdmodel.fdf.fdf_annotation_polyline`:
+
+- `pypdfbox/cos/cos_name.py`: 94.7% → 100% (covered the
+  `NotImplemented` arms of `__eq__` / `__le__` / `__gt__` / `__ge__`
+  plus `__repr__`)
+- `pypdfbox/fontbox/ttf/glyf_simple_descript.py`: 91.0% → 100% (covered
+  the four short-vector / dual-flag combinations of `read_coords`, the
+  successful REPEAT-flag `index += repeats` advancement, the
+  `from_glyph` n==0 fast-path, the `_to_signed_short` positive branch,
+  and the `program.bytecode` capture inside `from_glyph`)
+- `pypdfbox/pdmodel/fdf/fdf_annotation_polyline.py`: 91.0% → 100%
+  (covered `init_vertices` None/empty/non-float error paths,
+  `init_styles` bad-hex / wrong-length / missing-# no-ops + valid-hex
+  parse, `set_vertices(None)` removal, `get_vertices` non-array
+  fall-through, and `get_end_point_ending_style` default return).
+- No latent bugs found in any of the three files; all uncovered lines
+  were genuine corner branches that just needed exercising.
+
 ## Wave 1340 — fix 2 latent source bugs flagged during wave 1339
 
 - **benchmark.rendering**: replaced `Loader.load_pdf(path)` (returns
