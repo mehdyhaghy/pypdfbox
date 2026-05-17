@@ -2909,6 +2909,45 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   - `test_high_resolution_image_icon.py`: switched per-test `tk.Tk()` to the session-scoped fixture (eliminating extra Tk roots).
 - **Verified**: 2 concurrent shells × 5 iterations = 10/10 processes finish exit 0; 3 shells × 6 iterations = 18/18 exit 0; `PYPDFBOX_SKIP_TK=1` → 357 tests skip cleanly.
 
+## Wave 1331 — coverage-boost pass #11 (5 parallel agents, +258 hand-written tests)
+
+18 modules from 86-90% to **95-100%**. Closes the biggest single gap (`_aggdraw_compat.py` was 68% post-wave-1330 since it's net-new shim code) plus a sweep of fontbox/pdfparser/operator/processor modules at 88%.
+
+### _aggdraw_compat — coverage boost
+
+- `pypdfbox/rendering/_aggdraw_compat.py` **68% → 100%**: 44 hand-written tests at `tests/rendering/test_aggdraw_compat_coverage.py` covering `_normalize_color` (int passthrough, named-string lookup, unknown-string fallback to black, 3-tuple + opacity, 4-tuple alpha overriding opacity); `Pen` / `Brush` color+ARGB packing; `Path` moveto/lineto/curveto/close chain, `set_fill_type_even_odd` / `set_fill_type_winding`, `clear`, `append(Path)` + `append(non-Path)` no-op; `_acquire_surface` cache-miss + cache-hit, unknown PIL mode promoted to RGBA; `Draw.__init__` RGBA fast path + non-RGBA conversion; `setantialias`; `settransform` reset (None) + 6-tuple + malformed; `flush` no-op fast path when clean + blit-back to RGBA / RGB / L; `path` even_odd True/False + brush-only / pen-only / pen+brush / neither; `polygon` short-circuit; `line` / `rectangle` / `ellipse` fill+stroke matrix; `symbol` `NotImplementedError`.
+
+### CFF cluster — coverage boost
+
+- `fontbox/cff/type1_keyword.py` **88% → 100%**: 22 tests covering `Key` / `Type1KeyWord` dunder methods, `value_of_key` overloads incl. unknown one/two-byte lookups and Key-with-no-Type1-mapping misses (e.g. `Key.AND`), `values()` snapshot.
+- `fontbox/cff/type2_char_string.py` **86% → 100%**: 50 tests covering bytes/bytearray/memoryview/None constructor + `TypeError` arm; `get_width` cache hit and `T2WidthExtractor` exception fallback; every operator branch in `convert_type2_command` (`hflex1`/`flex1` dx/dy dominant, `rcurveline`, `rlinecurve`, unknown-operator fallback, etc.); all `add_alternating_curve` / `add_curve` arms; `_token_name` / `_coerce_program_token` / `_split` helpers.
+- `fontbox/cff/type2_char_string_parser.py` **88% → 100%**: 22 tests covering `parse_sequence` callsubr/callgsubr dispatch arms, `get_subr_bytes` non-int operand short-circuit, every `read_number` two-byte/four-byte truncation path, `cntrmask` / `hintmask` mask-byte skip continuations.
+
+### GSUB cluster — coverage boost
+
+- `fontbox/ttf/gsub/glyph_substitution_data_extractor.py` **88% → 100%**: 15 tests covering `populate_gsub_data` None-lang-sys guard, out-of-range feature/lookup-index bounds checks, multi-substitution dispatch, unknown-subtype `else` + debug log, size-mismatch warning/early-return paths for Format-2 single-subst, multi-subst Format-1, and alternate-subst Format-1, `put_new_substitution_entry` override-debug branch.
+- `fontbox/ttf/gsub/gsub_worker_for_devanagari.py` **88% → 95%**: 12 tests covering supported feature with `None` payload, empty rkrf-substitution early-return, missing 2-element-cluster early-return, i-matra pop+insert reposition, short-input `adjust_reph_position`, empty-cmap zero-glyph helpers, dict-feature `apply_gsub_feature` delegate, `apply_transforms` rkrf-from-vatu bail-out. Two defensive port-faithful branches in `reposition_glyphs` (bounds-drift rewind + VIRAMA-with-following-I-matra swap) remain unreachable under normal flow.
+- `fontbox/ttf/gsub/gsub_worker_for_gujarati.py` **88% → 95%**: 11 tests — parallel coverage suite to the Devanagari worker, using Gujarati code points; same unreachable defensive branches.
+
+### Four 88%-coverage modules — boost
+
+30 tests across 4 files.
+
+- `pdfparser/object_numbers.py` **88% → 97%**: 7 tests covering empty/non-integer `/Index` error paths, `next()` alias, `next_value`'s range-advance branch that `__next__`'s `has_next` guard normally skips. 2 dead defensive lines remain (StopIteration on second-pair which the buffer-sizing in `__init__` makes unreachable).
+- `pdfparser/pdf_xref_stream.py` **88% → 100%**: 9 tests covering `add_trailer_info` happy/empty paths, ROOT/INFO/PREV/ENCRYPT skip in direct-forcing loop, four public camelCase-style aliases, multi-range gap in `_get_index_entry`.
+- `fontbox/ttf/wgl4_names.py` **88% → 100%**: 7 tests covering the `WGL4Names` static façade (`get_glyph_index` / `get_glyph_name` / `get_all_names` delegation + freshness).
+- `pdmodel/fixup/processor/acro_form_orphan_widgets_processor.py` **88% → 96%**: 7 tests via `PDFieldFactory.create_field` monkeypatching driving both widget-with-parent and widget-without-parent branches in `handle_annotations`, full `resolve_non_root_field` happy path with parent-chain walk + cache write. 4 lines remain — `except ImportError` belt-and-braces for `COSName` / `PDAnnotationWidget` / `PDFieldFactory` imports that never fail in the test environment.
+
+### Operator + function modules — coverage boost
+
+37 tests across 5 files. All 5 modules **100%**.
+
+- `contentstream/operator/markedcontent/end_marked_content_sequence.py` **88% → 100%**: `context is None` and missing-`end_marked_content_sequence` hook early returns (defensive registry-standalone path).
+- `contentstream/operator/text/set_text_horizontal_scaling.py` **88% → 100%**: missing-operand raise, non-`COSNumber` operand short-circuit, `context is None`, `get_text_state` missing, `text_state is None`, missing `set_horizontal_scaling` setter, happy-path float dispatch.
+- `pdmodel/common/function/type4/operator.py` **88% → 100%**: abstract-instantiation `TypeError`, `super().execute()` reaching the `raise NotImplementedError` body, concrete-subclass stack mutation including `pop_int` round-trip.
+- `contentstream/operator/state/restore.py` **89% → 100%**: no-context no-op, PDFBOX-161 `EmptyGraphicsStackException` at depth ≤ 1, deep-stack happy path, extra-operand tolerance, `OSError` ancestry of the exception.
+- `contentstream/operator/markedcontent/begin_marked_content_sequence.py` **90% → 100%**: no-context return, missing hook attribute, last-COSName-wins selection, non-name operand filter, empty operand list, late `set_context` binding.
+
 ## Wave 1330 — graphics-stack quality-of-implementation (3 parallel agents)
 
 User wanted the graphics layer finished cleanly before resuming routine coverage waves. Three orthogonal optimizations landed together: wire `imagecodecs` into the filter chain, eliminate PIL↔skia buffer round-trips in the renderer + add native even-odd fill support, and migrate CMYK→RGB off Pillow's LittleCMS to an explicit numpy subtractive transform.
