@@ -3339,6 +3339,147 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   grayscale / CMYK paths, base `generate_rollover_appearance` /
   `generate_down_appearance` no-ops (agent E, wave 1339).
 
+## Wave 1348 — coverage-boost pass #16 (parallel agents)
+
+### Agent A — `pypdfbox/pdfwriter/cos_writer.py` 97.1% → 100% (the last big single-file gap)
+
+- New file `tests/pdfwriter/test_cos_writer_wave1348.py` (27 tests)
+  drives every residual defensive branch the prior 14 waves left
+  behind: `_format_xref_table_generation` rejecting `< 0` / `> 65535`;
+  the snake_case PDFBox-parity façades that forward to the
+  underscore-prefixed workers — `prepare_increment`, `do_write_header`,
+  `do_write_body`, `do_write_body_compressed`, `do_write_trailer`,
+  `do_write_x_ref_table`, `do_write_x_ref_inc` (BOTH branches — classic
+  xref via incremental and xref-stream via full-save),
+  `fill_gaps_with_free_entries`, `do_write_increment`;
+  `is_need_to_be_updated` non-callable-attribute and
+  exception-during-callable arms (returns `False` defensively in both);
+  the full `detect_possible_signature` body — non-dict guard, full-save
+  short-circuit, idempotent already-flagged guard, missing `/Type`,
+  unrelated `/Type`, missing `/ByteRange`, `ByteRange[2]` non-integer
+  slot, success edge for both `/Sig` and `/DocTimeStamp` placeholders
+  past source length, and the negative edge where the placeholder lies
+  inside source bytes; `_do_write_body_xref_stream` `info is not None`
+  arm via a trailer carrying both `/Root` and `/Info`;
+  `_pack_object_streams` `_is_packable` False `continue` via a
+  `COSStream` injected into `_key_object`; `_propagate_document_id`
+  early-return when the trailer already carries a 2-element `/ID`;
+  `_stage_encryption` `PublicKeyProtectionPolicy` arm via a stubbed
+  `PublicKeySecurityHandler` whose `prepare_document` records the
+  routing without needing X.509 / PKCS#7 infrastructure.
+- Full pdfwriter suite: 503 passing (+27 over wave 1347).
+- No source changes; no latent bugs flagged.
+
+### Agent B — `pypdfbox/multipdf/splitter.py` 93% → 100% and `pypdfbox/pdmodel/encryption/standard_security_handler.py` 97.1% → 100%
+
+- New file `tests/multipdf/test_splitter_wave1348.py` (22 tests) drives
+  the residual splitter branches: public-named hooks (`process_pages`,
+  `create_new_document_if_necessary`, `process_annotations(imported)`
+  1-arg form); `_process_annotations` source-side `/Annots` walk skipping
+  non-`COSDictionary` entries; popup back-reference rewrite from
+  source_ann_dict; orphan-popup clone + `set_page`; popup `/Parent`
+  source-side lookup and the `remove_item(/Parent)` orphan fallback;
+  `_stage_link_destination` named-destination str wrapping into
+  `PDNamedDestination` for `GoTo` action `/D`, source-target `get_page()`
+  exception path, cloned-link `get_action()` exception fallback;
+  `clone_structure_tree` annotation `/StructParent` clone and
+  normal-appearance-stream `/Resources` walk (incl. the `get_resources()`
+  exception arm via a patched `PDAnnotation.get_normal_appearance_stream`);
+  `process_resources` Form/Image XObject branches with real `PDFormXObject`
+  / `PDImageXObject` instances exercising `/StructParents` (plural) and
+  `/StructParent` (singular) indices through `clone_tree_element`, plus
+  defensive guards for resources `get_cos_object` / `get_xobject_names` /
+  `get_x_object` raising and Form/Image `get_struct_parent[s]` exception
+  arms.
+- New file `tests/pdmodel/encryption/test_standard_security_handler_wave1348.py`
+  (31 tests) drives the residual standard-security-handler branches:
+  arity-dispatch `TypeError` on a wrong-arg-count call to
+  `is_user_password` / `is_owner_password`; str-password Latin-1 / UTF-8
+  encoding branches in `_is_user_password_explicit` and
+  `_is_owner_password_explicit`; `_get_document_id_bytes` `size()` raising
+  `TypeError`, missing `get`/`get_object` accessor, and `getter(0)`
+  lacking `get_bytes`; `truncate_127(None)` returning `b""`;
+  `compute_rc_4_key` raising `ValueError` from `hashlib.md5` → re-raised
+  as `OSError` via a temporary patch; `validate_perms` `perms is None`
+  early return, decrypt-failure log, perm-int mismatch warning, and
+  metadata-flag mismatch warning; `_compute_encryption_key_rev_5_6`
+  missing-`/OE` and missing-`/UE` guards plus the r5 SHA-256 owner and
+  user branches; public `compute_encrypted_key_rev56` mirror raising on
+  missing `/OE` and `/UE`; upstream-name aliases `is_user_password234` /
+  `is_user_password56` / `is_owner_password234` / `is_owner_password56`;
+  `get_user_password234` r2 single-pass branch;
+  `prepare_encryption_dict_rev234` empty-owner-pw promotion to user-pw
+  and r4 AESV2 install; `prepare_encryption_dict_rev6` empty-owner-pw
+  promotion.
+- Full splitter suite: 209 passing (+22 over wave 1347); full encryption
+  suite: 629 passing (+31 over wave 1347).
+- No source changes; no latent bugs flagged.
+
+### Agent E — seven mid-tier files to 100% coverage
+
+- `pypdfbox/cos/cos_array.py` **96.5% → 100%**: 11 tests at
+  `tests/cos/test_cos_array_wave1348.py` covering module-level
+  `_add_to_collection` `append` fallback (and no-op when neither
+  `add` nor `append` exists), the `growToSize` camelCase Java-name
+  alias, `reset_object_keys` (visited-set short-circuit, recursive
+  descent into nested array, leaf-key `elif` arm), the `iterator()`
+  parity alias, and every `maybe_wrap` branch (indirect dict with
+  recorded key gets rewrapped as `COSObject`, direct dict pass-through,
+  indirect dict missing recorded key pass-through, leaf pass-through).
+- `pypdfbox/debugger/pagepane/debug_text_overlay.py` **96.5% → 100%**:
+  7 tests at `tests/debugger/pagepane/test_debug_text_overlay_wave1348.py`
+  drive every residual exception arm in `calculate_glyph_bounds` —
+  Type3 `get_char_proc` raising, Type3 `get_glyph_bbox` raising, Type3
+  bbox-clamp setters raising (un-clamped points still emitted), non-Type3
+  `get_normalized_path` raising (falls back to bbox), and non-Type3 bbox
+  point-construction raising.
+- `pypdfbox/pdmodel/interactive/form/pd_choice.py` **96.2% → 100%**:
+  6 tests at `tests/pdmodel/interactive/form/test_pd_choice_wave1348.py`
+  for `get_value_for` (absent / single-string / array dispatch) and
+  `update_selected_options_index` (ascending sort, `-1` marker for
+  absent values mirroring Java `List.indexOf`, empty-values clears `/I`).
+- `pypdfbox/xmpbox/type/type_mapping.py` **96.6% → 100%**: 5 tests at
+  `tests/xmpbox/type/test_type_mapping_wave1348.py` for `initialize`
+  skipping a structured class lacking `NAMESPACE` (via monkeypatched
+  `_STRUCTURED`), `get_specified_property_type` multi-struct namespace
+  branches (parent-name match, local-part fallback scan, total miss),
+  and `get_associated_schema_object` factory fallback when
+  `XMPMetadata.create_and_add_default_schema_for_namespace` is removed.
+- `pypdfbox/debugger/streampane/stream_pane.py` **97.2% → 100%**: 3 tests
+  at `tests/debugger/streampane/test_stream_pane_wave1348.py` for
+  `_content_stream_segments` broad-except via a monkeypatched
+  `PDFStreamParser.from_bytes` raising `RuntimeError`,
+  `_ContentStreamEmitter.write_token` `AttributeError` catch (via
+  patched `_write_operand`), and `DocumentCreator.get_content_stream_document`
+  broad-except path.
+- `pypdfbox/fontbox/ttf/cmap_subtable.py` **97.6% → 100%**: 9 tests at
+  `tests/fontbox/ttf/test_cmap_subtable_wave1348.py` exercising every
+  underscore-prefixed backwards-compat alias method
+  (`_process_subtype_0` / `_4` / `_6` / `_8` / `_10` / `_13` / `_14`),
+  the static `_new_glyph_id_to_character_code` alias, and the
+  `_get_char_code` alias.
+- `pypdfbox/pdmodel/encryption/security_handler.py` **97.8% → 100%**:
+  6 tests at `tests/pdmodel/encryption/test_security_handler_wave1348.py`
+  for the base `compute_encrypted_key` `StandardSecurityHandler`
+  dispatch (line 370 — reachable only via an explicit unbound call;
+  see latent-bug note below), `decrypt` COSStream arm, `decrypt_stream_in_place`
+  `COSName` `ImportError` fallback (via monkeypatched
+  `builtins.__import__`), the `get_item("Type")` legacy-duck arm,
+  the broad-except after `get_raw_bytes` raises, and `_decrypt_array`
+  setter path via a real `COSArray` end-to-end walk.
+- **Latent bug observed (not patched):**
+  `SecurityHandler.compute_encrypted_key` is structurally dead on
+  normal instance dispatch — every concrete subclass either overrides
+  it (`StandardSecurityHandler` via classmethod) or raises `TypeError`
+  (`PublicKeySecurityHandler`). The branch on line 370 is reachable
+  only by calling the base method unbound
+  (`SecurityHandler.compute_encrypted_key(handler, ...)`). Worth a
+  future cleanup wave deciding whether to remove the unreachable
+  dispatch or rewire subclass overrides so the base method can
+  meaningfully chain.
+- Combined: 45 new tests, all four files plus the other three reach
+  100% line coverage; ruff clean.
+
 ## Wave 1347 — coverage-boost pass #15 (parallel agents)
 
 ### Agent D — fontbox cluster (7 files to 100% coverage)
@@ -3921,6 +4062,14 @@ Agent C — `cos.cos_name` / `fontbox.ttf.glyf_simple_descript` /
   fall-through, and `get_end_point_ending_style` default return).
 - No latent bugs found in any of the three files; all uncovered lines
   were genuine corner branches that just needed exercising.
+
+## Wave 1348 — coverage-boost pass (core cluster, agent C)
+
+3 hand-written test files closing the residual coverage gaps on the read/write core trio:
+
+- `cos/cos_dictionary.py` **97.0% → 100%**: 15 tests at `tests/cos/test_cos_dictionary_coverage_wave1348.py` for `get_object_from_path` non-collection early-return, `get_indirect_object_keys` / `reset_object_keys` revisit short-circuit, `_array_*_keys` dict-recursion + revisit branches, `UnmodifiableCOSDictionary.clear_item` write-guard, and the `_get_dictionary_string` ``None`` / top-level-array / `COSStream`-hash / `COSObject`-formatter branches.
+- `pdfparser/cos_parser.py` **98.0% → 99.7%**: 10 tests at `tests/pdfparser/test_cos_parser_coverage_wave1348.py` covering `get_startxref_offset` short-read-from-source failure, `parse_xref` `/Prev`-loop detection + xref-table-malformed `Expected trailer object` raise + xref-stream branch, `parse_xref_obj_stream` stream-body branch, `parse_file_object` stream-after-dict promotion + trailing `endobj` consume, `check_x_ref_offset` brute-force fallback, `check_x_ref_stream_offset` parse-error recovery, `find_object_key` keyword-failure outer-except + strict-gen-mismatch fallthrough. 3 lines remain at lines 1630-1631 + 1852 — defensive ``ImportError`` fallback on optional PDEncryption import and a defensive `_last_parsed_trailer is None` guard that's unreachable when `parse_trailer` returns True.
+- `pdmodel/pd_document.py` **97.0% → 100%**: 7 tests at `tests/pdmodel/test_pd_document_coverage_wave1348.py` for `prepare_visible_signature` happy path + non-dict pool-entry skip, `assign_acro_form_default_resource` `/XObject` merge branch, and the `_import_page_acroform_fixup` non-dict-annot skip + multi-level `/Parent` climb + shared-root dedupe + already-in-`/Fields` no-op branches.
 
 ## Wave 1340 — fix 2 latent source bugs flagged during wave 1339
 
