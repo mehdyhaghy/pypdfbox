@@ -17,6 +17,7 @@ from __future__ import annotations
 import io
 import pathlib
 import shutil
+import sys
 from typing import Any
 
 import pytest
@@ -45,6 +46,15 @@ def _copy_liberation(tmp_path: pathlib.Path, name: str) -> pathlib.Path:
 # ---------- platform-dispatch (_default_font_dirs) ----------
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason=(
+        "monkeypatching sys.platform does not change pathlib's path-flavour "
+        "dispatch — Path('/System/Library/Fonts') stays a WindowsPath under "
+        "the running interpreter and stringifies with backslashes, breaking "
+        "the POSIX-style substring assertions."
+    ),
+)
 def test_default_font_dirs_macos(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(mod.sys, "platform", "darwin")
     dirs = mod._default_font_dirs()
@@ -54,6 +64,15 @@ def test_default_font_dirs_macos(monkeypatch: pytest.MonkeyPatch) -> None:
     assert any("Library/Fonts" in p for p in paths)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason=(
+        "monkeypatching sys.platform does not change pathlib's path-flavour "
+        "dispatch — Path('/usr/share/fonts') stays a WindowsPath under the "
+        "running interpreter and stringifies with backslashes, breaking the "
+        "POSIX-style substring assertions."
+    ),
+)
 def test_default_font_dirs_linux(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(mod.sys, "platform", "linux")
     dirs = mod._default_font_dirs()

@@ -109,8 +109,11 @@ def test_g4_round_trip_alternating_pattern() -> None:
 
 def test_g4_round_trip_omitted_rows() -> None:
     """Rows=0 / missing → libtiff fills our generous wrapper height with
-    decoded data plus zero-padding past end-of-data. Real callers should
-    supply /Rows; this test pins the behavior so it doesn't regress."""
+    decoded data, possibly followed by padding past end-of-data. Real
+    callers should supply /Rows; this test pins the first-four-rows
+    payload (which is portable) but not the trailing tail (libtiff's
+    behaviour past EOD is platform-defined — macOS/Linux zero-pad, the
+    Windows wheel may include scratch bits)."""
     img = Image.new("1", (8, 4), 0)
     for x in range(0, 8, 2):
         for y in range(4):
@@ -119,10 +122,12 @@ def test_g4_round_trip_omitted_rows() -> None:
 
     params = _decode_params(K=-1, Columns=8)  # /Rows omitted
     decoded = _decode(encoded, params)
-    # The first four rows reproduce the original payload; trailing
-    # bytes are zero-padding from libtiff's over-allocated buffer.
+    # The first four rows reproduce the original payload; we do not
+    # pin the post-EOD tail because libtiff's over-allocated-buffer
+    # contents are not specified.
     assert decoded[:4] == b"\xaa\xaa\xaa\xaa"
-    assert all(b == 0 for b in decoded[4:])
+    # Sanity: libtiff returned at least the requested four rows.
+    assert len(decoded) >= 4
 
 
 # ---------- BlackIs1 polarity -----------------------------------------

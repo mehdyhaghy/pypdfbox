@@ -2909,6 +2909,17 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   - `test_high_resolution_image_icon.py`: switched per-test `tk.Tk()` to the session-scoped fixture (eliminating extra Tk roots).
 - **Verified**: 2 concurrent shells × 5 iterations = 10/10 processes finish exit 0; 3 shells × 6 iterations = 18/18 exit 0; `PYPDFBOX_SKIP_TK=1` → 357 tests skip cleanly.
 
+## Wave 1325 — CI red-to-green (Windows residual 5) — full matrix green
+
+Wave 1324 cleared 8/13 pre-existing CI failures and brought macOS + Ubuntu fully green. This wave closes the last 5 Windows-only failures so the full 3-OS matrix passes.
+
+### CI red-to-green: Windows residual 5
+
+- `tests/debugger/test_pd_debugger_methods.py::test_text_dialog_opens_for_local_file`: wave 1324's `update_idletasks()` only flushes the geometry queue, not the MapNotify event that wires a new `Toplevel` into `winfo_children`. Source fix in `pypdfbox/debugger/pd_debugger.py::_text_dialog` calls `update_idletasks()` on the new `dialog` itself before returning; test bumped to a full `update()` on `_toplevel`.
+- `tests/filter/test_ccitt_fax_decode.py::test_g4_round_trip_omitted_rows`: when `/Rows` is omitted, the libtiff wheel decodes past EOD into the over-allocated buffer. POSIX wheels zero-pad; the Windows libtiff wheel leaves uninitialised / EOL-padding bytes. Test fix: stopped asserting the post-EOD tail is all-zero; the first four rows match the original payload + a length sanity check stays as the correctness gate.
+- `tests/pdmodel/font/test_file_system_font_provider_coverage.py::test_default_font_dirs_macos` + `::test_default_font_dirs_linux`: tests monkeypatch `sys.platform` but `pathlib`'s flavour dispatch is fixed at interpreter import time — on Windows `Path("/usr/share/fonts")` stays a `WindowsPath` and stringifies with backslashes, breaking the POSIX-style substring assertions. Added `pytest.mark.skipif(sys.platform == "win32", ...)` with an explanatory reason on both tests. The behaviour itself is correct on the actual platforms; only the assertion isn't portable.
+- `tests/tools/test_decrypt_wave362.py::test_wave362_in_place_decrypt_removes_encrypt_entry`: pre-decrypt probe `Loader.load_pdf(src).is_encrypted()` leaks the `PDDocument`, so on Windows the open file handle blocks the in-place overwrite (rc=4 instead of 0). Test fix: close the probe document with `try/finally` before invoking the decrypt CLI. Portable pattern, no source change.
+
 ## Wave 1324 — CI red-to-green (3 parallel agents) — fix 13 pre-existing CI failures
 
 Wave 1323's lint sweep made CI's `ruff check` step pass, which surfaced 13 pre-existing pytest failures across the matrix. None come from the recent coverage waves — they were latent issues the lint failure had been hiding. This wave tackles them.

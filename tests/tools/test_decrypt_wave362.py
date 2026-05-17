@@ -224,7 +224,16 @@ def test_wave362_non_in_place_helper_io_error_after_probe(
 def test_wave362_in_place_decrypt_removes_encrypt_entry(tmp_path: Path) -> None:
     src = _build_encrypted_pdf(tmp_path / "encrypted.pdf")
 
-    assert Loader.load_pdf(src).is_encrypted() is True
+    # Close the probe document before running the in-place decrypt. On
+    # Windows, an open PDDocument keeps a handle on the underlying file
+    # and the decrypt tool cannot atomically overwrite it (rc=4 instead
+    # of 0). POSIX platforms tolerate the unclosed handle, but the
+    # explicit close pattern is portable.
+    probe = Loader.load_pdf(src)
+    try:
+        assert probe.is_encrypted() is True
+    finally:
+        probe.close()
     assert cli.run_cli(["decrypt", "-i", str(src), "-password", "owner"]) == 0
 
     reloaded = Loader.load_pdf(src)

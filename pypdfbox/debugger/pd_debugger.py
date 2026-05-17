@@ -1563,6 +1563,12 @@ class PDFDebugger:
         text.configure(state="disabled")
         text.pack(fill="both", expand=True)
         dialog.transient(self._toplevel)
+        # Force the new Toplevel through the geometry queue immediately so
+        # ``winfo_children`` on the master picks it up synchronously. On
+        # Windows the MapNotify is otherwise deferred until the next
+        # idle tick.
+        with contextlib.suppress(tk.TclError):
+            dialog.update_idletasks()
 
     def _hyperlink_update(self, url: str) -> None:
         """Open ``url`` in a secondary read-only Toplevel as plain text.
