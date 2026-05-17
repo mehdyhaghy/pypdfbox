@@ -2923,6 +2923,247 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
 - **Latent bug flagged (NOT fixed this wave)** in `pypdfbox/xmpbox/xml/xmp_serializer.py:90` (`_append_field`): expects `AbstractField` instances but receives raw `str` when serialising a Dublin Core `set_title` LangAlt — `AttributeError: 'str' object has no attribute 'get_property_name'`. Affects `CreatePDFA.main()` end-to-end (which calls `dc.set_title(file_)` and then `serializer.serialize(xmp, ...)`). Tests monkeypatch the serializer with a stub so the rest of `main()` covers; needs a source fix that either wraps strings as `TextType`/`LangAltField` in the LangAlt array, or makes `_append_field` tolerate plain strings.
 - **Latent bug flagged (NOT fixed this wave)** in `pypdfbox/examples/rendering/custom_page_drawer.py:53` (`MyPageDrawer.get_paint`): `int(color.to_rgb())` is unreachable for canonical `PDColor` inputs because `PDColor.to_rgb()` returns a 3-tuple of floats, not an int — `int(tuple)` always raises `TypeError`. The RED→BLUE substitution therefore never fires on real renders. The comparison should be against `color.to_rgb_int()` (which exists on `PDColor` and returns the packed sRGB int) instead of `int(color.to_rgb())`.
 
+## Wave 1337 — coverage-boost pass #15 (parallel agents)
+
+- `pypdfbox/fontbox/type1/type1_parser.py`: 92% → 99% via 62 new
+  hand-written tests at `tests/fontbox/type1/test_type1_parser_wave1337.py`
+  covering lexer error paths (premature-EOF inside `read_string` /
+  `read_char_string`, invalid octal escape, malformed radix-form
+  integer, `try_read_number` at EOF), parity helpers' no-active-lexer
+  guards, `read_value` array / `<<...>>` dict-marker edges, `read_proc`
+  / `read_proc_void` malformed-procedure raises + `executeonly`
+  trailing-modifier append, `read_def` / `read_put` double-`noaccess`
+  branch, `read_simple_dict` EOF + inner-name-skip paths,
+  `read_simple_value` `StrokeWidth` / `FID` arms, the `read_font_info`
+  branch ladder (Notice / Weight / FullName / FamilyName /
+  UnderlinePosition / UnderlineThickness for both numeric and literal
+  inputs, plus empty-value skip and literal-typed ItalicAngle),
+  `read_encoding` Incomplete-data + Unknown-encoding raises,
+  `read_private` empty-value / BlueShift / BlueFuzz / LanguageGroup
+  int paths + non-name `ForceBold` bool coercion, `read_other_subrs`
+  EOF raise, `read_subrs` / `read_char_strings` first-peek-None +
+  non-`dup` early-break + outer-end raise, the `parse_ascii`
+  `FontDirectory` synthetic-font preamble + `Metrics` arm +
+  in-body truncation break, and `parse_binary` end-to-end through all
+  Private macro definitions (`/ND`, `/NP`, `/RD`, `/OtherSubrs`,
+  `/lenIV`), the `2 index` skip-loop before `/CharStrings`, the
+  `hex_to_binary` ASCII-hex eexec branch, and the missing-CharStrings
+  raise. Remaining 7 uncovered lines are defensive `if x is None`
+  guards immediately after `peek_token` returned non-None — peek
+  saves/restores `_pos` so the immediate `next_token` cannot diverge,
+  making these branches unreachable by construction (agent A, wave 1337).
+- examples.util + examples.pdmodel + examples.interactive.form:
+  bumped `examples/pdmodel/embedded_vertical_fonts.py` 35.1% → 100%,
+  `examples/util/connected_input_stream.py` 49.2% → 100%,
+  `examples/pdmodel/print_bookmarks.py` 48.1% → 92%, and
+  `examples/interactive/form/field_remover.py` 71.2% → 98% — 42 new
+  hand-written tests at `tests/examples/pdmodel/test_embedded_vertical_fonts.py`,
+  `tests/examples/util/test_connected_input_stream.py`,
+  `tests/examples/pdmodel/test_print_bookmarks.py`, and
+  `tests/examples/interactive/form/test_field_remover.py` covering
+  `EmbeddedVerticalFonts.demo_with_font` end-to-end with a bundled DejaVu
+  TTF (Type0 horizontal + vertical loads, four `begin_text` / `end_text`
+  glyph runs, str/Path output coercion) and the `main()` fixture-absent
+  `NotImplementedError` arm; `ConnectedInputStream` three-overload
+  `read()` (single-byte EOF, fill-buffer, offset+length), `skip` seekable
+  + non-seekable branches, `available()` zero + delegated, `mark`/`reset`
+  round-trip + reset-without-mark `OSError`, `mark_supported` seekable +
+  non-seekable + no-tell, and `close()` disconnect / close-fallback /
+  inert-connection branches; `PrintBookmarks` `main()` usage + outline-
+  absent message + happy-path tree walk + named-destination resolution,
+  `print_bookmark()` GoTo-action-with-page-destination, GoTo-action with
+  COSString-named destination (str fallback branch), non-GoTo
+  `PDActionLaunch` (`Action class:` branch), GoTo with absent /D
+  (`Destination class: NoneType`), and item-level `PDNamedDestination`
+  + `usage()` stderr; `FieldRemover` `main()` usage + 3-arg driver,
+  `remove()` happy + unknown-field + missing-acro-form + /Perms purge,
+  `remove_recursive()` direct against nested PDNonTerminalField subtree
+  (find / not-found / two-level descent / terminal-only-fields), and
+  `usage()` stderr (agent C, wave 1337).
+- **Latent bug flagged (NOT fixed this wave)** in
+  `pypdfbox/examples/interactive/form/field_remover.py:101-104`
+  (`FieldRemover.remove`): the widget-removal walk reads
+  `annotations = page.get_annotations()` then calls
+  `annotations.remove(w)`, but `PDPage.get_annotations()` returns a
+  *fresh* list rebuilt from `/Annots` on every call, so the trim is
+  discarded. The widget removal is therefore a no-op on the saved file
+  (the field is correctly removed from `/AcroForm.Fields` via the
+  paired `set_fields` call). Fix: capture the trimmed list and push it
+  back with `page.set_annotations(annotations)` after the inner
+  `for w in widget_set` loop.
+- multipdf + examples.signature: bumped `multipdf/pdf_merger_utility.py`
+  91.9% → 98.4% and `examples/signature/create_signed_time_stamp.py`
+  44.2% → 100% — 63 new hand-written tests (49 + 14) at
+  `tests/multipdf/test_pdf_merger_utility_wave1337.py` and an extension
+  to `tests/examples/signature/test_create_signed_time_stamp.py`.
+  Merger coverage drives the optimize-mode canonical-hash helper
+  (`_hash_cos` over every COS scalar/container leaf, cycle detection on
+  dict / array / stream, stream-body unreadable abort, unknown-leaf
+  abort, dict-key ordering stability, integer/float collapse on equal
+  numeric value) plus the `_canonical_resource_hash` static wrapper, the
+  `_dedup_page_resources` walker on edge-case resource subgraphs
+  (no-resources, non-dict resources container, non-dict subcategory,
+  COSNull entry, un-hashable cyclic entry, populate-then-collapse on
+  duplicate fonts), getter/setter round-trips
+  (`acro_form_merge_mode_property` property pair,
+  `is_ignore_acro_form_errors` / `set_ignore_acro_form_errors` bool
+  cast, destination-file-name / stream / document-information /
+  metadata round-trips), the OPTIMIZE_RESOURCES_MODE destination-missing
+  guard and dynamic-XFA OSError path, the source-close + destination-
+  close error-logging branches in both optimize and legacy mode, the
+  upstream-named alias wrappers at the tail of the class
+  (`is_dynamic_xfa`, `merge_into`, `merge_acro_form`,
+  `acro_form_legacy_mode` / `acro_form_join_fields_mode`,
+  `merge_open_action`, `merge_role_map`,
+  `merge_id_tree` / `merge_k_entries`, `merge_output_intents`,
+  `has_only_documents_or_parts`, `update_parent_entry`,
+  `update_struct_parent_entries`), plus the viewer-preferences /
+  language / mark-info helpers' short-circuit and happy paths.
+  `CreateSignedTimeStamp` coverage drives `usage()` stderr + `main()`
+  arg-count / missing-tsa-flag SystemExits + happy dispatch (computes
+  `<stem>_timestamped.pdf` alongside input), `sign_detached`
+  FileNotFoundError + in-place (no `out_file`) + explicit-out-file +
+  str-path-arg branches (with monkey-patched `Loader` and
+  `sign_detached_document` shims), `sign_detached_document` DocMDP
+  RuntimeError gate + the happy path, the `sign()` swallows-exception
+  path, and a regression test pinning the latent `set_type(COSName)`
+  TypeError (agent B, wave 1337).
+- **Latent bug flagged (NOT fixed this wave)** in
+  `pypdfbox/examples/signature/create_signed_time_stamp.py:76-78`
+  (`CreateSignedTimeStamp.sign_detached_document`): passes
+  `COSName.DOC_TIME_STAMP` and `COSName.get_pdf_name("ETSI.RFC3161")`
+  to `PDSignature.set_type(...)` and `set_sub_filter(...)`, both of
+  which expect `str` and route through
+  `COSDictionary.set_name(key, value)` — and `set_name` can't coerce a
+  `COSName` value to bytes, so the call raises `TypeError: cannot
+  convert 'COSName' object to bytes` immediately. The function would
+  always crash before reaching `add_signature`. Fix options:
+  (a) change the call sites to `signature.set_type("DocTimeStamp")` /
+  `signature.set_sub_filter("ETSI.RFC3161")`, or (b) make
+  `PDSignature.set_type` / `set_sub_filter` accept either `str` or
+  `COSName`. Test currently patches the two setters with str-tolerant
+  shims so the surrounding control flow stays covered.
+- `pypdfbox/xmpbox/date_converter.py` 92.8% → 99%,
+  `pypdfbox/contentstream/pdf_stream_engine.py` 92.2% → 100%,
+  `pypdfbox/xmpbox/xmp_schema.py` 92.5% → 100%,
+  `pypdfbox/fontbox/ttf/ttf_parser.py` 91.6% → 100%,
+  `pypdfbox/xmpbox/type/type_mapping.py` 92.9% → 97%, and
+  `pypdfbox/tools/text_to_pdf.py` 90.7% → 91% (blocked by two latent
+  bugs, see below) — 109 new hand-written tests across six files
+  (`tests/xmpbox/test_date_converter_wave1337.py`,
+  `tests/xmpbox/test_xmp_schema_wave1337.py`,
+  `tests/xmpbox/type/test_type_mapping_wave1337.py`,
+  `tests/fontbox/ttf/test_ttf_parser_wave1337.py`,
+  `tests/tools/test_text_to_pdf_wave1337.py`,
+  `tests/contentstream/test_pdf_stream_engine_wave1337.py`)
+  covering `DateConverter.parse_big_endian_date` invalid-calendar /
+  out-of-range fields, `parse_date` longest-len bookkeeping with
+  trailing TZ data, each `_make_handler_*` regex/validate except arm,
+  two-digit-year sliding window; `XMPSchema` typed-property cache
+  eviction on value change for boolean / integer / date, typed-getter
+  None-when-absent + raise-on-type-mismatch + raise-on-unknown-raw,
+  `internal_add_bag_value` str-fallback + ArrayProperty arm,
+  `reorganize_alt_order` dict / non-dict, `instanciate_simple` dispatch
+  + TypeError for unknown types, `merge_complex_property` short-circuit;
+  `TypeMapping.get_specified_property_type` factory-match / single-struct
+  no-match / defined-namespace / unknown-raises / factory-only-returns-None,
+  `initialize_prop_mapping` `PROPERTIES` PropertyType / tuple /
+  `_FIELD_TYPES` + `PROPERTIES` merge / malformed-skip,
+  `_SchemaFactory.get_properties_description`, `PropertyType.to_string`,
+  `PropertiesDescription.__contains__`; `TTFParser._parse_table_headers_from_stream`
+  raw-read-error / short-stream / unsupported-scaler / OTTO-reject /
+  new_font-raises / naming-raises / OTF-AttributeError /
+  non-OTF-with-CFF / mandatory-table-missing, `create_font_with_tables`
+  no-reader / unknown-entries / oversize-entries; `PDFStreamEngine`
+  process_form / process_transparency_group CTM-swap / process_soft_mask
+  save-restore fence / process_tiling_pattern / process_type3_stream /
+  show_annotation None-vs-real appearance / process_annotation
+  rect-bbox-missing / zero-width-rect / zero-width-bbox / attribute-errors /
+  full happy path, push_resources page-resources fallback +
+  fresh-PDResources construction, clip_to_rect None / no-clipper / CTM
+  transform / transform-raises-fallback, _get_active_font text_state +
+  text_font branches, _decode_codes_via_font no-progress break,
+  _glyph_displacement None-font / no-getter / getter-raises,
+  show_type3_glyph None-font / no-getter / getter-raises / None-charproc,
+  apply_text_adjustment no-matrix / no-translate / translate-called,
+  transformed_point no-gs / no-ctm / no-transform_point /
+  transformer-raises / transformer-success, _require_min_operands
+  raise + no-raise, get_default_font None (agent E, wave 1337).
+- **Latent bug flagged (NOT fixed this wave)** in
+  `pypdfbox/tools/text_to_pdf.py:138,237`
+  (`TextToPDF._create_pdf_from_text` / `TextToPDF.call`): both lines
+  instantiate `PDType1Font(self.standard_font)` where `self.standard_font`
+  is a `FontName` enum. `PDType1Font.__init__` expects a
+  `COSDictionary | None`, so the call raises
+  `AttributeError: 'FontName' object has no attribute 'get_dictionary_object'`
+  on the first dictionary probe inside `pd_font.py:68`. The default-font
+  branch is therefore structurally unreachable for any caller that
+  doesn't pre-populate `self.font` before invoking the helper. The
+  sister module `pypdfbox.tools.texttopdf` correctly resolves the
+  default via `PDFontFactory.create_default_font(...)`. Fix: route
+  `text_to_pdf.py` through `PDFontFactory.create_default_font(self.standard_font.value)`
+  the same way.
+- **Latent bug flagged (NOT fixed this wave)** in
+  `pypdfbox/tools/text_to_pdf.py:151` (`TextToPDF._create_pdf_from_text`):
+  the body-iteration loop uses `content.splitlines()` which in Python
+  treats `\f` (form feed) as a line break. The downstream form-feed
+  detection logic at lines 162-180 / 211-221 / line 185's lookahead
+  inspect each word for an inline `\f` token, but `splitlines()` has
+  already stripped them before the inner loop runs. Result: ~14
+  source lines of form-feed handling are dead code; the form-feed
+  page-break upstream-equivalent never fires on input containing
+  `\f`. Fix: use `content.split("\n")` instead of `.splitlines()` to
+  preserve `\f` as an in-line token.
+- `pypdfbox/pdmodel/interactive/digitalsignature/pd_signature.py` 90.6%
+  → 98%, `pypdfbox/pdmodel/font/pd_type1c_font.py` 90.6% → 100%,
+  `pypdfbox/pdmodel/font/pd_font.py` 91.4% → 100%,
+  `pypdfbox/pdmodel/interactive/form/pd_field.py` 89.8% → 100%, and
+  `pypdfbox/pdmodel/graphics/image/jpeg_factory.py` 89.7% → 100% — 125
+  new hand-written tests at
+  `tests/pdmodel/interactive/digitalsignature/test_pd_signature_wave1337.py`,
+  `tests/pdmodel/interactive/form/test_pd_field_wave1337.py`,
+  `tests/pdmodel/graphics/image/test_jpeg_factory_wave1337.py`,
+  `tests/pdmodel/font/test_pd_type1c_font_wave1337.py`, and
+  `tests/pdmodel/font/test_pd_font_wave1337.py` covering DER parsing
+  error paths (`_read_der_length` EOF / indefinite-form / truncated
+  long form, `_read_der_tlv` body-overrun), 16+
+  `_walk_signer_info` structural-mismatch return-None branches,
+  PKCS#7 signature-math InvalidSignature/ValueError/EC paths,
+  `_verify_chain_trust` self-signed-in-roots + chain-broken paths,
+  `_verify_cert_signature` EC-issuer + InvalidSignature paths,
+  `PDSignature.get_contents_from_bytes` happy / missing-`/ByteRange` /
+  malformed-`/ByteRange` paths; PD field abstract-method raises +
+  FDF `/Ff` / `/SetFf` / `/ClrFf` import mutation branches;
+  JPEGFactory component-count + PIL-mode dispatch (RGBA / LA / PA /
+  P-with-transparency / 1-bit / HSV-fallback / YCbCr), BITMASK
+  rejection, non-PIL TypeError input validation across every public
+  helper, Java-style camelCase aliases, and `retrieve_dimensions`
+  zero-components fall-through via mocked `_pil_mode_to_components`;
+  PDType1CFont `sfthyphen` / `nbspace` glyph-name rewrites in
+  `get_path` / `has_glyph_for_code` / `get_path_for_code` /
+  `get_normalized_path_for_code`, `get_font_matrix` / `get_bounding_box`
+  / `generate_bounding_box` exception + wrong-length fallbacks,
+  `get_width_from_font` units-per-em + advance edge cases,
+  `get_name_in_font` AGL `uniXXXX` fallback (using `Omega` → U+2126
+  OHM SIGN per AGL historical quirk), `encode_codepoint` no-glyph /
+  no-code raises, `read_encoding_from_font` embedded-encoding-map
+  path; PDFont full `get_space_width` cascade across all five
+  steps + broad-catch fallback + cache hit, Standard 14 AFM
+  KeyError swallow, `to_unicode` Identity-H / non-Identity / chr()
+  ValueError paths, `get_width` Standard14 NotImplementedError →
+  0.0 fall-through, `get_string_width` codes-iteration loop, and
+  the abstract-method raises. Flagged latent bug in
+  `PDSignature.get_contents_from_bytes` (lines 780-786): the off-by-one
+  in `gap_start = start1 + len1 + 1` / `gap_end = start2 - 1` skips
+  one extra byte on each side of the `<>`-framed hex payload — tests
+  pad against this rather than silently masking it (agent D, wave
+  1337). Flagged latent rule violation: `JPEGFactory.createFromByteArray` /
+  `createFromStream` / `createFromImage` Java-style camelCase aliases
+  (lines 485-509) still carry `# noqa: N802` and survive purely for
+  the wave-350 alias regression test; per project rule
+  `feedback_no_camelcase_aliases` these should be stripped in a
+  follow-up cleanup wave once the dependent test is migrated.
+
 ## Wave 1336 — fix 6 latent source bugs flagged during wave 1335
 
 Coverage-boost pass #14 surfaced six more bugs across the examples, the

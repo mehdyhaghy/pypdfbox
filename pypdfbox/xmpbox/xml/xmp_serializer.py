@@ -11,6 +11,7 @@ the same tree with :mod:`xml.dom.minidom`, then call
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import BinaryIO
 from xml.dom.minidom import Document, Element
 
@@ -18,7 +19,12 @@ from pypdfbox.xmpbox.type.abstract_complex_property import AbstractComplexProper
 from pypdfbox.xmpbox.type.abstract_field import AbstractField
 from pypdfbox.xmpbox.type.abstract_simple_property import AbstractSimpleProperty
 from pypdfbox.xmpbox.type.abstract_structured_type import AbstractStructuredType
-from pypdfbox.xmpbox.type.array_property import ArrayProperty
+from pypdfbox.xmpbox.type.array_property import ArrayProperty, Cardinality
+from pypdfbox.xmpbox.type.boolean_type import BooleanType
+from pypdfbox.xmpbox.type.date_type import DateType
+from pypdfbox.xmpbox.type.integer_type import IntegerType
+from pypdfbox.xmpbox.type.lang_alt import LangAlt
+from pypdfbox.xmpbox.type.text_type import TextType
 from pypdfbox.xmpbox.xmp_metadata import (
     DEFAULT_RDF_PREFIX,
     DESCRIPTION_NAME,
@@ -59,11 +65,107 @@ class XmpSerializer:
         if prefix and ns:
             selem.setAttributeNS(_XMLNS_NS, f"xmlns:{prefix}", ns)
         self._fill_element_with_attributes(selem, schema)
-        fields = (
+        raw_fields = (
             schema.get_all_properties() if hasattr(schema, "get_all_properties") else []
         )
+        fields = self._normalize_schema_fields(schema, raw_fields)
         self.serialize_fields(doc, selem, fields, prefix or "", None, True)
         return selem
+
+    # ------------------------------------------------------------------
+    def _normalize_schema_fields(
+        self, schema, raw_fields,
+    ) -> list[AbstractField]:
+        """Coerce a schema's ``get_all_properties()`` payload into a list
+        of :class:`AbstractField` ready for serialization.
+
+        ``AbstractComplexProperty`` subclasses already return an iterable
+        of ``AbstractField``; ``XMPSchema`` subclasses (Dublin Core,
+        Photoshop, etc.) return a flat ``dict[str, primitive]`` because
+        they store property values in Python primitive form. For the
+        latter, prefer typed-cache wrappers on the schema when present;
+        otherwise wrap primitives heuristically (``str`` → TextType,
+        ``int`` → IntegerType, ``list`` → Bag, ``dict`` → LangAlt, etc.).
+        """
+        if isinstance(raw_fields, dict):
+            return list(self._iter_flat_typed(schema, raw_fields))
+        return list(raw_fields) if raw_fields else []
+
+    def _iter_flat_typed(self, schema, raw_dict):
+        metadata = getattr(schema, "_metadata", None) or getattr(
+            schema, "metadata", None
+        )
+        ns = schema.get_namespace() if hasattr(schema, "get_namespace") else None
+        prefix = schema.get_prefix() if hasattr(schema, "get_prefix") else None
+        cached = getattr(schema, "_typed_properties", None) or {}
+        for name, value in raw_dict.items():
+            wrapped = cached.get(name)
+            if isinstance(wrapped, AbstractField):
+                yield wrapped
+                continue
+            field = self._wrap_primitive(
+                metadata, ns, prefix, name, value, schema=schema,
+            )
+            if field is not None:
+                yield field
+
+    def _wrap_primitive(
+        self,
+        metadata, ns: str | None, prefix: str | None, name: str, value: object,
+        *,
+        schema=None,
+    ) -> AbstractField | None:
+        """Heuristic primitive → AbstractField wrap for the flat-dict
+        schema-storage layout. Returns ``None`` for value shapes the
+        wrapper doesn't recognize (caller skips silently)."""
+        # ``bool`` must be checked before ``int`` (Python bool subclasses int).
+        if isinstance(value, bool):
+            return BooleanType(metadata, ns, prefix, name, value)
+        if isinstance(value, int):
+            return IntegerType(metadata, ns, prefix, name, value)
+        if isinstance(value, datetime):
+            return DateType(metadata, ns, prefix, name, value)
+        if isinstance(value, str):
+            return TextType(metadata, ns, prefix, name, value)
+        if isinstance(value, list):
+            cardinality = self._cardinality_hint(schema, name) or Cardinality.Bag
+            arr = ArrayProperty(metadata, ns, prefix, name, cardinality)
+            for item in value:
+                if isinstance(item, str):
+                    arr.add_property(TextType(metadata, ns, prefix, name, item))
+            return arr
+        if isinstance(value, dict):
+            la = LangAlt(metadata, ns, prefix, name)
+            for lang, text in value.items():
+                if isinstance(text, str):
+                    la.set_language_value(lang, text)
+            return la
+        return None
+
+    @staticmethod
+    def _cardinality_hint(schema, name: str) -> Cardinality | None:
+        """Schemas may declare per-field cardinality overrides via either a
+        class-level ``_FIELD_CARDINALITIES`` mapping or a
+        ``get_property_cardinality(name)`` method. Used by
+        :meth:`_wrap_primitive` to render lists as Seq/Alt instead of the
+        default Bag where the schema knows better.
+        """
+        if schema is None:
+            return None
+        getter = getattr(schema, "get_property_cardinality", None)
+        if callable(getter):
+            try:
+                hint = getter(name)
+            except Exception:
+                hint = None
+            if isinstance(hint, Cardinality):
+                return hint
+        mapping = getattr(schema, "_FIELD_CARDINALITIES", None)
+        if isinstance(mapping, dict):
+            hint = mapping.get(name)
+            if isinstance(hint, Cardinality):
+                return hint
+        return None
 
     def serialize_fields(
         self,
@@ -87,15 +189,10 @@ class XmpSerializer:
         resource_ns: str,
         prefix: str | None,
     ) -> None:
-        # XMPSchema subclasses (Dublin Core, etc.) store properties as a
-        # flat ``dict[str, primitive]`` rather than as ``AbstractField``
-        # children, so ``get_all_properties()`` can yield raw Python values
-        # (str, dict, list, bool, int). The serializer's AbstractField
-        # contract doesn't apply to those; the flat representation is
-        # carried separately via XMP attributes / explicit lang-alt helpers.
-        # Skip such entries here rather than crashing — full structural
-        # serialization of flat-stored schema properties is tracked as a
-        # follow-up.
+        # Belt-and-suspenders: ``serialize_schema`` already converts flat-dict
+        # schema entries to AbstractField via ``_normalize_schema_fields``,
+        # but callers that invoke ``serialize_fields`` directly may still
+        # hand us a raw primitive. Skip rather than crash.
         if not isinstance(field, AbstractField):
             return
         prop_name = field.get_property_name() or "value"
@@ -114,12 +211,19 @@ class XmpSerializer:
             elem.appendChild(text)
         elif isinstance(field, ArrayProperty):
             if hasattr(field, "get_array_type"):
-                list_tag = f"{DEFAULT_RDF_PREFIX}:{field.get_array_type()}"
+                array_type = field.get_array_type()
+                tag_value = (
+                    array_type.value if hasattr(array_type, "value") else array_type
+                )
+                list_tag = f"{DEFAULT_RDF_PREFIX}:{tag_value}"
             else:
                 list_tag = f"{DEFAULT_RDF_PREFIX}:Bag"
             list_elem = doc.createElementNS(RDF_NAMESPACE, list_tag)
             for child in field.get_all_properties():
                 li = doc.createElementNS(RDF_NAMESPACE, f"{DEFAULT_RDF_PREFIX}:li")
+                # Propagate child attributes (xml:lang for LangAlt entries,
+                # custom qualifiers, etc.) before adding text content.
+                self._fill_element_with_attributes(li, child)
                 if isinstance(child, AbstractSimpleProperty):
                     li.appendChild(
                         doc.createTextNode(

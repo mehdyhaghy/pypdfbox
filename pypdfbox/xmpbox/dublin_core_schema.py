@@ -58,6 +58,17 @@ class DublinCoreSchema(XMPSchema):
     TITLE = "title"
     TYPE = "type"
 
+    # Cardinality overrides for list-stored fields. The serializer's
+    # default for ``list`` is ``Bag``; DC uses ``Seq`` for ``creator`` and
+    # ``date`` (ordered) per the Dublin Core spec, and Bag for the rest
+    # (``subject``, ``contributor``, ``publisher``, ``language``,
+    # ``relation``, ``type``). ``title`` / ``description`` / ``rights``
+    # are LangAlt (stored as dict — serializer picks Alt automatically).
+    _FIELD_CARDINALITIES = {
+        CREATOR: Cardinality.Seq,
+        DATE: Cardinality.Seq,
+    }
+
     def __init__(self, metadata: XMPMetadata, own_prefix: str | None = None) -> None:
         super().__init__(metadata, self.NAMESPACE, own_prefix or self.PREFERRED_PREFIX)
 

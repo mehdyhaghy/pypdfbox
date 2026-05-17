@@ -16,15 +16,21 @@ class Cardinality(Enum):
     Ported from ``org.apache.xmpbox.type.Cardinality``. ``Simple`` is the
     scalar-property marker; the three array flavours are ``Bag`` (unordered),
     ``Seq`` (ordered) and ``Alt`` (alternative — language alternatives, etc).
+
+    Values are the RDF container element names (``"Bag"`` / ``"Seq"`` /
+    ``"Alt"``) so the serializer can drop them straight into output, and
+    ``"Simple"`` for scalars. Earlier ports used ``True/False`` literals,
+    which collapsed Seq and Alt into Bag aliases under Python's Enum
+    deduplication.
     """
 
-    Simple = False
-    Bag = True
-    Seq = True
-    Alt = True
+    Simple = "Simple"
+    Bag = "Bag"
+    Seq = "Seq"
+    Alt = "Alt"
 
     def is_array(self) -> bool:
-        return bool(self.value)
+        return self is not Cardinality.Simple
 
     def isArray(self) -> bool:  # noqa: N802 - upstream Java name
         return self.is_array()
