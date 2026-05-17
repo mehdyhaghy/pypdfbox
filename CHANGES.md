@@ -2909,6 +2909,49 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   - `test_high_resolution_image_icon.py`: switched per-test `tk.Tk()` to the session-scoped fixture (eliminating extra Tk roots).
 - **Verified**: 2 concurrent shells × 5 iterations = 10/10 processes finish exit 0; 3 shells × 6 iterations = 18/18 exit 0; `PYPDFBOX_SKIP_TK=1` → 357 tests skip cleanly.
 
+## Wave 1332 — coverage-boost pass #12 (5 parallel agents, +469 hand-written tests)
+
+15 modules from 86-90% to **95-100%**. Cluster covers fonts, pdmodel, fixup abstracts, parsers + io, debugger.
+
+### Font modules — coverage boost
+
+- `fontbox/ttf/true_type_font.py` **89% → 99%**: 27 tests covering `_SubstitutingCmapLookup` / `_VerticalOriginView`, `add_table` / `read_table` / `read_table_headers` parser-hook fallbacks, `get_gsub_data` sentinels, `_get_unicode_cmap_impl` strict + synthesise paths, `name_to_gid` `g\d+` branch, `save` error path, `to_string` OSError fallback.
+- `pdmodel/font/standard14_fonts.py` **89% → 99%**: 28 tests covering `_DecomposingCommandPen` + `_CommandRecordingPen` adapters (moveTo / lineTo / curveTo / qCurveTo + `addComponent` decompose), `_load_substitution_ttf` cache / missing-resource / parse-failure branches, AGL + PUA-shifted Symbol fallbacks in `get_glyph_path`.
+- `pdmodel/font/pd_true_type_font.py` **89% → 99%**: 45 tests covering `extract_cmap_table` Win-Symbol / Mac-Roman / Unicode-promotion branches, `read_encoding_from_font` post-table fallback, `get_path_from_outlines` no-CFF / no-encoding / charstring-exception paths, `get_parser` file-like sniffer, `encode_codepoint` uniXXXX fallback + no-encoding round-trips.
+
+### pdmodel cluster — coverage boost
+
+- `pdmodel/interactive/annotation/pd_appearance_stream.py` **88% → 100%**: 4 tests for `get_pd_stream` typed accessor, empty-body branches of `get_contents` / `get_contents_for_random_access`.
+- `pdmodel/interactive/form/field_iterator.py` **89% → 100%**: 2 tests for public `enqueue_kids` alias over terminal + non-terminal fields.
+- `pdmodel/encryption/security_handler_factory.py` **89% → 100%**: 6 tests for `new_security_handler` dispatcher (policy + string-filter branches, unknown filter, unregistered policy type), `register_handler` duplicate-name rejection. **Fixed latent NameError**: `ProtectionPolicy` was only imported under `TYPE_CHECKING`, so `isinstance(key, ProtectionPolicy)` raised `NameError` at runtime — moved to a function-local runtime import.
+
+### Four small 89% modules — coverage boost
+
+55 tests across 4 files.
+
+- `pdmodel/fixup/abstract_fixup.py` **89% → 100%**: 8 tests for `NotImplementedError` raise + subclass override.
+- `pdmodel/fixup/processor/abstract_processor.py` **89% → 100%**: 8 tests for same shape.
+- `xmpbox/xmp_media_management_schema.py` **87% → 99%**: 32 tests for `set_*_property(None)` clears, `_get_simple_typed` string→typed materialisation + ValueError-swallow, `SaveID` int/bool/str/unparseable/unknown branches, structured `get_*_property` ArrayProperty branches, Manifest/History/Versions/Ingredients non-list wrap.
+- `tools/version_tool.py` **89% → 100%**: 7 tests for `__version__` missing → `"unknown"` fallback + `__name__ == "__main__"` entry point via `runpy.run_module`.
+
+### parser + io batch — coverage boost
+
+80 tests across 3 files.
+
+- `pdfparser/base_parser.py` **86% → 99%**: 66 tests covering `require_byte` EOF guard, `read_string_number` overflow, UTF-8/Latin-1/Windows-1252 fallback in `read_name` / `read_string_with_length` / `decode_buffer`, literal-string CRLF/LF/CR backslash-continuation, `parse_dir_object` for hex/literal/name/bare-R/null/true/false/endobj-rewind/unknown-token recovery, `parse_cos_array` indirect-reference fold + invalid-num warning + endobj exit, `parse_cos_dictionary` non-`/` garbage recovery + missing-`>>` warning + endobj exit + empty-name + indirect-ref pool resolution + zero-object recovery + invalid-COSInteger skip, `parse_cos_number` empty-buffer + trailing-`E` rewind (PDFBOX-5025), `parse_cos_hex_string` whitespace skip + odd-half-pair pop + skip-to-`>` recovery + EOS error. 5 lines remain — defensive dead branches gated by upstream `skip_whitespace` pass / `is_digit_at` negative-rejection (mirrors upstream Java).
+- `io/sequence_random_access_read.py` **89% → 100%**: 9 tests covering None reader_list, OSError-wrap during materialisation, `check_closed` guard on every public method, zero-length `read_into` early return, EOF sentinel, negative-seek rejection, past-end seek clamping, `create_view` `NotImplementedError`.
+- `filter/flate_filter_decoder_stream.py` **89% → 100%**: 5 tests covering `readable` / `mark` no-op, `decompress` `zlib.error` swallowed, `flush` `zlib.error` swallowed via stub inflater, `close` underlying-exception suppression.
+
+### debugger + misc — coverage boost
+
+222 tests across 5 files.
+
+- `tools/imageio/tiff_util.py` **88% → 100%**: 15 tests for bitonal/RGB compression, dict-vs-Pillow metadata, `AttributeError`-during-comparison swallow.
+- `cos/cos_dictionary.py` **90% → 97%**: 49 tests for `_parse_pdf_date` / `_format_pdf_date` edge cases (leap-second clamp, offsets, type errors), `_array_get` / `_reset_object_keys` traversal helpers, every previously-unhit camelCase alias (`getUpdateState`, `setDate`, etc.), `UnmodifiableCOSDictionary` write-guard branches.
+- `pdmodel/font/file_system_font_provider.py` **88% → 100%**: 12 tests for `_scan_fonts` broad-except, fontTools `ImportError` fallbacks, OS/2 + `head` `KeyError` branches, `stat` OSError, Type-1 happy/fallback/stem paths.
+- `debugger/pagepane/page_pane.py` **88% → 96%**: 13 tests for `PDActionGoTo` + page/named/numeric destination resolution, retrieve-page-number `OSError` / `-1` skips, `start_extracting` early returns, `RenderWorker.execute` failure + non-zero rotation paths.
+- `debugger/pd_debugger.py` **89% → 95%**: 133 tests covering recent-files menu closures, `get_page_label` labels-by-page-indices + overflow + `OSError`, every `_is_*` classifier helper, `_show_*` pane mounting fallbacks, `text_dialog` file path, `parse_document` from path/bytes/HTTP URL, `DocumentOpener.parse` retry loop (`PDInvalidPasswordException` → new password via stubbed `_prompt_password`), Tk-master/getpass/`TclError` prompt-password fallbacks, `main()` CLI entry, save-stream no-selection short-circuits, `_ensure_default_root` create-new branch.
+
 ## Wave 1331 — coverage-boost pass #11 (5 parallel agents, +258 hand-written tests)
 
 18 modules from 86-90% to **95-100%**. Closes the biggest single gap (`_aggdraw_compat.py` was 68% post-wave-1330 since it's net-new shim code) plus a sweep of fontbox/pdfparser/operator/processor modules at 88%.

@@ -77,6 +77,12 @@ class SecurityHandlerFactory:
         delegates to :meth:`new_security_handler_for_policy` when ``key`` is
         a :class:`ProtectionPolicy` instance, otherwise to
         :meth:`new_security_handler_for_filter`."""
+        # Runtime import — ``ProtectionPolicy`` is only available under
+        # ``TYPE_CHECKING`` at module scope to avoid a circular import at
+        # load time; we need the concrete class here to make ``isinstance``
+        # work.
+        from .protection_policy import ProtectionPolicy  # noqa: PLC0415
+
         if isinstance(key, ProtectionPolicy):
             return self.new_security_handler_for_policy(key)
         return self.new_security_handler_for_filter(key)  # type: ignore[arg-type]
