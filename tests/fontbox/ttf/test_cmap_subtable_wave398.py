@@ -167,6 +167,7 @@ def test_wave398_format10_all_invalid_glyphs_leave_reverse_lookup_empty(
         _format12([(0x43, 0x41, 1)]),
         _format13([(0x43, 0x41, 1)]),
     ],
+    ids=["format8", "format12", "format13"],
 )
 def test_wave398_segmented_formats_reject_end_before_start(blob: bytes) -> None:
     subtable = CmapSubtable()
@@ -182,6 +183,7 @@ def test_wave398_segmented_formats_reject_end_before_start(blob: bytes) -> None:
         _format12([(0x41, 0xD800, 1)]),
         _format13([(0x41, 0xD800, 1)]),
     ],
+    ids=["format8", "format12", "format13"],
 )
 def test_wave398_segmented_formats_reject_surrogate_end_code(blob: bytes) -> None:
     subtable = CmapSubtable()

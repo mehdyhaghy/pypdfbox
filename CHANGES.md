@@ -2909,6 +2909,19 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   - `test_high_resolution_image_icon.py`: switched per-test `tk.Tk()` to the session-scoped fixture (eliminating extra Tk roots).
 - **Verified**: 2 concurrent shells × 5 iterations = 10/10 processes finish exit 0; 3 shells × 6 iterations = 18/18 exit 0; `PYPDFBOX_SKIP_TK=1` → 357 tests skip cleanly.
 
+## Wave 1327 — CI red-to-green (Windows env-var cap) + checklist 8th rule
+
+Wave 1326 closed the Tk-dialog Windows failure but the next Windows run surfaced a new error: `ValueError: the environment variable is longer than 32767 characters` at setup of `test_wave398_segmented_formats_reject_end_before_start[\x00\x08\x00\x00...]`. Windows caps env vars at 32,767 chars; pytest renders parametrize `bytes` values into the test ID and sets it as an env var for subprocess use.
+
+### CI red-to-green: Windows env-var cap on pytest IDs
+
+- `tests/fontbox/ttf/test_cmap_subtable_wave398.py`: added `ids=["format8", "format12", "format13"]` to both `parametrize` blocks (`test_wave398_segmented_formats_reject_end_before_start` and `test_wave398_segmented_formats_reject_surrogate_end_code`). Pre-fix the test ID embedded the full `_format8`/`_format12`/`_format13` byte blob (CMap subtable headers padded to align tables) — well over 32k chars in `repr`. Post-fix the test ID is just the readable label.
+- Scanned the rest of `tests/` for other `parametrize` blocks over `bytes` / long-repr values: only the one file affected.
+
+### CLAUDE.md "Cross-platform CI" — 8th checklist item
+
+- Added bullet for `pytest.parametrize` with long `bytes` values + the 32,767 char Windows env-var limit. Memory entry `feedback_cross_platform_before_push.md` updated to match. Pre-push scan now covers 8 Windows-incompatible patterns (Tk timing, mmap.PROT_*, unlink-while-open, sys.platform monkeypatch, NamedTemporaryFile reopen, libtiff EOD, path-separator substrings, PDDocument probe lock, parametrize byte-blob IDs).
+
 ## Wave 1326 — CI red-to-green (Windows Tk dialog) + pre-push checklist hardening
 
 Wave 1325 left 1 Windows-only failure after 2 unsuccessful fix attempts. This wave closes it via `skipif(win32)` (the underlying dialog opens correctly on Windows — only the after-the-fact `winfo_children` assertion is flaky), and adds a "Cross-platform CI" checklist to CLAUDE.md so future code-writing avoids burning push cycles on Windows-only failures.
