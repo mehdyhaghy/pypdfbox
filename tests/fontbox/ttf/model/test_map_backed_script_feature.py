@@ -54,3 +54,23 @@ def test_snapshot_is_independent_of_input_dict() -> None:
     feature = MapBackedScriptFeature("liga", source)
     source[(3, 4)] = 99
     assert feature.get_all_glyph_ids_for_substitution() == {(1, 2)}
+
+
+def test_eq_self_identity_short_circuit() -> None:
+    # Hits the ``self is other`` short-circuit branch in __eq__.
+    feature = MapBackedScriptFeature("liga", {(1, 2): 9})
+    assert feature == feature  # noqa: PLR0124
+
+
+def test_equals_method_mirrors_python_eq() -> None:
+    a = MapBackedScriptFeature("liga", {(1, 2): 9})
+    b = MapBackedScriptFeature("liga", {(1, 2): 9})
+    c = MapBackedScriptFeature("ccmp", {(1, 2): 9})
+    assert a.equals(b) is True
+    assert a.equals(c) is False
+    assert a.equals("not-a-feature") is False
+
+
+def test_hash_code_method_mirrors_python_hash() -> None:
+    feature = MapBackedScriptFeature("liga", {(1, 2): 9})
+    assert feature.hash_code() == hash(feature)

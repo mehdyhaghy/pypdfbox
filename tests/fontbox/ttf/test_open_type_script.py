@@ -82,3 +82,64 @@ def test_open_type_script_constructor_raises() -> None:
 def test_static_helpers_delegate_to_module_level() -> None:
     assert OpenTypeScript.get_script_tags(ord("A")) == ("latn",)
     assert OpenTypeScript.get_unicode_script(ord("A")) == "Latin"
+
+
+def test_ensure_valid_code_point_classmethod_accepts_valid() -> None:
+    # Should not raise for in-range codepoints.
+    OpenTypeScript.ensure_valid_code_point(0)
+    OpenTypeScript.ensure_valid_code_point(0x10FFFF)
+
+
+def test_ensure_valid_code_point_classmethod_rejects_negative() -> None:
+    with pytest.raises(ValueError):
+        OpenTypeScript.ensure_valid_code_point(-1)
+
+
+def test_ensure_valid_code_point_classmethod_rejects_overflow() -> None:
+    with pytest.raises(ValueError):
+        OpenTypeScript.ensure_valid_code_point(0x110000)
+
+
+def test_parse_scripts_file_is_noop() -> None:
+    # Upstream walks Scripts.txt; our port delegates to fontTools so the
+    # parse step is a no-op preserved for API parity. Accepts any stream
+    # argument (including None) and returns None.
+    assert OpenTypeScript.parse_scripts_file(None) is None
+    assert OpenTypeScript.parse_scripts_file(b"ignored") is None
+
+
+def test_to_long_script_name_override_branch(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Force the override-map branch (193-194) by injecting a known entry.
+    from pypdfbox.fontbox.ttf import open_type_script as ots
+
+    monkeypatch.setitem(ots._LONG_NAME_OVERRIDES, "Xxxx", "MyOverride")
+    assert ots._to_long_script_name("Xxxx") == "MyOverride"
+
+
+def test_to_long_script_name_returns_unknown_when_ft_returns_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from pypdfbox.fontbox.ttf import open_type_script as ots
+
+    monkeypatch.setattr(ots, "_ft_script_name", lambda _short: None)
+    assert ots._to_long_script_name("Xyzx") == UNKNOWN
+
+
+def test_get_unicode_script_unknown_short_tag_returns_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from pypdfbox.fontbox.ttf import open_type_script as ots
+
+    # Force fontTools to claim the codepoint has script Zzzz (Unknown).
+    monkeypatch.setattr(ots, "_ft_script", lambda _cp: "Zzzz")
+    assert ots.get_unicode_script(0x41) == UNKNOWN
+
+
+def test_get_script_tags_returns_none_for_unmapped_script(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from pypdfbox.fontbox.ttf import open_type_script as ots
+
+    # Make the unicode script resolve to a key not in the tag map.
+    monkeypatch.setattr(ots, "get_unicode_script", lambda _cp: "NotARealScript")
+    assert ots.get_script_tags(0x41) is None

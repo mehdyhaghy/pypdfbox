@@ -152,3 +152,45 @@ def test_has_remaining_after_full_read():
     di = _make(b"abc")
     di.read_bytes(3)
     assert di.has_remaining() is False
+
+
+def test_peek_unsigned_byte_zero_offset_at_eof_raises():
+    # Empty buffer -> peek() returns RandomAccessRead.EOF (-1).
+    di = _make(b"")
+    with pytest.raises(OSError, match="out of range"):
+        di.peek_unsigned_byte(0)
+
+
+def test_read_bytes_eoferror_path_surfaces_as_oserror():
+    # Drive the defensive EOFError -> OSError reraise in read_bytes by
+    # monkeying the underlying read source to claim plenty of bytes
+    # available, then raising EOFError mid-read_fully.
+    from pypdfbox.fontbox.cff.data_input_random_access_read import (
+        DataInputRandomAccessRead,
+    )
+
+    class _LyingSource:
+        def available(self) -> int:
+            return 1000
+
+        def read_fully(self, n: int) -> bytes:
+            raise EOFError("synthetic truncation")
+
+        def get_position(self) -> int:
+            return 0
+
+        def length(self) -> int:
+            return 1000
+
+        def seek(self, _pos: int) -> None:
+            return None
+
+        def read(self) -> int:
+            return 0
+
+        def peek(self) -> int:
+            return 0
+
+    di = DataInputRandomAccessRead(_LyingSource())  # type: ignore[arg-type]
+    with pytest.raises(OSError, match="Premature end of buffer"):
+        di.read_bytes(5)

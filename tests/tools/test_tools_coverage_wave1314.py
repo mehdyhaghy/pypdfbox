@@ -62,8 +62,10 @@ class _PDLoaderShim:
 
 @pytest.fixture
 def patched_loader(monkeypatch: pytest.MonkeyPatch) -> type[_PDLoaderShim]:
-    """Patch ``Loader`` in each of the five target modules to the shim."""
-    for module in (pdf_to_image, extract_images, extract_xmp, export_fdf):
+    """Patch ``Loader`` in each target module to the shim. ``export_fdf``
+    was migrated to ``PDDocument.load`` (which already returns a wrapped
+    document) in wave 1347, so it no longer needs the shim."""
+    for module in (pdf_to_image, extract_images, extract_xmp):
         monkeypatch.setattr(module, "Loader", _PDLoaderShim)
     return _PDLoaderShim
 

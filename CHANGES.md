@@ -3339,6 +3339,214 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   grayscale / CMYK paths, base `generate_rollover_appearance` /
   `generate_down_appearance` no-ops (agent E, wave 1339).
 
+## Wave 1347 — coverage-boost pass #15 (parallel agents)
+
+### Agent D — fontbox cluster (7 files to 100% coverage)
+
+- New file `tests/fontbox/cff/test_type2_keyword.py` (13 tests) — first
+  test coverage for `Type2KeyWord` (was at 92.5% via implicit imports
+  from `cff_encoding`/`char_string_command` tests). Drives every public
+  surface: `value_of_key` int/int+int/Key overloads (with present and
+  absent keys), `values()` snapshot-independence, `__repr__` / `__str__`
+  / `__hash__` / `__eq__` (incl. NotImplemented arm for non-keywords),
+  class-attribute access.
+- Extended `tests/fontbox/ttf/test_open_type_script.py` (+7 tests) —
+  drives the previously-uncovered `OpenTypeScript.ensure_valid_code_point`
+  classmethod (accept + reject branches), `parse_scripts_file` no-op
+  parity stub, `_to_long_script_name` `_LONG_NAME_OVERRIDES` short-circuit
+  via `monkeypatch.setitem`, `_to_long_script_name` `None`-from-fontTools
+  → UNKNOWN fallback, `get_unicode_script` Zzzz → UNKNOWN branch, and
+  `get_script_tags` missing-tag → None branch via patched
+  `get_unicode_script`. 91.8% → 100%.
+- Extended `tests/pdmodel/font/test_pd_true_type_font_embedder_coverage.py`
+  (+2 tests) — drives the `hmtx[name]` `KeyError` fallback in
+  `set_widths` (widths stay 0) and the
+  `pypdfbox.fontbox.encoding.glyph_list` `ImportError` handler that
+  forces `glyph_list = None` (every code falls through to the gid=0
+  path). 94.6% → 100%.
+- Extended `tests/fontbox/cff/test_cff_encoding.py` (+5 tests) — drives
+  the `add(arity != 2|3)` `TypeError`, the 3-arg `name` non-str
+  `TypeError`, `_as_int` non-int `TypeError`, `_as_int` bool-rejection
+  branch, and the base-class `putIfAbsent` semantic for name→code on
+  duplicate codes. 90.3% → 100%.
+- Extended `tests/fontbox/cff/test_data_input_random_access_read_wave1278.py`
+  (+2 tests) — drives `peek_unsigned_byte(0)` at EOF returning the
+  `RandomAccessRead.EOF` sentinel (raises) and the defensive
+  `EOFError` → `OSError` re-raise inside `read_bytes` via a synthetic
+  source that lies about `available()`. 94.5% → 100%.
+- Extended `tests/fontbox/cmap/test_cmap_strings_wave1281.py` (+6 tests) —
+  drives `get_index_value` 1-byte / empty / overlong, `get_byte_value`
+  empty / overlong, and the `fill_mappings()` no-op parity stub.
+  93.8% → 100%.
+- Extended `tests/fontbox/ttf/model/test_map_backed_script_feature.py`
+  (+3 tests) — drives the `self is other` short-circuit branch in
+  `__eq__`, the Java-named `equals()` delegate (all 3 arms), and the
+  Java-named `hash_code()` delegate. 90.3% → 100%.
+
+### Agent C — five files to 100% coverage
+
+- New file `tests/filter/test_crypt_filter_wave1347.py` (8 tests) —
+  drives the residual `_resolve_name` fallback branches of
+  `pypdfbox/filter/crypt_filter.py` not exercised by the wave-1280
+  set: `parameters is None` short-circuit (line 74); `get_dictionary_object`
+  fallback returning a `COSName` (line 83), a plain `str` (line 85),
+  and a non-`COSName`/non-`str` object (return-None tail); `str(value)`
+  fall-through when `get_cos_name` yields a non-`COSName` value
+  (line 89); plus end-to-end `decode`/`encode` rejection via the
+  fallback-name path. 89.7% → 100%.
+- New file `tests/pdfparser/test_normal_x_reference_wave1347.py`
+  (6 tests) — drives the residual branches of
+  `pypdfbox/pdfparser/xref/normal_x_reference.py`: `_is_object_stream`
+  `False` for a non-`COSStream` wrapped object (line 48);
+  `__repr__`/`__str__` `ObjectStreamParent{` prefix branch (lines
+  95-96); `to_string()` Java-parity alias (line 109); the
+  `isinstance(obj, COSObject)` → `obj.get_object()` resolution path
+  via a `COSObject` wrapper around an `/ObjStm` stream. 89.7% → 100%.
+- New file `tests/printing/test_pdf_pageable_wave1347.py` (7 tests) —
+  drives the previously-uncovered getter/setter pairs in
+  `pypdfbox/printing/pdf_pageable.py`: `get_rendering_hints` (line 50),
+  `set_rendering_hints` (line 53), `is_subsampling_allowed` (line 56),
+  `set_subsampling_allowed` (line 59); plus a round-trip that confirms
+  the per-page `PDFPrintable` inherits the pageable's rendering
+  hints + subsampling flag, and a default-`AUTO`-orientation
+  `get_page_format` smoke. 89.7% → 100%.
+- New file `tests/filter/test_dct_decode_wave1347.py` (4 tests) —
+  drives the Pillow-fallback colour-mode branches of
+  `pypdfbox/filter/dct_decode.py` by monkey-patching
+  `imagecodecs.jpeg8_decode` to raise so `Image.open` engages:
+  `mode == "L"` (line 86), `mode == "CMYK"` (line 88),
+  `mode == "RGB"` (line 90); plus the `OSError("DCTDecode: JPEG
+  decode failed: ...")` wrapping when both decoders refuse. 94.1% → 100%.
+- New file `tests/io/test_random_access_read_write_buffer_wave1347.py`
+  (10 tests) — drives the residual constructor + `write_bytes`
+  validation branches of
+  `pypdfbox/io/random_access_read_write_buffer.py`:
+  `defined_chunk_size` positive override (line 27) and zero / negative /
+  `None` no-op baselines; `write_bytes` `length=None` default-length
+  branch (line 64) with both `bytes` and `memoryview` inputs; negative
+  `length` `ValueError` (line 66); negative-`offset` and
+  `offset + length` out-of-range `ValueError` (line 68); boundary
+  `offset == nbytes, length == 0`. 91.2% → 100%.
+
+No latent source bugs flagged.
+
+### Agent E — six tail-end files to 100% coverage
+
+- New file `tests/coverage_boost/test_wave1347_agent_e.py` (17 tests)
+  pushes six modules to 100% line coverage:
+- `pypdfbox/xmpbox/xml/dom_helper.py` 89.7% → 100% —
+  `get_unique_element_child` empty-element `None` return (line 40);
+  `get_first_child_element` text-only-element `None` return (line 49);
+  `get_qname` triple return (line 58); `get_q_name` snake-case alias
+  (line 63).
+- `pypdfbox/pdmodel/graphics/color/pd_tristimulus.py` 92.3% → 100% —
+  `get_cos_object` exposing the backing array (line 35); `_read`
+  non-`COSNumber` fallback to `0.0` (line 41) via a `COSName` slot;
+  `set_y` (line 60) and `set_z` (line 68) round-trips.
+- `pypdfbox/pdmodel/graphics/shading/cubic_bezier_curve.py`
+  90.6% → 100% — `to_string` formatting every control point as
+  `Point2D.Double[...]` (lines 57-60); `__repr__` delegation
+  (line 63).
+- `pypdfbox/tools/pdf_box.py` 92.5% → 100% — `run()` raising
+  `SystemExit` (line 64); `main(None)` defaulting to `sys.argv[1:]`
+  (line 69); `if __name__ == "__main__":` guard executed via
+  `runpy.run_module(..., run_name="__main__")` (line 82).
+- `pypdfbox/tools/pdf_merger.py` 91.4% → 100% — happy-path `call()`
+  returning `0` with two real one-page PDFs merged via
+  `PDFMergerUtility` (line 51); `if __name__ == "__main__":` block
+  exercised via `runpy.run_module` (lines 79-80).
+- `pypdfbox/fontbox/ttf/otf_parser.py` 93.0% → 100% — legacy
+  underscore aliases `_new_font` / `_allow_cff` / `_read_table`
+  forwarding to the public names (lines 114, 117, 120);
+  `_check_tables` embedded-mode early-return (line 154);
+  `_check_tables` lenient tail (line 162) reached by forcing
+  `is_supported_otf()` to `False` on a parsed font (post-script-tag
+  flag + stubbed `has_table` mapping `CFF ` → False / `CFF2` → True).
+
+No latent source bugs flagged.
+
+### Agent B — seven examples/tools to ~100% coverage
+
+- New file `tests/examples/test_coverage_wave1347_agent_b.py` (13 tests)
+  covering seven targets:
+  - `examples/interactive/form/create_multi_widgets_form.py` 95.7% →
+    100% (`__init__` body, `set_widgets` exception-fallback to
+    `get_widgets().extend(...)`).
+  - `examples/interactive/form/create_simple_form.py` 95.0% → 100%
+    (`__init__` body, `set_value` exception-fallback warning to stderr).
+  - `examples/pdmodel/create_separation_color_box.py` 95.2% → 98%
+    (`__init__` body, two-or-more-arg usage-error path
+    `SystemExit(1)`).
+  - `examples/signature/tsa_client.py` 92.9% → 100% (real-`urlopen`
+    transport fallback path with a stubbed `urlopen` via
+    `unittest.mock.patch` — no network IO).
+  - `tools/export_fdf.py` 90.7% → 100% (`AttributeError` shim branch
+    around `form.export_fdf()`; `__main__` block via
+    `runpy.run_module`).
+  - `tools/export_xfdf.py` 90.5% → 100% (`NotImplementedError` shim
+    branch; `__main__` block via `runpy.run_module`).
+  - `tools/overlay_pdf.py` 95.2% → 100% (`finally`-block `OSError`
+    from `overlayer.close()`; `__main__` block via
+    `runpy.run_module`).
+- Latent bug fixed: `tools/export_fdf.py` and `tools/export_xfdf.py`
+  both called `Loader.load_pdf(self.infile)` and then invoked
+  `pdf.get_document_catalog()`, but `Loader.load_pdf` returns a raw
+  `COSDocument` (no `get_document_catalog`). Same class of bug as the
+  wave-1336/1342/1345-Agent-A `Loader.load_pdf` → `PDDocument.load`
+  swaps. Replaced both call sites with `PDDocument.load(str(self.infile))`.
+  Wave 1314/1315 shim-fixture monkeypatches that patched
+  `module.Loader` on these two modules were retired (the modules no
+  longer expose `Loader`); fixtures updated to skip them.
+
+### Agent A — eight examples to 100% coverage
+
+- New file `tests/examples/pdmodel/test_examples_wave1347.py` (15 tests)
+  pushing six pdmodel examples to 100% line coverage:
+  - `examples/pdmodel/create_patterns_pdf.py` 93.8% → 100% (`__init__`
+    body, two-or-more-arg usage-error `SystemExit(1)`, `_set_tile_contents`
+    TypeError guard via a fake pattern returning a non-`COSStream`).
+  - `examples/pdmodel/embedded_fonts.py` 91.3% → 100% (`__init__` body,
+    TTF-load branch via `demo_with_font(out, ttf)` and
+    `main([out, ttf])` against the bundled `LiberationSans-Regular.ttf`,
+    glyph-fallback `try/except` via a `PDPageContentStream` subclass
+    whose second `show_text` raises `ValueError`).
+  - `examples/pdmodel/print_bookmarks.py` 92.3% → 100% — item-level
+    unknown-destination branch via `patch.object(PDOutlineItem,
+    "get_destination", return_value=StubDest())`; action-level
+    `PDNamedDestination` branch via `patch.object(PDActionGoTo,
+    "get_destination", return_value=PDNamedDestination(...))` with a
+    real `/Names /Dests` name tree. Both branches are dead via the
+    production dispatcher (`get_destination` returns `str` for /D-as-name
+    in our port — an upstream-faithful guard pinned here).
+  - `examples/pdmodel/print_document_meta_data.py` 90.5% → 100% —
+    `/Metadata` stream branch via an attached XML metadata
+    `COSStream` + `PDMetadata`, plus `format_date` non-None branch
+    via creation/modification `datetime` setters; direct
+    `format_date(datetime(2024,12,31,14,30))` call pins the
+    `%m/%d/%y %I:%M %p` locale format.
+  - `examples/pdmodel/add_message_to_each_page.py` 93.5% → 100% —
+    rotated-page branch via `page.set_rotation(90)` confirms the
+    rotate text-matrix path executes without raising.
+  - `examples/pdmodel/create_bookmarks.py` 92.9% → 100% — `__init__`
+    body, encrypted-doc short-circuit via a `StandardProtectionPolicy`
+    source confirms the example writes the error message and raises
+    `SystemExit(1)` without producing the destination file.
+- New file `tests/examples/util/test_examples_wave1347.py` (5 tests)
+  pushing two util examples to 100%:
+  - `examples/util/pdf_merger_example.py` 94.4% → 100% — xmpbox
+    `ImportError` branch via `sys.modules[...]=None`; `AttributeError`
+    fallback inside `create_xmp_metadata` via a fake
+    `XMPMetadata`/`XmpSerializer` module pair whose
+    `create_and_add_pdfa_identification_schema` raises
+    `AttributeError`; round-trip that confirms `merge()` still emits
+    `%PDF` bytes when xmp metadata is `None`.
+  - `examples/util/remove_all_text.py` 95.7% → 100% — `strip`
+    `(ImportError, AttributeError)` fallback (per-page rewrite
+    skipped, save still completes) and `write_tokens_to_stream`
+    `ContentStreamWriter` `ImportError` no-op via the same
+    `sys.modules` trick.
+- No latent source bugs flagged.
+
 ## Wave 1345 — coverage-boost pass #13 (parallel agents)
 
 ### Agent A — six examples to 100% coverage

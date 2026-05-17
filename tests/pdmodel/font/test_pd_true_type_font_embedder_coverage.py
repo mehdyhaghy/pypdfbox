@@ -273,3 +273,69 @@ def test_get_unicode_cmap_returns_empty_when_best_cmap_is_none() -> None:
 
     emb._ttf = _ShimTTF()  # type: ignore[assignment]
     assert emb._get_unicode_cmap() == {}
+
+
+def test_set_widths_falls_back_to_zero_on_hmtx_lookup_failure() -> None:
+    """Java line 117-121: when hmtx[name] raises, width stays 0."""
+    doc = PDDocument()
+    ttf = _load_ttf()
+    cos = COSDictionary()
+    emb = PDTrueTypeFontEmbedder(doc, cos, ttf, WinAnsiEncoding())
+
+    class _ExplodingHmtx:
+        def __getitem__(self, name: str) -> Any:
+            raise KeyError(name)
+
+    class _ShimTTF:
+        def __init__(self, real: Any) -> None:
+            self._real = real
+
+        def __getitem__(self, key: str) -> Any:
+            if key == "hmtx":
+                return _ExplodingHmtx()
+            return self._real[key]
+
+        def getGlyphName(self, gid: int) -> str:  # noqa: N802 — fontTools name
+            return self._real.getGlyphName(gid)
+
+        def getGlyphID(self, name: str) -> int:  # noqa: N802 — fontTools name
+            return self._real.getGlyphID(name)
+
+    emb._ttf = _ShimTTF(ttf)  # type: ignore[assignment]
+    out = COSDictionary()
+    emb.set_widths(out)
+    widths = out.get_item(COSName.WIDTHS)
+    assert widths is not None
+    # Every per-code lookup fell into the except branch -> all zeros.
+    for i in range(len(widths)):
+        assert int(widths.get(i).int_value()) == 0
+
+
+def test_set_widths_skips_notdef_when_glyph_list_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Java line 96-100 + 116: when glyph_list import fails, names other
+    than ``.notdef`` fall through to gid=0 width via the
+    ``gid > 0 or name != ".notdef"`` branch."""
+    # Force glyph_list import to raise so we hit the (ImportError,
+    # AttributeError) handler.
+    import builtins
+
+    real_import = builtins.__import__
+
+    def _explode(name: str, *args: Any, **kwargs: Any) -> Any:
+        if name == "pypdfbox.fontbox.encoding.glyph_list":
+            raise ImportError("synthetic")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _explode)
+
+    doc = PDDocument()
+    ttf = _load_ttf()
+    cos = COSDictionary()
+    PDTrueTypeFontEmbedder(doc, cos, ttf, WinAnsiEncoding())
+    # set_widths still emits arrays — with no glyph_list, every entry
+    # falls back to the gid=0 path; widths therefore stay 0 (no exception).
+    widths = cos.get_item(COSName.WIDTHS)
+    assert widths is not None
+    assert len(widths) == 224

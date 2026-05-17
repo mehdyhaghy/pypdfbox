@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from pypdfbox.loader import Loader
+from pypdfbox.pdmodel.pd_document import PDDocument
 
 
 class ExportXFDF:
@@ -21,7 +21,7 @@ class ExportXFDF:
         if self.infile is None:
             raise OSError("infile is required")
         try:
-            with Loader.load_pdf(self.infile) as pdf:
+            with PDDocument.load(str(self.infile)) as pdf:
                 form = pdf.get_document_catalog().get_acro_form()
                 if form is None:
                     import sys

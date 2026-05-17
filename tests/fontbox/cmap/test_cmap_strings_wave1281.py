@@ -34,3 +34,29 @@ def test_get_byte_value_two_byte_singleton() -> None:
     first = CMapStrings.get_byte_value(b"\x00A")
     second = CMapStrings.get_byte_value(b"\x00A")
     assert first is second
+
+
+def test_get_index_value_one_byte() -> None:
+    assert CMapStrings.get_index_value(b"\x10") == 0x10
+
+
+def test_get_index_value_empty_returns_none() -> None:
+    assert CMapStrings.get_index_value(b"") is None
+
+
+def test_get_index_value_too_long_returns_none() -> None:
+    assert CMapStrings.get_index_value(b"\x00\x00\x00") is None
+
+
+def test_get_byte_value_empty_returns_none() -> None:
+    assert CMapStrings.get_byte_value(b"") is None
+
+
+def test_get_byte_value_too_long_returns_none() -> None:
+    assert CMapStrings.get_byte_value(b"\x00\x00\x00") is None
+
+
+def test_fill_mappings_is_noop() -> None:
+    # Upstream pre-fills lazily; our port builds at import time and keeps
+    # the method as a no-op for API parity.
+    assert CMapStrings.fill_mappings() is None
