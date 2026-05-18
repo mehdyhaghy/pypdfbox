@@ -629,7 +629,11 @@ class PDFMergerUtility:
                             source_doc.close()
                         except Exception:  # noqa: BLE001
                             _LOG.exception("error closing source PDDocument")
-                        opened_sources[-1] = (source_doc, False)
+                        else:
+                            # Only release ownership on a clean close so
+                            # the outer-finally retry below picks up the
+                            # leak if the close itself raised.
+                            opened_sources[-1] = (source_doc, False)
 
             if self._destination_document_information is not None:
                 destination.set_document_information(
@@ -651,11 +655,11 @@ class PDFMergerUtility:
             except Exception:  # noqa: BLE001
                 _LOG.exception("error closing destination PDDocument")
             for src_doc, still_owned in opened_sources:
-                if still_owned:  # pragma: no cover -- inner finally always flips owned=False
-                    try:  # pragma: no cover -- dead code (see CHANGES.md latent bug)
-                        src_doc.close()  # pragma: no cover
-                    except Exception:  # noqa: BLE001  # pragma: no cover
-                        _LOG.exception("error closing source PDDocument")  # pragma: no cover
+                if still_owned:
+                    try:
+                        src_doc.close()
+                    except Exception:  # noqa: BLE001
+                        _LOG.exception("error closing source PDDocument")
 
     # ---------- optimize-mode resource hashing ----------
 
@@ -754,7 +758,11 @@ class PDFMergerUtility:
                             source_doc.close()
                         except Exception:  # noqa: BLE001 — best-effort close
                             _LOG.exception("error closing source PDDocument")
-                        opened_sources[-1] = (source_doc, False)
+                        else:
+                            # Only release ownership on a clean close so
+                            # the outer-finally retry below picks up the
+                            # leak if the close itself raised.
+                            opened_sources[-1] = (source_doc, False)
 
             if self._destination_document_information is not None:
                 destination.set_document_information(
@@ -776,11 +784,11 @@ class PDFMergerUtility:
             except Exception:  # noqa: BLE001
                 _LOG.exception("error closing destination PDDocument")
             for src_doc, still_owned in opened_sources:
-                if still_owned:  # pragma: no cover -- inner finally always flips owned=False
-                    try:  # pragma: no cover -- dead code (see CHANGES.md latent bug)
-                        src_doc.close()  # pragma: no cover
-                    except Exception:  # noqa: BLE001  # pragma: no cover
-                        _LOG.exception("error closing source PDDocument")  # pragma: no cover
+                if still_owned:
+                    try:
+                        src_doc.close()
+                    except Exception:  # noqa: BLE001
+                        _LOG.exception("error closing source PDDocument")
 
     @staticmethod
     def _open_source(source: SourceLike) -> tuple[PDDocument, bool]:
