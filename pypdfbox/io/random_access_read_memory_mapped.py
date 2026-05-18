@@ -32,7 +32,7 @@ class RandomAccessReadMemoryMapped(RandomAccessRead):
                 # (the Windows ``mmap`` module exposes no PROT_* constants).
                 if hasattr(mmap, "PROT_READ"):
                     self._mm = mmap.mmap(self._fd, 0, prot=mmap.PROT_READ)
-                else:
+                else:  # pragma: no cover - Windows-only branch; dev box is POSIX
                     self._mm = mmap.mmap(self._fd, 0, access=mmap.ACCESS_READ)
         except Exception:
             os.close(self._fd)

@@ -140,8 +140,10 @@ class XMPMediaManagementSchema(XMPSchema):
                 return type_cls(
                     self._metadata, self._namespace, self._prefix, local_name, v
                 )
-            except (TypeError, ValueError):
-                return None
+            # TextType/URLType accept any str; this guard is parity scaffolding
+            # for subclasses where the constructor can reject the value.
+            except (TypeError, ValueError):  # pragma: no cover
+                return None  # pragma: no cover
         return None
 
     # --- DocumentID --------------------------------------------------

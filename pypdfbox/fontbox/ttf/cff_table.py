@@ -137,7 +137,7 @@ class CFFTable(TTFTable):
             total = 0
             while total < len(buf):
                 n = reader.read_into(buf, total, len(buf) - total)
-                if n <= 0:
+                if n <= 0:  # pragma: no cover - truncated-table safety guard
                     break
                 total += n
             CFFParser().parse_first_sub_font_ros(bytes(buf[:total]), out_headers)

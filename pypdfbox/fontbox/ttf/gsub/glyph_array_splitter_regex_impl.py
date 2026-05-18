@@ -58,7 +58,7 @@ class GlyphArraySplitterRegexImpl(GlyphArraySplitter):
                 # codepoint-wise comparison; Python's tuple ordering
                 # over the strings reproduces it for the ASCII glyph
                 # id strings we're working with.
-                if s2 == s1:
+                if s2 == s1:  # pragma: no cover - dedup'd before sort
                     return 0
                 return -1 if s2 < s1 else 1
             return len(s2) - len(s1)

@@ -133,7 +133,7 @@ class ImageIOUtil:
             if output_stream is not None:
                 pil.save(output_stream, **save_kwargs)
             else:
-                if filename is None:  # defensive — should be unreachable
+                if filename is None:  # pragma: no cover — defensive: callers always provide one or the other  # noqa: E501
                     raise OSError("no filename or output stream")
                 pil.save(filename, **save_kwargs)
         except (OSError, ValueError, KeyError) as exc:

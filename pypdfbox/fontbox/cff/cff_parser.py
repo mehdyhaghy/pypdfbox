@@ -461,7 +461,7 @@ class CFFParser:
                 elif nibble == 0xF:
                     done = True
                     break
-                else:
+                else:  # pragma: no cover - nibble is always 0x0-0xF
                     msg = f"illegal nibble {nibble}"
                     raise ValueError(msg)
         if exponent_missing:

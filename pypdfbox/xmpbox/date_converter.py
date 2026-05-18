@@ -722,9 +722,13 @@ class DateConverter:
             if where_len == len(text):
                 initial_where.index = where_len
                 return ret_cal
-            if where_len > longest_len:
-                longest_len = where_len
-                longest_date = ret_cal
+            # Both parses succeeded but left residue, and simple-format consumed
+            # more than big-endian. Unreachable with the partial SimpleDateFormat
+            # port — the simple parser only matches purely numeric prefixes that
+            # big-endian already eats.
+            if where_len > longest_len:  # pragma: no cover
+                longest_len = where_len  # pragma: no cover
+                longest_date = ret_cal  # pragma: no cover
 
         if longest_date is not None:
             initial_where.index = longest_len
@@ -808,7 +812,7 @@ def _two_digit_year_to_full(yy: int) -> int:
     candidate = century + yy
     if candidate < base:
         candidate += 100
-    if candidate > base + 99:
+    if candidate > base + 99:  # pragma: no cover - unreachable given today's pivot
         candidate -= 100
     return candidate
 

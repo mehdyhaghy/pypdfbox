@@ -1627,7 +1627,7 @@ class COSParser(BaseParser):
         # module load.
         try:
             from pypdfbox.pdmodel.encryption.pd_encryption import PDEncryption  # noqa: PLC0415
-        except ImportError:
+        except ImportError:  # pragma: no cover - module always importable here
             return enc_dict
         return PDEncryption(enc_dict)
 
@@ -1848,7 +1848,7 @@ class COSParser(BaseParser):
                         f"Expected trailer object at offset {self.position}"
                     )
                 trailer = getattr(self, "_last_parsed_trailer", None)
-                if trailer is None:
+                if trailer is None:  # pragma: no cover - parse_trailer sets this
                     return None
                 prev_obj = trailer.get_dictionary_object(
                     COSName.get_pdf_name("Prev")

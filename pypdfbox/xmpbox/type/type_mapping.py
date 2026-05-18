@@ -602,7 +602,7 @@ class TypeMapping:
             "create_and_add_default_schema_for_namespace",
             None,
         )
-        if creator is not None:
+        if creator is not None:  # pragma: no cover - XMPMetadata does not expose this hook yet
             return creator(metadata, namespace, prefix)
         # Fall back to the schema-factory record (carries the namespace
         # only — caller can build the schema themselves).

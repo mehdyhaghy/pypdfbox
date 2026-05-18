@@ -122,7 +122,7 @@ class NonSeekableRandomAccessReadInputStream(RandomAccessRead):
         self._check_closed()
         if length is None:
             length = len(buf) - offset
-        if buf is None:  # type: ignore[unreachable]
+        if buf is None:  # type: ignore[unreachable]  # pragma: no cover - mirrors upstream null guard; unreachable when Python type-checks pass
             raise ValueError("buffer is null")
         if offset < 0 or length < 0 or offset + length > len(buf):
             raise IndexError(

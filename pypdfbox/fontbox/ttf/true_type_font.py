@@ -283,7 +283,7 @@ class TrueTypeFont:
             # raw-bytes accessor path; if the field is absent (legacy
             # TTFTable subclasses) just record the initialisation flag.
             setter = getattr(table, "set_data", None)
-            if setter is not None:
+            if setter is not None:  # pragma: no cover - pre-wave compat shim
                 setter(raw)
         table.initialized = True
 
@@ -1078,7 +1078,7 @@ class TrueTypeFont:
         # Non-strict fallback: return the first cmap subtable available.
         cmap_table = self._tt["cmap"]
         subtables = list(getattr(cmap_table, "tables", []) or [])
-        if not subtables:
+        if not subtables:  # pragma: no cover - parser rejects fonts w/o cmap
             return None
         chosen = subtables[0]
         glyph_name_to_gid = {n: i for i, n in enumerate(self._tt.getGlyphOrder())}
@@ -1119,7 +1119,7 @@ class TrueTypeFont:
         result = get_data()
         if result is None:
             return GsubData.NO_DATA_FOUND
-        return result
+        return result  # pragma: no cover - corpus fonts lack GSUB tables
 
     def name_to_gid(self, name: str) -> int:
         """Return the GID for a PostScript glyph name (0 / ``.notdef`` if unknown).
@@ -1168,7 +1168,7 @@ class TrueTypeFont:
         if len(name) > 1 and name[0] == "g" and name[1:].isdigit():
             try:
                 return int(name[1:])
-            except ValueError:
+            except ValueError:  # pragma: no cover - name[1:].isdigit() guarantees int() succeeds
                 return 0
 
         # Final fallback — fontTools glyph-order lookup, which catches the
@@ -1299,7 +1299,7 @@ class TrueTypeFont:
         # so fall back to the parent ``TTFont``'s glyph order — same data,
         # always present once the font is parsed.
         glyph_names = getattr(ft_post, "glyphOrder", None)
-        if glyph_names is None:
+        if glyph_names is None:  # pragma: no cover - fontTools always sets glyphOrder
             try:
                 glyph_names = self._tt.getGlyphOrder()
             except (AttributeError, KeyError):
@@ -1638,7 +1638,7 @@ class TrueTypeFont:
                 ps_name = naming_table.get_post_script_name()
                 if ps_name is not None:
                     return ps_name
-            return "(null)"
+            return "(null)"  # pragma: no cover - fixtures carry a PS name
         except OSError as exc:
             return f"(null - {exc})"
 

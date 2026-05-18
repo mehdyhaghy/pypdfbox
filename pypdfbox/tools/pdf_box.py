@@ -78,5 +78,5 @@ class PDFBox:
         return int(cls.main(rest) or 0)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover — module-as-script entrypoint
     sys.exit(PDFBox.main(sys.argv[1:]))

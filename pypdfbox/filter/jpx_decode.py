@@ -210,7 +210,8 @@ class JPXDecode(Filter):
         raw_bytes = raw.read()
         bytes_per_sample = bpc // 8
         pixels = width * height
-        if pixels == 0 or bytes_per_sample == 0:
+        # pragma: no cover — guarded above (positive w/h + bpc∈{8,16}).
+        if pixels == 0 or bytes_per_sample == 0:  # pragma: no cover
             raise OSError("JPXDecode.encode: degenerate raster")
 
         num_components = parameters.get_int("ColorComponents", 0)

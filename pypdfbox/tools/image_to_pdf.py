@@ -124,5 +124,5 @@ class ImageToPDF:
         return runner.call()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover — module-as-script entrypoint
     sys.exit(ImageToPDF.main(sys.argv[1:]))

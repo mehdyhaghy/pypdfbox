@@ -75,6 +75,6 @@ class PDFMerger:
         return merger.call()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover — module-as-script entrypoint
     import sys
     sys.exit(PDFMerger.main(sys.argv[1:]))

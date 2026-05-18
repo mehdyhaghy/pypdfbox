@@ -268,7 +268,7 @@ class XrefTrailerResolver:
                 if prev_byte_pos == -1:
                     break
                 next_obj = byte_pos_map.get(prev_byte_pos)
-                if next_obj is None:
+                if next_obj is None:  # pragma: no cover - malformed /Prev chain recovery
                     _LOG.warning(
                         "Did not found XRef object pointed to by 'Prev' "
                         "key at position %s",

@@ -79,5 +79,5 @@ class JPXFilter(JPXDecode):
 try:
     if not FilterFactory.is_registered("JPXFilter"):
         FilterFactory.register("JPXFilter", JPXFilter())
-except Exception:
+except Exception:  # pragma: no cover - defensive registration guard
     pass

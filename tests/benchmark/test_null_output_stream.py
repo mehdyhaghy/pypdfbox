@@ -28,3 +28,10 @@ def test_writable_is_true() -> None:
 def test_flush_does_not_raise() -> None:
     stream = NullOutputStream()
     stream.flush()
+
+
+def test_write_none_returns_zero() -> None:
+    """Mirror upstream's ``write(byte[] b)`` no-op for ``null`` —
+    the Python port returns 0 instead of raising NPE."""
+    stream = NullOutputStream()
+    assert stream.write(None) == 0  # type: ignore[arg-type]

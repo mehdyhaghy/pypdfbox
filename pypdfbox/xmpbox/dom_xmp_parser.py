@@ -545,7 +545,9 @@ class DomXmpParser:
         if container is None:
             return None
         container_ns, container_local = _strip_qname(container.tag)
-        if container_ns != _RDF_NS:
+        # _find_rdf_container only returns rdf:* children, so this guard is
+        # unreachable through the parser's call sites.
+        if container_ns != _RDF_NS:  # pragma: no cover
             return None
         if container_local != cardinality_name:
             # Upstream raises FORMAT in strict mode; we silently fall back

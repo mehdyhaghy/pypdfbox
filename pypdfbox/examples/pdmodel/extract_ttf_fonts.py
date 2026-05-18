@@ -34,7 +34,7 @@ class ExtractTTFFonts:
         """Mirrors ``extractFonts`` (line 88)."""
         if len(argv) < 1 or len(argv) > 4:
             ExtractTTFFonts.usage()
-            return
+            return  # pragma: no cover — usage() raises SystemExit; parity mirror
 
         pdf_file: str | None = None
         password = ""
@@ -47,13 +47,13 @@ class ExtractTTFFonts:
                 i += 1
                 if i >= len(argv):
                     ExtractTTFFonts.usage()
-                    return
+                    return  # pragma: no cover — usage() raises SystemExit; parity mirror
                 password = argv[i]
             elif token == self._PREFIX:
                 i += 1
                 if i >= len(argv):
                     ExtractTTFFonts.usage()
-                    return
+                    return  # pragma: no cover — usage() raises SystemExit; parity mirror
                 prefix = argv[i]
             elif token == self._ADDKEY:
                 add_key = True
@@ -64,7 +64,7 @@ class ExtractTTFFonts:
 
         if pdf_file is None:
             ExtractTTFFonts.usage()
-            return
+            return  # pragma: no cover — usage() raises SystemExit; parity mirror
 
         if prefix is None and len(pdf_file) > 4:
             prefix = pdf_file[:-4]

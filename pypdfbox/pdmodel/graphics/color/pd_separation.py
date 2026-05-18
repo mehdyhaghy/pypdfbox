@@ -154,7 +154,7 @@ class PDSeparation(PDColorSpace):
                     "set_tint_transform requires an object with a COS form"
                 )
             self._array.set(self._TINT_TRANSFORM, cos)
-        elif isinstance(transform, COSBase):
+        elif isinstance(transform, COSBase):  # pragma: no cover -- COSBase always has get_cos_object, so the hasattr branch above always wins; kept for defensive parity with upstream's COSObjectable surface  # noqa: E501
             self._array.set(self._TINT_TRANSFORM, transform)
         else:
             raise TypeError(

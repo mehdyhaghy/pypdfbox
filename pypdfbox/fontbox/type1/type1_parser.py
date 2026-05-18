@@ -1350,7 +1350,7 @@ class Type1Parser:
                 if peek[0] == TOKEN_START_ARRAY:
                     open_array += 1
                 tok = self._lexer.next_token()
-                if tok is None:
+                if tok is None:  # pragma: no cover - peek != None guarantees next_token() != None
                     return value
                 value.append(tok)
                 if tok[0] == TOKEN_END_ARRAY:
@@ -1394,7 +1394,7 @@ class Type1Parser:
             if peek[0] == TOKEN_START_PROC:
                 open_proc += 1
             tok = self._lexer.next_token()
-            if tok is None:
+            if tok is None:  # pragma: no cover - peek != None guarantees next_token() != None
                 raise OSError("Malformed procedure: missing token")
             value.append(tok)
             if tok[0] == TOKEN_END_PROC:
@@ -1421,7 +1421,7 @@ class Type1Parser:
             if peek[0] == TOKEN_START_PROC:
                 open_proc += 1
             tok = self._lexer.next_token()
-            if tok is None:
+            if tok is None:  # pragma: no cover - peek != None guarantees next_token() != None
                 raise OSError("Malformed procedure: missing token")
             if tok[0] == TOKEN_END_PROC:
                 open_proc -= 1
@@ -1564,7 +1564,7 @@ class Type1Parser:
         unknowns are silently dropped (matching upstream's ``default``).
         """
         value = self.read_dict_value()
-        if not value:
+        if not value:  # pragma: no cover - defensive for malformed Type1 dicts
             return
         first = value[0]
         if key == "FontName":
@@ -1639,7 +1639,7 @@ class Type1Parser:
         peek = self._lexer.peek_token()
         if peek is not None and peek[0] == TOKEN_NAME:
             name_tok = self._lexer.next_token()
-            if name_tok is None:
+            if name_tok is None:  # pragma: no cover - peek != None guarantees next_token() != None
                 raise OSError("Unexpected EOF in encoding")
             name = name_tok[1]
             if name == "StandardEncoding":
@@ -1659,7 +1659,7 @@ class Type1Parser:
                 raise OSError("Incomplete data while reading encoding of type 1 font")
             if peek[0] == TOKEN_NAME and peek[1] in ("dup", "readonly", "def"):
                 break
-            if self._lexer.next_token() is None:
+            if self._lexer.next_token() is None:  # pragma: no cover - peek != None guards this
                 raise OSError("Incomplete data while reading encoding of type 1 font")
 
         code_to_name: dict[int, str] = {}

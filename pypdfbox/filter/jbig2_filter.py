@@ -109,5 +109,5 @@ class JBIG2Filter(JBIG2Decode):
 try:
     if not FilterFactory.is_registered("JBIG2Filter"):
         FilterFactory.register("JBIG2Filter", JBIG2Filter())
-except Exception:
+except Exception:  # pragma: no cover - defensive registration guard
     pass

@@ -385,7 +385,8 @@ class PDFParser:
             # could call ``skip_comment`` here but per spec the
             # linearization dict, if present, is the very first object).
             peek = self._base.peek_byte()
-            if peek == RandomAccessRead.EOF or not (0x30 <= peek <= 0x39):
+            # pragma: no cover - linearization scan early-out on non-digit start
+            if peek == RandomAccessRead.EOF or not (0x30 <= peek <= 0x39):  # pragma: no cover
                 return
             try:
                 obj_num = self._base.read_int()

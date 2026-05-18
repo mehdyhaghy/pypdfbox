@@ -230,7 +230,7 @@ def run(args: argparse.Namespace) -> int:
 
     try:
         same_output = src.resolve() == out.resolve()
-    except OSError:
+    except OSError:  # pragma: no cover — Path.resolve OS-error fallback
         same_output = src == out
 
     if same_output:

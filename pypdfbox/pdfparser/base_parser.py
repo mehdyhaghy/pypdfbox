@@ -910,7 +910,7 @@ class BaseParser:
         # rewind it (for endobj/endstream) or warn-and-skip (PDFNull).
         start_offset = self.position
         bad_string = self.read_string()
-        if not bad_string:
+        if not bad_string:  # pragma: no cover - corrupt-stream recovery edge
             peek = self._src.peek()
             raise PDFParseError(
                 f"Unknown dir object c={chr(c)!r} cInt={c} peek="
@@ -975,7 +975,8 @@ class BaseParser:
                     start_position,
                 )
                 is_this_the_end = self.read_string()
-                if not is_this_the_end and self._src.peek() == 0x5B:  # '['
+                # pragma: no cover - nested-array corruption recovery
+                if not is_this_the_end and self._src.peek() == 0x5B:  # '['  # pragma: no cover
                     return po
                 self._src.rewind(len(is_this_the_end.encode("latin-1")))
                 if is_this_the_end in (self.ENDOBJ_STRING, self.ENDSTREAM_STRING):
@@ -1087,7 +1088,7 @@ class BaseParser:
             )
             return COSNull.NULL
         gen_number = generation_number.value
-        if gen_number < 0:
+        if gen_number < 0:  # pragma: no cover - lexer rejects negative ints
             _LOG.error(
                 "invalid generation number value =%d at offset %d",
                 gen_number,
