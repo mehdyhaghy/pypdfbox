@@ -4187,6 +4187,23 @@ No latent source bugs flagged.
   and rely solely on `read_long`'s clamp — Java's signed-32 → signed-64
   pattern lives in exactly one place upstream; we mirror it in two.
 
+## Wave 1350 — fix 2 latent source bugs flagged during wave 1349
+
+- **pdmodel.graphics.shading.radial_shading_context**: replaced the
+  literal `input_value = 1` / `input_value = 0` extend-branch clamps
+  with `self._domain[1]` / `self._domain[0]` to match the sibling
+  `AxialShadingContext`. The radial shader now respects non-default
+  `/Domain` values.
+- **pdmodel.interactive.annotation.handlers.pd_line_appearance_handler**:
+  reshaped the caption emit so `begin_text` is guarded separately and
+  the in-BT operations live in a `try / finally(end_text)`. Previously
+  if `cs.show_text` raised mid-BT, the subsequent
+  `restore_graphics_state()` then raised `RuntimeError` ("operation
+  not allowed within a text block"); now `end_text` always runs when
+  BT was opened.
+
+Overall coverage: 99.62% (steady). Tests: 37,355.
+
 ## Wave 1346 — fix 2 latent Loader.load_pdf bugs flagged during wave 1345
 
 Three more `Loader.load_pdf` → `PDDocument.load` swaps in the rendering

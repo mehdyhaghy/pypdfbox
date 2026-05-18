@@ -160,14 +160,14 @@ class RadialShadingContext(ShadingContext):
                     if not use_background:
                         if input_value > 1:
                             if extend[1] and coords[5] > 0:
-                                input_value = 1
+                                input_value = self._domain[1]
                             elif bg is None:
                                 continue
                             else:
                                 use_background = True
                         elif input_value < 0:
                             if extend[0] and coords[2] > 0:
-                                input_value = 0
+                                input_value = self._domain[0]
                             elif bg is None:
                                 continue
                             else:

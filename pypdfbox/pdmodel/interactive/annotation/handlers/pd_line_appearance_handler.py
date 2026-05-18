@@ -172,16 +172,28 @@ class PDLineAppearanceHandler(PDAbstractAppearanceHandler):
                 if content_length > 0:
                     try:
                         cs.begin_text()
-                        cs.set_font(font, _FONT_SIZE)
-                        cs.new_line_at_offset(
-                            x_offset + caption_h,
-                            y + y_offset + caption_v,
-                        )
-                        cs.show_text(contents)
-                        cs.end_text()
                     except (AttributeError, ValueError):
-                        # Font without show_text support — skip text emit.
+                        # Stream doesn't support text operators at all —
+                        # nothing was opened, so nothing to close.
                         pass
+                    else:
+                        # Inside a BT block now: ``end_text`` has to run
+                        # in the ``finally`` so the subsequent
+                        # ``restore_graphics_state`` isn't inside a
+                        # text block (which would raise RuntimeError).
+                        try:
+                            cs.set_font(font, _FONT_SIZE)
+                            cs.new_line_at_offset(
+                                x_offset + caption_h,
+                                y + y_offset + caption_v,
+                            )
+                            cs.show_text(contents)
+                        except (AttributeError, ValueError):
+                            # Font without show_text support — skip the
+                            # text emit but still close BT.
+                            pass
+                        finally:
+                            cs.end_text()
 
                 if caption_v != 0:
                     # Adobe paints a vertical bar to the caption.
