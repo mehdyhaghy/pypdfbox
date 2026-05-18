@@ -53,6 +53,36 @@ def test_pd_gamma_defaults_and_accessors():
     assert g.get_cos_array() is g.get_cos_object()
 
 
+def test_pd_gamma_constructs_from_existing_array():
+    """Passing in an existing ``COSArray`` keeps the same backing store
+    (mirrors upstream's ``PDGamma(COSArray)`` constructor)."""
+    arr = COSArray()
+    arr.add(COSFloat(1.1))
+    arr.add(COSFloat(2.2))
+    arr.add(COSFloat(3.3))
+    g = PDGamma(arr)
+    assert g.get_cos_array() is arr
+    assert g.get_r() == pytest.approx(1.1)
+    assert g.get_g() == pytest.approx(2.2)
+    assert g.get_b() == pytest.approx(3.3)
+
+
+def test_pd_gamma_read_returns_zero_for_non_number_entry():
+    """``_read`` returns ``0.0`` when the underlying array entry is not a
+    ``COSNumber`` (e.g. a stray ``COSName``). Mirrors upstream's defensive
+    type guard."""
+    from pypdfbox.cos import COSName
+
+    arr = COSArray()
+    arr.add(COSName.get_pdf_name("oops"))
+    arr.add(COSFloat(2.5))
+    arr.add(COSFloat(3.5))
+    g = PDGamma(arr)
+    assert g.get_r() == 0.0
+    assert g.get_g() == pytest.approx(2.5)
+    assert g.get_b() == pytest.approx(3.5)
+
+
 def test_pd_cie_based_is_abstract():
     with pytest.raises(TypeError):
         PDCIEBasedColorSpace()

@@ -52,6 +52,19 @@ def test_text_state_clone_is_independent():
     assert clone.get_font_size() == 20
 
 
+def test_text_state_font_round_trip():
+    """``get_font`` / ``set_font`` round-trip an arbitrary object. The
+    text state holds the font reference by identity — mirrors upstream's
+    untyped ``PDFont`` reference."""
+    ts = PDTextState()
+    assert ts.get_font() is None
+    sentinel = object()
+    ts.set_font(sentinel)
+    assert ts.get_font() is sentinel
+    ts.set_font(None)
+    assert ts.get_font() is None
+
+
 def test_graphics_state_defaults():
     gs = PDGraphicsState()
     assert gs.get_line_width() == 1.0

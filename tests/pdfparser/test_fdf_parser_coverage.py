@@ -158,3 +158,66 @@ def test_constructor_accepts_random_access_read() -> None:
     parser = FDFParser(RandomAccessReadBuffer(b"%FDF-1.2\n%%EOF\n"))
     # Inherited COSParser surface is wired up correctly.
     assert parser.is_initial_parse_done() is False
+
+
+# ----------------------------------------------------------------------
+# wave 1351 — fdf_parser.py lines 62 and 86
+# ----------------------------------------------------------------------
+
+
+def test_parse_wraps_falsy_header_result_as_parse_error() -> None:
+    """When ``parse_fdf_header`` returns a falsy value (rather than
+    raising), ``parse`` must wrap that as ``PDFParseError`` (covers
+    ``fdf_parser.py`` line 62 — the explicit raise inside the
+    ``if not self.parse_fdf_header():`` branch)."""
+    parser, document = _parser_with_bound_document(
+        b"%FDF-1.2\n%%EOF\n", COSDictionary()
+    )
+    # Force ``parse_fdf_header`` to return ``False`` so the wrapping
+    # raise on line 62 is taken (vs the upstream behaviour of raising).
+    parser.parse_fdf_header = lambda: False  # type: ignore[method-assign]
+    try:
+        with pytest.raises(PDFParseError, match="versioninfo"):
+            parser.parse()
+        # ``parse`` cleanup still nulls the bound document.
+        assert parser._document is None
+    finally:
+        document.close()
+
+
+def test_parse_fdf_header_falls_back_to_parse_pdf_header(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the underlying :class:`COSParser` doesn't expose
+    ``parse_fdf_header``, :meth:`FDFParser.parse_fdf_header` falls
+    through to ``parse_pdf_header`` (covers ``fdf_parser.py`` line 86).
+    """
+    from pypdfbox.pdfparser.cos_parser import COSParser
+
+    # Strip the parent's ``parse_fdf_header`` so ``getattr(super(),
+    # 'parse_fdf_header', None)`` resolves to ``None`` — the fallback
+    # branch must then call ``parse_pdf_header`` instead.
+    monkeypatch.delattr(COSParser, "parse_fdf_header")
+
+    # Use a ``%PDF-`` marker so the fallback ``parse_pdf_header``
+    # accepts the bytes — the fallback's marker is "%PDF-", not "%FDF-".
+    parser = FDFParser(RandomAccessReadBuffer(b"%PDF-1.4\n"))
+    result = parser.parse_fdf_header()
+    # ``parse_pdf_header`` returns the float version on success.
+    assert result == pytest.approx(1.4)
+
+
+def test_parse_fdf_header_fallback_branch_short_circuits_when_super_attr_not_callable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If ``super().parse_fdf_header`` resolves to a non-callable value
+    (a defensive guard), the method must still fall through to
+    ``parse_pdf_header`` — equivalent path to the ``None`` case but
+    documents the ``callable()`` branch explicitly."""
+    from pypdfbox.pdfparser.cos_parser import COSParser
+
+    # Replace the inherited method with a non-callable sentinel so the
+    # ``callable(parse_fdf)`` check returns ``False``.
+    monkeypatch.setattr(COSParser, "parse_fdf_header", "not-a-method")
+    parser = FDFParser(RandomAccessReadBuffer(b"%PDF-1.5\n"))
+    assert parser.parse_fdf_header() == pytest.approx(1.5)

@@ -244,6 +244,12 @@ COSName.CONTENTS = _static_name("Contents")  # type: ignore[attr-defined]
 COSName.CATALOG = _static_name("Catalog")  # type: ignore[attr-defined]
 COSName.STRUCT_TREE_ROOT = _static_name("StructTreeRoot")  # type: ignore[attr-defined]
 COSName.METADATA = _static_name("Metadata")  # type: ignore[attr-defined]
+# XObject + Image subtypes (PDF 32000-1 §8.8) — referenced by
+# ``WriteDecodedDoc.process_object`` to skip image streams when the
+# ``-skipImages`` flag is set.
+COSName.XOBJECT = _static_name("XObject")  # type: ignore[attr-defined]
+COSName.IMAGE = _static_name("Image")  # type: ignore[attr-defined]
+COSName.FORM = _static_name("Form")  # type: ignore[attr-defined]
 # Single-letter / short names referenced by upstream tests and a handful of
 # PDF spec-defined keys. Keep this list minimal — grow on demand.
 COSName.A = _static_name("A")  # type: ignore[attr-defined]

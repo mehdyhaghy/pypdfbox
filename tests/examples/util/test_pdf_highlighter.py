@@ -202,3 +202,24 @@ def test_encoding_class_constant() -> None:
 def test_module_main_guard_resolves() -> None:
     mod = sys.modules["pypdfbox.examples.util.pdf_highlighter"]
     assert mod.PDFHighlighter is PDFHighlighter
+
+
+def test_constructor_swallows_attribute_error_when_setter_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Lite ports of ``PDFTextStripper`` may not expose every separator
+    setter — the constructor wraps the four ``set_*`` calls in a
+    ``try / except AttributeError`` so missing helpers degrade gracefully
+    (wave 1351 line-coverage of the except-branch at lines 35-37).
+    """
+    from pypdfbox.text.pdf_text_stripper import PDFTextStripper
+
+    # Remove ``set_should_separate_by_beads`` so the chain raises
+    # ``AttributeError`` on the third statement of the ``try`` block. The
+    # constructor must swallow the exception and finish initialisation.
+    monkeypatch.delattr(PDFTextStripper, "set_should_separate_by_beads")
+    highlighter = PDFHighlighter()
+    assert highlighter._highlighter_output is None
+    assert highlighter._searched_words == []
+    assert highlighter._text_os is None
+    assert highlighter._text_writer is None

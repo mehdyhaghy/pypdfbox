@@ -95,6 +95,29 @@ def test_file_attachment_tag_emits_curves() -> None:
     assert b"l" in body
 
 
+def test_file_attachment_handler_noops_for_wrong_annotation_type() -> None:
+    """When the annotation isn't a :class:`PDAnnotationFileAttachment`, the
+    handler returns silently without creating an appearance stream."""
+    from pypdfbox.pdmodel.interactive.annotation.pd_annotation import PDAnnotation
+
+    annotation = PDAnnotation()
+    handler = PDFileAttachmentAppearanceHandler(annotation)
+    # Should not raise and should not populate an appearance dictionary.
+    assert handler.generate_normal_appearance() is None
+    assert annotation.get_appearance_dictionary() is None
+
+
+def test_file_attachment_handler_noops_when_rect_is_none() -> None:
+    """When the annotation has no rectangle, the handler returns silently
+    without creating an appearance stream."""
+    annotation = PDAnnotationFileAttachment()
+    # Explicitly clear any default rectangle.
+    annotation.get_cos_object().remove_item("Rect")
+    handler = PDFileAttachmentAppearanceHandler(annotation)
+    assert handler.generate_normal_appearance() is None
+    assert annotation.get_appearance_dictionary() is None
+
+
 # ----------------------------------------------------------------------
 # line caption
 # ----------------------------------------------------------------------

@@ -245,6 +245,36 @@ def test_shading_context_get_raster_not_implemented() -> None:
         ctx.get_raster(0, 0, 1, 1)
 
 
+class _RaisingColorSpace:
+    """Colour space whose ``to_rgb`` raises ``NotImplementedError`` — used
+    to exercise the fallback branch in :py:meth:`ShadingContext.convert_to_rgb`
+    that treats values as raw RGB when conversion is unavailable."""
+
+    def to_rgb(self, _values):
+        raise NotImplementedError("stub")
+
+
+class _FakeShadingWithRaisingCS(_FakeShading):
+    def get_color_space(self) -> object:
+        return _RaisingColorSpace()
+
+
+def test_shading_context_convert_to_rgb_falls_back_on_to_rgb_failure() -> None:
+    """When the colour space exposes ``to_rgb`` but the call raises
+    ``TypeError``/``NotImplementedError``, ``convert_to_rgb`` falls back to
+    treating the values as already-RGB."""
+    ctx = ShadingContext(
+        _FakeShadingWithRaisingCS(), color_model=None, xform=None, matrix=None
+    )
+    packed = ctx.convert_to_rgb([1.0, 0.5, 0.0])
+    r = packed & 0xFF
+    g = (packed >> 8) & 0xFF
+    b = (packed >> 16) & 0xFF
+    # Fallback path: values used directly, identical to the colour-space-less
+    # path validated in ``test_shading_context_convert_to_rgb_packs_bytes``.
+    assert r == 255 and g == 127 and b == 0
+
+
 def test_shading_paint_holds_shading_and_matrix() -> None:
     shading = _FakeShading()
     paint = ShadingPaint(shading, matrix="m")

@@ -4187,6 +4187,233 @@ No latent source bugs flagged.
   and rely solely on `read_long`'s clamp — Java's signed-32 → signed-64
   pattern lives in exactly one place upstream; we mirror it in two.
 
+## Wave 1351 — coverage-boost pass #23 (parallel agents)
+
+### Agent D — five files crossed 94–98% (all to 100%)
+
+- `tests/pdmodel/graphics/color/test_pd_cie_based_color_space_coverage.py`
+  +1 test takes `pypdfbox/pdmodel/graphics/color/pd_cie_based_color_space.py`
+  **94.1% → 100%**: the ``ImportError`` fallback in ``to_rgb_image`` when
+  Pillow is unavailable (lines 42-43) via a ``monkeypatch`` that drops
+  ``PIL`` from ``sys.modules`` and overrides ``builtins.__import__`` to
+  raise on any ``PIL`` lookup, asserting the method returns ``None``.
+- `tests/pdmodel/graphics/color/test_color_cluster_wave1281.py` +2 tests
+  takes `pypdfbox/pdmodel/graphics/color/pd_gamma.py` **94.1% → 100%**:
+  the ``__init__`` else branch when an existing ``COSArray`` is passed
+  in (line 21, asserting the backing store is preserved by identity)
+  and the ``_read`` defensive ``return 0.0`` for non-``COSNumber``
+  entries (line 35, driven by stuffing a ``COSName`` into slot 0 of the
+  array).
+- `tests/pdmodel/graphics/shading/test_shading_rendering_wave1280.py`
+  +1 test takes `pypdfbox/pdmodel/graphics/shading/shading_context.py`
+  **95.1% → 100%**: the ``except (TypeError, NotImplementedError)``
+  fallback in ``convert_to_rgb`` (lines 67-68) via a ``_RaisingColorSpace``
+  whose ``to_rgb`` raises ``NotImplementedError``, asserting the result
+  matches the no-colour-space identity path.
+- `tests/pdmodel/graphics/state/test_state_cluster_wave1281.py` +1 test
+  takes `pypdfbox/pdmodel/graphics/state/pd_text_state.py`
+  **96.3% → 100%**: ``get_font`` / ``set_font`` round-trip (lines 65,
+  69) — the only PDTextState accessor pair the wave-1281 suite had not
+  yet exercised; held via identity (mirrors upstream's untyped
+  ``PDFont`` reference).
+- `tests/pdmodel/interactive/annotation/handlers/test_pd_appearance_handlers_wave1285.py`
+  +2 tests take
+  `pypdfbox/pdmodel/interactive/annotation/handlers/pd_file_attachment_appearance_handler.py`
+  **98.0% → 100%**: the wrong-annotation-type guard (line 37) by handing
+  a bare ``PDAnnotation`` to the handler, and the missing-rectangle
+  guard (line 40) by ``remove_item("Rect")`` on a freshly-constructed
+  ``PDAnnotationFileAttachment`` before invoking
+  ``generate_normal_appearance``; both assert no appearance dictionary
+  is created.
+- No source changes; no ``# pragma: no cover`` markers added; no latent
+  bugs flagged.
+
+### Agent A — five residual-2-line files (all to 100%)
+
+- New file `tests/debugger/fontencodingpane/test_font_pane_wave1351.py`
+  +4 tests takes `pypdfbox/debugger/fontencodingpane/font_pane.py`
+  **97.4% → 100%**: ``_iter_xy_pairs`` early ``return []`` for ``None``
+  / ``str`` segments inside the outer iterable (line 138) via path
+  fixtures ``[None]`` and ``["closePath"]``; final ``return []`` for
+  inner items that are neither ``list`` nor ``tuple`` (line 150) via
+  paths ``[42]`` and ``[object()]``. The pre-existing test
+  ``test_y_bounds_handles_path_iteration_error`` passed ``42``
+  directly as the path — which ``_path_y_bounds`` rejects at
+  ``list(path)`` → ``TypeError`` before ``_iter_xy_pairs`` is ever
+  entered — so neither inner branch was actually reached.
+- New file `tests/debugger/ui/test_recent_files_wave1351.py` +1 test
+  takes `pypdfbox/debugger/ui/recent_files.py` **97.9% → 100%**:
+  ``write_history_to_pref``'s ``except OSError: return`` on the second
+  ``Path.write_text`` call (lines 145-146) via a ``monkeypatch`` that
+  routes ``Path.write_text`` to raise ``OSError("disk full")`` only for
+  the target store. Confirms no exception propagates and the file is
+  never created on disk.
+- New file `tests/debugger/ui/test_zoom_menu_wave1351.py` +3 tests takes
+  `pypdfbox/debugger/ui/zoom_menu.py` **96.8% → 100%** (94% measured
+  locally — the brief understated by one branch pair): ``get_zoom_scale``
+  raising ``RuntimeError`` when ``_instance is None`` (lines 113-114,
+  exercised by calling the static accessor before any
+  ``get_instance``), plus the ``raise RuntimeError`` arm when the
+  selection string is empty or does not end with ``%`` (lines 117-118),
+  exercised by setting ``_zoom_var`` to ``""`` and ``"garbage"``
+  respectively. All three messages match upstream's
+  ``IllegalStateException`` text ``"no zoom menu item is selected"``.
+- New file `tests/examples/interactive/form/test_print_fields_wave1351.py`
+  +1 test takes `pypdfbox/examples/interactive/form/print_fields.py`
+  **95.7% → 100%**: ``process_field`` ``except Exception:
+  field_value = ""`` (lines 56-57) via a direct call with a
+  ``Mock(spec=PDTextField)`` whose ``get_value_as_string.side_effect =
+  RuntimeError``. **Latent bug flagged:** the pre-existing test
+  ``test_process_field_handles_value_exception`` monkey-patched
+  ``field.get_value_as_string`` on a ``PDTextField`` instance, but
+  ``PDAcroForm.get_fields()`` rebuilds a fresh wrapper from the COS
+  tree on every read — so the monkey-patch was discarded before
+  ``print_fields`` dispatched into ``process_field`` and the
+  exception branch was never executed. The new wave-1351 test bypasses
+  ``print_fields`` and calls ``process_field`` directly. The old test
+  was not removed (it still passes coincidentally because the bare
+  ``PDTextField`` returns an empty value on the happy path), only
+  superseded for coverage purposes.
+- New file `tests/examples/lucene/test_lucene_pdf_document_wave1351.py`
+  +1 test takes `pypdfbox/examples/lucene/lucene_pdf_document.py`
+  **95.7% → 100%**: ``create_uid`` URL-style branch (lines 131-132) —
+  ``time=None`` *and* ``file_or_url`` not ``str``/``Path`` (a
+  duck-typed ``_UrlLike`` stand-in for ``java.net.URL``) triggers the
+  ``key = str(file_or_url); time = 0`` arm mirroring upstream's
+  ``createUID(URL u)`` overload.
+- No source changes; no ``# pragma: no cover`` markers added; one
+  latent bug in a pre-existing test flagged (see ``print_fields``
+  entry above).
+
+### Agent C — six residual-2-line files (all to 100%)
+
+- New file `tests/pdfparser/test_object_numbers_wave1351.py` +1 test
+  takes `pypdfbox/pdfparser/object_numbers.py` **96.6% → 100%**: the
+  second ``except StopIteration: break`` arm of the constructor
+  (lines 43-44) reached when ``/Index`` has an odd integer count and
+  the iterator runs out mid-pair — the trailing unpaired start value
+  is silently dropped.
+- New file `tests/pdfparser/test_pdf_xref_stream_parser_wave1351.py`
+  +1 test takes `pypdfbox/pdfparser/pdf_xref_stream_parser.py`
+  **97.5% → 100%**: the constructor's ``except OSError: self.close();
+  raise`` arm (lines 41-42) reached when ``ObjectNumbers`` rejects a
+  ``/Index`` array containing a non-integer entry. ``PDFParseError``
+  is ``ValueError``-derived, but ``ObjectNumbers``'s constructor
+  raises ``OSError`` directly.
+- New file `tests/pdmodel/fdf/test_fdf_annotation_caret_wave1351.py`
+  +1 test takes `pypdfbox/pdmodel/fdf/fdf_annotation_caret.py`
+  **94.9% → 100%**: the ``except (TypeError, ValueError): return
+  None`` arm of ``get_fringe()`` (lines 48-49) reached when ``/RD``
+  is a 4-entry COSArray whose entries are non-numeric (COSName).
+- New file
+  `tests/pdmodel/fdf/test_fdf_annotation_free_text_wave1351.py`
+  +1 test takes `pypdfbox/pdmodel/fdf/fdf_annotation_free_text.py`
+  **97.7% → 100%**: same ``get_fringe()`` swallow path as caret
+  (lines 169-170), driven by a 4-entry /RD of non-numeric COSNames.
+- New file
+  `tests/pdmodel/fdf/test_fdf_annotation_polygon_wave1351.py`
+  +2 tests take `pypdfbox/pdmodel/fdf/fdf_annotation_polygon.py`
+  **96.6% → 100%**: ``init_vertices`` early ``return`` on ``None``
+  (line 33) and empty-segment ``continue`` (line 38) driven by
+  strings like ``";1,2;;3,4;"`` which yield empty pairs around the
+  valid ones.
+- New file `tests/pdmodel/fdf/test_fdf_template_wave1351.py`
+  +2 tests take `pypdfbox/pdmodel/fdf/fdf_template.py`
+  **95.7% → 100%**: ``set_fields(None)`` remove-and-return arm
+  (lines 78-79), exercised both against a populated and a
+  freshly-constructed template.
+- No source changes; no ``# pragma: no cover`` markers added; no
+  latent bugs flagged.
+
+### Agent B — six residual-2-line files (all to 100%)
+
+- New file `tests/examples/pdmodel/test_using_text_matrix_wave1351.py`
+  +5 tests take `pypdfbox/examples/pdmodel/using_text_matrix.py`
+  **97.3% → 100%**: the ``len(argv) != 2`` branch of ``main`` that
+  routes to ``usage()`` (line 125) — exercised with ``main([])``,
+  ``main(["only-message"])``, ``main(["a", "b", "c"])``, and
+  ``main(None)``; plus a direct ``usage()`` invocation to cover the
+  ``sys.stderr.write`` call (line 130).
+- `tests/examples/util/test_pdf_highlighter.py` +1 test takes
+  `pypdfbox/examples/util/pdf_highlighter.py` **96.7% → 100%**: the
+  ``except AttributeError: pass`` arm of ``__init__`` (lines 35-37) —
+  reached by ``monkeypatch.delattr(PDFTextStripper,
+  "set_should_separate_by_beads")`` so the constructor's third
+  ``self.set_*`` call raises ``AttributeError`` and the swallow arm
+  finishes initialisation.
+- `tests/fontbox/cff/test_cff_operator.py` +4 tests take
+  `pypdfbox/fontbox/cff/cff_operator.py` **94.6% → 100%**: the
+  ``register(b0, *args)`` ``TypeError`` raise on wrong positional-arg
+  count (lines 76-79) via ``register(42)`` (zero trailing args) and
+  ``register(42, 1, 2, "TooMany")`` (four trailing args); plus the
+  ``isinstance(name, str)`` guard (line 81) via single-byte
+  ``register(252, 1234)`` and two-byte ``register(253, 7, 9876)``.
+- `tests/fontbox/cff/test_dict_data.py` +2 tests take
+  `pypdfbox/fontbox/cff/dict_data.py` **97.7% → 100**: ``Key.__str__``
+  (line 42) returning the bare operator name, and ``DictData.__repr__``
+  (line 207) delegating to ``to_string()``.
+- New file `tests/io/test_random_access_read_wave1351.py` +2 tests
+  take `pypdfbox/io/random_access_read.py` **97.4% → 100%**: the ABC's
+  default ``create_view`` body (lines 145-147 — deferred ``import``
+  of :class:`RandomAccessReadView` and the ``RandomAccessReadView(self,
+  start, length)`` factory call) — every shipped concrete subclass
+  overrides ``create_view``, so a barebones :class:`RandomAccessRead`
+  test subclass is constructed to drive the default path with a
+  non-empty slice and a zero-length slice.
+- `tests/pdfparser/test_fdf_parser_coverage.py` +3 tests take
+  `pypdfbox/pdfparser/fdf_parser.py` **94.1% → 100%**: the explicit
+  ``raise PDFParseError("Error: Header doesn't contain versioninfo")``
+  inside ``parse`` when ``parse_fdf_header()`` returns falsy (line 62)
+  — reached by replacing the bound method on the parser instance with
+  ``lambda: False``; plus the ``parse_pdf_header()`` fallback in
+  ``parse_fdf_header()`` (line 86), reached via ``monkeypatch`` of
+  ``COSParser.parse_fdf_header`` to ``None`` (delattr) and to a
+  non-callable sentinel string ``"not-a-method"``.
+- No source changes; no ``# pragma: no cover`` markers added; no
+  latent bugs flagged.
+
+### Agent E — six residual-2-line files (all to 100%)
+
+- New file `tests/tools/test_tools_main_blocks_wave1351.py` +5 tests
+  takes `pypdfbox/tools/decompress_objectstreams.py` **94.1% → 100%**
+  (lines 57-58), `pypdfbox/tools/import_fdf.py` **96.2% → 100%**
+  (lines 85-86), `pypdfbox/tools/import_xfdf.py` **96.2% → 100%**
+  (lines 77-78), `pypdfbox/tools/pdf_split.py` **97.1% → 100%** (lines
+  104-105), and `pypdfbox/tools/write_decoded_doc.py` line 113 of the
+  ``__main__`` trailer. A single parametrised test invokes each module
+  under ``runpy.run_module(..., run_name="__main__")`` with a missing
+  input path and asserts ``SystemExit.code == 4`` — the trailer
+  ``sys.exit(<Class>.main(sys.argv[1:]))`` is the line under test, so
+  the specific exit code matters less than reaching the dispatch.
+- New file `tests/xmpbox/schema/test_xmp_schema_factory_wave1351.py`
+  +2 tests take `pypdfbox/xmpbox/schema/xmp_schema_factory.py`
+  **93.3% → 100%**: the ``elif prefix and len(params) >= 2: args =
+  [metadata, prefix]`` branch (lines 55-56), reached via
+  :class:`AdobePDFSchema` (init signature ``(metadata, own_prefix=
+  None)``) with an explicit prefix so the factory routes through the
+  two-arg constructor path; plus the fall-through ``args =
+  [metadata]`` arm with ``prefix=None`` for symmetry.
+- New file `tests/tools/test_write_decoded_doc_wave1351.py` +3 tests
+  cover `pypdfbox/tools/write_decoded_doc.py` line 59 (the
+  ``skip_images=True`` AND-of-three early ``return`` on
+  ``/Type == /XObject`` ∧ ``/Subtype == /Image``): one positive
+  (skip leaves ``/Filter`` intact even with corrupt FlateDecode
+  payload), one negative for the AND short-circuit at SUBTYPE
+  (``/Form`` XObject still gets processed under ``skip_images=True``),
+  and one for the gate itself (the same image stream IS decoded with
+  ``skip_images=False``).
+- **Latent bug fixed (write_decoded_doc skip-images)**: the
+  ``process_object`` early-return on line 57-59 references
+  ``COSName.XOBJECT`` and ``COSName.IMAGE`` — neither was defined on
+  ``COSName`` (only the spec literals existed in the canonical-name
+  table). The ``-skipImages`` CLI flag therefore raised
+  ``AttributeError: type object 'COSName' has no attribute 'XOBJECT'``
+  on any document with a typed stream. Added three spec-standard
+  static names to ``pypdfbox/cos/cos_name.py`` after ``COSName.METADATA``:
+  ``XOBJECT = "XObject"``, ``IMAGE = "Image"``, ``FORM = "Form"`` (PDF
+  32000-1 §8.8). The ``-skipImages`` codepath now works as documented.
+- No ``# pragma: no cover`` markers added.
+
 ## Wave 1350 — fix 2 latent source bugs flagged during wave 1349
 
 - **pdmodel.graphics.shading.radial_shading_context**: replaced the

@@ -141,3 +141,22 @@ def test_dictdata_to_string_contains_entries() -> None:
     rep = d.to_string()
     assert "DictData" in rep
     assert "FullName" in rep
+
+
+def test_key_str_returns_bare_name() -> None:
+    """``Key.__str__`` (dict_data.py line 42) returns just the operator
+    name — the dataclass repr is replaced so f-string / ``str(key)``
+    formatting yields a clean mnemonic."""
+    assert str(Key("FontMatrix")) == "FontMatrix"
+    # ``str(key)`` is what callers use when building debug strings.
+    assert f"key={Key('Notice')}" == "key=Notice"
+
+
+def test_dictdata_repr_delegates_to_to_string() -> None:
+    """``DictData.__repr__`` (dict_data.py line 207) is a thin proxy for
+    ``to_string()`` so ``repr(d)`` matches the parity helper output."""
+    d = DictData()
+    d.add(_entry("FullName", 391))
+    assert repr(d) == d.to_string()
+    assert "DictData" in repr(d)
+    assert "FullName" in repr(d)

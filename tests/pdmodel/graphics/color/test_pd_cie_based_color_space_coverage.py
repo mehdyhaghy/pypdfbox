@@ -137,3 +137,28 @@ def test_to_rgb_image_uses_supplied_zero_size_raster() -> None:
     img = cs.to_rgb_image(raster)
     assert img is not None
     assert img.size == (0, 0)
+
+
+def test_to_rgb_image_returns_none_when_pillow_missing(monkeypatch) -> None:
+    """When ``PIL`` cannot be imported, ``to_rgb_image`` returns ``None``.
+
+    Mirrors upstream's failure-tolerant fallback (the PDFBox AWT path also
+    returns ``null`` when the rendering backend is unavailable).
+    """
+    import builtins
+    import sys
+
+    # Drop PIL from sys.modules and make any further import raise.
+    monkeypatch.setitem(sys.modules, "PIL", None)
+    real_import = builtins.__import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "PIL" or name.startswith("PIL."):
+            raise ImportError("PIL not available for this test")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    cs = _Concrete()
+    raster = _FakeRaster(1, 1, [(255, 128, 0)])
+    assert cs.to_rgb_image(raster) is None

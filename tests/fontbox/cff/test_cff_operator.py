@@ -171,3 +171,39 @@ def test_class_register_single_byte_overload() -> None:
         from pypdfbox.fontbox.cff.cff_operator import _KEY_TO_OPERATOR
 
         _KEY_TO_OPERATOR.pop(CFFOperator.calculate_key(sentinel), None)
+
+
+def test_class_register_rejects_wrong_arg_count() -> None:
+    """No trailing positional args — neither overload matches, must
+    raise ``TypeError`` (covers lines 76-79 of ``cff_operator.py``)."""
+    import pytest
+
+    with pytest.raises(TypeError, match="register\\(\\) takes 2 or 3"):
+        CFFOperator.register(42)  # zero trailing args
+
+
+def test_class_register_rejects_too_many_args() -> None:
+    """Four positional args after ``b0`` overflow both upstream
+    overloads, must raise ``TypeError``."""
+    import pytest
+
+    with pytest.raises(TypeError, match="register\\(\\) takes 2 or 3"):
+        CFFOperator.register(42, 1, 2, "TooMany")  # type: ignore[arg-type]
+
+
+def test_class_register_rejects_non_string_name_single_byte() -> None:
+    """Single-byte overload with a non-``str`` ``name`` must raise
+    ``TypeError`` (covers line 81 of ``cff_operator.py``)."""
+    import pytest
+
+    with pytest.raises(TypeError, match="operator name must be a str"):
+        CFFOperator.register(252, 1234)  # type: ignore[arg-type]
+
+
+def test_class_register_rejects_non_string_name_two_byte() -> None:
+    """Two-byte overload with a non-``str`` ``name`` must also reach
+    the ``isinstance`` guard on line 80 and raise ``TypeError``."""
+    import pytest
+
+    with pytest.raises(TypeError, match="operator name must be a str"):
+        CFFOperator.register(253, 7, 9876)  # type: ignore[arg-type]
