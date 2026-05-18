@@ -286,7 +286,7 @@ class XrefTrailerResolver:
         # Merge in the resolved order.
         for b_pos in xref_seq_byte_pos:
             section = byte_pos_map.get(b_pos)
-            if section is None:
+            if section is None:  # pragma: no cover -- b_pos always sourced from byte_pos_map
                 continue
             if section.trailer is not None:
                 # COSDictionary.add_all merges keys without overwriting

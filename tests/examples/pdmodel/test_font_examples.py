@@ -72,6 +72,40 @@ def test_hello_world_ttf_two_args_prints_usage() -> None:
         HelloWorldTTF.main(["one", "two"])
 
 
+def test_hello_world_ttf_main_writes_pdf_with_stub_font(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    """Cover the end-to-end ``HelloWorldTTF.main`` happy path by
+    stubbing ``PDType0Font.load`` (which would otherwise need a real
+    TTF) with a factory returning a Standard-14 Helvetica instance.
+    ``PDPageContentStream.set_font`` accepts any ``PDFont`` so the
+    rest of the body runs end-to-end."""
+    from pypdfbox.cos.cos_dictionary import COSDictionary
+    from pypdfbox.cos.cos_name import COSName
+    from pypdfbox.pdmodel.font.pd_type0_font import PDType0Font
+    from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
+
+    def _stub_load(cls, doc, source, embed_subset=True):
+        _ = (doc, source, embed_subset)
+        d = COSDictionary()
+        d.set_item(COSName.SUBTYPE, COSName.get_pdf_name("Type1"))
+        d.set_item(
+            COSName.get_pdf_name("BaseFont"),
+            COSName.get_pdf_name("Helvetica"),
+        )
+        return PDType1Font(d)
+
+    monkeypatch.setattr(PDType0Font, "load", classmethod(_stub_load))
+    ttf = tmp_path / "dummy.ttf"
+    ttf.write_bytes(b"placeholder")
+    out = tmp_path / "out.pdf"
+    HelloWorldTTF.main([str(out), "hello", str(ttf)])
+    assert out.exists()
+    assert out.read_bytes()[:4] == b"%PDF"
+    captured = capsys.readouterr().out
+    assert "created" in captured
+
+
 # ---------------------------------------------------------------------------
 # Workload coverage for ``HelloWorldType1.main`` happy path.
 # ``main`` calls ``PDType1Font(doc, stream)``; the real constructor only

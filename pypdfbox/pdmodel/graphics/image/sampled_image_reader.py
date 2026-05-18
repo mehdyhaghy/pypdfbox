@@ -216,7 +216,7 @@ class SampledImageReader:
                         )
                     d_min = decode[c * 2]
                     d_max = decode[(c * 2) + 1]
-                    if sample_max == 0:
+                    if sample_max == 0:  # pragma: no cover -- bpc>=1 -> sample_max>=1
                         decoded = d_min
                     else:
                         decoded = d_min + raw * ((d_max - d_min) / sample_max)
@@ -232,7 +232,7 @@ class SampledImageReader:
             if (src_y - y) % sub != 0:
                 continue
             out_y = (src_y - y) // sub
-            if out_y >= out_h:
+            if out_y >= out_h:  # pragma: no cover -- out_h = ceil(ch/sub) bounds src_y-y
                 continue
             for src_x in range(width):
                 if src_x < x or src_x >= x + cw:
@@ -240,7 +240,7 @@ class SampledImageReader:
                 if (src_x - x) % sub != 0:
                     continue
                 out_x = (src_x - x) // sub
-                if out_x >= out_w:
+                if out_x >= out_w:  # pragma: no cover -- out_w = ceil(cw/sub) bounds src_x-x
                     continue
                 comps, is_masked = row_samples[src_x]
                 # Expand grayscale -> RGB; clip CMYK / multi-channel to first 3.
@@ -316,7 +316,7 @@ class SampledImageReader:
                     raw = reader.read_bits(bpc)
                     d_min = decode[c * 2]
                     d_max = decode[(c * 2) + 1]
-                    if sample_max == 0:
+                    if sample_max == 0:  # pragma: no cover -- bpc>=1 -> sample_max>=1
                         decoded = d_min
                     else:
                         decoded = d_min + raw * ((d_max - d_min) / sample_max)

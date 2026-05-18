@@ -39,6 +39,53 @@ def test_add_image_to_pdf_drives_save(tmp_path: Path) -> None:
         )
 
 
+def _make_one_page_pdf(path: Path) -> None:
+    from pypdfbox.pdmodel.pd_page import PDPage
+
+    with PDDocument() as doc:
+        doc.add_page(PDPage())
+        doc.save(str(path))
+
+
+def _make_tiny_png(path: Path) -> None:
+    from PIL import Image
+
+    Image.new("RGB", (4, 4), color=(255, 0, 0)).save(str(path), format="PNG")
+
+
+def test_add_image_to_pdf_happy_path_writes_image(tmp_path: Path) -> None:
+    """End-to-end ``create_pdf_from_image`` happy path — exercises the
+    draw_image block (lines 48-59)."""
+    in_pdf = tmp_path / "in.pdf"
+    out_pdf = tmp_path / "out.pdf"
+    image = tmp_path / "sprite.png"
+    _make_one_page_pdf(in_pdf)
+    _make_tiny_png(image)
+
+    AddImageToPDF().create_pdf_from_image(
+        str(in_pdf), str(image), str(out_pdf),
+    )
+    assert out_pdf.exists()
+    assert out_pdf.read_bytes()[:4] == b"%PDF"
+    # The image's pixel data should appear (as a FlateDecode XObject
+    # stream) somewhere in the output.
+    assert b"XObject" in out_pdf.read_bytes()
+
+
+def test_add_image_to_pdf_main_dispatches_to_create(tmp_path: Path) -> None:
+    """Drive ``main([in, image, out])`` — exercises the else-branch
+    on line 69 that forwards to ``create_pdf_from_image``."""
+    in_pdf = tmp_path / "in.pdf"
+    out_pdf = tmp_path / "out.pdf"
+    image = tmp_path / "sprite.png"
+    _make_one_page_pdf(in_pdf)
+    _make_tiny_png(image)
+
+    AddImageToPDF.main([str(in_pdf), str(image), str(out_pdf)])
+    assert out_pdf.exists()
+    assert out_pdf.read_bytes()[:4] == b"%PDF"
+
+
 def test_extract_embedded_files_path_traversal_guard(
     tmp_path: Path, capsys,
 ) -> None:

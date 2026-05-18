@@ -102,7 +102,7 @@ class FDFField:
         v = self._field.get_dictionary_object(_V)
         if v is None:
             return None
-        if isinstance(v, COSObject):
+        if isinstance(v, COSObject):  # pragma: no cover -- get_dictionary_object already unwraps
             v = v.get_object()
         if isinstance(v, COSName):
             return v.name
@@ -124,7 +124,7 @@ class FDFField:
         v = self._field.get_dictionary_object(_V)
         if v is None:
             return None
-        if isinstance(v, COSObject):
+        if isinstance(v, COSObject):  # pragma: no cover -- get_dictionary_object already unwraps
             v = v.get_object()
         if isinstance(v, (COSName, COSArray, COSString, COSStream)):
             return v
@@ -342,7 +342,7 @@ class FDFField:
         v = self._field.get_dictionary_object(_RV)
         if v is None:
             return None
-        if isinstance(v, COSObject):
+        if isinstance(v, COSObject):  # pragma: no cover -- get_dictionary_object already unwraps
             v = v.get_object()
         if isinstance(v, COSString):
             return v.get_string()
@@ -520,7 +520,7 @@ class FDFField:
             output.write("<value-richtext>")
             output.write(_escape_xml(rich))
             output.write("</value-richtext>\n")
-        elif isinstance(rich, COSStream):
+        elif isinstance(rich, COSStream):  # pragma: no cover -- get_rich_text always decodes to str
             output.write("<value-richtext>")
             output.write(_escape_xml(rich.to_text_string()))
             output.write("</value-richtext>\n")

@@ -40,7 +40,7 @@ class UpdateFieldOnDocumentOpen:
         ``SampleField`` to today's date, and save to ``dst``. Promoted
         from the upstream inline ``main`` body."""
         try:
-            from pypdfbox.pdmodel.interactive.action.pd_action_javascript import (
+            from pypdfbox.pdmodel.interactive.action.pd_action_java_script import (
                 PDActionJavaScript,
             )
         except ImportError:

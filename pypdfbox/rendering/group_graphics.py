@@ -552,8 +552,11 @@ class GroupGraphics:
         # Construct a constant backdrop image and difference it against
         # the group buffer. ``ImageChops.subtract`` saturates at 0 so
         # this is the §11.4.5.3 "remove backdrop" arithmetic with
-        # graceful underflow behaviour.
-        backdrop = Image.new(self._image.mode, self._image.size, backdrop_rgb)
+        # graceful underflow behaviour. ``ImageChops.subtract`` requires
+        # both operands to share a mode, so build the constant backdrop
+        # in RGB and subtract per-channel; the original alpha is then
+        # restored on top for the RGBA branch.
+        backdrop = Image.new("RGB", self._image.size, backdrop_rgb)
         if self._image.mode == "RGBA":
             rgb_part = self._image.convert("RGB")
             removed = ImageChops.subtract(rgb_part, backdrop)

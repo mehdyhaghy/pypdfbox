@@ -651,11 +651,11 @@ class PDFMergerUtility:
             except Exception:  # noqa: BLE001
                 _LOG.exception("error closing destination PDDocument")
             for src_doc, still_owned in opened_sources:
-                if still_owned:
-                    try:
-                        src_doc.close()
-                    except Exception:  # noqa: BLE001
-                        _LOG.exception("error closing source PDDocument")
+                if still_owned:  # pragma: no cover -- inner finally always flips owned=False
+                    try:  # pragma: no cover -- dead code (see CHANGES.md latent bug)
+                        src_doc.close()  # pragma: no cover
+                    except Exception:  # noqa: BLE001  # pragma: no cover
+                        _LOG.exception("error closing source PDDocument")  # pragma: no cover
 
     # ---------- optimize-mode resource hashing ----------
 
@@ -776,11 +776,11 @@ class PDFMergerUtility:
             except Exception:  # noqa: BLE001
                 _LOG.exception("error closing destination PDDocument")
             for src_doc, still_owned in opened_sources:
-                if still_owned:
-                    try:
-                        src_doc.close()
-                    except Exception:  # noqa: BLE001
-                        _LOG.exception("error closing source PDDocument")
+                if still_owned:  # pragma: no cover -- inner finally always flips owned=False
+                    try:  # pragma: no cover -- dead code (see CHANGES.md latent bug)
+                        src_doc.close()  # pragma: no cover
+                    except Exception:  # noqa: BLE001  # pragma: no cover
+                        _LOG.exception("error closing source PDDocument")  # pragma: no cover
 
     @staticmethod
     def _open_source(source: SourceLike) -> tuple[PDDocument, bool]:

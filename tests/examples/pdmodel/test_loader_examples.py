@@ -144,6 +144,58 @@ def test_replace_urls_usage() -> None:
     ReplaceURLs.main([])
 
 
+def test_replace_urls_constructor_is_callable() -> None:
+    """Exercise the no-op ``__init__`` body (covers line 21)."""
+    instance = ReplaceURLs()
+    assert isinstance(instance, ReplaceURLs)
+
+
+def test_replace_urls_rewrites_uri_link_annotations(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Drive the URL-rewrite branch by building a page with a Link
+    annotation whose action is a ``PDActionURI``. The example walks
+    annotations, recognises the link, and replaces the URI."""
+    from pypdfbox.pdmodel.interactive.action.pd_action_uri import PDActionURI
+    from pypdfbox.pdmodel.interactive.annotation.pd_annotation_link import (
+        PDAnnotationLink,
+    )
+    from pypdfbox.pdmodel.pd_document import PDDocument
+    from pypdfbox.pdmodel.pd_page import PDPage
+
+    src = tmp_path / "in.pdf"
+    dst = tmp_path / "out.pdf"
+    with PDDocument() as doc:
+        page = PDPage()
+        doc.add_page(page)
+        link = PDAnnotationLink()
+        action = PDActionURI()
+        action.set_uri("http://example.com/old")
+        link.set_action(action)
+        # ``get_annotations()`` returns a fresh snapshot — must use
+        # ``add_annotation`` (or ``set_annotations``) to persist on
+        # ``/Annots``.
+        page.add_annotation(link)
+        doc.save(str(src))
+
+    ReplaceURLs.main([str(src), str(dst)])
+    _assert_is_pdf(dst)
+    out = capsys.readouterr().out
+    assert "Replacing" in out
+    assert "pdfbox.apache.org" in out
+
+    # Reopen and verify the URI was actually rewritten.
+    with PDDocument.load(str(dst)) as result:
+        result_page = result.get_page(0)
+        annots = result_page.get_annotations()
+        link_annots = [a for a in annots if isinstance(a, PDAnnotationLink)]
+        assert link_annots, "expected at least one link annotation"
+        rewritten = link_annots[0].get_action()
+        assert isinstance(rewritten, PDActionURI)
+        assert rewritten.get_uri() == "http://pdfbox.apache.org"
+
+
 def test_rubber_stamp_main(tmp_path: Path) -> None:
     src = tmp_path / "in.pdf"
     dst = tmp_path / "out.pdf"

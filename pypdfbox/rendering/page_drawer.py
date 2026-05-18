@@ -680,7 +680,7 @@ class PageDrawer(PDFGraphicsStreamEngine):
             from pypdfbox.pdmodel.graphics.blend_mode import (  # noqa: PLC0415
                 BlendMode,
             )
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001  # pragma: no cover -- defensive import guard
             return True
         return blend is not BlendMode.NORMAL
 

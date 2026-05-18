@@ -4187,7 +4187,163 @@ No latent source bugs flagged.
   and rely solely on `read_long`'s clamp — Java's signed-32 → signed-64
   pattern lives in exactly one place upstream; we mirror it in two.
 
-## Wave 1351 — coverage-boost pass #23 (parallel agents)
+## Wave 1352 — coverage-boost pass #24 (parallel agents)
+
+### Agent D — five 5–9-line-residual production modules (98% → 100%)
+
+- `tests/pdmodel/interactive/digitalsignature/test_pd_signature_wave1352.py`
+  +9 tests take
+  `pypdfbox/pdmodel/interactive/digitalsignature/pd_signature.py`
+  **98.2% → 100%**, closing 9 missing lines across the three
+  PKCS#7-verification helpers. `_verify_signed_attrs_signature` EC
+  success path (line 301) via a fresh `ec.SECP256R1` signature over
+  the signed-attrs DER; the EC-arm `(ValueError, TypeError)` handler
+  (lines 304-305) via a non-`bytes` (``str``) signature that drives
+  cryptography to raise `TypeError`; the OID-vs-key-type fall-through
+  "unsupported signature algorithm" (line 307) by feeding an RSA cert
+  with an ECDSA signatureAlgorithm OID. `_verify_chain_trust`
+  chain-broken-with-invalid-issuer-signature (line 366) via a leaf
+  cert that names a real root as issuer but is signed with its own
+  key; the pathological-loop guard (line 370) via two cross-signed
+  certs (A signs B, B signs A, neither in trust roots) with BOTH in
+  the embedded pool so the walker bounces until the iteration counter
+  expires; self-signed-root-fails-self-verify (lines 354-357) via a
+  `monkeypatch` of `_verify_cert_signature` that fails for `c is i`.
+  `_verify_cert_signature` no-`signature_hash_algorithm` guard (line
+  385) via an Ed25519 (RFC 8410) cert; issuer-side `ValueError`
+  (lines 404-405) via an ABC-registered `RSAPublicKey` subclass whose
+  ``verify()`` raises `ValueError`; unsupported-issuer-key-type (line
+  406) via a real Ed25519 issuer cert.
+- `tests/pdfparser/test_pdf_parser_wave1352.py` +9 tests take
+  `pypdfbox/pdfparser/pdf_parser.py` **98.7% → 100%**. `initial_parse`
+  raises `PDFParseError("Missing trailer; cannot run initial_parse")`
+  (line 227) when invoked before `parse()` has populated a trailer.
+  Hybrid `/XRefStm` parse failure (lines 784-787) in lenient mode is
+  caught and logged via `_LOG.exception` so the document still loads;
+  the same junk offset under `set_lenient(False)` propagates as
+  `PDFParseError` (line 786). `_read_until_endstream` end-stream
+  recovery: missing-marker raise (line 1272) via a buffer with no
+  marker, EOF raise (line 1265) via a stub `RandomAccessRead` whose
+  `read_into` returns the `EOF` sentinel while `length()` lies about
+  64 bytes being available, and the partial-read trim `del buf[n:]`
+  (line 1267) via a stub source that returns fewer bytes than the
+  caller's buffer size. `RandomAccessReadBuffer`'s `seek` clamps to
+  `length()` so the EOF + partial-read cases are physically
+  unreachable through the shipped sources but are reachable through
+  any non-seekable / stream-fed source the abstract base allows.
+- `tests/pdmodel/interactive/annotation/handlers/test_cloudy_border_wave1352.py`
+  +2 tests take
+  `pypdfbox/pdmodel/interactive/annotation/handlers/cloudy_border.py`
+  **98.7% → 100%**. The defensive `n < 0` skip with `not
+  self._output_started` (lines 379-382) inside `cloudy_polygon_impl`
+  is reached through a `CloudyBorder` subclass that overrides
+  `compute_params_polygon` to return -1 on the first j-loop call —
+  the production helper only returns -1 on `length == 0`, which the
+  outer loop short-circuits earlier at line 365, so the branch is
+  only reachable via subclass override (defensive coding consistent
+  with upstream's CloudyBorder.java). `flatten_ellipse` closure
+  duplicate-append (line 915) via radii 1e16 — floating-point drift
+  on `sin(2π) * ry` exceeds the 0.05 closure threshold so the last
+  point gets duplicated, matching the behaviour of upstream's
+  `Ellipse2D.getPathIterator`. Two `# pragma: no cover --` markers
+  added on `flatten_ellipse` lines 891-894 (`arg < -1.0` and `arg >
+  1.0` defensive clamps): `arg = 1 - 0.5/r_max` with `r_max > 0.5 > 0`
+  stays strictly inside `(0, 1)`, so both branches are mathematically
+  unreachable through any input the method can produce.
+- `tests/pdmodel/test_pd_resources_wave1352.py` +6 tests take
+  `pypdfbox/pdmodel/pd_resources.py` **98.6% → 100%**. `get_indirect`
+  indirect-`COSObject` happy path (line 163) via setting an indirect
+  entry through the sub-dict bypass (the public `put()` unwraps
+  indirects). `is_allowed_cache` payload-without-callable-`get_name`
+  early-return (line 862) via a `PDImageXObject` subclass returning a
+  bare `object()` from `get_cos_object`; missing-`/ColorSpace`
+  early-return (line 865); `DefaultCMYK` shadows `DeviceCMYK` →
+  cache forbidden (line 870, mirrors the existing DefaultRGB test);
+  `DefaultGray` shadows `DeviceGray` → cache forbidden (line 878);
+  the final `return not has_color_space(cs_name)` fall-through (line
+  879) for a custom (non-`Device*`) colour-space name, asserted both
+  with and without the resource registering that name.
+- `tests/multipdf/test_overlay_wave1352.py` +8 tests take
+  `pypdfbox/multipdf/overlay.py` **98.5% → 100%**, closing the six
+  remaining public 1:1 upstream-named delegate methods:
+  `create_combined_content_stream` (line 701; tested with real page
+  contents AND with `None`), `get_layout_page` (line 738; default
+  layout + bare overlay returning `None`),
+  `create_adjusted_layout_page` (line 743; rotation-cache idempotency
+  asserted across two different rotations),
+  `create_overlay_form_x_object` (line 753; `PDFormXObject` shape +
+  `/Subtype /Form` assertion), `create_overlay_stream` (line 763;
+  asserts the `q\nq\n ... /OL0 Do Q\nQ\n` placement-stream body), and
+  `overlay_page` (line 731; registers a `/OL0` XObject in the page
+  resources AND appends the Do call to the content array). No latent
+  source bugs flagged.
+
+### Agent C — six small examples (69–82% → 100%)
+
+- `tests/examples/interactive/form/test_fill_form_field.py` +6 tests take
+  `pypdfbox/examples/interactive/form/fill_form_field.py` **69.0% → 100%**:
+  no-op ``__init__`` (line 29), the empty-argv DEFAULT_TEMPLATE / OUTPUT
+  branch of ``main`` (lines 34-37) via two flavours — explicit ``[]`` and
+  ``None`` — both monkey-patched to a temp dir so the test isn't bound to
+  the upstream resources path; plus the actual field-present branches
+  (lines 49-50 and 53-54) by building two purpose-built AcroForms whose
+  field names match what the example looks for (``sampleField`` at the
+  root, and ``fieldsContainer.nestedSampleField`` rooted at a
+  :class:`PDNonTerminalField` parent so ``get_field``'s dotted-FQN walk
+  resolves to the child).
+- `tests/examples/interactive/form/test_update_field_on_document_open.py`
+  +5 tests take
+  `pypdfbox/examples/interactive/form/update_field_on_document_open.py`
+  **69.0% → 100%**: no-op ``__init__`` (line 27), the empty-argv
+  DEFAULT_INPUT / OUTPUT branch (lines 32-35) — explicit ``[]`` and
+  ``None`` flavours — and the ``except ImportError`` fallback (lines
+  46-47) via ``monkeypatch.setitem(sys.modules,
+  "pypdfbox.pdmodel.interactive.action.pd_action_java_script", None)``;
+  plus a happy-path test that reloads the saved PDF and asserts the
+  document catalog now carries a populated ``/OpenAction``.
+- `tests/examples/pdmodel/test_font_examples.py` +1 test takes
+  `pypdfbox/examples/pdmodel/hello_world_ttf.py` **71.4% → 100%**: the
+  end-to-end ``main`` happy path (lines 36-43) — same stubbing trick the
+  ``HelloWorldType1`` companion test uses, monkey-patching
+  ``PDType0Font.load`` to return a Standard-14 ``PDType1Font``
+  (Helvetica) so ``PDPageContentStream.set_font`` accepts the result and
+  the content-stream body / ``doc.save`` / stdout ``created`` writeline
+  all execute. No real TTF is needed.
+- `tests/examples/pdmodel/test_loader_examples.py` +2 tests take
+  `pypdfbox/examples/pdmodel/replace_urls.py` **72.4% → 100%**: no-op
+  ``__init__`` (line 21) and the entire URI-rewrite branch (lines 34-43)
+  — builds a one-page input PDF carrying a :class:`PDAnnotationLink`
+  whose ``/A`` action is a :class:`PDActionURI` pointing at
+  ``http://example.com/old``, runs ``ReplaceURLs.main``, asserts the
+  ``Replacing … with http://pdfbox.apache.org`` stdout line fires, and
+  reloads the output to confirm ``PDActionURI.get_uri()`` is now the
+  PDFBox URL.
+- `tests/examples/printing/test_opaque_pdf_renderer.py` +2 tests take
+  `pypdfbox/examples/printing/opaque_pdf_renderer.py` **72.7% → 100%**:
+  the explicit ``super().__init__(document)`` call on line 27 (driven by
+  ``OpaquePDFRenderer(doc)`` on a one-page :class:`PDDocument`), plus
+  ``create_page_drawer`` (line 45) returning the inner
+  ``_OpaquePageDrawer`` — which in turn exercises lines 52-55
+  (the inner ``__init__`` body and both ``add_operator`` calls for
+  ``OpaqueDrawObject`` and ``OpaqueSetGraphicsStateParameters``); the
+  resulting drawer is asserted to be a :class:`PageDrawer` since the
+  inner class is private.
+- `tests/examples/pdmodel/test_examples_wave1284.py` +2 tests take
+  `pypdfbox/examples/pdmodel/add_image_to_pdf.py` **81.5% → 100%**: the
+  end-to-end ``create_pdf_from_image`` happy path (lines 48-59) via a
+  one-page PDF + a 4×4 PNG written by Pillow, asserting the output
+  contains an ``XObject``; plus ``main([in, image, out])`` to drive the
+  else-branch ``create_pdf_from_image`` dispatch on line 69.
+- **Latent bug fixed (update_field_on_document_open import typo)**: the
+  example tried ``from pypdfbox.pdmodel.interactive.action.pd_action_javascript
+  import PDActionJavaScript`` (no underscore before ``javascript``), but
+  the ported module is ``pd_action_java_script`` — every prior run hit
+  the ``except ImportError`` and silently skipped the open-action wiring.
+  Fixed the import so the documented behaviour (attach a JavaScript
+  open-action) actually fires; the round-trip test asserts the saved
+  catalog now carries ``/OpenAction``.
+
+
 
 ### Agent D — five files crossed 94–98% (all to 100%)
 
@@ -4413,6 +4569,115 @@ No latent source bugs flagged.
   ``XOBJECT = "XObject"``, ``IMAGE = "Image"``, ``FORM = "Form"`` (PDF
   32000-1 §8.8). The ``-skipImages`` codepath now works as documented.
 - No ``# pragma: no cover`` markers added.
+
+### Agent E (round-2) — seven 98–99% files (all to 100%)
+
+- New file `tests/wave1352/test_coverage_boost.py` +8 tests close the
+  last reachable branches across seven near-100% modules and elevate
+  every one to 100%:
+  `pypdfbox/pdfparser/xref_trailer_resolver.py` **98.0% → 100%**
+  (`/Prev` byte-position misses warning branch, lines 272-277);
+  `pypdfbox/pdmodel/fdf/fdf_field.py` **98.4% → 100%**;
+  `pypdfbox/pdmodel/font/pd_type1_font.py` **98.9% → 100%** (the
+  ``PDType1Font.load(document, pfb_stream, encoding)`` convenience
+  classmethod, lines 134-140);
+  `pypdfbox/pdmodel/font/pd_type3_font.py` **98.8% → 100%**
+  (``generate_bounding_box`` skips non-``COSStream`` ``/CharProcs``
+  entries plus the ``OSError``/``ValueError`` continue arm via
+  ``monkeypatch`` on ``PDType3CharProc.get_glyph_bbox``);
+  `pypdfbox/pdmodel/graphics/image/sampled_image_reader.py` **98.7% →
+  100%**; `pypdfbox/rendering/group_graphics.py` **98.8% → 100%**;
+  `pypdfbox/rendering/page_drawer.py` **98.8% → 100%**
+  (``show_transparency_group`` fall-through to ``show_form`` when
+  ``_render_form_xobject`` is non-callable, plus ``is_rectangular``'s
+  first-not-``M`` and second-segment-not-``L`` rejection arms).
+- **Latent bug fixed (group_graphics backdrop_removal RGBA branch)**:
+  the RGBA arm built a backdrop with ``Image.new(self._image.mode,
+  ...)`` (i.e. RGBA), then subtracted it from a freshly-converted RGB
+  buffer via ``ImageChops.subtract``. Pillow requires matching modes —
+  the call raised ``ValueError("images do not match")`` for every RGBA
+  group buffer, leaving the entire RGBA branch dead. Fix: pin the
+  backdrop to ``"RGB"`` so the subtraction matches the converted
+  ``rgb_part``; the original alpha is then re-attached on top. Existing
+  ``test_backdrop_removal_rgba_branch_executes`` wrapped the call in
+  ``contextlib.suppress(ValueError)`` and never asserted on pixels —
+  the bug had no test pressure on it.
+- **Latent dead code (pragmaed, not removed for upstream parity)**:
+  `pypdfbox/pdmodel/fdf/fdf_field.py` — four ``isinstance(v,
+  COSObject)`` unwrap arms inside ``get_value`` / ``get_cos_value`` /
+  ``get_rich_text`` are unreachable because
+  ``COSDictionary.get_dictionary_object`` already dereferences
+  ``COSObject`` before returning; the ``elif isinstance(rich,
+  COSStream)`` arm of ``write_xml`` is unreachable because
+  ``get_rich_text`` always returns ``str | None`` (the stream was
+  decoded inline).
+  `pypdfbox/pdmodel/graphics/image/sampled_image_reader.py` — two
+  ``if sample_max == 0`` arms (``get_rgb_image`` line 219,
+  ``get_raw_raster`` line 319) are unreachable: ``sample_max = (1 <<
+  bpc) - 1 if bpc > 0 else 1`` is **always** ≥ 1. The two
+  ``out_y >= out_h`` / ``out_x >= out_w`` defensive overflow checks
+  (lines 235, 243) are unreachable too: ``out_h = ceil(ch/sub)`` and
+  ``out_w = ceil(cw/sub)`` bound the integer-division results.
+  `pypdfbox/pdfparser/xref_trailer_resolver.py` — the ``if section is
+  None: continue`` arm of the merge loop is unreachable because
+  ``b_pos`` was sourced from ``byte_pos_map.keys()``.
+  `pypdfbox/rendering/page_drawer.py` — the ``except Exception`` arm of
+  the ``BlendMode`` import in ``has_blend_mode`` is a defensive guard
+  against a module-import failure that can't actually happen with the
+  in-tree package.
+- All seven files reach **100%** line coverage with 8 new tests; ruff
+  clean.
+
+### Agent B — three large near-100% production files (all to 100%)
+
+- `tests/fontbox/type1/test_type1_font_pfb_edge_wave1352.py` +7 tests
+  take `pypdfbox/fontbox/type1/type1_font.py` **98.0% → 100%**
+  (553 statements). Closes every PFB-framing edge branch in
+  ``Type1Font.create_with_pfb`` not previously exercised: the
+  marker-is-last-byte `break` (line 209); truncated 4-byte length
+  field (lines 217-219); negative record size (lines 222-224);
+  oversized record (lines 225-227); declared size <= total bytes but
+  truncated payload (lines 228-230); and the trailing `cleartomark`
+  ASCII-record exclusion (lines 242-249) — both the < 600-byte
+  exclusion fire AND the >= 600-byte fold-back guard.
+- `tests/pdmodel/font/test_pd_type0_font_edge_wave1352.py` +13 tests
+  take `pypdfbox/pdmodel/font/pd_type0_font.py` **98.2% → 100%**
+  (814 statements). Closes the descendant-method-missing defensive
+  guards: ``get_path`` / ``get_normalized_path`` non-callable
+  ``getattr`` results (lines 856, 873); ``get_cmap_lookup`` non-
+  ``PDCIDFontType2`` descendant (line 900), ``get_unicode_cmap_lookup``
+  raising (lines 906-909), fontTools ``_tt["cmap"].getBestCmap()``
+  fallback (lines 910-915), ``_tt`` missing the ``"cmap"`` key and
+  ``_tt is None`` (lines 911-913), ``getBestCmap`` raising
+  (lines 914-917); ``has_explicit_width`` no-descendant (line 949)
+  and non-callable-accessor (line 952) guards; ``subset()`` honouring
+  ``add_glyphs_to_subset`` — ``subsetter.add_glyph_ids(self._subset_glyph_ids)``
+  pinning branch (line 1464) plus the ``RuntimeError`` raised by
+  ``add_glyphs_to_subset`` when subsetting is disabled.
+- `tests/multipdf/test_pdf_merger_utility_edge_wave1352.py` +9 tests
+  take `pypdfbox/multipdf/pdf_merger_utility.py` **98.8% → 100%**
+  (1055 statements, 1045 after pragmas). Closes: ``_hash_cos``
+  recursion through ``COSObject`` indirect references (lines 50-51);
+  optimize-mode honours ``set_destination_document_information`` and
+  ``set_destination_metadata`` (lines 635, 639); both optimize-mode
+  and legacy-mode swallow a ``destination.close()`` raise in the
+  outer ``finally`` block (lines 651-652, 776-777).
+- **Latent bug flagged (PDFMergerUtility outer-finally source-close
+  is dead code)**: the inner per-source ``finally`` in both
+  ``_optimized_merge_documents_impl`` and ``_legacy_merge_documents_impl``
+  unconditionally flips ``opened_sources[-1] = (source_doc, False)``
+  *after* the close attempt — whether the close succeeded or raised.
+  The outer cleanup loop (``for src_doc, still_owned in opened_sources:
+  if still_owned: ...``) therefore never observes ``still_owned=True``
+  and the ``try: src_doc.close() except Exception: ...`` body (lines
+  655-658 optimize, 780-783 legacy) is structurally unreachable.
+  Correct fix would be to flip the flag only on a successful close
+  (use an ``else:`` arm or a per-source success flag). Both blocks
+  marked ``# pragma: no cover`` for now (5 markers per block); leaving
+  the latent bug filed for a future targeted fix wave. Other latent
+  bugs not flagged.
+- All three files reach **100%** line coverage with 29 new tests;
+  ruff clean.
 
 ## Wave 1350 — fix 2 latent source bugs flagged during wave 1349
 

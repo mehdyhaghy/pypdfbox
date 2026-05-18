@@ -888,9 +888,9 @@ class CloudyBorder:
                 (cx + rx, cy),
             ]
         arg = 1.0 - flatness / r_max
-        if arg < -1.0:
+        if arg < -1.0:  # pragma: no cover -- defensive clamp; r_max>flatness>0 ensures 0<arg<1
             arg = -1.0
-        if arg > 1.0:
+        if arg > 1.0:  # pragma: no cover -- defensive clamp; r_max>flatness>0 ensures 0<arg<1
             arg = 1.0
         # Half-angle increment.
         half = math.acos(arg)
