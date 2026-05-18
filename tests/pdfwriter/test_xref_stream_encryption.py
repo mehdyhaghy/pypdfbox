@@ -94,21 +94,10 @@ def test_encrypted_document_uses_traditional_xref_table() -> None:
 
 def test_xref_stream_encrypt_on_write_round_trip() -> None:
     """Full round-trip: protect, save with xref-stream output, parse back,
-    verify object table. Skipped until pdfwriter cluster #3 lands."""
-    # Probe: does ``COSWriter`` expose any xref-stream output surface?
-    from pypdfbox.pdfwriter.cos_writer import COSWriter
-
-    has_xref_stream_path = (
-        hasattr(COSWriter, "write_xref_stream")
-        or hasattr(COSWriter, "_do_write_xref_stream")
-        or hasattr(COSWriter, "_write_xref_stream")
-    )
-    if not has_xref_stream_path:
-        pytest.skip("xref-stream output deferred — pdfwriter cluster #3")
-
-    # Once the cluster lands, the body below should be replaced with a
-    # real round-trip exercising the xref-stream path. Until then the
-    # skip above keeps CI green.
+    verify object table. The xref-stream output surface
+    (``COSWriter._do_write_xref_stream``) has landed; this is the real
+    round-trip.
+    """
     pd = _build_protected_document()
     saved = _save_to_bytes(pd)
     with PDDocument.load(saved, password="user") as reloaded:
@@ -121,6 +110,5 @@ def test_xref_stream_encrypt_on_write_round_trip() -> None:
         with contents.create_input_stream() as src:
             assert src.read() == _CONTENT_PAYLOAD
 
-    # Silence unused-import lints for the helper kept around for the
-    # eventual real implementation.
+    # Silence unused-import lints for the Loader helper.
     _ = Loader
