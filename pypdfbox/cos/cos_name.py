@@ -288,3 +288,7 @@ COSName.DIGEST_METHOD = _static_name("DigestMethod")  # type: ignore[attr-define
 COSName.DOC_TIME_STAMP = _static_name("DocTimeStamp")  # type: ignore[attr-defined]
 # Form-resources convenience names (Helvetica is the AcroForm fallback font).
 COSName.HELV = _static_name("Helv")  # type: ignore[attr-defined]
+# Font-dictionary keys (PDF 32000-1 §9.6.2).
+COSName.FONT_DESC = _static_name("FontDescriptor")  # type: ignore[attr-defined]
+COSName.BASE_FONT = _static_name("BaseFont")  # type: ignore[attr-defined]
+COSName.ENCODING = _static_name("Encoding")  # type: ignore[attr-defined]

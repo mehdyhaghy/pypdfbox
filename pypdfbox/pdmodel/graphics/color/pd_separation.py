@@ -148,14 +148,15 @@ class PDSeparation(PDColorSpace):
         assert self._array is not None
         self._ensure_array_size(self._TINT_TRANSFORM + 1)
         if hasattr(transform, "get_cos_object"):
+            # All ``COSBase`` subclasses inherit ``get_cos_object``
+            # (returning self), so this single branch covers both the
+            # raw-COS and the PDFunction-wrapping cases.
             cos = transform.get_cos_object()
             if cos is None:
                 raise TypeError(
                     "set_tint_transform requires an object with a COS form"
                 )
             self._array.set(self._TINT_TRANSFORM, cos)
-        elif isinstance(transform, COSBase):  # pragma: no cover -- COSBase always has get_cos_object, so the hasattr branch above always wins; kept for defensive parity with upstream's COSObjectable surface  # noqa: E501
-            self._array.set(self._TINT_TRANSFORM, transform)
         else:
             raise TypeError(
                 "set_tint_transform expects PDFunction or COSBase, "
