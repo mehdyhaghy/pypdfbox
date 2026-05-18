@@ -38,7 +38,9 @@ class ImportFDF:
         # the values. Removing the toggle here would leave imported
         # fields without appearances until something else triggers
         # ``construct_appearances``. Upstream PDFBox still carries the
-        # same workaround (PDFBOX TODO at ImportFDF.java:75).
+        # same workaround (PDFBOX TODO at ImportFDF.java:75). Wave 1359
+        # audit: confirmed that the per-field path is still not invoked
+        # by ``acro_form.import_fdf``; the toggle stays.
         acro_form.set_need_appearances(True)
 
     def call(self) -> int:

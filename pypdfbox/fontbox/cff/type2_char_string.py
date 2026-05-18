@@ -435,8 +435,17 @@ class Type2CharString:
     def expand_stem_hints(self, numbers: list[Any], horizontal: bool) -> None:
         """Mirrors upstream ``expandStemHints`` (Type2CharString.java:286).
 
-        Upstream ships this as a ``// TODO`` no-op — we match that
-        behaviour exactly. The unused parameters carry parity intent.
+        Upstream PDFBox 3.0.x explicitly ships this as a no-op with a
+        ``// TODO`` marker — the Type 2 stem-hint operators (``hstem`` /
+        ``vstem`` / ``hstemhm`` / ``vstemhm``) are tracked for charstring
+        parsing parity but neither Java nor pypdfbox forwards them to a
+        rendering pipeline that consumes hints: the Type 2 → Type 1
+        conversion walk just preserves the operands, and the actual
+        outline rasterisation is delegated to fontTools, which applies
+        its own hinting independently. The parameters carry parity
+        intent so callers / parity tests see the same signature; we
+        intentionally do not implement the hint-expansion logic because
+        it would have no consumer.
         """
         del numbers, horizontal
 

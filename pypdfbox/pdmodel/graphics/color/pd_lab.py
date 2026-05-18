@@ -267,7 +267,14 @@ class PDLab(PDColorSpace):
         as the XYZ reference instead of the hardcoded D65 used by
         :meth:`PDColor._lab_to_rgb`, matching upstream's
         ``wpX / wpY / wpZ`` cache exactly. Black-point compensation is
-        skipped — upstream notes the same TODO at line 129.
+        intentionally skipped to preserve byte-exact parity with
+        upstream PDFBox 3.0.x, which notes the same TODO at PDLab.java
+        line 129 but ships the no-BPC path. Implementing BPC here would
+        diverge from upstream's rendered output and is therefore
+        out-of-scope for the port; downstream colour-managed pipelines
+        can post-process the returned sRGB via :meth:`get_black_point`
+        and a standard ICC v4 BPC transform if exact tristimulus
+        matching is required.
         """
         if len(value) < 3:
             raise ValueError(

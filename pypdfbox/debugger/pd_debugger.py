@@ -28,9 +28,11 @@ standard ``<<TreeviewSelect>>`` virtual event.
 
 Behavioural deviations from upstream are recorded in CHANGES.md:
 
-* Printing (Swing ``PrinterJob``) is not ported — Python has no
-  cross-platform printer API in the stdlib. The Print menu items
-  exist but their handlers log a not-implemented warning.
+* Printing (Swing ``PrinterJob``) is delegated to the host OS print
+  pipeline (``lp`` / ``lpr`` on POSIX, ``os.startfile(..., "print")``
+  on Windows). Pages are rasterised via :class:`PDFRenderer` and
+  bundled into a temporary multi-page PDF that the OS print spooler
+  consumes.
 * Reflection-based macOS hooks are replaced by the stdlib
   ``createcommand`` route in :class:`OSXAdapter`.
 * Drag-and-drop (Swing ``TransferHandler``) is omitted; tkdnd is a
@@ -1257,12 +1259,98 @@ class PDFDebugger:
             ErrorDialog(ex).set_visible(True)
 
     def _print_menu_item_action_performed(self) -> None:
-        # Printing is not ported — see CHANGES.md.
+        """Rasterise every page and hand the resulting PDF to the OS spooler.
+
+        Mirrors upstream Swing ``PrinterJob`` semantics by way of the
+        host's native print pipeline. Pages are rendered through
+        :class:`pypdfbox.rendering.pdf_renderer.PDFRenderer` at 150 DPI
+        (matching Swing's default print resolution), packed into a
+        temporary multi-page PDF via Pillow, and shipped to ``lp`` /
+        ``lpr`` (POSIX) or ``os.startfile(path, "print")`` (Windows).
+        Falls back to the platform's default open command if no print
+        spooler is available so the user can still drive printing
+        manually.
+        """
         if self._document is None:
             return
+        try:
+            n_pages = self._document.get_number_of_pages()
+        except Exception as ex:  # noqa: BLE001 - surface to user
+            messagebox.showerror(
+                "Print",
+                f"Could not determine page count: {ex}",
+                parent=self._toplevel,
+            )
+            return
+        if n_pages == 0:
+            messagebox.showinfo(
+                "Print",
+                "Document has no pages to print.",
+                parent=self._toplevel,
+            )
+            return
+        try:
+            self._send_document_to_printer(n_pages)
+        except Exception as ex:  # noqa: BLE001 - surface to user
+            messagebox.showerror(
+                "Print",
+                f"Printing failed: {ex}",
+                parent=self._toplevel,
+            )
+
+    def _send_document_to_printer(self, n_pages: int) -> None:
+        """Rasterise pages, write a temp PDF, and dispatch to the OS spooler.
+
+        Split out from :meth:`_print_menu_item_action_performed` so the
+        rasterise / spool steps can be unit-tested independently.
+        """
+        import os
+        import shutil
+        import subprocess
+        from tempfile import NamedTemporaryFile
+
+        from pypdfbox.rendering.pdf_renderer import PDFRenderer
+
+        renderer = PDFRenderer(self._document)
+        images = [
+            renderer.render_image_with_dpi(i, dpi=150.0).convert("RGB")
+            for i in range(n_pages)
+        ]
+        with NamedTemporaryFile(suffix=".pdf", delete=False) as tf:
+            tmp_path = Path(tf.name)
+        images[0].save(
+            tmp_path,
+            format="PDF",
+            save_all=True,
+            append_images=images[1:],
+        )
+        # Platform dispatch. We don't wait on the spooler — printing is
+        # asynchronous from the user's perspective.
+        if sys.platform == "win32" and hasattr(os, "startfile"):
+            os.startfile(str(tmp_path), "print")  # type: ignore[attr-defined]  # noqa: S606
+            return
+        for cmd in ("lp", "lpr"):
+            if shutil.which(cmd):
+                try:
+                    subprocess.Popen(  # noqa: S603 - cmd is from a fixed allow-list
+                        [cmd, str(tmp_path)]
+                    )
+                    return
+                except OSError:
+                    # Fall through to the GUI opener below.
+                    continue
+        opener = "open" if sys.platform == "darwin" else "xdg-open"
+        if shutil.which(opener):
+            subprocess.Popen([opener, str(tmp_path)])  # noqa: S603
+            return
+        # No spooler and no opener — surface a friendly note pointing the
+        # user at the rasterised PDF so they can hand-print it.
         messagebox.showinfo(
             "Print",
-            "Printing is not yet implemented in the pypdfbox debugger port.",
+            (
+                "No system print command found. The document has been "
+                f"rasterised to: {tmp_path}"
+            ),
             parent=self._toplevel,
         )
 

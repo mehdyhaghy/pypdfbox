@@ -1247,18 +1247,19 @@ def test_print_menu_no_document(tk_root: tk.Tk) -> None:
 def test_print_menu_with_document(
     tk_root: tk.Tk, synthetic_pdf, monkeypatch
 ) -> None:
+    """Print action invokes the spooler hand-off helper."""
     import contextlib
 
     debugger = PDFDebugger(tk_root)
     try:
         debugger.open_document(synthetic_pdf)
-        called: list = []
+        captured: list[int] = []
         monkeypatch.setattr(
-            "pypdfbox.debugger.pd_debugger.messagebox.showinfo",
-            lambda *a, **kw: called.append((a, kw)),
+            debugger, "_send_document_to_printer",
+            lambda n: captured.append(n),
         )
         debugger._print_menu_item_action_performed()  # noqa: SLF001
-        assert called
+        assert captured and captured[0] >= 1
     finally:
         if debugger.get_document() is not None:
             with contextlib.suppress(Exception):

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from xml.dom import minidom
+from xml.dom.minidom import Document
 
 from pypdfbox.cos import COSBase, COSDictionary, COSName, COSNumber, COSStream, COSString
 
@@ -22,6 +24,43 @@ def _require_text_or_none(value: object, method: str) -> str | None:
     if value is None or isinstance(value, str):
         return value
     raise TypeError(f"{method} expected str or None; got {type(value).__name__}")
+
+
+def _parse_rich_text_dom(raw: str) -> Document:
+    """Parse a ``/RV`` XHTML payload to a DOM, hardened against XXE.
+
+    Mirrors the :func:`pypdfbox.util.xml_util.XMLUtil.parse` pattern:
+    prefer :mod:`defusedxml.minidom` when on the path (downstream-opt-in;
+    not a pypdfbox runtime dep), otherwise fall back to
+    :mod:`xml.dom.minidom` with an explicit DOCTYPE guard. Any parse
+    error is normalized to :class:`OSError`.
+    """
+    data = raw.encode("utf-8")
+    # Cheap DOCTYPE guard — covers the most common XXE vector regardless
+    # of which underlying parser handles the bytes.
+    head = data[:2048].lstrip().lower()
+    if b"<!doctype" in head:
+        raise OSError("DOCTYPE declarations are not allowed in /RV")
+    try:
+        try:
+            from defusedxml.minidom import parseString as _safe_parse
+
+            # pragma: no cover -- defusedxml is an optional hardening
+            # path; not in pyproject (the project ships permissive-only,
+            # no-new-deps gate) so this branch only fires for downstream
+            # users who add defusedxml themselves.
+            return _safe_parse(  # pragma: no cover
+                data, forbid_dtd=True, forbid_entities=True
+            )
+        except ImportError:
+            return minidom.parseString(data)
+    # ``_safe_parse`` (defusedxml) may surface parser errors as
+    # OSError. defusedxml is opt-in (not pinned in pyproject.toml),
+    # so this branch is unreachable in the default install.
+    except OSError:  # pragma: no cover -- defusedxml not pinned
+        raise
+    except Exception as exc:
+        raise OSError(str(exc)) from exc
 
 
 class PDVariableText(PDTerminalField):
@@ -160,9 +199,52 @@ class PDVariableText(PDTerminalField):
     def get_rich_text_value(self) -> str | None:
         return self.get_string_or_stream(self.get_inheritable_attribute(_RV))
 
-    def set_rich_text_value(self, value: str | None) -> None:
+    def set_rich_text_value(self, value: str | Document | None) -> None:
+        """Set the rich-text ``/RV`` value.
+
+        Accepts either a raw XHTML string (back-compat with the original
+        lite-port shape) or an :class:`xml.dom.minidom.Document` — when a
+        DOM is supplied it is serialized via :meth:`Document.toxml` with
+        ``encoding="utf-8"`` and stored as a ``COSString`` (matching PDF
+        spec ISO 32000-1 §12.7.3.4 which mandates XHTML 1.0 for ``/RV``).
+        Passing ``None`` removes the entry.
+        """
+        if isinstance(value, Document):
+            # Document.toxml(encoding="utf-8") returns bytes including the
+            # XML declaration; decode back to str for COSString storage.
+            serialized = value.toxml(encoding="utf-8").decode("utf-8")
+            self._field.set_string(_RV, serialized)
+            return
         value = _require_text_or_none(value, "set_rich_text_value")
         self._field.set_string(_RV, value)
+
+    def get_rich_text_value_as_dom(self) -> Document | None:
+        """Return ``/RV`` parsed as an XHTML DOM, or ``None`` when absent.
+
+        ``/RV`` is stored as XHTML 1.0 per PDF spec ISO 32000-1 §12.7.3.4;
+        this accessor parses the stored string via :mod:`xml.dom.minidom`
+        (preferring :mod:`defusedxml` when on the path, matching the
+        ``XMLUtil.parse`` hardening pattern). DOCTYPE declarations are
+        rejected as a guard against XXE.
+
+        Raises :class:`OSError` when the stored payload is not well-formed
+        XML — callers that want best-effort parsing should catch that.
+        """
+        raw = self.get_rich_text_value()
+        if raw is None:
+            return None
+        return _parse_rich_text_dom(raw)
+
+    def set_rich_text_value_from_dom(self, dom: Document | None) -> None:
+        """Serialize ``dom`` to XHTML and store as ``/RV``.
+
+        Convenience around :meth:`set_rich_text_value` for callers that
+        want the DOM-specific name. ``None`` removes the entry.
+        """
+        if dom is None:
+            self._field.remove_item(_RV)
+            return
+        self.set_rich_text_value(dom)
 
     def has_rich_text_value(self) -> bool:
         """Predicate — return ``True`` when ``/RV`` is set on this field's own

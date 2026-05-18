@@ -159,3 +159,111 @@ def test_doc_close_does_not_touch_caller_owned_source() -> None:
     doc.close()
     assert not src.is_closed()
     src.close()
+
+
+# ---------- MemoryUsageSetting plumbing ----------
+
+
+def test_load_pdf_default_memory_usage_setting_uses_default_scratch() -> None:
+    """No-setting path keeps the existing heap-backed default — the
+    document's scratch file should be the one COSDocument allocates
+    lazily (i.e. not the loader-supplied instance)."""
+    from pypdfbox.io import StorageMode  # noqa: PLC0415
+
+    doc = Loader.load_pdf(_minimal_pdf())
+    try:
+        # Default heap-backed scratch.
+        assert doc.scratch_file.setting.mode is StorageMode.MAIN_MEMORY_ONLY
+    finally:
+        doc.close()
+
+
+def test_load_pdf_threads_memory_usage_setting_to_scratch_file(
+    tmp_path: Path,
+) -> None:
+    """Caller-supplied :class:`MemoryUsageSetting` should be honoured —
+    the resulting document's ``ScratchFile`` carries the same policy."""
+    from pypdfbox.io import MemoryUsageSetting, StorageMode  # noqa: PLC0415
+
+    setting = MemoryUsageSetting.setup_temp_file_only().set_temp_dir(tmp_path)
+    doc = Loader.load_pdf(_minimal_pdf(), None, setting)
+    try:
+        assert doc.scratch_file.setting is setting
+        assert doc.scratch_file.setting.mode is StorageMode.TEMP_FILE_ONLY
+    finally:
+        doc.close()
+
+
+def test_load_pdf_mixed_memory_usage_setting() -> None:
+    """The mixed mode setup is also threaded through — the scratch file
+    keeps the supplied memory cap and storage cap."""
+    from pypdfbox.io import MemoryUsageSetting, StorageMode  # noqa: PLC0415
+
+    setting = MemoryUsageSetting.setup_mixed(
+        max_main_memory_bytes=64 * 1024,
+        max_storage_bytes=1024 * 1024,
+    )
+    doc = Loader.load_pdf(_minimal_pdf(), None, setting)
+    try:
+        assert doc.scratch_file.setting.mode is StorageMode.MIXED
+        assert doc.scratch_file.setting.max_main_memory_bytes == 64 * 1024
+        assert doc.scratch_file.setting.max_storage_bytes == 1024 * 1024
+    finally:
+        doc.close()
+
+
+def test_load_pdf_closes_loader_owned_scratch_on_doc_close() -> None:
+    """Loader-allocated scratch files are owned by the document so
+    ``doc.close()`` releases them."""
+    from pypdfbox.io import MemoryUsageSetting  # noqa: PLC0415
+
+    setting = MemoryUsageSetting.setup_temp_file_only()
+    doc = Loader.load_pdf(_minimal_pdf(), None, setting)
+    scratch = doc.scratch_file
+    assert not scratch.is_closed()
+    doc.close()
+    assert scratch.is_closed()
+
+
+def test_load_pdf_from_file_threads_memory_usage_setting(
+    tmp_path: Path,
+) -> None:
+    """The path-shaped entry point forwards the setting too."""
+    from pypdfbox.io import MemoryUsageSetting, StorageMode  # noqa: PLC0415
+
+    path = tmp_path / "tiny.pdf"
+    path.write_bytes(_minimal_pdf())
+    setting = MemoryUsageSetting.setup_main_memory_only(
+        max_main_memory_bytes=128 * 1024
+    )
+    doc = Loader.load_pdf_from_file(path, None, setting)
+    try:
+        assert doc.scratch_file.setting.mode is StorageMode.MAIN_MEMORY_ONLY
+        assert doc.scratch_file.setting.max_main_memory_bytes == 128 * 1024
+    finally:
+        doc.close()
+
+
+def test_load_pdf_from_bytes_threads_memory_usage_setting() -> None:
+    """The bytes-shaped entry point forwards the setting too."""
+    from pypdfbox.io import MemoryUsageSetting, StorageMode  # noqa: PLC0415
+
+    setting = MemoryUsageSetting.setup_temp_file_only()
+    doc = Loader.load_pdf_from_bytes(_minimal_pdf(), None, setting)
+    try:
+        assert doc.scratch_file.setting.mode is StorageMode.TEMP_FILE_ONLY
+    finally:
+        doc.close()
+
+
+def test_load_alias_threads_memory_usage_setting() -> None:
+    """The ``Loader.load`` upstream-style alias also forwards."""
+    from pypdfbox.io import MemoryUsageSetting, StorageMode  # noqa: PLC0415
+
+    setting = MemoryUsageSetting.setup_main_memory_only(max_main_memory_bytes=32768)
+    doc = Loader.load(_minimal_pdf(), None, setting)
+    try:
+        assert doc.scratch_file.setting.mode is StorageMode.MAIN_MEMORY_ONLY
+        assert doc.scratch_file.setting.max_main_memory_bytes == 32768
+    finally:
+        doc.close()

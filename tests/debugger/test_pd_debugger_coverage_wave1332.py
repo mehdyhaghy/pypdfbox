@@ -346,23 +346,24 @@ def test_print_menu_item_action_with_no_document_returns(
     debugger._print_menu_item_action_performed()  # noqa: SLF001
 
 
-def test_print_menu_item_action_shows_messagebox_when_doc_present(
+def test_print_menu_item_action_dispatches_to_spooler_when_doc_present(
     debugger: PDFDebugger, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from tkinter import messagebox
-
+    """Print action rasterises pages and hands off to the OS spooler."""
     doc = PDDocument()
     try:
         doc.add_page(PDPage())
         debugger._document = doc  # noqa: SLF001
-        called: list[tuple[Any, ...]] = []
+        send_calls: list[int] = []
 
-        def _showinfo(*args: Any, **kwargs: Any) -> None:
-            called.append((args, kwargs))
+        def _send(n_pages: int) -> None:
+            send_calls.append(n_pages)
 
-        monkeypatch.setattr(messagebox, "showinfo", _showinfo)
+        monkeypatch.setattr(
+            debugger, "_send_document_to_printer", _send,
+        )
         debugger._print_menu_item_action_performed()  # noqa: SLF001
-        assert called
+        assert send_calls == [1]
     finally:
         doc.close()
         debugger._document = None  # noqa: SLF001

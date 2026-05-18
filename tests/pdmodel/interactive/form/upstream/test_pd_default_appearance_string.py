@@ -75,16 +75,23 @@ def test_parse_da_string(
 def test_font_resource_unavailable(
     fixture: tuple[PDResources, COSName, PDType1Font],
 ) -> None:
-    """Ports upstream ``testFontResourceUnavailable`` (Java lines 66-72).
+    """Ports upstream ``testFontResourceUnavailable`` (Java lines 66-72)
+    with a deliberate pypdfbox deviation noted in ``CHANGES.md``.
 
-    A /DA referencing ``/Helvetica`` when /DR has no such resource must
-    raise (upstream ``IOException``; pypdfbox ``OSError`` per
-    ``CLAUDE.md`` mapping).
+    Upstream raises ``IOException`` when /DA references a font missing
+    from /DR. Pypdfbox instead substitutes a Standard-14 fallback (here
+    Helvetica) to keep fields with broken /DA strings renderable —
+    PDFBOX-2661's "special mapping logic" wired up rather than left as
+    a TODO. The test asserts the substitution shape; the upstream
+    exception is therefore deliberately not raised.
     """
     resources, _, _ = fixture
     sample_string = COSString("/Helvetica 12 Tf 0.019 0.305 0.627 rg")
-    with pytest.raises(OSError):
-        PDDefaultAppearanceString(sample_string, resources)
+    das = PDDefaultAppearanceString(sample_string, resources)
+    fallback_font = das.get_font()
+    assert fallback_font is not None
+    assert fallback_font.get_name() == PDType1Font.HELVETICA
+    assert das.get_font_size() == pytest.approx(12, abs=0.001)
 
 
 def test_wrong_number_of_color_arguments(

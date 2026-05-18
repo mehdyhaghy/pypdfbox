@@ -92,10 +92,33 @@ def test_default_font_size_is_twelve_when_no_tf() -> None:
     assert da.get_font_name() is None
 
 
-def test_unknown_font_raises_oserror() -> None:
+def test_unknown_font_falls_back_to_helvetica() -> None:
+    """PDFBOX-2661 fallback path — when /DR lacks the named font,
+    substitute Standard-14 Helvetica instead of raising. Diverges from
+    upstream (recorded in ``CHANGES.md``) so fields with broken /DA
+    strings still render."""
+    from pypdfbox.pdmodel.font import PDType1Font  # noqa: PLC0415
+
     res = PDResources()
-    with pytest.raises(OSError, match="Could not find font"):
-        PDDefaultAppearanceString(COSString("/Missing 12 Tf"), res)
+    da = PDDefaultAppearanceString(COSString("/Missing 12 Tf"), res)
+    font = da.get_font()
+    assert font is not None
+    assert font.get_name() == PDType1Font.HELVETICA
+    assert da.get_font_size() == pytest.approx(12.0)
+
+
+def test_unknown_font_named_helvetica_falls_back_via_canonical() -> None:
+    """When /DA names a Standard-14 alias (``/Helv``) and /DR lacks it,
+    fall back to the canonical font (``Helvetica``) rather than the
+    generic default — matches the spirit of PDFBOX-2661's "special
+    mapping" idea."""
+    from pypdfbox.pdmodel.font import PDType1Font  # noqa: PLC0415
+
+    res = PDResources()
+    da = PDDefaultAppearanceString(COSString("/Helv 12 Tf"), res)
+    font = da.get_font()
+    assert font is not None
+    assert font.get_name() == PDType1Font.HELVETICA
 
 
 def test_missing_tf_operands_raises_oserror() -> None:
@@ -301,6 +324,100 @@ def test_copy_needed_resources_no_op_when_font_name_is_none() -> None:
     da.copy_needed_resources_to(appearance)
     # Resources are still created, but no font is added.
     assert appearance.get_resources() is not None
+
+
+def test_copy_needed_resources_carries_color_space() -> None:
+    """A /DA stream that references a named ``/ColorSpace`` via ``cs``
+    or ``CS`` should have the colour space copied into the appearance
+    stream's /Resources. Pypdfbox extension over upstream's
+    ``// todo: other kinds of resource…`` placeholder.
+    """
+    from pypdfbox.cos import COSArray  # noqa: PLC0415
+
+    res, _ = _resources_with_font()
+    # Register a DeviceN-style named colour space under /MyCs.
+    cs_array = COSArray()
+    cs_array.add(COSName.get_pdf_name("DeviceN"))
+    cs_array.add(COSArray())
+    cs_array.add(COSName.get_pdf_name("DeviceCMYK"))
+    res.put(
+        COSName.get_pdf_name("ColorSpace"),
+        COSName.get_pdf_name("MyCs"),
+        cs_array,
+    )
+
+    da = PDDefaultAppearanceString(COSString("/Helv 12 Tf /MyCs cs"), res)
+    appearance = PDAppearanceStream(COSStream())
+    da.copy_needed_resources_to(appearance)
+
+    target_res = appearance.get_resources()
+    assert target_res is not None
+    assert target_res.has_color_space(COSName.get_pdf_name("MyCs"))
+
+
+def test_copy_needed_resources_carries_ext_g_state() -> None:
+    """A /DA stream that references a named ``/ExtGState`` via ``gs``
+    should have the ext-gstate copied across. Pypdfbox extension."""
+    res, _ = _resources_with_font()
+
+    gs_dict = COSDictionary()
+    gs_dict.set_name(COSName.get_pdf_name("Type"), "ExtGState")
+    res.put(
+        COSName.get_pdf_name("ExtGState"),
+        COSName.get_pdf_name("MyGs"),
+        gs_dict,
+    )
+
+    da = PDDefaultAppearanceString(COSString("/Helv 12 Tf /MyGs gs"), res)
+    appearance = PDAppearanceStream(COSStream())
+    da.copy_needed_resources_to(appearance)
+
+    target_res = appearance.get_resources()
+    assert target_res is not None
+    assert target_res.has_ext_g_state(COSName.get_pdf_name("MyGs"))
+
+
+def test_copy_needed_resources_preserves_existing_extra_resources() -> None:
+    """When the appearance stream's /Resources already carries an entry
+    under the same key, the existing entry stays intact even if the
+    /DR has a different value under that key."""
+    res, _ = _resources_with_font()
+    target_color = COSDictionary()
+    target_color.set_name(COSName.get_pdf_name("Type"), "ExtGState")
+    target_color.set_name(COSName.get_pdf_name("Marker"), "target-original")
+
+    # /DR has a *different* ExtGState under /MyGs.
+    dr_color = COSDictionary()
+    dr_color.set_name(COSName.get_pdf_name("Type"), "ExtGState")
+    dr_color.set_name(COSName.get_pdf_name("Marker"), "dr-override")
+    res.put(
+        COSName.get_pdf_name("ExtGState"),
+        COSName.get_pdf_name("MyGs"),
+        dr_color,
+    )
+
+    appearance = PDAppearanceStream(COSStream())
+    existing_resources = PDResources()
+    existing_resources.put(
+        COSName.get_pdf_name("ExtGState"),
+        COSName.get_pdf_name("MyGs"),
+        target_color,
+    )
+    appearance.set_resources(existing_resources)
+
+    da = PDDefaultAppearanceString(COSString("/Helv 12 Tf /MyGs gs"), res)
+    da.copy_needed_resources_to(appearance)
+
+    # Target entry untouched — Marker still says "target-original".
+    sub = (
+        appearance.get_resources()
+        .get_cos_object()
+        .get_dictionary_object(COSName.get_pdf_name("ExtGState"))
+    )
+    assert isinstance(sub, COSDictionary)
+    entry = sub.get_dictionary_object(COSName.get_pdf_name("MyGs"))
+    assert isinstance(entry, COSDictionary)
+    assert entry.get_name(COSName.get_pdf_name("Marker")) == "target-original"
 
 
 # ---------- default_appearance accessors (pypdfbox-only) ----------

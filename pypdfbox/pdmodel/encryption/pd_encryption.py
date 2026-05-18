@@ -120,9 +120,17 @@ class PDEncryption:
     def set_security_handler(self, security_handler: object) -> None:
         """Install ``security_handler`` for subsequent dispatch.
 
-        Mirrors upstream ``setSecurityHandler`` — note that upstream does
-        not also touch /Filter (a TODO comment in the Java); we preserve
-        that quirk so the existing /Filter wins.
+        Mirrors upstream ``setSecurityHandler`` exactly. Upstream's
+        Java carries a ``// TODO`` noting that this method "should
+        probably also set /Filter on the dictionary so it round-trips";
+        the pypdfbox port intentionally preserves the existing
+        behaviour because :meth:`set_filter` is the dedicated setter
+        and existing call sites — `SecurityHandler.prepare_document`
+        and the `StandardSecurityHandler` constructor — already manage
+        /Filter explicitly. Implicitly stamping /Filter here would
+        either duplicate that write or clobber a `/Filter Adobe.PubSec`
+        public-key dispatch with the wrong default. Callers that want
+        both should call :meth:`set_filter` separately.
         """
         self._security_handler = security_handler
 

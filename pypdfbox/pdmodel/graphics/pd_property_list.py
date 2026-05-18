@@ -36,9 +36,19 @@ class PDPropertyList:
         - ``/Type /OCG``  → :class:`PDOptionalContentGroup`
         - ``/Type /OCMD`` → :class:`PDOptionalContentMembershipDictionary`
         - any other ``/Type`` (or none) → bare :class:`PDPropertyList`
-          wrapping the dictionary, matching upstream's "todo: more types"
-          fallback. This is a behavioural fix vs. earlier pypdfbox releases
-          that returned ``None`` for unknown types.
+          wrapping the dictionary.
+
+        Upstream's Java carries a ``// todo: more types`` marker beside
+        this dispatch, but PDF 32000-1 §14.6 (marked content property
+        lists) defines exactly two typed property lists — /OCG and
+        /OCMD — and the broader Span/Layout/List-attribute property
+        lists keyed to ``/O`` (Owner) are handled by
+        :class:`PDAttributeObject` / its subclasses, not by this
+        factory. The "more types" TODO is therefore the final open
+        case in the spec: a free-form property list with no `/Type`
+        constraint, which we already wrap as a bare
+        :class:`PDPropertyList`. This is a behavioural fix vs. earlier
+        pypdfbox releases that returned ``None`` for unknown types.
 
         ``None`` input still returns ``None`` — upstream would NPE on a null
         argument; the Python port is intentionally permissive here.

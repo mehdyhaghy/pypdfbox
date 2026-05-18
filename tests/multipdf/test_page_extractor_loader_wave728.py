@@ -27,9 +27,17 @@ class _EncryptedCOSDocument:
 class _FakeParser:
     document = _EncryptedCOSDocument()
     password: str | bytes | None = None
+    scratch_file: object | None = None
 
-    def __init__(self, access: object) -> None:
+    def __init__(
+        self,
+        access: object,
+        decryption_password: str | bytes | None = None,
+        scratch_file: object | None = None,
+    ) -> None:
         self.access = access
+        self.decryption_password = decryption_password
+        type(self).scratch_file = scratch_file
 
     def set_password(self, password: str | bytes) -> None:
         type(self).password = password

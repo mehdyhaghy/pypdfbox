@@ -16,13 +16,15 @@ if TYPE_CHECKING:
 
 _LOG = logging.getLogger(__name__)
 
-# Hard-coded default returned by upstream
-# ``PDType1CFont.getAverageCharacterWidth`` — a placeholder marked
-# ``// todo: not implemented, highly suspect`` in the Java source. Pinned
-# here so :meth:`get_average_character_width` can mirror upstream's
-# constant-return semantics for callers that bypass the broader
-# :meth:`get_average_font_width` chain.
-_UPSTREAM_AVERAGE_CHARACTER_WIDTH: float = 500.0
+# Last-resort fallback for :meth:`get_average_character_width` when no
+# real signal is available (no ``/Widths``, no embedded CFF program, no
+# Standard 14 AFM). Matches upstream's hard-coded ``500`` constant — kept
+# only as the absolute floor. Upstream's
+# ``PDType1CFont.getAverageCharacterWidth`` returned this unconditionally
+# with a ``// todo: not implemented, highly suspect`` annotation; we
+# close that TODO by walking real signals first (see
+# :meth:`get_average_character_width`).
+_UPSTREAM_AVERAGE_CHARACTER_WIDTH_FALLBACK: float = 500.0
 
 # CFF defaults to a 1000-unit em (font matrix [0.001 0 0 0.001 0 0]).
 _CFF_DEFAULT_UNITS_PER_EM: int = 1000
@@ -569,16 +571,59 @@ class PDType1CFont(PDType1Font):
         return 0.0
 
     def get_average_character_width(self) -> float:
-        """Hard-coded mean character width — mirrors upstream's
-        ``getAverageCharacterWidth`` (private, line 478).
+        """Mean character advance for this font in 1/1000 em.
 
-        Upstream returns ``500`` with a ``// todo: not implemented,
-        highly suspect`` annotation. Re-exposed at the public API surface
-        for parity coverage; production callers should prefer
-        :meth:`get_average_font_width` which actually walks ``/Widths``
-        and the embedded CFF program before falling back.
+        Mirrors upstream's ``PDType1CFont.getAverageCharacterWidth``
+        (private, line 478) which was marked ``// todo: not implemented,
+        highly suspect`` and hard-coded ``500``. We close that TODO by
+        deriving a real mean from the available signals — using
+        ``fontTools.cffLib``'s charstring-width extractor under the hood
+        (see :meth:`pypdfbox.fontbox.cff.cff_font.CFFFont.get_width`).
+
+        Lookup order:
+
+        1. Mean of positive entries in ``/Widths``.
+        2. Mean of positive advances across every glyph in the embedded
+           CFF program's charset, rescaled to 1/1000 em via the font
+           matrix.
+        3. CFF Private DICT ``defaultWidthX`` (the advance assigned to
+           glyphs whose charstring omits the leading width operand —
+           CFF spec §10) when an embedded CFF program is present.
+        4. Standard 14 AFM mean for the matching font.
+        5. ``500.0`` — the upstream constant, retained only as the
+           absolute floor when no real signal is available.
         """
-        return _UPSTREAM_AVERAGE_CHARACTER_WIDTH
+        widths = self.get_widths()
+        non_zero = [w for w in widths if w > 0.0]
+        if non_zero:
+            return sum(non_zero) / len(non_zero)
+        program = self._get_cff_font()
+        if program is not None:
+            upem = program.units_per_em
+            # pragma: fontTools guarantees positive UPM for parsed CFF.
+            if upem <= 0:  # pragma: no cover -- defensive
+                upem = _CFF_DEFAULT_UNITS_PER_EM
+            charset = program.get_charset()
+            # ``.notdef`` is always GID 0 and has no business in a mean;
+            # skip it to mirror how AFM ``CharMetrics`` files report.
+            program_widths = [
+                program.get_width(name)
+                for name in charset
+                if name != ".notdef"
+            ]
+            program_widths = [w for w in program_widths if w > 0.0]
+            if program_widths:
+                mean = sum(program_widths) / len(program_widths)
+                return mean * 1000.0 / upem
+            default = program.get_default_width_x()
+            if default > 0.0:
+                return default * 1000.0 / upem
+        afm = self.get_standard_14_font_metrics()
+        if afm is not None:
+            average = afm.get_average_width()
+            if average > 0.0:
+                return average
+        return _UPSTREAM_AVERAGE_CHARACTER_WIDTH_FALLBACK
 
     # ---------- glyph-name resolution ----------
 

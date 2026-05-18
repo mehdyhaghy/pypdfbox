@@ -116,13 +116,14 @@ def test_get_name_none_when_basefont_absent() -> None:
     assert font.get_base_font() is None
 
 
-# ---------- get_average_character_width (upstream's hard-coded 500) ----------
+# ---------- get_average_character_width (upstream TODO closed) ----------
 
 
-def test_get_average_character_width_returns_upstream_constant() -> None:
-    """Upstream's private ``getAverageCharacterWidth`` returns ``500``
-    unconditionally — pinned here for parity even though it's marked
-    ``// todo: not implemented, highly suspect`` upstream."""
+def test_get_average_character_width_falls_back_to_upstream_constant() -> None:
+    """A font with no ``/Widths``, no embedded CFF program, and no
+    Standard 14 AFM falls all the way through to the ``500`` floor —
+    the only path on which we still surface upstream's hard-coded value.
+    """
     assert PDType1CFont().get_average_character_width() == 500.0
 
 

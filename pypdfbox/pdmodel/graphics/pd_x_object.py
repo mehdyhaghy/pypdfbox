@@ -41,8 +41,15 @@ class PDXObject:
         """Build the typed ``PDXObject`` for ``base``. Mirrors upstream
         ``PDXObject.createXObject(COSBase, PDResources)``.
 
-        - ``None`` → ``None`` (matches upstream's ``TODO throw an
-          exception?`` placeholder which currently returns ``null``).
+        - ``None`` → ``None``. Upstream's Java carries a ``TODO throw
+          an exception?`` marker on this branch but ships the
+          null-returning behaviour; we keep that for strict parity
+          because the callers — :meth:`PDResources.get_x_object` and
+          :meth:`PDFStreamEngine.show_form` — are already null-safe and
+          treat the absent return as "skip this XObject reference",
+          which is the right behaviour for stale resource-dict entries.
+          Throwing here would convert a tolerated parse anomaly into a
+          fatal error.
         - ``COSStream`` with ``/Subtype /Image`` → :class:`PDImageXObject`.
         - ``COSStream`` with ``/Subtype /Form`` → :class:`PDFormXObject`,
           or :class:`PDTransparencyGroup` when the form has a

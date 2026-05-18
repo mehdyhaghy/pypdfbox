@@ -78,12 +78,12 @@ class PDPushButton(PDButton):
     def construct_appearances(self) -> None:
         """Rebuild widget appearances for this push button.
 
-        Upstream ``PDPushButton.constructAppearances`` is a TODO no-op
-        (no appearance handler wired in yet). Wave 1305 routes the call
-        through :class:`PDAppearanceGenerator` so :meth:`refresh_appearances`
-        produces a usable ``/AP /N`` from the widget's ``/MK`` caption /
-        background / border — keeping the lite surface consistent with
-        the Tx / Ch paths.
+        Upstream ``PDPushButton.constructAppearances`` is a no-op (no
+        appearance handler is wired in upstream). Wave 1305 routes the
+        call through :class:`PDAppearanceGenerator` so
+        :meth:`refresh_appearances` produces a usable ``/AP /N`` from
+        the widget's ``/MK`` caption / background / border — keeping the
+        lite surface consistent with the Tx / Ch paths.
         """
         from .pd_appearance_generator import PDAppearanceGenerator
 

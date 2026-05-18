@@ -71,6 +71,7 @@ class PDFParser:
         self,
         source: RandomAccessRead,
         decryption_password: str | bytes | None = None,
+        scratch_file: Any | None = None,
     ) -> None:
         """Construct a parser around ``source``.
 
@@ -80,8 +81,15 @@ class PDFParser:
         :meth:`set_password` does, so the eager-decrypt path can stand up
         a security handler before encrypted xref-stream bodies are
         decoded. ``None`` preserves the lazy post-load decryption flow
-        driven by ``PDDocument.decrypt``."""
+        driven by ``PDDocument.decrypt``.
+
+        ``scratch_file`` is the ``ScratchFile`` instance backing every
+        ``COSStream`` in the parsed object graph — typically constructed
+        from a caller-supplied :class:`MemoryUsageSetting`. ``None``
+        falls back to a default heap-backed scratch file built lazily
+        by :class:`COSDocument`."""
         self._src = source
+        self._scratch_file = scratch_file
         self._base = BaseParser(source)
         self._resolver = XrefTrailerResolver()
         self._document: COSDocument | None = None
@@ -177,7 +185,7 @@ class PDFParser:
         default" note on the no-arg overload."""
         if lenient is not None:
             self.set_lenient(lenient)
-        self._document = COSDocument()
+        self._document = COSDocument(scratch_file=self._scratch_file)
         self._cos_parser = COSParser(self._src, document=self._document)
         self._version = self.parse_header()
         self._document.set_version(self._version)

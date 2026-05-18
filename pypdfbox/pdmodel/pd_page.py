@@ -395,15 +395,22 @@ class PDPage:
     def get_matrix(self) -> list[float]:
         """Transformation matrix applied to the page's content stream.
 
-        Mirrors upstream ``PDPage.getMatrix()`` which returns
-        ``new Matrix()`` (the identity transform). The pypdfbox ``Matrix``
-        class lands with the rendering cluster (PRD §6.7); until then we
-        surface the same six numbers as a list — same shape used by
-        :class:`PDFormXObject.get_matrix` and :class:`PDAbstractPattern.get_matrix`.
-
-        Note: the upstream comment on this method (``// todo: take into
-        account user-space unit redefinition as scale?``) is a known
-        upstream gap, not something we attempt to fix here.
+        Mirrors upstream ``PDPage.getMatrix()`` exactly: returns the
+        identity transform as a six-number list (same shape used by
+        :class:`PDFormXObject.get_matrix` and
+        :class:`PDAbstractPattern.get_matrix`). Upstream's ``// todo:
+        take into account user-space unit redefinition as scale?``
+        comment flags this as a known divergence from "what a
+        rendering-time matrix would ideally be" — but PDF 32000-1
+        §14.10.4 (``/UserUnit``) makes the unit redefinition a viewer
+        concern (a per-page scale applied *outside* the content stream's
+        own CTM), and applying it inside this matrix would over-scale
+        every consumer that already composes ``/UserUnit`` separately
+        (the renderer reads :meth:`get_user_unit` directly when it
+        builds the page viewport). The known-good fix is therefore to
+        match upstream's identity-only behaviour; callers that want the
+        scaled form should compose ``Matrix.get_scale_instance(unit,
+        unit)`` themselves against :meth:`get_user_unit`.
         """
         return [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
 

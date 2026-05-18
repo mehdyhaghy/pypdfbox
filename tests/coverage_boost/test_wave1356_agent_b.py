@@ -131,13 +131,19 @@ class _FontReturningJunkResources(PDResources):
         return 42  # sentinel non-font, non-dictionary, non-None
 
 
-def test_process_set_font_raises_when_resolved_font_is_not_pd_font() -> None:
+def test_process_set_font_falls_back_when_resolved_font_is_not_pd_font() -> None:
     # /DA references a font name; the bogus resources lie and return an
-    # int, which is neither COSDictionary nor PDFont — the second guard
-    # (line 176-179) should fire.
+    # int, which is neither COSDictionary nor PDFont. PDFBOX-2661 fallback
+    # path (wave 1359) substitutes a Standard-14 default instead of
+    # raising — the int is treated as "could not load" and the alias
+    # ``Helv`` resolves to Helvetica.
+    from pypdfbox.pdmodel.font import PDType1Font  # noqa: PLC0415
+
     res = _FontReturningJunkResources()
-    with pytest.raises(OSError, match="Could not load font"):
-        PDDefaultAppearanceString(COSString("/Helv 12 Tf"), res)
+    da = PDDefaultAppearanceString(COSString("/Helv 12 Tf"), res)
+    font = da.get_font()
+    assert font is not None
+    assert font.get_name() == PDType1Font.HELVETICA
 
 
 def test_write_to_raises_when_no_font_was_set() -> None:

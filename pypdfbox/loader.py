@@ -5,9 +5,11 @@ from typing import TYPE_CHECKING, Any, BinaryIO, TypeGuard
 
 from pypdfbox.cos import COSDocument
 from pypdfbox.io import (
+    MemoryUsageSetting,
     RandomAccessRead,
     RandomAccessReadBuffer,
     RandomAccessReadBufferedFile,
+    ScratchFile,
 )
 from pypdfbox.pdfparser import PDFParseError, PDFParser
 
@@ -40,9 +42,10 @@ class Loader:
 
     The PDFBox class exposes many overloads (paths, bytes, streams,
     ``RandomAccessRead``, plus password / ``MemoryUsageSetting`` knobs).
-    This port covers the source forms and password-based auto-decryption;
-    memory-usage tuning and key-store overloads are deferred until their
-    corresponding subsystems land.
+    This port covers the source forms, password-based auto-decryption,
+    and the ``MemoryUsageSetting`` knob (heap vs scratch-file backing
+    for stream-body storage). Key-store overloads are deferred until
+    their corresponding subsystems land.
 
     Lifecycle: when ``load_pdf`` is given a path, byte buffer, or stream,
     the Loader constructs the underlying ``RandomAccessRead`` itself and
@@ -58,6 +61,7 @@ class Loader:
     def load_pdf(
         source: PDFSource,
         password: str | bytes | None = None,
+        memory_usage_setting: MemoryUsageSetting | None = None,
         /,
     ) -> COSDocument:
         """Parse a PDF from one of the supported sources and return the
@@ -70,9 +74,23 @@ class Loader:
         Encrypted documents loaded without a password are returned encrypted —
         the caller can wrap them in a ``PDDocument`` and call ``decrypt`` later.
 
-        Mirrors PDFBox ``Loader.loadPDF(..., String password)``."""
+        ``memory_usage_setting`` selects the backing store for decoded
+        ``COSStream`` bodies (the ``ScratchFile`` shared by every stream
+        in the object graph). Defaults to the upstream main-memory-only
+        policy; pass :meth:`MemoryUsageSetting.setup_temp_file_only` or
+        :meth:`MemoryUsageSetting.setup_mixed` to spill huge documents
+        to disk instead of holding every decoded body in heap. Closing
+        the returned ``COSDocument`` closes the scratch file too.
+
+        Mirrors PDFBox ``Loader.loadPDF(..., String password,
+        MemoryUsageSetting memUsageSetting)``."""
         access, owned = Loader._coerce_source(source)
-        parser = PDFParser(access)
+        scratch_file = (
+            ScratchFile(memory_usage_setting)
+            if memory_usage_setting is not None
+            else None
+        )
+        parser = PDFParser(access, scratch_file=scratch_file)
         # Stage the password BEFORE ``parse()`` so the parser can stand up
         # a security handler the instant the trailer's ``/Encrypt`` becomes
         # available — required for PDF 1.5+ documents whose xref *itself*
@@ -90,6 +108,8 @@ class Loader:
                 partial_document.close()
             if owned:
                 access.close()
+            if scratch_file is not None:
+                scratch_file.close()
             # Mirror upstream Loader.loadPDF: malformed input surfaces as
             # an IOException-equivalent (OSError) at the Loader boundary.
             raise OSError(str(e)) from e
@@ -99,10 +119,21 @@ class Loader:
                 partial_document.close()
             if owned:
                 access.close()
+            if scratch_file is not None:
+                scratch_file.close()
             raise
         if owned:
             # Hand ownership to the document so doc.close() releases it.
             document._source = access  # noqa: SLF001 — sibling-package handoff
+        if scratch_file is not None:
+            # Transfer scratch-file ownership to the COSDocument so
+            # ``doc.close()`` releases the temp file / paged buffer the
+            # Loader allocated on the caller's behalf. The COSDocument
+            # constructor defaults non-None scratch files to non-owned
+            # to honour the "caller-supplied scratch file outlives the
+            # document" upstream contract; the Loader, having allocated
+            # the file itself, flips that flag back so close() cleans up.
+            document._owns_scratch = True  # noqa: SLF001 — sibling-package handoff
 
         # Auto-decrypt path: only kick in when the document is actually
         # encrypted AND the caller passed a password (empty string counts —
@@ -141,6 +172,7 @@ class Loader:
     def load(
         source: PDFSource,
         password: str | bytes | None = None,
+        memory_usage_setting: MemoryUsageSetting | None = None,
         /,
     ) -> COSDocument:
         """Upstream-name alias for :meth:`load_pdf`.
@@ -149,12 +181,13 @@ class Loader:
         upstream samples and third-party code use the bare ``Loader.load``
         spelling, so we expose both names with identical semantics.
         """
-        return Loader.load_pdf(source, password)
+        return Loader.load_pdf(source, password, memory_usage_setting)
 
     @staticmethod
     def load_pdf_from_bytes(
         data: bytes | bytearray | memoryview,
         password: str | bytes | None = None,
+        memory_usage_setting: MemoryUsageSetting | None = None,
         /,
     ) -> COSDocument:
         """Explicit bytes entry point — mirrors PDFBox
@@ -170,12 +203,13 @@ class Loader:
                 "Loader.load_pdf_from_bytes expected bytes, bytearray, or "
                 f"memoryview; got {type(data).__name__}"
             )
-        return Loader.load_pdf(data, password)
+        return Loader.load_pdf(data, password, memory_usage_setting)
 
     @staticmethod
     def load_pdf_from_file(
         path: str | os.PathLike[str],
         password: str | bytes | None = None,
+        memory_usage_setting: MemoryUsageSetting | None = None,
         /,
     ) -> COSDocument:
         """Explicit path entry point — mirrors PDFBox
@@ -190,7 +224,7 @@ class Loader:
                 "Loader.load_pdf_from_file expected str or PathLike; got "
                 f"{type(path).__name__}"
             )
-        return Loader.load_pdf(path, password)
+        return Loader.load_pdf(path, password, memory_usage_setting)
 
     @staticmethod
     def load_xfdf(source: PDFSource) -> FDFDocument:
