@@ -722,3 +722,37 @@ def test_line_handler_interior_components_helper_with_sequence_object() -> None:
     ) == [0.7, 0.8]
     # Empty -> None.
     assert PDLineAppearanceHandler._interior_components(_Annot(_ColorAsSeq([]))) is None
+
+
+def test_line_handler_caption_show_text_failure_still_closes_text_block(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Caption rendering happens inside a BT/ET block. If ``show_text``
+    raises ``AttributeError`` / ``ValueError`` mid-block the handler must
+    swallow the failure and still emit ``ET`` via the ``finally`` clause
+    so the subsequent ``restore_graphics_state`` doesn't trip the
+    text-block guard. Covers lines 191-194."""
+    from pypdfbox.pdmodel.interactive.annotation import (
+        pd_appearance_content_stream as _pacs,
+    )
+
+    def _raise_value(self, _text):  # type: ignore[no-untyped-def]
+        raise ValueError("simulated font/show_text failure")
+
+    monkeypatch.setattr(
+        _pacs.PDAppearanceContentStream, "show_text", _raise_value
+    )
+
+    annotation = PDAnnotationLine()
+    annotation.set_rectangle(PDRectangle(*_RECT))
+    annotation.set_color([0.0, 0.0, 0.0])
+    annotation.set_line([20.0, 50.0, 180.0, 50.0])
+    annotation.set_caption(True)
+    annotation.set_contents("Caption that cannot render")
+
+    PDLineAppearanceHandler(annotation).generate_normal_appearance()
+    body = _appearance_bytes(annotation)
+    # The BT/ET pair must still be balanced even though show_text raised.
+    assert body.count(b"BT") == body.count(b"ET")
+    assert b"BT" in body
+    assert b"ET" in body

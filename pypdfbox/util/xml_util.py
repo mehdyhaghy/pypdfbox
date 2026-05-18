@@ -45,7 +45,13 @@ class XMLUtil:
             try:
                 from defusedxml.minidom import parseString as _safe_parse
 
-                return _safe_parse(data, forbid_dtd=True, forbid_entities=True)
+                # pragma: no cover -- defusedxml is an optional hardening
+                # path; not in pyproject (the project ships permissive-only,
+                # no-new-deps gate) so this branch only fires for downstream
+                # users who add defusedxml themselves.
+                return _safe_parse(  # pragma: no cover
+                    data, forbid_dtd=True, forbid_entities=True
+                )
             except ImportError:
                 return minidom.parseString(data)
         except OSError:

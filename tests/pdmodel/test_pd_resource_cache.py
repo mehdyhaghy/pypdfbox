@@ -592,3 +592,30 @@ def test_default_cache_put_rejects_unsupported_types() -> None:
         cache.put(_ref(90), "not a resource")  # type: ignore[arg-type]
     with pytest.raises(TypeError):
         cache.put(_ref(91), 12345)  # type: ignore[arg-type]
+
+
+def test_default_cache_put_routes_pdfont_to_font_slot() -> None:
+    """A plain ``PDFont`` (non-CID, non-descriptor) must land in the
+    generic font slot via ``put_font``. Covers pd_resource_cache.py
+    line 491 (the ``isinstance(resource, PDFont)`` branch)."""
+    from pypdfbox.cos import COSDictionary
+    from pypdfbox.pdmodel.font.pd_font import PDFont
+
+    cache = DefaultResourceCache()
+    # PDFont base class accepts a bare dictionary — no subtype enforcement.
+    font = PDFont.__new__(PDFont)
+    font._dict = COSDictionary()  # type: ignore[attr-defined]
+    cache.put(_ref(100), font)
+    assert cache.get_font(_ref(100)) is font
+
+
+def test_default_cache_put_routes_pdcolorspace_to_color_space_slot() -> None:
+    """A concrete ``PDColorSpace`` lands in the color-space slot via
+    ``put_color_space``. Covers pd_resource_cache.py line 495 (the
+    ``isinstance(resource, PDColorSpace)`` branch)."""
+    from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
+
+    cache = DefaultResourceCache()
+    cs = PDDeviceRGB.INSTANCE
+    cache.put(_ref(101), cs)
+    assert cache.get_color_space(_ref(101)) is cs

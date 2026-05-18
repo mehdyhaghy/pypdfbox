@@ -82,6 +82,22 @@ def test_string_util_split_and_tokenize() -> None:
     assert StringUtil.tokenize_on_space("a b") == ["a", " ", "b"]
 
 
+def test_string_util_tokenize_on_space_empty_string_returns_singleton() -> None:
+    """``tokenize_on_space("")`` returns ``[""]`` — the empty string is a
+    legitimate single token (mirrors Java ``String.split`` behaviour
+    where the input is itself the result)."""
+    assert StringUtil.tokenize_on_space("") == [""]
+
+
+def test_string_util_tokenize_on_space_falsy_non_empty_returns_empty() -> None:
+    """``tokenize_on_space(None)`` falls into the ``else []`` branch —
+    the input is falsy but is not the empty string, so no token is
+    emitted. Covers string_util.py line 31."""
+    # Type-checker would reject ``None``; we deliberately bypass for the
+    # defensive falsy-non-string branch.
+    assert StringUtil.tokenize_on_space(None) == []  # type: ignore[arg-type]
+
+
 def test_number_format_util_basic() -> None:
     buf = bytearray(32)
     n = NumberFormatUtil.format_float_fast(3.14, 2, buf)

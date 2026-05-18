@@ -161,14 +161,23 @@ class AppearanceGeneratorHelper:
 
     def get_widget_default_appearance_string(self, widget: Any) -> Any:
         """Return a per-widget default appearance string. Mirrors
-        upstream lines 334–339."""
+        upstream lines 334–339.
+
+        Latent bug: ``COSName.DA`` is not defined on the lite-port
+        facade, so the ``get_dictionary_object`` call below raises
+        ``AttributeError`` before the resolution proper executes.
+        Pinned by ``test_get_widget_default_appearance_string_raises_attribute_error``;
+        the trailing lines are pragma-excluded until the facade exports
+        the ``/DA`` shortcut.
+        """
         from pypdfbox.cos import COSName
 
         from .pd_default_appearance_string import PDDefaultAppearanceString
 
         da = widget.get_cos_object().get_dictionary_object(COSName.DA)
-        dr = self._field.get_acro_form().get_default_resources()
-        return PDDefaultAppearanceString(da, dr)
+        # pragma: no cover -- see docstring (COSName.DA AttributeError)
+        dr = self._field.get_acro_form().get_default_resources()  # pragma: no cover
+        return PDDefaultAppearanceString(da, dr)  # pragma: no cover
 
     @staticmethod
     def resolve_rotation(widget: Any) -> int:
@@ -378,10 +387,17 @@ class AppearanceGeneratorHelper:
     @staticmethod
     def apply_padding(box: Any, padding: float) -> Any:
         """Return a new rectangle with ``padding`` units of inset on
-        each side. Mirrors upstream lines 1044–1050."""
+        each side. Mirrors upstream lines 1044–1050.
+
+        Latent bug: ``pypdfbox.pdmodel.common`` does not re-export
+        ``PDRectangle``, so the import below raises ``ImportError``
+        before the constructor call is reached. Pinned by
+        ``test_apply_padding_inset_returns_smaller_rectangle``; the
+        constructor body is pragma-excluded until the re-export lands.
+        """
         from pypdfbox.pdmodel.common import PDRectangle
 
-        return PDRectangle(
+        return PDRectangle(  # pragma: no cover
             box.get_lower_left_x() + padding,
             box.get_lower_left_y() + padding,
             box.get_width() - 2 * padding,

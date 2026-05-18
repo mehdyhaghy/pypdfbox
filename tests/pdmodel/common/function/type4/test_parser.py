@@ -122,6 +122,25 @@ def test_parse_uses_subclass_handler() -> None:
     assert seen == ["alpha", "beta"]
 
 
+def test_lone_cr_at_end_of_input_treated_as_newline() -> None:
+    """A bare ``\\r`` at end-of-input forces ``Tokenizer.peek`` into its
+    "no next char" branch (parser.py line 113 — ``return _EOT``). Tracks
+    coverage of that branch by parsing a token followed by a lone CR."""
+    handler = _RecordingHandler()
+    Parser.parse("1\r", handler)
+    newlines = [text for kind, text in handler.events if kind == "newline"]
+    # ``\r`` (without trailing ``\n``) is a single-character newline.
+    assert newlines == ["\r"]
+
+
+def test_parser_class_is_instantiable() -> None:
+    """The Java upstream marks ``Parser`` ``final`` with a private no-op
+    constructor. We mirror the shape but allow instantiation in Python —
+    instantiating must not raise (covers parser.py line 202)."""
+    p = Parser()
+    assert isinstance(p, Parser)
+
+
 def test_default_overrides_are_no_ops() -> None:
     """The base ``AbstractSyntaxHandler`` overrides are no-ops; the
     default whitespace / newline / comment handlers must not raise."""

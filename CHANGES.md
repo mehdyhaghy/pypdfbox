@@ -4187,6 +4187,103 @@ No latent source bugs flagged.
   and rely solely on `read_long`'s clamp — Java's signed-32 → signed-64
   pattern lives in exactly one place upstream; we mirror it in two.
 
+## Wave 1356 — coverage-boost pass #28 (parallel agents)
+
+### Agent A — pdmodel/font final-push tail-sweep (3 files to 100%)
+
+- `tests/pdmodel/font/test_pd_true_type_font_wave1356.py` (+9 tests) closes
+  the residual no-coverage lines in `pypdfbox/pdmodel/font/pd_true_type_font.py`
+  (655 stmts → 100%):
+  - line 351 — `get_width_from_font` ``units_per_em == 1000`` short-circuit;
+  - line 442 — `get_normalized_path` gid-0 + non-embedded + non-standard14
+    early-return (PDFBOX-2372 guard);
+  - line 825 — `get_path_from_outlines` returning ``None`` when the CFF
+    charstring resolves to an empty path (distinct from `.notdef`);
+  - lines 960-961 — `encode_codepoint` raising when AGL name *and* uniXXXX
+    fallback both miss in the embedded TTF;
+  - lines 967-969 — `encode_codepoint` raising when the encoding contains
+    the glyph name but `get_name_to_code_map` has no inverse entry;
+  - lines 1030, 1038 — `_scale_path` `None` and non-`(x,y)` argument
+    short-circuits.
+- `tests/pdmodel/font/test_pd_cid_font_type2_wave1356.py` (+2 tests) closes
+  `pypdfbox/pdmodel/font/pd_cid_font_type2.py` (372 stmts → 100%):
+  - lines 643-644 — `get_path_from_outlines` swallowing a `code_to_gid`
+    exception and returning ``None``;
+  - line 727 — embedded-font `encode` branch falling through with
+    `cid == -1` (no Identity-, no UCS-2, no `/ToUnicode`); reset to 0
+    before raising.
+- `tests/pdmodel/font/test_standard14_fonts_wave1356.py` (+2 tests) closes
+  `pypdfbox/pdmodel/font/standard14_fonts.py` (371 stmts → 100%):
+  - lines 280-281 — `_ttf_glyph_path_for_gid` swallowing a `glyph.draw`
+    exception;
+  - line 1037 — `Standard14Fonts.get_glyph_path` returning the
+    ``uniXXXX`` outline via the AGL fallback (non-SymbolMT branch).
+
+### Agent B — pdmodel / form / fdf tail-sweep
+
+- `tests/coverage_boost/test_wave1356_agent_b.py` (+10 tests) closes the
+  remaining missing lines across five modules so each reaches >=99.9%:
+  - `pypdfbox/pdmodel/pd_page.py` (lines 311 / 679 / 685-686 / 1026):
+    `set_contents` wrapper-not-COSStream `TypeError`, `add_annotation`
+    non-PDAnnotation `TypeError`, the existing-`COSArray` /Annots extend
+    branch, and the `get_indirect_resource_objects` non-`COSDictionary`
+    short-circuit.
+  - `pypdfbox/pdmodel/interactive/form/pd_default_appearance_string.py`
+    (lines 177 / 275): the `process_set_font` "Could not load font"
+    raise driven by a `PDResources` subclass returning a sentinel int;
+    the `write_to` "No font set on /DA" raise driven by an empty `/DA`
+    string that never sets a font.
+  - `pypdfbox/pdmodel/interactive/form/key_value.py` (lines 41 / 45):
+    `to_string()` parity wrapper and `__eq__` `NotImplemented` branch.
+  - `pypdfbox/pdmodel/fdf/fdf_option_element.py` (lines 44 / 63): the
+    `return ""` fallbacks when the underlying `COSArray` slot is not a
+    `COSString`.
+- `pypdfbox/pdmodel/interactive/form/appearance_generator_helper.py`
+  (lines 170-171 / 384): both targets are *unreachable* due to two
+  latent bugs already pinned by existing tests — `COSName.DA` is not
+  defined on the lite-port facade (so `get_widget_default_appearance_string`
+  raises `AttributeError` before reaching line 170), and
+  `pypdfbox.pdmodel.common` does not re-export `PDRectangle` (so
+  `apply_padding` raises `ImportError` before reaching line 384).
+  Marked `# pragma: no cover` with inline notes flagging the bugs;
+  pinned by `test_get_widget_default_appearance_string_raises_attribute_error`
+  and `test_apply_padding_inset_returns_smaller_rectangle`.
+
+### Agent C — pdmodel / common / util tail-sweep (7 files crossed 99% → 100%)
+
+- `tests/pdmodel/common/test_pd_dictionary_wrapper.py` (+2 tests) closes
+  `pypdfbox/pdmodel/common/pd_dictionary_wrapper.py` (lines 43 / 47):
+  the `equals(Object)` / `hash_code()` Java-parity wrappers delegating
+  to `__eq__` / `__hash__`.
+- `tests/pdmodel/common/filespecification/test_pd_complex_file_specification_wave271.py`
+  (+5 tests) closes `pypdfbox/pdmodel/common/filespecification/pd_complex_file_specification.py`
+  (lines 106 / 114): the public `get_ef_dictionary` / `get_object_from_ef_dictionary`
+  delegates that mirror upstream's private getters.
+- `tests/pdmodel/common/function/type4/test_parser.py` (+2 tests) closes
+  `pypdfbox/pdmodel/common/function/type4/parser.py` (lines 113 / 202):
+  `Tokenizer.peek` ``return _EOT`` when the cursor sits on the last
+  character (lone CR at EOF), and `Parser()` instantiation (the upstream
+  Java private no-op constructor).
+- `tests/pdmodel/interactive/annotation/handlers/test_pd_free_text_line_appearance_coverage.py`
+  (+1 test) closes `pypdfbox/pdmodel/interactive/annotation/handlers/pd_line_appearance_handler.py`
+  (lines 191-194): `show_text` raising mid-caption — the BT/ET block
+  must stay balanced via the `finally` so the subsequent
+  `restore_graphics_state` doesn't trip the text-block guard.
+- `tests/pdmodel/test_pd_resource_cache.py` (+2 tests) closes
+  `pypdfbox/pdmodel/pd_resource_cache.py` (lines 491 / 495): the
+  `DefaultResourceCache.put` dispatch branches that route a plain
+  `PDFont` to the font slot and a `PDColorSpace` (`PDDeviceRGB.INSTANCE`)
+  to the color-space slot.
+- `tests/util/test_util_wave1281.py` (+2 tests) closes
+  `pypdfbox/util/string_util.py` (line 31): the `StringUtil.tokenize_on_space`
+  empty-vs-falsy guard — `""` returns `[""]`, `None` returns `[]`.
+- `pypdfbox/util/xml_util.py` line 48 marked `# pragma: no cover` — the
+  `defusedxml.minidom.parseString` hardened path only fires when the
+  optional `defusedxml` package is installed; the project ships
+  permissive-only, no-new-deps, and the dev / CI envs do not include
+  defusedxml. Already documented in `tests/util/test_xml_util_coverage.py`
+  module docstring (lines 10-13).
+
 ## Wave 1354 — coverage-boost pass #26 (parallel agents)
 
 ### Agent A — examples + tools tail-sweep (99% → 100% across both subtrees)

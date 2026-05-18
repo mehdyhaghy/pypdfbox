@@ -301,3 +301,53 @@ def test_is_empty_wrap_existing_filled_dict() -> None:
     raw.set_string(COSName.get_pdf_name("F"), "doc.pdf")
     spec = PDComplexFileSpecification(raw)
     assert spec.is_empty() is False
+
+
+# ---------- public ``get_ef_dictionary`` / ``get_object_from_ef_dictionary``
+
+
+def test_get_ef_dictionary_returns_ef_subdictionary_when_present() -> None:
+    """``get_ef_dictionary`` public delegate must return the same
+    ``COSDictionary`` as the private ``_get_ef_dictionary`` helper."""
+    spec = PDComplexFileSpecification()
+    spec.set_embedded_file(PDEmbeddedFile())
+    ef = spec.get_ef_dictionary()
+    assert isinstance(ef, COSDictionary)
+    # ``/EF`` round-trip — the public getter reflects the same entry the
+    # complex spec wrote when ``set_embedded_file`` was called.
+    assert ef is spec.get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("EF")
+    )
+
+
+def test_get_ef_dictionary_returns_none_when_no_ef_entry() -> None:
+    spec = PDComplexFileSpecification()
+    assert spec.get_ef_dictionary() is None
+
+
+def test_get_object_from_ef_dictionary_returns_stored_stream() -> None:
+    """``get_object_from_ef_dictionary`` public delegate must return the
+    ``COSStream`` stored under the named slot."""
+    spec = PDComplexFileSpecification()
+    ef = PDEmbeddedFile()
+    spec.set_embedded_file(ef)
+    # ``/F`` is the slot used by ``set_embedded_file``.
+    stored = spec.get_object_from_ef_dictionary(COSName.get_pdf_name("F"))
+    assert stored is not None
+    assert stored is ef.get_cos_object()
+
+
+def test_get_object_from_ef_dictionary_returns_none_when_ef_absent() -> None:
+    spec = PDComplexFileSpecification()
+    assert (
+        spec.get_object_from_ef_dictionary(COSName.get_pdf_name("F")) is None
+    )
+
+
+def test_get_object_from_ef_dictionary_returns_none_for_missing_key() -> None:
+    spec = PDComplexFileSpecification()
+    spec.set_embedded_file(PDEmbeddedFile())
+    assert (
+        spec.get_object_from_ef_dictionary(COSName.get_pdf_name("Unix"))
+        is None
+    )

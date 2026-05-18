@@ -36,3 +36,25 @@ def test_hash_is_defined() -> None:
     d.set_name("A", "B")
     pdw = PDDictionaryWrapper(d)
     assert isinstance(hash(pdw), int)
+
+
+def test_equals_method_delegates_to_dunder_eq() -> None:
+    """``equals(Object)`` mirrors upstream's Java ``equals`` and must
+    return the same answer as Python's ``==``."""
+    d = COSDictionary()
+    d.set_name("X", "Y")
+    a = PDDictionaryWrapper(d)
+    b = PDDictionaryWrapper(d)
+    assert a.equals(b) is True
+    assert a.equals(PDDictionaryWrapper()) is False
+    assert a.equals("not a wrapper") is False
+    assert a.equals(a) is True
+
+
+def test_hash_code_method_delegates_to_dunder_hash() -> None:
+    """``hash_code()`` mirrors upstream ``hashCode()`` and returns the
+    same int as ``hash(self)``."""
+    d = COSDictionary()
+    d.set_name("A", "B")
+    pdw = PDDictionaryWrapper(d)
+    assert pdw.hash_code() == hash(pdw)
