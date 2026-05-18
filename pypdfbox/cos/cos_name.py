@@ -292,3 +292,5 @@ COSName.HELV = _static_name("Helv")  # type: ignore[attr-defined]
 COSName.FONT_DESC = _static_name("FontDescriptor")  # type: ignore[attr-defined]
 COSName.BASE_FONT = _static_name("BaseFont")  # type: ignore[attr-defined]
 COSName.ENCODING = _static_name("Encoding")  # type: ignore[attr-defined]
+# Form-widget appearance keys (PDF 32000-1 §12.7.4).
+COSName.DA = _static_name("DA")  # type: ignore[attr-defined]

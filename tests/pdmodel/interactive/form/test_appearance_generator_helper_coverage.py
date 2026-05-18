@@ -409,18 +409,22 @@ def test_prepare_normal_appearance_stream_returns_form_xobject() -> None:
 # ---------- get_widget_default_appearance_string ----------
 
 
-def test_get_widget_default_appearance_string_raises_attribute_error() -> None:
-    # The helper currently references COSName.DA, which is not exported
-    # on the lite-port COSName facade — calling the method raises
-    # AttributeError. Pinned here so a future fix is caught.
+def test_get_widget_default_appearance_string_resolves_widget_da() -> None:
+    # Wave 1357 added COSName.DA to the predefine catalogue; the helper
+    # now returns a real PDDefaultAppearanceString built from the
+    # widget's /DA value.
+    from pypdfbox.pdmodel.interactive.form.pd_default_appearance_string import (
+        PDDefaultAppearanceString,
+    )
+
     acro_form = PDAcroForm()
     acro_form.set_default_appearance("/Helv 12 Tf 0 g")
     tf = _make_text_field(acro_form)
     widget = tf.get_widgets()[0]
     widget.get_cos_object().set_string(_DA, "/Helv 18 Tf 0 g")
     helper = AppearanceGeneratorHelper(tf)
-    with pytest.raises(AttributeError):
-        helper.get_widget_default_appearance_string(widget)
+    result = helper.get_widget_default_appearance_string(widget)
+    assert isinstance(result, PDDefaultAppearanceString)
 
 
 # ---------- resolve_rotation ----------
@@ -854,10 +858,11 @@ def test_resolve_bounding_box_falls_back_to_widget_rectangle() -> None:
 
 
 def test_apply_padding_inset_returns_smaller_rectangle() -> None:
-    # ``apply_padding`` imports PDRectangle from pypdfbox.pdmodel.common,
-    # which does not currently re-export it. The static method therefore
-    # raises ImportError on call. We document the existing behaviour so a
-    # future fix is caught.
+    # Wave 1357 re-exported PDRectangle from pypdfbox.pdmodel.common.
+    # ``apply_padding`` now returns the inset rectangle.
     box = PDRectangle(0.0, 0.0, 100.0, 50.0)
-    with pytest.raises(ImportError):
-        AppearanceGeneratorHelper.apply_padding(box, 2.0)
+    inset = AppearanceGeneratorHelper.apply_padding(box, 2.0)
+    assert inset.get_lower_left_x() == 2.0
+    assert inset.get_lower_left_y() == 2.0
+    assert inset.get_width() == 96.0
+    assert inset.get_height() == 46.0
