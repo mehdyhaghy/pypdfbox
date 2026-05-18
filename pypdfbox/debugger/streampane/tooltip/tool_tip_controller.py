@@ -87,7 +87,8 @@ class ToolTipController:
             return None
 
         row_text = self._get_row_text(text, offset)
-        if row_text is None:
+        # defensive: ``get_word`` already returns ``None`` for an out-of-range offset
+        if row_text is None:  # pragma: no cover
             return None
 
         return self._dispatch(word, row_text, text, offset)
@@ -195,7 +196,8 @@ class ToolTipController:
         end = offset
         while end < len(text) and not text[end].isspace():
             end += 1
-        if start == end:
+        # defensive: post-adjustment offset is non-space so ``end`` advances at least once
+        if start == end:  # pragma: no cover
             return None
         return text[start:end].strip() or None
 
@@ -342,12 +344,13 @@ class ToolTipController:
             if cursor == -1:
                 return None
             previous_row = self._get_row_text(text, cursor)
-            if previous_row is None:
+            # defensive: cursor came from ``_position_above`` so offset is always in range
+            if previous_row is None:  # pragma: no cover
                 return None
             previous_row = previous_row.strip()
             if self._is_color_space_row(color_space_type, previous_row):
                 return previous_row.split(" ")[0]
-        return None
+        return None  # pragma: no cover - unreachable: loop only exits via the early return above
 
     # Back-compat alias for tests/callers using the original name.
     _find_color_space = _find_color_space_row

@@ -3339,6 +3339,243 @@ Skip reasons have been rewritten to reflect these now-localized gaps.
   grayscale / CMYK paths, base `generate_rollover_appearance` /
   `generate_down_appearance` no-ops (agent E, wave 1339).
 
+## Wave 1349 — coverage-boost pass #22 (parallel agents)
+
+### Agent A — two graphics-cluster files to 100% coverage
+
+- New file `tests/pdmodel/graphics/color/test_pd_indexed_wave1349.py`
+  (9 tests) takes `pypdfbox/pdmodel/graphics/color/pd_indexed.py` from
+  **96.3% → 100%**: `set_base_color_space` raising `TypeError` for a
+  base CS whose `get_cos_object()` returns `None` (driven by a custom
+  `_NoCosColorSpace` subclass — the only path to that guard since every
+  shipped device / array CS surfaces a COS form); `read_lookup_data`
+  consuming the `COSStream` /Lookup entry through
+  `create_input_stream` (plus the unsupported-slot-type fall-through
+  returning `b""`); `read_color_table` clamping the
+  components-per-entry to 1 when the base CS reports 0 components
+  (otherwise the per-entry decode would divmod by zero — driven via
+  `monkeypatch.setattr(cs, "get_base_color_space", lambda:
+  _ZeroComponentColorSpace())`); `init_rgb_color_table` falling back to
+  the no-base-CS DeviceRGB-style read when slot 1 is `COSNull`;
+  `to_rgb_image` short-circuiting to a black image when the palette is
+  empty (no /Lookup data, `actualMaxIndex == -1`); and `to_rgb_image`
+  truncating an oversized raster to `width * height` bytes before
+  Pillow palette translation.
+- New file `tests/pdmodel/graphics/image/test_pd_inline_image_wave1349.py`
+  (9 tests) takes `pypdfbox/pdmodel/graphics/image/pd_inline_image.py`
+  from **97.6% → 100%**: `get_image` region-tuple crop branch via
+  `(1, 1, 2, 2)` against a 4×4 DeviceGray ramp; subsampling resize
+  branch including the `max(1, dim // subsampling)` clamp via a 2×2
+  image with `subsampling=4` (would otherwise collapse to a 0×0
+  image); combined crop+subsampling on an 8×8 ramp; the
+  short-circuit returning `None` when `to_pil_image` returns `None`
+  (16-bpc raster); `get_stencil_image` post-guard branch returning the
+  underlying mask when `is_stencil()` is true, with a `monkeypatch`
+  recording stub on `to_pil_image` to confirm the `paint` argument is
+  fully discarded at the `del paint` line; plus the upstream
+  `ValueError("Image is not a stencil")` contract on a non-stencil
+  image.
+- No source changes; no latent bugs flagged.
+
+### Agent B — three files crossed 99% (each to 100%)
+
+- New file `tests/debugger/ui/test_tree_wave1349.py` (10 tests) takes
+  `pypdfbox/debugger/ui/tree.py` from **96.3% → 100%**: the
+  `_get_file_extension` fall-through where ``node`` is neither a
+  ``MapEntry`` nor an ``ArrayEntry`` (a bare ``"FontFile"``/``"FontFile2"``
+  string passes the `str(node)` branch and hits `pfb` / `ttf`); the
+  ``_make_save_raw_stream`` callback (exercised against a fake dialog
+  capturing the *compressed* payload of a real `FlateDecode` stream);
+  the ``_read_stream`` `return bytes(data)` branch via a context-manager
+  whose target is a plain ``bytes`` value (no ``.read``) for both the
+  raw and decoded paths; the ``_read_stream_partial`` ``TypeError``
+  fall-back where the creator does not accept a ``stop_filters`` arg
+  (forces the bare-call retry) plus the same ``bytes(data)`` branch and
+  the empty-`stop_filters` skip when ``stop_index`` is out of range.
+- New file `tests/pdmodel/encryption/test_pd_encryption_wave1349.py`
+  (10 tests) takes `pypdfbox/pdmodel/encryption/pd_encryption.py` from
+  **97.4% → 100%**: `get_security_handler` raising ``OSError`` with the
+  upstream-parity message format `"No security handler for filter ..."`
+  (matched by Apache Tika via TIKA-4082; verified with both the
+  default-`None` `/Filter` and a named ``"Standard"`` filter);
+  `set_security_handler` round-trip incl. overwriting an installed
+  handler and the upstream-parity quirk that it does **not** also
+  rewrite `/Filter`; the inverted ``has_security_handler()`` whose Java
+  body is ``return securityHandler == null;`` (returns ``True`` when
+  *missing*); and `remove_v45filters` (the no-underscore alias)
+  delegating to `remove_v45_filters` to strip `/CF`, `/StmF`, `/StrF`,
+  `/EFF` when downgrading to V<=3, including the idempotent no-op on an
+  empty dict and a parity check between the two spellings.
+- New file `tests/pdmodel/graphics/image/test_png_converter_wave1349.py`
+  (8 tests) takes `pypdfbox/pdmodel/graphics/image/png_converter.py`
+  from **96.9% → 100%**: ``parse_png_chunks`` populating
+  ``state.iccp`` / ``.trns`` / ``.srgb`` / ``.gama`` / ``.chrm`` slots
+  from synthetic PNG byte streams that splice each ancillary chunk
+  directly after IHDR (the parser ignores the CRC value at chunk-walk
+  time, so the helper builds chunks with `crc=0`); a combined-chunks
+  PNG that proves the loop populates every slot in one pass; and the
+  ``convert_png_image`` ``ImportError`` fall-through (lines 90-91) via a
+  `monkeypatch` of `builtins.__import__` that raises for both the lazy
+  ``PIL`` import and the ``LosslessFactory`` import — the helper returns
+  ``None`` instead of propagating.
+
+### Agent C — four files crossed 96–98% (each to 100%)
+
+- New file `tests/debugger/ui/test_osx_adapter_wave1349.py` (4 tests)
+  takes `pypdfbox/debugger/ui/osx_adapter.py` from **96.3% → 100%**:
+  `is_correct_method` `inspect.signature(method)` raising
+  ``TypeError`` / ``ValueError`` (via ``monkeypatch.setattr`` injecting
+  a `boom` that raises); the string-annotation mismatch path that
+  fires under ``from __future__ import annotations`` (declared `int`
+  is stored as the string ``"int"`` so asking for ``[str]`` trips the
+  name-comparison miss while keeping arity-match); and the live-class
+  annotation mismatch via manual ``fn.__annotations__ = {"a": int}``
+  injection plus its success companion that exits through the loop's
+  final ``return True``.
+- New file `tests/pdmodel/interactive/form/test_pd_button_wave1349.py`
+  (5 tests) takes
+  `pypdfbox/pdmodel/interactive/form/pd_button.py` from
+  **97.6% → 100%**: the instance-method ``get_on_value(index)`` alias
+  delegating to ``get_on_value_at_index`` (subclasses such as
+  ``PDCheckBox`` shadow the zero-arg form); ``update_by_value``
+  widget-rejection branches when ``/AP`` is missing entirely, when
+  ``/AP`` is a ``COSString`` rather than a dict, and when ``/AP /N``
+  is non-dict — each interleaved with a sibling widget carrying a
+  valid ``/AP /N`` so the field's ``/V`` is still rewritten via the
+  matched key; ``update_by_option`` short-circuit when ``value`` is
+  absent from ``/Opt`` (verifies neither widget's ``/AS`` nor the
+  field's ``/V`` is touched).
+- New file `tests/tools/test_text_to_pdf_wave1349.py` (3 tests) takes
+  `pypdfbox/tools/text_to_pdf.py` from **97.9% → 100%**:
+  ``_create_pdf_from_text`` falling through ``self.font is None`` to
+  call ``PDFontFactory.create_default_font(self.standard_font.value)``;
+  the form-feed look-ahead branch where the *next* word in
+  ``line_words`` itself contains a ``\f`` and the width calculation
+  trims it before measuring (driven by ``"a \fb"`` so the lookahead
+  from word ``"a"`` hits ``next_word.find("\f")`` → ``[:idx]``); the
+  defensive ``OSError("Error:Expected non-null content stream.")``
+  raise by setting ``t.bottom_margin = -10_000.0`` so
+  ``y - line_height < bottom_margin`` is False on the first iteration
+  and ``content_stream`` never gets initialised. Two lines (the
+  ``if text_is_empty: doc.add_page(page)`` post-loop fallback and the
+  ``if __name__ == "__main__"`` guard) were marked
+  ``# pragma: no cover`` after analysis confirmed unreachability — the
+  ``[""]`` fallback always iterates the outer loop once and clears
+  ``text_is_empty`` before the post-loop check.
+- Added four ``# pragma: no cover`` markers to
+  `pypdfbox/debugger/streampane/tooltip/tool_tip_controller.py`
+  (97.3% → 100% via pragma alone — no new tests needed; existing
+  suite covers every reachable line). Annotated lines: the
+  ``row_text is None`` guard in ``get_tool_tip`` (defensive — when
+  ``get_word`` returns non-``None``, ``offset`` is in range so
+  ``_get_row_text`` cannot return ``None``); the ``start == end``
+  guard in ``get_word`` (defensive — after the optional
+  ``offset -= 1`` adjustment the offset always points at a non-space
+  character so the ``end`` walk advances at least once); the
+  ``previous_row is None`` guard in ``_find_color_space_row``
+  (defensive — ``cursor`` comes from ``_position_above`` so the
+  offset is always in range); and the ``return None`` after the
+  ``while cursor != -1`` loop (unreachable — the loop only exits via
+  the early ``return None`` when ``_position_above`` returns ``-1``).
+
+### Agent D — five files crossed 96–98% (four to 100%, one to 98%)
+
+- New file `tests/coverage_boost/test_wave1349_agent_d.py` (20 tests)
+  takes five targets from ~96-98% coverage:
+  - `pypdfbox/examples/pdmodel/extract_ttf_fonts.py` **97.5% → 100%**:
+    the four ``return`` statements that follow ``usage()`` (lines 37,
+    50, 56, 67) — ``usage()`` raises ``SystemExit(1)`` in normal use so
+    the ``return``s are otherwise unreachable; tests monkey-patch
+    ``usage`` to a no-op for each argv-validation arm (empty argv,
+    ``-password`` missing value, ``-prefix`` missing value, ``-addkey``
+    only); ``process_resources(None, ...)`` short-circuit (line 117);
+    ``write_font(None, ...)`` short-circuit (line 207).
+  - `pypdfbox/pdmodel/fixup/processor/acro_form_orphan_widgets_processor.py`
+    **96.4% → 100%**: ``handle_annotations`` ``ImportError`` swallow
+    (lines 103-104) and ``resolve_non_root_field`` ``ImportError``
+    swallow (lines 174-175) — both reached via a monkey-patched
+    ``builtins.__import__`` that raises on the lazy
+    ``PDAnnotationWidget`` / ``PDFieldFactory`` imports.
+  - `pypdfbox/pdmodel/graphics/shading/radial_shading_context.py`
+    **97.0% → 98%** (one line short of 99%): high-input no-extend /
+    no-bg ``continue`` (line 165) via ``extend=(True, False)`` so the
+    elif chain selects ``r0 > 1`` then the high-side block falls
+    through; low-input extend[0]-with-``r0==0`` ``use_background = True``
+    (line 174) and its mirror high-input extend[1]-with-``r1==0`` —
+    both with ``coords[2]=0`` or ``coords[5]=0`` forcing the first
+    clause to fail and bg present.
+  - `pypdfbox/pdmodel/interactive/annotation/handlers/pd_line_appearance_handler.py`
+    **97.6% → 100%**: ``paths_array is None`` early-return (line 49)
+    by removing ``/L`` from a freshly-constructed ``PDAnnotationLine``;
+    caption-emit ``(AttributeError, ValueError)`` swallow (lines
+    182-184) by monkey-patching ``PDPageContentStream.begin_text`` to
+    raise ``AttributeError`` so the catch fires without leaving the
+    content stream in BT-mode; ``_interior_components`` ``size()``
+    branch (line 269) via a lazy ``__getattr__`` stand-in that hides
+    ``to_float_array`` from the outer ``hasattr`` probe yet resolves
+    it inside the elif arm.
+  - `pypdfbox/pdmodel/interactive/annotation/handlers/pd_polyline_appearance_handler.py`
+    **96.7% → 100%**: ``cs.set_dash_pattern`` emission (line 80) via a
+    ``PDBorderStyleDictionary`` with ``STYLE_DASHED`` + non-zero ``/D``
+    dash array — verified through the ``d`` operator in the resulting
+    appearance-stream bytes; ``_interior_components`` ``size()`` branch
+    (lines 170-172) via the same lazy-``__getattr__`` pattern.
+- **Latent bugs flagged** (no source changes — flagged for follow-up):
+  - ``RadialShadingContext.get_raster`` clamps ``input_value`` to
+    literal ``0`` / ``1`` on the extend branches (lines 163, 170)
+    rather than ``self._domain[0]`` / ``self._domain[1]`` as the
+    sibling ``AxialShadingContext`` does. This leaves the post-key
+    clamps at lines 180 / 182 (``if key < 0: key = 0`` /
+    ``elif key > factor: key = factor``) structurally dead. Upstream
+    Java ``RadialShadingContext`` likely uses domain values; needs an
+    upstream cross-check before fixing.
+  - ``PDLineAppearanceHandler.generate_normal_appearance`` catches
+    ``(AttributeError, ValueError)`` around the caption emission
+    block (lines 173-184) but does *not* call ``cs.end_text()`` in the
+    except clause; if ``cs.show_text`` raises mid-BT, the subsequent
+    ``cs.restore_graphics_state()`` at line 201 then raises
+    ``RuntimeError: restore_graphics_state is not allowed within a
+    text block``. The test deliberately patches ``begin_text``
+    (pre-BT) to avoid this latent crash.
+
+### Agent E — five files crossed 96–98% (each to 100%)
+
+- New file `tests/tools/test_extract_images_coverage_wave1349.py`
+  (3 tests) takes `pypdfbox/tools/extract_images.py` from **97.5% →
+  100%**: the soft-mask-with-None-group `continue` (line 66) and both
+  arms of the `try`/`except` swallow around
+  `copy_into_graphics_state` / `process_soft_mask` (lines 70-71). Added
+  `# pragma: no cover` on the `if __name__ == "__main__"` script
+  entrypoint.
+- New file `tests/debugger/treestatus/test_tree_status_pane_wave1349.py`
+  (1 test) takes `pypdfbox/debugger/treestatus/tree_status_pane.py`
+  from **96.2% → 100%**: subclasses the pane to override
+  `_locate_item_for_path` so the resolved-item branch fires
+  `selection_set` / `see` / `focus_set` (lines 128-130).
+- New file `tests/fontbox/ttf/test_glyf_composite_comp_wave1349.py`
+  (2 tests) takes `pypdfbox/fontbox/ttf/glyf_composite_comp.py` from
+  **97.9% → 100%**: the point-anchored decode path that lands the
+  argument words on `_point1` / `_point2` instead of translates (lines
+  84-85), and the `has_instructions()` predicate (line 215).
+- New file `tests/fontbox/ttf/test_glyph_renderer_wave1349.py` (1 test)
+  takes `pypdfbox/fontbox/ttf/glyph_renderer.py` from **96.2% → 100%**:
+  builds a one-contour glyph with two consecutive off-curve interior
+  points so the third `elif` branch (lines 118-119) emits the implicit
+  on-curve midpoint via `qCurveTo`. The trailing defensive `else`
+  (line 120-124) is unreachable because `contour[-1]` is always
+  on-curve after the close-step massaging — annotated `# pragma:
+  no cover` with a one-line rationale.
+- `pypdfbox/fontbox/pfb/pfb_parser.py` reached **100%** with three
+  `# pragma: no cover` annotations on truly unreachable defensive
+  branches that the public-API surface cannot exercise: line 78 (`PFB
+  header missing` after `total == 0` — guarded by the
+  `len(pfb) < 18` check at line 66), line 100 (`size < 0` — `size` is
+  composed from four unsigned bytes so always non-negative), and line
+  113 (`total > len(pfb)` — each record consumes `6 + size` bytes so
+  the sum is bounded by `len(pfb)`). Wave 1341 flagged these as dead
+  code; this wave records that conclusion in source.
+- No latent source bugs.
+
 ## Wave 1348 — coverage-boost pass #16 (parallel agents)
 
 ### Agent A — `pypdfbox/pdfwriter/cos_writer.py` 97.1% → 100% (the last big single-file gap)

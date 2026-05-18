@@ -117,7 +117,7 @@ class GlyphRenderer:
                         j += 1
                     elif j + 1 < clen:
                         self.quad_to(path, pnow, self.mid_value(pnow, contour[j + 1]))
-                    else:
+                    else:  # pragma: no cover - defensive; contour[-1] is always on-curve
                         # Defensive: a stray trailing off-curve should
                         # not happen on a well-formed contour, but
                         # emit it as a line rather than crashing.

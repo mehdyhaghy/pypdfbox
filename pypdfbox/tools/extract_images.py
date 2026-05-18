@@ -222,5 +222,5 @@ class ExtractImages:
         return runner.call()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - module-as-script entrypoint
     sys.exit(ExtractImages.main(sys.argv[1:]))

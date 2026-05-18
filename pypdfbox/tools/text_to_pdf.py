@@ -245,7 +245,8 @@ class TextToPDF:
                     y = page.get_media_box().get_height() - self.top_margin
                     y += line_height - font_height * self.font_size
                     content_stream.new_line_at_offset(self.left_margin, y)
-        if text_is_empty:
+        # pragma below: unreachable — ``[""]`` fallback iterates once and clears the flag.
+        if text_is_empty:  # pragma: no cover
             doc.add_page(page)
         if content_stream is not None:
             content_stream.end_text()
@@ -316,5 +317,5 @@ class TextToPDF:
         return runner.call()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     sys.exit(TextToPDF.main(sys.argv[1:]))

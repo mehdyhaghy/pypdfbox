@@ -75,7 +75,7 @@ class PfbParser:
             if not r:
                 if total > 0:
                     break
-                raise OSError("PFB header missing")
+                raise OSError("PFB header missing")  # pragma: no cover - guarded by len<18
             if r[0] != _START_MARKER:
                 raise OSError("Start marker missing")
             rec_byte = stream.read(1)
@@ -96,7 +96,7 @@ class PfbParser:
                 | (size_bytes[3] << 24)
             )
             _LOG.debug("record type: %d, segment size: %d", record_type, size)
-            if size < 0:
+            if size < 0:  # pragma: no cover - size is composed from 4 unsigned bytes, always >= 0
                 raise OSError(f"record size {size} is negative")
             if size > len(pfb):
                 raise OSError(
@@ -109,7 +109,7 @@ class PfbParser:
             type_list.append(record_type)
             seg_list.append(ar)
 
-        if total > len(pfb):
+        if total > len(pfb):  # pragma: no cover - each record consumes 6+size, total<=len(pfb)
             raise OSError(f"total record size {total} would be larger than the input")
 
         out = bytearray(total)
