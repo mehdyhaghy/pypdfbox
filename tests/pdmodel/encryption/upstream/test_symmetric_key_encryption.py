@@ -101,20 +101,71 @@ def test_protection_inner_attachment() -> None: ...
 # --------------------------------------------------------------------- #
 
 
-@pytest.mark.skip(
-    reason="PDFBOX-4453: the in-memory document build + RC4-40 encrypt + "
-    "Loader.load_pdf decrypt round-trip currently surfaces a string-"
-    "decryption bug — after reload, the COSString values are returned "
-    "still in ciphertext form (e.g. '\\x01\\t9\\u02daH' instead of the "
-    "clear-text '3'). The fault appears to sit in the COSString-walk "
-    "side of the post-decrypt object-graph traversal: streams decrypt "
-    "transparently, but the per-object string decrypt is not re-run on "
-    "the nested dictionaries' string slots after Loader.load_pdf's "
-    "auto-decrypt path. Filed as a latent bug — kept skipped here so "
-    "the parity port doesn't fail until the bug is closed in a "
-    "dedicated source-fix wave."
-)
-def test_pdf_box_4453_repeated_string_values_round_trip(tmp_path: Path) -> None: ...
+def test_pdf_box_4453_repeated_string_values_round_trip(tmp_path: Path) -> None:
+    """PDFBOX-4453: many nested dictionaries with repeated COSString values
+    must each round-trip to their clear-text after RC4-40 encrypt → save →
+    ``Loader.load_pdf`` decrypt. Fixed in wave 1361 (see CHANGES.md):
+    ``PDDocument.decrypt`` now runs a second pass over the object pool
+    that calls ``handler.decrypt`` on every non-stream indirect, which in
+    turn recurses through nested dictionaries decrypting each
+    ``COSString`` slot with the right per-object key.
+
+    Upstream parameterises ``TESTCOUNT`` at 1000 — we drop to 50 so the
+    test stays well under the suite's per-test budget while still
+    exercising the per-object-key derivation across many objects.
+    """
+    import io  # noqa: PLC0415
+
+    from pypdfbox.cos.cos_dictionary import COSDictionary  # noqa: PLC0415
+    from pypdfbox.cos.cos_name import COSName  # noqa: PLC0415
+    from pypdfbox.loader import Loader  # noqa: PLC0415
+    from pypdfbox.pdmodel.encryption.access_permission import (  # noqa: PLC0415
+        AccessPermission,
+    )
+    from pypdfbox.pdmodel.encryption.standard_protection_policy import (  # noqa: PLC0415
+        StandardProtectionPolicy,
+    )
+    from pypdfbox.pdmodel.pd_document import PDDocument  # noqa: PLC0415
+    from pypdfbox.pdmodel.pd_page import PDPage  # noqa: PLC0415
+
+    testcount = 50  # upstream uses 1000
+
+    doc = PDDocument()
+    doc.add_page(PDPage())
+    for i in range(testcount):
+        nested = COSDictionary()
+        doc.get_page(0).get_cos_object().set_item(
+            COSName.get_pdf_name(f"_Test-{i}"), nested
+        )
+        # Two distinct string slots so the per-object key derivation has
+        # to step the cipher state between them — single-string per dict
+        # masks a class of cipher-state-reuse bugs.
+        nested.set_string("key1", "3")
+        nested.set_string("key2", "0")
+
+    spp = StandardProtectionPolicy("12345", "", AccessPermission())
+    spp.set_encryption_key_length(40)
+    spp.set_prefer_aes(False)
+    doc.protect(spp)
+    buf = io.BytesIO()
+    doc.save(buf)
+    doc.close()
+
+    reloaded_cos = Loader.load_pdf(buf.getvalue(), "12345")
+    reloaded = PDDocument(reloaded_cos)
+    try:
+        assert reloaded.is_encrypted()
+        for i in range(testcount):
+            d = (
+                reloaded.get_page(0)
+                .get_cos_object()
+                .get_cos_dictionary(COSName.get_pdf_name(f"_Test-{i}"))
+            )
+            assert d is not None
+            assert d.get_string("key1") == "3"
+            assert d.get_string("key2") == "0"
+    finally:
+        reloaded.close()
 
 
 # --------------------------------------------------------------------- #

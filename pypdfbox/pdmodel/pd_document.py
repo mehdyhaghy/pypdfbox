@@ -976,12 +976,35 @@ class PDDocument:
             StandardDecryptionMaterial(password_bytes),
         )
 
-        # Walk every loaded indirect — attach the handler to each COSStream
-        # so that ``create_input_stream`` decrypts before the filter chain.
-        # This also covers xref-stream objects (PDF 1.5+ encrypted xref
+        # Walk every loaded indirect in two passes.
+        #
+        # Pass 1: attach the handler to each ``COSStream`` so that
+        # ``create_input_stream`` decrypts before the filter chain. This
+        # also covers xref-stream objects (PDF 1.5+ encrypted xref
         # streams, /Type /XRef): they live in the same pool and inherit
-        # from COSStream, so the same hook deciphers their body when the
-        # parser cluster reads it back.
+        # from ``COSStream``, so the same hook deciphers their body when
+        # the parser cluster reads it back. We *also* pre-seed the
+        # handler's ``_objects_seen`` set with every stream's identity so
+        # pass 2's dictionary walk doesn't re-enter the stream body via
+        # the ``COSDictionary`` recursion (a stream IS a dictionary, but
+        # we want to keep its raw bytes deferred to the lazy hook).
+        from pypdfbox.cos import COSArray as _COSArray  # noqa: PLC0415
+        from pypdfbox.cos import COSDictionary as _COSDictionary  # noqa: PLC0415
+        from pypdfbox.cos import COSString as _COSString  # noqa: PLC0415
+
+        # Pre-seed the handler's already-decrypted set with every stream
+        # identity so pass 2's dict walk doesn't re-enter the stream body
+        # via the ``COSDictionary`` recursion (a stream IS a dictionary,
+        # but its body decrypt is owned by the lazy ``set_security_handler``
+        # hook attached below). When the handler is a stub that doesn't
+        # expose ``_objects_seen`` (test doubles in
+        # ``test_pd_document_wave576``), the dict walk is skipped — those
+        # tests assert only on ``prepare_for_decryption`` invocation, so
+        # no functional surface is lost.
+        seen_ids = None
+        objects_seen = getattr(handler, "_objects_seen", None)
+        if callable(objects_seen):
+            seen_ids = objects_seen()
         for cos_obj in self._document.get_objects():
             # Avoid forcing a parse on objects that aren't yet loaded —
             # the lazy loader will see the security handler attached at
@@ -995,6 +1018,46 @@ class PDDocument:
                     cos_obj.get_object_number(),
                     cos_obj.get_generation_number(),
                 )
+                if seen_ids is not None:
+                    seen_ids.add(id(actual))
+
+        # Pass 2: PDFBOX-4453 — decrypt every COSString/COSArray slot
+        # reachable from each indirect dictionary, using the indirect's
+        # ``(obj_num, gen_num)`` as the per-object key seed. Upstream's
+        # ``COSParser#parseObjectDynamically`` does this inline (line 677
+        # of ``COSParser.java``) by calling ``securityHandler.decrypt``
+        # on every non-stream parsed object. pypdfbox parses without an
+        # active handler and recovers it here once the trailer's
+        # ``/Encrypt`` entry has yielded the file-encryption key.
+        decrypt_dict = getattr(handler, "_decrypt_dictionary", None)
+        decrypt_dispatch = getattr(handler, "decrypt", None)
+        if callable(decrypt_dict) and callable(decrypt_dispatch):
+            encrypt_dict = self._document.get_encryption_dictionary()
+            for cos_obj in self._document.get_objects():
+                actual = cos_obj.get_object()
+                # The /Encrypt dictionary itself was never encrypted —
+                # its contents (e.g. /U, /O, /OE, /UE byte strings) are
+                # key material, not ciphertext. Skip it.
+                if actual is encrypt_dict:
+                    continue
+                if isinstance(actual, _COSStream):
+                    # Body is lazy; the stream's *dictionary* entries
+                    # may still contain encrypted strings (rare but
+                    # legal, e.g. an Outline-level /Title pulled into a
+                    # stream dict). ``_decrypt_dictionary`` iterates
+                    # entries and recurses; the pre-seeded ``seen_ids``
+                    # guards against re-entering nested streams.
+                    decrypt_dict(
+                        actual,
+                        cos_obj.get_object_number(),
+                        cos_obj.get_generation_number(),
+                    )
+                elif isinstance(actual, (_COSDictionary, _COSArray, _COSString)):
+                    decrypt_dispatch(
+                        actual,
+                        cos_obj.get_object_number(),
+                        cos_obj.get_generation_number(),
+                    )
 
         self._security_handler = handler
         self._encryption = encryption

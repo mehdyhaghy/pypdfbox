@@ -4189,6 +4189,39 @@ No latent source bugs flagged.
   and rely solely on `read_long`'s clamp — Java's signed-32 → signed-64
   pattern lives in exactly one place upstream; we mirror it in two.
 
+## Wave 1361 — fix latent PDFBOX-4453 COSString-decrypt bug
+
+Root cause: ``PDDocument.decrypt`` only attached the standard security
+handler to ``COSStream`` indirects for lazy body decryption and never
+walked the loaded ``COSDictionary`` / ``COSArray`` graph to decrypt the
+per-object-keyed ``COSString`` slots. Upstream's ``COSParser`` decrypts
+strings inline during parse (``COSParser.java:677`` calls
+``securityHandler.decrypt(parsedObject, …)``); the pypdfbox parser
+defers decryption until post-parse, so the dictionary-string slots
+silently returned ciphertext after ``Loader.load_pdf`` auto-decrypt.
+
+Fix: ``pypdfbox/pdmodel/pd_document.py`` — ``PDDocument.decrypt`` now
+runs two passes. Pass 1 attaches the handler to each ``COSStream`` (and
+pre-seeds the handler's ``_objects_seen`` identity set with every stream
+so pass 2 doesn't double-decrypt). Pass 2 walks every non-stream
+indirect and calls ``handler.decrypt(actual, obj_num, gen_num)``, which
+recurses through nested dictionaries / arrays via the existing
+``_decrypt_dictionary`` / ``_decrypt_array`` helpers, decrypting each
+``COSString`` slot with the right per-object key. The ``/Encrypt``
+dictionary is skipped (its bytes are key material, never ciphertext).
+The handler-stub-friendly attribute probes (``_objects_seen`` /
+``_decrypt_dictionary`` / ``decrypt``) keep the existing wave-576
+mock-handler tests passing without exposing a new public surface.
+
+Unskipped test:
+``tests/pdmodel/encryption/upstream/test_symmetric_key_encryption.py::``
+``test_pdf_box_4453_repeated_string_values_round_trip`` — builds a
+document with 50 nested dictionaries each carrying two repeated
+``COSString`` slots, RC4-40-encrypts via ``StandardProtectionPolicy``,
+reloads through ``Loader.load_pdf`` and asserts each clear-text value
+survives the round-trip. Test count delta: +1 active (38298 total,
+93 skipped).
+
 ## Wave 1360 — upstream parity port wave (5 parallel agents, +499 tests, 4 source bug fixes)
 
 Backfill wave: with coverage at 100.000% (wave 1356) and all TODOs closed (wave 1359), this wave shifts to backfilling upstream PDFBox/fontbox/xmpbox test files that hadn't yet been translated. 5 parallel agents ported ~60 upstream JUnit test files across util/encryption/multipdf/pdfwriter (D), forms (B), fontbox (C), pdmodel/text/rendering/xmpbox-type (E), and xmpbox schemas/parser/meta (A). Net: 86 PROVENANCE rows, 4 latent source bugs fixed, +499 tests (38297 total, 95 skipped — each with explicit reason), zero regressions, coverage held at 100.000%.
