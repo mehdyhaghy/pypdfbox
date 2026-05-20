@@ -175,14 +175,27 @@ def test_bookmark_only_narrows_explicit_page_range() -> None:
 
 
 def test_unresolvable_bookmark_is_ignored() -> None:
-    """A bookmark with no destination at all should leave the page
-    range untouched (no crash, no narrowing)."""
+    """A bookmark with no destination at all paired with itself yields
+    empty text — mirrors upstream's "same-orphan bookmark clamps to
+    empty range" branch (see ``PDFTextStripper.processPages``). Two
+    different orphan bookmarks would leave the page range untouched.
+    """
     doc = PDDocument()
     _make_page_with_stream(doc, b"BT /F0 12 Tf 100 700 Td (only) Tj ET")
     bookmark = PDOutlineItem()  # no dest, no action
     s = PDFTextStripper()
     s.set_start_bookmark(bookmark)
     s.set_end_bookmark(bookmark)
+    # Per upstream PDFTextStripper, same-bookmark-on-both-ends with no
+    # destination clamps to empty.
+    assert s.get_text(doc) == ""
+
+    # Different orphan bookmarks (no destination either, but distinct
+    # instances): the clamp doesn't trigger, fall back to the unbounded
+    # page range and extract everything.
+    s = PDFTextStripper()
+    s.set_start_bookmark(PDOutlineItem())
+    s.set_end_bookmark(PDOutlineItem())
     assert s.get_text(doc) == "only\n"
 
 

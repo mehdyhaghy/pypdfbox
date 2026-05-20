@@ -4,10 +4,7 @@
 Operator-level synthetic cases live here alongside the upstream
 fixture-driven tests (``CMapTest``, ``CMapNoWhitespace``,
 ``CMapMalformedbfrange[12]``, ``Identitybfrange``) which were copied
-verbatim into ``tests/fixtures/fontbox/cmap/``. Bundled-resource tests
-that require Adobe predefined CMaps (UniJIS-UTF16-H, Adobe-GB1-UCS2,
-Adobe-Korea1-UCS2) are covered separately in
-``tests/fontbox/cmap/test_cmap_parser_parity.py``.
+verbatim into ``tests/fixtures/fontbox/cmap/``.
 """
 
 from __future__ import annotations
@@ -279,4 +276,57 @@ def test_identity_bfrange() -> None:
 def test_bad_increment() -> None:
     cmap_data = b"1 beginbfrange\n<> <> <2223>\nendbfrange"
     cmap = _parser().parse(cmap_data)
+    assert cmap is not None
+
+
+# Translated from testUniJIS_UTF16_H -- CID lookup against the bundled
+# Adobe-Japan1 UTF-16 predefined CMap.
+def test_uni_jis_utf16_h() -> None:
+    cmap = CMapParser.parse_predefined("UniJIS-UTF16-H")
+
+    # The next 3 cases demonstrate the issue of possible false result
+    # values of cmap.to_cid(int) when no length is supplied — the
+    # single-int overload bisects across all codespace lengths and may
+    # land on a longer-than-one-byte mapping.
+    assert cmap.to_cid(0xB1) == 694
+    assert cmap.to_cid_with_length(0xB1, 1) != 694
+    assert cmap.to_cid_with_length(0xB1, 2) == 694
+
+    # 1:1 cid char mapping
+    assert cmap.to_cid_bytes(bytes([0x00, 0xB1])) == 694
+    assert cmap.to_cid_bytes(bytes([0xD8, 0x50, 0xDC, 0x4B])) == 20168
+
+    # cid range mapping
+    assert cmap.to_cid_bytes(bytes([0x54, 0x34])) == 19223
+    assert cmap.to_cid_bytes(bytes([0xD8, 0x3C, 0xDD, 0x12])) == 10006
+
+
+# Translated from testUniJIS_UCS2_H -- skipped because the
+# Adobe-Japan1 UCS-2 predefined CMap is not in the bundled
+# pypdfbox resource set (only UTF-16 + UCS-2 names listed in
+# tests/fontbox/cmap/test_predefined_cmaps.py UNBUNDLED_NAMES).
+def test_uni_jis_ucs2_h() -> None:
+    pytest.skip(
+        "UniJIS-UCS2-H is not in the bundled pypdfbox predefined CMap set"
+    )
+
+
+# Translated from testAdobe_GB1_UCS2 -- predefined Adobe-GB1 UCS-2
+# CMap maps cid 0x11 to '0'.
+def test_adobe_gb1_ucs2() -> None:
+    cmap = CMapParser.parse_predefined("Adobe-GB1-UCS2")
+    assert cmap.to_unicode_bytes(bytes([0, 0x11])) == "0"
+
+
+# Translated from testPredefinedMap -- name / WMode / mapping
+# predicate sanity for two predefined CMaps.
+def test_predefined_map() -> None:
+    cmap = CMapParser.parse_predefined("Adobe-Korea1-UCS2")
+    assert cmap is not None
+    assert cmap.get_name() == "Adobe-Korea1-UCS2"
+    assert cmap.get_wmode() == 0
+    assert cmap.has_cid_mappings() is False
+    assert cmap.has_unicode_mappings() is True
+
+    cmap = CMapParser.parse_predefined("Identity-V")
     assert cmap is not None

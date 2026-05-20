@@ -490,14 +490,35 @@ class PDFTextStripper:
         # Bookmark clamping. Upstream takes the bookmark range as
         # authoritative when set, but only narrows (never widens) the
         # explicit page range.
-        if self._start_bookmark is not None:
-            bm_first = self._resolve_bookmark_page(self._start_bookmark, document)
-            if bm_first is not None:
-                first = max(first, bm_first)
-        if self._end_bookmark is not None:
-            bm_last = self._resolve_bookmark_page(self._end_bookmark, document)
-            if bm_last is not None:
-                last = min(last, bm_last)
+        bm_first = (
+            self._resolve_bookmark_page(self._start_bookmark, document)
+            if self._start_bookmark is not None
+            else None
+        )
+        bm_last = (
+            self._resolve_bookmark_page(self._end_bookmark, document)
+            if self._end_bookmark is not None
+            else None
+        )
+        # Mirror upstream PDFTextStripper.processPages: when start/end
+        # bookmarks both fail to resolve (i.e. they're orphans) AND they
+        # refer to the same bookmark object, clamp the range to the empty
+        # one — the result is empty extracted text. Without this clamp
+        # any previously-set start_page / end_page leaks through and
+        # yields content the caller explicitly opted out of.
+        if (
+            bm_first is None
+            and bm_last is None
+            and self._start_bookmark is not None
+            and self._end_bookmark is not None
+            and self._start_bookmark.get_cos_object()
+            is self._end_bookmark.get_cos_object()
+        ):
+            return ""
+        if bm_first is not None:
+            first = max(first, bm_first)
+        if bm_last is not None:
+            last = min(last, bm_last)
         if first > last:
             return ""
         chunks: list[str] = []

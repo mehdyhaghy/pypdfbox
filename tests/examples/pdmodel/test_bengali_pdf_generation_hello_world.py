@@ -289,13 +289,16 @@ def test_get_bengali_text_from_file_handles_missing_resources(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ) -> None:
     # Point env-var override at a directory that does NOT contain the
-    # sample file → exercises the "candidate not is_file" loop tail and
-    # returns an empty list (assuming no developer-tree match either).
+    # sample file AND stub out ``Path.is_file`` so that no candidate
+    # (including the ``/tmp/pdfbox`` developer-tree path which may exist
+    # on a CI box that mirrored upstream) matches → exercises the
+    # "candidate not is_file" loop tail and returns an empty list.
     empty_dir = tmp_path / "empty"
     empty_dir.mkdir()
     monkeypatch.setenv("PYPDFBOX_RESOURCE_DIR", str(empty_dir))
+    monkeypatch.setattr(Path, "is_file", lambda self: False)
     result = BengaliPdfGenerationHelloWorld.get_bengali_text_from_file()
-    assert isinstance(result, list)
+    assert result == []
 
 
 # ---------------------------------------------------------------------------

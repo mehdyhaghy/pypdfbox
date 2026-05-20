@@ -890,9 +890,14 @@ class PDAppearanceGenerator:
         widget_cos = widget.get_cos_object()
         rect = _rect_from_cos(widget_cos.get_dictionary_object(_RECT))
         if rect is None:
+            # Mirror upstream AppearanceGeneratorHelper.setAppearanceContent
+            # line 227: widgets without /Rect lose their /AP entry to behave
+            # like Adobe Acrobat — no appearance stream can be drawn so the
+            # stale /AP is removed rather than left to point at a bogus form
+            # XObject.
+            widget_cos.remove_item(_AP)
             _LOG.debug(
-                "PDAppearanceGenerator: widget has no /Rect, skipping "
-                "appearance regeneration"
+                "PDAppearanceGenerator: widget has no /Rect, removing /AP"
             )
             return
         llx, lly, urx, ury = rect

@@ -256,6 +256,13 @@ def to_calendar(date_string: str | None) -> datetime | None:
 
     if date.startswith("D:"):
         date = date[2:]
+    # Upstream's ``DateConverter.toCalendar("D:")`` and
+    # ``toCalendar("D:    ")`` both return null (mirrors
+    # ``testToString`` in TestDateUtil). After stripping the ``D:``
+    # prefix the residual may be empty / whitespace — return ``None``
+    # rather than raising, matching upstream.
+    if not date.strip():
+        return None
     pos_of_t = date.find("T")
     if pos_of_t != 10 and pos_of_t != -1:
         raise OSError(f"Error converting date:{date}")

@@ -18,7 +18,12 @@ class PDEmbeddedFilesNameTreeNode(PDNameTreeNode[PDComplexFileSpecification]):
     def __init__(self, node: COSDictionary | None = None) -> None:
         super().__init__(node)
 
-    def convert_cos_to_value(self, base: COSBase) -> PDComplexFileSpecification:
+    def convert_cos_to_value(self, base: COSBase | None) -> PDComplexFileSpecification:
+        # Upstream PDFBox tolerates a null value in the names array
+        # (``[String, null]``) — the wrapper is constructed around a fresh
+        # empty dictionary and operations like ``getFile()`` /
+        # ``getEmbeddedFile()`` return null. Mirrors
+        # ``TestEmbeddedFiles#testNullEmbeddedFile``.
         if base is not None and not isinstance(base, COSDictionary):
             raise OSError(f"dictionary expected here, but got {base!r}")
         return PDComplexFileSpecification(base)  # type: ignore[arg-type]

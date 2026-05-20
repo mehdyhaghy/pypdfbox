@@ -74,5 +74,11 @@ def test_null_name_tree_value_is_rejected_with_clear_error() -> None:
     names.add(COSNull.NULL)
     tree.get_cos_object().set_item(_NAMES, names)
 
-    with pytest.raises(OSError, match="Expected COS value"):
+    # Per Wave 1360, ``_read_names_array`` no longer rejects ``COSNull``
+    # value slots in the base class — the embedded-files name tree
+    # subclass tolerates them per upstream
+    # ``TestEmbeddedFiles#testNullEmbeddedFile``. The string-typed
+    # subclass still rejects non-string values inside
+    # ``convert_cos_to_value`` with a message naming the expected type.
+    with pytest.raises(OSError, match="COSString"):
         tree.get_names()

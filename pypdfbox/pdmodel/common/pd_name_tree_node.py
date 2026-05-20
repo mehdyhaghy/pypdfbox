@@ -267,8 +267,13 @@ class PDNameTreeNode[T](ABC):
                     f"Expected string, found {base!r} in name tree at index {i}"
                 )
             cos_value = names_array.get_object(i + 1)
-            if cos_value is None:
-                raise OSError(f"Expected COS value in name tree at index {i + 1}")
+            # PDFBOX upstream: a ``COSNull`` slot is a legitimate value-side
+            # entry (e.g. ``[String, null, String, <spec>]``). Java
+            # ``Map<String, T>`` allows null values, so upstream returns the
+            # entry with a ``null`` value via ``convertCOSToPD(null)`` which
+            # yields a wrapper around a fresh empty dictionary. Mirror that
+            # here so the upstream ``TestEmbeddedFiles#testNullEmbeddedFile``
+            # contract holds — see CHANGES.md Wave 1360.
             out[base.get_string()] = self.convert_cos_to_value(cos_value)
             i += 2
         return out
