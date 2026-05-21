@@ -77,10 +77,15 @@ def test_get_unsubstitution_unknown_passthrough() -> None:
     assert t.get_unsubstitution(99) == 99
 
 
-def test_get_gsub_data_returns_none_by_design() -> None:
-    """Documented deviation — see CHANGES.md."""
+def test_get_gsub_data_returns_no_data_when_table_not_populated() -> None:
+    """Wave 1375: ``get_gsub_data()`` projects against the underlying
+    fontTools GSUB structures; an empty table returns
+    :attr:`GsubData.NO_DATA_FOUND` for the default case and ``None`` for
+    an explicit unsupported tag."""
+    from pypdfbox.fontbox.ttf.gsub.gsub_data import GsubData
+
     t = GlyphSubstitutionTable()
-    assert t.get_gsub_data() is None
+    assert t.get_gsub_data() is GsubData.NO_DATA_FOUND
     assert t.get_gsub_data("latn") is None
 
 

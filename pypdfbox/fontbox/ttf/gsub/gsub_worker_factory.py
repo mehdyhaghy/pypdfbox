@@ -22,11 +22,14 @@ from typing import TYPE_CHECKING
 
 from .default_gsub_worker import DefaultGsubWorker
 from .gsub_worker import GsubWorker
+from .gsub_worker_for_aalt import GsubWorkerForAALT
 from .gsub_worker_for_bengali import GsubWorkerForBengali
 from .gsub_worker_for_devanagari import GsubWorkerForDevanagari
 from .gsub_worker_for_dflt import GsubWorkerForDflt
 from .gsub_worker_for_gujarati import GsubWorkerForGujarati
 from .gsub_worker_for_latin import GsubWorkerForLatin
+from .gsub_worker_for_smcp import GsubWorkerForSMCP
+from .gsub_worker_for_tamil import GsubWorkerForTamil
 
 if TYPE_CHECKING:
     from ..cmap_lookup import CmapLookup
@@ -44,6 +47,7 @@ _LANGUAGE_SCRIPT_TAGS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("BENGALI", ("bng2", "beng")),
     ("DEVANAGARI", ("dev2", "deva")),
     ("GUJARATI", ("gjr2", "gujr")),
+    ("TAMIL", ("tml2", "taml")),
     ("LATIN", ("latn",)),
     ("DFLT", ("DFLT",)),
 )
@@ -149,10 +153,22 @@ class GsubWorkerFactory:
                 return GsubWorkerForDevanagari(cmap_lookup, gsub_data)
             if language == "GUJARATI":
                 return GsubWorkerForGujarati(cmap_lookup, gsub_data)
+            if language == "TAMIL":
+                return GsubWorkerForTamil(cmap_lookup, gsub_data)
             if language == "LATIN":
                 return GsubWorkerForLatin(gsub_data)
             if language == "DFLT":
                 return GsubWorkerForDflt(gsub_data)
+            # AALT / SMCP are feature-tag workers rather than per-script
+            # workers — wired so callers that pass an explicit hint can
+            # opt into the dedicated shaper. They have no preferred
+            # ``ScriptList`` tag in :data:`_LANGUAGE_SCRIPT_TAGS`, so
+            # they only fire when the caller passes the language
+            # explicitly via ``GsubData.language``.
+            if language == "AALT":
+                return GsubWorkerForAALT(gsub_data)
+            if language == "SMCP":
+                return GsubWorkerForSMCP(cmap_lookup, gsub_data)
         return DefaultGsubWorker()
 
 

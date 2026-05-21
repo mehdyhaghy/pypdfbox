@@ -201,6 +201,40 @@ def _cmyk_to_rgb_bytes(c: float, m: float, y: float, k: float) -> tuple[int, int
     return _rgb_bytes(r, g, b)
 
 
+def _cubic_bezier_pt(
+    p0: tuple[float, float],
+    p1: tuple[float, float],
+    p2: tuple[float, float],
+    p3: tuple[float, float],
+    t: float,
+) -> tuple[float, float]:
+    """Evaluate the cubic Bezier ``p0 → p1 → p2 → p3`` at ``t ∈ [0, 1]``.
+    Used by Coons / tensor patch boundary curves (Wave 1375)."""
+    one_minus_t = 1.0 - t
+    b0 = one_minus_t * one_minus_t * one_minus_t
+    b1 = 3.0 * one_minus_t * one_minus_t * t
+    b2 = 3.0 * one_minus_t * t * t
+    b3 = t * t * t
+    return (
+        b0 * p0[0] + b1 * p1[0] + b2 * p2[0] + b3 * p3[0],
+        b0 * p0[1] + b1 * p1[1] + b2 * p2[1] + b3 * p3[1],
+    )
+
+
+def _cubic_bernstein(t: float) -> tuple[float, float, float, float]:
+    """Return the 4 cubic-Bernstein basis weights at ``t``.
+
+    ``B_{i,3}(t) = C(3, i) * t^i * (1-t)^(3-i)`` for ``i = 0..3``. Used by
+    the tensor-product Bezier patch evaluator (Wave 1375)."""
+    one_minus_t = 1.0 - t
+    return (
+        one_minus_t * one_minus_t * one_minus_t,
+        3.0 * one_minus_t * one_minus_t * t,
+        3.0 * one_minus_t * t * t,
+        t * t * t,
+    )
+
+
 class PDFRenderer(PDFStreamEngine):
     """
     Render PDF pages to ``PIL.Image`` via aggdraw (anti-aliased AGG-backed
@@ -2056,13 +2090,25 @@ class PDFRenderer(PDFStreamEngine):
         if isinstance(shading, PDShadingType1):
             self._paint_function_shading(shading, region_mask=region_mask)
             return
+        if isinstance(shading, (PDShadingType6, PDShadingType7)):
+            # Wave 1375 — Coons (type 6) / tensor (type 7) patch mesh
+            # rasterisation via N×N parametric subdivision.
+            handled = self._paint_patch_mesh_shading(
+                shading,
+                region_mask=region_mask,
+                control_points=16 if isinstance(shading, PDShadingType7) else 12,
+            )
+            if handled:
+                return
+            # Decode failure — fall through to the uniform-f(0) fallback.
         if isinstance(
             shading,
             (PDShadingType4, PDShadingType5, PDShadingType6, PDShadingType7),
         ):
-            # Mesh shadings (free-form / lattice / Coons / tensor) fall
-            # back to a uniform fill at f(0) — full mesh rasterisation
-            # tracked in CHANGES.md as deferred.
+            # Free-form / lattice Gouraud (types 4/5) still fall back to a
+            # uniform fill at f(0); a future wave will port their
+            # triangulator. Patch meshes only land here when ``parse_patches``
+            # returned an empty list (no /Decode etc.).
             _log.debug(
                 "rendering: mesh shading type %s deferred; falling back to f(0)",
                 type(shading).__name__,
@@ -2558,6 +2604,439 @@ class PDFRenderer(PDFStreamEngine):
             return _cmyk_to_rgb_bytes(c, m, y, k)
         padded = list(out) + [0.0, 0.0, 0.0]
         return _rgb_bytes(float(padded[0]), float(padded[1]), float(padded[2]))
+
+    # ---- Type 6 / Type 7 (Coons / tensor patch mesh) ----
+
+    # Subdivision count per patch parametric axis. Wave 1375 picks N=10
+    # (= 200 triangles per patch) — matches the upstream Java
+    # ``Type6ShadingContext`` / ``Type7ShadingContext`` adaptive default at
+    # mid-bounds and keeps render time predictable for synthetic pages.
+    _PATCH_SUBDIVISION_N: int = 10
+
+    def _paint_patch_mesh_shading(
+        self,
+        shading: Any,
+        *,
+        region_mask: Image.Image,
+        control_points: int,
+    ) -> bool:
+        """Rasterise a Type 6 (Coons, ``control_points=12``) or Type 7
+        (tensor-product, ``control_points=16``) patch-mesh shading.
+
+        Returns ``True`` when the patch list decoded and was painted (even
+        as an empty mesh — the caller should NOT fall through to the
+        uniform-f(0) fallback in that case). Returns ``False`` only when
+        the patch decoder itself failed (missing ``/Decode`` / non-stream
+        backing) so the caller can still produce a solid-colour fallback
+        that preserves the legacy behaviour.
+
+        Approach: subdivide each patch into an ``N×N`` grid of (u, v)
+        samples (``N = _PATCH_SUBDIVISION_N``). For Coons patches the
+        Coons surface formula combines the 4 boundary cubic Beziers with
+        a bilinear correction; for tensor patches the standard tensor-
+        product Bezier formula is used. Per-vertex colours are bilinearly
+        interpolated from the 4 corner colours, then routed through the
+        shading's ``/Function`` (when present) plus its colour-space.
+        Each grid cell becomes 2 triangles fed to skia.
+        """
+        if self._image is None:
+            return True
+        try:
+            patches = shading.parse_patches()
+        except Exception as exc:  # noqa: BLE001
+            _log.debug(
+                "rendering: patch-mesh parse_patches failed: %s", exc
+            )
+            return False
+        if not patches:
+            return False
+
+        canvas_w, canvas_h = self._image.size
+        import skia  # noqa: PLC0415
+
+        # Allocate the RGBA destination matching the page canvas, then we
+        # use skia to draw triangles. The background colour bleeds through
+        # the page-level region_mask compositing at the end.
+        row_bytes = canvas_w * 4
+        pixels = bytearray(canvas_w * canvas_h * 4)
+        info = skia.ImageInfo.Make(
+            canvas_w, canvas_h,
+            skia.kRGBA_8888_ColorType,
+            skia.kUnpremul_AlphaType,
+        )
+        surface = skia.Surface.MakeRasterDirect(info, pixels, row_bytes)
+        if surface is None:  # pragma: no cover - skia always succeeds
+            return False
+        canvas = surface.getCanvas()
+
+        # Apply /Background (PDF 32000-1 §8.7.4.5.1 Table 79). Painted
+        # everywhere first so the patch mesh overpaints only the covered
+        # cells (any gaps between patches keep the background colour).
+        bg_rgba = self._patch_background_rgba(shading)
+        if bg_rgba is not None:
+            canvas.clear(skia.ColorSetARGB(*bg_rgba))
+
+        # Skia matrix matches the existing _build_skia_path_alpha_mask
+        # convention: PDF (a, b, c, d, e, f) → row-vector MakeAll.
+        a, b, c_, d, e, f = self._full_ctm()
+        canvas.setMatrix(
+            skia.Matrix.MakeAll(a, c_, e, b, d, f, 0.0, 0.0, 1.0),
+        )
+
+        # Apply /BBox clip when present (in pattern user space).
+        bbox_rect = self._patch_bbox_rect(shading)
+        if bbox_rect is not None:
+            bx0, by0, bx1, by1 = bbox_rect
+            clip_path = skia.Path()
+            clip_path.addRect(skia.Rect.MakeLTRB(bx0, by0, bx1, by1))
+            canvas.clipPath(clip_path, doAntiAlias=False)
+
+        anti_alias = self._patch_anti_alias(shading)
+        cs_obj = None
+        try:
+            cs_obj = shading.get_color_space()
+        except Exception:  # noqa: BLE001
+            cs_obj = None
+        cs_name = cs_obj.name if isinstance(cs_obj, COSName) else None
+
+        # Optional /Function used to map each interpolated scalar colour
+        # value through a 1-input function. When present the patch corner
+        # colours are 1-component "parameters" that the function turns
+        # into N-component colour-space values.
+        fn = None
+        try:
+            raw_fn = shading.get_function()
+        except Exception:  # noqa: BLE001
+            raw_fn = None
+        if raw_fn is not None:
+            if not hasattr(raw_fn, "eval"):
+                try:
+                    from pypdfbox.pdmodel.common.function import (  # noqa: PLC0415
+                        PDFunction,
+                    )
+                    fn = PDFunction.create(raw_fn)
+                except Exception:  # noqa: BLE001
+                    fn = None
+            else:
+                fn = raw_fn
+
+        n = self._PATCH_SUBDIVISION_N
+        for patch in patches:
+            self._rasterise_single_patch(
+                canvas, skia, patch, control_points, n, fn, cs_name,
+                anti_alias=anti_alias,
+            )
+
+        # Convert RGBA buffer to a PIL "RGBA" image, then alpha-blend onto
+        # the page canvas through the region mask.
+        patch_img = Image.frombytes("RGBA", (canvas_w, canvas_h), bytes(pixels))
+        if self._draw is not None:
+            self._draw.flush()
+        # Multiply the patch image's alpha by the region mask so anything
+        # outside the clip / path interior stays transparent.
+        r, g, b_, a = patch_img.split()
+        masked_a = ImageChops.multiply(a, region_mask)
+        patch_img = Image.merge("RGBA", (r, g, b_, masked_a))
+        if self._image.mode == "RGBA":
+            self._image.alpha_composite(patch_img)
+        else:
+            self._image.paste(patch_img, (0, 0), masked_a)
+        self._draw = aggdraw.Draw(self._image)
+        self._draw.setantialias(True)
+        return True
+
+    def _rasterise_single_patch(
+        self,
+        canvas: Any,
+        skia_mod: Any,
+        patch: Any,
+        control_points: int,
+        n: int,
+        fn: Any,
+        cs_name: str | None,
+        *,
+        anti_alias: bool,
+    ) -> None:
+        """Subdivide one Coons / tensor patch into ``n*n`` cells, then push
+        two triangles per cell to ``canvas`` with the interpolated corner
+        colour. ``fn``, when provided, is a single-input PDFunction whose
+        outputs are routed through the shading's colour space."""
+        points: list[tuple[float, float]] = list(patch.points)
+        colors: list[list[float]] = [list(c) for c in patch.colors]
+        if len(points) != control_points or len(colors) != 4:
+            return
+
+        # Evaluate (x, y) at each grid sample.
+        sample = (
+            self._tensor_patch_eval if control_points == 16
+            else self._coons_patch_eval
+        )
+        grid_xy: list[list[tuple[float, float]]] = [
+            [(0.0, 0.0)] * (n + 1) for _ in range(n + 1)
+        ]
+        for j in range(n + 1):
+            v = j / n
+            for i in range(n + 1):
+                u = i / n
+                grid_xy[j][i] = sample(points, u, v)
+
+        # Pre-compute byte RGBA for each grid sample (bilinear corner-
+        # colour interpolation -> optional /Function -> colour space).
+        grid_rgba: list[list[tuple[int, int, int, int]]] = [
+            [(0, 0, 0, 0)] * (n + 1) for _ in range(n + 1)
+        ]
+        for j in range(n + 1):
+            v = j / n
+            for i in range(n + 1):
+                u = i / n
+                grid_rgba[j][i] = self._patch_color_at(
+                    colors, u, v, fn, cs_name,
+                )
+
+        # Push 2 triangles per cell.
+        for j in range(n):
+            for i in range(n):
+                p00 = grid_xy[j][i]
+                p10 = grid_xy[j][i + 1]
+                p01 = grid_xy[j + 1][i]
+                p11 = grid_xy[j + 1][i + 1]
+                c00 = grid_rgba[j][i]
+                c10 = grid_rgba[j][i + 1]
+                c01 = grid_rgba[j + 1][i]
+                c11 = grid_rgba[j + 1][i + 1]
+                # Triangle 1: p00 / p10 / p11 — colour = avg of corners
+                self._fill_skia_triangle(
+                    canvas, skia_mod, p00, p10, p11, c00, c10, c11,
+                    anti_alias=anti_alias,
+                )
+                # Triangle 2: p00 / p11 / p01
+                self._fill_skia_triangle(
+                    canvas, skia_mod, p00, p11, p01, c00, c11, c01,
+                    anti_alias=anti_alias,
+                )
+
+    @staticmethod
+    def _fill_skia_triangle(
+        canvas: Any,
+        skia_mod: Any,
+        p0: tuple[float, float],
+        p1: tuple[float, float],
+        p2: tuple[float, float],
+        c0: tuple[int, int, int, int],
+        c1: tuple[int, int, int, int],
+        c2: tuple[int, int, int, int],
+        *,
+        anti_alias: bool,
+    ) -> None:
+        """Draw a single triangle into ``canvas`` with a flat fill equal
+        to the per-vertex colour average. This is the same approximation
+        upstream Java's ``Type6ShadingContext`` / ``Type7ShadingContext``
+        use when ``N`` is large enough that per-triangle colour variation
+        is below 1 byte."""
+        ar = (c0[0] + c1[0] + c2[0]) // 3
+        ag = (c0[1] + c1[1] + c2[1]) // 3
+        ab = (c0[2] + c1[2] + c2[2]) // 3
+        aa = (c0[3] + c1[3] + c2[3]) // 3
+        if aa <= 0:
+            return
+        path = skia_mod.Path()
+        path.moveTo(p0[0], p0[1])
+        path.lineTo(p1[0], p1[1])
+        path.lineTo(p2[0], p2[1])
+        path.close()
+        paint = skia_mod.Paint(
+            Color=skia_mod.ColorSetARGB(aa, ar, ag, ab),
+            Style=skia_mod.Paint.kFill_Style,
+            AntiAlias=anti_alias,
+        )
+        canvas.drawPath(path, paint)
+
+    @staticmethod
+    def _coons_patch_eval(
+        pts: list[tuple[float, float]], u: float, v: float
+    ) -> tuple[float, float]:
+        """Evaluate a Coons-patch surface at parameter ``(u, v)``.
+
+        The 12 control points are ordered per PDF 32000-1 §8.7.4.5.7
+        Figure 39: ``p[0..3]`` = bottom boundary (left → right), ``p[3..6]``
+        = right boundary (bottom → top), ``p[6..9]`` = top boundary (right
+        → left), ``p[9..11] + p[0]`` = left boundary (top → bottom).
+
+        The Coons surface is:
+
+            S(u, v) = Sc(u, v) + Sd(u, v) - Sb(u, v)
+
+        where Sc is the linear ruled-surface between top and bottom
+        boundaries, Sd is the same between left and right, and Sb is the
+        bilinear corner-blend.
+        """
+        # Boundary cubic Beziers.
+        # Bottom: p0 -> p1 -> p2 -> p3, parameter u.
+        b0 = _cubic_bezier_pt(pts[0], pts[1], pts[2], pts[3], u)
+        # Right: p3 -> p4 -> p5 -> p6, parameter v.
+        r0 = _cubic_bezier_pt(pts[3], pts[4], pts[5], pts[6], v)
+        # Top: p9 -> p8 -> p7 -> p6, parameter u (note reverse order so
+        # u=0 lands at p9 — the top-left corner).
+        t0 = _cubic_bezier_pt(pts[9], pts[8], pts[7], pts[6], u)
+        # Left: p0 -> p11 -> p10 -> p9, parameter v.
+        l0 = _cubic_bezier_pt(pts[0], pts[11], pts[10], pts[9], v)
+
+        # Ruled surfaces and bilinear corner blend.
+        sc_x = (1.0 - v) * b0[0] + v * t0[0]
+        sc_y = (1.0 - v) * b0[1] + v * t0[1]
+        sd_x = (1.0 - u) * l0[0] + u * r0[0]
+        sd_y = (1.0 - u) * l0[1] + u * r0[1]
+        # Corner blend uses the 4 patch corners: p0, p3, p6, p9.
+        p00, p10, p11, p01 = pts[0], pts[3], pts[6], pts[9]
+        sb_x = (
+            (1.0 - u) * (1.0 - v) * p00[0]
+            + u * (1.0 - v) * p10[0]
+            + u * v * p11[0]
+            + (1.0 - u) * v * p01[0]
+        )
+        sb_y = (
+            (1.0 - u) * (1.0 - v) * p00[1]
+            + u * (1.0 - v) * p10[1]
+            + u * v * p11[1]
+            + (1.0 - u) * v * p01[1]
+        )
+        return (sc_x + sd_x - sb_x, sc_y + sd_y - sb_y)
+
+    @staticmethod
+    def _tensor_patch_eval(
+        pts: list[tuple[float, float]], u: float, v: float
+    ) -> tuple[float, float]:
+        """Evaluate a tensor-product cubic Bezier patch at ``(u, v)``.
+
+        The 16 control points are arranged in a 4×4 grid per PDF 32000-1
+        §8.7.4.5.8 Figure 40:
+
+            p[ 0] p[ 1] p[ 2] p[ 3]   <- v = 0 boundary (bottom)
+            p[11] p[12] p[13] p[ 4]
+            p[10] p[15] p[14] p[ 5]
+            p[ 9] p[ 8] p[ 7] p[ 6]   <- v = 1 boundary (top)
+
+        That is, the *boundary* curves go p[0..3] (bottom), p[3..6]
+        (right), p[6..9] (top, reverse), p[9,10,11,0] (left, reverse),
+        while p[12..15] are the four interior control points (clockwise
+        from the bottom-left interior corner).
+        """
+        # Reshape to grid[row][col] using the order documented above.
+        grid = [
+            [pts[0], pts[1], pts[2], pts[3]],
+            [pts[11], pts[12], pts[13], pts[4]],
+            [pts[10], pts[15], pts[14], pts[5]],
+            [pts[9], pts[8], pts[7], pts[6]],
+        ]
+        # Bernstein basis weights at u and v.
+        bu = _cubic_bernstein(u)
+        bv = _cubic_bernstein(v)
+        x = 0.0
+        y = 0.0
+        for j in range(4):
+            for i in range(4):
+                w = bv[j] * bu[i]
+                px, py = grid[j][i]
+                x += w * px
+                y += w * py
+        return (x, y)
+
+    @staticmethod
+    def _patch_color_at(
+        corner_colors: list[list[float]],
+        u: float,
+        v: float,
+        fn: Any,
+        cs_name: str | None,
+    ) -> tuple[int, int, int, int]:
+        """Bilinearly interpolate the 4 corner-colour vectors at (u, v),
+        optionally route through ``fn``, then coerce to RGBA bytes.
+
+        ``corner_colors`` are ordered ``[c00, c10, c11, c01]`` matching the
+        4 patch corners (bottom-left, bottom-right, top-right, top-left)
+        — i.e. the upstream ``Patch.color`` order ``[p0, p3, p6, p9]``.
+        """
+        c00, c10, c11, c01 = corner_colors
+        n_comp = len(c00)
+        interp: list[float] = []
+        for k in range(n_comp):
+            v00 = c00[k] if k < len(c00) else 0.0
+            v10 = c10[k] if k < len(c10) else 0.0
+            v11 = c11[k] if k < len(c11) else 0.0
+            v01 = c01[k] if k < len(c01) else 0.0
+            interp.append(
+                (1.0 - u) * (1.0 - v) * v00
+                + u * (1.0 - v) * v10
+                + u * v * v11
+                + (1.0 - u) * v * v01
+            )
+        # When /Function is present each corner colour is a 1-D parameter
+        # that maps through ``fn`` to N-component colour-space values.
+        if fn is not None and interp:
+            try:
+                out = fn.eval([float(interp[0])])
+                interp = [float(v) for v in out] if out else interp
+            except Exception:  # noqa: BLE001
+                pass
+        r, g, b = PDFRenderer._function_output_to_rgb(interp, cs_name)
+        return (r, g, b, 255)
+
+    @staticmethod
+    def _patch_background_rgba(
+        shading: Any,
+    ) -> tuple[int, int, int, int] | None:
+        """Return the ``/Background`` colour for a patch shading as
+        ``(a, r, g, b)`` bytes (skia ColorSetARGB order), or ``None`` when
+        absent / unparseable."""
+        try:
+            bg = shading.get_background()
+        except Exception:  # noqa: BLE001
+            return None
+        if bg is None:
+            return None
+        try:
+            flat = bg.to_float_array()
+        except Exception:  # noqa: BLE001
+            return None
+        if not flat:
+            return None
+        cs_obj = None
+        try:
+            cs_obj = shading.get_color_space()
+        except Exception:  # noqa: BLE001
+            cs_obj = None
+        cs_name = cs_obj.name if isinstance(cs_obj, COSName) else None
+        r, g, b = PDFRenderer._function_output_to_rgb(list(flat), cs_name)
+        return (255, r, g, b)
+
+    @staticmethod
+    def _patch_bbox_rect(
+        shading: Any,
+    ) -> tuple[float, float, float, float] | None:
+        """Return the shading's ``/BBox`` as ``(xmin, ymin, xmax, ymax)``
+        in pattern user space, or ``None`` when absent."""
+        try:
+            bbox = shading.get_b_box()
+        except Exception:  # noqa: BLE001
+            return None
+        if bbox is None:
+            return None
+        try:
+            flat = bbox.to_float_array()
+        except Exception:  # noqa: BLE001
+            return None
+        if len(flat) < 4:
+            return None
+        x0, y0, x1, y1 = (float(v) for v in flat[:4])
+        return (min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1))
+
+    @staticmethod
+    def _patch_anti_alias(shading: Any) -> bool:
+        """Read ``/AntiAlias`` — default ``False`` per PDF 32000-1 Table 79."""
+        try:
+            return bool(shading.get_anti_alias())
+        except Exception:  # noqa: BLE001
+            return False
 
     @staticmethod
     def _shading_domain_2d(shading: Any) -> tuple[float, float, float, float]:

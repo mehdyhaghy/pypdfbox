@@ -1,18 +1,10 @@
 """Port of upstream ``GsubWorkerForAaltTest`` from
 ``fontbox/src/test/java/org/apache/fontbox/ttf/gsub/GsubWorkerForAaltTest.java``.
 
-Skipped: pypdfbox does not port the upstream ``GsubWorkerForAalt``
-worker (the "aalt" Type 3 alternate-substitution shaper) and does not
-bundle ``FoglihtenNo07.otf``. The factory falls back to
-:class:`DefaultGsubWorker` for fonts whose script tag doesn't match any
-of the explicit Latin / Bengali / Devanagari / Gujarati / DFLT workers;
-"aalt" alternate selection is intentionally out of scope for the same
-reasons as upstream (the single-glyph-in / single-glyph-out signature
-can't express ``applyTransforms`` for a multi-alternate feature without
-caller-supplied alternate-index resolution).
-
-The fixture ``FoglihtenNo07.otf`` carries a custom non-Apache license
-and is not redistributed by pypdfbox.
+Wave 1375 ported :class:`GsubWorkerForAALT`. The upstream end-to-end
+test still needs the ``FoglihtenNo07.otf`` fixture (custom non-Apache
+license, not redistributable); synthetic coverage of the same code
+paths lives in ``tests/fontbox/ttf/gsub/test_gsub_worker_for_aalt.py``.
 """
 
 from __future__ import annotations
@@ -21,8 +13,9 @@ import pytest
 
 
 @pytest.mark.skip(
-    reason="GsubWorkerForAalt is not ported (alternate-glyph feature "
-    "out of scope) and FoglihtenNo07.otf is not bundled."
+    reason="FoglihtenNo07.otf is not bundled (custom non-Apache "
+    "license); GsubWorkerForAALT itself is now ported and covered "
+    "synthetically in tests/fontbox/ttf/gsub/test_gsub_worker_for_aalt.py"
 )
 def test_foglihten_no07() -> None:
     """Ported from ``GsubWorkerForAaltTest#testFoglihtenNo07()``.

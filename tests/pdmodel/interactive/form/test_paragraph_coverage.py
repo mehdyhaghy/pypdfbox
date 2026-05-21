@@ -74,12 +74,18 @@ def test_line_inter_word_spacing() -> None:
 def test_get_lines_wraps_when_overflow_carries_to_new_line() -> None:
     """Two long-enough words that overflow the requested width on the
     second word — Line 1 is flushed, Line 2 begins with the second word.
+
+    Picks a width wide enough that no individual word triggers the
+    PDFBOX-5049 / PDFBOX-6082 force-split branch (wave 1375), so only
+    the soft-wrap path is exercised.
     """
+    # Per-char stub width = 1.0, font_size = 1000 -> scale = 1.0, so
+    # each char occupies 1 width unit.
     para = Paragraph("aaa bbb")
-    # width_per_char=1000 with font_size=1000 -> per-char scale 1.0 -> each
-    # 3-letter word ~3.0 units + trailing space ~1.0 unit = 4.0 units total.
-    font = _StubFont(1000.0)
-    # width=4.5 -> 'aaa ' fits (4.0); add 'bbb' (3.0) -> overflows -> flush + start new line.
+    font = _StubFont(1.0)
+    # width=4.5 -> 'aaa ' fits (width 4.0); add 'bbb' (width 3.0) ->
+    # line_width 7.0 -> overflow -> flush + start new line.
+    # 'bbb' width 3.0 < 4.5 so no force-split fires.
     lines = para.get_lines(font, 1000.0, 4.5)
     assert len(lines) == 2
     # Line 1: just "aaa "
@@ -90,12 +96,16 @@ def test_get_lines_wraps_when_overflow_carries_to_new_line() -> None:
 
 def test_get_lines_trailing_whitespace_pushes_us_over_branch() -> None:
     """When a word + trailing space exceeds width, the trailing-ws width
-    is subtracted back (covers lines 107-109).
+    is subtracted back (covers the trailing-whitespace deduction inside
+    the wrap loop).
     """
+    # Per-char stub width = 1.0, font_size = 1000 -> scale = 1.0, so
+    # each char occupies 1 width unit.
     para = Paragraph("aa bb")
-    font = _StubFont(1000.0)
-    # width = 2.5 -> 'aa ' is 3.0 with the space; subtract space (1.0) -> 2.0 fits
-    # Then 'bb' (2.0) added -> line_width 4.0 -> overflow -> flush + new line.
+    font = _StubFont(1.0)
+    # width = 2.5 -> 'aa ' is 3.0 with the space; subtract space (1.0)
+    # -> 2.0 fits. Then 'bb' (2.0) added -> line_width 4.0 -> overflow
+    # -> flush + new line. 'bb' width 2.0 < 2.5 so no force-split.
     lines = para.get_lines(font, 1000.0, 2.5)
     assert len(lines) == 2
 
@@ -108,9 +118,27 @@ def test_get_lines_zero_width_returns_empty() -> None:
 
 def test_get_lines_single_line_for_short_text() -> None:
     para = Paragraph("hi")
-    lines = para.get_lines(_StubFont(1000.0), 1000.0, 1000.0)
+    # Per-char stub width = 1.0, font_size = 1000 -> scale = 1.0;
+    # 2-char text occupies 2 width units. Pick width = 1000 so the
+    # force-split branch (PDFBOX-5049 / PDFBOX-6082) does not fire.
+    lines = para.get_lines(_StubFont(1.0), 1000.0, 1000.0)
     assert len(lines) == 1
     assert [w.get_text() for w in lines[0].get_words()] == ["hi"]
+
+
+def test_get_lines_force_splits_oversized_word() -> None:
+    """PDFBOX-5049 / PDFBOX-6082 (wave 1375): a single word wider than
+    the rect is force-split into multiple lines instead of overflowing.
+    """
+    para = Paragraph("aaaaaa")
+    # Per-char stub width = 1.0, font_size = 1000 -> scale = 1.0; the
+    # 6-char word occupies 6 width units. width=2.5 -> 2 chars per line
+    # (3.0 > 2.5) -> split into 3 lines of 2 chars.
+    font = _StubFont(1.0)
+    lines = para.get_lines(font, 1000.0, 2.5)
+    assert len(lines) == 3
+    for line in lines:
+        assert sum(len(w.get_text()) for w in line.get_words()) == 2
 
 
 # ---------- Paragraph.build_prefix_widths -------------------------------

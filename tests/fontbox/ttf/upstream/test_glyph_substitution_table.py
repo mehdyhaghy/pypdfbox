@@ -59,7 +59,9 @@ def test_get_gsub_data() -> None:
     assert table.get_initialized() is True
     assert table.get_supported_script_tags() == EXPECTED_SCRIPTS
     assert set(table.get_supported_feature_tags()) == EXPECTED_FEATURES
-    # Upstream documents that ``getGsubData`` returns non-null for a
-    # font with GSUB; we deliberately deviate (see CHANGES.md). Pin the
-    # deviation here so a future re-port is forced to update this file.
-    assert table.get_gsub_data() is None
+    # Wave 1375: ``get_gsub_data()`` now projects a real :class:`GsubData`
+    # view (see ``GlyphSubstitutionTable.get_gsub_data`` docstring). The
+    # default invocation resolves to the most-preferred supported script.
+    gsub_data = table.get_gsub_data()
+    assert gsub_data is not None
+    assert gsub_data.get_active_script_name() == "latn"

@@ -1,18 +1,17 @@
 """Port of upstream ``GsubWorkerForTamilTest`` from
 ``fontbox/src/test/java/org/apache/fontbox/ttf/gsub/GsubWorkerForTamilTest.java``.
 
-Upstream's test loads ``src/test/resources/ttf/Lohit-Tamil.ttf`` and
-asserts the factory returns a :class:`DefaultGsubWorker` (a placeholder
-for the future "GsubWorkerForTamil" shaper which upstream has never
-shipped — the comment in the Java source reads
-``// change to GsubWorkerForTamil when implemented``).
-
-pypdfbox does not bundle Lohit-Tamil.ttf (released under SIL OFL 1.1 —
-a Free Font license but not interchangeable with Apache 2.0 source
-re-licensing). The factory's Tamil fallback path is already covered
-synthetically by ``tests/fontbox/ttf/gsub/test_gsub_worker_factory.py``;
-this file exists as the parity placeholder so future re-syncs see the
-upstream test mapped.
+Upstream's test is itself a placeholder — ``testDummy`` only asserts
+the factory returns a :class:`DefaultGsubWorker` because no Tamil
+shaper was implemented in upstream when the test was written
+(``// change to GsubWorkerForTamil when implemented``). Wave 1375 ports
+:class:`GsubWorkerForTamil` ahead of upstream; running the original
+assertion would now flip from ``DefaultGsubWorker`` to
+:class:`GsubWorkerForTamil`, so the upstream test no longer matches our
+behaviour at the assertion level. Synthetic coverage of the new worker
+lives in ``tests/fontbox/ttf/gsub/test_gsub_worker_for_tamil.py``;
+factory dispatch is covered in
+``tests/fontbox/ttf/gsub/test_gsub_worker_factory.py``.
 """
 
 from __future__ import annotations
@@ -22,8 +21,11 @@ import pytest
 
 @pytest.mark.skip(
     reason="Lohit-Tamil.ttf is not bundled (SIL OFL 1.1, not "
-    "Apache-2.0 interchangeable); factory fallback to "
-    "DefaultGsubWorker is covered synthetically in "
+    "Apache-2.0 interchangeable); wave 1375 ports GsubWorkerForTamil "
+    "ahead of upstream (upstream's testDummy still asserts a "
+    "DefaultGsubWorker fallback); factory dispatch + per-worker "
+    "behaviour are covered in "
+    "tests/fontbox/ttf/gsub/test_gsub_worker_for_tamil.py and "
     "tests/fontbox/ttf/gsub/test_gsub_worker_factory.py"
 )
 def test_dummy() -> None:

@@ -4,6 +4,7 @@ import logging
 import re
 from contextlib import suppress
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
+from xml.etree import ElementTree as ET
 
 from pypdfbox.cos import (
     COSArray,
@@ -147,6 +148,291 @@ def _rect_from_cos(value: COSBase | None) -> tuple[float, float, float, float] |
     return (llx, lly, urx, ury)
 
 
+class _RichTextRun:
+    """A styled run of text emitted by :func:`_parse_rv_runs`.
+
+    Mirrors the minimal subset of the XHTML ``/RV`` payload that
+    appearance generation actually consumes — a flat list of runs each
+    carrying a glyph string plus optional style overrides. The walker
+    in :func:`_parse_rv_runs` flattens ``<b>`` / ``<i>`` nesting into
+    the booleans below and serialises paragraph / line breaks via the
+    sentinel ``line_break`` field (``True`` ⇒ render this run as a
+    hard newline, ignoring ``text``).
+
+    Lite scope: PDF 32000-1 §12.7.3.4 nominally cites XHTML 1.0 + a CSS
+    subset; the lite port handles ``font-size``, ``color`` (``#rgb`` /
+    ``#rrggbb`` / ``rgb(r,g,b)``), and ``font-family`` style overrides
+    plus ``<b>`` / ``<i>`` / ``<p>`` / ``<br>`` / ``<span>``. All other
+    tags are walked through transparently so nested text inside
+    unknown elements still renders.
+    """
+
+    __slots__ = ("text", "bold", "italic", "color", "font_size", "font_family", "line_break")
+
+    def __init__(
+        self,
+        text: str = "",
+        bold: bool = False,
+        italic: bool = False,
+        color: tuple[float, ...] | None = None,
+        font_size: float | None = None,
+        font_family: str | None = None,
+        line_break: bool = False,
+    ) -> None:
+        self.text = text
+        self.bold = bold
+        self.italic = italic
+        self.color = color
+        self.font_size = font_size
+        self.font_family = font_family
+        self.line_break = line_break
+
+
+# Tags whose closing emits an implicit hard line break (paragraph
+# boundary). ``<br/>`` is handled separately so the break lands at the
+# tag's position, not after its (typically empty) text content.
+_RV_BLOCK_TAGS: frozenset[str] = frozenset({"p", "div"})
+
+
+def _strip_xhtml_ns(tag: str) -> str:
+    """Drop the ``{namespace}`` prefix ElementTree wraps tags in.
+
+    ``/RV`` payloads typically declare the XHTML namespace on the root
+    (``xmlns="http://www.w3.org/1999/xhtml"``) which ElementTree then
+    expands into ``{http://www.w3.org/1999/xhtml}p`` etc. We compare
+    tags by their local name only so the lite walker doesn't care
+    which namespace prefix the producer chose.
+    """
+    if tag.startswith("{"):
+        return tag.split("}", 1)[1].lower()
+    return tag.lower()
+
+
+_RV_HEX_RE = re.compile(r"#([0-9a-fA-F]{3,8})")
+_RV_RGB_RE = re.compile(
+    r"rgb\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)", re.IGNORECASE
+)
+
+
+def _parse_rv_color(raw: str) -> tuple[float, ...] | None:
+    """Parse a CSS color expression into a 3-tuple of 0-1 RGB floats.
+
+    Lite scope: ``#rgb`` / ``#rrggbb`` (hex) and ``rgb(r,g,b)`` only.
+    Anything else (named colours, ``hsl(...)``, etc.) returns ``None``
+    so the caller falls back to the inherited / ``/DA`` colour.
+    """
+    raw = raw.strip()
+    hex_match = _RV_HEX_RE.fullmatch(raw)
+    if hex_match is not None:
+        digits = hex_match.group(1)
+        if len(digits) == 3:
+            try:
+                r = int(digits[0] * 2, 16)
+                g = int(digits[1] * 2, 16)
+                b = int(digits[2] * 2, 16)
+            except ValueError:
+                return None
+            return (r / 255.0, g / 255.0, b / 255.0)
+        if len(digits) == 6:
+            try:
+                r = int(digits[0:2], 16)
+                g = int(digits[2:4], 16)
+                b = int(digits[4:6], 16)
+            except ValueError:
+                return None
+            return (r / 255.0, g / 255.0, b / 255.0)
+        return None
+    rgb_match = _RV_RGB_RE.fullmatch(raw)
+    if rgb_match is not None:
+        try:
+            r = int(rgb_match.group(1))
+            g = int(rgb_match.group(2))
+            b = int(rgb_match.group(3))
+        except ValueError:
+            return None
+        return (
+            max(0.0, min(1.0, r / 255.0)),
+            max(0.0, min(1.0, g / 255.0)),
+            max(0.0, min(1.0, b / 255.0)),
+        )
+    return None
+
+
+def _parse_rv_style(style: str | None) -> dict[str, str]:
+    """Parse a CSS ``style="k:v; k:v"`` attribute into a dict.
+
+    Lite parser — splits on ``;`` then ``:``; values are trimmed but
+    not unquoted (so ``font-family: "Courier New", monospace`` keeps
+    the quotes for the caller to deal with). Empty / malformed
+    entries are silently dropped.
+    """
+    out: dict[str, str] = {}
+    if not style:
+        return out
+    for chunk in style.split(";"):
+        if ":" not in chunk:
+            continue
+        key, _, val = chunk.partition(":")
+        key = key.strip().lower()
+        val = val.strip()
+        if key and val:
+            out[key] = val
+    return out
+
+
+def _parse_rv_font_size(raw: str) -> float | None:
+    """Parse ``font-size: 12pt`` (or ``12px`` / bare number) into a float.
+
+    Lite scope: ``pt`` / ``px`` (treated as 1pt = 1px — Acrobat does the
+    same for the embedded XHTML), bare numbers (treated as ``pt``).
+    Returns ``None`` when the value is non-numeric or zero — caller
+    keeps the inherited size.
+    """
+    raw = raw.strip().lower()
+    for suffix in ("pt", "px"):
+        if raw.endswith(suffix):
+            raw = raw[: -len(suffix)].strip()
+            break
+    try:
+        size = float(raw)
+    except ValueError:
+        return None
+    if size <= 0.0:
+        return None
+    return size
+
+
+def _parse_rv_runs(xhtml: str) -> list[_RichTextRun] | None:
+    """Parse ``/RV`` XHTML into a flat sequence of styled runs.
+
+    Returns ``None`` when the payload is not well-formed XML — caller
+    falls back to the ``/V`` rendering path. The parser is intentionally
+    lenient: unknown tags (e.g. ``<font>``, ``<u>``, ``<em>``) walk
+    transparently so their text content still appears; unsupported
+    style declarations are silently dropped.
+
+    Implementation notes:
+        - Uses stdlib :mod:`xml.etree.ElementTree`; no external deps
+          (the project enforces a permissive-only / no-new-deps gate).
+        - Treats ``<b>`` / ``<strong>`` as bold and ``<i>`` / ``<em>``
+          as italic. ``<br/>`` and the close of any block tag (``<p>``,
+          ``<div>``) inserts a hard line break.
+        - Tag namespace prefixes are stripped (Acrobat wraps the body in
+          ``<body xmlns="http://www.w3.org/1999/xhtml">``).
+        - Empty paragraphs (``<p/>``, ``<p></p>``) produce a single
+          line-break run — matches the "vertical spacing" spec note.
+    """
+    try:
+        root = ET.fromstring(xhtml)
+    except ET.ParseError:
+        return None
+    runs: list[_RichTextRun] = []
+
+    def walk(
+        element: ET.Element,
+        *,
+        bold: bool,
+        italic: bool,
+        color: tuple[float, ...] | None,
+        font_size: float | None,
+        font_family: str | None,
+    ) -> None:
+        tag = _strip_xhtml_ns(element.tag)
+        # Apply per-element style overrides (style attr + tag semantics).
+        style = _parse_rv_style(element.get("style"))
+        local_bold = bold or tag in ("b", "strong")
+        local_italic = italic or tag in ("i", "em")
+        local_color = color
+        if "color" in style:
+            parsed = _parse_rv_color(style["color"])
+            if parsed is not None:
+                local_color = parsed
+        local_font_size = font_size
+        if "font-size" in style:
+            parsed_size = _parse_rv_font_size(style["font-size"])
+            if parsed_size is not None:
+                local_font_size = parsed_size
+        local_font_family = font_family
+        if "font-family" in style:
+            local_font_family = style["font-family"].strip().strip('"\'')
+        # Self-closing line break.
+        if tag == "br":
+            runs.append(_RichTextRun(line_break=True))
+            # Tail text after <br/> still belongs to the parent run.
+            if element.tail:
+                runs.append(
+                    _RichTextRun(
+                        text=element.tail,
+                        bold=bold,
+                        italic=italic,
+                        color=color,
+                        font_size=font_size,
+                        font_family=font_family,
+                    )
+                )
+            return
+        # Element text (before any children).
+        if element.text:
+            runs.append(
+                _RichTextRun(
+                    text=element.text,
+                    bold=local_bold,
+                    italic=local_italic,
+                    color=local_color,
+                    font_size=local_font_size,
+                    font_family=local_font_family,
+                )
+            )
+        empty_block = (
+            tag in _RV_BLOCK_TAGS
+            and not element.text
+            and len(list(element)) == 0
+        )
+        for child in element:
+            walk(
+                child,
+                bold=local_bold,
+                italic=local_italic,
+                color=local_color,
+                font_size=local_font_size,
+                font_family=local_font_family,
+            )
+        # Block-level close: emit line break + paragraph spacing.
+        if tag in _RV_BLOCK_TAGS:
+            runs.append(_RichTextRun(line_break=True))
+            if empty_block:
+                # Empty <p/> nominally inserts vertical spacing — represent
+                # as two line breaks so the rendered baseline advances
+                # one full line height of blank space.
+                runs.append(_RichTextRun(line_break=True))
+        # Tail text after the element (in the parent's context).
+        if element.tail:
+            runs.append(
+                _RichTextRun(
+                    text=element.tail,
+                    bold=bold,
+                    italic=italic,
+                    color=color,
+                    font_size=font_size,
+                    font_family=font_family,
+                )
+            )
+
+    walk(
+        root,
+        bold=False,
+        italic=False,
+        color=None,
+        font_size=None,
+        font_family=None,
+    )
+    # Trim a single trailing line break so the rendered output doesn't
+    # have an extra blank line at the bottom of the rect.
+    while runs and runs[-1].line_break:
+        runs.pop()
+    return runs
+
+
 class PDAppearanceGenerator:
     """Lite port of upstream ``AppearanceGeneratorHelper`` — generates
     *flat* normal appearances for AcroForm widget annotations.
@@ -205,9 +491,16 @@ class PDAppearanceGenerator:
     render a "Click to sign" prompt (matches upstream
     ``PDVisibleSigBuilder``).
 
-    **Deferred:** font-substitution fallbacks for non-Standard-14
-    ``/DA`` fonts and rich-text (``/RV``) rendering stay no-ops in
-    the lite surface — see ``CHANGES.md``.
+    **Closed in Wave 1375:** custom-embedded ``/DA`` fonts now resolve
+    through the three-tier walk ``AcroForm /DR /Font`` -> ``widget /AP /N
+    /Resources /Font`` -> ``page /Resources /Font`` (first hit wins),
+    matching upstream ``PDDefaultAppearanceString`` + the per-widget
+    hoist in ``validateAndEnsureAcroFormResources``. The resolved font's
+    ``COSDictionary`` is registered under the source ``/DA`` alias in
+    the generated appearance ``/Resources``, so embedded TrueType / Type0
+    fonts keep their metrics (width, ascent / descent) and the emitted
+    ``/<alias> <size> Tf`` token continues to reference the right font
+    object after regeneration.
     """
 
     DEFAULT_FONT_SIZE: float = 12.0
@@ -407,13 +700,27 @@ class PDAppearanceGenerator:
         value = field.get_value() or ""
         da = self._resolve_default_appearance(field)
         font_name, font_size, color = _parse_default_appearance(da)
-        font = self._resolve_font_for_field(field, font_name)
 
         is_multiline = field.is_multiline()
         is_comb = field.is_comb()
         is_password = field.is_password()
         max_len = field.get_max_len()
         quadding = field.get_q()
+
+        # Wave 1375 — rich-text (``/RV``) rendering. When the field carries
+        # ``/RV`` we parse the XHTML payload into styled runs and render
+        # those instead of the plain ``/V`` value. Comb, password, and
+        # multi-line single-cell layouts ignore ``/RV`` (the rich payload
+        # is not meaningful in those modes — PDF 32000-1 §12.7.3.4 ties
+        # ``/RV`` to ``Ff`` bit 26 / multi-line layout). Password fields
+        # never opt into ``/RV`` rendering — the masked output is the
+        # /V-driven asterisk run. On any parse failure we silently fall
+        # back to the /V path.
+        rich_runs: list[_RichTextRun] | None = None
+        if not is_comb and not is_password:
+            rv = self._resolve_rich_text_value(field)
+            if rv:
+                rich_runs = _parse_rv_runs(rv)
 
         # PDFBOX-3911: single-line text fields collapse newline-class
         # characters to a single space before rendering. Multi-line and
@@ -431,6 +738,16 @@ class PDAppearanceGenerator:
             value = "*" * len(value)
 
         for widget in field.get_widgets():
+            # Wave 1375 — resolve the font per widget so the widget's own
+            # /AP /N /Resources /Font + parent-page /Resources /Font are
+            # consulted in addition to the AcroForm /DR /Font (closes the
+            # "custom-embedded /DA fonts not honoured" deviation).
+            font = self._resolve_font_for_field(field, font_name, widget)
+            if rich_runs is not None:
+                self._regenerate_rich_text_widget(
+                    widget, rich_runs, font, font_name, font_size, color,
+                )
+                continue
             self._regenerate_text_widget(
                 widget,
                 value,
@@ -443,6 +760,20 @@ class PDAppearanceGenerator:
                 max_len=max_len,
                 quadding=quadding,
             )
+
+    @staticmethod
+    def _resolve_rich_text_value(field: PDTextField) -> str | None:
+        """Pull ``/RV`` off ``field`` as a Python string. Returns ``None``
+        when absent or when the typed accessor errors (defensive — the
+        rich-text path falls back to ``/V`` on any failure).
+        """
+        getter = getattr(field, "get_rich_text_value", None)
+        if not callable(getter):
+            return None
+        try:
+            return getter()
+        except Exception:  # noqa: BLE001 — defensive: any failure → /V fallback
+            return None
 
     # ------------------------------------------------------------------
     # button (check / radio)
@@ -686,7 +1017,6 @@ class PDAppearanceGenerator:
 
         da = self._resolve_default_appearance(field)
         font_name, font_size, color = _parse_default_appearance(da)
-        font = self._resolve_font_for_field(field, font_name)
 
         is_listbox = isinstance(field, PDListBox)
         options: list[str] = []
@@ -700,6 +1030,10 @@ class PDAppearanceGenerator:
         selected_indices = field.get_selected_options_indices()
 
         for widget in field.get_widgets():
+            # Wave 1375 — per-widget font resolution: walks /AP /N /Resources
+            # + page /Resources after /DR /Font so custom-embedded /DA fonts
+            # are honoured even when they live at the widget or page level.
+            font = self._resolve_font_for_field(field, font_name, widget)
             if is_listbox:
                 # When the field has no /Opt entries (uncommon but legal),
                 # fall back to the selected values themselves so the widget
@@ -1062,6 +1396,236 @@ class PDAppearanceGenerator:
             widget_cos.set_item(_AP, ap_dict.get_cos_object())
         ap_dict.set_normal_appearance(appearance_stream)
 
+    # ------------------------------------------------------------------
+    # rich text (/RV — wave 1375)
+    # ------------------------------------------------------------------
+
+    def _regenerate_rich_text_widget(
+        self,
+        widget: PDAnnotationWidget,
+        runs: list[_RichTextRun],
+        base_font: PDFont,
+        base_font_name: str | None,
+        base_size: float,
+        base_color: tuple[float, ...] | None,
+    ) -> None:
+        """Regenerate a text widget's ``/AP /N`` using styled rich-text runs.
+
+        Wave 1375 closes the deferred ``/RV`` rendering note (CHANGES.md
+        line 707) with the lite subset called out in the wave brief:
+        ``<p>``, ``<br/>``, ``<b>`` / ``<i>``, ``<span style=...>``, and
+        inline ``font-size`` / ``color`` / ``font-family`` overrides.
+        """
+        widget_cos = widget.get_cos_object()
+        rect = _rect_from_cos(widget_cos.get_dictionary_object(_RECT))
+        if rect is None:
+            widget_cos.remove_item(_AP)
+            return
+        llx, lly, urx, ury = rect
+        width = urx - llx
+        height = ury - lly
+        if width <= 0.0 or height <= 0.0:
+            return
+
+        rotation = self._resolve_widget_rotation(widget_cos)
+        if rotation in (90, 270):
+            bbox_w, bbox_h = height, width
+        else:
+            bbox_w, bbox_h = width, height
+
+        appearance_cos = self._fresh_form_xobject(bbox_w, bbox_h)
+        appearance_stream = PDAppearanceStream(appearance_cos)
+        if rotation != 0:
+            appearance_stream.set_matrix(
+                self._calculate_matrix(bbox_w, bbox_h, rotation)
+            )
+
+        resolved_size = base_size if base_size > 0.0 else self._auto_size(height)
+        interior_w = max(0.0, width - 2.0)
+        interior_h = max(0.0, height - 2.0)
+
+        with PDAppearanceContentStream(appearance_stream) as raw_cs:
+            cs = cast(PDAppearanceContentStream, raw_cs)
+            self._register_font_alias(cs, base_font, base_font_name)
+            cs._buffer.extend(b"/Tx BMC\n")
+            cs.save_graphics_state()
+            if interior_w > 0.0 and interior_h > 0.0:
+                cs.add_rect(1.0, 1.0, interior_w, interior_h)
+                cs._write_operator(b"W")
+                cs._write_operator(b"n")
+            self._emit_rich_text_runs(
+                cs,
+                runs,
+                base_font,
+                base_font_name,
+                resolved_size,
+                base_color,
+                interior_w,
+                height,
+            )
+            cs.restore_graphics_state()
+            cs._buffer.extend(b"EMC\n")
+
+        ap_value2 = widget_cos.get_dictionary_object(_AP)
+        if isinstance(ap_value2, COSDictionary):
+            ap_dict2 = PDAppearanceDictionary(ap_value2)
+        else:
+            ap_dict2 = PDAppearanceDictionary()
+            widget_cos.set_item(_AP, ap_dict2.get_cos_object())
+        ap_dict2.set_normal_appearance(appearance_stream)
+
+    def _emit_rich_text_runs(
+        self,
+        cs: PDAppearanceContentStream,
+        runs: list[_RichTextRun],
+        base_font: PDFont,
+        base_font_name: str | None,
+        base_size: float,
+        base_color: tuple[float, ...] | None,
+        interior_w: float,
+        height: float,
+    ) -> None:
+        """Emit ``runs`` into ``cs`` as a single ``BT ... ET`` text object.
+
+        Each run's bold/italic/font-family triple maps to a PDFont via
+        :meth:`_resolve_rich_text_font`; ``color`` (when set) flushes a
+        new non-stroking-color operator; ``font_size`` (when set)
+        overrides the base size for the duration of the run.
+        ``line_break`` runs emit ``T*`` (the PDF operator the brief
+        calls out).
+        """
+        cs.begin_text()
+        default_color = base_color if base_color is not None else (0.0,)
+        cs.set_non_stroking_color(default_color)
+        cs.set_font(base_font, base_size)
+        line_height = base_size * 1.15
+        top_y = max(2.0, height - base_size * 1.15)
+        cs.new_line_at_offset(2.0, top_y)
+
+        current_font_cos = base_font.get_cos_object()
+        current_size = base_size
+        current_color = default_color
+
+        # T* advances by the leading parameter -- drop a TL operator
+        # so subsequent T* operators advance by ``line_height``.
+        cs._write_operands(line_height)
+        cs._write_operator(b"TL")
+
+        for run in runs:
+            if run.line_break:
+                cs.new_line()
+                continue
+            if not run.text:
+                continue
+            run_font = self._resolve_rich_text_font(
+                base_font, base_font_name, run,
+            )
+            run_size = run.font_size if run.font_size is not None else base_size
+            run_color = run.color if run.color is not None else default_color
+            font_cos = run_font.get_cos_object()
+            if font_cos is not current_font_cos or run_size != current_size:
+                cs.set_font(run_font, run_size)
+                current_font_cos = font_cos
+                current_size = run_size
+            if run_color != current_color:
+                cs.set_non_stroking_color(run_color)
+                current_color = run_color
+            cs.show_text(run.text)
+        cs.end_text()
+
+    def _resolve_rich_text_font(
+        self,
+        base_font: PDFont,
+        base_font_name: str | None,
+        run: _RichTextRun,
+    ) -> PDFont:
+        """Pick a Standard 14 font for ``run``'s bold/italic/family combo."""
+        family_key = (run.font_family or "").strip().lower()
+        if "times" in family_key:
+            family_name: str | None = "Times"
+        elif "courier" in family_key or "monospace" in family_key:
+            family_name = "Courier"
+        elif "helvetica" in family_key or "sans" in family_key:
+            family_name = "Helvetica"
+        elif family_key:
+            family_name = None
+        else:
+            family_name = None
+        if family_name is None and not run.bold and not run.italic:
+            return base_font
+        if family_name is None:
+            inferred = self._infer_font_family(base_font, base_font_name)
+            family_name = inferred or "Helvetica"
+        variant = self._font_variant_name(family_name, run.bold, run.italic)
+        if variant is None:
+            return base_font
+        if Standard14Fonts.get_mapped_font_name(variant) is None:
+            return base_font
+        return PDFontFactory.create_default_font(variant)
+
+    @staticmethod
+    def _infer_font_family(
+        base_font: PDFont, base_font_name: str | None,
+    ) -> str | None:
+        """Return ``Helvetica`` / ``Times`` / ``Courier`` for the base font.
+
+        Used when a rich-text run carries ``<b>`` / ``<i>`` but no
+        ``font-family`` override -- we keep the base /DA family and just
+        swap the weight / style. Returns ``None`` when the base font is
+        not a recognised Standard 14 family.
+        """
+        candidate = ""
+        if base_font_name:
+            mapped = PDAppearanceGenerator.DA_FONT_ALIASES.get(
+                base_font_name, base_font_name
+            )
+            candidate = mapped
+        if not candidate:
+            getter = getattr(base_font, "get_name", None)
+            if callable(getter):
+                with suppress(Exception):
+                    name_val = getter()
+                    if isinstance(name_val, str):
+                        candidate = name_val
+        candidate = candidate.lower()
+        if "times" in candidate:
+            return "Times"
+        if "courier" in candidate:
+            return "Courier"
+        if "helvetica" in candidate:
+            return "Helvetica"
+        return None
+
+    @staticmethod
+    def _font_variant_name(family: str, bold: bool, italic: bool) -> str | None:
+        """Map a family + bold/italic combo to a Standard 14 font name."""
+        family = family.lower()
+        if family == "helvetica":
+            if bold and italic:
+                return Standard14Fonts.HELVETICA_BOLD_OBLIQUE
+            if bold:
+                return Standard14Fonts.HELVETICA_BOLD
+            if italic:
+                return Standard14Fonts.HELVETICA_OBLIQUE
+            return Standard14Fonts.HELVETICA
+        if family == "times":
+            if bold and italic:
+                return "Times-BoldItalic"
+            if bold:
+                return "Times-Bold"
+            if italic:
+                return "Times-Italic"
+            return "Times-Roman"
+        if family == "courier":
+            if bold and italic:
+                return "Courier-BoldOblique"
+            if bold:
+                return "Courier-Bold"
+            if italic:
+                return "Courier-Oblique"
+            return "Courier"
+        return None
+
     def _emit_single_line_text(
         self,
         cs: PDAppearanceContentStream,
@@ -1189,29 +1753,36 @@ class PDAppearanceGenerator:
     ) -> list[str]:
         """Word-wrap ``value`` onto lines that fit ``interior_w``.
 
-        Splits on existing ``\\n`` first to preserve explicit line
-        breaks, then word-wraps each resulting paragraph. Words wider
-        than the rect are emitted on their own line (no mid-word break).
+        Delegates to :class:`PlainText` + :class:`Paragraph.get_lines`,
+        the same engine upstream's ``AppearanceGeneratorHelper`` uses
+        (via ``PlainTextFormatter``). That gives us real per-glyph
+        widths via ``PDFont.get_string_width`` and the PDFBOX-5049 /
+        PDFBOX-6082 force-split fallback for unbroken words wider than
+        the rect (e.g. a long unbroken digit run wrapping to the same
+        line shape Acrobat produces — see ``testMultilineBreak``,
+        PDFBOX-3835).
         """
+        from .plain_text import PlainText
+
         if not value:
             return [""]
+        block = PlainText(value)
         out: list[str] = []
-        for paragraph in value.split("\n"):
-            if not paragraph:
-                out.append("")
+        for paragraph in block.get_paragraphs():
+            try:
+                lines = paragraph.get_lines(font, size, max(interior_w, 1.0))
+            except (OSError, ValueError, KeyError, TypeError):
+                # Font lookup / glyph-width resolution can raise OSError
+                # (stream IO) or a key error for missing glyphs; fall
+                # back to a single-line render rather than crash.
+                lines = []
+            if not lines:
+                # ``Paragraph.get_lines`` returns ``[]`` for ``width <= 0``;
+                # preserve the paragraph as a single line in that case.
+                out.append(paragraph.get_text())
                 continue
-            words = paragraph.split(" ")
-            current = ""
-            for word in words:
-                candidate = word if not current else current + " " + word
-                if self._estimate_text_width(font, size, candidate) <= interior_w:
-                    current = candidate
-                else:
-                    if current:
-                        out.append(current)
-                    current = word
-            if current:
-                out.append(current)
+            for line in lines:
+                out.append("".join(word.get_text() for word in line.get_words()))
         return out
 
     @staticmethod
@@ -1556,18 +2127,38 @@ class PDAppearanceGenerator:
         return PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
 
     def _resolve_font_for_field(
-        self, field: PDField, font_name: str | None
+        self,
+        field: PDField,
+        font_name: str | None,
+        widget: PDAnnotationWidget | None = None,
     ) -> PDFont:
         """Resolve ``font_name`` to a :class:`PDFont`, walking the form's
         ``/DR /Font`` dictionary first so embedded /DA fonts survive
         appearance regeneration. Falls back to the alias-mapped Standard
-        14 font when the ``/DR`` lookup is empty or non-resolvable.
+        14 font when the lookups are empty or non-resolvable.
 
-        Mirrors the upstream ``PDDefaultAppearanceString`` chain (parse
-        ``/DA`` -> resolve through ``/DR``) collapsed to the lite surface
-        we actually use here.
+        When ``widget`` is supplied (the per-widget call site introduced
+        in wave 1375 to close the "custom-embedded /DA fonts not honoured"
+        deviation), the resolver walks three locations in order:
+
+        1. The form's ``/DR /Font`` dictionary (Acrobat / Reader's default
+           bucket for ``/DA`` aliases like ``Helv``).
+        2. The widget's ``/AP /N /Resources /Font`` (per-widget resources
+           — Acrobat sometimes hoists per-widget fonts here when a single
+           field's widgets carry differing layouts).
+        3. The widget's parent page ``/Resources /Font`` (rare but legal
+           — some authoring tools register form fonts at the page level).
+
+        First hit wins. Falls back to the Standard 14 alias-mapped font
+        when none of the three buckets resolves the name. Mirrors the
+        upstream ``PDDefaultAppearanceString`` chain (parse ``/DA`` ->
+        resolve through ``/DR``) plus the widget-level hoist from
+        ``AppearanceGeneratorHelper.validateAndEnsureAcroFormResources``
+        in spirit.
         """
         if font_name:
+            key = COSName.get_pdf_name(font_name)
+            # 1) AcroForm /DR /Font — canonical location for /DA fonts.
             try:
                 acro_form = field.get_acro_form()
             except Exception:  # noqa: BLE001 — defensive on lite-port surface
@@ -1575,11 +2166,111 @@ class PDAppearanceGenerator:
             if acro_form is not None:
                 dr = acro_form.get_default_resources()
                 if dr is not None:
-                    key = COSName.get_pdf_name(font_name)
-                    entry = dr.get_font(key)
-                    if isinstance(entry, PDFont):
-                        return entry
+                    font = self._coerce_to_pd_font(dr.get_font(key))
+                    if font is not None:
+                        return font
+            # 2) Widget /AP /N /Resources /Font — per-widget override.
+            if widget is not None:
+                font = self._lookup_font_in_widget_appearance(widget, key)
+                if font is not None:
+                    return font
+                # 3) Page /Resources /Font — last legal location to look.
+                font = self._lookup_font_in_widget_page(widget, key)
+                if font is not None:
+                    return font
         return self._resolve_font(font_name)
+
+    @staticmethod
+    def _coerce_to_pd_font(entry: object | None) -> PDFont | None:
+        """Coerce a :meth:`PDResources.get_font` return into a :class:`PDFont`.
+
+        ``PDResources.get_font`` returns the typed :class:`PDFont` wrapper
+        for indirect entries (which go through ``PDFontFactory`` + the
+        document resource cache), but yields the raw :class:`COSDictionary`
+        for direct entries (preserving cluster #1's surface). The
+        wave-1375 resolver path needs a uniform :class:`PDFont` either
+        way — so direct dictionaries are wrapped here via
+        :meth:`PDFontFactory.create_font`. Anything else (``None`` /
+        non-dict) returns ``None``.
+        """
+        if isinstance(entry, PDFont):
+            return entry
+        if isinstance(entry, COSDictionary):
+            return PDFontFactory.create_font(entry)
+        return None
+
+    @staticmethod
+    def _lookup_font_in_widget_appearance(
+        widget: PDAnnotationWidget, key: COSName
+    ) -> PDFont | None:
+        """Walk ``widget``'s ``/AP /N /Resources /Font`` for ``key``.
+
+        Returns the typed :class:`PDFont` instance when present, ``None``
+        otherwise. ``/AP /N`` may be a single stream (single-state widgets
+        like text fields) or a dictionary keyed by state name (buttons);
+        for the dictionary form we walk every state's resources until a
+        match is found — Acrobat hoists the font onto the first state it
+        emits, but pypdfbox callers may legitimately register it elsewhere.
+        """
+        from pypdfbox.pdmodel.pd_resources import PDResources
+
+        try:
+            cos = widget.get_cos_object()
+        except AttributeError:
+            return None
+        ap = cos.get_dictionary_object(_AP)
+        if not isinstance(ap, COSDictionary):
+            return None
+        n_entry = ap.get_dictionary_object(_N)
+        candidates: list[COSStream] = []
+        if isinstance(n_entry, COSStream):
+            candidates.append(n_entry)
+        elif isinstance(n_entry, COSDictionary):
+            for sub_key in n_entry.key_set():
+                value = n_entry.get_dictionary_object(sub_key)
+                if isinstance(value, COSStream):
+                    candidates.append(value)
+        for stream in candidates:
+            res_cos = stream.get_dictionary_object(_RESOURCES)
+            if not isinstance(res_cos, COSDictionary):
+                continue
+            resources = PDResources(res_cos)
+            font = PDAppearanceGenerator._coerce_to_pd_font(
+                resources.get_font(key)
+            )
+            if font is not None:
+                return font
+        return None
+
+    @staticmethod
+    def _lookup_font_in_widget_page(
+        widget: PDAnnotationWidget, key: COSName
+    ) -> PDFont | None:
+        """Walk the widget's parent page ``/Resources /Font`` for ``key``.
+
+        Returns the typed :class:`PDFont` instance when present, ``None``
+        otherwise. The widget's ``/P`` (parent page back-pointer) is
+        consulted; widgets without ``/P`` (legal — many authoring tools
+        omit it) short-circuit to ``None``.
+        """
+        from pypdfbox.pdmodel.pd_resources import PDResources
+
+        page = None
+        getter = getattr(widget, "get_page", None)
+        if callable(getter):
+            try:
+                page = getter()
+            except Exception:  # noqa: BLE001 — defensive on lite-port surface
+                page = None
+        if not isinstance(page, COSDictionary):
+            return None
+        res_cos = page.get_dictionary_object(_RESOURCES)
+        if not isinstance(res_cos, COSDictionary):
+            return None
+        resources = PDResources(res_cos)
+        return PDAppearanceGenerator._coerce_to_pd_font(
+            resources.get_font(key)
+        )
 
     @staticmethod
     def _register_font_alias(

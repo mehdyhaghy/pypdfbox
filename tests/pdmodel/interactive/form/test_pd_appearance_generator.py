@@ -1082,7 +1082,12 @@ def test_wrap_lines_empty_value_yields_single_empty_line() -> None:
 
 
 def test_wrap_lines_preserves_empty_paragraphs() -> None:
-    """Two consecutive ``\\n`` characters preserve the empty paragraph."""
+    """Two consecutive ``\\n`` characters preserve the empty paragraph.
+
+    Wave 1375: the wrap engine now delegates to :class:`PlainText`, which
+    mirrors upstream's ``PlainText`` constructor by emitting ``" "`` for
+    an empty paragraph (so Acrobat-faithful blank lines render).
+    """
     from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
     from pypdfbox.pdmodel.font.standard14_fonts import Standard14Fonts
     from pypdfbox.pdmodel.interactive.form.pd_appearance_generator import (
@@ -1091,12 +1096,17 @@ def test_wrap_lines_preserves_empty_paragraphs() -> None:
 
     font = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
     out = Gen()._wrap_lines("a\n\nb", font, 12.0, 1000.0)
-    # Three lines: "a", "", "b" — empty paragraph is preserved.
-    assert out == ["a", "", "b"]
+    # Three lines: "a", " ", "b" — empty paragraph is preserved as a
+    # blank line (single space, per upstream PlainText.java line 67).
+    assert out == ["a", " ", "b"]
 
 
-def test_wrap_lines_wide_word_emits_alone() -> None:
-    """A single word wider than the rect is still emitted (no mid-word break)."""
+def test_wrap_lines_wide_word_force_splits() -> None:
+    """A single word wider than the rect is force-split per the
+    PDFBOX-5049 / PDFBOX-6082 fallback (wave 1375). At least one
+    character is placed per line so the wrap engine always makes
+    forward progress.
+    """
     from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
     from pypdfbox.pdmodel.font.standard14_fonts import Standard14Fonts
     from pypdfbox.pdmodel.interactive.form.pd_appearance_generator import (
@@ -1104,10 +1114,15 @@ def test_wrap_lines_wide_word_emits_alone() -> None:
     )
 
     font = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
-    # interior_w = 1.0 -> every word is too wide.
+    # interior_w = 1.0 -> every word is too wide -> each char ends up on
+    # its own line (per PDFBOX-6082 ``at least 1 char per line``).
     out = Gen()._wrap_lines("alpha beta", font, 12.0, 1.0)
-    # Each word ends up on its own line, even though both overflow.
-    assert out == ["alpha", "beta"]
+    # Joining the lines back yields the original characters in order.
+    assert "".join(out) == "alpha beta"
+    # All lines have positive length (no empty lines).
+    assert all(len(line) >= 1 for line in out)
+    # No line wider than ``alpha`` (each character split out).
+    assert all(len(line) <= len("alpha") for line in out)
 
 
 # ---------- _NEWLINE_PATTERN (Wave 214) ----------

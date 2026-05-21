@@ -119,9 +119,11 @@ def test_resolve_language_from_scripts_swallows_type_error() -> None:
 
 
 def test_resolve_language_from_scripts_returns_empty_for_unrelated_scripts() -> None:
-    """Line 105 — a font carrying only scripts unknown to any language
-    (e.g. ``"taml"``) falls through to ``""``."""
-    fake = SimpleNamespace(get_script_list=lambda: {"taml": object(), "thai": object()})
+    """A font carrying only scripts unknown to any language (e.g.
+    ``"thai"`` / ``"hebr"``) falls through to ``""``. Wave 1375 added
+    Tamil to the language map, so ``"taml"`` now resolves; pick tags
+    no language matches to exercise the empty-result branch."""
+    fake = SimpleNamespace(get_script_list=lambda: {"thai": object(), "hebr": object()})
     assert _resolve_language_from_scripts(fake) == ""  # type: ignore[arg-type]
 
 

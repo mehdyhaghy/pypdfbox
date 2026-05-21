@@ -7,11 +7,14 @@ from pypdfbox.fontbox.ttf.gsub import (
     DefaultGsubWorker,
     GsubData,
     GsubWorkerFactory,
+    GsubWorkerForAALT,
     GsubWorkerForBengali,
     GsubWorkerForDevanagari,
     GsubWorkerForDflt,
     GsubWorkerForGujarati,
     GsubWorkerForLatin,
+    GsubWorkerForSMCP,
+    GsubWorkerForTamil,
 )
 from pypdfbox.fontbox.ttf.model.language import Language
 
@@ -144,3 +147,37 @@ def test_empty_script_list_and_unknown_hint_returns_default() -> None:
     gd = GsubData(language="HEBREW")
     worker = _factory().get_gsub_worker(_NullCmap(), gd)
     assert isinstance(worker, DefaultGsubWorker)
+
+
+# ---------- Wave 1375: AALT / SMCP / Tamil dispatch ----------
+
+
+def test_returns_tamil_worker_for_tamil_language() -> None:
+    gd = GsubData(language="TAMIL")
+    worker = _factory().get_gsub_worker(_NullCmap(), gd)
+    assert isinstance(worker, GsubWorkerForTamil)
+
+
+def test_resolve_tamil_from_script_list_prefers_modern_tag() -> None:
+    """``tml2`` (modern) beats ``taml`` when both are present."""
+    gd = _gsub_data_with_scripts("UNSPECIFIED", "taml", "tml2")
+    worker = _factory().get_gsub_worker(_NullCmap(), gd)
+    assert isinstance(worker, GsubWorkerForTamil)
+
+
+def test_resolve_tamil_from_script_list_legacy_tag() -> None:
+    gd = _gsub_data_with_scripts("UNSPECIFIED", "taml")
+    worker = _factory().get_gsub_worker(_NullCmap(), gd)
+    assert isinstance(worker, GsubWorkerForTamil)
+
+
+def test_returns_aalt_worker_for_aalt_language_hint() -> None:
+    gd = GsubData(language="AALT")
+    worker = _factory().get_gsub_worker(_NullCmap(), gd)
+    assert isinstance(worker, GsubWorkerForAALT)
+
+
+def test_returns_smcp_worker_for_smcp_language_hint() -> None:
+    gd = GsubData(language="SMCP")
+    worker = _factory().get_gsub_worker(_NullCmap(), gd)
+    assert isinstance(worker, GsubWorkerForSMCP)

@@ -574,13 +574,94 @@ class GlyphSubstitutionTable(TTFTable):
             return sgid
         return original
 
-    # ``GsubData`` is upstream's bespoke value class; we don't port it.
-    # Returning ``None`` keeps the method available for callers that
-    # already null-check the result (which upstream documents may
-    # happen) without forcing them through an ``AttributeError``.
-    def get_gsub_data(self, script_tag: str | None = None) -> None:  # noqa: ARG002
-        """Always returns ``None`` — see deviation note in the class docstring."""
-        return None
+    def get_gsub_data(
+        self, script_tag: str | None = None
+    ) -> Any | None:
+        """Project a :class:`GsubData` view for ``script_tag``.
+
+        Mirrors upstream's ``getGsubData()`` / ``getGsubData(String)``
+        (GlyphSubstitutionTable.java). Behaviour:
+
+        * ``script_tag is None`` — selects the most-preferred supported
+          script (via :meth:`select_script_tag` against the language
+          preference order matching upstream's ``Language`` enum) and
+          projects against it. Returns :attr:`GsubData.NO_DATA_FOUND`
+          when no GSUB script list is available.
+        * Otherwise — projects against ``script_tag`` exactly. Returns
+          ``None`` when the tag is not in
+          :meth:`get_supported_script_tags`.
+
+        The projection is built lazily from the underlying fontTools
+        structures; the ``feature_list`` field of the returned
+        :class:`GsubData` carries ``{feature_tag: {(): ()}}`` placeholder
+        substitution maps so :meth:`GsubData.is_feature_supported` /
+        :meth:`GsubData.get_supported_features` light up. The substitution
+        maps themselves are still deferred to the
+        :meth:`get_substitution` / :meth:`apply_feature` accessors;
+        building a complete glyph-run substitution dictionary requires
+        running the same shaping pipeline upstream's lookup graph
+        encodes, which is left to the per-script :class:`GsubWorker`
+        implementations.
+        """
+        from .gsub.gsub_data import GsubData  # noqa: PLC0415
+        from .model.language import Language  # noqa: PLC0415
+
+        if self._gsub_table is None:
+            return GsubData.NO_DATA_FOUND if script_tag is None else None
+
+        if script_tag is None:
+            # Pick the preferred script the same way upstream does:
+            # walk the ``Language`` preference list and use the first
+            # supported script tag.
+            preferred = self._pick_default_script_tag()
+            if preferred is None:
+                return GsubData.NO_DATA_FOUND
+            return self._project_gsub_data(preferred, Language.UNSPECIFIED)
+
+        if script_tag not in self._script_tags:
+            return None
+        return self._project_gsub_data(script_tag, Language.UNSPECIFIED)
+
+    def _pick_default_script_tag(self) -> str | None:
+        """Pick the default script tag using the upstream preference order."""
+        # Late import to keep cyclic deps tidy.
+        from .model.language import Language  # noqa: PLC0415
+
+        for language in Language:
+            for tag in language.get_script_names():
+                if tag in self._script_tags:
+                    return tag
+        # Fall back to whatever the first script in the table is.
+        return self._script_tags[0] if self._script_tags else None
+
+    def _project_gsub_data(
+        self, script_tag: str, language: Any
+    ) -> Any:
+        """Build a :class:`GsubData` view for ``script_tag``.
+
+        Walks the ScriptList → LangSys → FeatureRecord chain and records
+        every supported feature tag with a placeholder substitution map.
+        """
+        from .gsub.gsub_data import GsubData  # noqa: PLC0415
+
+        feature_list: dict[str, dict[tuple[int, ...], tuple[int, ...]]] = {}
+        if self._gsub_table is not None:
+            lang_sys_tables = self.get_lang_sys_tables(script_tag)
+            if lang_sys_tables:
+                feature_records = self.get_feature_records(lang_sys_tables)
+                for fr in feature_records:
+                    tag = str(getattr(fr, "FeatureTag", "")).strip()
+                    if tag:
+                        # Placeholder empty substitution map — callers
+                        # that need the real run→substitute pairs should
+                        # walk the lookups via :meth:`apply_feature`.
+                        feature_list.setdefault(tag, {})
+
+        return GsubData(
+            language=language.name if hasattr(language, "name") else str(language),
+            active_script_name=script_tag,
+            feature_list=feature_list,
+        )
 
     # ------------------------------------------------------------------
     # Helpers

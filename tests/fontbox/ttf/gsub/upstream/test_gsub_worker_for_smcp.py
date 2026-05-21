@@ -1,18 +1,12 @@
 """Port of upstream ``GsubWorkerForSmcpTest`` from
 ``fontbox/src/test/java/org/apache/fontbox/ttf/gsub/GsubWorkerForSmcpTest.java``.
 
-The upstream test is platform-gated to ``c:/windows/fonts/calibri.ttf``
-via ``Assumptions.assumeTrue(file.exists(), ...)`` — it only runs on a
-Windows machine that ships Calibri. We mirror the skip with
-:func:`pytest.skip`, since:
-
-1. pypdfbox does not port the upstream ``GsubWorkerForSmcp`` worker
-   (the "smcp" Type 2 multiple-substitution shaper, "ﬀ → F F" small
-   capitals). The factory falls back to :class:`DefaultGsubWorker` for
-   fonts that lack an explicit Latin / Bengali / Devanagari / Gujarati
-   / DFLT worker match.
-2. ``calibri.ttf`` is proprietary Microsoft Office content and cannot
-   be redistributed under pypdfbox's Apache-2.0 licence.
+Wave 1375 ported :class:`GsubWorkerForSMCP`. The upstream end-to-end
+test is platform-gated to ``c:/windows/fonts/calibri.ttf`` via
+``Assumptions.assumeTrue(file.exists(), ...)`` — Calibri is proprietary
+Microsoft Office content and cannot be redistributed; synthetic
+coverage of the same code paths lives in
+``tests/fontbox/ttf/gsub/test_gsub_worker_for_smcp.py``.
 """
 
 from __future__ import annotations
@@ -21,8 +15,11 @@ import pytest
 
 
 @pytest.mark.skip(
-    reason="GsubWorkerForSmcp is not ported (small-caps multiple "
-    "substitution out of scope) and Calibri is not redistributable."
+    reason="Calibri is not redistributable (proprietary Microsoft "
+    "Office content; upstream gates this case on a Windows-only "
+    "system path); GsubWorkerForSMCP itself is now ported and "
+    "covered synthetically in "
+    "tests/fontbox/ttf/gsub/test_gsub_worker_for_smcp.py"
 )
 def test_calibri() -> None:
     """Ported from ``GsubWorkerForSmcpTest#testCalibri()``.

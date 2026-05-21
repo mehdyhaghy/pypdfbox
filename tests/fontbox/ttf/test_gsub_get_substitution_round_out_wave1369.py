@@ -228,13 +228,19 @@ def test_get_substitution_empty_script_tags_falls_back_to_first_script() -> None
 # ---------- get_gsub_data is None per project deviation --------------------
 
 
-def test_get_gsub_data_returns_none() -> None:
-    """We deliberately don't port the upstream ``GsubData`` value class
-    — :meth:`get_gsub_data` returns ``None`` regardless of the script
-    tag passed in."""
+def test_get_gsub_data_projects_active_script() -> None:
+    """Wave 1375: :meth:`get_gsub_data` projects a real
+    :class:`GsubData` view; the default call picks the first preferred
+    supported script (``latn`` here), the explicit-tag call returns
+    that script and ``None`` for an unknown one."""
     table = _gsub_with_single_substitution(("a", "a.alt"), {"a": "a.alt"})
-    assert table.get_gsub_data() is None
-    assert table.get_gsub_data("latn") is None
+    default_data = table.get_gsub_data()
+    assert default_data is not None
+    assert default_data.get_active_script_name() == "latn"
+    explicit_data = table.get_gsub_data("latn")
+    assert explicit_data is not None
+    assert explicit_data.get_active_script_name() == "latn"
+    assert table.get_gsub_data("non_existent_tag") is None
 
 
 # ---------- get_supported_script_tags ---------------------------------------

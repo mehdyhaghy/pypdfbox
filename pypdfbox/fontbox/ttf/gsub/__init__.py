@@ -8,11 +8,14 @@ from .glyph_substitution_data_extractor import GlyphSubstitutionDataExtractor
 from .gsub_data import GsubData
 from .gsub_worker import GsubWorker
 from .gsub_worker_factory import GsubWorkerFactory
+from .gsub_worker_for_aalt import GsubWorkerForAALT
 from .gsub_worker_for_bengali import GsubWorkerForBengali
 from .gsub_worker_for_devanagari import GsubWorkerForDevanagari
 from .gsub_worker_for_dflt import GsubWorkerForDflt
 from .gsub_worker_for_gujarati import GsubWorkerForGujarati
 from .gsub_worker_for_latin import GsubWorkerForLatin
+from .gsub_worker_for_smcp import GsubWorkerForSMCP
+from .gsub_worker_for_tamil import GsubWorkerForTamil
 from .lang_sys_table import LangSysTable
 from .lookup_subtable import (
     AlternateSetTable,
@@ -44,11 +47,14 @@ __all__ = [
     "GsubData",
     "GsubWorker",
     "GsubWorkerFactory",
+    "GsubWorkerForAALT",
     "GsubWorkerForBengali",
     "GsubWorkerForDevanagari",
     "GsubWorkerForDflt",
     "GsubWorkerForGujarati",
     "GsubWorkerForLatin",
+    "GsubWorkerForSMCP",
+    "GsubWorkerForTamil",
     "LangSysTable",
     "LigatureSetTable",
     "LigatureTable",

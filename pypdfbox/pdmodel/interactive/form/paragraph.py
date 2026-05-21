@@ -85,38 +85,92 @@ class Paragraph:
         """Break the paragraph into individual lines fitting ``width``.
 
         Returns an empty list when ``width <= 0`` (mirrors upstream
-        line 164–167). Uses a simple whitespace-based break iterator;
-        the upstream algorithm is more sophisticated (full ICU-style
-        ``BreakIterator``) but the public contract is the same: each
-        line carries one or more :class:`Word` instances with a
-        pre-computed scaled width attribute.
+        ``PlainText.Paragraph.getLines`` lines 160–249). Uses a simple
+        whitespace-based break iterator as a stand-in for the upstream
+        Java ``BreakIterator.getLineInstance()``; the public contract is
+        the same and the force-split fallback (PDFBOX-5049 /
+        PDFBOX-6082) for over-wide single words is preserved verbatim so
+        that values such as a long unbroken digit run wrap to the same
+        line shape Acrobat produces (per the ``testMultilineBreak``
+        oracle, PDFBOX-3835).
         """
         if width <= 0:
             return []
         scale = font_size / _FONT_SCALE
 
+        # Materialise the segment list so we can splice into it when a
+        # single segment needs to be force-split (PDFBOX-5049).
+        # Each segment is a "word + trailing whitespace" or pure
+        # whitespace run, matching upstream's BreakIterator semantics
+        # for plain ASCII text.
+        segments = _BREAK.findall(self._text_content)
         line_width = 0.0
         text_lines: list[Line] = []
         text_line = Line()
 
-        for word_text in _BREAK.findall(self._text_content):
+        i = 0
+        while i < len(segments):
+            word_text = segments[i]
             word_width = font.get_string_width(word_text) * scale
-            line_width += word_width
 
-            # if trailing whitespace pushed us over, subtract it back
-            if line_width >= width and word_text and word_text[-1].isspace():
+            line_width = line_width + word_width
+
+            # If the trailing whitespace pushed us over, subtract it
+            # back (upstream lines 188–193).
+            if (
+                line_width >= width
+                and word_text
+                and word_text[-1].isspace()
+            ):
                 ws_width = font.get_string_width(word_text[-1]) * scale
-                line_width -= ws_width
+                line_width = line_width - ws_width
 
+            # Close out the current line if appending this word would
+            # overflow and we already have at least one word on it
+            # (upstream lines 195–201).
             if line_width >= width and text_line.get_words():
                 text_line.set_width(text_line.calculate_width(font, font_size))
                 text_lines.append(text_line)
                 text_line = Line()
                 line_width = font.get_string_width(word_text) * scale
 
+            # Force-split a single oversized word so that at least one
+            # character is placed on this line (PDFBOX-5049 /
+            # PDFBOX-6082, upstream lines 203–228).
+            word_needs_split = False
+            split_offset = len(word_text)
+            if (
+                len(word_text) > 1
+                and word_width > width
+                and not text_line.get_words()
+            ):
+                word_needs_split = True
+                prefix_width = Paragraph.build_prefix_widths(
+                    word_text, font, scale
+                )
+                split_offset = Paragraph.find_max_fitting_chars(
+                    prefix_width, width
+                )
+                word_text = word_text[:split_offset]
+                word_width = prefix_width[split_offset]
+                line_width = word_width
+
             word_instance = Word(word_text)
             word_instance.set_attributes({"WIDTH": word_width})
             text_line.add_word(word_instance)
+
+            if word_needs_split:
+                # Replace the current segment with its un-emitted tail
+                # and re-enter the loop on the same index — upstream's
+                # iterator advance is suppressed in this branch
+                # (upstream lines 236–244).
+                remainder = segments[i][split_offset:]
+                if remainder:
+                    segments[i] = remainder
+                else:
+                    i += 1
+            else:
+                i += 1
 
         text_line.set_width(text_line.calculate_width(font, font_size))
         text_lines.append(text_line)
