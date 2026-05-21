@@ -136,28 +136,3 @@ def test_render_image_destination_string_round_trip() -> None:
         doc.close()
 
 
-# ---------------------------------------------------------------------------
-# Java-style aliases honour the kwarg too
-# ---------------------------------------------------------------------------
-
-
-def test_render_image_java_alias_accepts_destination() -> None:
-    doc = _make_doc()
-    try:
-        renderer = _SpyRenderer(doc)
-        renderer.renderImage(0, scale=1.0, destination=RenderDestination.PRINT)
-        assert renderer.seen == [RenderDestination.PRINT]
-    finally:
-        doc.close()
-
-
-def test_render_image_with_dpi_java_alias_accepts_destination() -> None:
-    doc = _make_doc()
-    try:
-        renderer = _SpyRenderer(doc)
-        renderer.renderImageWithDPI(
-            0, dpi=72.0, destination=RenderDestination.EXPORT
-        )
-        assert renderer.seen == [RenderDestination.EXPORT]
-    finally:
-        doc.close()

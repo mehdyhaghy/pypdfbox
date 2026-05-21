@@ -39,13 +39,13 @@ def test_argb_render_makes_background_transparent_but_keeps_paint_opaque() -> No
 
 
 @pytest.mark.parametrize("bad_dpi", [0.0, -1.0, math.inf, math.nan])
-def test_java_dpi_alias_validates_dpi_before_page_lookup(bad_dpi: float) -> None:
+def test_render_image_with_dpi_validates_dpi_before_page_lookup(bad_dpi: float) -> None:
     doc, _page = _make_doc()
     try:
         renderer = PDFRenderer(doc)
 
         with pytest.raises(ValueError, match="dpi must be a positive finite number"):
-            renderer.renderImageWithDPI(99, bad_dpi)
+            renderer.render_image_with_dpi(99, bad_dpi)
     finally:
         doc.close()
 

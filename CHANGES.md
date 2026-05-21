@@ -4189,6 +4189,167 @@ No latent source bugs flagged.
   and rely solely on `read_long`'s clamp — Java's signed-32 → signed-64
   pattern lives in exactly one place upstream; we mirror it in two.
 
+## Wave 1365 — parity round-out (5 parallel agents)
+
+### Wave 1365 — strip 5 camelCase aliases (agent A)
+
+Removed the last five remaining `# noqa: N802` Java-name aliases in the rendering
+package, in line with the "snake_case only" project rule (CLAUDE.md "Method names:
+camelCase → snake_case only") and the user memory `feedback_no_camelcase_aliases.md`.
+Each alias was a thin shim next to its snake_case canonical, so the strip is a pure
+naming clean-up; semantics unchanged.
+
+- `pypdfbox/rendering/image_type.py`: dropped `ImageType.toBufferedImageType` (use
+  `to_buffered_image_type`).
+- `pypdfbox/rendering/pdf_renderer.py`: dropped `PDFRenderer.renderImage`,
+  `renderImageWithDPI`, `setDefaultDestination`, `getDefaultDestination` (use the
+  snake_case equivalents `render_image`, `render_image_with_dpi`,
+  `set_default_destination`, `get_default_destination`).
+
+Test impact: deleted `tests/rendering/test_pdf_renderer_wave298.py` (its three tests
+existed solely to assert the camelCase aliases delegated to snake_case). Dropped two
+alias-only tests from `tests/rendering/test_pdf_renderer_wave1298.py`. Renamed one
+caller in `tests/rendering/test_pdf_renderer_wave611.py` to snake_case. Inlined the
+`_make_doc` helper that `tests/rendering/test_pdf_renderer_wave1085.py` had imported
+from the deleted wave298 module. The fontTools `BasePen` subclass methods
+(`moveTo`/`lineTo`/`curveTo`/`qCurveTo`/`closePath`/`endPath`/`addComponent`) stay
+camelCase — that's an external library's interface contract.
+
+### Wave 1365 — tools/cli + benchmark parity round-out (agent E)
+
+Closed the dispatcher-side gap for the `pypdfbox.tools.pdf_box.PDFBox`
+class (the upstream-style picocli mirror) and ported the upstream
+`PDFBoxNonHeadlessTest`.
+
+- 48 hand-written tests at `tests/tools/test_pdf_box_dispatcher_wave1365.py` pin
+  the full dispatcher contract: every upstream subcommand name from
+  `PDFBox.java` lines 48-71 (`decrypt`/`encrypt`/`decode`/`export:*`/`import:*`/
+  `overlay`/`print`/`render`/`merge`/`split`/`fromimage`/`fromtext`/`version`) is
+  registered, every registered class exposes a callable `.main`, `PDFBox.run()`
+  raises `SystemExit` (mirror of the upstream `ParameterException` "Error:
+  Subcommand required"), `PDFBox.main` returns 0 when the subcommand returns
+  `None` (`int(cls.main(rest) or 0)` contract), `PDFBox.main(None)` falls back
+  to `sys.argv[1:]`, remaining argv is sliced off and forwarded to the
+  subcommand, and `--help` exits 0 on every registered subcommand. Test count:
+  48.
+- 1 upstream port at `tests/tools/upstream/test_pdfbox_nonheadless.py` —
+  `PDFBoxNonHeadlessTest.java` mirrored to argparse: confirms `pdfdebugger`
+  (pypdfbox's analogue of the upstream `debug` subcommand) is wired in the
+  `cli.run_cli` dispatcher. The `isNonHeadlessTest` AWT-headless probe and the
+  PicoCLI exact-string assertion are skipped with one-line notes — neither maps
+  to argparse / Python.
+- No source changes — the dispatcher had complete behaviour, just shallow
+  test coverage. Wave 1365 brings the dispatch surface from 3 dispatch tests
+  (`test_misc_class_ports.py`) up to 49 dispatch tests.
+
+### Wave 1365 — debugger find/jump + UI-helper parity tests (agent C)
+
+Closed the upstream-parity test gap for the debugger UI helpers the brief
+called out (find/jump/treestatus/recent files/text dialog/preferences).
+Upstream PDFBox debugger ships no JUnit tests at all, so this round adds
+hand-written parity tests that exercise upstream-mirrored behaviors not
+already covered by the wave-1339/1341/1345/1349/1354/1359 suites. No source
+changes — debugger module was already at 100% line coverage; these tests
+pin remaining branch-level edges and behavior invariants.
+
+- 7 tests at `tests/debugger/ui/textsearcher/test_searcher_parity_wave1365.py`
+  for `Searcher.java`: `_previous_action`/`_next_action` no-op on zero-match
+  state, mid-range `update_navigation_buttons` (both arrows enabled),
+  `component_shown` without an attached panel, `update_high_lighter`
+  boundary cases (out-of-range present index, `-1` previous index), and
+  the painter-swap form of `change_highlighter` updating
+  `self._highlights[index]` in place.
+- 8 tests at
+  `tests/debugger/ui/textsearcher/test_search_engine_parity_wave1365.py`
+  for `SearchEngine.java`: non-overlapping hit advancement, `aa`-in-`aaaa`
+  yields exactly two hits, exactly one `remove_all_highlights` call per
+  `search`, `None` short-circuits *before* the clear (parity with the
+  upstream early-return order), painter propagation onto every
+  `Highlight`, key-length-equals-span invariant, `search_regex(None)`
+  early-return, and the empty-document clears-but-emits-nothing edge.
+- 7 tests at `tests/debugger/treestatus/test_tree_status_parity_wave1365.py`
+  for `TreeStatus.java`: `generate_path_string` → `generate_path` round-trip
+  on a Catalog/Pages array tree, root-only path → empty string,
+  `parse_path_string` bracket-stripping and whitespace-only-chunk rejection,
+  `search_node` MapEntry-value unwrapping, integer-leaf returns None
+  fall-through, and array-with-non-numeric index returns None.
+- 7 tests at `tests/debugger/ui/test_recent_files_parity_wave1365.py`
+  for `RecentFiles.java`: ``maximum + 1`` threshold (off-by-one eviction
+  cap), `get_files` survivor-capping, `remove_file` on absent path
+  no-op, `add_file(None)` no-op, `break_string` one-character round-trip,
+  full `close` → re-open rehydration round-trip, and scope-isolation
+  across two writes to the same JSON file.
+- 7 tests at `tests/debugger/ui/test_window_prefs_parity_wave1365.py`
+  for `WindowPrefs.java`: bounds-atomic-overwrite, caller-supplied
+  screen-size default, divider-independent-of-bounds, extended-state
+  default (`NORMAL` = 0), non-numeric-field fall-back via `_coerce_int`,
+  `sort_keys=True` deterministic-write parity, and slug-isolation in a
+  shared file.
+- 7 tests at `tests/debugger/ui/test_text_dialog_parity_wave1365.py`
+  for `TextDialog.java`: `clear` before show resets only the pending
+  buffer, set-text-after-clear repopulates a fresh widget, two `init`
+  calls produce distinct singleton instances, the upstream `"Text"`
+  title, `show` idempotence, long-content (~5 KB) round-trip with no
+  truncation, and `get_content_pane` returns None pre-build.
+
+Test impact: +43 tests on top of the existing 1844, debugger suite now
+at 1887 passing (zero regressions).
+
+### Wave 1365 — examples test coverage (agent D)
+
+Deepened the test coverage of seven `pypdfbox/examples/` modules whose
+existing tests only exercised a single happy path (typically the
+explicit-argv smoke test). Each new test file targets the
+``__init__`` body, the ``usage`` direct-call path, the wrong-arg-count
+branches (`argv == 0` / `2` / `3` / `None`), and the defensive
+``contextlib.suppress`` / ``except ImportError`` / encryption-guard
+branches that the smoke tests skipped. All tests are hand-written
+(no upstream port; no PROVENANCE rows) and rely on in-memory PDDocument
+fixtures and ``capsys`` — no network, no real fonts, no GUI.
+
+- `pypdfbox/examples/util/pdf_merger_example.py` — 8 tests added
+  (`test_pdf_merger_example_wave1365_d.py`); covers
+  `create_pdf_document_info`, `create_pdf_merger_utility`,
+  `create_xmp_metadata` ImportError + AttributeError branches, the
+  ``xmp_metadata is None`` skip-path through ``merge``, the
+  ``contextlib.suppress(AttributeError)`` guards for the destination-info
+  setters, and verifies the returned BytesIO is rewound.
+- `pypdfbox/examples/interactive/form/create_push_button.py` — 8 tests
+  added (`test_create_push_button_wave1365_d.py`); covers the
+  ``DEFAULT_FILENAME`` constant, the no-args / ``None``-argv defaults
+  branch, ``create`` writes a 1-field AcroForm, widget placement, and
+  the append-safety of running it twice.
+- `pypdfbox/examples/interactive/form/create_simple_form_with_embedded_font.py` —
+  8 tests added (`test_create_simple_form_with_embedded_font_wave1365_d.py`);
+  covers the same default-argv branches, the partial-name and
+  default-appearance round-trip, and the single-field AcroForm shape.
+- `pypdfbox/examples/signature/cert/certificate_verification_result.py` —
+  7 tests added (`test_certificate_verification_result_wave1365_d.py`);
+  covers default-init invariants, ``exception`` overriding ``result``
+  when both are supplied, dict/falsy/list payloads, chained-exception
+  preservation, and per-instance state independence.
+- `pypdfbox/examples/signature/cms_processable_input_stream.py` — 9
+  tests added (`test_cms_processable_input_stream_wave1365_d.py`);
+  covers multi-chunk write loops (>8 KiB), close-on-destination-error
+  via the ``try/finally``, empty-payload EOF handling, the empty-string
+  content-type fallback (`content_type or DEFAULT`), and the
+  arbitrary-sink path (write to a non-BytesIO target).
+- `pypdfbox/examples/pdmodel/add_javascript.py` — 7 tests added
+  (`test_add_javascript_wave1365_d.py`); covers the ``__init__`` no-op,
+  the ``usage`` direct-call path, the encrypted-source guard (raises
+  ``OSError`` via monkeypatched ``PDDocument.is_encrypted``), and the
+  three wrong-arg-count permutations (0/1/3 args).
+- `pypdfbox/examples/pdmodel/embedded_files.py` — 9 tests added
+  (`test_embedded_files_wave1365_d.py`); covers the ``__init__`` no-op,
+  ``usage`` direct-call, all wrong-arg-count permutations, and
+  structural assertions on the produced PDF (one page, ``/Names`` tree
+  carries embedded files).
+
+Test impact: +56 hand-written tests across seven new files under
+`tests/examples/`. No source changes — every targeted module already
+had complete behaviour, just shallow test coverage. Full
+``tests/examples/`` run: 1048 passed, 3 warnings, 0 failures.
+
 ## Wave 1364 — parity round-out (5 parallel agents)
 
 ### Wave 1364 — pdmodel/encryption + pdmodel/font + pdmodel/font/encoding parity ports (agent B)

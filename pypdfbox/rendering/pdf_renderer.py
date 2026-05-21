@@ -360,21 +360,6 @@ class PDFRenderer(PDFStreamEngine):
             destination=destination,
         )
 
-    def renderImage(  # noqa: N802 - upstream Java alias
-        self,
-        page_index: int,
-        scale: float = 1.0,
-        image_type: ImageType | None = None,
-        destination: str | RenderDestination | None = None,
-    ) -> Image.Image:
-        """Java-style alias for ``render_image``."""
-        return self.render_image(
-            page_index,
-            scale=scale,
-            image_type=image_type,
-            destination=destination,
-        )
-
     def render_image_with_dpi(
         self,
         page_index: int,
@@ -582,21 +567,6 @@ class PDFRenderer(PDFStreamEngine):
             self._draw = None
             self._image = None
 
-    def renderImageWithDPI(  # noqa: N802 - upstream Java alias
-        self,
-        page_index: int,
-        dpi: float = 72.0,
-        image_type: ImageType | None = None,
-        destination: str | RenderDestination | None = None,
-    ) -> Image.Image:
-        """Java-style alias for ``render_image_with_dpi``."""
-        return self.render_image_with_dpi(
-            page_index,
-            dpi=dpi,
-            image_type=image_type,
-            destination=destination,
-        )
-
     def _get_page_for_render(self, page_index: int) -> PDPage:
         if page_index < 0 or page_index >= self._document.get_number_of_pages():
             raise IndexError(f"page index out of range: {page_index}")
@@ -645,19 +615,9 @@ class PDFRenderer(PDFStreamEngine):
         else:
             self._default_destination = destination
 
-    def setDefaultDestination(  # noqa: N802 - upstream Java alias
-        self, destination: str | RenderDestination
-    ) -> None:
-        """Java-style alias for ``set_default_destination``."""
-        self.set_default_destination(destination)
-
     def get_default_destination(self) -> str:
         """Mirror of upstream ``PDFRenderer.getDefaultDestination()``."""
         return self._default_destination
-
-    def getDefaultDestination(self) -> str:  # noqa: N802 - upstream Java alias
-        """Java-style alias for ``get_default_destination``."""
-        return self.get_default_destination()
 
     def set_image_downscaling_optimization_threshold(
         self, threshold: float
