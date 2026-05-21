@@ -108,11 +108,6 @@ def test_element_property(
         "conformance": "get_conformance_property",
         "rev": "get_rev_property",
     }[property_name]
-    if not hasattr(schema, typed_setter) or not hasattr(schema, typed_getter):
-        pytest.skip(
-            f"{property_name} has no typed *_property accessor — "
-            "upstream API surface not yet ported"
-        )
     getattr(schema, typed_setter)(prop)
     fetched = getattr(schema, typed_getter)()
     assert fetched is not None

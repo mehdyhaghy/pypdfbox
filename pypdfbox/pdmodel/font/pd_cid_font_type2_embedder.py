@@ -33,7 +33,7 @@ from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 from pypdfbox.pdmodel.common import PDStream
 
 from .to_unicode_writer import ToUnicodeWriter
-from .true_type_embedder import TrueTypeEmbedder
+from .true_type_embedder import _CID_NO_SUBSET_TABLES, TrueTypeEmbedder
 
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.pd_document import PDDocument
@@ -68,6 +68,11 @@ class PDCIDFontType2Embedder(TrueTypeEmbedder):
     ) -> None:
         # Mirror upstream constructor (Java line 76-101).
         super().__init__(document, dict_, ttf, embed_subset)
+        # CID embeddings ship with hinting bytecode tables preserved —
+        # CJK fonts depend on the PostScript hinting bytecode (cvt /
+        # fpgm / prep) and the cmap subtables for round-trip metric
+        # parity. Override the conservative base default.
+        self.set_no_subset_tables(_CID_NO_SUBSET_TABLES)
         self._document_ref: PDDocument = document
         self._dict: COSDictionary = dict_
         self._parent: PDType0Font = parent

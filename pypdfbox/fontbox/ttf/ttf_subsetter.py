@@ -90,6 +90,12 @@ class TTFSubsetter:
         # the lookup matches whatever cmap fontTools would have used.
         self._invisible_unicodes: set[int] = set()
 
+        # Tables whose bytes are preserved verbatim through the
+        # fontTools subset pass — mirrors upstream
+        # ``TTFSubsetter.setNoSubsetTables(Set<String>)`` API shape.
+        # Lazily applied via ``Options.no_subset_tables`` in ``to_bytes``.
+        self._no_subset_tables: tuple[str, ...] = ()
+
         self._prefix: str | None = None
 
     # ---------- registration API ------------------------------------------
@@ -167,6 +173,27 @@ class TTFSubsetter:
 
     # ---------- options ---------------------------------------------------
 
+    def set_no_subset_tables(self, table_names: Iterable[str]) -> None:
+        """Set the SFNT tables to preserve verbatim through subsetting.
+
+        Mirrors upstream ``TTFSubsetter.setNoSubsetTables(Set<String>)``
+        in semantics: tables in ``table_names`` are passed straight
+        through to fontTools' ``Options.no_subset_tables``, so their
+        bytes survive the subset pass unchanged. Useful for retaining
+        descriptor metadata (``head``/``hhea``/``name``/``OS/2``/``post``)
+        and PostScript hinting (``cvt ``/``fpgm``/``prep``) for CJK
+        embeddings where dropping hint bytecode would visibly degrade
+        rasterisation.
+
+        Passing an empty iterable clears the policy and lets fontTools
+        subset every table (the pre-wave-1380 default).
+        """
+        self._no_subset_tables = tuple(table_names)
+
+    def get_no_subset_tables(self) -> tuple[str, ...]:
+        """Return the active no-subset table policy."""
+        return self._no_subset_tables
+
     def set_prefix(self, prefix: str) -> None:
         """Set the six-letter subset tag prepended to the PostScript name.
 
@@ -230,14 +257,29 @@ class TTFSubsetter:
         options.layout_features = []
         options.drop_tables += ["DSIG", "BASE", "JSTF", "GDEF", "GSUB", "GPOS"]
 
+        # Honour the no-subset-tables policy set by callers. Mirrors
+        # upstream ``TTFSubsetter.setNoSubsetTables``. fontTools filters
+        # this list against tables actually present in the source font,
+        # so listing a missing table is harmless. Tables whose bytes
+        # depend on the new glyph index space (``glyf``/``loca``/
+        # ``hmtx``) should NOT be added here — including them would
+        # leave inter-table references stale. Union with fontTools'
+        # built-in default to preserve tables (``loca``, ``avar`` …)
+        # whose subset implementation lives outside the policy list.
+        if self._no_subset_tables:
+            options.no_subset_tables = list(
+                dict.fromkeys(
+                    [*options.no_subset_tables, *self._no_subset_tables]
+                )
+            )
+
         # Upstream's ``tables`` constructor argument is a hint listing
         # which optional tables to retain (e.g. ``cvt ``/``prep``/``fpgm``
         # for hinting). fontTools' default keep set already retains
         # those, so we record the hint on the instance for callers but
-        # don't translate it into ``no_subset_tables`` — that flag
-        # disables subsetting, which would leave ``hmtx``/``glyf`` stale
-        # relative to the new glyph order. The hint is preserved purely
-        # for upstream-API parity.
+        # don't translate it into ``no_subset_tables`` automatically —
+        # callers wanting verbatim retention call
+        # :meth:`set_no_subset_tables` explicitly.
         _ = self._keep_tables
 
         subsetter = ft_subset.Subsetter(options=options)
@@ -649,6 +691,17 @@ class TTFSubsetter:
         options.hinting = True
         options.layout_features = []
         options.drop_tables += ["DSIG", "BASE", "JSTF", "GDEF", "GSUB", "GPOS"]
+        # Same no-subset policy as :meth:`to_bytes` — preserve verbatim
+        # tables when the caller has set them. Union with fontTools'
+        # built-in default so listing only a subset of relevant tags
+        # doesn't accidentally drop tables fontTools normally preserves
+        # (e.g. ``loca``, ``avar``, ``gasp``).
+        if self._no_subset_tables:
+            options.no_subset_tables = list(
+                dict.fromkeys(
+                    [*options.no_subset_tables, *self._no_subset_tables]
+                )
+            )
 
         subsetter = ft_subset.Subsetter(options=options)
         subsetter.populate(

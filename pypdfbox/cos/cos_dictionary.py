@@ -254,17 +254,11 @@ class COSDictionary(COSBase):
         self._items[_as_name(key)] = value
         self._update_state.dereference_child(value)
 
-    def setItem(self, key: COSName | str, value: COSBase | None) -> None:  # noqa: N802
-        self.set_item(key, value)
-
     def remove_item(self, key: COSName | str) -> COSBase | None:
         item = self._items.pop(_as_name(key), None)
         if item is not None:
             self._update_state.update()
         return item
-
-    def removeItem(self, key: COSName | str) -> COSBase | None:  # noqa: N802
-        return self.remove_item(key)
 
     def get_item(
         self, key: COSName | str, default: COSBase | COSName | str | None = None
@@ -281,11 +275,6 @@ class COSDictionary(COSBase):
         if isinstance(default, (COSName, str)):
             return self._items.get(_as_name(default))
         return default
-
-    def getItem(  # noqa: N802
-        self, key: COSName | str, default: COSBase | COSName | str | None = None
-    ) -> COSBase | None:
-        return self.get_item(key, default)
 
     def _resolve_item(self, key: COSName | str) -> COSBase | None:
         item = self._items.get(_as_name(key))
@@ -313,16 +302,8 @@ class COSDictionary(COSBase):
             return self._resolve_item(default)
         return default
 
-    def getDictionaryObject(  # noqa: N802
-        self, key: COSName | str, default: COSBase | COSName | str | None = None
-    ) -> COSBase | None:
-        return self.get_dictionary_object(key, default)
-
     def contains_key(self, key: COSName | str) -> bool:
         return _as_name(key) in self._items
-
-    def containsKey(self, key: COSName | str) -> bool:  # noqa: N802
-        return self.contains_key(key)
 
     def contains_value(self, value: object) -> bool:
         """Return true if any entry stores ``value``.
@@ -331,9 +312,6 @@ class COSDictionary(COSBase):
         value equality, just like Java's ``Map.containsValue``.
         """
         return value in self._items.values()
-
-    def containsValue(self, value: object) -> bool:  # noqa: N802 - upstream Java name
-        return self.contains_value(value)
 
     def get_key_for_value(self, value: object) -> COSName | None:
         """Return the first key whose value equals ``value``, if any.
@@ -346,24 +324,15 @@ class COSDictionary(COSBase):
                 return key
         return None
 
-    def getKeyForValue(self, value: object) -> COSName | None:  # noqa: N802
-        return self.get_key_for_value(value)
-
     def clear_item(self, key: COSName | str) -> None:
         """Remove ``key`` if present."""
         self.remove_item(key)
-
-    def clearItem(self, key: COSName | str) -> None:  # noqa: N802
-        self.clear_item(key)
 
     def size(self) -> int:
         return len(self._items)
 
     def is_empty(self) -> bool:
         return not self._items
-
-    def isEmpty(self) -> bool:  # noqa: N802 - upstream Java name
-        return self.is_empty()
 
     def clear(self) -> None:
         if self._items:
@@ -373,17 +342,11 @@ class COSDictionary(COSBase):
     def key_set(self) -> KeysView[COSName]:
         return self._items.keys()
 
-    def keySet(self) -> KeysView[COSName]:  # noqa: N802 - upstream Java name
-        return self.key_set()
-
     def values(self) -> ValuesView[COSBase]:
         return self._items.values()
 
     def entry_set(self) -> ItemsView[COSName, COSBase]:
         return self._items.items()
-
-    def entrySet(self) -> ItemsView[COSName, COSBase]:  # noqa: N802 - upstream Java name
-        return self.entry_set()
 
     def add_all(self, other: COSDictionary) -> None:
         """Merge ``other`` into self, overwriting keys present in both."""
@@ -391,14 +354,8 @@ class COSDictionary(COSBase):
             self._items.update(other._items)
             self._update_state.update(children=other._items.values())
 
-    def addAll(self, other: COSDictionary) -> None:  # noqa: N802 - upstream Java name
-        self.add_all(other)
-
     def get_update_state(self) -> COSUpdateState:
         return self._update_state
-
-    def getUpdateState(self) -> COSUpdateState:  # noqa: N802 - upstream Java name
-        return self.get_update_state()
 
     def is_needs_to_be_updated(self) -> bool:
         return self._update_state.is_updated()
@@ -414,42 +371,24 @@ class COSDictionary(COSBase):
         else:
             self.set_item(key, COSName.get_pdf_name(value))
 
-    def setName(self, key: COSName | str, value: str | None) -> None:  # noqa: N802
-        self.set_name(key, value)
-
     def set_string(self, key: COSName | str, value: str | bytes | None) -> None:
         if value is None:
             self.remove_item(key)
         else:
             self.set_item(key, COSString(value))
 
-    def setString(self, key: COSName | str, value: str | bytes | None) -> None:  # noqa: N802
-        self.set_string(key, value)
-
     def set_int(self, key: COSName | str, value: int) -> None:
         self.set_item(key, COSInteger.get(value))
-
-    def setInt(self, key: COSName | str, value: int) -> None:  # noqa: N802 - upstream Java name
-        self.set_int(key, value)
 
     def set_long(self, key: COSName | str, value: int) -> None:
         """Store an integer value under ``key``. Mirrors PDFBox ``setLong``."""
         self.set_item(key, COSInteger.get(value))
 
-    def setLong(self, key: COSName | str, value: int) -> None:  # noqa: N802 - upstream Java name
-        self.set_long(key, value)
-
     def set_float(self, key: COSName | str, value: float) -> None:
         self.set_item(key, COSFloat(value))
 
-    def setFloat(self, key: COSName | str, value: float) -> None:  # noqa: N802
-        self.set_float(key, value)
-
     def set_boolean(self, key: COSName | str, value: bool) -> None:
         self.set_item(key, COSBoolean.get(value))
-
-    def setBoolean(self, key: COSName | str, value: bool) -> None:  # noqa: N802
-        self.set_boolean(key, value)
 
     def set_date(
         self,
@@ -458,13 +397,6 @@ class COSDictionary(COSBase):
     ) -> None:
         self.set_string(key, _format_pdf_date(value))
 
-    def setDate(  # noqa: N802
-        self,
-        key: COSName | str,
-        value: _dt.date | _dt.datetime | str | None,
-    ) -> None:
-        self.set_date(key, value)
-
     def set_embedded_date(
         self,
         embedded: COSName | str,
@@ -472,14 +404,6 @@ class COSDictionary(COSBase):
         value: _dt.date | _dt.datetime | str | None,
     ) -> None:
         self.set_embedded_string(embedded, key, _format_pdf_date(value))
-
-    def setEmbeddedDate(  # noqa: N802
-        self,
-        embedded: COSName | str,
-        key: COSName | str,
-        value: _dt.date | _dt.datetime | str | None,
-    ) -> None:
-        self.set_embedded_date(embedded, key, value)
 
     def set_embedded_string(
         self,
@@ -494,28 +418,12 @@ class COSDictionary(COSBase):
         if dictionary is not None:
             dictionary.set_string(key, value)
 
-    def setEmbeddedString(  # noqa: N802
-        self,
-        embedded: COSName | str,
-        key: COSName | str,
-        value: str | bytes | None,
-    ) -> None:
-        self.set_embedded_string(embedded, key, value)
-
     def set_embedded_int(self, embedded: COSName | str, key: COSName | str, value: int) -> None:
         dictionary = self.get_cos_dictionary(embedded)
         if dictionary is None:
             dictionary = COSDictionary()
             self.set_item(embedded, dictionary)
         dictionary.set_int(key, value)
-
-    def setEmbeddedInt(  # noqa: N802
-        self,
-        embedded: COSName | str,
-        key: COSName | str,
-        value: int,
-    ) -> None:
-        self.set_embedded_int(embedded, key, value)
 
     def set_flag(self, key: COSName | str, bit_flag: int, value: bool) -> None:
         flags = self.get_int(key, 0)
@@ -525,14 +433,8 @@ class COSDictionary(COSBase):
             flags &= ~bit_flag
         self.set_int(key, flags)
 
-    def setFlag(self, key: COSName | str, bit_flag: int, value: bool) -> None:  # noqa: N802
-        self.set_flag(key, bit_flag, value)
-
     def get_flag(self, key: COSName | str, bit_flag: int) -> bool:
         return (self.get_int(key, 0) & bit_flag) == bit_flag
-
-    def getFlag(self, key: COSName | str, bit_flag: int) -> bool:  # noqa: N802
-        return self.get_flag(key, bit_flag)
 
     # ---------- typed convenience getters ----------
 
@@ -544,30 +446,18 @@ class COSDictionary(COSBase):
             return v.name
         return default
 
-    def getString(self, key: COSName | str, default: str | None = None) -> str | None:  # noqa: N802
-        return self.get_string(key, default)
-
     def has_string(self, key: COSName | str) -> bool:
         """Return true when ``key`` resolves to a string-like COS value."""
         return isinstance(self.get_dictionary_object(key), (COSString, COSName))
 
-    def hasString(self, key: COSName | str) -> bool:  # noqa: N802
-        return self.has_string(key)
-
     def clear_string(self, key: COSName | str) -> None:
         self.clear_item(key)
-
-    def clearString(self, key: COSName | str) -> None:  # noqa: N802
-        self.clear_string(key)
 
     def get_name(self, key: COSName | str, default: str | None = None) -> str | None:
         v = self.get_dictionary_object(key)
         if isinstance(v, COSName):
             return v.name
         return default
-
-    def getName(self, key: COSName | str, default: str | None = None) -> str | None:  # noqa: N802
-        return self.get_name(key, default)
 
     def get_name_as_string(
         self, key: COSName | str, default: str | None = None
@@ -580,22 +470,11 @@ class COSDictionary(COSBase):
         """
         return self.get_string(key, default)
 
-    def getNameAsString(  # noqa: N802
-        self, key: COSName | str, default: str | None = None
-    ) -> str | None:
-        return self.get_name_as_string(key, default)
-
     def has_name(self, key: COSName | str) -> bool:
         return isinstance(self.get_dictionary_object(key), COSName)
 
-    def hasName(self, key: COSName | str) -> bool:  # noqa: N802
-        return self.has_name(key)
-
     def clear_name(self, key: COSName | str) -> None:
         self.clear_item(key)
-
-    def clearName(self, key: COSName | str) -> None:  # noqa: N802
-        self.clear_name(key)
 
     def get_int(
         self, key: COSName | str, default: int | COSName | str = -1, fallback: int = -1
@@ -612,22 +491,11 @@ class COSDictionary(COSBase):
             return int(v.value)
         return default_value
 
-    def getInt(  # noqa: N802
-        self, key: COSName | str, default: int | COSName | str = -1, fallback: int = -1
-    ) -> int:
-        return self.get_int(key, default, fallback)
-
     def has_int(self, key: COSName | str) -> bool:
         return isinstance(self.get_dictionary_object(key), (COSInteger, COSFloat))
 
-    def hasInt(self, key: COSName | str) -> bool:  # noqa: N802
-        return self.has_int(key)
-
     def clear_int(self, key: COSName | str) -> None:
         self.clear_item(key)
-
-    def clearInt(self, key: COSName | str) -> None:  # noqa: N802
-        self.clear_int(key)
 
     def get_long(
         self, key: COSName | str, default: int | COSName | str = -1, fallback: int = -1
@@ -647,22 +515,11 @@ class COSDictionary(COSBase):
             return v.long_value()
         return default_value
 
-    def getLong(  # noqa: N802
-        self, key: COSName | str, default: int | COSName | str = -1, fallback: int = -1
-    ) -> int:
-        return self.get_long(key, default, fallback)
-
     def has_long(self, key: COSName | str) -> bool:
         return isinstance(self.get_dictionary_object(key), (COSInteger, COSFloat))
 
-    def hasLong(self, key: COSName | str) -> bool:  # noqa: N802
-        return self.has_long(key)
-
     def clear_long(self, key: COSName | str) -> None:
         self.clear_item(key)
-
-    def clearLong(self, key: COSName | str) -> None:  # noqa: N802
-        self.clear_long(key)
 
     def get_float(
         self, key: COSName | str, default: float | COSName | str = -1.0, fallback: float = -1.0
@@ -677,22 +534,11 @@ class COSDictionary(COSBase):
             return float(v.value)
         return default_value
 
-    def getFloat(  # noqa: N802
-        self, key: COSName | str, default: float | COSName | str = -1.0, fallback: float = -1.0
-    ) -> float:
-        return self.get_float(key, default, fallback)
-
     def has_float(self, key: COSName | str) -> bool:
         return isinstance(self.get_dictionary_object(key), (COSInteger, COSFloat))
 
-    def hasFloat(self, key: COSName | str) -> bool:  # noqa: N802
-        return self.has_float(key)
-
     def clear_float(self, key: COSName | str) -> None:
         self.clear_item(key)
-
-    def clearFloat(self, key: COSName | str) -> None:  # noqa: N802
-        self.clear_float(key)
 
     def get_boolean(
         self, key: COSName | str, default: bool | COSName | str = False, fallback: bool = False
@@ -707,22 +553,11 @@ class COSDictionary(COSBase):
             return v.value
         return default_value
 
-    def getBoolean(  # noqa: N802
-        self, key: COSName | str, default: bool | COSName | str = False, fallback: bool = False
-    ) -> bool:
-        return self.get_boolean(key, default, fallback)
-
     def has_boolean(self, key: COSName | str) -> bool:
         return isinstance(self.get_dictionary_object(key), COSBoolean)
 
-    def hasBoolean(self, key: COSName | str) -> bool:  # noqa: N802
-        return self.has_boolean(key)
-
     def clear_boolean(self, key: COSName | str) -> None:
         self.clear_item(key)
-
-    def clearBoolean(self, key: COSName | str) -> None:  # noqa: N802
-        self.clear_boolean(key)
 
     def get_cos_dictionary(self, key: COSName | str) -> COSDictionary | None:
         """Return the resolved value as a ``COSDictionary`` when present.
@@ -735,20 +570,11 @@ class COSDictionary(COSBase):
             return v
         return None
 
-    def getCOSDictionary(self, key: COSName | str) -> COSDictionary | None:  # noqa: N802
-        return self.get_cos_dictionary(key)
-
     def has_cos_dictionary(self, key: COSName | str) -> bool:
         return isinstance(self.get_dictionary_object(key), COSDictionary)
 
-    def hasCOSDictionary(self, key: COSName | str) -> bool:  # noqa: N802
-        return self.has_cos_dictionary(key)
-
     def clear_cos_dictionary(self, key: COSName | str) -> None:
         self.clear_item(key)
-
-    def clearCOSDictionary(self, key: COSName | str) -> None:  # noqa: N802
-        self.clear_cos_dictionary(key)
 
     def get_cos_array(self, key: COSName | str) -> COSArray | None:
         """Return the resolved value as a ``COSArray`` when present.
@@ -761,20 +587,11 @@ class COSDictionary(COSBase):
             return v
         return None
 
-    def getCOSArray(self, key: COSName | str) -> COSArray | None:  # noqa: N802
-        return self.get_cos_array(key)
-
     def has_cos_array(self, key: COSName | str) -> bool:
         return isinstance(self.get_dictionary_object(key), COSArray)
 
-    def hasCOSArray(self, key: COSName | str) -> bool:  # noqa: N802
-        return self.has_cos_array(key)
-
     def clear_cos_array(self, key: COSName | str) -> None:
         self.clear_item(key)
-
-    def clearCOSArray(self, key: COSName | str) -> None:  # noqa: N802
-        self.clear_cos_array(key)
 
     def as_unmodifiable_dictionary(self) -> COSDictionary:
         """Return a live, read-only view of this dictionary.
@@ -784,9 +601,6 @@ class COSDictionary(COSBase):
         are visible through the view, while mutating the view raises.
         """
         return UnmodifiableCOSDictionary(self)
-
-    def asUnmodifiableDictionary(self) -> COSDictionary:  # noqa: N802
-        return self.as_unmodifiable_dictionary()
 
     # ---------- typed COS-object accessors ----------
 

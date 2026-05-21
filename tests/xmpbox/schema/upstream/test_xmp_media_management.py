@@ -74,11 +74,6 @@ def test_element_value(
     """Translated from upstream ``testElementValue``."""
     del type_token
     getter_name, setter_name = _ACCESSORS[field_name]
-    if not hasattr(schema, getter_name) or not hasattr(schema, setter_name):
-        pytest.skip(
-            f"{field_name!r} accessor not yet ported: "
-            f"missing {getter_name}/{setter_name}"
-        )
     if card in {"Bag", "Seq"}:
         assert isinstance(value, tuple)
         for entry in value:

@@ -10,8 +10,16 @@ from .lang_sys_table import LangSysTable
 from .lookup_subtable import (
     AlternateSetTable,
     LookupTypeAlternateSubstitutionFormat1,
+    LookupTypeChainedContextualSubstitutionFormat1,
+    LookupTypeChainedContextualSubstitutionFormat2,
+    LookupTypeChainedContextualSubstitutionFormat3,
+    LookupTypeContextualSubstitutionFormat1,
+    LookupTypeContextualSubstitutionFormat2,
+    LookupTypeContextualSubstitutionFormat3,
+    LookupTypeExtensionSubstitutionFormat1,
     LookupTypeLigatureSubstitutionSubstFormat1,
     LookupTypeMultipleSubstitutionFormat1,
+    LookupTypeReverseChainedContextualSubstitutionFormat1,
     LookupTypeSingleSubstFormat1,
     LookupTypeSingleSubstFormat2,
 )
@@ -213,6 +221,56 @@ class GlyphSubstitutionDataExtractor:
                 self.extract_data_from_multiple_substitution_format1_table(
                     glyph_substitution_map, lookup_sub_table
                 )
+            elif isinstance(
+                lookup_sub_table,
+                (
+                    LookupTypeContextualSubstitutionFormat1,
+                    LookupTypeContextualSubstitutionFormat2,
+                    LookupTypeContextualSubstitutionFormat3,
+                    LookupTypeChainedContextualSubstitutionFormat1,
+                    LookupTypeChainedContextualSubstitutionFormat2,
+                    LookupTypeChainedContextualSubstitutionFormat3,
+                ),
+            ):
+                # Type 5 / Type 6 (chained) contextual lookups fan out to
+                # nested lookups against a glyph *run* and cannot be
+                # collapsed into the flat ``(input,) -> output`` map shape
+                # that :class:`MapBackedGsubData` exposes. The data
+                # classes are still available to callers that walk the
+                # ``LookupList`` directly (e.g. a full shaping engine).
+                LOG.debug(
+                    "Contextual lookup %s skipped in MapBackedGsubData "
+                    "(requires LookupList access for nested lookups)",
+                    type(lookup_sub_table).__name__,
+                )
+            elif isinstance(lookup_sub_table, LookupTypeExtensionSubstitutionFormat1):
+                # Type 7 — extension substitution is normally unwrapped
+                # at parse time (``GlyphSubstitutionTable.read_lookup_table``
+                # promotes the inner ``extension_lookup_type`` to the
+                # outer ``lookup_type``), so reaching the extractor in
+                # wrapped form means a caller constructed the subtable
+                # directly. Re-run the dispatch on the wrapped inner
+                # subtable to keep the data-flow uniform.
+                self.extract_data_from_extension_subtable(
+                    glyph_substitution_map, lookup_sub_table
+                )
+            elif isinstance(
+                lookup_sub_table,
+                LookupTypeReverseChainedContextualSubstitutionFormat1,
+            ):
+                # Type 8 — reverse chained contextual single substitution.
+                # Like Type 6, the substitution depends on surrounding
+                # glyph context and cannot be reduced to the flat
+                # ``(input,) -> output`` map shape exposed by
+                # :class:`MapBackedGsubData`. Callers needing reverse
+                # context shaping should walk the ``LookupList`` and
+                # invoke :meth:`apply_to_run` on the subtable directly.
+                LOG.debug(
+                    "Reverse-chained contextual lookup %s skipped in "
+                    "MapBackedGsubData (requires LookupList access for "
+                    "context-aware shaping)",
+                    type(lookup_sub_table).__name__,
+                )
             else:
                 # Usually skipped earlier in GlyphSubstitutionTable
                 # parsing — log at debug only, matching upstream.
@@ -220,6 +278,48 @@ class GlyphSubstitutionDataExtractor:
                     "The type %s is not yet supported, will be ignored",
                     lookup_sub_table,
                 )
+
+    def extract_data_from_extension_subtable(
+        self,
+        glyph_substitution_map: dict[tuple[int, ...], int],
+        extension_sub_table: LookupTypeExtensionSubstitutionFormat1,
+    ) -> None:
+        """Dispatch through a Type-7 extension subtable.
+
+        The Type-7 subtable carries the 32-bit offset indirection plus
+        the actual wrapped subtable; the spec forbids the inner type
+        from being 7 itself. Re-runs the same dispatch ladder on the
+        wrapped subtable so the data extractor sees the substitution
+        as if it had been the inner type all along.
+        """
+        inner = extension_sub_table.get_inner_subtable()
+        if inner is None:
+            return
+        if isinstance(inner, LookupTypeSingleSubstFormat1):
+            self.extract_data_from_single_subst_table_format1_table(
+                glyph_substitution_map, inner
+            )
+        elif isinstance(inner, LookupTypeSingleSubstFormat2):
+            self.extract_data_from_single_subst_table_format2_table(
+                glyph_substitution_map, inner
+            )
+        elif isinstance(inner, LookupTypeMultipleSubstitutionFormat1):
+            self.extract_data_from_multiple_substitution_format1_table(
+                glyph_substitution_map, inner
+            )
+        elif isinstance(inner, LookupTypeAlternateSubstitutionFormat1):
+            self.extract_data_from_alternate_substitution_subst_format1_table(
+                glyph_substitution_map, inner
+            )
+        elif isinstance(inner, LookupTypeLigatureSubstitutionSubstFormat1):
+            self.extract_data_from_ligature_substitution_subst_format1_table(
+                glyph_substitution_map, inner
+            )
+        else:
+            LOG.debug(
+                "Extension wraps an unsupported inner subtable %s; ignored",
+                type(inner).__name__,
+            )
 
     def extract_data_from_single_subst_table_format1_table(
         self,

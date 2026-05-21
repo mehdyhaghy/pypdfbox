@@ -96,10 +96,7 @@ def test_create_xmp_metadata_returns_none_on_attribute_error(
     return value lacks the expected schema helpers — the example then
     raises ``AttributeError`` and falls back to ``None``.
     """
-    try:
-        from pypdfbox.xmpbox.xmp_metadata import XMPMetadata
-    except ImportError:
-        pytest.skip("xmpbox not available")
+    from pypdfbox.xmpbox.xmp_metadata import XMPMetadata
 
     class _Stub:
         # Intentionally missing every ``create_and_add_*`` method.

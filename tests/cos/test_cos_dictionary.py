@@ -67,7 +67,7 @@ def test_contains_value_uses_cos_value_equality() -> None:
     d = COSDictionary([("A", COSInteger(7)), ("B", COSString("title"))])
 
     assert d.contains_value(COSInteger(7))
-    assert d.containsValue(COSString("title"))
+    assert d.contains_value(COSString("title"))
     assert not d.contains_value(COSInteger(8))
 
 
@@ -81,7 +81,7 @@ def test_get_key_for_value_returns_first_matching_key() -> None:
     )
 
     assert d.get_key_for_value(COSString("shared")) == COSName.get_pdf_name("Second")
-    assert d.getKeyForValue(COSInteger(1)) == COSName.get_pdf_name("First")
+    assert d.get_key_for_value(COSInteger(1)) == COSName.get_pdf_name("First")
     assert d.get_key_for_value(COSInteger(99)) is None
 
 
@@ -152,7 +152,7 @@ def test_get_item_falls_back_to_second_key_without_dereferencing() -> None:
     d = COSDictionary([("ColorSpace", indirect)])
 
     assert d.get_item("CS", "ColorSpace") is indirect
-    assert d.getItem(COSName.get_pdf_name("CS"), COSName.get_pdf_name("ColorSpace")) is indirect
+    assert d.get_item(COSName.get_pdf_name("CS"), COSName.get_pdf_name("ColorSpace")) is indirect
 
 
 def test_get_item_first_key_wins_even_for_cos_null() -> None:
@@ -254,61 +254,6 @@ def test_get_cos_array_returns_resolved_array_or_none() -> None:
 
     indirect = COSDictionary([("Kids", COSObject(10, 0, resolved=array))])
     assert indirect.get_cos_array("Kids") is array
-
-
-def test_pdfbox_camelcase_core_aliases_delegate() -> None:
-    d = COSDictionary()
-    value = COSInteger(3)
-    d.setItem("Count", value)
-
-    assert d.getItem("Count") is value
-    assert d.getDictionaryObject("Count") is value
-    assert d.containsKey("Count")
-    assert d.removeItem("Count") is value
-    assert not d.containsKey("Count")
-
-
-def test_pdfbox_camelcase_typed_aliases_delegate() -> None:
-    child = COSDictionary()
-    kids = COSArray([COSInteger(1)])
-    d = COSDictionary()
-    d.setName("Type", "Page")
-    d.setString("Title", "hello")
-    d.setInt("Count", 5)
-    d.setLong("Revision", 2**40)
-    d.setFloat("Width", 2.5)
-    d.setBoolean("Flag", True)
-    d.setItem("Child", COSObject(11, 0, resolved=child))
-    d.setItem("Kids", COSObject(12, 0, resolved=kids))
-
-    assert d.getName("Type") == "Page"
-    assert d.getString("Title") == "hello"
-    assert d.getInt("Count") == 5
-    assert d.getLong("Revision") == 2**40
-    assert d.getFloat("Width") == 2.5
-    assert d.getBoolean("Flag") is True
-    assert d.getString("Missing", "fallback") == "fallback"
-    assert d.getInt("Missing", 7) == 7
-    assert d.getCOSDictionary("Child") is child
-    assert d.getCOSArray("Kids") is kids
-
-
-def test_pdfbox_camelcase_collection_aliases_delegate() -> None:
-    a = COSDictionary([("X", COSInteger(1)), ("Y", COSInteger(2))])
-    b = COSDictionary([("Y", COSInteger(20)), ("Z", COSInteger(30))])
-
-    assert not a.isEmpty()
-    assert [key.name for key in a.keySet()] == ["X", "Y"]
-    assert [(key.name, value) for key, value in a.entrySet()] == [
-        ("X", COSInteger(1)),
-        ("Y", COSInteger(2)),
-    ]
-
-    a.addAll(b)
-
-    assert a.getInt("X") == 1
-    assert a.getInt("Y") == 20
-    assert a.getInt("Z") == 30
 
 
 def test_invalid_key_type_raises() -> None:

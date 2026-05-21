@@ -387,5 +387,140 @@ class PDSeedValue:
         :meth:`get_certificate` / :meth:`set_certificate`."""
         return self.has_seed_value_certificate()
 
+    # ---------- /SV constraint enforcement (wave 1380) ----------
+    #
+    # Upstream Apache PDFBox carries the constraint surface on
+    # ``PDSeedValue`` but defers the enforcement to the front-end /
+    # signing UI ("respect /Ff required flags before producing a
+    # signature"). pypdfbox exposes :meth:`validate_signature` so the
+    # signing engine can short-circuit a sign attempt when the candidate
+    # ``PDSignature`` violates a flagged ``/SV`` constraint. The check is
+    # opt-in via ``PDDocument.add_signature(..., enforce_seed_value=True)``
+    # — the default off mirrors upstream's "advisory only" stance.
+
+    def check_signature_constraint(self, signature: object) -> list[str]:
+        """Return a list of human-readable violations of this seed value
+        by ``signature`` (a :class:`PDSignature`).
+
+        Each entry in the returned list is a one-line description of a
+        flagged-required ``/SV`` constraint the candidate signature does
+        not satisfy. An empty list means the signature respects every
+        flagged constraint. Non-flagged constraints are NOT consulted —
+        per PDF 32000-1 §12.7.4.5 a constraint is only mandatory when its
+        ``/Ff`` bit is set.
+
+        Constraints checked (each only when its ``/Ff`` bit is set):
+
+        * ``/Filter`` — signature handler name must match.
+        * ``/SubFilter`` — signature subfilter must be in the allowed set.
+        * ``/V`` — signature can carry no version field of its own, so
+          this is a no-op; flagged but no candidate value to compare.
+          (PDFBox upstream behaves identically — ``/V`` is a *minimum
+          producer capability*, not a per-signature attribute.)
+        * ``/Reasons`` — when set the signature ``/Reason`` must be in
+          the allowed list.
+        * ``/LegalAttestation`` — no per-signature counterpart on
+          PDSignature; flagged-required is reported as
+          "legal attestation required" since the signing engine cannot
+          attest on its own.
+        * ``/AddRevInfo`` — pypdfbox does not currently emit revocation
+          info in the PKCS#7 blob; flagged-required is reported as
+          "revocation info required (unsupported)".
+        * ``/DigestMethod`` — checked only when the signature provides a
+          :meth:`get_digest_method`-style attribute (custom signers
+          attach this); plain :class:`PDSignature` has no /DigestMethod
+          slot.
+        """
+        # Lazy import — pd_signature.py imports from this module via the
+        # interactive package, so importing it at module top would cycle.
+        from .pd_signature import PDSignature  # noqa: I001 — cycle guard
+
+        violations: list[str] = []
+        if not isinstance(signature, PDSignature):
+            violations.append(
+                f"candidate must be a PDSignature, got {type(signature).__name__}"
+            )
+            return violations
+
+        # /Filter
+        if self.is_filter_required():
+            required = self.get_filter()
+            actual = signature.get_filter()
+            if required is not None and actual != required:
+                violations.append(
+                    f"/Filter must be {required!r} (signature carries {actual!r})"
+                )
+
+        # /SubFilter
+        if self.is_sub_filter_required():
+            allowed = self.get_sub_filter()
+            actual = signature.get_sub_filter()
+            if allowed is not None and len(allowed) > 0 and actual not in allowed:
+                violations.append(
+                    f"/SubFilter must be one of {allowed!r} "
+                    f"(signature carries {actual!r})"
+                )
+
+        # /Reasons
+        if self.is_reason_required():
+            allowed_reasons = self.get_reasons()
+            actual_reason = signature.get_reason()
+            if (
+                allowed_reasons is not None
+                and len(allowed_reasons) > 0
+                and actual_reason not in allowed_reasons
+            ):
+                violations.append(
+                    f"/Reason must be one of {allowed_reasons!r} "
+                    f"(signature carries {actual_reason!r})"
+                )
+
+        # /LegalAttestation — no PDSignature counterpart; flagged-required
+        # is a hard violation because the signing engine can't attest.
+        if self.is_legal_attestation_required():
+            attestations = self.get_legal_attestation()
+            if attestations:
+                violations.append(
+                    f"/LegalAttestation required, must be one of {attestations!r}"
+                )
+            else:
+                violations.append("/LegalAttestation required (no allowed values set)")
+
+        # /AddRevInfo — pypdfbox does not emit revocation info today.
+        if self.is_add_rev_info_required():
+            violations.append("/AddRevInfo required (revocation info not supported)")
+
+        # /DigestMethod — only consulted when the signer carries a
+        # digest-method attribute (none ships on plain PDSignature).
+        if self.is_digest_method_required():
+            allowed_digests = self.get_digest_method()
+            actual_digest = getattr(signature, "_digest_method_hint", None)
+            if (
+                allowed_digests
+                and actual_digest is not None
+                and actual_digest not in allowed_digests
+            ):
+                violations.append(
+                    f"/DigestMethod must be one of {allowed_digests!r} "
+                    f"(signature carries {actual_digest!r})"
+                )
+
+        return violations
+
+    def validate_signature(self, signature: object) -> None:
+        """Raise :class:`ValueError` when ``signature`` violates a flagged
+        ``/SV`` constraint. No-op when the seed value is satisfied.
+
+        Convenience wrapper around :meth:`check_signature_constraint` that
+        prints every violation in one message — the signing engine reports
+        all problems at once rather than failing on the first.
+        """
+        violations = self.check_signature_constraint(signature)
+        if not violations:
+            return
+        raise ValueError(
+            "signature violates /SV seed value constraints: " + "; ".join(violations)
+        )
+
 
 __all__ = ["PDSeedValue", "PDSeedValueTimeStamp"]

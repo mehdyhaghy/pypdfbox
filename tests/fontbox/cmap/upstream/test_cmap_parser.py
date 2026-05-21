@@ -301,14 +301,13 @@ def test_uni_jis_utf16_h() -> None:
     assert cmap.to_cid_bytes(bytes([0xD8, 0x3C, 0xDD, 0x12])) == 10006
 
 
-# Translated from testUniJIS_UCS2_H -- skipped because the
-# Adobe-Japan1 UCS-2 predefined CMap is not in the bundled
-# pypdfbox resource set (only UTF-16 + UCS-2 names listed in
-# tests/fontbox/cmap/test_predefined_cmaps.py UNBUNDLED_NAMES).
+# Translated from testUniJIS_UCS2_H -- the Adobe-Japan1 UCS-2
+# Unicode-mapping CMap is bundled alongside the other CJK UCS-2 /
+# UTF-16 names (Apache 2.0 / Adobe BSD-3-Clause, wave 1380).
 def test_uni_jis_ucs2_h() -> None:
-    pytest.skip(
-        "UniJIS-UCS2-H is not in the bundled pypdfbox predefined CMap set"
-    )
+    cmap = CMapParser.parse_predefined("UniJIS-UCS2-H")
+    # Upstream asserts ``cMap.toCID(new byte[]{ 0, 65 }) == 34``.
+    assert cmap.to_cid_bytes(bytes([0, 65])) == 34
 
 
 # Translated from testAdobe_GB1_UCS2 -- predefined Adobe-GB1 UCS-2

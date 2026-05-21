@@ -20,11 +20,6 @@ def test_wave357_numeric_and_boolean_getters_accept_second_key() -> None:
     assert dictionary.get_long("R", COSName.get_pdf_name("Revision")) == 2**40
     assert dictionary.get_boolean("Flag", "Enabled") is True
 
-    assert dictionary.getInt("W", "Width") == 640
-    assert dictionary.getFloat("H", "Height") == pytest.approx(12.5)
-    assert dictionary.getLong("R", "Revision") == 2**40
-    assert dictionary.getBoolean("Flag", "Enabled") is True
-
 
 def test_wave357_second_key_getters_use_explicit_default_when_both_missing() -> None:
     dictionary = COSDictionary()

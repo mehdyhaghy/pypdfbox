@@ -35,8 +35,3 @@ def test_get_name_as_string_defaults_for_missing_or_wrong_shape() -> None:
     assert dictionary.get_name_as_string("Count", "fallback") == "fallback"
 
 
-def test_camelcase_get_name_as_string_alias_delegates() -> None:
-    dictionary = COSDictionary([("Type", COSString("Annot"))])
-
-    assert dictionary.getNameAsString("Type") == "Annot"
-    assert dictionary.getNameAsString("Missing", "fallback") == "fallback"

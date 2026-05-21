@@ -244,57 +244,52 @@ def test_get_dictionary_string_breaks_on_cycle() -> None:
     assert "hash:" in out
 
 
-# ---------- camelCase aliases not covered elsewhere -----------------------
+# ---------- typed setter behaviour not covered elsewhere -------------------
 
 
-def test_get_update_state_alias_returns_same_object() -> None:
-    d = COSDictionary()
-    assert d.getUpdateState() is d.get_update_state()
-
-
-def test_set_date_alias() -> None:
+def test_set_date_formats_pdf_date_string() -> None:
     d = COSDictionary()
     dt = _dt.datetime(2024, 1, 1, tzinfo=_dt.UTC)
-    d.setDate("ModDate", dt)
+    d.set_date("ModDate", dt)
     assert d.get_string("ModDate", "").startswith("D:20240101")  # type: ignore[union-attr]
 
 
-def test_set_embedded_date_alias_creates_subdict() -> None:
+def test_set_embedded_date_creates_subdict() -> None:
     d = COSDictionary()
-    d.setEmbeddedDate("Info", "ModDate", _dt.datetime(2024, 1, 1, tzinfo=_dt.UTC))
+    d.set_embedded_date("Info", "ModDate", _dt.datetime(2024, 1, 1, tzinfo=_dt.UTC))
     info = d.get_cos_dictionary("Info")
     assert info is not None
     assert info.get_string("ModDate", "").startswith("D:20240101")  # type: ignore[union-attr]
 
 
-def test_set_embedded_string_alias() -> None:
+def test_set_embedded_string_creates_subdict() -> None:
     d = COSDictionary()
-    d.setEmbeddedString("Info", "Title", "Hello")
+    d.set_embedded_string("Info", "Title", "Hello")
     info = d.get_cos_dictionary("Info")
     assert info is not None
     assert info.get_string("Title") == "Hello"
 
 
-def test_set_embedded_int_alias_creates_subdict() -> None:
+def test_set_embedded_int_creates_subdict() -> None:
     d = COSDictionary()
-    d.setEmbeddedInt("Info", "Pages", 5)
+    d.set_embedded_int("Info", "Pages", 5)
     info = d.get_cos_dictionary("Info")
     assert info is not None
     assert info.get_int("Pages") == 5
 
 
-def test_set_flag_alias_toggle() -> None:
+def test_set_flag_toggles_bit() -> None:
     d = COSDictionary()
-    d.setFlag("Ff", 0x4, True)
-    assert d.getFlag("Ff", 0x4) is True
-    d.setFlag("Ff", 0x4, False)
-    assert d.getFlag("Ff", 0x4) is False
+    d.set_flag("Ff", 0x4, True)
+    assert d.get_flag("Ff", 0x4) is True
+    d.set_flag("Ff", 0x4, False)
+    assert d.get_flag("Ff", 0x4) is False
 
 
-def test_as_unmodifiable_dictionary_alias_returns_live_view() -> None:
+def test_as_unmodifiable_dictionary_returns_live_view() -> None:
     src = COSDictionary()
     src.set_item("X", COSInteger.get(1))
-    view = src.asUnmodifiableDictionary()
+    view = src.as_unmodifiable_dictionary()
     assert isinstance(view, UnmodifiableCOSDictionary)
     # Later source mutations are visible through the view.
     src.set_item("Y", COSInteger.get(2))

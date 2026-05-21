@@ -1136,6 +1136,9 @@ class PDDocument:
         sig: PDSignature,
         signature_interface: SignatureInterface | None = None,
         options: Any = None,
+        *,
+        seed_value: Any = None,
+        enforce_seed_value: bool = False,
     ) -> None:
         """Stage ``sig`` for inclusion in the next :meth:`save_incremental`
         and bind ``signature_interface`` as the PKCS#7 producer. Mirrors
@@ -1151,13 +1154,44 @@ class PDDocument:
         ``signature_interface`` may be ``None`` only when the caller intends
         to drive the signing externally via
         :meth:`save_incremental_for_external_signing`.
+
+        ``seed_value`` (optional) is a :class:`PDSeedValue` describing the
+        ``/SV`` constraints the producer must respect. When
+        ``enforce_seed_value`` is also ``True`` the candidate ``sig`` is
+        validated against the seed value's flagged ``/Ff`` constraints
+        before staging — a violation raises :class:`ValueError`. Upstream
+        Apache PDFBox keeps this enforcement on the front-end / UI; the
+        ``enforce_seed_value=True`` opt-in lets pypdfbox callers offload
+        the check to the engine. (Wave 1380.)
         """
+        from .interactive.digitalsignature.pd_seed_value import PDSeedValue
         from .interactive.digitalsignature.pd_signature import PDSignature
 
         if not isinstance(sig, PDSignature):
             raise TypeError(
                 f"add_signature expected a PDSignature, got {type(sig).__name__}"
             )
+
+        # /SV enforcement (opt-in). Validate BEFORE we mutate any AcroForm
+        # state so a violation leaves the document unchanged.
+        if enforce_seed_value:
+            if seed_value is None:
+                raise ValueError(
+                    "enforce_seed_value=True requires a seed_value= PDSeedValue"
+                )
+            if not isinstance(seed_value, PDSeedValue):
+                raise TypeError(
+                    f"seed_value must be a PDSeedValue, got "
+                    f"{type(seed_value).__name__}"
+                )
+            # Defaults from the engine — /Filter + /SubFilter get filled
+            # later in this method, but validation must see them now.
+            if sig.get_filter() is None:
+                sig.set_filter("Adobe.PPKLite")
+            if sig.get_sub_filter() is None:
+                sig.set_sub_filter("adbe.pkcs7.detached")
+            seed_value.validate_signature(sig)
+
         if self._signature_added:
             # Mirrors upstream ``IllegalStateException`` — Java's nearest
             # equivalent is ``RuntimeError`` here, but we surface it as

@@ -25,10 +25,12 @@ from .signature_interface import SignatureInterface
 from .signature_options import DEFAULT_SIGNATURE_SIZE, SignatureOptions
 from .signature_validation_result import SignatureValidationResult
 from .signing_support import SigningSupport
+from .timestamped_signature import DocumentTimestampSigner, TimestampedPkcs7Signature
 
 __all__ = [
     "COSFilterInputStream",
     "DEFAULT_SIGNATURE_SIZE",
+    "DocumentTimestampSigner",
     "PDPropBuild",
     "PDPropBuildDataDict",
     "PDSeedValue",
@@ -42,6 +44,7 @@ __all__ = [
     "SignatureOptions",
     "SignatureValidationResult",
     "SigningSupport",
+    "TimestampedPkcs7Signature",
     "check_certificate_usage",
     "check_responder_certificate_usage",
     "check_time_stamp_certificate_usage",

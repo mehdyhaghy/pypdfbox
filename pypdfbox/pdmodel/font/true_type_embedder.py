@@ -51,6 +51,39 @@ _REQUIRED_TABLES: tuple[str, ...] = (
     "gasp",  # Windows ClearType
 )
 
+# Tables whose bytes must be preserved verbatim (i.e. *not* subset) when
+# embedding a TrueType font in a PDF. fontTools' ``Options.no_subset_tables``
+# takes a list of 4-byte SFNT tags; entries on this list survive the
+# subsetting pass with their original bytes (modulo glyph-index renumber
+# upstream of them, which only affects glyf/loca/hmtx).
+#
+# The default set is what *every* TTF-embedded font needs to round-trip
+# safely through a PDF reader: the descriptor metadata tables (head, hhea,
+# maxp, name, OS/2, post) which downstream code consults via the font
+# descriptor's `/FontFile2` field. These tables are not glyph-index
+# dependent and don't need to be rebuilt by the subsetter.
+_DEFAULT_NO_SUBSET_TABLES: tuple[str, ...] = (
+    "head",
+    "hhea",
+    "maxp",
+    "name",
+    "OS/2",
+    "post",
+)
+
+# Additional tables to preserve verbatim for CID-keyed (Type0/CIDFontType2)
+# embeddings: the PostScript hinting bytecode tables (cvt, fpgm, prep)
+# that drive the rasteriser at low resolution. CID embeddings are
+# generally produced from larger, more aggressively hinted CJK fonts
+# where dropping the hinting tables would cause visible rasterisation
+# degradation at body-text point sizes.
+_CID_NO_SUBSET_TABLES: tuple[str, ...] = _DEFAULT_NO_SUBSET_TABLES + (
+    "cmap",
+    "cvt ",
+    "fpgm",
+    "prep",
+)
+
 _BASE25 = "BCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 _ITALIC = 1
@@ -81,6 +114,13 @@ class TrueTypeEmbedder(Subsetter):
             raise OSError("This font does not permit embedding")
         self._subset_code_points: set[int] = set()
         self._all_glyph_ids: set[int] = set()
+        # Tables whose bytes should be preserved verbatim through the
+        # fontTools subsetter (mirrors ``TTFSubsetter.no_subset_tables``).
+        # Initialised to the conservative default; CID-keyed subclasses
+        # (PDCIDFontType2Embedder) widen this to include PostScript
+        # hinting tables. Callers can also tweak it through
+        # :meth:`set_no_subset_tables`.
+        self._no_subset_tables: tuple[str, ...] = _DEFAULT_NO_SUBSET_TABLES
         self._dict: COSDictionary = dict_
         if not embed_subset:
             # Full embedding (Java line 89-114): stream the original TTF
@@ -118,6 +158,33 @@ class TrueTypeEmbedder(Subsetter):
         """
         self._all_glyph_ids.update(glyph_ids)
 
+    def set_no_subset_tables(self, table_names: tuple[str, ...] | list[str]) -> None:
+        """Override the list of tables to preserve verbatim through subsetting.
+
+        Mirrors :meth:`TTFSubsetter.set_no_subset_tables` on the fontbox
+        layer. Pass a sequence of 4-byte SFNT table tags (e.g.
+        ``("head", "hhea", "name", "OS/2", "post")``) — those tables are
+        excluded from fontTools' subset pass and round-trip with their
+        original bytes intact (modulo any glyph-index renumber needed
+        for inter-table consistency).
+
+        Use cases:
+
+        * CID embeddings of PostScript-hinted CJK fonts where dropping
+          the hinting bytecode (``cvt ``/``fpgm``/``prep``) degrades
+          rendering at body-text sizes — keep them verbatim.
+        * Custom subsetting policies driven by tooling that needs to
+          retain specific opaque tables.
+        """
+        self._no_subset_tables = tuple(table_names)
+
+    def get_no_subset_tables(self) -> tuple[str, ...]:
+        """Return the active no-subset table list.
+
+        See :meth:`set_no_subset_tables` for semantics.
+        """
+        return self._no_subset_tables
+
     def subset(self) -> None:
         """Compute the subset using fontTools.
 
@@ -136,7 +203,17 @@ class TrueTypeEmbedder(Subsetter):
         options = Options()
         # Restrict to the PDF-spec-required tables (Java line 58-61).
         options.layout_features = []
-        options.no_subset_tables = []
+        # Honour the per-font-subclass no-subset policy. Default is the
+        # conservative ``_DEFAULT_NO_SUBSET_TABLES`` list; CID-keyed
+        # embedders widen this to retain hinting bytecode. Union with
+        # fontTools' own default so we never accidentally drop tables
+        # whose subset behavior fontTools handles internally (e.g.
+        # ``loca`` / ``avar``).
+        options.no_subset_tables = list(
+            dict.fromkeys(
+                [*options.no_subset_tables, *self._no_subset_tables]
+            )
+        )
         subsetter = FTSubsetter(options=options)
         if self._subset_code_points:
             subsetter.populate(unicodes=list(self._subset_code_points))

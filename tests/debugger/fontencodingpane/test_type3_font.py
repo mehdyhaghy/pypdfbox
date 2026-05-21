@@ -51,16 +51,12 @@ def test_type3_pane_table_has_256_rows(tk_root):
 
 def test_render_type3_glyph_label_returns_image():
     """Helper renders a small PIL image label per glyph name."""
+    from PIL.Image import Image as _PilImage
+
     from pypdfbox.debugger.fontencodingpane.type3_font import (
         _render_type3_glyph_label,
     )
 
-    try:
-        from PIL.Image import Image as _PilImage
-    except ImportError:
-        import pytest
-
-        pytest.skip("Pillow not available")
     img = _render_type3_glyph_label("A")
     assert isinstance(img, _PilImage)
     assert img.size == (40, 40)
@@ -68,16 +64,12 @@ def test_render_type3_glyph_label_returns_image():
 
 def test_render_type3_glyph_label_truncates_long_name():
     """Display string is truncated to 4 chars; doesn't raise."""
+    from PIL.Image import Image as _PilImage
+
     from pypdfbox.debugger.fontencodingpane.type3_font import (
         _render_type3_glyph_label,
     )
 
-    try:
-        from PIL.Image import Image as _PilImage
-    except ImportError:
-        import pytest
-
-        pytest.skip("Pillow not available")
     img = _render_type3_glyph_label("zerosuperior")
     assert isinstance(img, _PilImage)
 

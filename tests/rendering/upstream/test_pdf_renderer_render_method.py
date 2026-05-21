@@ -131,13 +131,10 @@ def test_render_image_with_render_destination_kwarg(
     four-arg upstream overload) accepts a :class:`RenderDestination`.
     """
     renderer, _doc = renderer_and_doc
-    if "destination" in renderer.render_image.__code__.co_varnames:
-        image = renderer.render_image(
-            0, 1.0, ImageType.RGB, destination=RenderDestination.PRINT
-        )
-        assert isinstance(image, Image.Image)
-    else:
-        pytest.skip("render_image does not expose destination kwarg")
+    image = renderer.render_image(
+        0, 1.0, ImageType.RGB, destination=RenderDestination.PRINT
+    )
+    assert isinstance(image, Image.Image)
 
 
 def test_render_page_to_graphics_returns_no_exception_for_pillow_canvas(
@@ -149,9 +146,6 @@ def test_render_page_to_graphics_returns_no_exception_for_pillow_canvas(
     """
     renderer, _doc = renderer_and_doc
     target = Image.new("RGB", (100, 100), color=(255, 255, 255))
-    try:
-        renderer.render_page_to_graphics(0, target)
-    except NotImplementedError:  # pragma: no cover - if not yet plumbed
-        pytest.skip("render_page_to_graphics not plumbed in this build")
+    renderer.render_page_to_graphics(0, target)
     # Best-effort smoke: the canvas should still be a valid image.
     assert isinstance(target, Image.Image)
