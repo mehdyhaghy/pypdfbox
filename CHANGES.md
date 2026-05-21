@@ -4189,7 +4189,310 @@ No latent source bugs flagged.
   and rely solely on `read_long`'s clamp — Java's signed-32 → signed-64
   pattern lives in exactly one place upstream; we mirror it in two.
 
-## Wave 1367 — parity round-out (5 parallel agents)
+## Wave 1368 — parity round-out (5 parallel agents)
+
+### Wave 1368 — pdmodel/graphics/color tinting / lookup / conversion round-out + PDIndexed.create factory port + PDLab.set_range initial-color invalidation latent-bug fix (agent A)
+
+Widened hand-written test coverage across the per-color-space tinting,
+lookup, and conversion surface in `pypdfbox/pdmodel/graphics/color/`.
+Nine new test files (+256 tests, 1131 → 1387 in the directory) covering
+the full `PDColorSpace.create` dispatch matrix and the per-class
+edge-cases that wave 1364 left thin: DeviceN attribute-driven RGB path
+(/Process colorants vs /Colorants spot colorants, NChannel vs DeviceN
+subtype masking), ICCBased synthetic-profile header parsing (4-byte
+ASCII device-class / colour-space / PCS signatures, `is_srgb` device-model
+detection, perceptual→display `ensureDisplayProfile` rewrite, `clamp_colors`
+honouring /Range), Lab `inverse` static helper at the 6/29 threshold
+plus custom-whitepoint XYZ scaling, Indexed factory + COSStream
+Flate-compressed lookup + palette validation, Separation Lab-fast-path
+detection (PDFBOX-3622 / PDFBOX-5778), CalGray + CalRGB unit-vs-non-unit
+whitepoint dispatch (PDFBOX-2553 shortcut), Pattern colored-vs-uncolored
+construction + resource-attached pattern resolution, and the every-Subtype
+`PDColorSpace.create` dispatch matrix including PDFBOX-4833 dict-unwrap
+and PDFBOX-5315 self-recursion guard.
+
+**Ports:**
+
+- `tests/pdmodel/graphics/color/upstream/test_pd_indexed_test.py` —
+  ported upstream `PDIndexedTest.java` (PDFBOX-6192). Covers
+  `testFactory` and `testFactoryParameterChecks`. PROVENANCE.md row
+  added.
+
+**Latent bug fixes:**
+
+- `pypdfbox/pdmodel/graphics/color/pd_indexed.py`: ported the
+  `PDIndexed.create(base, hival, lookup_data)` static factory that
+  upstream added in PDFBOX-6192. The factory was missing entirely from
+  the pypdfbox port — any caller translating `PDIndexed.create(base, 5, bytes)`
+  from upstream Java code would have crashed with
+  ``AttributeError: type object 'PDIndexed' has no attribute 'create'``.
+  Surface includes the same `IllegalArgumentException`→`ValueError`
+  rejections upstream throws (null base, null data, negative hival,
+  hival > 255, short lookup payload). Mapping `IllegalArgumentException`
+  to `ValueError` matches the project's Java→Python exception
+  convention.
+- `pypdfbox/pdmodel/graphics/color/pd_lab.py`: `set_range(rng)` did
+  not invalidate the cached `_initial_color`, even though
+  `_set_component_range` (the underlying setter used by `set_a_range` /
+  `set_b_range`) did. Upstream `PDLab.setRangeArray(COSArray)` shares
+  the same `initialColor = null` invalidation contract as
+  `setARange` / `setBRange` (PDLab.java line 257). A caller that
+  mutated `/Range` directly and then read `get_initial_color()` would
+  see stale a*/b* minima. Fixed by refreshing `_initial_color` at the
+  end of `set_range`, mirroring the `_set_component_range` path.
+
+
+
+Widened hand-written test coverage across the entire `pypdfbox/cos/`
+module without adding any new dependencies. Eight new test files (+280
+test cases) covering paths the prior waves left unhit:
+
+- `tests/cos/test_cos_dictionary_wave1368.py` — typed-accessor edges
+  for `get_int` / `get_long` / `get_float` / `get_boolean` (two-key
+  overload + fallback parameter), indirect `COSObject` dereference,
+  `COSFloat → int` truncation and `COSInteger → float` widening,
+  `get_date` and `get_embedded_date` returning the default for
+  non-`COSString` / unparseable entries, `set_string` / `set_name` /
+  `set_date` with `None` triggering removal, and a parametrised matrix
+  over `clear_<type>` helpers.
+- `tests/cos/test_cos_array_wave1368.py` — `index_of_object` resolving
+  indirect references, `remove_object` returning `False` when the
+  candidate is absent, `to_float_array` / `to_cos_*_list` sentinel
+  substitution for non-target entries, `grow_to_size` no-op + padding,
+  safe iteration via `to_list()` snapshot before mutation, factory
+  constructors interning small `COSInteger` / `COSName`, and a
+  parametrised matrix over typed setters.
+- `tests/cos/test_cos_stream_wave1368.py` — filter chain round-trips
+  for the four flavour combos (`Flate→ASCIIHex`, `Flate→ASCII85`,
+  `Flate→LZW`, `ASCIIHex→Flate`, `ASCII85→LZW`), `/Filter` stored as a
+  bare name vs as a `COSArray`, manual single-name attachment for
+  parser-shape round-trip, `set_filters([])` preserving the empty
+  array form, `/DecodeParms` / `/DP` long-vs-short-form fallback,
+  `set_data` with and without a filter chain, `stop_filters` halting
+  the decoder (including the `AHx`/`A85` alias codes), `create_view`
+  decoding through the chain, and `to_text_string` swallowing the
+  empty-body case.
+- `tests/cos/test_cos_string_wave1368.py` — `str` constructor coercion
+  to PDFDocEncoding vs UTF-16BE-with-BOM, `get_string` BOM dispatch
+  (UTF-16BE, UTF-16LE, UTF-8, no-BOM fallback), `get_ascii` `?`
+  substitution for high bytes, `parse_hex` with leading/trailing
+  whitespace + odd-length padding + `FORCE_PARSING` substitution,
+  `to_hex_string` uppercase, `equals` vs `__eq__` divergence on hex
+  flag, and `set_value` defensive copy.
+- `tests/cos/test_cos_name_wave1368.py` — two-tier registry (static
+  constants surviving `clear_resources()`, dynamic names not),
+  `get_name` Latin-1 fallback for invalid UTF-8, `write_pdf` `#XX`
+  escape sequences (slash, space, hash, high bytes), allowed-punctuation
+  passthrough, lexicographic unsigned-byte ordering through
+  `compare_to` and rich comparators, signed-int32 `hash_code` parity
+  with Java's seed.
+- `tests/cos/test_cos_object_wave1368.py` — lazy-loader-runs-once
+  semantics, mid-load cycle break via the pre-load `_dereferenced`
+  flip, dangling references staying dereferenced with `is_object_null`
+  true, `set_object(None)` clearing the resolved value while keeping
+  dereferenced true, `set_loader(None)` preventing replacement,
+  `set_to_null` pinning `COSNull.NULL`, equality over
+  `(object_number, generation_number)` regardless of resolved payload,
+  and constructor rejection of negative numbers.
+- `tests/cos/test_cos_document_wave1368.py` — `get_object_from_pool`
+  placeholder reuse, `get_object` non-creating accessor, trailer /
+  catalog / `/ID` / `/Encrypt` round-trips with auto-creation,
+  `add_xref_table` skipping `None` keys and populating the offset map,
+  `get_objects_by_type` single + dual overloads ignoring non-dict and
+  no-`/Type` entries, version + offset validation, xref-stream and
+  hybrid-xref flag round-trips, idempotent `close`, and
+  `create_cos_stream` copying the seed dictionary while sharing the
+  document scratch.
+- `tests/cos/test_cos_visitor_wave1368.py` — `accept(visitor)` dispatch
+  parity for every concrete `COSBase` subclass (array, boolean, dict,
+  document, float, integer, name, null, stream, string, object) and
+  the `visit_from_int` → `visit_from_integer` delegation rule from
+  upstream's strict snake-case spelling.
+- `tests/cos/test_cos_leaf_wave1368.py` — `COSNull` / `COSBoolean` /
+  `COSInteger` / `COSFloat` round-out (singleton guards, write_pdf
+  token emission, signed-digit ASCII rendering, valid/invalid integer
+  sentinels, `COSFloat` original-form preservation, `format_string`
+  whole-number compaction).
+
+No latent bugs found in the cos hierarchy — every accessor path
+behaved exactly as the upstream contract specifies once exercised. All
+1101 cos tests pass (baseline 821; +280 net).
+
+### Wave 1368 — filter chain / predictor / LZW / CCITT / RunLength / ASCII85 / Crypt round-out + CryptFilter registration fix (agent D)
+
+Widened hand-written test coverage across the whole `pypdfbox/filter/`
+module: filter chain round-trips through `Filter.decode_chain`, strict
+`/DecodeParms` alignment with `/Filter` arrays (including the malformed
+single-name + non-dict params case that upstream Java logs as an error),
+PNG predictors 10-15 per-row tag bytes + Sub/Up/Average/Paeth/auto-detect
+end-to-end through FlateDecode, TIFF predictor 2 across 1/4/8/16-bit
+component widths, CCITTFaxDecode `/K` < 0 (Group 4) / `K = 0` (G3 1D) /
+`K > 0` (G3 2D) round-trips with `/BlackIs1` polarity, LZW code-width
+transitions at 9/10/11/12 bits with both `EarlyChange` settings + a
+large-payload round-trip that forces a `CLEAR_TABLE` flush at
+`MAX_TABLE_SIZE`, RunLengthDecode packet bands (0..127 literal / 128 EOD
+/ 129..255 repeat) with truncation tolerance, ASCII85Decode `z` shortcut
+for four-zero groups + mid-group `z` rejection + `~>` EOD framing +
+whitespace tolerance + partial-group sizing, and CryptFilter identity
+pass-through with non-Identity name rejection.
+
+Latent bug fix:
+
+- `pypdfbox/filter/crypt_filter.py`: `CryptFilter` was never registered
+  with the `FilterFactory`, so `FilterFactory.get("Crypt")` raised
+  `KeyError` even though upstream
+  `org.apache.pdfbox.filter.FilterFactory` ctor registers it via
+  `filters.put(COSName.CRYPT, crypt)`. Added the matching
+  `FilterFactory.register("Crypt", CryptFilter())` line at module
+  bottom. Pinned by a new test in
+  `tests/filter/test_crypt_identity_pass_through_wave1368.py`.
+
+### Wave 1368 — fontbox/cff parity round-out: DICT / charset / encoding / FDSelect / subr edges (agent C)
+
+Hand-written behavioural tests for CFF parser corners that the existing
+happy-path coverage (`test_cff_parser_coverage*.py`,
+`test_type2_char_string_parser_coverage.py`) did not exercise. Coverage
+of `pypdfbox/fontbox/cff/` was already ~99% line-wise; this wave is
+pure behaviour-pinning so future re-syncs don't silently regress edge
+cases. No source changes — no latent bugs surfaced.
+
+**New tests** (all under `tests/fontbox/cff/`):
+
+- `test_dict_operand_stack_wave1368.py` (19 tests) — DICT integer-stack
+  boundary encodings: b0 32/246 (one-byte range extremes), b0 247-250
+  (positive two-byte 108..1131), b0 251-254 (negative two-byte
+  -108..-1131), b0 28 (signed short, -32768 / 32767), b0 29 (signed int
+  -1 / Integer.MAX_VALUE). Plus BCD real-number paths (negative signed
+  exponent, lone `E` marker, pure decimal), multi-operand stacking,
+  `DictData.add` silently dropping operator-less entries, and
+  `Entry.get_delta` running-sum semantics on negative deltas and a
+  single-operand list. `nominalWidthX` default-to-zero parity.
+- `test_data_input_offsize_wave1368.py` (22 tests) — `read_offset`
+  parametrised across off_size ∈ {1,2,3,4} with explicit `ids=[...]`
+  per the cross-platform-bytes rule. Pins big-endian byte assembly
+  (`\x01\x02\x03\x04` → 0x01020304), signed Java-int semantics for
+  `read_int` / `read_short`, `peek_unsigned_byte` non-advancing
+  behaviour, plus the OSError messages for negative offset / out-of-
+  range / negative length / premature EOF / set_position(length).
+- `test_charset_format_dispatch_wave1368.py` (10 tests) — Format 0 / 1
+  / 2 dispatcher across both CID and Type 1 paths. Wide ranges
+  exercising the 1-byte `nLeft` Format-1 ceiling (255) and the 2-byte
+  `nLeft` Format-2 wide range (999). `nLeft == 0` single-glyph-per-
+  range parity. Single-glyph (`n_glyphs == 1`) no-extra-byte path.
+  Rejection of format byte 3 / 255.
+- `test_encoding_supplement_wave1368.py` (9 tests) — Format 0 / 1
+  encoding parity with the supplement high-bit toggled both on and
+  off. Pins the supplement append + `Supplement` instance type +
+  per-supplement SID resolution through `read_string`. Zero-codes /
+  zero-ranges edge cases. Invalid base format 2 rejection.
+- `test_fd_select_dispatch_wave1368.py` (14 tests) — FDSelect Format 0
+  / 3 dispatcher; Format 3 range-walk for in-range / out-of-range /
+  negative / sentinel-equal GIDs; empty ranges short-circuit; zero
+  glyphs path; `to_string` format-3 Range3 inner repr. Rejection of
+  format byte 2 / 255.
+- `test_index_data_offsize_wave1368.py` (15 tests) — INDEX parsing
+  across all four off_size widths with single-entry and three-entry
+  payloads; `count == 0` short-circuit; equal-offsets (zero-length
+  entries); negative-length rejection in `read_string_index_data`;
+  off_size rejection at 0 and 5; ISO-8859-1 decoding of string-INDEX
+  entries (incl. `\xe9` round-trip).
+- `test_type2_operators_wave1368.py` (34 tests) — Type 2 charstring:
+  `calculate_subr_number` parametrised over the three bias regimes
+  (107 / 1131 / 32768) with `ids=[...]`; `get_mask_length` over the
+  hint-count → byte-count formula (incl. `ceil(9/8) == 2` boundary);
+  `count_numbers` over commands / floats / empty seqs; `read_number`
+  byte-range dispatch with signed-short / fixed / tiny-int / two-byte
+  positive / two-byte negative; end-to-end `parse()` exercising hstem
+  / vstem stacking, hintmask + cntrmask mask-byte skipping, and the
+  9-hstem / 2-mask-byte boundary.
+- `test_string_index_sid_wave1368.py` (18 tests) — SID resolution
+  across the 0..390 standard-string / 391+ per-font-INDEX boundary;
+  parser fallback to `"SID<n>"` placeholder when the per-font INDEX
+  is None / empty / too short; negative-SID rejection; `get_string`
+  dispatch through `read_string` on operands; well-known standard
+  SIDs cross-checked against fontTools `cffStandardStrings`.
+- `test_subr_recursion_wave1368.py` (9 tests) — local / global subr
+  inlining; nested gsubr → lsubr resolution chains; `ret` stripped at
+  every level; non-int top-of-stack pop (float) leaves the subr inert;
+  out-of-range subr number short-circuits without inlining; self-
+  referencing gsubr and mutual gsubr/lsubr recursion terminate via
+  `RecursionError` rather than hanging (Python parity with the
+  upstream Java `StackOverflowError` behaviour — upstream has no
+  explicit cycle guard either).
+
+Net: +150 hand-written tests, no source changes, 1005 → 1155 passing
+in `tests/fontbox/cff/`.
+
+### Wave 1368 — pdfparser xref / trailer / object-stream / tolerance round-out (agent E)
+
+Widened hand-written test coverage of `pypdfbox/pdfparser/` along the
+class clusters PDFParser / COSParser / BaseParser / PDFObjectStreamParser
+and the xref-table + xref-stream + brute-force recovery machinery. All
+synthetic — small byte buffers fed straight into the parser so each
+fixture is reviewable line-by-line.
+
+**New hand-written test files (66 tests total, 0 failures):**
+
+- `tests/pdfparser/test_xref_table_free_list_wave1368.py` — traditional
+  `xref` table edges: free-root sentinel (`0 65535 f`), free-list cycles
+  (`n.n.f` offsets pointing at each other), generation-0 in-use adjacent
+  to high-gen free entries, multi-subsection tables with disjoint
+  ranges and free gaps, CRLF-terminated 20-byte records. 6 tests.
+- `tests/pdfparser/test_xref_stream_widths_wave1368.py` — PDF 1.5+ xref
+  stream `/W` and `/Index` edges: `/W [1 2 1]` smallest practical
+  widths, three non-contiguous `/Index` ranges, missing `/Index`
+  defaulting to `[0 Size]`, odd-length `/Index` rejection, type-2
+  compressed entries pointing into a real ObjStm, FlateDecode body
+  round-trip with an `/Index` subset. 6 tests.
+- `tests/pdfparser/test_incremental_save_chain_wave1368.py` —
+  multi-section `/Prev` chains: 3-section incremental save with
+  per-section overrides, oldest-section `/Info` inherited through
+  the merge, `/Prev` pointing into garbage recovered under lenient
+  mode, chain termination at the absence of `/Prev`, `/Encrypt`
+  observability when declared only in the newest trailer, self-loop
+  `/Prev` broken by the visited-offset guard. 7 tests.
+- `tests/pdfparser/test_object_stream_header_wave1368.py` — object
+  stream `/N` and `/First` consistency via `_read_object_stream_offsets`:
+  clean pair decode, `/N 0` empty stream, wrong `/Type` rejected,
+  `/First` past decoded length rejected, per-object offset outside
+  payload rejected, negative `/N` and `/First` rejected, header
+  truncated relative to `/N` rejected. 8 tests.
+- `tests/pdfparser/test_hybrid_xref_wave1368.py` — PDF 1.5 hybrid
+  layout (`/XRefStm` alongside a traditional xref table): merge picks
+  up the compressed-only entry, document marker `has_hybrid_xref`
+  flipped, no `/XRefStm` key → no hybrid load, `/XRefStm 0` short-
+  circuited, resolved section's primary type stays `TABLE`. 5 tests.
+- `tests/pdfparser/test_xref_repair_bruteforce_wave1368.py` — the
+  brute-force linear scan path: scanner recovers objects without an
+  xref table, `rebuild_trailer` assigns `/Root` to a `/Type /Catalog`
+  dict and `/Info` to a `/Producer`-bearing dict, multi-generation
+  scan, garbage tolerance between objects, substring-in-other-keyword
+  protection (no false `obj` match inside `endobj` or `/MyObject`),
+  `bf_search_for_xref` negative sentinel for missing tables and
+  positive offset for present ones. 8 tests.
+- `tests/pdfparser/test_trailer_keys_wave1368.py` — trailer dict edges:
+  `/ID` first + subsequent entries, single-entry `/ID`, indirect
+  `/Info` resolves, `/Size` smaller than pool tolerated, newest-section
+  trailer keys win on merge, absent `/ID` returns None, inline
+  `/Info` direct dictionary form. 7 tests.
+- `tests/pdfparser/test_parser_tolerance_wave1368.py` — wart tolerance:
+  comment lines before objects, PDF binary-marker comment after the
+  header, extra whitespace between tokens, missing whitespace between
+  `obj` and `<<`, trailing garbage past `%%EOF` (signing pipelines),
+  comments inside dictionaries, padded `trailer` keyword, multiple
+  consecutive comment lines. 8 tests.
+- `tests/pdfparser/test_xref_entry_line_wave1368.py` — entry-line
+  parser edges via `_parse_xref_entry_line`: canonical 20-byte form,
+  free-root sentinel, compact form without trailing space, tab-
+  separated columns, CRLF terminator, malformed flag / extra token /
+  non-numeric offset+gen / multi-char flag rejection, short
+  (non-zero-padded) numeric widths accepted. 11 tests.
+
+No latent bugs surfaced — every assertion in the new tests passes
+against the current parser behaviour. The brute-force scanner already
+handles all probed cases; the resolver's visited-offset guard already
+breaks `/Prev` cycles; the xref-stream `/W` validator already rejects
+the malformed cases tested.
 
 ### Wave 1367 — encryption per-revision round-trip matrix + /EncryptMetadata latent-bug fix (agent B)
 

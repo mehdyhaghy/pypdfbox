@@ -51,6 +51,52 @@ class PDIndexed(PDColorSpace):
         self._actual_max_index_cache: int | None = None
         self._rgb_color_table_cache: list[tuple[int, int, int]] | None = None
 
+    # ---------- factory ----------
+
+    @staticmethod
+    def create(
+        base: PDColorSpace,
+        hival: int,
+        lookup_data: bytes,
+    ) -> PDIndexed:
+        """Build a ``PDIndexed`` from a base color space, ``hival`` and
+        raw palette bytes. Mirrors upstream
+        ``PDIndexed.create(PDColorSpace, int, byte[])`` (PDIndexed.java
+        line 104, added by PDFBOX-6192).
+
+        :param base: base color space — must not be ``None``.
+        :param hival: maximum valid index value for the lookup data.
+            Must satisfy ``0 <= hival <= 255``.
+        :param lookup_data: raw palette bytes — must not be ``None`` and
+            must be at least ``(hival + 1) * base.get_number_of_components()``
+            bytes long.
+        :raises ValueError: when any of the above constraints is
+            violated. Upstream throws ``IllegalArgumentException``; we
+            map that to :class:`ValueError` per the project's Java→Python
+            exception convention.
+        """
+        if base is None:
+            raise ValueError("base must not be null")
+        if lookup_data is None:
+            raise ValueError("lookupData must not be null")
+        if hival < 0 or hival > 255:
+            raise ValueError(" hival has to be a positive value <= 255")
+        expected = (hival + 1) * base.get_number_of_components()
+        if len(lookup_data) < expected:
+            raise ValueError(
+                "lookupData too short: expected at least "
+                f"{expected} bytes ((hival+1) * components), got {len(lookup_data)}"
+            )
+        arr = COSArray()
+        arr.add(COSName.get_pdf_name(PDIndexed.NAME))
+        base_cos = base.get_cos_object()
+        if base_cos is None:
+            raise ValueError("base color space has no COS form")
+        arr.add(base_cos)
+        arr.add(COSInteger.get(hival))
+        arr.add(COSString(bytes(lookup_data)))
+        return PDIndexed(arr)
+
     # ---------- abstract surface ----------
 
     def get_name(self) -> str:

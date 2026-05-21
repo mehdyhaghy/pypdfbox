@@ -107,6 +107,19 @@ class PDLab(PDColorSpace):
 
     def set_range(self, rng: list[float]) -> None:
         self._dict().set_item(_RANGE, COSArray.of_cos_floats(rng))
+        # Upstream invalidates the cached initial color when the range
+        # changes (PDLab.java line 257 — ``initialColor = null``); the
+        # bulk setter shares the same invalidation contract as
+        # ``setARange`` / ``setBRange``. Refresh here so callers that
+        # mutate /Range and immediately read ``get_initial_color`` see
+        # the updated a*/b* minima.
+        new_rng = self.get_range()
+        a_min = new_rng[0] if len(new_rng) >= 1 else -100.0
+        b_min = new_rng[2] if len(new_rng) >= 3 else -100.0
+        self._initial_color = PDColor(
+            [0.0, max(0.0, a_min), max(0.0, b_min)],
+            self,
+        )
 
     def has_range(self) -> bool:
         """Return ``True`` when ``/Range`` is present as an array."""

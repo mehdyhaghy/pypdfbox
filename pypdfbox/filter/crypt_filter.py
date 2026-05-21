@@ -22,6 +22,7 @@ from pypdfbox.cos import COSDictionary, COSName
 
 from .decode_result import DecodeResult
 from .filter import Filter
+from .filter_factory import FilterFactory
 from .identity_filter import IdentityFilter
 
 _IDENTITY = COSName.get_pdf_name("Identity")
@@ -87,3 +88,9 @@ class CryptFilter(Filter):
         if isinstance(value, COSName):
             return value.get_name()
         return str(value) if value is not None else None
+
+
+# Register under the canonical ``/Crypt`` name so ``FilterFactory.get("Crypt")``
+# resolves. Mirrors upstream ``FilterFactory`` ctor wiring
+# (``filters.put(COSName.CRYPT, crypt)``).
+FilterFactory.register("Crypt", CryptFilter())
