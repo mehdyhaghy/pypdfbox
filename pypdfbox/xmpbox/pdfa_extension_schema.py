@@ -5,6 +5,10 @@ from typing import TYPE_CHECKING, Any, cast
 from .xmp_schema import XMPSchema
 
 if TYPE_CHECKING:
+    from .type.pdfa_field_description_type import PDFAFieldType
+    from .type.pdfa_property_type import PDFAPropertyType
+    from .type.pdfa_schema_type import PDFASchemaType
+    from .type.pdfa_type_type import PDFATypeType
     from .xmp_metadata import XMPMetadata
 
 
@@ -53,6 +57,18 @@ class PDFAExtensionSchema(XMPSchema):
         self.add_namespace(self.PDFASCHEMA_PREFIX, self.PDFASCHEMA_NAMESPACE)
         self.add_namespace(self.PDFAPROPERTY_PREFIX, self.PDFAPROPERTY_NAMESPACE)
         self.add_namespace(self.PDFATYPE_PREFIX, self.PDFATYPE_NAMESPACE)
+        # Typed mirror of ``pdfaExtension:schemas``. Populated only when callers
+        # opt into the typed surface via :meth:`add_schema_description`; the
+        # lite ``list[dict[str, str]]`` form continues to track the same
+        # entries so existing readers (:meth:`get_extension_schemas` /
+        # :meth:`get_count`) stay backwards-compatible.
+        self._typed_schemas: list[PDFASchemaType] = []
+        # Typed mirror of ``pdfaExtension:schemas``. Populated only when callers
+        # opt into the typed surface via :meth:`add_schema_description`; the
+        # lite ``list[dict[str, str]]`` form continues to track the same
+        # entries so existing readers (:meth:`get_extension_schemas` /
+        # :meth:`get_count`) stay backwards-compatible.
+        self._typed_schemas: list[PDFASchemaType] = []
 
     # --- pdfaExtension:schemas Bag — lite struct surface --------------
 
@@ -141,3 +157,114 @@ class PDFAExtensionSchema(XMPSchema):
         if isinstance(value, list):
             return len(value)
         return 0
+
+    # --- typed nested-struct surface (wave 1379) ----------------------
+    #
+    # The lite ``add_extension_schema`` / ``get_extension_schemas`` pair stores
+    # entries as ``list[dict[str, str]]`` for backwards-compatibility with the
+    # readers and parser path that landed in earlier waves. The typed surface
+    # below lets callers opt into the canonical
+    # :class:`PDFASchemaType` / :class:`PDFAPropertyType` /
+    # :class:`PDFATypeType` / :class:`PDFAFieldType` hierarchy so that the
+    # nested ``pdfaSchema:property`` Seq and ``pdfaSchema:valueType`` Seq are
+    # introspectable — closing the wave-1379 DEFERRED.md entry for nested
+    # struct typing.
+
+    def add_schema_description(self, schema_description: PDFASchemaType) -> str:
+        """
+        Append a typed :class:`PDFASchemaType` entry to the
+        ``pdfaExtension:schemas`` Bag and return the local field name the entry
+        was stored under (always ``"li"`` — the upstream RDF array element name,
+        matching :data:`AbstractStructuredType.STRUCTURE_ARRAY_NAME`). The
+        lite-surface ``list[dict[str, str]]`` is kept in sync so existing
+        readers see the same Bag length and ``schema`` / ``namespaceURI`` /
+        ``prefix`` slots — only the nested ``property`` / ``valueType`` Seqs
+        live exclusively on the typed mirror.
+
+        Mirrors the shape of upstream PDFBox's
+        ``PDFAExtensionSchema.addSchemaDescription`` helper paired with
+        ``PDFASchemaType.addPropertyDescription`` / ``addValueTypeDescription``.
+        """
+        self._typed_schemas.append(schema_description)
+        backing = self._get_extension_list(create=True)
+        backing.append(
+            {
+                self.SCHEMA: schema_description.get_property_value_as_string(
+                    schema_description.SCHEMA
+                )
+                or "",
+                self.NAMESPACE_URI: schema_description.get_namespace_uri() or "",
+                self.PREFIX: schema_description.get_prefix_value() or "",
+            }
+        )
+        from .type.abstract_structured_type import STRUCTURE_ARRAY_NAME
+
+        return STRUCTURE_ARRAY_NAME
+
+    def get_schema_descriptions(self) -> list[PDFASchemaType]:
+        """
+        Return the typed :class:`PDFASchemaType` mirror of
+        ``pdfaExtension:schemas``. Empty list when no typed entries have been
+        registered (the lite ``add_extension_schema`` path does NOT populate
+        the typed mirror — see :meth:`add_schema_description` for the typed
+        write path).
+        """
+        return list(self._typed_schemas)
+
+    def get_typed_schemas(self) -> list[PDFASchemaType]:
+        """Alias of :meth:`get_schema_descriptions` keyed under the spec
+        ``pdfaExtension:schemas`` local name so callers indexing by that
+        attribute find the typed surface symmetrically."""
+        return self.get_schema_descriptions()
+
+    def find_schema_by_namespace(
+        self, namespace_uri: str
+    ) -> PDFASchemaType | None:
+        """Return the first typed schema description whose
+        ``pdfaSchema:namespaceURI`` matches ``namespace_uri``, or ``None``."""
+        for entry in self._typed_schemas:
+            if entry.get_namespace_uri() == namespace_uri:
+                return entry
+        return None
+
+    def find_schema_by_prefix(self, prefix: str) -> PDFASchemaType | None:
+        """Return the first typed schema description whose
+        ``pdfaSchema:prefix`` matches ``prefix``, or ``None``."""
+        for entry in self._typed_schemas:
+            if entry.get_prefix_value() == prefix:
+                return entry
+        return None
+
+    def create_property_type(self) -> PDFAPropertyType:
+        """Construct a fresh :class:`PDFAPropertyType` bound to this schema's
+        owning metadata. Convenience wrapper so callers don't have to import
+        the type module just to populate one entry of the
+        ``pdfaSchema:property`` Seq."""
+        from .type.pdfa_property_type import PDFAPropertyType
+
+        return PDFAPropertyType(self.get_metadata())
+
+    def create_value_type(self) -> PDFATypeType:
+        """Construct a fresh :class:`PDFATypeType` bound to this schema's
+        owning metadata. Convenience wrapper for populating one entry of the
+        ``pdfaSchema:valueType`` Seq."""
+        from .type.pdfa_type_type import PDFATypeType
+
+        return PDFATypeType(self.get_metadata())
+
+    def create_field_type(self) -> PDFAFieldType:
+        """Construct a fresh :class:`PDFAFieldType` bound to this schema's
+        owning metadata. Convenience wrapper for populating one entry of a
+        value type's ``pdfaType:field`` Seq."""
+        from .type.pdfa_field_description_type import PDFAFieldType
+
+        return PDFAFieldType(self.get_metadata())
+
+    def create_schema_type(self) -> PDFASchemaType:
+        """Construct a fresh :class:`PDFASchemaType` bound to this schema's
+        owning metadata. Convenience wrapper for building a typed
+        ``pdfaExtension:schemas`` entry before calling
+        :meth:`add_schema_description`."""
+        from .type.pdfa_schema_type import PDFASchemaType
+
+        return PDFASchemaType(self.get_metadata())

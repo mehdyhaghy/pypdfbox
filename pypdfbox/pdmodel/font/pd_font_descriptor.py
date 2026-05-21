@@ -636,6 +636,141 @@ class PDPanoseClassification:
     FAMILY_KIND_LATIN_DECORATIVE: int = 4
     FAMILY_KIND_LATIN_SYMBOL: int = 5
 
+    # Per-byte sub-classification constants (PANOSE 2.0 — Microsoft OS/2
+    # specification). Only ``Any`` (0) and ``No Fit`` (1) are universal
+    # across every category; the named buckets beyond that are specific to
+    # the Latin Text family kind, which is the only one whose
+    # sub-classification is enumerated in PDF descriptors in practice.
+    # pypdfbox extension — upstream PDFBox exposes none of these as named
+    # constants. Surfaced so callers branching on PANOSE bytes can use the
+    # spec terminology instead of magic numbers (see ``debugger/flagbitspane/
+    # panose_flag.py`` for the labels these values render to).
+    ANY: int = 0
+    NO_FIT: int = 1
+
+    # ---- Byte 1: Serif Style (Latin Text family) ----
+    SERIF_STYLE_COVE: int = 2
+    SERIF_STYLE_OBTUSE_COVE: int = 3
+    SERIF_STYLE_SQUARE_COVE: int = 4
+    SERIF_STYLE_OBTUSE_SQUARE_COVE: int = 5
+    SERIF_STYLE_SQUARE: int = 6
+    SERIF_STYLE_THIN: int = 7
+    SERIF_STYLE_BONE: int = 8
+    SERIF_STYLE_EXAGGERATED: int = 9
+    SERIF_STYLE_TRIANGLE: int = 10
+    SERIF_STYLE_NORMAL_SANS: int = 11
+    SERIF_STYLE_OBTUSE_SANS: int = 12
+    SERIF_STYLE_PERP_SANS: int = 13
+    SERIF_STYLE_FLARED: int = 14
+    SERIF_STYLE_ROUNDED: int = 15
+
+    # ---- Byte 2: Weight ----
+    WEIGHT_VERY_LIGHT: int = 2
+    WEIGHT_LIGHT: int = 3
+    WEIGHT_THIN: int = 4
+    WEIGHT_BOOK: int = 5
+    WEIGHT_MEDIUM: int = 6
+    WEIGHT_DEMI: int = 7
+    WEIGHT_BOLD: int = 8
+    WEIGHT_HEAVY: int = 9
+    WEIGHT_BLACK: int = 10
+    WEIGHT_NORD: int = 11
+
+    # ---- Byte 3: Proportion ----
+    PROPORTION_OLD_STYLE: int = 2
+    PROPORTION_MODERN: int = 3
+    PROPORTION_EVEN_WIDTH: int = 4
+    PROPORTION_EXPANDED: int = 5
+    PROPORTION_CONDENSED: int = 6
+    PROPORTION_USUAL_WIDTH: int = 7
+    PROPORTION_VERY_EXPANDED: int = 8
+    PROPORTION_VERY_CONDENSED: int = 9
+    PROPORTION_MONOSPACED: int = 10
+
+    # ---- Byte 4: Contrast ----
+    CONTRAST_NONE: int = 2
+    CONTRAST_VERY_LOW: int = 3
+    CONTRAST_LOW: int = 4
+    CONTRAST_MEDIUM_LOW: int = 5
+    CONTRAST_MEDIUM: int = 6
+    CONTRAST_MEDIUM_HIGH: int = 7
+    CONTRAST_HIGH: int = 8
+    CONTRAST_VERY_HIGH: int = 9
+
+    # ---- Byte 5: Stroke Variation ----
+    STROKE_VARIATION_NO_VARIATION: int = 2
+    STROKE_VARIATION_GRADUAL_DIAGONAL: int = 3
+    STROKE_VARIATION_GRADUAL_TRANSITIONAL: int = 4
+    STROKE_VARIATION_GRADUAL_VERTICAL: int = 5
+    STROKE_VARIATION_GRADUAL_HORIZONTAL: int = 6
+    STROKE_VARIATION_RAPID_VERTICAL: int = 7
+    STROKE_VARIATION_RAPID_HORIZONTAL: int = 8
+    STROKE_VARIATION_INSTANT_VERTICAL: int = 9
+    STROKE_VARIATION_INSTANT_HORIZONTAL: int = 10
+
+    # ---- Byte 6: Arm Style ----
+    ARM_STYLE_STRAIGHT_ARMS_HORZ: int = 2
+    ARM_STYLE_STRAIGHT_ARMS_WEDGE: int = 3
+    ARM_STYLE_STRAIGHT_ARMS_VERT: int = 4
+    ARM_STYLE_STRAIGHT_ARMS_SINGLE_SERIF: int = 5
+    ARM_STYLE_STRAIGHT_ARMS_DOUBLE_SERIF: int = 6
+    ARM_STYLE_NON_STRAIGHT_ARMS_HORZ: int = 7
+    ARM_STYLE_NON_STRAIGHT_ARMS_WEDGE: int = 8
+    ARM_STYLE_NON_STRAIGHT_ARMS_VERT: int = 9
+    ARM_STYLE_NON_STRAIGHT_ARMS_SINGLE_SERIF: int = 10
+    ARM_STYLE_NON_STRAIGHT_ARMS_DOUBLE_SERIF: int = 11
+
+    # ---- Byte 7: Letterform ----
+    LETTERFORM_NORMAL_CONTACT: int = 2
+    LETTERFORM_NORMAL_WEIGHTED: int = 3
+    LETTERFORM_NORMAL_BOXED: int = 4
+    LETTERFORM_NORMAL_FLATTENED: int = 5
+    LETTERFORM_NORMAL_ROUNDED: int = 6
+    LETTERFORM_NORMAL_OFF_CENTER: int = 7
+    LETTERFORM_NORMAL_SQUARE: int = 8
+    LETTERFORM_OBLIQUE_CONTACT: int = 9
+    LETTERFORM_OBLIQUE_WEIGHTED: int = 10
+    LETTERFORM_OBLIQUE_BOXED: int = 11
+    LETTERFORM_OBLIQUE_FLATTENED: int = 12
+    LETTERFORM_OBLIQUE_ROUNDED: int = 13
+    LETTERFORM_OBLIQUE_OFF_CENTER: int = 14
+    LETTERFORM_OBLIQUE_SQUARE: int = 15
+
+    # ---- Byte 8: Midline ----
+    MIDLINE_STANDARD_TRIMMED: int = 2
+    MIDLINE_STANDARD_POINTED: int = 3
+    MIDLINE_STANDARD_SERIFED: int = 4
+    MIDLINE_HIGH_TRIMMED: int = 5
+    MIDLINE_HIGH_POINTED: int = 6
+    MIDLINE_HIGH_SERIFED: int = 7
+    MIDLINE_CONSTANT_TRIMMED: int = 8
+    MIDLINE_CONSTANT_POINTED: int = 9
+    MIDLINE_CONSTANT_SERIFED: int = 10
+    MIDLINE_LOW_TRIMMED: int = 11
+    MIDLINE_LOW_POINTED: int = 12
+    MIDLINE_LOW_SERIFED: int = 13
+
+    # ---- Byte 9: X-Height ----
+    X_HEIGHT_CONSTANT_SMALL: int = 2
+    X_HEIGHT_CONSTANT_STANDARD: int = 3
+    X_HEIGHT_CONSTANT_LARGE: int = 4
+    X_HEIGHT_DUCKING_SMALL: int = 5
+    X_HEIGHT_DUCKING_STANDARD: int = 6
+    X_HEIGHT_DUCKING_LARGE: int = 7
+
+    # Byte offsets — surfaced as named constants so the setter helpers can
+    # reference them without re-typing magic indices. pypdfbox extension.
+    _BYTE_FAMILY_KIND: int = 0
+    _BYTE_SERIF_STYLE: int = 1
+    _BYTE_WEIGHT: int = 2
+    _BYTE_PROPORTION: int = 3
+    _BYTE_CONTRAST: int = 4
+    _BYTE_STROKE_VARIATION: int = 5
+    _BYTE_ARM_STYLE: int = 6
+    _BYTE_LETTERFORM: int = 7
+    _BYTE_MIDLINE: int = 8
+    _BYTE_X_HEIGHT: int = 9
+
     __slots__ = ("_bytes",)
 
     def __init__(self, data: bytes | bytearray) -> None:
@@ -681,6 +816,133 @@ class PDPanoseClassification:
 
     def get_x_height(self) -> int:
         return self._signed_byte_at(9)
+
+    # ---------- per-byte setters (pypdfbox extension) ----------
+    # Upstream ``PDPanoseClassification`` is read-only — the Java class
+    # exposes only ``getBytes()`` plus the 10 per-byte getters. pypdfbox
+    # adds matched setters so callers can author or repair classifications
+    # without having to round-trip through ``bytes`` and the constructor.
+    # Each setter accepts a signed int in the range ``-128..255`` (Java's
+    # ``byte`` is signed, but PANOSE values are unsigned by spec — we
+    # accept both so round-trips via :meth:`get_*` work).
+
+    def _set_byte_at(self, index: int, value: int) -> None:
+        if not -0x80 <= int(value) <= 0xFF:
+            raise ValueError(
+                f"PANOSE byte {value!r} out of range (-128..255); each "
+                "category is a single signed/unsigned byte per the OS/2 "
+                "PANOSE specification."
+            )
+        unsigned = int(value) & 0xFF
+        buf = bytearray(self._bytes)
+        # Pad with zeros if the underlying buffer is shorter than the byte
+        # we're trying to write (upstream tolerates short buffers in the
+        # constructor; matching that asymmetry would surprise callers).
+        if index >= len(buf):
+            buf.extend(b"\x00" * (index + 1 - len(buf)))
+        buf[index] = unsigned
+        self._bytes = bytes(buf)
+
+    def set_family_kind(self, value: int) -> None:
+        """Mirror :meth:`get_family_kind` — write byte 0 of the
+        classification.
+
+        pypdfbox extension. Use one of the :attr:`FAMILY_KIND_*` constants
+        for spec-compliant values.
+        """
+        self._set_byte_at(self._BYTE_FAMILY_KIND, value)
+
+    def set_serif_style(self, value: int) -> None:
+        """Mirror :meth:`get_serif_style` — write byte 1 of the classification.
+
+        pypdfbox extension. Use one of the :attr:`SERIF_STYLE_*` constants
+        for Latin Text family values (other families list ``Any`` / ``No Fit``).
+        """
+        self._set_byte_at(self._BYTE_SERIF_STYLE, value)
+
+    def set_weight(self, value: int) -> None:
+        """Mirror :meth:`get_weight` — write byte 2 of the classification.
+
+        pypdfbox extension. Use one of the :attr:`WEIGHT_*` constants.
+        """
+        self._set_byte_at(self._BYTE_WEIGHT, value)
+
+    def set_proportion(self, value: int) -> None:
+        """Mirror :meth:`get_proportion` — write byte 3 of the classification.
+
+        pypdfbox extension. Use one of the :attr:`PROPORTION_*` constants.
+        """
+        self._set_byte_at(self._BYTE_PROPORTION, value)
+
+    def set_contrast(self, value: int) -> None:
+        """Mirror :meth:`get_contrast` — write byte 4 of the classification.
+
+        pypdfbox extension. Use one of the :attr:`CONTRAST_*` constants.
+        """
+        self._set_byte_at(self._BYTE_CONTRAST, value)
+
+    def set_stroke_variation(self, value: int) -> None:
+        """Mirror :meth:`get_stroke_variation` — write byte 5 of the
+        classification.
+
+        pypdfbox extension. Use one of the :attr:`STROKE_VARIATION_*`
+        constants.
+        """
+        self._set_byte_at(self._BYTE_STROKE_VARIATION, value)
+
+    def set_arm_style(self, value: int) -> None:
+        """Mirror :meth:`get_arm_style` — write byte 6 of the classification.
+
+        pypdfbox extension. Use one of the :attr:`ARM_STYLE_*` constants.
+        """
+        self._set_byte_at(self._BYTE_ARM_STYLE, value)
+
+    def set_letterform(self, value: int) -> None:
+        """Mirror :meth:`get_letterform` — write byte 7 of the classification.
+
+        pypdfbox extension. Use one of the :attr:`LETTERFORM_*` constants.
+        """
+        self._set_byte_at(self._BYTE_LETTERFORM, value)
+
+    def set_midline(self, value: int) -> None:
+        """Mirror :meth:`get_midline` — write byte 8 of the classification.
+
+        pypdfbox extension. Use one of the :attr:`MIDLINE_*` constants.
+        """
+        self._set_byte_at(self._BYTE_MIDLINE, value)
+
+    def set_x_height(self, value: int) -> None:
+        """Mirror :meth:`get_x_height` — write byte 9 of the classification.
+
+        pypdfbox extension. Use one of the :attr:`X_HEIGHT_*` constants.
+        """
+        self._set_byte_at(self._BYTE_X_HEIGHT, value)
+
+    def get_byte(self, index: int) -> int:
+        """Generic per-byte getter (0-based index into the 10-byte block).
+
+        pypdfbox extension — symmetric with :meth:`set_byte` and useful
+        for callers iterating over the categories programmatically.
+        Returns the signed byte value to match the per-category getters.
+        """
+        if not 0 <= int(index) < PDPanoseClassification.LENGTH:
+            raise IndexError(
+                f"PANOSE byte index {index!r} out of range "
+                f"(0..{PDPanoseClassification.LENGTH - 1})"
+            )
+        return self._signed_byte_at(int(index))
+
+    def set_byte(self, index: int, value: int) -> None:
+        """Generic per-byte setter (0-based index into the 10-byte block).
+
+        pypdfbox extension — symmetric with :meth:`get_byte`.
+        """
+        if not 0 <= int(index) < PDPanoseClassification.LENGTH:
+            raise IndexError(
+                f"PANOSE byte index {index!r} out of range "
+                f"(0..{PDPanoseClassification.LENGTH - 1})"
+            )
+        self._set_byte_at(int(index), value)
 
     # ---------- family-kind predicates ----------
 

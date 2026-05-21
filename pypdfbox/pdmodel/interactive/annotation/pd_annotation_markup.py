@@ -2,11 +2,23 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pypdfbox.cos import COSBase, COSDictionary, COSName, COSStream, COSString
+from pypdfbox.cos import (
+    COSArray,
+    COSBase,
+    COSDictionary,
+    COSFloat,
+    COSName,
+    COSStream,
+    COSString,
+)
 
 from .pd_annotation import PDAnnotation
 
 if TYPE_CHECKING:
+    from pypdfbox.pdmodel.interactive.measurement.pd_measure_dictionary import (
+        PDMeasureDictionary,
+    )
+
     from .pd_annotation_popup import PDAnnotationPopup
     from .pd_border_style_dictionary import PDBorderStyleDictionary
 
@@ -20,6 +32,8 @@ _POPUP: COSName = COSName.get_pdf_name("Popup")
 _RC: COSName = COSName.get_pdf_name("RC")
 _EX_DATA: COSName = COSName.get_pdf_name("ExData")
 _BS: COSName = COSName.get_pdf_name("BS")
+_IC: COSName = COSName.get_pdf_name("IC")
+_MEASURE: COSName = COSName.get_pdf_name("Measure")
 
 
 class PDAnnotationMarkup(PDAnnotation):
@@ -236,6 +250,136 @@ class PDAnnotationMarkup(PDAnnotation):
             self._dict.remove_item(_EX_DATA)
             return
         self._dict.set_item(_EX_DATA, ex_data)
+
+    # ---------- /IC (interior color) ----------
+
+    def get_interior_color(self) -> list[float] | None:
+        """Return the ``/IC`` interior-color components, or ``None`` when
+        ``/IC`` is absent.
+
+        Mirrors the read shape of the per-subtype ``getInteriorColor``
+        accessors on :class:`PDAnnotationLine`, :class:`PDAnnotationPolyline`,
+        :class:`PDAnnotationPolygon`, and :class:`PDAnnotationSquareCircle`.
+        Component count implies the colour space (1 = DeviceGray,
+        3 = DeviceRGB, 4 = DeviceCMYK).
+
+        Exposed on the markup base so read-only callers traversing a
+        mixed annotation tree don't have to downcast to a concrete subtype
+        before reaching for ``/IC``. The wire-level representation is
+        identical across the subtypes that actually populate the entry,
+        so a single base accessor is safe.
+        """
+        value = self._dict.get_dictionary_object(_IC)
+        if isinstance(value, COSArray):
+            return value.to_float_array()
+        return None
+
+    def set_interior_color(
+        self, ic: list[float] | tuple[float, ...] | None
+    ) -> None:
+        """Write the ``/IC`` interior-color array, or remove the entry when
+        ``ic`` is ``None``.
+
+        Accepts 1, 3 or 4 floats matching DeviceGray / DeviceRGB /
+        DeviceCMYK component counts — the PDF colour space is inferred at
+        render time from the array length.
+        """
+        if ic is None:
+            self._dict.remove_item(_IC)
+            return
+        arr = COSArray([COSFloat(float(c)) for c in ic])
+        self._dict.set_item(_IC, arr)
+
+    def remove_interior_color(self) -> None:
+        """Remove the ``/IC`` entry. Equivalent to ``set_interior_color(None)``
+        but communicates intent more clearly at call sites that strip
+        colour metadata before export."""
+        self._dict.remove_item(_IC)
+
+    def has_interior_color(self) -> bool:
+        """``True`` when ``/IC`` resolves to a numeric array.
+
+        pypdfbox extension — counterpart of :meth:`has_popup`. Avoids
+        materialising the float list when the caller only needs a
+        presence check.
+        """
+        return isinstance(self._dict.get_dictionary_object(_IC), COSArray)
+
+    # ---------- /Measure ----------
+
+    def get_measure(self) -> PDMeasureDictionary | None:
+        """Return the typed ``/Measure`` dictionary (PDF 32000-1:2008
+        §12.7.10) or ``None`` when the entry is absent.
+
+        Exposed on the markup base because ``/Measure`` is shared between
+        :class:`PDAnnotationLine`, :class:`PDAnnotationPolyline`, and
+        :class:`PDAnnotationPolygon`; the subclasses keep their own typed
+        accessors for IDE-discoverable signatures, but read-only callers
+        traversing a mixed annotation tree benefit from a single entry
+        point.
+        """
+        from pypdfbox.pdmodel.interactive.measurement.pd_measure_dictionary import (  # noqa: PLC0415
+            PDMeasureDictionary,
+        )
+
+        value = self._dict.get_dictionary_object(_MEASURE)
+        if isinstance(value, COSDictionary):
+            return PDMeasureDictionary(value)
+        return None
+
+    def set_measure(
+        self, measure: PDMeasureDictionary | COSDictionary | None
+    ) -> None:
+        """Set or clear the ``/Measure`` entry. Accepts a typed
+        :class:`PDMeasureDictionary` or a raw ``COSDictionary``; ``None``
+        removes the entry."""
+        if measure is None:
+            self._dict.remove_item(_MEASURE)
+            return
+        self._dict.set_item(
+            _MEASURE,
+            measure.get_cos_object() if hasattr(measure, "get_cos_object") else measure,
+        )
+
+    def remove_measure(self) -> None:
+        """Remove the ``/Measure`` entry. Equivalent to ``set_measure(None)``."""
+        self._dict.remove_item(_MEASURE)
+
+    def has_measure(self) -> bool:
+        """``True`` when ``/Measure`` resolves to a dictionary.
+
+        pypdfbox extension — counterpart of :meth:`has_popup`. Useful for
+        callers triaging an annotation tree without materialising the
+        typed wrapper.
+        """
+        return isinstance(self._dict.get_dictionary_object(_MEASURE), COSDictionary)
+
+    # ---------- remove helpers for previously get/set-only entries ----------
+    # pypdfbox extension — DEFERRED.md (wave 1379) called out ``get/set +
+    # remove`` for /Popup. The explicit ``remove_*`` predicates make the
+    # intent obvious at call sites that strip review-workflow fields
+    # before export (sanitization pipelines, anonymisation, etc.).
+
+    def remove_popup(self) -> None:
+        """Remove the ``/Popup`` entry. Equivalent to ``set_popup(None)``."""
+        self._dict.remove_item(_POPUP)
+
+    def remove_rich_contents(self) -> None:
+        """Remove the ``/RC`` entry. Equivalent to ``set_rich_contents(None)``."""
+        self._dict.remove_item(_RC)
+
+    def remove_border_style(self) -> None:
+        """Remove the ``/BS`` entry. Equivalent to ``set_border_style(None)``."""
+        self._dict.remove_item(_BS)
+
+    def has_border_style(self) -> bool:
+        """``True`` when ``/BS`` resolves to a dictionary.
+
+        pypdfbox extension — counterpart of :meth:`has_popup`. Avoids
+        materialising :class:`PDBorderStyleDictionary` when the caller
+        only needs a presence check.
+        """
+        return isinstance(self._dict.get_dictionary_object(_BS), COSDictionary)
 
 
 __all__ = ["PDAnnotationMarkup"]

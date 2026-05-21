@@ -134,6 +134,16 @@ class Splitter:
         self._dest_to_fix_per_chunk: list[
             list[tuple[COSArray, COSDictionary, COSDictionary | None]]
         ] = []
+        # Wave-1379 side-table keyed by ``id(cloned_array)`` carrying the
+        # cloned link annotation that hosts each cloned destination. Drained
+        # by :meth:`fix_destinations` only when the cross-chunk resolver
+        # opted into a GoToR rewrite — we need direct access to the
+        # annotation dict to swap its ``/Dest`` (or ``/A GoTo``) entry for a
+        # ``/A GoToR`` action. Kept separate from ``_dest_to_fix`` so the
+        # historical 3-tuple shape (and the legacy 2-tuple fallback in
+        # :meth:`fix_destinations`) remain wire-compatible.
+        self._dest_to_link_map: dict[int, COSDictionary] = {}
+        self._dest_to_link_map_per_chunk: list[dict[int, COSDictionary]] = []
         # Per-chunk queue of (cloned_annotations, source_annots_array,
         # imported_page_dict) tuples populated by ``_process_annotations``'
         # first pass and drained by ``_finalize_annotation_links`` after
@@ -157,6 +167,30 @@ class Splitter:
 
         self._stream_cache_create_function: Callable[[], Any] | None = None
         self._memory_usage_setting: MemoryUsageSetting | None = None
+
+        # Wave 1379: opt-in callback that the post-pass calls when a cloned
+        # link's target page lives outside the chunk that hosts the link. The
+        # resolver receives the *source* target page COSDictionary and may
+        # return:
+        #
+        #   * ``None`` — keep the historical null-out behaviour (the cloned
+        #     destination's ``/D[0]`` slot becomes ``COSNull``);
+        #   * ``str`` — interpret the returned value as a relative file name
+        #     and rewrite the link's destination into a GoToR action targeting
+        #     that file. The original explicit-fit-mode array (``[null /XYZ
+        #     left top zoom]`` etc.) is preserved verbatim except for the
+        #     ``[0]`` page slot, which is replaced by the *integer page index*
+        #     within the target file. The caller is responsible for arranging
+        #     the per-chunk filename mapping (typically by computing it from
+        #     ``Splitter.split()``'s return order).
+        #
+        # Mirrors the PDFBox forum / mailing-list pattern of post-processing
+        # split outputs to retarget cross-chunk links — upstream's
+        # ``Splitter`` ships only the null-out strategy, so this is a strict
+        # parity extension.
+        self._cross_chunk_destination_resolver: (
+            Callable[[COSDictionary], tuple[str, int] | str | None] | None
+        ) = None
 
     # ---------- configuration ----------
 
@@ -260,6 +294,47 @@ class Splitter:
         """``True`` when a :class:`MemoryUsageSetting` has been registered."""
         return self._memory_usage_setting is not None
 
+    def set_cross_chunk_destination_resolver(
+        self,
+        resolver: (
+            Callable[[COSDictionary], tuple[str, int] | str | None] | None
+        ),
+    ) -> Splitter:
+        """Register a callback used by :meth:`fix_destinations` to rewrite
+        cross-chunk link destinations as ``GoToR`` actions.
+
+        Wave-1379 extension closing the DEFERRED entry for the splitter's
+        full §12.3.2.3 destination-rewrite coverage. The resolver receives
+        the *source* target page :class:`COSDictionary` (the page the cloned
+        link points at, captured before ``import_page``'s deep-copy) and
+        returns one of:
+
+        * ``None`` — keep historical null-out behaviour;
+        * a plain ``str`` — interpret as the relative file name of the
+          sibling chunk file that contains the target page; the link's
+          ``/D[0]`` slot is replaced by the *integer page index* the
+          resolver reports via the second tuple form below, or by ``0``
+          when only a string is returned (caller should prefer the tuple
+          form to retain page identity);
+        * a ``(file_name, page_index)`` tuple — explicit file + 0-based
+          page index pair, matching the canonical PDF 32000-1 §12.6.4.3
+          ``GoToR`` payload.
+
+        Returns ``self`` for fluent chaining."""
+        self._cross_chunk_destination_resolver = resolver
+        return self
+
+    def get_cross_chunk_destination_resolver(
+        self,
+    ) -> Callable[[COSDictionary], tuple[str, int] | str | None] | None:
+        """Return the cross-chunk destination resolver registered via
+        :meth:`set_cross_chunk_destination_resolver`, or ``None``."""
+        return self._cross_chunk_destination_resolver
+
+    def has_cross_chunk_destination_resolver(self) -> bool:
+        """``True`` when a cross-chunk destination resolver is registered."""
+        return self._cross_chunk_destination_resolver is not None
+
     # ---------- core ----------
 
     def split(self, document: PDDocument) -> list[PDDocument]:
@@ -274,6 +349,7 @@ class Splitter:
         self._page_dict_maps = []
         self._annot_dict_maps = []
         self._dest_to_fix_per_chunk = []
+        self._dest_to_link_map_per_chunk = []
         self._pending_annot_passes_per_chunk = []
         self._id_set = set()
         self._role_set = set()
@@ -288,6 +364,7 @@ class Splitter:
             self._page_dict_map = self._page_dict_maps[index]
             self._annot_dict_map = self._annot_dict_maps[index]
             self._dest_to_fix = self._dest_to_fix_per_chunk[index]
+            self._dest_to_link_map = self._dest_to_link_map_per_chunk[index]
             self._pending_annot_passes = (
                 self._pending_annot_passes_per_chunk[index]
             )
@@ -480,6 +557,8 @@ class Splitter:
             self._annot_dict_maps.append(self._annot_dict_map)
             self._dest_to_fix = []
             self._dest_to_fix_per_chunk.append(self._dest_to_fix)
+            self._dest_to_link_map = {}
+            self._dest_to_link_map_per_chunk.append(self._dest_to_link_map)
             self._pending_annot_passes = []
             self._pending_annot_passes_per_chunk.append(
                 self._pending_annot_passes
@@ -1025,6 +1104,13 @@ class Splitter:
         self._dest_to_fix.append(
             (cloned_array, source_page_dict, source_target_page_dict)
         )
+        # Wave-1379: remember which cloned link annotation hosts this
+        # destination so the post-pass can rewrite it into a /A GoToR action
+        # when the cross-chunk resolver opts in. Defaults to a no-op when
+        # the resolver isn't registered (the link reference simply isn't
+        # consulted).
+        with contextlib.suppress(AttributeError):
+            self._dest_to_link_map[id(cloned_array)] = link.get_cos_object()
 
     # ---------- destination fix-up post-pass ----------
 
@@ -1078,7 +1164,107 @@ class Splitter:
             if cloned_target is not None and page_tree.index_of(cloned_target) >= 0:
                 cloned_array.set(0, cloned_target)
             else:
-                cloned_array.set(0, COSNull.NULL)
+                # Cross-chunk target. Wave-1379 cross-chunk resolver path:
+                # when registered, let the caller retarget the link as a
+                # /A GoToR action pointing at the chunk file that owns
+                # ``target_source``. Falls back to the historical null-out
+                # behaviour when the resolver returns ``None`` (or isn't
+                # registered).
+                if not self._rewrite_cross_chunk_destination(
+                    cloned_array, target_source
+                ):
+                    cloned_array.set(0, COSNull.NULL)
+
+    def _rewrite_cross_chunk_destination(
+        self,
+        cloned_array: COSArray,
+        source_target_page_dict: COSDictionary,
+    ) -> bool:
+        """Apply the registered cross-chunk destination resolver to a single
+        out-of-chunk destination array. Returns ``True`` when the resolver
+        opted into a rewrite (in which case ``cloned_array``'s ``/D[0]``
+        slot has been replaced with the integer page index inside the
+        target file and the hosting link annotation's ``/A`` has been set
+        to a fresh ``GoToR`` action), or ``False`` when no resolver is
+        registered / the resolver returned ``None`` (null-out fallback
+        path).
+        """
+        resolver = self._cross_chunk_destination_resolver
+        if resolver is None:
+            return False
+        try:
+            resolved = resolver(source_target_page_dict)
+        except Exception:  # noqa: BLE001 - defensive: resolver is caller code
+            _LOG.exception(
+                "cross_chunk_destination_resolver raised for target page; "
+                "falling back to null-out"
+            )
+            return False
+        if resolved is None:
+            return False
+
+        if isinstance(resolved, tuple):
+            if len(resolved) != 2:
+                _LOG.warning(
+                    "cross_chunk_destination_resolver returned a tuple of "
+                    "length %d; expected 2 (filename, page_index). Falling "
+                    "back to null-out.",
+                    len(resolved),
+                )
+                return False
+            file_name_obj, page_index_obj = resolved
+            if not isinstance(file_name_obj, str) or not isinstance(
+                page_index_obj, int
+            ):
+                _LOG.warning(
+                    "cross_chunk_destination_resolver returned non-(str,int) "
+                    "tuple; falling back to null-out"
+                )
+                return False
+            file_name = file_name_obj
+            page_index = page_index_obj
+        elif isinstance(resolved, str):
+            file_name = resolved
+            page_index = 0
+        else:
+            _LOG.warning(
+                "cross_chunk_destination_resolver returned unsupported type "
+                "%s; falling back to null-out",
+                type(resolved).__name__,
+            )
+            return False
+
+        from pypdfbox.pdmodel.interactive.action.pd_action_remote_go_to import (
+            PDActionRemoteGoTo,
+        )
+
+        # Replace ``/D[0]`` with the integer page index inside the target
+        # file. The remaining slots (fit type + coordinates) are preserved
+        # so explicit-fit-mode destinations (XYZ / FitH / FitV / FitB /
+        # FitBH / FitBV / FitR) round-trip through the rewrite unchanged.
+        cloned_array.set(0, COSInteger.get(page_index))
+
+        link_dict = self._dest_to_link_map.get(id(cloned_array))
+        if link_dict is None:
+            # No link record — the destination is orphaned (e.g. from a
+            # legacy /Dests entry promoted into a chunk by a subclass).
+            # Mutating ``cloned_array`` alone is the best we can do.
+            return True
+
+        # Build a fresh /A GoToR action carrying the file + dest array.
+        # Mirrors upstream's typical user pattern: an explicit
+        # ``PDActionRemoteGoTo`` with ``/F`` (string) + ``/D`` (array).
+        action = PDActionRemoteGoTo()
+        action.set_file(file_name)
+        action.set_destination(cloned_array)
+        link_dict.set_item(
+            COSName.get_pdf_name("A"), action.get_cos_object()
+        )
+        # Remove the historical /Dest if present — /A takes precedence
+        # per PDF 32000-1 §12.5.6.5 Table 173 but a redundant /Dest
+        # confuses some viewers (Foxit) into picking the now-stale array.
+        link_dict.remove_item(COSName.get_pdf_name("Dest"))
+        return True
 
     # ---------- structure-tree cloning ----------
 
