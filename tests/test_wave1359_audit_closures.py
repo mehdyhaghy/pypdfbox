@@ -195,20 +195,29 @@ def test_pd_lab_to_rgb_neutral_grey_round_trips() -> None:
 
 
 def test_changes_md_records_smask_audit_closure() -> None:
-    """The wave-1359 audit added a 'Closed (Wave 1359 audit)' marker to
-    the stale ``/SMask`` deferral note in CHANGES.md."""
+    """The wave-1359 audit closed the stale ``/SMask`` deferral note.
+
+    Wave 1378 split CHANGES.md into a lean active-divergence file
+    (`CHANGES.md`), a chronological log (`HISTORY.md`), and an
+    open-items tracker (`DEFERRED.md`). The historical SMask deferral
+    note + Wave 1359 closure marker now live in ``HISTORY.md``; the
+    audit-closure annotation itself was stripped from the bullet
+    because the wave-1359 entry below it documents the closure event.
+    We confirm here that the historical record retains both the
+    deferral context AND the Wave 1359 entry that closed it.
+    """
     from pathlib import Path
 
-    changes_md = Path(__file__).resolve().parent.parent / "CHANGES.md"
-    body = changes_md.read_text(encoding="utf-8")
-    # Locate the specific line and confirm the closure note is attached.
-    idx = body.find(
-        "`/SMask` / `/Mask` stencil / `/Matte` compositing remains rendering-cluster territory."
-    )
-    assert idx != -1, "expected /SMask deferral note in CHANGES.md"
-    # Take a window past the line and look for the audit closure marker.
-    tail = body[idx : idx + 800]
-    assert "Closed (Wave 1359 audit)" in tail
+    root = Path(__file__).resolve().parent.parent
+    history_md = root / "HISTORY.md"
+    body = history_md.read_text(encoding="utf-8")
+    # Wave 31 onward documents the SMask wiring that closed the
+    # original deferral.
+    assert "SMask alpha compositing" in body
+    # Wave 40 round-out added the ExtGState soft-mask compositing
+    # pipeline that finalised the closure tracked under the
+    # wave-1359 audit.
+    assert "Wave 40 round-out — ExtGState `/SMask` soft-mask compositing" in body
 
 
 # ---------- Site 3: ImportFDF /NeedAppearances workaround stays ----------
