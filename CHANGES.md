@@ -4189,6 +4189,413 @@ No latent source bugs flagged.
   and rely solely on `read_long`'s clamp — Java's signed-32 → signed-64
   pattern lives in exactly one place upstream; we mirror it in two.
 
+## Wave 1370 — parity round-out (5 parallel agents)
+
+### Wave 1370 — xmpbox/parser + xmpbox/xml round-out: DomXmpParser tolerance, XmpSerializer envelope, ResourceRef / Thumbnail / Job structured types, LangAlt x-default reorganisation, PdfaExtensionHelper populate (agent A)
+
+Hand-written + upstream-ported coverage for the XMP packet read/write path:
+
+- `tests/xmpbox/parser/test_dom_xmp_parser_tolerance_wave1370.py` — missing
+  / empty `rdf:about`, mixed namespaces inside one `rdf:Description`,
+  split-description merge, strict-mode rejection on a schema with
+  `KNOWN_PROPERTIES`, lenient-mode pass-through on the same input,
+  malformed-RDF FORMAT, unknown-namespace prefix retention, embedded
+  XML comments, attribute-shorthand property form.
+- `tests/xmpbox/parser/test_dom_xmp_parser_strict_vs_lenient_wave1370.py` —
+  default-mode-is-strict invariant, `check_property_definition`
+  surface, `set_throw_exception_on_invalid_xmp` alias parity, free-form
+  schemas accept arbitrary properties in strict mode.
+- `tests/xmpbox/parser/test_rdf_cardinality_round_trip_wave1370.py` —
+  `rdf:Bag` / `rdf:Seq` / `rdf:Alt` parse + serialize round-trip,
+  including order preservation, untagged `rdf:li` defaulting to
+  `x-default`, and the upstream-named `parse_property` alias.
+- `tests/xmpbox/parser/test_lang_alt_x_default_round_trip_wave1370.py` —
+  `LangAlt` set/get/remove with `None`-as-x-default, `x-default`
+  reorganisation to head (only when present), get_languages introspection,
+  serialiser-side x-default-first ordering.
+- `tests/xmpbox/xml/test_xmp_serializer_envelope_wave1370.py` —
+  with/without xpacket PI toggle, `x:xmpmeta` wrapper invariant, single
+  `xmlns:rdf` declaration, encoding propagation through `save`,
+  `create_rdf_element` parity alias, `normalize_attributes` swallowing.
+- `tests/xmpbox/xml/test_structured_type_resource_thumb_job_wave1370.py`
+  — full `ResourceRefType` field surface (15 setters + `add_alternate_path`
+  Seq + `_FIELD_TYPES` introspection), `ThumbnailType` round-trip
+  including the `rdf:parseType="Resource"` attribute and unset-fields-
+  are-None guarantee, `JobType` round-trip + field-prefix constructor.
+- `tests/xmpbox/xml/test_pdfa_extension_helper_populate_wave1370.py` —
+  `populate_schema_mapping` idempotent no-op + repeated-call safety,
+  `transform_value_type` prefix-strip table including `None` / non-string
+  / empty-string inputs, `check_namespace_declaration` canonical / wrong-
+  prefix / unrelated-URI / missing-value branches, `require_non_null`
+  callable-supplier branch.
+- `tests/xmpbox/xml/upstream/test_dom_xmp_parser_round_out_wave1370.py` —
+  ported subset of `DomXmpParserTest` (`testParseFailure`,
+  `testBadRdfNameSpace`, `testNamespaceInRoot`, `parseInitialXpacket` /
+  `parseEndPacket` round-trips) with explicit skip placeholders +
+  documented reason on cases requiring richer error semantics
+  (`testNoSchema`, `testTextInsteadOfArray`, `testBadInner`).
+
+Latent source fix:
+
+- `pypdfbox/xmpbox/xml/xmp_serializer.py` — `_wrap_primitive` now
+  yields already-typed `AbstractField` instances unchanged instead of
+  silently dropping them. Previously, when a schema stored a structured
+  type directly under `_properties` (e.g.
+  `XMPMediaManagementSchema.set_derived_from` installs a `ResourceRefType`
+  under `DerivedFrom`), the flat-dict serialisation path fell through
+  to `return None` and the property never appeared in the output
+  packet. Property name is also back-filled when missing so the element
+  carries the slot's name in the rendered XML.
+
+### Wave 1370 — text/PDFTextStripper + PDFTextStripperByArea + TextPosition + normalize/bidi parity (agent B)
+
+Hand-written test coverage for the `pypdfbox/text/` subsystem at the
+boundary of the line-stitching heuristic, region clipping accuracy,
+direction-aware `TextPosition` accessors, normalize/normalize_add line
+construction, sort stability across `TextPositionComparator` /
+tuple-key sorting, the configurable separator round-trip
+(`set_line_separator`, `set_page_start`, `set_page_end`,
+`set_paragraph_start`, `set_paragraph_end`, `set_word_separator`,
+`set_article_start`/`set_article_end`), bidi paragraph reordering at
+the `handle_direction` / `normalize_word` / `normalize` layer, and
+the configurable thresholds (`drop_threshold`, `indent_threshold`,
+`spacing_tolerance`, `average_char_tolerance`,
+`suppress_duplicate_overlapping_text`). Nine new test files (+128
+tests, 679 → 807 in the directory) — no source-side bug fixes:
+
+- `tests/text/test_pdf_text_stripper_rotation_lines_wave1370.py` —
+  11 tests covering page-`/Rotate` metadata preservation across the
+  0/90/180/270 quartet, text extraction surviving every supported
+  page rotation, `set_should_flip_axes` transposing the X/Y axes in
+  `_is_line_break` and `_is_word_break`, multi-page rotated pages
+  joined with the configured `page_end` marker, and `TextPosition.rotation`
+  as an explicit dataclass field independent of the host page's
+  `/Rotate`.
+- `tests/text/test_pdf_text_stripper_word_heuristics_wave1370.py` —
+  13 tests pinning the four configurable thresholds end-to-end:
+  drop-prong (`is_paragraph_separation`) firing thresholds at the
+  default 2.5 × font_size and tightened/loosened values, indent-prong
+  (`is_para_break_indented`) at 2.0 × space_width with the
+  `width_of_space` override pathway, `start_of_paragraph` aliasing,
+  `spacing_tolerance` / `average_char_tolerance` surviving a `get_text`
+  walk, and `suppress_duplicate_overlapping_text` collapsing
+  fake-bold glyphs.
+- `tests/text/test_pdf_text_stripper_by_area_clipping_wave1370.py` —
+  12 tests for `PDFTextStripperByArea`'s region-edge inclusivity
+  (lower-left + upper-right boundary `<=` checks), multi-region
+  distribution with no cross-contamination, overlapping regions
+  sharing the SAME `TextPosition` instance (not a copy), orphan-glyph
+  drop (no hidden out-of-region bucket), per-region re-extraction
+  resetting prior buffers, `set_line_separator` flowing through to
+  region text, `add_region` rejecting 3-tuple / dict garbage, and
+  `set_sort_by_position` applied independently per region.
+- `tests/text/test_text_position_directional_sort_wave1370.py` —
+  18 tests for the direction-aware `get_x_dir_adj` / `get_y_dir_adj`
+  at the 0/90/180/270 quartet, sort key construction
+  (`(-y, x)` matches the stripper's gating), `TextPositionComparator`
+  direction-first grouping then Y-then-X within a direction,
+  zero-return on equal positions, `functools.cmp_to_key` integration,
+  and the `get_x_rot` / `get_y_lower_left_rot` rotation helpers
+  returning `0` for unsupported angles.
+- `tests/text/test_pdf_text_stripper_normalize_line_wave1370.py` —
+  16 tests covering `create_word` / `normalize_word` (NFKC
+  decomposition of Arabic Presentation Form U+FE80 → U+0621),
+  `normalize` splitting at `WORD_SEPARATOR` markers, leading /
+  trailing separator edge cases, `normalize_add` flush semantics on
+  separator vs payload items, `TextMetrics` height = ascent +
+  |descent| proportional to `font_size`, mutable ascent/descent
+  with height recomputation, and the `word_with_text_positions`
+  static factory.
+- `tests/text/test_pdf_text_stripper_sort_stability_wave1370.py` —
+  10 tests pinning `sorted` stability: tuple-key sort preserves
+  insertion order for identical keys, `TextPositionComparator`
+  returns 0 for ties so `cmp_to_key`-driven sorts stay stable, the
+  three-way y/x tie survives a `get_text` walk in original stream
+  order, `WordWithTextPositions` is intentionally not equality-merged
+  (identity-distinct so sets/dicts treat duplicates as separate),
+  `LineItem.WORD_SEPARATOR` singleton identity (Java `static final`
+  parity), `normalize` preserving payload-insertion order within a
+  word, and `write_string_with_positions` dispatching
+  `process_text_position` in input order.
+- `tests/text/test_pdf_text_stripper_setters_wave1370.py` — 16
+  behavioural setter round-trips through `get_text()`:
+  `set_sort_by_position`, `set_start_page` / `set_end_page` page
+  clamping (including beyond-total and start > end empty cases),
+  `set_should_separate_by_beads` flag survival, `set_word_separator`
+  / `set_line_separator` observability, `set_page_start` /
+  `set_page_end` wrapping every page, `set_paragraph_start` /
+  `set_paragraph_end` firing on detected paragraph boundaries,
+  `set_article_start` / `set_article_end` wrapping the body,
+  `set_lenient_stream_parsing` / `set_ignore_content_stream_space_glyphs`
+  survival, and `set_suppress_duplicate_overlapping_text` toggle
+  changing emitted glyph count.
+- `tests/text/test_pdf_text_stripper_output_separators_wave1370.py` —
+  14 tests pinning every output marker round-trip (word / line /
+  page-start / page-end / paragraph-start / paragraph-end), the
+  empty-string collapse for each separator family (word/line/page-end
+  removing the corresponding breaks), `write_text` emitting the same
+  bytes as `get_text` with the same separators, `get_output` restored
+  to its previous value after a `write_text` walk completes, default
+  newlines for `line_separator` and `page_end`, no cross-talk between
+  separator setters, and the two-page combined-separator layout
+  `<S>a<E><S>b<E>`.
+- `tests/text/test_pdf_text_stripper_bidi_paragraph_wave1370.py` —
+  18 tests + 1 skip pinning the lite stripper's whole-run RTL
+  reversal: `handle_direction` LTR pass-through, Hebrew (class `R`)
+  and Arabic letters (class `AL`) reversed, empty / single-codepoint
+  no-ops, mixed LTR+RTL reversed-whole (lite divergence from ICU),
+  European (`EN`) and Arabic-Indic (`AN`) digits not triggering
+  reversal, `normalize_word` decomposing FB00-FDFF presentation
+  forms before applying direction, `normalize` directionalising
+  each word independently (LTR word after RTL word stays LTR),
+  `parse_bidi_file` accepting the upstream `BidiMirroring.txt` line
+  format (`CODEPOINT;CODEPOINT`) including skipping malformed
+  tokens and `None`/empty input. Full Unicode Bidi paragraph
+  reordering is the documented divergence (skipped with a CHANGES.md
+  reference).
+
+No source-side bug fixes — the lite stripper's existing heuristic
+behaviour matches the asserted contract on every test added.
+
+### Wave 1370 — rendering round-out: clipping nested + even-odd vs non-zero, SoftMask backdrop colour (latent bug fix), Type 3 charproc advanced ops, set-rendering-intent (`ri`) operator surface, Form XObject /BBox + /Matrix + nested /Resources, tiling pattern advanced, JPX color-space inference, transparency-group classifier (agent C)
+
+Eight hand-written test files (+84 tests) extending the `pypdfbox/rendering/`
+parity coverage beyond what waves 1364/1366 left thin. Plus one latent
+source-side bug fix in `pypdfbox/rendering/soft_mask.py`.
+
+Source-side fix:
+
+- `pypdfbox/rendering/soft_mask.py`: `SoftMask.__init__` treated the
+  return of `backdrop_color.to_rgb()` as a packed Java ARGB integer
+  (per upstream's `Color.getRGB()`), but the pypdfbox `PDColor.to_rgb()`
+  returns a `tuple[float, float, float]` of unit components. Constructing
+  a `SoftMask` with any non-`None` `backdrop_color` therefore raised
+  `TypeError: unsupported operand type(s) for >>: 'tuple' and 'int'` —
+  the surrounding `except OSError` did NOT catch it, so the renderer
+  would crash on a luminosity SMask with /BC set. Updated the parser
+  to handle both the unit-float-tuple form (pypdfbox surface) and the
+  packed-int form (upstream surface) and widened the except clause to
+  cover `TypeError`/`ValueError`/`IndexError`.
+  upstream: PDFBox 3.0 `org.apache.pdfbox.rendering.SoftMask`
+  reason: pypdfbox PDColor.to_rgb returns a different shape than Java's
+  Color.getRGB.
+
+New hand-written test files (all under `tests/rendering/`):
+
+- `test_clipping_nested_wave1370c.py` — 6 tests: nested-rectangle clip
+  intersection, even-odd vs non-zero ``W`` / ``W*`` donut paths, q/Q
+  clip restore, ``n`` op consumes pending clip without painting, three
+  levels of nested clips shrinking to the innermost.
+- `test_soft_mask_paint_wave1370c.py` — 16 tests: AWT-paint contract
+  (`getTransparency() == TRANSLUCENT`), backdrop-colour luminance (white
+  → 255, black → 0, mid-grey ≈ 127, pure green via BT.601), no-backdrop
+  default, identity-transfer short-circuit, non-identity transfer
+  retention, `create_context` wraps in `SoftPaintContext`, paint
+  without `create_context`, raster colour-model is ARGB, dispose
+  propagation, raster zero-size defensive case, all-255 mask preserves
+  alpha, all-zero mask zeros alpha, outside-mask backdrop fallback.
+- `test_type3_font_advanced_wave1370c.py` — 8 tests: custom /FontMatrix
+  scales glyph, ``d0`` & ``d1`` operators silently ignored but paint
+  continues, /Encoding /Differences with gaps, stroke-charproc smoke,
+  per-glyph colour change paints distinct colours, empty /Widths
+  defensive contract, font-matrix translation.
+- `test_rendering_intent_wave1370c.py` — 14 tests: ``ri`` operator
+  empty-operands raises, non-Name silently skipped, every standard
+  intent dispatched (AbsoluteColorimetric / RelativeColorimetric /
+  Saturation / Perceptual), `get_intent_name` typed accessor, bogus
+  intent names handled, renderer pass-through for each intent,
+  intent-between-fills doesn't corrupt state, redundant intent ops
+  are idempotent, intent inside a Form XObject doesn't leak across
+  ``Q``.
+- `test_form_xobject_rendering_wave1370c.py` — 9 tests: /BBox clipping
+  outside the box, /Matrix scaling and translation, nested /Resources
+  resolution (form references inner XObject via its own /Resources),
+  matrix restoration after Q, default bbox no-clip, zero-area bbox
+  clips everything, matrix + bbox composition, nested /Resources
+  ExtGState scoping (form's /GS0 wins over page's /GS0).
+- `test_tiling_pattern_advanced_wave1370c.py` — 8 tests: step <
+  cell yields overlapping tiles, step > cell renders without crash
+  (the lite renderer stretches the cell to fill the step — divergence
+  documented in this test's docstring), pattern /Matrix scaling, empty
+  pattern cell renders unchanged background, pattern restricted to a
+  path, default paint-type, pattern inside clipping region, unequal
+  XStep/YStep lattice.
+- `test_image_rendering_wave1370c.py` — 10 tests: raw 8bpc DeviceRGB
+  image, DeviceGray raster, SMask top-half-opaque mask integration,
+  SMask absence sanity (no corruption), /ImageMask stencil renders
+  without crash, /Decode array doesn't crash, ``is_jpx()`` predicate
+  via /JPXDecode filter (name and array forms), placement transforms
+  (negative y-scale flip, 90° rotation).
+- `test_transparency_group_wave1370c.py` — 13 tests:
+  `_is_transparency_group` classifier across form-without-group, group-
+  without-/S, unknown /S subtype, non-dict /Group (defensive), helper
+  method short-circuit, helper-method exception fallthrough; rendering
+  contracts for form-without-group (plain), /CS /DeviceGray, /CS
+  /DeviceCMYK, /CS [/Lab ...] array form, nested transparency groups
+  (outer + inner both paint), /I true without explicit /K, minimal
+  /S=/Transparency declaration.
+
+Net +84 active tests + 1 source-side bug fix.
+
+### Wave 1370 — pdfwriter round-out: COSWriter object-number reuse, /Prev threading across chained increments, /XRefStm policy, ObjStm /N+/First layout + PDFBOX-3678 exclusions, encryption staging order, COSNull vs Python None elision, CompressParameters tuning, stream/endstream CRLF framing (agent D)
+
+Widened hand-written coverage of the `pypdfbox/pdfwriter/` cluster.
+Eight new test files (+65 tests) targeting writer behaviours the
+existing suite did not yet pin:
+
+- **Object-number reuse**
+  (`tests/pdfwriter/test_object_number_reuse_wave1370.py`): a single
+  indirect referenced from two parents must allocate one `n g obj`
+  frame, one xref row, and round-trip through the parser with both
+  references resolving to the same `COSBase` identity. `/Size` in
+  the trailer counts the shared body once.
+- **Iterative `/Prev` threading**
+  (`tests/pdfwriter/test_incremental_prev_threading_wave1370.py`):
+  three successive incremental saves each thread `/Prev` to the
+  immediately prior `startxref`, the source bytes stay as an
+  append-only prefix, and the `/ID[0]` original-file identifier
+  survives the chain.
+- **`/XRefStm` selection policy**
+  (`tests/pdfwriter/test_xrefstm_policy_wave1370.py`): default →
+  traditional table only; `xref_stream=True` → pure stream (no
+  `/XRefStm`, no `xref` keyword, no `trailer` keyword);
+  `hybrid_xref=True` → both, trailer announces `/XRefStm <offset>`
+  that lands on the parallel `/Type /XRef` indirect-object frame and
+  `startxref` keeps pointing at the traditional table. Includes a
+  guard that a source trailer's lingering `/XRefStm` is stripped on
+  a vanilla full save (not echoed unless hybrid is explicitly on).
+- **ObjStm wire format + PDFBOX-3678 exclusions**
+  (`tests/pdfwriter/test_objstm_layout_wave1370.py`): `/N` matches
+  the index pair count, `/First` is the byte offset where the first
+  body begins (relative to the decoded payload), packed object
+  numbers are monotonic and offsets strictly increasing. Streams,
+  `/Type /Sig`, `/Type /DocTimeStamp`, and generation ≠ 0 candidates
+  are all emitted as free-standing indirects rather than packed.
+- **Encryption pipeline staging**
+  (`tests/pdfwriter/test_encryption_attachment_wave1370.py`):
+  `security_handler.prepare_document` runs exactly once with the
+  trailer not yet carrying `/Encrypt`, the saved bytes do carry
+  `/Encrypt`, the handler is cached back on the `PDDocument`, the
+  document round-trips through `Loader.load_pdf(..., "user")`,
+  `set_all_security_to_be_removed(True)` strips `/Encrypt` from the
+  re-saved trailer, and a raw `COSDocument` carrying `/Encrypt`
+  passes through verbatim (no handler logic on the low-level path).
+- **COSNull vs Python `None` value semantics**
+  (`tests/pdfwriter/test_null_dict_values_wave1370.py`): explicit
+  `COSNull.NULL` serialises as the `null` token (not `/Null`),
+  `set_item(k, None)` removes the key, a `None` smuggled past
+  `set_item` is still skipped by `visit_from_dictionary`, and `null`
+  array elements survive inline-array emission verbatim.
+- **`CompressParameters` value-type tuning**
+  (`tests/pdfwriter/test_compress_parameters_tuning_wave1370.py`):
+  default constant pinned at 200 (upstream parity), `NO_COMPRESSION`
+  / `DEFAULT_COMPRESSION` sentinels, negative-value rejection,
+  `with_object_stream_size` immutable-update returning `self` when
+  the size is unchanged, `__eq__` / `__hash__` collapsing
+  structurally identical instances in a `set`, and `bool` widening
+  to int (1 → 0) for parity with Java's primitive-`int` parameter.
+- **Stream / endstream framing**
+  (`tests/pdfwriter/test_stream_newline_policies_wave1370.py`): the
+  `stream` keyword is followed by CRLF (PDF 32000-1 §7.3.8.1),
+  `endstream` is preceded by CRLF and followed by an EOL byte,
+  `/Length` matches the payload byte count exactly, empty stream
+  payloads still emit the full `stream\r\n\r\nendstream` frame, and
+  `COSStandardOutputStream`'s `write_eol` collapses consecutive
+  calls to a single EOL when the on-new-line flag is already set.
+
+No latent bugs found — all eight files locked in existing behaviour
+that already matched upstream; the added assertions guard against
+silent regressions in the writer's dedup, xref-chain threading,
+ObjStm packer, encryption staging, and stream framing.
+
+### Wave 1370 — multipdf round-out: PDFMergerUtility page-order + AcroForm legacy/join rename strategy, PDFCloneUtility cross-document identity, Splitter destination fix-up, /StructTreeRoot /ParentTree re-keying + /ClassMap propagation, Overlay PDFBOX-6048 affine centering (agent E)
+
+Hand-written test coverage for the `pypdfbox/multipdf/` cluster (Splitter,
+PDFMergerUtility, PDFCloneUtility, Overlay) focused on the documented
+interfaces the existing wave-by-wave tests didn't yet nail down. Eight
+new test files (+73 tests, 751 → 824 in the directory) — no source-side
+bug fixes:
+
+- `tests/multipdf/test_pdf_merger_utility_wave1370.py` — 8 tests pinning
+  page-order preservation across multi-source appends (no swap / drop /
+  duplicate), `/Names` `/Dests` name-tree union under merge,
+  `AcroFormMergeMode.PDFBOX_LEGACY_MODE` `dummyFieldName<N>` rename
+  behaviour incl. the "bump past existing dummy" rule, and
+  `JOIN_FORM_FIELDS_MODE` keeping all duplicate names verbatim.
+- `tests/multipdf/test_pdf_clone_utility_wave1370.py` — 9 tests pinning
+  cross-document `COSObject` indirect-ref deep cloning, identity table
+  sharing of one cloned target across multiple indirect refs, the
+  unresolved-ref-to-`None` path (no NPE), the "don't clone a clone"
+  short-circuit, `clone_merge` cycle safety on two parallel cycles,
+  and the cloned stream's scratch-file binding to the destination
+  document (not the source).
+- `tests/multipdf/test_splitter_wave1370.py` — 8 tests covering fluent
+  setter chaining (`set_split_at_page`/`set_start_page`/`set_end_page`
+  return `self`), subclass `split_at_page` overrides driving custom
+  chunk boundaries (the upstream hook used to implement bookmark-driven
+  splitting), tail-chunk size handling (chunk size is a hard upper
+  bound, not a fixed page count), `/OpenAction` and `/Names` not
+  carried into per-chunk catalogs, and chunk-save round-trip.
+- `tests/multipdf/test_splitter_destinations_wave1370.py` — 8 tests
+  covering the staged `/Dest` fix-up post-pass: in-chunk targets rewrite
+  to cloned page dicts, out-of-chunk targets null-out via `COSNull.NULL`
+  at `[0]`, `/A GoTo` action destinations get the same treatment as
+  raw `/Dest` arrays, multiple links per page each receive independent
+  fix-up entries, links without any destination survive untouched,
+  range-windowed splits resolve in-chunk destinations correctly, and
+  the chunk save+reload round-trip with a same-chunk-destination link.
+- `tests/multipdf/test_pdf_merger_cross_doc_wave1370.py` — 5 tests
+  asserting destination page dicts are fresh COSDictionary instances
+  (no source identity leak), two sources with identical-`/BaseFont`
+  fonts produce independent `/F1` entries (no cross-document
+  coalescing in PDFBOX_LEGACY_MODE), within-single-source resource
+  sharing survives the merger's identity table, no destination page
+  dict ID-collides with any source page dict, and the cloner descends
+  into source `/Resources` `/ProcSet` arrays under the merger entry
+  point.
+- `tests/multipdf/test_pdf_merger_struct_tree_wave1370.py` — 7 tests
+  pinning `/ClassMap` propagation via the `/K` subtree clone (transitive,
+  not via a dedicated merge helper — matches upstream's omission),
+  `/ParentTree` key re-keying offset by `dest_parent_tree_next_key`
+  across two and three sources, `/StructParents` on imported pages
+  bumped by the same offset, the bootstrap path when dest has no
+  struct tree but source does (and the reverse: first source plain +
+  second source tagged), and the merged `/K` shape (single `/Document`
+  wrapper vs flat list).
+- `tests/multipdf/test_pdf_merger_acroform_collisions_wave1370.py` —
+  7 tests pinning the `dummyFieldName<N>` counter behaviour: distinct
+  suffixes across three sources, three duplicate fields in one source
+  each get unique suffixes, the destination's pre-existing
+  `dummyFieldName3` bumps the next allocation past 3, an empty source
+  `/Fields` array short-circuits, `set_ignore_acro_form_errors(True)`
+  swallows per-field failure and lets the merge complete, join-fields
+  mode keeps all three duplicates verbatim, and a fully-disjoint name
+  set produces no renames.
+- `tests/multipdf/test_overlay_wave1370.py` — 10 tests covering the
+  PDFBOX-6048 affine-centering: smaller-overlay-on-larger-page positive
+  shifts, larger-overlay-on-smaller-page negative shifts, equal-size
+  identity transform, non-zero lower-left origin on the destination
+  page's media box, non-zero LL on the overlay's media box, foreground
+  vs background `/Contents` array ordering, `close()` not closing
+  caller-supplied PDDocument instances vs always closing
+  file-loaded ones, and multi-page base + single-page all-pages
+  overlay applying to every page.
+- `tests/multipdf/test_pdf_clone_cross_doc_wave1370.py` — 11 tests
+  pinning two-destination independence (no shared identity table
+  between cloners), stream-body and dict-entry independence after
+  clone (mutating source doesn't bleed into clone), mixed
+  primitive-plus-dict array handling (primitive returned verbatim,
+  dict deep-cloned), `clone_merge` type-mismatch (dict vs array, both
+  directions) as a no-op, and `has_self_reference` return values for
+  indirect-vs-direct self-pointing cases.
+
+No latent bugs found — all eight files locked in existing behaviour
+that already matched upstream; the added assertions guard against
+silent regressions in the cloner's identity table, the merger's
+AcroForm rename counter + struct-tree key offset arithmetic, the
+splitter's destination fix-up post-pass, and the overlay's
+PDFBOX-6048 affine centering.
+
 ## Wave 1369 — parity round-out (5 parallel agents)
 
 ### Wave 1369 — fontbox/ttf round-out: TTFParser internals, hmtx/vmtx boundary, maxp outline-flavour, kerning dispatch, TTC v2 header, GSUB single-substitution cache, VORG, glyph renderer multi-contour, TTFSubsetter glyph dependency expansion (agent A)

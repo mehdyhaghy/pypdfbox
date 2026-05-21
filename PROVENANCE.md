@@ -669,6 +669,7 @@ Upstream baseline branch: `apache/pdfbox` `3.0` (most files at `pdfbox/src/test/
 | pypdfbox test path | upstream Java test path |
 |---|---|
 | `tests/xmpbox/upstream/test_dom_xmp_parser.py` | `xmpbox/src/test/java/org/apache/xmpbox/xml/DomXmpParserTest.java` (`testPDFBox5976` + `testPDFBox5649` ported; rest skipped — need rich type system / strict mode / additional schemas) |
+| `tests/xmpbox/xml/upstream/test_dom_xmp_parser_round_out_wave1370.py` | `xmpbox/src/test/java/org/apache/xmpbox/xml/DomXmpParserTest.java` (additional ports of `testParseFailure`, `testBadRdfNameSpace`, `testNamespaceInRoot`, `parseInitialXpacket` / `parseEndPacket` round-trips; `testNoSchema`, `testTextInsteadOfArray`, `testBadInner` skipped — need richer type-system error semantics) |
 
 ### `tests/pdmodel/upstream/` (cluster #2 additions)
 

@@ -26,6 +26,15 @@ _LOG = logging.getLogger(__name__)
 TRANSLUCENT = 3
 
 
+def _clamp_unit(v: float) -> float:
+    """Clamp ``v`` into the unit interval ``[0.0, 1.0]``."""
+    if v < 0.0:
+        return 0.0
+    if v > 1.0:
+        return 1.0
+    return v
+
+
 class SoftMask:
     """A paint that combines an underlying paint with a soft mask."""
 
@@ -52,12 +61,22 @@ class SoftMask:
         if backdrop_color is not None:
             try:
                 rgb = backdrop_color.to_rgb()
-                r = (rgb >> 16) & 0xFF
-                g = (rgb >> 8) & 0xFF
-                b = rgb & 0xFF
+                # Upstream's ``toRGB()`` returns a packed ARGB int (Java
+                # ``Color.getRGB``); the pypdfbox lite surface returns a
+                # 3-tuple of unit floats. Support both shapes so the
+                # luminance computation works regardless of which one we
+                # got.
+                if isinstance(rgb, tuple):
+                    r = int(round(_clamp_unit(rgb[0]) * 255.0))
+                    g = int(round(_clamp_unit(rgb[1]) * 255.0))
+                    b = int(round(_clamp_unit(rgb[2]) * 255.0))
+                else:
+                    r = (rgb >> 16) & 0xFF
+                    g = (rgb >> 8) & 0xFF
+                    b = rgb & 0xFF
                 # ITU-R BT.601 luma.
                 self._bc = (299 * r + 587 * g + 114 * b) // 1000
-            except OSError as exc:
+            except (OSError, TypeError, ValueError, IndexError) as exc:
                 _LOG.debug("Couldn't convert backdropColor to RGB: %s", exc)
 
     def create_context(

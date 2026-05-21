@@ -118,6 +118,15 @@ class XmpSerializer:
         """Heuristic primitive → AbstractField wrap for the flat-dict
         schema-storage layout. Returns ``None`` for value shapes the
         wrapper doesn't recognize (caller skips silently)."""
+        # Wave 1370: schemas may also store an already-typed ``AbstractField``
+        # directly in ``_properties`` (e.g. ``XMPMediaManagementSchema.set_derived_from``
+        # installs a ``ResourceRefType`` under ``DerivedFrom``). Yield those
+        # untouched — previously the wrapper fell through to ``return None``
+        # and the property was silently dropped from the serialised packet.
+        if isinstance(value, AbstractField):
+            if not value.get_property_name():
+                value.set_property_name(name)
+            return value
         # ``bool`` must be checked before ``int`` (Python bool subclasses int).
         if isinstance(value, bool):
             return BooleanType(metadata, ns, prefix, name, value)
