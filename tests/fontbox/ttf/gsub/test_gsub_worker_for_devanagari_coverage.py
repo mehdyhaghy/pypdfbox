@@ -2,9 +2,8 @@
 
 Targets the empty-rkrf early-return, the missing 2-element-cluster
 early-return, the i-matra reposition fall-through (pop-then-insert),
-the matra-virama swap branch, the bounds-drift fall-through in
-:meth:`reposition_glyphs`, and the ``script_feature is None`` continue
-branch in :meth:`apply_transforms`.
+and the ``script_feature is None`` continue branch in
+:meth:`apply_transforms`.
 """
 
 from __future__ import annotations
@@ -128,17 +127,11 @@ def test_reposition_glyphs_moves_i_matra_left() -> None:
     assert out.index(204) < 2
 
 
-def test_reposition_glyphs_virama_after_i_matra_swap() -> None:
-    """When a VIRAMA follows an I-matra position, the matra is hoisted.
+def test_reposition_glyphs_virama_after_i_matra() -> None:
+    """A VIRAMA in the trailing slot does not displace the preceding
+    I-matra; the I-matra is still hoisted leftward by the standard loop.
 
     Input: [CONS=50, I-matra=204, VIRAMA=201]
-    Loop walks from the tail: at found_index=2 (VIRAMA == reph[1]) and
-    prev_index=3 is out-of-range, so the elif branch is short-circuited
-    by the ``prev_index < list_size`` check. Then loop body fall-through
-    decrements found_index/next_index, eventually hitting the i-matra at
-    index 1 (popped + reinserted at index 0).
-
-    Covered: lines 190-192 (pop/insert) plus the elif guard.
     """
     gd = GsubData(language="DEVANAGARI", feature_list={})
     worker = GsubWorkerForDevanagari(_deva_cmap(), gd)
@@ -146,43 +139,29 @@ def test_reposition_glyphs_virama_after_i_matra_swap() -> None:
     assert 204 in out
 
 
-def test_reposition_glyphs_virama_with_following_i_matra_swap() -> None:
-    """The matra-virama swap branch (lines 202-204) fires when ``found_index``
-    lands on a VIRAMA glyph whose ``found_index + 1`` neighbour is still
-    an I-matra.
+def test_reposition_glyphs_multiple_i_matras_all_move_left() -> None:
+    """Every I-matra glyph is popped and reinserted further left.
 
     Construct: ``[VIRAMA=201, I-matra=204, CONS=50, I-matra=204, X=60]``.
-    Walk: tail I-matras are popped and reinserted leftward; eventually
-    ``found_index`` lands on the VIRAMA at index 0 with the original
-    I-matra still at index 1, which triggers the elif swap branch.
+    Both I-matras survive in the result; the VIRAMA stays in place.
     """
     gd = GsubData(language="DEVANAGARI", feature_list={})
     worker = GsubWorkerForDevanagari(_deva_cmap(), gd)
     out = worker.reposition_glyphs([201, 204, 50, 204, 60])
-    # Two I-matras stay in the result; the VIRAMA-I-matra swap kept the
-    # virama in place while moving the trailing matra leftward.
     assert out.count(204) == 2
     assert 201 in out
 
 
 # ----------------------------------------------------------------------
-# reposition_glyphs — bounds-drift fall-through (lines 184-186)
+# reposition_glyphs — multiple trailing i-matras preserve count
 # ----------------------------------------------------------------------
 
 
-def test_reposition_glyphs_bounds_drift_fall_through() -> None:
-    """``found_index`` past ``len(repositioned)`` triggers the rewind
-    branch (lines 184-186).
-
-    We force the drift by repeatedly popping i-matras off the tail so
-    found_index falls off the end of the shortened list, triggering the
-    rewind block that resets ``found_index = next_index`` and decrements
-    ``next_index``.
-    """
+def test_reposition_glyphs_trailing_i_matras_preserve_count() -> None:
+    """Multiple trailing I-matras all pop+insert leftward without losing
+    any glyph from the output list."""
     gd = GsubData(language="DEVANAGARI", feature_list={})
     worker = GsubWorkerForDevanagari(_deva_cmap(), gd)
-    # Multiple I-matras at the tail force successive pops; eventually
-    # found_index drifts past the shortened list.
     out = worker.reposition_glyphs([50, 51, 52, 204, 204, 204])
     assert out.count(204) == 3
 

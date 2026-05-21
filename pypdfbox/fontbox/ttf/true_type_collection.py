@@ -317,12 +317,7 @@ class TrueTypeCollection:
 
         from fontTools.ttLib import TTCollection  # type: ignore[import-untyped]  # noqa: PLC0415
 
-        from .ttf_data_stream import MemoryTTFDataStream  # noqa: PLC0415
-
-        if isinstance(self._stream, MemoryTTFDataStream):
-            ttc_bytes = self._stream.get_original_data()
-        else:
-            ttc_bytes = self._stream.get_original_data()
+        ttc_bytes = self._stream.get_original_data()
         collection = TTCollection(_io.BytesIO(ttc_bytes))
         if not 0 <= idx < len(collection.fonts):
             msg = f"font index out of range: {idx} (have {len(collection.fonts)})"

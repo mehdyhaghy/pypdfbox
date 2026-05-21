@@ -73,16 +73,15 @@ class RandomAccessReadUnbufferedDataStream(TTFDataStream):
         0xFFFFFFFFL)`` — two big-endian ints combined into a signed
         64-bit long. We mirror that path so EOF semantics match (read
         through silently like Java's ``readInt``).
+
+        :meth:`read_int` already sign-extends its return to a signed
+        32-bit Python int, so ``high`` is already negative for
+        upper-half values; bit-or with the unsigned ``low`` therefore
+        produces the correct signed 64-bit value with no extra clamp.
         """
         high = self.read_int()
         low = self.read_int() & 0xFFFF_FFFF
-        # Sign-extend the combined 64-bit value: Java's ``long`` is
-        # signed two's-complement, Python ints are unbounded so we
-        # do the conversion explicitly.
-        combined = (high << 32) | low
-        if combined >= 0x8000_0000_0000_0000:
-            combined -= 0x1_0000_0000_0000_0000
-        return combined
+        return (high << 32) | low
 
     def read_int(self) -> int:
         """Read a signed 32-bit big-endian integer.

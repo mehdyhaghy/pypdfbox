@@ -166,43 +166,20 @@ class GsubWorkerForGujarati(GsubWorker):
         return adjusted
 
     def reposition_glyphs(self, original_glyph_ids: list[int]) -> list[int]:
-        """Mirrors GsubWorkerForGujarati.java:157."""
+        """Mirrors GsubWorkerForGujarati.java:157. See the matching note
+        on :meth:`GsubWorkerForDevanagari.reposition_glyphs` for the
+        rationale behind dropping the upstream Java defensive arms
+        (unreachable in the Python port)."""
         repositioned = list(original_glyph_ids)
         list_size = len(repositioned)
         found_index = list_size - 1
         next_index = list_size - 2
         while next_index > -1:
-            # Defensive parity with upstream Java — see the matching note
-            # in :class:`GsubWorkerForDevanagari.reposition_glyphs`. The
-            # Python port's bounds-drift guard and matra-virama swap
-            # branch are unreachable on natural input but retained
-            # verbatim to mirror the upstream loop shape.
-            if (
-                found_index >= len(repositioned) or found_index < 0
-            ):  # pragma: no cover -- defensive parity with upstream
-                found_index = next_index
-                next_index -= 1
-                continue
             glyph = repositioned[found_index]
-            prev_index = found_index + 1
             if glyph in self._before_half_glyph_ids:
                 repositioned.pop(found_index)
                 repositioned.insert(next_index, glyph)
                 next_index -= 1
-            elif (
-                self._reph_glyph_ids
-                and len(self._reph_glyph_ids) > 1
-                and self._reph_glyph_ids[1] == glyph
-                and prev_index < list_size
-                and prev_index < len(repositioned)
-            ):
-                prev_glyph = repositioned[prev_index]
-                if (
-                    prev_glyph in self._before_half_glyph_ids
-                ):  # pragma: no cover -- defensive parity with upstream
-                    repositioned.pop(prev_index)
-                    repositioned.insert(next_index, prev_glyph)
-                    next_index -= 1
             found_index = next_index
             next_index -= 1
         return repositioned

@@ -110,7 +110,11 @@ def test_render_tiling_cell_processes_stream_and_restores_state() -> None:
         )
 
         assert tile is not None
-        assert tile.getpixel((2, 2)) == (0, 255, 0)
+        # Wave 1373: cell content paints into an RGBA tile with the alpha
+        # channel reflecting where the cell drew. The interior pixel
+        # remains the requested colour (with full alpha).
+        assert tile.mode == "RGBA"
+        assert tile.getpixel((2, 2))[:3] == (0, 255, 0)
         assert renderer._resources is original_resources  # noqa: SLF001
         assert renderer._gs.fill_rgb == (10, 20, 30)  # noqa: SLF001
         assert renderer._subpaths == []  # noqa: SLF001

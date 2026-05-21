@@ -287,7 +287,11 @@ def test_render_tiling_cell_empty_and_invalid_inputs() -> None:
         )
         assert tile is not None
         assert tile.size == (3, 3)
-        assert tile.getpixel((1, 1)) == (255, 255, 255)
+        # Wave 1373: empty content streams now produce a transparent
+        # RGBA tile (was opaque-white RGB) so the page background shows
+        # through any /XStep × /YStep gaps unchanged.
+        assert tile.mode == "RGBA"
+        assert tile.getpixel((1, 1)) == (0, 0, 0, 0)
 
         assert renderer._render_tiling_cell(  # noqa: SLF001
             _TilingPattern(COSDictionary()),

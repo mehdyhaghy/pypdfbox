@@ -123,11 +123,11 @@ def test_tiling_pattern_step_smaller_than_cell_overlaps_tiles() -> None:
 
 
 def test_tiling_pattern_large_step_renders_without_crash() -> None:
-    """Step larger than the cell should not crash the renderer. The
-    spec says gaps appear between tiles; the lite renderer documents a
-    divergence here (stretches the cell to fill the step) — this test
-    just guards against a crash and confirms the fill region picks up
-    the cell colour somewhere."""
+    """Step larger than the cell should not crash the renderer. Spec-
+    correct rendering (wave 1373) places the cell at every (i·XStep,
+    j·YStep) origin with the rest of the tile transparent — the fill
+    region picks up the cell colour at the lattice points and shows the
+    page background in the gaps."""
     pat = _build_pattern(
         cell_bytes=b"0 1 0 rg\n0 0 5 5 re\nf\n",
         bbox=PDRectangle(0.0, 0.0, 5.0, 5.0),
@@ -259,8 +259,10 @@ def test_tiling_pattern_renders_in_clipped_region() -> None:
 
 def test_tiling_pattern_unequal_x_y_step_renders_lattice() -> None:
     """Different /XStep vs /YStep — verify the pattern still fills the
-    region without crashing. The lite renderer's stretched-cell
-    divergence means the lattice fully covers the fill."""
+    region without crashing. Wave 1373 made the lattice spec-correct
+    (cell painted at the lattice points, gap pixels transparent), so the
+    cell colour appears on the lattice and the page background fills the
+    gaps."""
     pat = _build_pattern(
         cell_bytes=b"0 1 1 rg\n0 0 4 4 re\nf\n",
         bbox=PDRectangle(0.0, 0.0, 4.0, 4.0),

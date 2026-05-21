@@ -102,8 +102,8 @@ class FDFField:
         v = self._field.get_dictionary_object(_V)
         if v is None:
             return None
-        if isinstance(v, COSObject):  # pragma: no cover -- get_dictionary_object already unwraps
-            v = v.get_object()
+        # ``get_dictionary_object`` already dereferences any ``COSObject``
+        # wrapper, so ``v`` is guaranteed to be a concrete COS type here.
         if isinstance(v, COSName):
             return v.name
         if isinstance(v, COSArray):
@@ -124,8 +124,8 @@ class FDFField:
         v = self._field.get_dictionary_object(_V)
         if v is None:
             return None
-        if isinstance(v, COSObject):  # pragma: no cover -- get_dictionary_object already unwraps
-            v = v.get_object()
+        # ``get_dictionary_object`` already dereferences any ``COSObject``
+        # wrapper, so ``v`` is guaranteed to be a concrete COS type here.
         if isinstance(v, (COSName, COSArray, COSString, COSStream)):
             return v
         raise OSError(f"Error: Unknown type for field import: {v!r}")
@@ -342,8 +342,8 @@ class FDFField:
         v = self._field.get_dictionary_object(_RV)
         if v is None:
             return None
-        if isinstance(v, COSObject):  # pragma: no cover -- get_dictionary_object already unwraps
-            v = v.get_object()
+        # ``get_dictionary_object`` already dereferences any ``COSObject``
+        # wrapper, so ``v`` is guaranteed to be a concrete COS type here.
         if isinstance(v, COSString):
             return v.get_string()
         if isinstance(v, COSStream):
@@ -516,13 +516,12 @@ class FDFField:
                 output.write("</value>\n")
 
         rich = self.get_rich_text()
+        # ``get_rich_text`` always decodes ``/RV`` to ``str`` (or ``None``)
+        # — both ``COSString`` and ``COSStream`` payloads are flattened
+        # before they reach here.
         if isinstance(rich, str):
             output.write("<value-richtext>")
             output.write(_escape_xml(rich))
-            output.write("</value-richtext>\n")
-        elif isinstance(rich, COSStream):  # pragma: no cover -- get_rich_text always decodes to str
-            output.write("<value-richtext>")
-            output.write(_escape_xml(rich.to_text_string()))
             output.write("</value-richtext>\n")
 
         kids = self.get_kids()

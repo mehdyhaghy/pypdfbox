@@ -32,13 +32,16 @@ def test_wave869_make_doc_exercises_existing_page_removal(monkeypatch) -> None:
 
 
 def test_wave869_tiling_test_local_stubs_are_consumed(monkeypatch) -> None:
-    def render_tiling_cell(self, pattern, *, bbox, tile_size):  # noqa: ANN001
+    def render_tiling_cell(  # noqa: ANN001
+        self, pattern, *, bbox, tile_size, cell_size=None,
+    ):
         assert bbox.get_width() == 1.0
         assert bbox.get_height() == 1.0
         assert bbox.get_lower_left_x() == 0.0
         assert bbox.get_lower_left_y() == 0.0
         assert pattern.get_resources() is None
-        return Image.new("RGB", tile_size, (255, 255, 255))
+        # Wave 1373: tiles are now RGBA with the gap pixels transparent.
+        return Image.new("RGBA", tile_size, (0, 0, 0, 0))
 
     monkeypatch.setattr(wave512.PDFRenderer, "_render_tiling_cell", render_tiling_cell)
 

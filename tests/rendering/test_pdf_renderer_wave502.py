@@ -65,8 +65,15 @@ def test_build_path_mask_even_odd_flattens_curves_and_xors_overlap() -> None:
         mask = renderer._build_path_mask(even_odd=True)
 
         assert mask is not None
-        assert mask.getpixel((2, 4)) == 255
-        assert mask.getpixel((5, 5)) == 0
+        # Wave 1373: skia rasterises the mask with sub-pixel AA, so edge
+        # pixels carry intermediate alpha. Interior pixels are still
+        # fully covered (>= 128) and even-odd hole interior pixels stay
+        # well below 128.
+        assert mask.getpixel((2, 4)) >= 128
+        # Pixel (6, 4) sits inside the even-odd hole (covered by both
+        # subpaths so they cancel) and away from edges that would carry
+        # AA partial coverage.
+        assert mask.getpixel((6, 4)) <= 32
     finally:
         _finish(renderer)
         doc.close()
@@ -82,7 +89,10 @@ def test_unknown_pattern_fill_falls_back_to_solid_masked_fill() -> None:
         renderer._paint_pattern_fill(even_odd=False)
         _finish(renderer)
 
-        assert renderer._image.getpixel((2, 2)) == (12, 34, 56)
+        # Wave 1373: skia AA blends edge pixels with the background;
+        # sample a pixel safely inside the triangle to avoid the
+        # hypotenuse-edge half-coverage region.
+        assert renderer._image.getpixel((3, 2)) == (12, 34, 56)
         assert renderer._image.getpixel((0, 0)) == (255, 255, 255)
     finally:
         doc.close()

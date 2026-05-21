@@ -3,27 +3,15 @@
 
 Targets the residual uncovered branches:
 
-* ``get_value`` / ``get_cos_value`` / ``get_rich_text`` ``COSObject``
-  unwrap fallback paths (defence-in-depth in case a caller routes
-  around ``COSDictionary.get_dictionary_object``);
-* ``get_rich_text`` returning ``None`` for non-string non-stream values
-  (line 351);
-* ``write_xml`` skipping non-string entries in a value list (line 513);
-* ``_cos_value_to_python`` ``COSInteger`` + ``COSStream`` passthrough
-  (lines 580, 583-585);
-* :class:`FDFNamedPageReference` filespec round trip + clear
-  (lines 612-616, 620-623);
-* :class:`FDFIconFit` ``PDRange(array)`` branch (line 677).
-
-Note: ``get_dictionary_object`` already dereferences ``COSObject``
-indirections before they reach the ``isinstance(v, COSObject)`` checks
-at lines 105-106, 127-128 and 345-346 in the source. Those three
-guards are defensive — currently dead code under the port's
-``_resolve_item`` behaviour. Flagged in the wave report.
-
-Similarly the ``elif isinstance(rich, COSStream)`` branch at
-lines 523-526 of ``write_xml`` is dead code because
-``get_rich_text`` decodes ``COSStream`` → ``str`` before returning.
+* ``get_value`` / ``get_cos_value`` / ``get_rich_text`` on a
+  ``COSObject``-wrapped value — ``COSDictionary._resolve_item`` does
+  the unwrap before the accessor receives the entry, so the resolved
+  leaf flows through the type-dispatch branches as expected;
+* ``get_rich_text`` returning ``None`` for non-string non-stream values;
+* ``write_xml`` skipping non-string entries in a value list;
+* ``_cos_value_to_python`` ``COSInteger`` + ``COSStream`` passthrough;
+* :class:`FDFNamedPageReference` filespec round trip + clear;
+* :class:`FDFIconFit` ``PDRange(array)`` branch.
 """
 
 from __future__ import annotations
@@ -57,8 +45,8 @@ def _wrap_in_cos_object(value: object) -> COSObject:
 
 
 def test_get_value_unwraps_cos_object_to_string() -> None:
-    """``/V`` stored as a COSObject indirection unwraps to the inner
-    value (line 106)."""
+    """``/V`` stored as a COSObject indirection unwraps (via
+    ``_resolve_item``) and returns the inner string value."""
     field = FDFField()
     field.get_cos_object().set_item(
         COSName.get_pdf_name("V"), _wrap_in_cos_object(COSString("Lyon"))
@@ -67,8 +55,8 @@ def test_get_value_unwraps_cos_object_to_string() -> None:
 
 
 def test_get_cos_value_unwraps_cos_object_to_name() -> None:
-    """``get_cos_value`` unwraps COSObject indirections so callers see
-    the typed COS leaf (line 128)."""
+    """``get_cos_value`` returns the typed COS leaf after the upstream
+    ``_resolve_item`` indirection unwrap."""
     field = FDFField()
     name = COSName.get_pdf_name("Yes")
     field.get_cos_object().set_item(
@@ -79,7 +67,8 @@ def test_get_cos_value_unwraps_cos_object_to_name() -> None:
 
 
 def test_get_rich_text_unwraps_cos_object_to_string() -> None:
-    """``/RV`` wrapped in COSObject decodes to ``str`` (line 346)."""
+    """``/RV`` wrapped in COSObject decodes to ``str`` after
+    ``_resolve_item`` unwraps the indirection."""
     field = FDFField()
     field.get_cos_object().set_item(
         COSName.get_pdf_name("RV"), _wrap_in_cos_object(COSString("<b>x</b>"))
@@ -121,8 +110,9 @@ def test_write_xml_skips_non_string_entries_in_value_list() -> None:
 
 
 def test_write_xml_emits_richtext_from_cos_stream() -> None:
-    """A ``/RV`` carrying a ``COSStream`` is decoded and emitted under
-    ``<value-richtext>`` (lines 524-526)."""
+    """A ``/RV`` carrying a ``COSStream`` is decoded via
+    ``get_rich_text`` (which calls ``to_text_string``) and emitted as a
+    ``<value-richtext>`` string."""
     field = FDFField()
     field.set_partial_field_name("body")
     rv_stream = COSStream()

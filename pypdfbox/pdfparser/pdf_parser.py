@@ -374,6 +374,84 @@ class PDFParser:
         is left to higher-level callers."""
         return self.hint_table_bytes
 
+    def decode_page_offset_hint_table(self) -> Any | None:
+        """Decode the Page Offset Hint Table out of the primary hint
+        stream (PDF 32000-1 Annex F.3).
+
+        Locates the hint stream object via the byte offset stored in
+        ``/H[0]`` of the linearization dictionary, runs the stream's
+        ``/Filter`` chain through ``COSStream.create_input_stream`` (so
+        the typical ``/FlateDecode`` body is unwound), and decodes the
+        12-byte Page Offset header plus one per-page record per page
+        listed in ``/N``.
+
+        Returns the typed :class:`~pypdfbox.pdfparser.linearization_hint_table.PageOffsetHintTable`
+        on success, or ``None`` when the document is not linearized, the
+        hint stream cannot be located, or the body is malformed. Mirrors
+        the "lite decoder" pattern PDFBox upstream omits — pypdfbox
+        ships it for web-streaming consumers who need page-level byte
+        ranges without a full xref walk.
+
+        Apache PDFBox upstream does **not** decode the hint stream at
+        all; this is a pypdfbox enrichment over the deferral noted in
+        CHANGES.md under "Wave 41 round-out — read-only linearization"."""
+        from .linearization_hint_table import (  # noqa: PLC0415
+            HintTableParseError,
+            parse_page_offset_hint_table,
+        )
+
+        lin = self.linearization_dict
+        if lin is None:
+            return None
+        # /N — total page count, needed to size the per-page block.
+        n_obj = lin.get_dictionary_object(COSName.get_pdf_name("N"))
+        if not isinstance(n_obj, (COSInteger, COSFloat)):
+            return None
+        page_count = int(n_obj.value)
+        if page_count <= 0:
+            return None
+        # /H — primary hint stream offset (and length we don't strictly
+        # need for the decode path, since the stream's own /Length wins).
+        h_arr = lin.get_dictionary_object(COSName.get_pdf_name("H"))
+        if not isinstance(h_arr, COSArray) or h_arr.size() < 2:
+            return None
+        h_off_obj = h_arr.get(0)
+        if not isinstance(h_off_obj, (COSInteger, COSFloat)):
+            return None
+        hint_stream_byte_offset = int(h_off_obj.value)
+        # Locate the hint stream object by scanning the resolver for an
+        # entry whose offset matches /H[0]. PDFBox upstream does no such
+        # lookup (it never decodes the hint stream); we do because the
+        # filter chain must run before we can interpret the body.
+        target_key: COSObjectKey | None = None
+        for key, entry in self._resolver.get_xref_table().items():
+            if (
+                entry.type is XrefType.TABLE or entry.type is XrefType.STREAM
+            ) and entry.offset == hint_stream_byte_offset:
+                target_key = key
+                break
+        if target_key is None:
+            return None
+        document = self._document
+        if document is None:
+            return None
+        target_obj = document.get_object(target_key)
+        if target_obj is None:
+            return None
+        resolved = target_obj.get_object()
+        if not isinstance(resolved, COSStream):
+            return None
+        body = resolved
+        try:
+            with body.create_input_stream() as src:
+                decoded = src.read()
+        except (OSError, ValueError):
+            return None
+        try:
+            return parse_page_offset_hint_table(decoded, page_count=page_count)
+        except HintTableParseError:
+            return None
+
     def _detect_linearization(self) -> None:
         """Parse the first indirect object after the header. If it is a
         dictionary carrying a truthy ``/Linearized`` entry, record it on

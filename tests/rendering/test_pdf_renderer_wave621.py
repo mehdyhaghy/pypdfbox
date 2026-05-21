@@ -77,8 +77,11 @@ def test_nonzero_path_mask_unions_multiple_subpaths() -> None:
         mask = renderer._build_path_mask(even_odd=False)  # noqa: SLF001
 
         assert mask is not None
-        assert mask.getpixel((2, 2)) == 255
-        assert mask.getpixel((6, 6)) == 255
+        # Wave 1373: edge pixels carry sub-pixel AA (not fully 255). Both
+        # triangle interiors still contribute at least half-coverage,
+        # and the gap between them remains fully transparent.
+        assert mask.getpixel((2, 2)) >= 128
+        assert mask.getpixel((6, 6)) >= 128
         assert mask.getpixel((4, 4)) == 0
     finally:
         _finish(renderer)

@@ -68,7 +68,15 @@ def test_wave375_popup_annotation_reference_is_rewritten_to_cloned_popup() -> No
     annots.add(popup)
     imported.get_cos_object().set_item(COSName.get_pdf_name("Annots"), annots)
 
-    Splitter()._process_annotations(source_page, imported)  # noqa: SLF001
+    splitter = Splitter()
+    # Wave 1373: the markup/popup second pass is deferred to a chunk-level
+    # ``_finalize_annotation_links`` call so cross-page popup references
+    # in the same chunk resolve correctly. Direct unit-callers of
+    # ``_process_annotations`` need to allocate the pending queue + drain
+    # it manually.
+    splitter._pending_annot_passes = []  # noqa: SLF001
+    splitter._process_annotations(source_page, imported)  # noqa: SLF001
+    splitter._finalize_annotation_links()  # noqa: SLF001
 
     cloned_annots = (
         imported.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Annots"))

@@ -122,7 +122,11 @@ def test_render_tiling_cell_restores_resources_when_pattern_has_none() -> None:
 
         assert tile is not None
         assert tile.size == (2, 2)
-        assert tile.getpixel((0, 0)) == (255, 255, 255)
+        # Wave 1373: empty content streams produce a transparent RGBA
+        # tile (was opaque-white RGB) so /XStep × /YStep gaps show the
+        # page background.
+        assert tile.mode == "RGBA"
+        assert tile.getpixel((0, 0)) == (0, 0, 0, 0)
         assert renderer._resources is previous_resources  # noqa: SLF001
     finally:
         _finish(renderer)

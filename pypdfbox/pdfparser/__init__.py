@@ -5,6 +5,14 @@ from .brute_force_parser import BruteForceParser
 from .cos_parser import COSParser
 from .endstream_filter_stream import EndstreamFilterStream
 from .fdf_parser import FDFParser
+from .linearization_hint_table import (
+    HintTableParseError,
+    PageOffsetEntry,
+    PageOffsetHintHeader,
+    PageOffsetHintTable,
+    parse_page_offset_hint_header,
+    parse_page_offset_hint_table,
+)
 from .object_numbers import ObjectNumbers
 from .parse_error import PDFParseError
 from .pdf_object_stream_parser import PDFObjectStreamParser
@@ -21,6 +29,7 @@ __all__ = [
     "COSParser",
     "EndstreamFilterStream",
     "FDFParser",
+    "HintTableParseError",
     "ObjectNumbers",
     "Operator",
     "PDFObjectStreamParser",
@@ -29,8 +38,13 @@ __all__ = [
     "PDFStreamParser",
     "PDFXRefStream",
     "PDFXrefStreamParser",
+    "PageOffsetEntry",
+    "PageOffsetHintHeader",
+    "PageOffsetHintTable",
     "XrefEntry",
     "XrefTrailerObj",
     "XrefTrailerResolver",
     "XrefType",
+    "parse_page_offset_hint_header",
+    "parse_page_offset_hint_table",
 ]

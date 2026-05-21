@@ -134,6 +134,24 @@ class Splitter:
         self._dest_to_fix_per_chunk: list[
             list[tuple[COSArray, COSDictionary, COSDictionary | None]]
         ] = []
+        # Per-chunk queue of (cloned_annotations, source_annots_array,
+        # imported_page_dict) tuples populated by ``_process_annotations``'
+        # first pass and drained by ``_finalize_annotation_links`` after
+        # *every* page in the chunk has been imported. Deferring the
+        # second pass lets a markup annotation on chunk page A correctly
+        # rewrite its ``/Popup`` to a popup annotation on chunk page B
+        # (wave 1373): the per-page run order otherwise meant page A's
+        # second pass executed before page B's first pass populated
+        # ``_annot_dict_map`` with the cloned popup. Mirrors the upstream
+        # invariant that ``annotDictMap`` is chunk-wide; the only behaviour
+        # change is that we look up the same map *later* so cross-page
+        # annotation refs in the same chunk resolve to cloned dicts.
+        self._pending_annot_passes: list[
+            tuple[list[Any], COSArray | None, COSDictionary | None]
+        ] = []
+        self._pending_annot_passes_per_chunk: list[
+            list[tuple[list[Any], COSArray | None, COSDictionary | None]]
+        ] = []
 
         self._current_page_number: int = 0
 
@@ -256,6 +274,7 @@ class Splitter:
         self._page_dict_maps = []
         self._annot_dict_maps = []
         self._dest_to_fix_per_chunk = []
+        self._pending_annot_passes_per_chunk = []
         self._id_set = set()
         self._role_set = set()
         # Track whether any chunk dropped a signature widget; clear
@@ -269,6 +288,19 @@ class Splitter:
             self._page_dict_map = self._page_dict_maps[index]
             self._annot_dict_map = self._annot_dict_maps[index]
             self._dest_to_fix = self._dest_to_fix_per_chunk[index]
+            self._pending_annot_passes = (
+                self._pending_annot_passes_per_chunk[index]
+            )
+            # Drain the deferred markup/popup linkage pass once
+            # ``_annot_dict_map`` reflects every page in the chunk.
+            try:
+                self._finalize_annotation_links()
+            except Exception:  # noqa: BLE001
+                _LOG.exception(
+                    "annotation linkage finalisation failed for chunk %d; "
+                    "popup/markup back-pointers may dangle",
+                    index,
+                )
             try:
                 # Dispatch via the underscored alias so subclasses can
                 # override either the public ``clone_structure_tree`` or
@@ -448,6 +480,10 @@ class Splitter:
             self._annot_dict_maps.append(self._annot_dict_map)
             self._dest_to_fix = []
             self._dest_to_fix_per_chunk.append(self._dest_to_fix)
+            self._pending_annot_passes = []
+            self._pending_annot_passes_per_chunk.append(
+                self._pending_annot_passes
+            )
 
     def create_new_document_if_necessary(self) -> None:
         """Public-named hook mirroring upstream ``createNewDocumentIfNecessary``.
@@ -498,12 +534,6 @@ class Splitter:
         )
         from pypdfbox.pdmodel.interactive.annotation.pd_annotation_link import (
             PDAnnotationLink,
-        )
-        from pypdfbox.pdmodel.interactive.annotation.pd_annotation_markup import (  # noqa: E501
-            PDAnnotationMarkup,
-        )
-        from pypdfbox.pdmodel.interactive.annotation.pd_annotation_popup import (  # noqa: E501
-            PDAnnotationPopup,
         )
 
         try:
@@ -607,105 +637,125 @@ class Splitter:
             ):
                 cloned_ann.set_page(imported_page_dict)
 
-        # Second pass: rewrite /Popup → cloned popup dict references on
-        # markup annots, and /Parent → cloned markup dict on popups, so
-        # popup/markup annotation pairs stay internally consistent.
-        # Mirrors upstream ``processAnnotations`` second loop (Java line
-        # 926-967), including orphan-popup handling: a markup whose popup
-        # isn't in the annotation list gets its popup cloned, /P set to
-        # the imported page, and re-linked via /Popup ↔ /Parent.
-        #
-        # We resolve the popup/parent ref through the source annot's
-        # /Popup or /Parent (when available) — the deep-copy in
-        # ``import_page`` produces fresh COSDictionary instances for
-        # cross-annotation refs in the same page (so the cloned annot's
-        # /Popup is a *different* dict instance than /Annots[i+1] for the
-        # same source popup). Going through the source side bypasses that
-        # aliasing artefact.
-        clone_index = 0
-        for ann in cloned:
-            ann_dict = ann.get_cos_object()
-            source_ann_dict: COSBase | None = None
-            if source_annots_array is not None:
-                # ``cloned`` may have skipped signature widgets, so walk
-                # source forwards looking for the next non-sig-widget.
-                while clone_index < source_annots_array.size():
-                    candidate = source_annots_array.get_object(clone_index)
-                    clone_index += 1
-                    if not isinstance(candidate, COSDictionary):
-                        continue
-                    if self._is_signature_widget(candidate):
-                        continue
-                    source_ann_dict = candidate
-                    break
-
-            if isinstance(ann, PDAnnotationMarkup):
-                source_popup_value: Any = None
-                if isinstance(source_ann_dict, COSDictionary):
-                    source_popup_value = source_ann_dict.get_dictionary_object(
-                        _POPUP
-                    )
-                # Fall back to the cloned dict's /Popup when source-side
-                # lookup didn't produce a popup (e.g. source page lacked
-                # an /Annots array or the index alignment broke down).
-                popup_value = (
-                    source_popup_value
-                    if isinstance(source_popup_value, COSDictionary)
-                    else ann_dict.get_dictionary_object(_POPUP)
-                )
-                if isinstance(popup_value, COSDictionary):
-                    cloned_popup = self._annot_dict_map.get(id(popup_value))
-                    if cloned_popup is not None:
-                        ann_dict.set_item(_POPUP, cloned_popup)
-                    else:
-                        # Orphan popup — popup dict isn't in the page's
-                        # /Annots list. Clone it, hook /P back to the
-                        # imported page, then re-link Popup ↔ Parent.
-                        cloned_popup = COSDictionary(
-                            list(popup_value.entry_set())
-                        )
-                        self._annot_dict_map[id(popup_value)] = cloned_popup
-                        popup_clone = PDAnnotationPopup(cloned_popup)
-                        popup_clone.set_parent(ann_dict)
-                        ann_dict.set_item(_POPUP, cloned_popup)
-                        # Upstream guards setPage on the orphan popup with
-                        # ``if (annotationPopupClone.getPage() != null)`` —
-                        # but at this point the orphan clone is a shallow
-                        # copy of a deep-copied source popup, so it
-                        # generally carries a /P entry. Mirror upstream's
-                        # guard via PDAnnotation.get_page().
-                        if (
-                            imported_page_dict is not None
-                            and popup_clone.get_page() is not None
-                        ):
-                            popup_clone.set_page(imported_page_dict)
-
-            if isinstance(ann, PDAnnotationPopup):
-                source_parent_value: Any = None
-                if isinstance(source_ann_dict, COSDictionary):
-                    source_parent_value = source_ann_dict.get_dictionary_object(
-                        _PARENT
-                    )
-                parent_value = (
-                    source_parent_value
-                    if isinstance(source_parent_value, COSDictionary)
-                    else ann_dict.get_dictionary_object(_PARENT)
-                )
-                # Popup's /Parent points at the source markup dict;
-                # rewrite it to the cloned markup so back-traversal stays
-                # inside the chunk. If the markup is orphan (not in this
-                # chunk), upstream still calls ``setItem(PARENT, null)``
-                # — we follow by setting whatever the lookup yields,
-                # falling back to nulling the entry when unmapped.
-                if isinstance(parent_value, COSDictionary):
-                    cloned_markup = self._annot_dict_map.get(id(parent_value))
-                    if cloned_markup is not None:
-                        ann_dict.set_item(_PARENT, cloned_markup)
-                    else:
-                        ann_dict.remove_item(_PARENT)
+        # Second pass (popup/markup linkage) is deferred to
+        # :meth:`_finalize_annotation_links`. Running it inline here would
+        # only see this page's contribution to ``_annot_dict_map`` — a
+        # markup on chunk page A whose ``/Popup`` lives on chunk page B
+        # would be processed before page B's first pass populated the
+        # cloned popup dict, so the second-pass lookup would miss and
+        # leave the markup's ``/Popup`` pointing at a deep-copy dict that
+        # isn't the chunk's actual popup (wave 1373). Stash the per-page
+        # context and drain after every page in the chunk has been
+        # imported.
+        self._pending_annot_passes.append(
+            (cloned, source_annots_array, imported_page_dict)
+        )
 
         with contextlib.suppress(Exception):
             imported.set_annotations(cloned)
+
+    def _finalize_annotation_links(self) -> None:
+        """Run the deferred markup/popup second pass for every page in
+        the current chunk.
+
+        Mirrors upstream ``processAnnotations`` second loop
+        (Splitter.java lines 926-967) — rewrites ``/Popup`` on markup
+        annots to the chunk's cloned popup dict, ``/Parent`` on popups
+        to the chunk's cloned markup dict, and clones orphan popups (not
+        in any page's ``/Annots``) re-linking them via ``/Popup`` ↔
+        ``/Parent`` with ``/P`` pinned to the markup's imported page.
+        Defers the second-pass walk relative to upstream so the lookup
+        sees ``_annot_dict_map`` populated by *every* page in the chunk,
+        not just the page that hosts the markup — without this, a markup
+        on page A whose popup lives on page B of the same chunk would
+        leave the markup's ``/Popup`` pointing at the deep-copied source
+        popup instead of the chunk's cloned popup.
+
+        Popup-side ``/Parent`` resolution still falls back to nulling the
+        entry when the markup annotation didn't follow the split, per
+        upstream's ``setItem(PARENT, null)`` behaviour for orphan markups.
+        """
+        from pypdfbox.pdmodel.interactive.annotation.pd_annotation_markup import (  # noqa: E501
+            PDAnnotationMarkup,
+        )
+        from pypdfbox.pdmodel.interactive.annotation.pd_annotation_popup import (  # noqa: E501
+            PDAnnotationPopup,
+        )
+
+        for entry in self._pending_annot_passes:
+            cloned, source_annots_array, imported_page_dict = entry
+            clone_index = 0
+            for ann in cloned:
+                ann_dict = ann.get_cos_object()
+                source_ann_dict: COSBase | None = None
+                if source_annots_array is not None:
+                    while clone_index < source_annots_array.size():
+                        candidate = source_annots_array.get_object(clone_index)
+                        clone_index += 1
+                        if not isinstance(candidate, COSDictionary):
+                            continue
+                        if self._is_signature_widget(candidate):
+                            continue
+                        source_ann_dict = candidate
+                        break
+
+                if isinstance(ann, PDAnnotationMarkup):
+                    source_popup_value: Any = None
+                    if isinstance(source_ann_dict, COSDictionary):
+                        source_popup_value = (
+                            source_ann_dict.get_dictionary_object(_POPUP)
+                        )
+                    popup_value = (
+                        source_popup_value
+                        if isinstance(source_popup_value, COSDictionary)
+                        else ann_dict.get_dictionary_object(_POPUP)
+                    )
+                    if isinstance(popup_value, COSDictionary):
+                        cloned_popup = self._annot_dict_map.get(
+                            id(popup_value)
+                        )
+                        if cloned_popup is not None:
+                            ann_dict.set_item(_POPUP, cloned_popup)
+                        else:
+                            # Orphan popup — not in any /Annots array of
+                            # any chunk page. Clone it, hook /P back to
+                            # the markup's imported page, re-link
+                            # Popup ↔ Parent. Mirrors upstream
+                            # ``Splitter.java:944-954``.
+                            cloned_popup = COSDictionary(
+                                list(popup_value.entry_set())
+                            )
+                            self._annot_dict_map[id(popup_value)] = (
+                                cloned_popup
+                            )
+                            popup_clone = PDAnnotationPopup(cloned_popup)
+                            popup_clone.set_parent(ann_dict)
+                            ann_dict.set_item(_POPUP, cloned_popup)
+                            if (
+                                imported_page_dict is not None
+                                and popup_clone.get_page() is not None
+                            ):
+                                popup_clone.set_page(imported_page_dict)
+
+                if isinstance(ann, PDAnnotationPopup):
+                    source_parent_value: Any = None
+                    if isinstance(source_ann_dict, COSDictionary):
+                        source_parent_value = (
+                            source_ann_dict.get_dictionary_object(_PARENT)
+                        )
+                    parent_value = (
+                        source_parent_value
+                        if isinstance(source_parent_value, COSDictionary)
+                        else ann_dict.get_dictionary_object(_PARENT)
+                    )
+                    if isinstance(parent_value, COSDictionary):
+                        cloned_markup = self._annot_dict_map.get(
+                            id(parent_value)
+                        )
+                        if cloned_markup is not None:
+                            ann_dict.set_item(_PARENT, cloned_markup)
+                        else:
+                            ann_dict.remove_item(_PARENT)
 
     @staticmethod
     def _is_signature_widget(ann_dict: COSDictionary) -> bool:

@@ -3,8 +3,8 @@
 Mirrors the Devanagari coverage suite — same branches, same shapes,
 Gujarati code points. Targets: empty-rkrf early-return, the missing
 2-element-cluster early-return, the i-matra reposition pop/insert path,
-the matra-virama swap branch, and the ``script_feature is None``
-continue branch in :meth:`apply_transforms`.
+and the ``script_feature is None`` continue branch in
+:meth:`apply_transforms`.
 """
 
 from __future__ import annotations
@@ -105,10 +105,9 @@ def test_reposition_glyphs_moves_i_matra_left() -> None:
     assert out.index(304) < 2
 
 
-def test_reposition_glyphs_virama_with_following_i_matra_swap() -> None:
-    """The matra-virama swap branch (lines 194-196) fires when found_index
-    lands on a VIRAMA whose ``found_index + 1`` neighbour is still an
-    I-matra."""
+def test_reposition_glyphs_multiple_i_matras_all_move_left() -> None:
+    """Every I-matra glyph is popped and reinserted further left; the
+    intervening VIRAMA stays in place."""
     gd = GsubData(language="GUJARATI", feature_list={})
     worker = GsubWorkerForGujarati(_guj_cmap(), gd)
     out = worker.reposition_glyphs([301, 304, 50, 304, 60])

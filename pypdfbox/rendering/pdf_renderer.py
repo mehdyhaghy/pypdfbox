@@ -1653,41 +1653,115 @@ class PDFRenderer(PDFStreamEngine):
 
         Used by tiling-pattern and shading fill to bound the painted region
         to the path's interior. Returns ``None`` when no subpaths produce a
-        polygon (degenerate / empty path)."""
+        polygon (degenerate / empty path).
+
+        Wave 1373: replaced the legacy Bezier-flatten + XOR-per-subpath
+        mask construction with a direct ``skia.Path`` rasterisation —
+        skia honours ``PathFillType.kEvenOdd`` natively with full sub-
+        pixel anti-aliasing on the outer edge, eliminating the documented
+        AA loss the XOR path exhibited.
+        """
         if self._image is None:
             return None
-        ctm = self._full_ctm()
-        width_px, height_px = self._image.size
-        if even_odd:
-            accumulator = Image.new("1", (width_px, height_px), 0)
-            any_polygon = False
-            for subpath in self._subpaths:
-                polygon = self._flatten_subpath_to_device(subpath, ctm)
-                if len(polygon) < 3:
-                    continue
-                sub_mask = Image.new("1", (width_px, height_px), 0)
-                ImageDraw.Draw(sub_mask).polygon(polygon, fill=1, outline=1)
-                accumulator = ImageChops.logical_xor(accumulator, sub_mask)
-                any_polygon = True
-            if not any_polygon:
-                return None
-            return accumulator.convert("L").point(
-                lambda v: 255 if v else 0
-            )
-        # Non-zero fill — union of subpaths is a good approximation when
-        # subpaths don't self-intersect (matches existing clip path code).
-        mask = Image.new("L", (width_px, height_px), 0)
-        cdraw = ImageDraw.Draw(mask)
-        any_polygon = False
-        for subpath in self._subpaths:
-            polygon = self._flatten_subpath_to_device(subpath, ctm)
-            if len(polygon) < 3:
-                continue
-            cdraw.polygon(polygon, fill=255, outline=255)
-            any_polygon = True
-        if not any_polygon:
-            return None
+        mask = self._build_skia_path_alpha_mask(even_odd=even_odd)
         return mask
+
+    def _build_skia_path_alpha_mask(
+        self, *, even_odd: bool,
+    ) -> Image.Image | None:
+        """Rasterise the current subpaths through skia and return the
+        alpha channel as an ``"L"`` PIL image (same size as ``_image``).
+
+        Anti-aliasing on the path outline is preserved because skia
+        renders with sub-pixel alpha; both even-odd and non-zero fill
+        rules are handled natively via ``skia.PathFillType``.
+        """
+        if self._image is None:
+            return None
+        # Defer the skia import to keep the renderer module load light.
+        import skia  # noqa: PLC0415
+
+        width_px, height_px = self._image.size
+        sk_path = skia.Path()
+        any_segments = False
+        for subpath in self._subpaths:
+            for seg in subpath:
+                tag = seg[0]
+                if tag == "M":
+                    sk_path.moveTo(float(seg[1]), float(seg[2]))
+                    any_segments = True
+                elif tag == "L":
+                    sk_path.lineTo(float(seg[1]), float(seg[2]))
+                    any_segments = True
+                elif tag == "C":
+                    sk_path.cubicTo(
+                        float(seg[1]), float(seg[2]),
+                        float(seg[3]), float(seg[4]),
+                        float(seg[5]), float(seg[6]),
+                    )
+                    any_segments = True
+                elif tag == "Z":
+                    sk_path.close()
+        if not any_segments:
+            return None
+        # Degenerate paths (single point, all-collinear, zero-area) carry
+        # no fillable interior; mirror the legacy len(polygon) < 3 short-
+        # circuit by checking the path's bounding box. Skia would render
+        # nothing for them but still allocate a buffer.
+        bounds = sk_path.getBounds()
+        if (
+            bounds.width() <= 0.0
+            or bounds.height() <= 0.0
+            or not (math.isfinite(bounds.width()) and math.isfinite(bounds.height()))
+        ):
+            return None
+        sk_path.setFillType(
+            skia.PathFillType.kEvenOdd if even_odd
+            else skia.PathFillType.kWinding,
+        )
+        return self._build_skia_path_alpha_mask_rgba(
+            sk_path, width_px, height_px,
+        )
+
+    def _build_skia_path_alpha_mask_rgba(
+        self, sk_path: Any, width_px: int, height_px: int,
+    ) -> Image.Image | None:
+        """Rasterise the path into an RGBA buffer and extract the alpha
+        channel as an ``"L"`` PIL image.
+        """
+        import skia  # noqa: PLC0415
+
+        row_bytes = width_px * 4
+        pixels = bytearray(width_px * height_px * 4)
+        info = skia.ImageInfo.Make(
+            width_px, height_px,
+            skia.kRGBA_8888_ColorType,
+            skia.kUnpremul_AlphaType,
+        )
+        surface = skia.Surface.MakeRasterDirect(info, pixels, row_bytes)
+        if surface is None:  # pragma: no cover - skia always succeeds
+            return None
+        canvas = surface.getCanvas()
+        # PDF CTM (a, b, c, d, e, f) maps (x, y) → (a*x + c*y + e,
+        # b*x + d*y + f). Skia's MakeAll takes a row-vector matrix
+        # (scaleX, skewX, transX, skewY, scaleY, transY) where
+        # x' = scaleX*x + skewX*y + transX, so the PDF tuple is
+        # transposed via the same helper aggdraw uses.
+        a, b, c_, d, e, f = self._full_ctm()
+        canvas.setMatrix(
+            skia.Matrix.MakeAll(a, c_, e, b, d, f, 0.0, 0.0, 1.0),
+        )
+        paint = skia.Paint(
+            Color=skia.ColorSetARGB(255, 255, 255, 255),
+            Style=skia.Paint.kFill_Style,
+            AntiAlias=True,
+        )
+        canvas.drawPath(sk_path, paint)
+        surface.flushAndSubmit()
+        rgba = Image.frombytes(
+            "RGBA", (width_px, height_px), bytes(pixels),
+        )
+        return rgba.split()[3]
 
     def _paint_pattern_fill(self, *, even_odd: bool) -> None:
         """Dispatch a pattern fill to the right helper. Tiling vs. shading
@@ -1784,10 +1858,23 @@ class PDFRenderer(PDFStreamEngine):
         # PIL images.
         tile_w_px = max(1, int(round(x_step * scale)))
         tile_h_px = max(1, int(round(y_step * scale)))
+        # BBox-sized cell region in device pixels (PDF 32000-1 §8.7.3.3:
+        # the cell paints into a /BBox sub-region of the (XStep, YStep)
+        # lattice; when /XStep or /YStep is larger than /BBox the gap
+        # remains transparent. Clamp to the tile size — when the cell is
+        # larger than the step (overlap case), the lattice still steps by
+        # (XStep, YStep) and successive tiles paint over each other so
+        # rendering the cell at min(bbox, step) keeps the visible result
+        # correct without leaking past the next tile origin).
+        bbox_w_px = max(1, min(tile_w_px, int(round(bbox.get_width() * scale))))
+        bbox_h_px = max(1, min(tile_h_px, int(round(bbox.get_height() * scale))))
 
         try:
             tile = self._render_tiling_cell(
-                pattern, bbox=bbox, tile_size=(tile_w_px, tile_h_px)
+                pattern,
+                bbox=bbox,
+                tile_size=(tile_w_px, tile_h_px),
+                cell_size=(bbox_w_px, bbox_h_px),
             )
         except Exception as exc:  # noqa: BLE001
             _log.debug("rendering: tiling pattern cell render failed: %s", exc)
@@ -1796,15 +1883,23 @@ class PDFRenderer(PDFStreamEngine):
             return
 
         # Build a same-size composed canvas of repeated tiles, then paste
-        # through ``region_mask``.
+        # through ``region_mask``. The tile carries an alpha channel so
+        # gap pixels between /BBox cells (when /XStep or /YStep exceeds
+        # the cell dimension) stay transparent and the page background
+        # shows through.
         self._draw.flush()
         canvas_w, canvas_h = self._image.size
-        tiled = Image.new("RGB", (canvas_w, canvas_h), (255, 255, 255))
+        tiled = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
         for ty in range(0, canvas_h, tile_h_px):
             for tx in range(0, canvas_w, tile_w_px):
                 tiled.paste(tile, (tx, ty))
-        # Place under the region mask.
-        self._image.paste(tiled, (0, 0), region_mask)
+        # Combine the tiled alpha with ``region_mask`` so only the path
+        # interior receives pattern pixels and only the cell-painted
+        # portion of each tile contributes (gap pixels stay transparent).
+        tiled_alpha = tiled.split()[3]
+        combined = ImageChops.multiply(tiled_alpha, region_mask)
+        rgb_tile = tiled.convert("RGB")
+        self._image.paste(rgb_tile, (0, 0), combined)
         self._draw = aggdraw.Draw(self._image)
         self._draw.setantialias(True)
 
@@ -1814,9 +1909,16 @@ class PDFRenderer(PDFStreamEngine):
         *,
         bbox: Any,
         tile_size: tuple[int, int],
+        cell_size: tuple[int, int] | None = None,
     ) -> Image.Image | None:
         """Render one cell of ``pattern`` to a fresh PIL image of size
         ``tile_size``.
+
+        ``cell_size`` is the device-pixel footprint of the pattern's
+        ``/BBox`` and defaults to ``tile_size`` (legacy behaviour). When
+        ``/XStep`` or ``/YStep`` exceeds the cell dimension the cell
+        paints only the cell-sized region of the tile and the surrounding
+        pixels stay fully transparent (PDF 32000-1 §8.7.3.3).
 
         Internally swaps in a sub-renderer state targeting the tile image
         and feeds the pattern's content stream through the existing
@@ -1827,27 +1929,35 @@ class PDFRenderer(PDFStreamEngine):
         if not isinstance(cos_stream, COSStream):
             return None
         data = cos_stream.to_byte_array()
+        if cell_size is None:
+            cell_size = tile_size
         if not data:
-            # Empty content stream — produce a transparent-white tile so
-            # the caller still tiles a uniform field instead of skipping.
-            return Image.new("RGB", tile_size, (255, 255, 255))
+            # Empty content stream — produce a fully transparent tile so
+            # the caller's alpha-aware paste preserves the page background.
+            return Image.new("RGBA", tile_size, (0, 0, 0, 0))
 
         tile_w, tile_h = tile_size
-        tile_image = Image.new("RGB", (tile_w, tile_h), (255, 255, 255))
+        cell_w, cell_h = cell_size
+        # RGBA tile — transparent everywhere by default; the cell content
+        # paints opaque pixels into the cell-sized sub-region.
+        tile_image = Image.new("RGBA", (tile_w, tile_h), (0, 0, 0, 0))
         bbox_w = bbox.get_width()
         bbox_h = bbox.get_height()
         if bbox_w <= 0.0 or bbox_h <= 0.0:
             return None
         bbox_x = bbox.get_lower_left_x()
         bbox_y = bbox.get_lower_left_y()
-        # Affine that maps the pattern's /BBox onto the tile pixel grid
-        # with the standard PDF y-flip baked in.
-        sx = tile_w / bbox_w
-        sy = tile_h / bbox_h
+        # Affine that maps the pattern's /BBox onto the cell pixel
+        # sub-region of the tile (origin (0, 0), size cell_size) with the
+        # standard PDF y-flip baked in. When cell == tile this matches
+        # the old behaviour; when cell < tile the extra strip on the
+        # right / bottom remains transparent.
+        sx = cell_w / bbox_w
+        sy = cell_h / bbox_h
         tile_device_ctm: _Matrix = (
             sx, 0.0,
             0.0, -sy,
-            -bbox_x * sx, bbox_y * sy + tile_h,
+            -bbox_x * sx, bbox_y * sy + cell_h,
         )
 
         # Snapshot + replace per-render state for the recursion.
@@ -1866,7 +1976,10 @@ class PDFRenderer(PDFStreamEngine):
         self._draw = aggdraw.Draw(tile_image)
         self._draw.setantialias(True)
         self._device_ctm = tile_device_ctm
-        self._page_height_px = float(tile_h)
+        # Use cell height for the page-height clip baseline so the y-flip
+        # in operators that consult ``_page_height_px`` matches the
+        # device-CTM we just installed.
+        self._page_height_px = float(cell_h)
         self._gs_stack = [_GState()]
         self._subpaths = []
         self._current_subpath = None
@@ -2561,7 +2674,13 @@ class PDFRenderer(PDFStreamEngine):
         """If a ``W`` / ``W*`` was issued, intersect its mask with the
         current clip and stash the result on the GS. ``default_even_odd``
         is unused here (the W variant is recorded directly) but kept as a
-        named arg so callers document intent."""
+        named arg so callers document intent.
+
+        Wave 1373: both ``W`` and ``W*`` now build the clip mask through
+        :meth:`_build_skia_path_alpha_mask` so the clip silhouette keeps
+        sub-pixel anti-aliasing on the outer edge (the legacy XOR /
+        union-of-polygons path produced a binary mask).
+        """
         del default_even_odd  # callers pass it for documentation only
         clip_op = self._pending_clip
         if clip_op is None:
@@ -2570,31 +2689,10 @@ class PDFRenderer(PDFStreamEngine):
         if not self._subpaths or self._image is None:
             return
 
-        ctm = self._full_ctm()
         width_px, height_px = self._image.size
-        new_clip = Image.new("L", (width_px, height_px), 0)
-        cdraw = ImageDraw.Draw(new_clip)
-        if clip_op == "W*":
-            # Even-odd: XOR-merge per-subpath polygons.
-            accumulator = Image.new("1", (width_px, height_px), 0)
-            for subpath in self._subpaths:
-                polygon = self._flatten_subpath_to_device(subpath, ctm)
-                if len(polygon) < 3:
-                    continue
-                sub_mask = Image.new("1", (width_px, height_px), 0)
-                ImageDraw.Draw(sub_mask).polygon(polygon, fill=1, outline=1)
-                accumulator = ImageChops.logical_xor(accumulator, sub_mask)
-            new_clip = accumulator.convert("L").point(lambda v: 255 if v else 0)
-        else:
-            # Non-zero: union of all subpaths. PIL polygon fills are even-odd
-            # by default but for a single non-self-intersecting subpath the
-            # two rules coincide; for multiple subpaths we draw each as a
-            # separate polygon and OR them together.
-            for subpath in self._subpaths:
-                polygon = self._flatten_subpath_to_device(subpath, ctm)
-                if len(polygon) < 3:
-                    continue
-                cdraw.polygon(polygon, fill=255, outline=255)
+        new_clip = self._build_skia_path_alpha_mask(even_odd=(clip_op == "W*"))
+        if new_clip is None:
+            new_clip = Image.new("L", (width_px, height_px), 0)
 
         existing = self._gs.clip_mask
         if existing is not None:

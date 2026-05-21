@@ -172,50 +172,22 @@ class GsubWorkerForDevanagari(GsubWorker):
     def reposition_glyphs(self, original_glyph_ids: list[int]) -> list[int]:
         """Move i-matra glyphs leftward past the half/virama sequence.
 
-        Mirrors GsubWorkerForDevanagari.java:187.
+        Mirrors GsubWorkerForDevanagari.java:187. ``pop`` + ``insert``
+        preserve list length and ``found_index`` is always reseeded
+        from ``next_index`` at the bottom of each iteration, so the
+        upstream Java loop's bounds-drift / matra-virama-swap defensive
+        arms are unreachable on natural input and have been pruned.
         """
         repositioned = list(original_glyph_ids)
         list_size = len(repositioned)
         found_index = list_size - 1
         next_index = list_size - 2
         while next_index > -1:
-            # ``found_index`` can drift out of range when we pop entries.
-            # Defensive guard kept for parity with the upstream Java loop
-            # structure; the current Python port never trips it (``pop`` +
-            # ``insert`` preserve length, and ``found_index`` is always
-            # re-seeded from ``next_index`` at the bottom of the loop
-            # before the next iteration's bounds check), but removing it
-            # would diverge from upstream's defensive shape.
-            if (
-                found_index >= len(repositioned) or found_index < 0
-            ):  # pragma: no cover -- defensive parity with upstream
-                found_index = next_index
-                next_index -= 1
-                continue
             glyph = repositioned[found_index]
-            prev_index = found_index + 1
             if glyph in self._before_half_glyph_ids:
                 repositioned.pop(found_index)
                 repositioned.insert(next_index, glyph)
                 next_index -= 1
-            elif (
-                self._reph_glyph_ids
-                and len(self._reph_glyph_ids) > 1
-                and self._reph_glyph_ids[1] == glyph
-                and prev_index < list_size
-                and prev_index < len(repositioned)
-            ):
-                prev_glyph = repositioned[prev_index]
-                # Same parity note: when the I-matra branch fires, the
-                # next iteration skips past the VIRAMA at ``found_index``
-                # so the matra-virama swap never gets a chance to fire on
-                # natural input. Defensive guard retained for parity.
-                if (
-                    prev_glyph in self._before_half_glyph_ids
-                ):  # pragma: no cover -- defensive parity with upstream
-                    repositioned.pop(prev_index)
-                    repositioned.insert(next_index, prev_glyph)
-                    next_index -= 1
             found_index = next_index
             next_index -= 1
         return repositioned

@@ -143,10 +143,10 @@ class TestCreateBufferedDataStream:
 
 class TestMemoryTTFDataStreamBranch:
     def test_extract_font_bytes_from_memory_stream(self) -> None:
-        """Exercise the ``isinstance(self._stream, MemoryTTFDataStream)``
-        branch in :meth:`_extract_font_bytes` (line 322-323). The else
-        branch does the same thing (the discriminator only exists to
-        flag the optimised path the upstream Memory variant unlocks)."""
+        """Exercise :meth:`_extract_font_bytes` with a
+        :class:`MemoryTTFDataStream` backing stream — confirms the
+        materialise-then-slice path works regardless of which stream
+        subclass holds the TTC bytes."""
         from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
 
         ttc_bytes = _single_font_ttc_bytes()

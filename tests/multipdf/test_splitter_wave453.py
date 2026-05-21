@@ -63,7 +63,12 @@ def test_wave453_process_annotations_clones_popup_reference_without_source_alias
     annots.add(popup)
     imported.get_cos_object().set_item(_ANNOTS, annots)
 
-    Splitter()._process_annotations(source_page, imported)  # noqa: SLF001
+    splitter = Splitter()
+    # Wave 1373: chunk-level deferred second pass — drain manually when
+    # calling ``_process_annotations`` outside the ``split()`` driver.
+    splitter._pending_annot_passes = []  # noqa: SLF001
+    splitter._process_annotations(source_page, imported)  # noqa: SLF001
+    splitter._finalize_annotation_links()  # noqa: SLF001
 
     cloned_annots = imported.get_cos_object().get_dictionary_object(_ANNOTS)
     assert isinstance(cloned_annots, COSArray)

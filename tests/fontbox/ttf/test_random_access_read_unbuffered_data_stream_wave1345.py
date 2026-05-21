@@ -1,11 +1,11 @@
 """Wave 1345: residual coverage for ``RandomAccessReadUnbufferedDataStream``.
 
 Targets:
-  - the signed-64-bit sign-extension branch of ``read_long`` (line 84);
-  - the early-EOF break inside ``get_original_data`` (line 138);
-  - the ``get_original_input_stream`` convenience helper (line 152);
-  - the ``OSError → None`` fallback inside ``create_sub_view``
-    (lines 175-176).
+  - signed-long round-trip via ``read_long`` (top-bit set yields a
+    negative result through ``read_int``'s sign extension);
+  - the early-EOF break inside ``get_original_data``;
+  - the ``get_original_input_stream`` convenience helper;
+  - the ``OSError → None`` fallback inside ``create_sub_view``.
 """
 
 from __future__ import annotations
@@ -22,8 +22,9 @@ from pypdfbox.io.random_access_read_buffer import RandomAccessReadBuffer
 def test_read_long_sign_extends_high_bit() -> None:
     """A combined 64-bit value with the top bit set yields a negative int.
 
-    The branch at line 83-84 subtracts ``2**64`` when ``combined`` is
-    above the signed-64-bit positive range.
+    ``read_int`` returns a signed Python int, so ``high`` is already
+    negative for upper-half values; the bit-or with the unsigned ``low``
+    produces the correct signed 64-bit value.
     """
     # 0x8000000000000000 -> -2**63 after sign extension.
     buf = RandomAccessReadBuffer(b"\x80\x00\x00\x00\x00\x00\x00\x00")
@@ -31,24 +32,14 @@ def test_read_long_sign_extends_high_bit() -> None:
     assert s.read_long() == -(2**63)
 
 
-def test_read_long_via_explicit_unsigned_high_word() -> None:
-    """Force the defensive sign-extension branch by feeding an unsigned
-    high-word into ``read_long`` directly.
-
-    Upstream's ``read_int`` already sign-extends, so the conditional at
-    line 83 (``combined >= 0x8000_0000_0000_0000``) is normally dead.
-    We patch ``read_int`` to return the *unsigned* form (high-bit value as
-    a positive int) which Java's ``int`` cast would also lose; this
-    re-engages the explicit clamp.
-    """
-    buf = RandomAccessReadBuffer(b"\x00" * 8)
+def test_read_long_round_trip_for_negative_value() -> None:
+    """Round-trip a known signed 64-bit value through ``read_long`` to
+    confirm sign extension is preserved across a non-trivial bit
+    pattern."""
+    # 0xFFFFFFFFFFFFFFFE -> -2.
+    buf = RandomAccessReadBuffer(b"\xff\xff\xff\xff\xff\xff\xff\xfe")
     s = RandomAccessReadUnbufferedDataStream(buf)
-    # First call returns 0x80000000 as an UNSIGNED positive int; second
-    # returns 0. This produces combined = 0x80000000_00000000 which trips
-    # the defensive clamp.
-    values = iter([0x80000000, 0])
-    s.read_int = lambda: next(values)  # type: ignore[method-assign]
-    assert s.read_long() == -(2**63)
+    assert s.read_long() == -2
 
 
 def test_get_original_data_handles_short_read() -> None:
