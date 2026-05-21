@@ -216,6 +216,31 @@ class PDStructureNode:
     def append_kid(self, kid: Any) -> None:
         if kid is None:
             return
+        # Upstream: ``appendKid(int mcid)`` rejects negative MCID values
+        # (PDStructureElement.java line 615), and ``appendKid(PDMarkedContent)``
+        # rejects a wrapped marked-content sequence whose ``getMCID`` is
+        # negative (line 635). Mirror both in this single dispatcher since
+        # pypdfbox collapses the overloads.
+        if isinstance(kid, bool):
+            # bool is an int subclass in Python; reject it explicitly to
+            # mirror the Java overload set (no ``appendKid(boolean)``).
+            raise TypeError("appendKid does not accept bool")
+        if isinstance(kid, int) and kid < 0:
+            raise ValueError("MCID should not be negative")
+        # Lazy import to avoid a cycle; PDMarkedContent isn't a transitive
+        # import of this module.
+        from pypdfbox.pdmodel.documentinterchange.markedcontent.pd_marked_content import (  # noqa: PLC0415
+            PDMarkedContent,
+        )
+
+        if isinstance(kid, PDMarkedContent):
+            mcid = kid.get_mcid()
+            if mcid < 0:
+                raise ValueError("MCID is negative or doesn't exist")
+            # Upstream stores the marked-content sequence as just its
+            # MCID integer: ``appendKid(COSInteger.get(mcid))``
+            # (PDStructureElement.java line 639).
+            kid = mcid
         cos_kid = _to_cos(kid)
         existing = self._dictionary.get_dictionary_object(_K)
         if existing is None:

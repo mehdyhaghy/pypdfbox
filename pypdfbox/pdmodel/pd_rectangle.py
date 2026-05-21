@@ -28,12 +28,12 @@ class PDRectangle:
     #: User-space units per millimetre (= ``POINTS_PER_INCH / 25.4``).
     POINTS_PER_MM: float = 72.0 / 25.4
 
-    LETTER_WIDTH: float = 612.0
-    LETTER_HEIGHT: float = 792.0
-    A4_WIDTH: float = 595.0
-    A4_HEIGHT: float = 842.0
-    LEGAL_WIDTH: float = 612.0
-    LEGAL_HEIGHT: float = 1008.0
+    LETTER_WIDTH: float = 8.5 * 72.0
+    LETTER_HEIGHT: float = 11.0 * 72.0
+    A4_WIDTH: float = 210.0 * (72.0 / 25.4)
+    A4_HEIGHT: float = 297.0 * (72.0 / 25.4)
+    LEGAL_WIDTH: float = 8.5 * 72.0
+    LEGAL_HEIGHT: float = 14.0 * 72.0
 
     __slots__ = (
         "_lower_left_x",
@@ -296,20 +296,22 @@ class PDRectangle:
         return self.to_string()
 
 
-# Module-level paper-size constants. Match upstream PDFBox naming.
-PDRectangle.LETTER = PDRectangle(0.0, 0.0, 612.0, 792.0)  # type: ignore[attr-defined]
-PDRectangle.A4 = PDRectangle(0.0, 0.0, 595.0, 842.0)  # type: ignore[attr-defined]
-PDRectangle.LEGAL = PDRectangle(0.0, 0.0, 612.0, 1008.0)  # type: ignore[attr-defined]
+# Module-level paper-size constants. Match upstream PDFBox naming
+# (``PDRectangle.java`` lines 48-84). Upstream uses
+# ``PDImmutableRectangle`` instances so that a downstream mutation cannot
+# bleed back into another caller's rectangle; we mirror that.
+from .common.pd_immutable_rectangle import PDImmutableRectangle  # noqa: E402
 
-# Additional paper-size constants. Mirrors upstream constants computed as
-# ``mm * POINTS_PER_MM`` (= ``mm * 72 / 25.4``). Tabloid is 11" x 17".
 _PPI: float = PDRectangle.POINTS_PER_INCH
 _PPMM: float = PDRectangle.POINTS_PER_MM
-PDRectangle.TABLOID = PDRectangle(0.0, 0.0, 11.0 * _PPI, 17.0 * _PPI)  # type: ignore[attr-defined]
-PDRectangle.A0 = PDRectangle(0.0, 0.0, 841.0 * _PPMM, 1189.0 * _PPMM)  # type: ignore[attr-defined]
-PDRectangle.A1 = PDRectangle(0.0, 0.0, 594.0 * _PPMM, 841.0 * _PPMM)  # type: ignore[attr-defined]
-PDRectangle.A2 = PDRectangle(0.0, 0.0, 420.0 * _PPMM, 594.0 * _PPMM)  # type: ignore[attr-defined]
-PDRectangle.A3 = PDRectangle(0.0, 0.0, 297.0 * _PPMM, 420.0 * _PPMM)  # type: ignore[attr-defined]
-PDRectangle.A5 = PDRectangle(0.0, 0.0, 148.0 * _PPMM, 210.0 * _PPMM)  # type: ignore[attr-defined]
-PDRectangle.A6 = PDRectangle(0.0, 0.0, 105.0 * _PPMM, 148.0 * _PPMM)  # type: ignore[attr-defined]
+PDRectangle.LETTER = PDImmutableRectangle(8.5 * _PPI, 11.0 * _PPI)  # type: ignore[attr-defined]
+PDRectangle.TABLOID = PDImmutableRectangle(11.0 * _PPI, 17.0 * _PPI)  # type: ignore[attr-defined]
+PDRectangle.LEGAL = PDImmutableRectangle(8.5 * _PPI, 14.0 * _PPI)  # type: ignore[attr-defined]
+PDRectangle.A0 = PDImmutableRectangle(841.0 * _PPMM, 1189.0 * _PPMM)  # type: ignore[attr-defined]
+PDRectangle.A1 = PDImmutableRectangle(594.0 * _PPMM, 841.0 * _PPMM)  # type: ignore[attr-defined]
+PDRectangle.A2 = PDImmutableRectangle(420.0 * _PPMM, 594.0 * _PPMM)  # type: ignore[attr-defined]
+PDRectangle.A3 = PDImmutableRectangle(297.0 * _PPMM, 420.0 * _PPMM)  # type: ignore[attr-defined]
+PDRectangle.A4 = PDImmutableRectangle(210.0 * _PPMM, 297.0 * _PPMM)  # type: ignore[attr-defined]
+PDRectangle.A5 = PDImmutableRectangle(148.0 * _PPMM, 210.0 * _PPMM)  # type: ignore[attr-defined]
+PDRectangle.A6 = PDImmutableRectangle(105.0 * _PPMM, 148.0 * _PPMM)  # type: ignore[attr-defined]
 del _PPI, _PPMM

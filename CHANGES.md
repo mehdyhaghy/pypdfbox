@@ -4189,6 +4189,329 @@ No latent source bugs flagged.
   and rely solely on `read_long`'s clamp — Java's signed-32 → signed-64
   pattern lives in exactly one place upstream; we mirror it in two.
 
+## Wave 1364 — parity round-out (5 parallel agents)
+
+### Wave 1364 — pdmodel/encryption + pdmodel/font + pdmodel/font/encoding parity ports (agent B)
+
+Closed the in-scope upstream-test gap under `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/font/`
+and the encoding subtree it depends on. The two encryption upstream test files
+(`TestPublicKeyEncryption.java` / `TestSymmetricKeyEncryption.java`) and all four
+font upstream test files (`PDFontTest`, `TestFontEmbedding`, `TestFontEncoding`,
+`TestToUnicodeWriter`) had subset placeholders in `tests/pdmodel/{encryption,font}/upstream/`
+through wave 1363; agent B expanded the font slice with real test bodies and
+added a regression file for the bug uncovered along the way.
+
+- `tests/pdmodel/font/upstream/test_test_font_encoding.py` — ports
+  `TestFontEncoding.java` (2 active tests + 1 skip): `testAdd` PDFBOX-3332
+  WinAnsi/MacRoman name→code round-trip, `testOverwrite` PDFBOX-3332
+  DictionaryEncoding /Differences shadowing of base /BaseEncoding slot 32.
+  `testPDFBox3884` skipped (needs PDFTextStripper round-trip).
+- `tests/pdmodel/font/upstream/test_test_font_embedding.py` — ports
+  `TestFontEmbedding.java` (5 active tests + 12 skips): parametrised
+  `testCIDFontType2` / `testCIDFontType2Subset` LiberationSans embed,
+  `testIsEmbeddingPermittedMultipleVersions` 8-row fsType truth table, plus
+  `is_embedding_permitted` no-OS/2-table and BITMAP_EMBEDDING_ONLY edge cases.
+  Skipped tests need Japanese / Bengali / Devanagari / Gujarati / Noto TTF
+  fixtures or assert Java exception message wording (out of scope).
+- `tests/pdmodel/font/upstream/test_pd_font_extended.py` — extends the
+  thin `test_pd_font.py` stub with the per-PDFBOX-issue regression methods
+  upstream tracks in `PDFontTest.java`: `testPDFBOX5486` (PDTrueTypeFont
+  `has_glyph` + `get_path` against bundled LiberationSans),
+  `PDFBOX5920Type0` / `PDFBOX5920TrueType` (space-width + pangram
+  invariants), plus a Helvetica-Bold AFM smoke test. 11 upstream methods
+  skipped for the usual fixture/pipeline reasons.
+- `tests/pdmodel/font/upstream/test_to_unicode_writer.py` — relocates the
+  upstream class onto the `upstream/` subtree for discoverability and
+  ports the one upstream method the existing
+  `tests/pdmodel/font/test_to_unicode_writer.py` omitted —
+  `testAllowDestinationRangeSurrogates` (cross-plane jump denied,
+  sequential SMP allowed, non-sequential SMP denied).
+- `tests/pdmodel/font/upstream/test_simple_ttf_embed_encoding_regression.py`
+  — regression test for the latent `Encoding.get_cos_object` bug
+  uncovered while porting `testPDFBOX5486` (see source bug-fix entry
+  below).
+- `tests/pdmodel/font/encoding/upstream/test_encoding_cos_object.py` —
+  8 tests pinning the `getCOSObject` contract for each predefined
+  encoding singleton + the base default + `BuiltInEncoding` raise.
+
+**Source bug fix — latent `Encoding.get_cos_object` crash (PDFBOX parity gap).**
+Through wave 1363 the predefined-encoding singletons
+(`WinAnsiEncoding` / `MacRomanEncoding` / `MacExpertEncoding` /
+`StandardEncoding` / `SymbolEncoding` / `ZapfDingbatsEncoding`) did **not**
+override `get_cos_object`, and the base class did not declare one at all.
+Upstream's Java `Encoding` declares the method abstract and every
+concrete subclass overrides it to return the matching `COSName`.
+`pypdfbox/pdmodel/font/pd_true_type_font.py::_build_simple_ttf_font`
+called `encoding.get_cos_object()` unconditionally, so
+`PDTrueTypeFont.load(doc, stream, WinAnsiEncoding.INSTANCE)` (the
+upstream-canonical idiom exercised by `PDFontTest.testPDFBOX5486` /
+`PDFontTest.PDFBOX5920TrueType` / `PDFontTest.testPDFBOX4115`) crashed
+with `AttributeError: 'WinAnsiEncoding' object has no attribute
+'get_cos_object'`.
+
+Fix: added `Encoding.get_cos_object` (default `None`) plus per-subclass
+overrides that mirror upstream — `WinAnsiEncoding.get_cos_object()` →
+`COSName.WIN_ANSI_ENCODING`, `MacRomanEncoding` →
+`COSName.MAC_ROMAN_ENCODING`, `MacExpertEncoding` →
+`COSName.MAC_EXPERT_ENCODING`, `StandardEncoding` →
+`COSName.STANDARD_ENCODING`, `SymbolEncoding` →
+`COSName.get_pdf_name("SymbolEncoding")`, `ZapfDingbatsEncoding` →
+`COSName.get_pdf_name("ZapfDingbatsEncoding")`. `BuiltInEncoding`
+already overrides to raise — preserved as-is. The base default returns
+`None` rather than raising so callers like `_build_simple_ttf_font`
+can opt into "skip the /Encoding entry" semantics for custom
+non-serialisable encodings.
+
+Net effect: +23 new tests + 1 source-code bug fix. No new dependencies.
+
+### Wave 1364 — fontbox/cmap + function/type4 parity ports (agent E)
+
+Filled in the last upstream-shape gaps in fontbox/cmap and the type-4
+function operator surface:
+
+- `tests/fontbox/cmap/upstream/test_codespace_range.py` — ports
+  `TestCodespaceRange.java` verbatim (3 tests: code-length calculation,
+  the PDFBOX-4923 mixed-length-constructor relaxation, single- and
+  two-byte rectangular `matches` checks). `IllegalArgumentException`
+  surface translates to `ValueError`.
+- `tests/pdmodel/common/function/type4/upstream/test_arithmetic_operators.py`
+  — ports the arithmetic subset of `TestOperators.java`
+  (`testAdd` / `testAbs` / `testAtan` / `testCeiling` / `testCos` /
+  `testCvi` / `testCvr` / `testDiv` / `testExp` / `testFloor` /
+  `testIDiv` / `testLn` / `testLog` / `testMod` / `testMul` / `testNeg` /
+  `testRound` / `testSin` / `testSqrt` / `testSub` / `testTruncate`) —
+  21 tests in total, all driven through a local `_Type4Tester` helper
+  that mirrors upstream `Type4Tester.java`. Java integer-overflow edges
+  (`Integer.MAX_VALUE` / `Integer.MIN_VALUE`) are documented as skipped
+  because Python ints are unbounded. Float comparisons use
+  `math.isclose(rel_tol=1e-9, abs_tol=1e-9)` per the cross-platform
+  guidance for PostScript numeric tests.
+
+No source-code bug fixes — production behaviour matched upstream on
+every ported case. Net +24 new tests; remainder of upstream
+fontbox/afm + fontbox/encoding + fontbox/cmap + function tests were
+already ported in waves ≤1360.
+
+### Wave 1364 — util parity ports + `NumberFormatUtil` long-bound bug (agent D)
+
+Closed the only two remaining 1:1-port gaps in `pdfbox/src/test/java/.../util`
+— all `xmpbox` upstream tests (28 Java files; 26 test classes + 2 abstract
+base testers absorbed by per-subclass ports) were already mirrored under
+`tests/xmpbox/{,parser/,schema/,type/}upstream/` by waves ≤1360, so the
+xmpbox side of agent D's brief is structurally complete and shipping zero
+new files there was the correct call.
+
+- `tests/util/upstream/test_matrix.py` — ports `MatrixTest.java` 1:1 (13
+  tests). Covers identity construction & clone, `get_scaling_factor_x` /
+  `_y` with shear, `Matrix.create_matrix` rejection of non-`COSArray` /
+  short / non-numeric inputs, the three-way multiplication contract
+  (`multiply` returns new, `concatenate` in-place, static
+  `concatenate_matrices`), the old-multiplication regression that asserts
+  operand immutability, four illegal-value rejections
+  (`sys.float_info.max` analogue for `Float.MAX_VALUE`, `NaN`,
+  `+/-Infinity` — all via `pytest.raises(ValueError)` since pypdfbox
+  raises `ValueError` where upstream throws `IllegalArgumentException`),
+  the PDFBOX-2872 `to_cos_array` six-float regression, `get_values`,
+  `scale`, and `translate`. The commented-out
+  `testMultiplicationPerformance` benchmark is omitted.
+
+- `tests/util/upstream/test_number_format_util.py` — ports
+  `TestNumberFormatUtil.java` 1:1 (6 tests): integer formatting (incl.
+  the `Long.MAX_VALUE` and `Integer.MAX_VALUE` precision-loss corner
+  cases), real-value formatting, the five `-1` reject paths (NaN, +Inf,
+  -Inf, larger-than-long, `Long.MIN_VALUE`), rounding up/down at
+  `MAX_FRACTION_DIGITS`, and the `BigDecimal` range round-trip across
+  `[-10, 10]` × `0..5` fraction digits. Used Python's :mod:`decimal` for
+  the `BigDecimal` / `MathContext.DECIMAL128` / `RoundingMode.HALF_UP`
+  surface; output is byte-equal to upstream's.
+
+**Latent source bug fixed**: `pypdfbox/util/number_format_util.py`
+`format_float_fast` rejected any `value > (1<<63)-1` using exact-integer
+comparison, but Java's `value > Long.MAX_VALUE` promotes the long
+operand to a double — and `(double)Long.MAX_VALUE` equals exactly `2**63`
+(because 9223372036854775807 is not representable in IEEE-754 doubles
+and rounds up to the next representable value, 9223372036854775808).
+Java therefore accepts the exact `(double)Long.MAX_VALUE` and prints
+`"9223372036854775807"`. The Python port over-rejected because Python
+compares `float > int` using exact integer semantics: `2**63 >
+2**63 - 1` is `True`. Fix introduces `_LONG_MAX_AS_DOUBLE = float(_LONG_MAX)`
+constants and compares in float-space, then clamps the truncating
+`int(value)` cast at the bounds so the formatted output matches Java's
+saturating `(long) value` cast. The previously-passing assertion in
+`tests/util/test_number_format_util_wave1345.py::test_format_float_fast_rejects_out_of_long_range`
+which baked in the buggy behaviour is updated to assert on a
+genuinely-out-of-range value (`float(2**63) * 2`).
+
+Net +19 tests, +1 source bug fix.
+
+### Wave 1364 — text + rendering parity round-out (agent C)
+
+The three upstream Java test files in `pdfbox/src/test/java/.../text/`
+(`BidiTest.java`, `TestTextStripper.java`, `PDFTextStripperByAreaTest.java`)
+and the three in `.../rendering/` (`TestRendering.java`, `TestQuality.java`,
+`TestPDFToImage.java`) were already mirrored under
+`tests/text/upstream/` + `tests/rendering/upstream/` by waves ≤1360.
+What remained was the helper-class surface that upstream tests only
+transitively — small POJOs and enums (`LineItem`, `TextMetrics`,
+`TextPositionComparator`, `RenderDestination`, `ImageType`,
+`PageDrawerParameters`, `GlyphCache`) whose JUnit coverage upstream is
+indirect through the corpus diff in `TestTextStripper.testExtract`.
+
+Agent C closes that gap with 10 new files mirroring upstream Java
+class shapes (no source-side bug fixes; production behaviour matched
+upstream on every ported case):
+
+- `tests/text/upstream/test_text_stripper_corpus_placeholders.py` — 2
+  `pytest.skip` placeholders that register the two corpus-driven
+  `@Test` entries in `TestTextStripper` (`testExtract` line 559,
+  `testTabula` line 590) that the existing
+  `tests/text/upstream/test_text_stripper.py` documented-skipped
+  without surfacing pytest-level skip rows. The placeholders make the
+  gap discoverable for a future corpus-bundle uptake — both require
+  the upstream `src/test/resources/input/` PDF + `.expected.txt`
+  fixture tree (and `eu-001.pdf` for tabula) which pypdfbox does not
+  bundle.
+- `tests/text/upstream/test_line_item.py` — 8 tests for the
+  package-private `PDFTextStripper.LineItem` inner class. Pins
+  no-arg / `None` / non-None constructor branches, `WORD_SEPARATOR`
+  singleton identity (Java `static final` equivalent), the sentinel-vs-
+  payload distinctness invariant the stripper's `normalize` walk
+  depends on.
+- `tests/text/upstream/test_text_position_comparator.py` — 11 tests
+  for `TextPositionComparator`. Pins the three-step algorithm
+  (direction → Y-tolerance / vertical-overlap same-line → Y top-to-
+  bottom), the 0.1 `_Y_TOLERANCE` constant, `cmp_to_key` integration,
+  `__call__` ↔ `compare` alias parity, statelessness across instances.
+- `tests/text/upstream/test_text_position_directional.py` — 19 tests
+  for `TextPosition` directional accessors (`get_x_dir_adj` /
+  `get_y_dir_adj` / `get_width_dir_adj` / `get_height_dir` /
+  `get_dir` / `get_rotation` / `get_x_rot` / `get_y_lower_left_rot` /
+  `get_width_rot` / `get_x_scale` / `get_y_scale`). Documents the
+  documented divergence that the lite port returns raw Y at `dir=0`
+  instead of upstream's `pageHeight - y` flip — the comparator and
+  stripper compensate via their own `pos1_y_top` derivation.
+- `tests/text/upstream/test_text_metrics_ratios.py` — 14 tests
+  pinning the 0.7 ascent-ratio / -0.2 descent-ratio constants
+  (parametrised across five font sizes each), zero-font-size
+  collapse, descent-non-positive invariant, the height = 0.9 × fontSize
+  identity, mutator independence (`set_ascent` doesn't touch descent,
+  vice versa), `set_ascent` propagation to `get_height`,
+  positive-descent-magnitude contribution. Augments the existing
+  3-test upstream coverage in `test_text_metrics.py`.
+- `tests/rendering/upstream/test_render_destination.py` — 8 tests for
+  `RenderDestination` + `PDFRenderer.{set,get}DefaultDestination`.
+  Pins the three-member enum shape (EXPORT/VIEW/PRINT, in upstream
+  order), valueOf-style index lookup, distinct singletons, the
+  capitalised string value (`"Export"` / `"View"` / `"Print"`),
+  default-VIEW invariant on a fresh `PDFRenderer`, parametrised
+  round-trip across all three members, bare-string-value acceptance.
+  Documents the pypdfbox divergence that the getter returns the string
+  value rather than the enum member.
+- `tests/rendering/upstream/test_image_type.py` — 14 tests for
+  `ImageType`. Pins the five-member enum shape (BINARY/GRAY/RGB/ARGB/
+  BGR), `to_buffered_image_type` mapping to AWT `BufferedImage.TYPE_*`
+  constants (parametrised), module-level int constants matching Java
+  values (1/2/5/10/12), `pil_mode` mapping for the Pillow bridge
+  (including the documented BGR→RGB collapse), valueOf-style index
+  lookup, distinct singletons, Pillow `Image.new(mode=...)` round-trip
+  for every member.
+- `tests/rendering/upstream/test_page_drawer_parameters.py` — 7 tests
+  for `PageDrawerParameters`. Pins the six-field constructor round-
+  trip, `bool(...)` coercion of the subsampling flag, `float(...)`
+  coercion of the threshold, rendering-hints pass-through-by-reference
+  (no defensive copy, matching upstream's package-private final-field
+  shape), `RenderDestination` acceptance for every enum member, and
+  `__slots__` enforcement of the upstream `final` field discipline.
+- `tests/rendering/upstream/test_glyph_cache.py` — 7 tests for
+  `GlyphCache`. Pins cache-hit identity, miss populates via the font,
+  PDFBOX-4001 LF-on-Standard14 short-circuit returns an empty path,
+  CID-font missing-glyph logs the CID and still hands off to
+  `get_normalized_path` (CID short-circuit is suppressed for non-
+  simple fonts), `OSError` during glyph render returns an empty path
+  without caching (transient-fault recovery), per-instance state
+  isolation, bare-font `hasattr` fallthrough (no `has_glyph` → treat
+  as present), font-without-`get_normalized_path` returns empty path.
+- `tests/rendering/upstream/test_pdf_renderer_render_method.py` —
+  9 tests rounding out the `PDFRenderer.renderImage*` /
+  `renderPageToGraphics` entry-point surface. Pins default-scale
+  `render_image` returns a PIL `Image`, scale-factor and DPI-derived
+  pixel-size round-trips, `ImageType` controls PIL mode (`RGB` →
+  "RGB", `ARGB` → "RGBA"), negative + past-end page-index raise
+  `IndexError` / `ValueError`, zero-scale rejection-or-graceful-
+  handling contract, `RenderDestination` kwarg acceptance, and the
+  `render_page_to_graphics` smoke against a Pillow canvas. Augments
+  the existing `test_pdf_renderer.py` upstream entry by covering the
+  three- and four-arg `renderImage` overloads upstream documents as
+  `@VisibleForTesting`.
+
+Net +97 active tests (+ 2 skipped corpus placeholders). No source-side
+bug fixes — every pypdfbox helper matched upstream's documented contract
+once parity test was added.
+
+### Wave 1364 — pdmodel/common + pdmodel/documentinterchange parity ports (agent A)
+
+Closed the last upstream Java test files under
+`pdfbox/src/test/java/.../pdmodel/common/` that lacked a counterpart, and
+ported the fixture-free `testSimple` case from `PDStructureElementTest`
+that the existing logicalstructure parity port had left out. Three
+latent source-side divergences against upstream surfaced and were
+fixed.
+
+Tests ported (+18 active tests):
+
+- `tests/pdmodel/common/upstream/test_cos_array_list.py` — 12 cases
+  ported from `COSArrayListTest.java`. The two `removeFrom*FilteredList*`
+  tests are adapted: pypdfbox's `PDPage.get_annotations(filter)` returns
+  a plain `list`, not a filtered (read-only) `COSArrayList`, so the
+  filtered shape is constructed directly (sub-list view + full backing
+  array, so `len(actual) != size()` → `is_filtered`). The three
+  round-trip-through-save tests (`removeSingleDirectObject`,
+  `removeSingleIndirectObject`, `retainIndirectObject`) drop the
+  load-side assertions (covered by the parser suite) and exercise the
+  remove semantics on a freshly-constructed wrapper.
+- `tests/pdmodel/common/upstream/test_pd_immutable_rectangle.py` — 5
+  cases ported from `PDImmutableRectangleTest.java`. Pins
+  `PDRectangle.A0..A6` + `LEGAL` + `LETTER` as `PDImmutableRectangle`
+  instances and the four-setter `TypeError` (upstream: Java
+  `UnsupportedOperationException`).
+- `tests/pdmodel/documentinterchange/logicalstructure/upstream/test_pd_structure_element_simple.py` —
+  1 dense test that mirrors `testSimple` in `PDStructureElementTest.java`
+  (Java lines 168-214). Pins the upstream-shape
+  `PDStructureElement(structureType, parent)` constructor and the full
+  setter/getter round-trip + MCID-rejection contract.
+
+Source-side fixes (drove by the tests above):
+
+- `PDRectangle.LETTER / A4 / LEGAL / TABLOID / A0..A6` are now
+  `PDImmutableRectangle` instances (was plain `PDRectangle`). Mirrors
+  upstream `PDRectangle.java` lines 48-84. Also: the legacy
+  `A4_WIDTH = 595.0` and `A4_HEIGHT = 842.0` class constants were
+  rounded down from the true `210 * 72 / 25.4` value; corrected to the
+  exact upstream value (= 595.2755…, 841.8897…). Three tool tests that
+  hardcoded the truncated value were updated to compare against the
+  computed constant.
+- `COSArrayList.remove_all`: upstream's
+  `java.util.Collection#removeAll` contract removes *all* matching
+  elements (duplicates included). The pypdfbox port called
+  `list.remove(item)` which only drops the first match, leaving the
+  list out-of-sync with the backing `COSArray` for multi-occurrence
+  values. Replaced with a reverse-walk pop. Also added the
+  `is_filtered` guard (parity with the other mutator methods).
+- `PDStructureElement.__init__` now accepts the upstream-shape
+  `(structureType: str, parent: PDStructureNode)` positional form
+  (mirrors `PDStructureElement.java` line 49). The pre-existing
+  `(structure_element: COSDictionary | None, structure_type: str)`
+  form is preserved. The previous behaviour of treating a positional
+  `str` as the `/Type` (which clobbered `/Type StructElem`) was a
+  latent divergence.
+- `PDStructureNode.append_kid` now rejects a negative MCID
+  (`appendKid(int mcid)` in `PDStructureElement.java` line 615 raises
+  `IllegalArgumentException`; we raise `ValueError`) and a
+  `PDMarkedContent` whose embedded `/MCID` is negative (line 635). And
+  `appendKid(PDMarkedContent)` now stores the kid as just its MCID
+  integer, not the wrapping `PDMarkedContent` object — mirrors upstream
+  line 639 (`this.appendKid(COSInteger.get(mcid))`).
+
 ## Wave 1363 — parity round-out (5 parallel agents)
 
 ### Wave 1363 — contentstream / pdmodel.graphics parity ports (agent C)

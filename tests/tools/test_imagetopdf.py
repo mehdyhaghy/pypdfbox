@@ -117,8 +117,10 @@ def test_images_to_pdf_a4_media_box(tmp_path: Path) -> None:
 
     with PDDocument.load(out) as pd:
         mb = pd.get_page(0).get_media_box()
-        assert mb.get_width() == pytest.approx(595.0)
-        assert mb.get_height() == pytest.approx(842.0)
+        # Wave 1364: A4 now matches upstream PDFBox exactly
+        # (210mm * 297mm * 72/25.4), not the truncated 595/842.
+        assert mb.get_width() == pytest.approx(PDRectangle.A4_WIDTH, abs=1e-3)
+        assert mb.get_height() == pytest.approx(PDRectangle.A4_HEIGHT, abs=1e-3)
 
 
 def test_images_to_pdf_auto_page_size_matches_image(tmp_path: Path) -> None:

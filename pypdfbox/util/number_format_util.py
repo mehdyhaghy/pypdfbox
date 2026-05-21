@@ -18,6 +18,14 @@ _POWER_OF_TENS = [10**i for i in range(19)]
 _LONG_MAX = (1 << 63) - 1
 _LONG_MIN = -(1 << 63)
 _INT_MAX = (1 << 31) - 1
+# Upstream's bounds check ``value > Long.MAX_VALUE`` promotes ``Long.MAX_VALUE``
+# to a double before comparing — exactly ``2**63`` because ``9223372036854775807``
+# is not representable in IEEE-754 doubles and rounds up. Python's ``int``/
+# ``float`` comparison uses exact integer semantics, so ``2**63 > 2**63 - 1``
+# would (incorrectly) reject any double-promoted ``Long.MAX_VALUE``. Mirror
+# Java by comparing in double space.
+_LONG_MAX_AS_DOUBLE = float(_LONG_MAX)
+_LONG_MIN_AS_DOUBLE = float(_LONG_MIN)
 
 
 def _get_exponent(number: int) -> int:
@@ -68,14 +76,24 @@ class NumberFormatUtil:
         if (
             math.isnan(value)
             or math.isinf(value)
-            or value > _LONG_MAX
-            or value <= _LONG_MIN
+            or value > _LONG_MAX_AS_DOUBLE
+            or value <= _LONG_MIN_AS_DOUBLE
             or max_fraction_digits > MAX_FRACTION_DIGITS
         ):
             return -1
 
         offset = 0
-        integer_part = int(value)  # truncates toward zero, matches Java cast
+        # Java casts the double to long — saturating at Long.MAX_VALUE / MIN.
+        # Python's ``int(float)`` truncates toward zero; for non-saturating
+        # values it matches Java exactly, but for ``(double)Long.MAX_VALUE`` —
+        # which equals ``2**63`` — Java clamps to ``Long.MAX_VALUE`` while
+        # Python yields ``2**63``. Clamp explicitly for parity.
+        if value >= _LONG_MAX_AS_DOUBLE:
+            integer_part = _LONG_MAX
+        elif value <= _LONG_MIN_AS_DOUBLE:
+            integer_part = _LONG_MIN
+        else:
+            integer_part = int(value)  # truncates toward zero, matches Java cast
 
         if value < 0:
             ascii_buffer[offset] = ord("-")

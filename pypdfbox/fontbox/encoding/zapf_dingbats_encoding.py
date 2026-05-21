@@ -210,5 +210,13 @@ class ZapfDingbatsEncoding(Encoding):
     def get_encoding_name(self) -> str:
         return "ZapfDingbatsEncoding"
 
+    def get_cos_object(self) -> object | None:
+        """Return ``COSName("ZapfDingbatsEncoding")``. Mirrors upstream
+        ``ZapfDingbatsEncoding.getCOSObject()``.
+        """
+        from pypdfbox.cos.cos_name import COSName  # noqa: PLC0415
+
+        return COSName.get_pdf_name("ZapfDingbatsEncoding")
+
 
 ZapfDingbatsEncoding.INSTANCE = ZapfDingbatsEncoding()

@@ -61,10 +61,18 @@ def test_format_float_fast_rejects_too_many_fraction_digits() -> None:
 
 
 def test_format_float_fast_rejects_out_of_long_range() -> None:
-    """Values beyond signed-64-bit long must return -1 (mirror upstream)."""
+    """Values beyond signed-64-bit long must return -1 (mirror upstream).
+
+    ``float(2**63)`` equals ``(double)Long.MAX_VALUE`` exactly because
+    9223372036854775807 is not representable in IEEE-754 doubles and rounds
+    up to 9223372036854775808. Java's ``value > Long.MAX_VALUE`` promotes
+    long to double and yields ``false`` for this exact value, so upstream
+    accepts and prints "9223372036854775807". Wave 1364 aligned pypdfbox
+    with that behavior; the truly-too-big values still get rejected.
+    """
     buf = bytearray(32)
-    big = float(2**63)  # exactly LONG_MAX + 1
-    assert NumberFormatUtil.format_float_fast(big, 0, buf) == -1
+    too_big = float(2**63) * 2  # twice Long.MAX_VALUE_AS_DOUBLE
+    assert NumberFormatUtil.format_float_fast(too_big, 0, buf) == -1
 
 
 def test_format_float_fast_zero_fraction_digits() -> None:

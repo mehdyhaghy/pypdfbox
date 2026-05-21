@@ -251,6 +251,14 @@ class WinAnsiEncoding(Encoding):
     def get_encoding_name(self) -> str:
         return "WinAnsiEncoding"
 
+    def get_cos_object(self) -> object | None:
+        """Return ``COSName.WIN_ANSI_ENCODING``. Mirrors upstream
+        ``WinAnsiEncoding.getCOSObject()`` (line 41-44).
+        """
+        from pypdfbox.cos.cos_name import COSName  # noqa: PLC0415
+
+        return COSName.WIN_ANSI_ENCODING
+
     def is_bullet_fill_code(self, code: int) -> bool:
         return code in self._bullet_fill_codes
 

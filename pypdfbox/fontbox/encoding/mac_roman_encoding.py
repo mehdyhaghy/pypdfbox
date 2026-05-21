@@ -229,5 +229,13 @@ class MacRomanEncoding(Encoding):
     def get_encoding_name(self) -> str:
         return "MacRomanEncoding"
 
+    def get_cos_object(self) -> object | None:
+        """Return ``COSName.MAC_ROMAN_ENCODING``. Mirrors upstream
+        ``MacRomanEncoding.getCOSObject()``.
+        """
+        from pypdfbox.cos.cos_name import COSName  # noqa: PLC0415
+
+        return COSName.MAC_ROMAN_ENCODING
+
 
 MacRomanEncoding.INSTANCE = MacRomanEncoding()

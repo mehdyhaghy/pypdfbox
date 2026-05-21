@@ -171,5 +171,13 @@ class StandardEncoding(Encoding):
     def get_encoding_name(self) -> str:
         return "StandardEncoding"
 
+    def get_cos_object(self) -> object | None:
+        """Return ``COSName.STANDARD_ENCODING``. Mirrors upstream
+        ``StandardEncoding.getCOSObject()``.
+        """
+        from pypdfbox.cos.cos_name import COSName  # noqa: PLC0415
+
+        return COSName.STANDARD_ENCODING
+
 
 StandardEncoding.INSTANCE = StandardEncoding()

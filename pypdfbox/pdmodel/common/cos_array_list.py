@@ -211,15 +211,27 @@ class COSArrayList[E]:
         return True
 
     def remove_all(self, c: Iterable[object]) -> bool:
+        """Mirrors upstream ``removeAll(Collection)`` (Java line 213).
+
+        Upstream's contract (``java.util.Collection#removeAll``) is to
+        remove *all* elements that match — duplicates included. The
+        Python-list ``.remove()`` only drops the first match, so iterate
+        the backing list in reverse and pop every occurrence.
+        """
+        if self._is_filtered:
+            raise NotImplementedError(
+                "removing entries from a filtered List is not permitted"
+            )
         changed = False
         for item in c:
             cos_item = _to_cos(item)
             for i in range(self._array.size() - 1, -1, -1):
                 if self._array.get_object(i) == cos_item:
                     self._array.remove_at(i)
-            if item in self._actual:  # type: ignore[operator]
-                self._actual.remove(item)  # type: ignore[arg-type]
-                changed = True
+            for i in range(len(self._actual) - 1, -1, -1):
+                if self._actual[i] == item:  # type: ignore[comparison-overlap]
+                    self._actual.pop(i)
+                    changed = True
         return changed
 
     def retain_all(self, c: Iterable[object]) -> bool:

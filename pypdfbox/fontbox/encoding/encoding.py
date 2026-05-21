@@ -115,3 +115,29 @@ class Encoding:
         if name.endswith("Encoding") and len(name) > len("Encoding"):
             return name[: -len("Encoding")]
         return name
+
+    def get_cos_object(self) -> object | None:
+        """Return the COS representation of this encoding for embedding
+        in a PDF.
+
+        Mirrors upstream ``getCOSObject()`` on
+        ``org.apache.pdfbox.pdmodel.font.encoding.Encoding``. Concrete
+        subclasses override this:
+
+        * The named predefined encodings (``WinAnsiEncoding``,
+          ``MacRomanEncoding``, ``MacExpertEncoding``,
+          ``StandardEncoding``, ``SymbolEncoding``,
+          ``ZapfDingbatsEncoding``) return the matching ``COSName``.
+        * ``DictionaryEncoding`` returns the underlying ``COSDictionary``.
+        * ``BuiltInEncoding`` raises — upstream throws
+          ``UnsupportedOperationException`` because a font's built-in
+          encoding cannot be serialized.
+
+        The base default is ``None``, which lets callers (e.g.
+        ``_build_simple_ttf_font``) treat "no COS representation" as
+        "skip the /Encoding entry" rather than crash on subclasses that
+        forgot to override. Matches upstream behaviour where
+        ``BuiltInEncoding`` callers explicitly catch the
+        ``UnsupportedOperationException``.
+        """
+        return None

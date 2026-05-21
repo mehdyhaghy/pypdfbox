@@ -253,13 +253,41 @@ class PDStructureElement(PDStructureNode):
 
     def __init__(
         self,
-        structure_element: COSDictionary | None = None,
-        structure_type: str | None = None,
+        structure_element: COSDictionary | str | None = None,
+        structure_type: str | PDStructureNode | None = None,
     ) -> None:
+        """Three upstream-compatible overloads collapsed into one form:
+
+        - ``PDStructureElement()`` — fresh ``/Type StructElem`` dictionary.
+        - ``PDStructureElement(COSDictionary)`` — wrap an existing dictionary.
+        - ``PDStructureElement(structureType: str, parent: PDStructureNode)``
+          — upstream's primary constructor (``PDStructureElement.java``
+          line 49). ``parent`` may be ``None``. Sets ``/Type = StructElem``
+          and ``/S = structureType`` and links ``/P`` when ``parent`` is
+          provided.
+
+        The legacy ``structure_type=...`` keyword form is still accepted
+        for callers that bypass positional invocation.
+        """
+        # Detect the upstream-shape `(structureType: str, parent)` call:
+        # the first positional argument is the /S name (a string), the
+        # second is the optional parent node. In that case, build a fresh
+        # /Type StructElem dictionary then stamp /S and /P.
+        if isinstance(structure_element, str):
+            parent: PDStructureNode | None = (
+                structure_type if isinstance(structure_type, PDStructureNode) else None
+            )
+            super().__init__(_STRUCT_ELEM_NAME)
+            self._element: COSDictionary = self._dictionary
+            self.set_structure_type(structure_element)
+            if parent is not None:
+                self.set_parent(parent)
+            return
+
         super().__init__(structure_element if structure_element is not None else _STRUCT_ELEM_NAME)
         # Backwards-compat alias for callers / subclasses that referenced ``_element``.
-        self._element: COSDictionary = self._dictionary
-        if structure_type is not None:
+        self._element = self._dictionary
+        if isinstance(structure_type, str):
             self.set_structure_type(structure_type)
 
     # ---------- /S structure type ----------

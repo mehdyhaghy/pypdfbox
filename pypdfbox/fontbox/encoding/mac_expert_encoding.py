@@ -187,5 +187,13 @@ class MacExpertEncoding(Encoding):
     def get_encoding_name(self) -> str:
         return "MacExpertEncoding"
 
+    def get_cos_object(self) -> object | None:
+        """Return ``COSName.MAC_EXPERT_ENCODING``. Mirrors upstream
+        ``MacExpertEncoding.getCOSObject()``.
+        """
+        from pypdfbox.cos.cos_name import COSName  # noqa: PLC0415
+
+        return COSName.MAC_EXPERT_ENCODING
+
 
 MacExpertEncoding.INSTANCE = MacExpertEncoding()
