@@ -32,9 +32,6 @@ class Cardinality(Enum):
     def is_array(self) -> bool:
         return self is not Cardinality.Simple
 
-    def isArray(self) -> bool:  # noqa: N802 - upstream Java name
-        return self.is_array()
-
 
 class ArrayProperty(AbstractField):
     """
@@ -66,20 +63,11 @@ class ArrayProperty(AbstractField):
     def get_array_type(self) -> Cardinality:
         return self._array_type
 
-    def getArrayType(self) -> Cardinality:  # noqa: N802 - upstream Java name
-        return self.get_array_type()
-
     def get_namespace(self) -> str | None:
         return self._namespace
 
-    def getNamespace(self) -> str | None:  # noqa: N802 - upstream Java name
-        return self.get_namespace()
-
     def get_prefix(self) -> str | None:
         return self._prefix
-
-    def getPrefix(self) -> str | None:  # noqa: N802 - upstream Java name
-        return self.get_prefix()
 
     def add_property(self, obj: AbstractField) -> None:
         # Upstream's AbstractComplexProperty.addProperty removes existing
@@ -87,15 +75,9 @@ class ArrayProperty(AbstractField):
         # ArrayProperty` — array containers append, so we mirror that here.
         self._properties.append(obj)
 
-    def addProperty(self, obj: AbstractField) -> None:  # noqa: N802
-        self.add_property(obj)
-
     def remove_property(self, prop: AbstractField) -> None:
         with contextlib.suppress(ValueError):
             self._properties.remove(prop)
-
-    def removeProperty(self, prop: AbstractField) -> None:  # noqa: N802
-        self.remove_property(prop)
 
     def remove_properties_by_name(self, local_name: str) -> None:
         """
@@ -108,9 +90,6 @@ class ArrayProperty(AbstractField):
         self._properties = [
             p for p in self._properties if p.get_property_name() != local_name
         ]
-
-    def removePropertiesByName(self, local_name: str) -> None:  # noqa: N802
-        self.remove_properties_by_name(local_name)
 
     def is_same_property(
         self, prop1: AbstractField, prop2: AbstractField
@@ -134,11 +113,6 @@ class ArrayProperty(AbstractField):
             return prop1.get_string_value() == prop2.get_string_value()
         return prop1 is prop2
 
-    def isSameProperty(  # noqa: N802
-        self, prop1: AbstractField, prop2: AbstractField
-    ) -> bool:
-        return self.is_same_property(prop1, prop2)
-
     def contains_property(self, prop: AbstractField) -> bool:
         """
         Return ``True`` when an equivalent property (per :meth:`is_same_property`)
@@ -147,14 +121,8 @@ class ArrayProperty(AbstractField):
         """
         return any(self.is_same_property(p, prop) for p in self._properties)
 
-    def containsProperty(self, prop: AbstractField) -> bool:  # noqa: N802
-        return self.contains_property(prop)
-
     def get_all_properties(self) -> list[AbstractField]:
         return list(self._properties)
-
-    def getAllProperties(self) -> list[AbstractField]:  # noqa: N802
-        return self.get_all_properties()
 
     def get_properties_by_local_name(
         self, local_name: str
@@ -172,11 +140,6 @@ class ArrayProperty(AbstractField):
             return None
         return matches
 
-    def getPropertiesByLocalName(  # noqa: N802
-        self, local_name: str
-    ) -> list[AbstractField] | None:
-        return self.get_properties_by_local_name(local_name)
-
     def get_property(self, field_name: str) -> AbstractField | None:
         """
         Return the first child property with the given local name, or ``None``
@@ -186,9 +149,6 @@ class ArrayProperty(AbstractField):
         if matches is None:
             return None
         return matches[0]
-
-    def getProperty(self, field_name: str) -> AbstractField | None:  # noqa: N802
-        return self.get_property(field_name)
 
     def get_array_property(self, field_name: str) -> ArrayProperty | None:
         """
@@ -203,20 +163,12 @@ class ArrayProperty(AbstractField):
             return prop
         return None
 
-    def getArrayProperty(self, field_name: str) -> ArrayProperty | None:  # noqa: N802
-        return self.get_array_property(field_name)
-
     def add_namespace(self, namespace: str, prefix: str | None) -> None:
         """
         Register an additional ``namespace -> prefix`` binding. Mirrors
         ``AbstractComplexProperty.addNamespace`` upstream.
         """
         self._namespace_to_prefix[namespace] = prefix or ""
-
-    def addNamespace(  # noqa: N802 - upstream Java name
-        self, namespace: str, prefix: str | None
-    ) -> None:
-        self.add_namespace(namespace, prefix)
 
     def get_namespace_prefix(self, namespace: str) -> str | None:
         """
@@ -226,9 +178,6 @@ class ArrayProperty(AbstractField):
         """
         return self._namespace_to_prefix.get(namespace)
 
-    def getNamespacePrefix(self, namespace: str) -> str | None:  # noqa: N802
-        return self.get_namespace_prefix(namespace)
-
     def get_all_namespaces_with_prefix(self) -> dict[str, str]:
         """
         Return the live ``namespace -> prefix`` map. Mirrors
@@ -236,15 +185,9 @@ class ArrayProperty(AbstractField):
         """
         return self._namespace_to_prefix
 
-    def getAllNamespacesWithPrefix(self) -> dict[str, str]:  # noqa: N802
-        return self.get_all_namespaces_with_prefix()
-
     def get_elements_as_string(self) -> list[str]:
         result: list[str] = []
         for child in self._properties:
             if isinstance(child, AbstractSimpleProperty):
                 result.append(child.get_string_value())
         return result
-
-    def getElementsAsString(self) -> list[str]:  # noqa: N802 - upstream Java name
-        return self.get_elements_as_string()

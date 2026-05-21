@@ -79,13 +79,6 @@ def test_context_manager() -> None:
     assert w.is_closed()
 
 
-def test_is_closed_camelcase_alias() -> None:
-    w = RandomAccessWriteBuffer()
-    assert not w.isClosed()
-    w.close()
-    assert w.isClosed()
-
-
 def test_is_empty_initial_and_after_writes() -> None:
     w = RandomAccessWriteBuffer()
     assert w.is_empty()

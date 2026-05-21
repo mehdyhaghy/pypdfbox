@@ -93,13 +93,6 @@ class FontMappers:
                 # builds a fresh one — keeps tests deterministic.
                 _default = None
 
-    # ---------- camelCase shim for porting parity ----------
-
-    # Upstream Java method names — kept live for ported call sites.
-    @classmethod
-    def setMapper(cls, font_mapper: FontMapper | None) -> None:  # noqa: N802
-        cls.set(font_mapper)
-
     # ---------- test-friendly extension ----------
 
     @classmethod

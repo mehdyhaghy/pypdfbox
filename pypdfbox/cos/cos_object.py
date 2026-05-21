@@ -94,9 +94,6 @@ class COSObject(COSBase):
     def get_update_state(self) -> COSUpdateState:
         return self._update_state
 
-    def getUpdateState(self) -> COSUpdateState:  # noqa: N802 - upstream Java name
-        return self.get_update_state()
-
     def is_needs_to_be_updated(self) -> bool:
         return self._update_state.is_updated()
 

@@ -168,7 +168,7 @@ class PDExtendedGraphicsState:
                     graphics_state,
                     "set_stroking_overprint_control",
                     "stroking_overprint_control",
-                    self.get_strokeOverprint(),
+                    self.get_stroke_overprint(),
                 )
             elif key == _OP_NS:
                 self._copy_value(
@@ -612,15 +612,9 @@ class PDExtendedGraphicsState:
 
     # ---------- OP (stroking overprint) ----------
 
-    def get_strokeOverprint(self) -> bool:  # noqa: N802 - upstream-style accessor name preserved
-        return self._dict.get_boolean(_OP, False)
-
     def get_stroke_overprint(self) -> bool:
-        """Snake_case spelling of :meth:`get_strokeOverprint` for callers
-        that prefer PEP 8 style. Behaviour is identical — both read the
-        ``/OP`` boolean (default ``False``).
-        """
-        return self.get_strokeOverprint()
+        """Return the ``/OP`` stroking-overprint flag (default ``False``)."""
+        return self._dict.get_boolean(_OP, False)
 
     def set_stroke_overprint(self, op: bool) -> None:
         self._dict.set_boolean(_OP, bool(op))
@@ -629,7 +623,7 @@ class PDExtendedGraphicsState:
 
     def get_non_stroking_overprint(self) -> bool:
         # Upstream falls back to the stroking overprint when /op is absent.
-        return self._dict.get_boolean(_OP_NS, self.get_strokeOverprint())
+        return self._dict.get_boolean(_OP_NS, self.get_stroke_overprint())
 
     def set_non_stroking_overprint(self, op: bool) -> None:
         self._dict.set_boolean(_OP_NS, bool(op))
@@ -712,8 +706,8 @@ class PDExtendedGraphicsState:
     # to work while new code can use the upstream-preferred name.
 
     def get_stroking_overprint_control(self) -> bool:
-        """Mirror upstream ``getStrokingOverprintControl()`` (alias of ``get_strokeOverprint``)."""
-        return self.get_strokeOverprint()
+        """Mirror upstream ``getStrokingOverprintControl()`` (alias of ``get_stroke_overprint``)."""
+        return self.get_stroke_overprint()
 
     def set_stroking_overprint_control(self, op: bool) -> None:
         """Mirror upstream ``setStrokingOverprintControl()`` (alias of ``set_stroke_overprint``)."""

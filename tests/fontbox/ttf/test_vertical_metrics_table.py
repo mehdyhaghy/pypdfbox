@@ -97,23 +97,6 @@ def test_read_with_trailing_tsb_array() -> None:
     assert table.get_top_side_bearing(4) == -13
 
 
-def test_pdfbox_camelcase_accessors_delegate_to_snake_case() -> None:
-    blob = b"".join([
-        _pack_metric(1000, 80),
-        _pack_metric(900, -10),
-        _pack_tsb(11),
-    ])
-    table = VerticalMetricsTable()
-    table.set_length(len(blob))
-    table.read(_StubTTF(num_glyphs=3, v_header=_StubVHEA(num_v_metrics=2)),
-              MemoryTTFDataStream(blob))
-
-    assert table.getAdvanceHeight(0) == table.get_advance_height(0)
-    assert table.getAdvanceHeight(2) == table.get_advance_height(2)
-    assert table.getTopSideBearing(0) == table.get_top_side_bearing(0)
-    assert table.getTopSideBearing(2) == table.get_top_side_bearing(2)
-
-
 def test_read_raises_when_no_vertical_header() -> None:
     table = VerticalMetricsTable()
     table.set_length(0)

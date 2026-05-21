@@ -49,18 +49,6 @@ def test_set_value_copies_input() -> None:
     assert s.get_bytes() == b"abc"
 
 
-def test_pdfbox_camelcase_aliases() -> None:
-    s = COSString(b"hello")
-    assert s.getBytes() == b"hello"
-    assert s.getString() == "hello"
-    assert s.isForceHexForm() is False
-
-    s.setForceHexForm(True)
-
-    assert s.is_force_hex_form() is True
-    assert s.toHexString() == "68656C6C6F".upper()
-
-
 def test_parse_hex_basic() -> None:
     s = COSString.parse_hex("48656C6C6F")
     assert s.get_bytes() == b"Hello"

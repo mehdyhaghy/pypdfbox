@@ -75,61 +75,32 @@ class AbstractStructuredType(AbstractField):
     def get_namespace(self) -> str | None:
         return self._namespace
 
-    def getNamespace(self) -> str | None:  # noqa: N802 - upstream Java name
-        return self.get_namespace()
-
     def set_namespace(self, ns: str) -> None:
         self._namespace = ns
-
-    def setNamespace(self, ns: str) -> None:  # noqa: N802 - upstream Java name
-        self.set_namespace(ns)
 
     def get_prefix(self) -> str | None:
         return self._prefix
 
-    def getPrefix(self) -> str | None:  # noqa: N802 - upstream Java name
-        return self.get_prefix()
-
     def set_prefix(self, pf: str | None) -> None:
         self._prefix = pf
-
-    def setPrefix(self, pf: str | None) -> None:  # noqa: N802 - upstream Java name
-        self.set_prefix(pf)
 
     def get_prefered_prefix(self) -> str | None:
         return self._preferred_prefix
 
-    def getPreferedPrefix(self) -> str | None:  # noqa: N802 - upstream Java name
-        return self.get_prefered_prefix()
-
     def get_preferred_prefix(self) -> str | None:
         """Spelling-corrected alias of :meth:`get_prefered_prefix`."""
         return self._preferred_prefix
-
-    def getPreferredPrefix(self) -> str | None:  # noqa: N802 - spelling alias
-        return self.get_preferred_prefix()
 
     # --- namespace map ----------------------------------------------
 
     def add_namespace(self, namespace: str, prefix: str | None) -> None:
         self._namespace_to_prefix[namespace] = prefix or ""
 
-    def addNamespace(  # noqa: N802 - upstream Java name
-        self, namespace: str, prefix: str | None
-    ) -> None:
-        self.add_namespace(namespace, prefix)
-
     def get_namespace_prefix(self, namespace: str) -> str | None:
         return self._namespace_to_prefix.get(namespace)
 
-    def getNamespacePrefix(self, namespace: str) -> str | None:  # noqa: N802
-        return self.get_namespace_prefix(namespace)
-
     def get_all_namespaces_with_prefix(self) -> dict[str, str]:
         return self._namespace_to_prefix
-
-    def getAllNamespacesWithPrefix(self) -> dict[str, str]:  # noqa: N802
-        return self.get_all_namespaces_with_prefix()
 
     # --- property container -----------------------------------------
 
@@ -144,21 +115,12 @@ class AbstractStructuredType(AbstractField):
             ]
         self._properties.append(obj)
 
-    def addProperty(self, obj: AbstractField) -> None:  # noqa: N802
-        self.add_property(obj)
-
     def remove_property(self, prop: AbstractField) -> None:
         with contextlib.suppress(ValueError):
             self._properties.remove(prop)
 
-    def removeProperty(self, prop: AbstractField) -> None:  # noqa: N802
-        self.remove_property(prop)
-
     def get_all_properties(self) -> list[AbstractField]:
         return self._properties
-
-    def getAllProperties(self) -> list[AbstractField]:  # noqa: N802
-        return self.get_all_properties()
 
     def get_property(self, field_name: str) -> AbstractField | None:
         for prop in self._properties:
@@ -166,24 +128,15 @@ class AbstractStructuredType(AbstractField):
                 return prop
         return None
 
-    def getProperty(self, field_name: str) -> AbstractField | None:  # noqa: N802
-        return self.get_property(field_name)
-
     def has_property(self, field_name: str) -> bool:
         """Return ``True`` when a child property with ``field_name`` exists."""
         return self.get_property(field_name) is not None
-
-    def hasProperty(self, field_name: str) -> bool:  # noqa: N802
-        return self.has_property(field_name)
 
     def clear_property(self, field_name: str) -> None:
         """Remove every child property whose local name matches ``field_name``."""
         self._properties = [
             prop for prop in self._properties if prop.get_property_name() != field_name
         ]
-
-    def clearProperty(self, field_name: str) -> None:  # noqa: N802
-        self.clear_property(field_name)
 
     def clear(self) -> None:
         """Remove every child property from this structured value."""
@@ -195,9 +148,6 @@ class AbstractStructuredType(AbstractField):
             return prop
         return None
 
-    def getArrayProperty(self, field_name: str) -> ArrayProperty | None:  # noqa: N802
-        return self.get_array_property(field_name)
-
     def get_first_equivalent_property(
         self, local_name: str, type_cls: type
     ) -> AbstractField | None:
@@ -205,11 +155,6 @@ class AbstractStructuredType(AbstractField):
             if prop.get_property_name() == local_name and type(prop) is type_cls:
                 return prop
         return None
-
-    def getFirstEquivalentProperty(  # noqa: N802
-        self, local_name: str, type_cls: type
-    ) -> AbstractField | None:
-        return self.get_first_equivalent_property(local_name, type_cls)
 
     # --- typed helpers -----------------------------------------------
 
@@ -223,17 +168,11 @@ class AbstractStructuredType(AbstractField):
         )
         self.add_property(asp)
 
-    def addSimpleProperty(self, property_name: str, value: object) -> None:  # noqa: N802
-        self.add_simple_property(property_name, value)
-
     def get_property_value_as_string(self, field_name: str) -> str | None:
         prop = self.get_property(field_name)
         if isinstance(prop, AbstractSimpleProperty):
             return prop.get_string_value()
         return None
-
-    def getPropertyValueAsString(self, field_name: str) -> str | None:  # noqa: N802
-        return self.get_property_value_as_string(field_name)
 
     def get_date_property_as_calendar(self, field_name: str) -> datetime | None:
         from .date_type import DateType
@@ -243,18 +182,12 @@ class AbstractStructuredType(AbstractField):
             return prop.get_value()
         return None
 
-    def getDatePropertyAsCalendar(self, field_name: str) -> datetime | None:  # noqa: N802
-        return self.get_date_property_as_calendar(field_name)
-
     def create_text_type(self, property_name: str, value: str) -> TextType:
         from .text_type import TextType
 
         return TextType(
             self._metadata, self.get_namespace(), self.get_prefix(), property_name, value
         )
-
-    def createTextType(self, property_name: str, value: str) -> TextType:  # noqa: N802
-        return self.create_text_type(property_name, value)
 
     def create_array_property(
         self, property_name: str, cardinality: Cardinality
@@ -266,11 +199,6 @@ class AbstractStructuredType(AbstractField):
             property_name,
             cardinality,
         )
-
-    def createArrayProperty(  # noqa: N802
-        self, property_name: str, cardinality: Cardinality
-    ) -> ArrayProperty:
-        return self.create_array_property(property_name, cardinality)
 
     # --- conversion utilities ---------------------------------------
 

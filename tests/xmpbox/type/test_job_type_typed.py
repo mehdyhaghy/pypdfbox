@@ -47,17 +47,6 @@ def test_set_and_get_fields(metadata: XMPMetadata) -> None:
     assert job.get_url() == "http://jobs.example.com/1"
 
 
-def test_pdfbox_camelcase_aliases(metadata: XMPMetadata) -> None:
-    job = StructuredJobType(metadata)
-    job.setId("j1")
-    job.setName("Print Run")
-    job.setUrl("http://jobs.example.com/1")
-
-    assert job.getId() == "j1"
-    assert job.getName() == "Print Run"
-    assert job.getUrl() == "http://jobs.example.com/1"
-
-
 def test_namespace_registered_at_construction(metadata: XMPMetadata) -> None:
     job = StructuredJobType(metadata)
     ns_map = job.get_all_namespaces_with_prefix()

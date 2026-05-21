@@ -41,18 +41,3 @@ class RandomAccessWrite(ABC):
 
     def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
         self.close()
-
-    # ------------------------------------------------------------------
-    # Upstream Java aliases (camelCase mirrors of the snake_case API).
-    # ------------------------------------------------------------------
-
-    def isClosed(self) -> bool:  # noqa: N802 — upstream Java alias
-        return self.is_closed()
-
-    def writeBytes(  # noqa: N802 — upstream Java alias
-        self,
-        data: bytes | bytearray | memoryview,
-        offset: int = 0,
-        length: int | None = None,
-    ) -> None:
-        self.write_bytes(data, offset, length)

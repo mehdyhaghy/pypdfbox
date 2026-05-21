@@ -96,25 +96,6 @@ def test_read_with_trailing_lsb_array() -> None:
     assert table.get_left_side_bearing(4) == -13
 
 
-def test_pdfbox_camelcase_accessors_delegate_to_snake_case() -> None:
-    blob = b"".join([
-        _pack_metric(500, 10),
-        _pack_metric(600, -5),
-        _pack_lsb(11),
-    ])
-    table = HorizontalMetricsTable()
-    table.set_length(len(blob))
-    table.read(
-        _as_ttf(_StubTTF(num_glyphs=3, h_header=_StubHHEA(num_h_metrics=2))),
-        MemoryTTFDataStream(blob),
-    )
-
-    assert table.getAdvanceWidth(0) == table.get_advance_width(0)
-    assert table.getAdvanceWidth(2) == table.get_advance_width(2)
-    assert table.getLeftSideBearing(0) == table.get_left_side_bearing(0)
-    assert table.getLeftSideBearing(2) == table.get_left_side_bearing(2)
-
-
 def test_read_raises_when_no_horizontal_header() -> None:
     table = HorizontalMetricsTable()
     table.set_length(0)

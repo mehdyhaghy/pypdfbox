@@ -3,7 +3,6 @@
 Targets residual branches:
 
   * module-level ``_add_to_collection`` ``append`` fallback (lines 27-29).
-  * ``growToSize`` camelCase Java-name alias (line 220).
   * ``reset_object_keys`` short-circuit when an indirect key is already
     in the visited set (line 496) and addition of unseen indirect keys
     (line 499 / ``elif`` arm).
@@ -36,15 +35,6 @@ def test_add_to_collection_no_op_when_neither_method() -> None:
     sink = _Sink()
     # Must not raise.
     _add_to_collection(sink, "x")
-
-
-# ---------- growToSize alias ----------
-
-
-def test_grow_to_size_camel_case_alias() -> None:
-    arr = COSArray()
-    arr.growToSize(3)  # noqa: N802 — testing the Java-name alias
-    assert len(arr) == 3
 
 
 # ---------- reset_object_keys ----------

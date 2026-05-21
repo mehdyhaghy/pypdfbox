@@ -46,35 +46,17 @@ class JobType(AbstractStructuredType):
     def set_id(self, value: str) -> None:
         self.add_simple_property(self.ID, value)
 
-    def setId(self, value: str) -> None:  # noqa: N802 - upstream Java name
-        self.set_id(value)
-
     def set_name(self, value: str) -> None:
         self.add_simple_property(self.NAME, value)
-
-    def setName(self, value: str) -> None:  # noqa: N802 - upstream Java name
-        self.set_name(value)
 
     def set_url(self, value: str) -> None:
         self.add_simple_property(self.URL, value)
 
-    def setUrl(self, value: str) -> None:  # noqa: N802 - upstream Java name
-        self.set_url(value)
-
     def get_id(self) -> str | None:
         return self.get_property_value_as_string(self.ID)
-
-    def getId(self) -> str | None:  # noqa: N802 - upstream Java name
-        return self.get_id()
 
     def get_name(self) -> str | None:
         return self.get_property_value_as_string(self.NAME)
 
-    def getName(self) -> str | None:  # noqa: N802 - upstream Java name
-        return self.get_name()
-
     def get_url(self) -> str | None:
         return self.get_property_value_as_string(self.URL)
-
-    def getUrl(self) -> str | None:  # noqa: N802 - upstream Java name
-        return self.get_url()

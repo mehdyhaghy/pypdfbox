@@ -49,14 +49,8 @@ class VersionType(AbstractStructuredType):
     def get_comments(self) -> str | None:
         return self.get_property_value_as_string(self.COMMENTS)
 
-    def getComments(self) -> str | None:  # noqa: N802 - upstream Java name
-        return self.get_comments()
-
     def set_comments(self, value: str) -> None:
         self.add_simple_property(self.COMMENTS, value)
-
-    def setComments(self, value: str) -> None:  # noqa: N802 - upstream Java name
-        self.set_comments(value)
 
     # --- event (nested ResourceEventType) ----------------------------
 
@@ -66,18 +60,12 @@ class VersionType(AbstractStructuredType):
             return prop
         return None
 
-    def getEvent(self) -> ResourceEventType | None:  # noqa: N802 - upstream Java name
-        return self.get_event()
-
     def set_event(self, value: ResourceEventType) -> None:
         # Mirror upstream: addProperty(value) — caller must have set the
         # property name to "event" beforehand (or we set it here to match
         # upstream's expectation that the field-name slot is occupied).
         value.set_property_name(self.EVENT)
         self.add_property(value)
-
-    def setEvent(self, value: ResourceEventType) -> None:  # noqa: N802 - upstream Java name
-        self.set_event(value)
 
     def get_event_property(self) -> ResourceEventType | None:
         """Return the nested ``ResourceEventType`` carrier or ``None``."""
@@ -94,39 +82,21 @@ class VersionType(AbstractStructuredType):
         prop = self.get_first_equivalent_property(self.MODIFY_DATE, DateType)
         return prop if isinstance(prop, DateType) else None
 
-    def getModifyDate(self) -> datetime | None:  # noqa: N802 - upstream Java name
-        return self.get_modify_date()
-
     def set_modify_date(self, value: datetime) -> None:
         self.add_simple_property(self.MODIFY_DATE, value)
-
-    def setModifyDate(self, value: datetime) -> None:  # noqa: N802 - upstream Java name
-        self.set_modify_date(value)
 
     # --- version -----------------------------------------------------
 
     def get_version(self) -> str | None:
         return self.get_property_value_as_string(self.VERSION)
 
-    def getVersion(self) -> str | None:  # noqa: N802 - upstream Java name
-        return self.get_version()
-
     def set_version(self, value: str) -> None:
         self.add_simple_property(self.VERSION, value)
-
-    def setVersion(self, value: str) -> None:  # noqa: N802 - upstream Java name
-        self.set_version(value)
 
     # --- modifier ----------------------------------------------------
 
     def get_modifier(self) -> str | None:
         return self.get_property_value_as_string(self.MODIFIER)
 
-    def getModifier(self) -> str | None:  # noqa: N802 - upstream Java name
-        return self.get_modifier()
-
     def set_modifier(self, value: str) -> None:
         self.add_simple_property(self.MODIFIER, value)
-
-    def setModifier(self, value: str) -> None:  # noqa: N802 - upstream Java name
-        self.set_modifier(value)

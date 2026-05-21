@@ -58,21 +58,6 @@ def test_set_and_get_simple_fields(metadata: XMPMetadata) -> None:
     assert version.get_version() == "v2"
 
 
-def test_pdfbox_camelcase_simple_aliases(metadata: XMPMetadata) -> None:
-    version = VersionType(metadata)
-    when = datetime(2025, 7, 8, 9, 10, 11, tzinfo=UTC)
-
-    version.setComments("preflight pass")
-    version.setModifier("Ada")
-    version.setModifyDate(when)
-    version.setVersion("v2")
-
-    assert version.getComments() == "preflight pass"
-    assert version.getModifier() == "Ada"
-    assert version.getModifyDate() == when
-    assert version.getVersion() == "v2"
-
-
 def test_simple_fields_use_registered_types(metadata: XMPMetadata) -> None:
     version = VersionType(metadata)
     version.set_comments("reviewed")
@@ -96,18 +81,6 @@ def test_set_event_stores_nested_resource_event(metadata: XMPMetadata) -> None:
     assert version.get_event() is event
     assert event.get_property_name() == VersionType.EVENT
     assert event.get_action() == "saved"
-
-
-def test_pdfbox_camelcase_event_aliases(metadata: XMPMetadata) -> None:
-    version = VersionType(metadata)
-    event = ResourceEventType(metadata)
-    event.setAction("saved")
-
-    version.setEvent(event)
-
-    assert version.getEvent() is event
-    assert event.get_property_name() == VersionType.EVENT
-    assert event.getAction() == "saved"
 
 
 def test_get_event_property_returns_carrier(metadata: XMPMetadata) -> None:

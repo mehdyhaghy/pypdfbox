@@ -136,21 +136,6 @@ def test_view_of_view_is_forbidden() -> None:
         v1.create_view(1, 4)
 
 
-def test_camelcase_aliases_on_view() -> None:
-    # The Java aliases (getPosition / isEOF / isClosed / createView) are
-    # inherited from the RandomAccessRead ABC and must work on the view too.
-    p = _parent()
-    v = RandomAccessReadView(p, 2, 4)
-    assert v.getPosition() == 0
-    assert not v.isEOF()
-    assert not v.isClosed()
-    v.seek(4)
-    assert v.isEOF()
-    # createView on a view is forbidden upstream — the alias preserves that.
-    with pytest.raises(OSError):
-        v.createView(0, 1)
-
-
 def test_rewind_overrides_base_and_keeps_parent_in_sync() -> None:
     # Upstream rewind override (line 165) seeks the parent before rewinding
     # so a view rewind is observable on the parent's cursor.

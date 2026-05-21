@@ -63,9 +63,6 @@ class HorizontalMetricsTable(TTFTable):
         # monospaced fonts may not have a width for every glyph; fall back to last entry.
         return self._advance_width[-1]
 
-    def getAdvanceWidth(self, gid: int) -> int:  # noqa: N802 - upstream Java name
-        return self.get_advance_width(gid)
-
     def get_left_side_bearing(self, gid: int) -> int:
         if gid < 0 or not self._left_side_bearing:
             return 0
@@ -75,6 +72,3 @@ class HorizontalMetricsTable(TTFTable):
         if non_horizontal_index >= len(self._non_horizontal_left_side_bearing):
             return 0
         return self._non_horizontal_left_side_bearing[non_horizontal_index]
-
-    def getLeftSideBearing(self, gid: int) -> int:  # noqa: N802 - upstream Java name
-        return self.get_left_side_bearing(gid)

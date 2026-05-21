@@ -41,14 +41,6 @@ def test_movie_title_round_trip() -> None:
     assert ann.get_title() is None
 
 
-def test_movie_pdfbox_camelcase_title_aliases() -> None:
-    ann = PDAnnotationMovie()
-    ann.setTitle("Clip")
-    assert ann.getTitle() == "Clip"
-    ann.setTitle(None)
-    assert ann.getTitle() is None
-
-
 def test_movie_movie_dict_round_trip() -> None:
     ann = PDAnnotationMovie()
     assert ann.get_movie() is None
@@ -61,16 +53,6 @@ def test_movie_movie_dict_round_trip() -> None:
     assert ann.get_movie_dictionary() is movie
     ann.set_movie(None)
     assert ann.get_movie() is None
-
-
-def test_movie_pdfbox_camelcase_movie_aliases() -> None:
-    ann = PDAnnotationMovie()
-    movie = PDMovie()
-
-    ann.setMovie(movie)
-
-    assert ann.getMovie() is not None
-    assert ann.getMovie().get_cos_object() is movie.get_cos_object()  # type: ignore[union-attr]
 
 
 def test_movie_activation_round_trip() -> None:
@@ -89,17 +71,6 @@ def test_movie_activation_round_trip() -> None:
     assert ann.get_activation_entry() is COSBoolean.TRUE
     ann.set_activation(None)
     assert ann.get_activation() is None
-
-
-def test_movie_pdfbox_camelcase_activation_aliases() -> None:
-    ann = PDAnnotationMovie()
-    activation = PDMovieActivation()
-
-    ann.setActivation(activation)
-
-    assert isinstance(ann.getActivation(), PDMovieActivation)
-    ann.setActivation(False)
-    assert ann.getActivation() is False
 
 
 def test_pd_annotation_create_dispatches_movie() -> None:

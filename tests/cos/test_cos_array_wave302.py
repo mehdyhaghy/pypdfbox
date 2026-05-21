@@ -19,7 +19,7 @@ def test_wave302_remove_object_prefers_first_matching_entry() -> None:
     indirect = COSObject(30, 2, resolved=target)
     cos_array = COSArray([target, indirect])
 
-    assert cos_array.removeObject(target) is True
+    assert cos_array.remove_object(target) is True
 
     assert cos_array.to_list() == [indirect]
 

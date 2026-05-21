@@ -135,34 +135,6 @@ class FontMapper(ABC):
         del base_font, font_descriptor, cid_system_info
         return None
 
-    # ---------- camelCase aliases (porting parity) ----------
-
-    # Mirror the upstream Java method names so existing call sites that
-    # were ported verbatim continue to work without renaming. The
-    # snake_case methods above are the canonical pypdfbox spellings.
-
-    def getTrueTypeFont(  # noqa: N802 - upstream Java name
-        self,
-        base_font: str,
-        font_descriptor: PDFontDescriptor | None,
-    ) -> FontMapping[Any] | None:
-        return self.get_true_type_font(base_font, font_descriptor)
-
-    def getOpenTypeFont(  # noqa: N802 - upstream Java name
-        self,
-        base_font: str,
-        font_descriptor: PDFontDescriptor | None,
-    ) -> FontMapping[Any] | None:
-        return self.get_open_type_font(base_font, font_descriptor)
-
-    def getFontBoxFont(  # noqa: N802 - upstream Java name
-        self,
-        base_font: str,
-        font_descriptor: PDFontDescriptor | None,
-    ) -> FontMapping[FontBoxFont] | None:
-        return self.get_font_box_font(base_font, font_descriptor)
-
-
 # ---------------------------------------------------------------------------
 # Standard14 adapter — implements the FontBoxFont protocol over AfmMetrics.
 # ---------------------------------------------------------------------------

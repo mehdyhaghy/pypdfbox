@@ -28,30 +28,14 @@ class COSWriterXRefEntry:
     def get_offset(self) -> int:
         return self.offset
 
-    def getOffset(self) -> int:  # noqa: N802
-        """PDFBox-name alias for :meth:`get_offset`."""
-        return self.get_offset()
-
     def get_key(self) -> COSObjectKey:
         return self.key
-
-    def getKey(self) -> COSObjectKey:  # noqa: N802
-        """PDFBox-name alias for :meth:`get_key`."""
-        return self.get_key()
 
     def get_object(self) -> COSBase | None:
         return self.obj
 
-    def getObject(self) -> COSBase | None:  # noqa: N802
-        """PDFBox-name alias for :meth:`get_object`."""
-        return self.get_object()
-
     def is_free(self) -> bool:
         return self.free
-
-    def isFree(self) -> bool:  # noqa: N802
-        """PDFBox-name alias for :meth:`is_free`."""
-        return self.is_free()
 
     # ---------- ordering ----------
 
@@ -68,10 +52,6 @@ class COSWriterXRefEntry:
         if a > b:
             return 1
         return 0
-
-    def compareTo(self, other: COSWriterXRefEntry | None) -> int:  # noqa: N802
-        """PDFBox-name alias for :meth:`compare_to`."""
-        return self.compare_to(other)
 
     # ``order=False`` on the dataclass + custom ``__lt__`` so sorting matches
     # upstream ``compareTo`` (object number only, ignoring offset / free flag).
@@ -118,11 +98,6 @@ class COSWriterXRefEntry:
         """Return the canonical free-list head: offset 0, generation 65535,
         marked free. Mirrors upstream ``COSWriterXRefEntry.NULLENTRY``."""
         return cls.NULLENTRY
-
-    @classmethod
-    def getNullEntry(cls) -> COSWriterXRefEntry:  # noqa: N802
-        """PDFBox-name alias for :meth:`get_null_entry`."""
-        return cls.get_null_entry()
 
 
 _NULL_ENTRY = COSWriterXRefEntry(

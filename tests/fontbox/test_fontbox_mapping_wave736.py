@@ -39,13 +39,6 @@ def test_cid_font_mapping_repr_falls_back_when_ttf_name_missing() -> None:
     )
 
 
-def test_default_mapper_camelcase_type_specific_aliases_dispatch() -> None:
-    mapper = DefaultFontMapper()
-
-    assert mapper.getTrueTypeFont("Helvetica", None) is None
-    assert mapper.getOpenTypeFont("Helvetica", None) is None
-
-
 def test_default_mapper_bad_descriptor_flags_use_plain_helvetica() -> None:
     mapping = DefaultFontMapper().get_font_box_font(
         "DefinitelyNotStandard14",

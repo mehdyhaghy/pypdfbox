@@ -115,7 +115,6 @@ def test_wave858_font_mappers_local_stub_methods_return_none() -> None:
         font_mappers_tests.test_set_swaps_the_active_mapper,
         font_mappers_tests.test_set_none_resets_to_default,
         font_mappers_tests.test_reset_clears_override,
-        font_mappers_tests.test_set_mapper_camelcase_alias_works,
     ]
 
     for function in functions:

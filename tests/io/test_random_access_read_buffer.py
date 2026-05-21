@@ -228,17 +228,3 @@ def test_read_fully_integer_length_rejects_buffer_arguments() -> None:
         rab.read_fully(3, offset=1)
 
 
-def test_camelcase_aliases_on_read_api() -> None:
-    rab = RandomAccessReadBuffer(b"abcd")
-    # getPosition / isEOF / isClosed / readFully / createView
-    assert rab.getPosition() == 0
-    assert not rab.isEOF()
-    assert not rab.isClosed()
-    buf = bytearray(3)
-    rab.readFully(buf)
-    assert bytes(buf) == b"abc"
-    assert rab.readFully(1) == b"d"
-    view = rab.createView(0, 2)
-    assert view.length() == 2
-    rab.close()
-    assert rab.isClosed()

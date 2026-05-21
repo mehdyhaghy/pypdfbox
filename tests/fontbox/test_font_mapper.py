@@ -280,15 +280,6 @@ def test_subclass_must_implement_all_three_methods() -> None:
         _Half()  # type: ignore[abstract]
 
 
-def test_camelcase_aliases_dispatch_to_snake_case() -> None:
-    mapper = DefaultFontMapper()
-    snake = mapper.get_font_box_font("Helvetica", None)
-    camel = mapper.getFontBoxFont("Helvetica", None)
-    assert snake is not None and camel is not None
-    # Both reach the same cached wrapper.
-    assert snake.get_font() is camel.get_font()
-
-
 # ---------------------------------------------------------------------------
 # FontMapper.get_cid_font — third interface method
 # ---------------------------------------------------------------------------

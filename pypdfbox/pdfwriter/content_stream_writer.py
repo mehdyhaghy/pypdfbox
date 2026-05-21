@@ -82,10 +82,6 @@ class ContentStreamWriter:
         """Emit a single operand or operator token."""
         self._write_object(token)
 
-    def writeToken(self, token: COSBase | Operator | _ParserOperator) -> None:  # noqa: N802
-        """Java-style alias for :meth:`write_token`."""
-        self.write_token(token)
-
     def write_tokens(self, *tokens: Any) -> None:
         """Emit a sequence of tokens.
 
@@ -114,10 +110,6 @@ class ContentStreamWriter:
         for token in tokens:
             self._write_object(token)
         self._write(EOL)
-
-    def writeTokens(self, *tokens: Any) -> None:  # noqa: N802
-        """Java-style alias for :meth:`write_tokens`."""
-        self.write_tokens(*tokens)
 
     def write_object(self, o: Any) -> None:
         """Dispatch ``o`` to the appropriate serializer.

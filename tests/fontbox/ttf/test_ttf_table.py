@@ -25,20 +25,6 @@ def test_setters_round_trip() -> None:
     assert t.get_length() == 54
 
 
-def test_pdfbox_camelcase_aliases_round_trip() -> None:
-    t = TTFTable()
-    t.setTag("name")
-    t.setCheckSum(0x1234)
-    t.setOffset(2048)
-    t.setLength(128)
-
-    assert t.getTag() == "name"
-    assert t.getCheckSum() == 0x1234
-    assert t.getOffset() == 2048
-    assert t.getLength() == 128
-    assert t.getInitialized() is False
-
-
 def test_read_is_noop_and_does_not_initialize() -> None:
     t = TTFTable()
     data = MemoryTTFDataStream(b"\x00" * 32)

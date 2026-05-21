@@ -12,7 +12,6 @@ def test_wave378_compare_to_ignores_generation_like_upstream() -> None:
 
     assert a.compare_to(b) == 0
     assert b.compare_to(a) == 0
-    assert a.compareTo(b) == 0
     assert a != b
 
 

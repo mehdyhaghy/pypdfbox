@@ -37,18 +37,9 @@ class RenderingMode(Enum):
                 return member
         raise IndexError(value)
 
-    @classmethod
-    def fromInt(cls, value: int) -> RenderingMode:  # noqa: N802
-        """Java-style alias for :meth:`from_int`."""
-        return cls.from_int(value)
-
     def int_value(self) -> int:
         """Return the integer value of this mode, as used in a PDF file."""
         return self.value
-
-    def intValue(self) -> int:  # noqa: N802
-        """Java-style alias for :meth:`int_value`."""
-        return self.int_value()
 
     def is_fill(self) -> bool:
         """Return ``True`` if this mode fills text."""
@@ -59,10 +50,6 @@ class RenderingMode(Enum):
             RenderingMode.FILL_STROKE_CLIP,
         )
 
-    def isFill(self) -> bool:  # noqa: N802
-        """Java-style alias for :meth:`is_fill`."""
-        return self.is_fill()
-
     def is_stroke(self) -> bool:
         """Return ``True`` if this mode strokes text."""
         return self in (
@@ -72,10 +59,6 @@ class RenderingMode(Enum):
             RenderingMode.FILL_STROKE_CLIP,
         )
 
-    def isStroke(self) -> bool:  # noqa: N802
-        """Java-style alias for :meth:`is_stroke`."""
-        return self.is_stroke()
-
     def is_clip(self) -> bool:
         """Return ``True`` if this mode clips text."""
         return self in (
@@ -84,10 +67,6 @@ class RenderingMode(Enum):
             RenderingMode.FILL_STROKE_CLIP,
             RenderingMode.NEITHER_CLIP,
         )
-
-    def isClip(self) -> bool:  # noqa: N802
-        """Java-style alias for :meth:`is_clip`."""
-        return self.is_clip()
 
 
 __all__ = ["RenderingMode"]

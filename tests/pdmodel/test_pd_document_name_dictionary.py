@@ -70,34 +70,6 @@ def test_dict_init_with_explicit_names_takes_precedence_over_catalog() -> None:
     assert cat.get_cos_object().get_dictionary_object(_NAMES) is catalog_names
 
 
-def test_upstream_camelcase_aliases_round_trip() -> None:
-    cat = _FakeCatalog()
-    nd = PDDocumentNameDictionary(catalog=cat)
-    dests = PDDestinationNameTreeNode()
-    embedded = PDEmbeddedFilesNameTreeNode()
-    javascript = PDJavascriptNameTreeNode()
-
-    assert nd.getCOSObject() is nd.get_cos_object()
-
-    nd.setDests(dests)
-    assert nd.getDests() is not None
-    assert nd.getDests().get_cos_object() is dests.get_cos_object()  # type: ignore[union-attr]
-    nd.setDests(None)
-    assert nd.getDests() is None
-
-    nd.setEmbeddedFiles(embedded)
-    assert nd.getEmbeddedFiles() is not None
-    assert nd.getEmbeddedFiles().get_cos_object() is embedded.get_cos_object()  # type: ignore[union-attr]
-    nd.setEmbeddedFiles(None)
-    assert nd.getEmbeddedFiles() is None
-
-    nd.setJavascript(javascript)
-    assert nd.getJavaScript() is not None
-    assert nd.getJavaScript().get_cos_object() is javascript.get_cos_object()  # type: ignore[union-attr]
-    nd.setJavascript(None)
-    assert nd.getJavaScript() is None
-
-
 @pytest.mark.parametrize(
     ("key", "getter_name"),
     [

@@ -51,9 +51,6 @@ class GlyphDescription:
             return False
         return bool(self._glyph.isComposite())
 
-    def isComposite(self) -> bool:  # noqa: N802 - upstream Java name
-        return self.is_composite()
-
     def get_contour_count(self) -> int:
         if self._glyph is None:
             return 0
@@ -66,48 +63,30 @@ class GlyphDescription:
             return len(self._end_pts)
         return n
 
-    def getContourCount(self) -> int:  # noqa: N802 - upstream Java name
-        return self.get_contour_count()
-
     def get_point_count(self) -> int:
         self._ensure_decoded()
         assert self._coords is not None
         return len(self._coords)
-
-    def getPointCount(self) -> int:  # noqa: N802 - upstream Java name
-        return self.get_point_count()
 
     def get_end_pt_of_contours(self, i: int) -> int:
         self._ensure_decoded()
         assert self._end_pts is not None
         return int(self._end_pts[i])
 
-    def getEndPtOfContours(self, i: int) -> int:  # noqa: N802 - upstream Java name
-        return self.get_end_pt_of_contours(i)
-
     def get_x_coordinate(self, i: int) -> int:
         self._ensure_decoded()
         assert self._coords is not None
         return int(self._coords[i][0])
-
-    def getXCoordinate(self, i: int) -> int:  # noqa: N802 - upstream Java name
-        return self.get_x_coordinate(i)
 
     def get_y_coordinate(self, i: int) -> int:
         self._ensure_decoded()
         assert self._coords is not None
         return int(self._coords[i][1])
 
-    def getYCoordinate(self, i: int) -> int:  # noqa: N802 - upstream Java name
-        return self.get_y_coordinate(i)
-
     def get_flags(self, i: int) -> int:
         self._ensure_decoded()
         assert self._flags is not None
         return int(self._flags[i])
-
-    def getFlags(self, i: int) -> int:  # noqa: N802 - upstream Java name
-        return self.get_flags(i)
 
     def resolve(self) -> None:
         """Force-decode any deferred composite resolution.
@@ -354,43 +333,25 @@ class GlyphData:
         assert self._bounding_box is not None
         return self._bounding_box
 
-    def getBoundingBox(self) -> BoundingBox:  # noqa: N802 - upstream Java name
-        return self.get_bounding_box()
-
     def get_number_of_contours(self) -> int:
         self._ensure_initialised()
         return self._number_of_contours
-
-    def getNumberOfContours(self) -> int:  # noqa: N802 - upstream Java name
-        return self.get_number_of_contours()
 
     def get_x_minimum(self) -> int:
         self._ensure_initialised()
         return self._x_min
 
-    def getXMinimum(self) -> int:  # noqa: N802 - upstream Java name
-        return self.get_x_minimum()
-
     def get_x_maximum(self) -> int:
         self._ensure_initialised()
         return self._x_max
-
-    def getXMaximum(self) -> int:  # noqa: N802 - upstream Java name
-        return self.get_x_maximum()
 
     def get_y_minimum(self) -> int:
         self._ensure_initialised()
         return self._y_min
 
-    def getYMinimum(self) -> int:  # noqa: N802 - upstream Java name
-        return self.get_y_minimum()
-
     def get_y_maximum(self) -> int:
         self._ensure_initialised()
         return self._y_max
-
-    def getYMaximum(self) -> int:  # noqa: N802 - upstream Java name
-        return self.get_y_maximum()
 
     def get_description(self) -> GlyphDescription:
         """Return a :class:`GlyphDescription` view of this glyph.
@@ -404,9 +365,6 @@ class GlyphData:
             return GlyphDescription(None, None)
         glyph = self._glyf_table[self._glyph_name]
         return GlyphDescription(self._glyf_table, glyph)
-
-    def getDescription(self) -> GlyphDescription:  # noqa: N802 - upstream Java name
-        return self.get_description()
 
     def get_path(self) -> RecordingPen:
         """Return a recorded outline of this glyph.
@@ -423,9 +381,6 @@ class GlyphData:
         ``value`` list.
         """
         return self.glyph_renderer().get_path()
-
-    def getPath(self) -> RecordingPen:  # noqa: N802 - upstream Java name
-        return self.get_path()
 
     # ---- upstream package-private initialisers --------------------------
 

@@ -98,22 +98,6 @@ def test_set_rejects_non_font_mapper_instances() -> None:
         FontMappers.set("not a mapper")  # type: ignore[arg-type]
 
 
-def test_set_mapper_camelcase_alias_works() -> None:
-    class _Stub(FontMapper):
-        def get_true_type_font(self, base_font, font_descriptor):  # type: ignore[override]
-            return None
-
-        def get_open_type_font(self, base_font, font_descriptor):  # type: ignore[override]
-            return None
-
-        def get_font_box_font(self, base_font, font_descriptor):  # type: ignore[override]
-            return None
-
-    stub = _Stub()
-    FontMappers.setMapper(stub)
-    assert FontMappers.instance() is stub
-
-
 def test_constructing_font_mappers_raises() -> None:
     """Static-only registry — direct construction is refused."""
     with pytest.raises(TypeError):

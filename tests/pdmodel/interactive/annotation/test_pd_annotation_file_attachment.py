@@ -46,27 +46,6 @@ def test_attachment_name_round_trip() -> None:
     assert ann.get_attachment_name() == "Paperclip"
 
 
-def test_pdfbox_attachment_name_accessors_round_trip() -> None:
-    ann = PDAnnotationFileAttachment()
-
-    assert ann.getAttachmentName() == "PushPin"
-
-    ann.setAttachmentName(PDAnnotationFileAttachment.ATTACHMENT_NAME_TAG)
-    assert ann.get_attachment_name() == "Tag"
-    assert ann.getAttachmentName() == "Tag"
-
-    ann.setAttachmentName(None)
-    assert ann.getAttachmentName() == "PushPin"
-
-
-def test_pdfbox_legacy_misspelled_attachment_name_setter_round_trip() -> None:
-    ann = PDAnnotationFileAttachment()
-
-    ann.setAttachementName(PDAnnotationFileAttachment.ATTACHMENT_NAME_GRAPH)
-
-    assert ann.get_attachment_name() == "Graph"
-
-
 def test_attachment_name_constants() -> None:
     assert PDAnnotationFileAttachment.ATTACHMENT_NAME_GRAPH == "Graph"
     assert PDAnnotationFileAttachment.ATTACHMENT_NAME_PAPERCLIP == "Paperclip"

@@ -125,14 +125,7 @@ def test_marked_content_point_with_props_invokes_hook() -> None:
     assert captured["props"] is props
 
 
-# ---------- cos/cos_array.py: getUpdateState alias + of_cos_floats -------
-
-
-def test_cos_array_get_update_state_camelcase_alias() -> None:
-    from pypdfbox.cos.cos_array import COSArray
-
-    arr = COSArray()
-    assert arr.getUpdateState() is arr.get_update_state()
+# ---------- cos/cos_array.py: of_cos_floats -------
 
 
 def test_cos_array_of_cos_floats_factory() -> None:
@@ -231,16 +224,6 @@ def test_cos_document_set_trailer_none_short_circuits() -> None:
     doc = COSDocument()
     doc.set_trailer(None)  # Must not raise.
     assert doc.get_trailer() is None
-
-
-# ---------- cos/cos_object.py: getUpdateState camelCase alias ----------
-
-
-def test_cos_object_get_update_state_camelcase_alias() -> None:
-    from pypdfbox.cos.cos_object import COSObject
-
-    obj = COSObject(1, 0)
-    assert obj.getUpdateState() is obj.get_update_state()
 
 
 # ---------- cos/cos_stream.py: writer-open raw stream guard ----------

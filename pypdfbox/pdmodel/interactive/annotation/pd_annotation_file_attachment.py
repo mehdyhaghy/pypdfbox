@@ -126,17 +126,13 @@ class PDAnnotationFileAttachment(PDAnnotationMarkup):
             return
         self._dict.set_name(_NAME, name)
 
-    def getAttachmentName(self) -> str:  # noqa: N802 - upstream Java name
-        return self.get_attachment_name()
+    def set_attachement_name(self, name: str | None) -> None:
+        """Snake-case form of upstream's misspelled ``setAttachementName``.
 
-    def setAttachmentName(  # noqa: N802 - upstream Java name
-        self, name: str | None
-    ) -> None:
-        self.set_attachment_name(name)
-
-    def setAttachementName(  # noqa: N802 - upstream legacy misspelling
-        self, name: str | None
-    ) -> None:
+        Upstream PDFBox preserved the typo in its public API for backward
+        compatibility; pypdfbox surfaces the mechanical snake_case
+        translation so callers ported from Java retain access.
+        """
         self.set_attachment_name(name)
 
     def has_attachment_name(self) -> bool:

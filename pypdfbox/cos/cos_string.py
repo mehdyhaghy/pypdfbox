@@ -54,9 +54,6 @@ class COSString(COSBase):
     def get_bytes(self) -> bytes:
         return self._bytes
 
-    def getBytes(self) -> bytes:  # noqa: N802 - upstream Java name
-        return self.get_bytes()
-
     def set_value(self, value: bytes | bytearray | memoryview) -> None:
         """Replace the raw byte payload.
 
@@ -81,9 +78,6 @@ class COSString(COSBase):
 
         return decode_bytes(self._bytes)
 
-    def getString(self) -> str:  # noqa: N802 - upstream Java name
-        return self.get_string()
-
     def is_force_hex_form(self) -> bool:
         return self._force_hex_form
 
@@ -91,9 +85,6 @@ class COSString(COSBase):
         """Mirror PDFBox's ``getForceHexForm()`` accessor — same value as
         ``is_force_hex_form``; both spellings exist upstream."""
         return self._force_hex_form
-
-    def isForceHexForm(self) -> bool:  # noqa: N802 - upstream Java name
-        return self.is_force_hex_form()
 
     def get_ascii(self) -> str:
         """Decode the raw bytes as ASCII — mirrors PDFBox's ``getASCII()``.
@@ -106,21 +97,12 @@ class COSString(COSBase):
         """
         return self._bytes.decode("ascii", errors="replace").replace("�", "?")
 
-    def getASCII(self) -> str:  # noqa: N802 - upstream Java name
-        return self.get_ascii()
-
     def set_force_hex_form(self, force_hex: bool) -> None:
         self._force_hex_form = force_hex
-
-    def setForceHexForm(self, force_hex: bool) -> None:  # noqa: N802
-        self.set_force_hex_form(force_hex)
 
     def to_hex_string(self) -> str:
         """Hex-encoded raw bytes, uppercase — matches PDFBox ``toHexString``."""
         return self._bytes.hex().upper()
-
-    def toHexString(self) -> str:  # noqa: N802 - upstream Java name
-        return self.to_hex_string()
 
     @classmethod
     def parse_hex(cls, hex_text: str) -> COSString:

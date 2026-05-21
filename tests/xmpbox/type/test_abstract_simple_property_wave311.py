@@ -10,27 +10,27 @@ def metadata() -> XMPMetadata:
     return XMPMetadata.create_xmp_metadata()
 
 
-def test_wave311_simple_property_pdfbox_camelcase_aliases(
+def test_wave311_simple_property_accessors(
     metadata: XMPMetadata,
 ) -> None:
     field = TextType(metadata, "ns", "pre", "name", "initial")
 
-    assert field.getNamespace() == "ns"
-    assert field.getPrefix() == "pre"
-    assert field.getValue() == "initial"
-    assert field.getStringValue() == "initial"
-    assert field.getRawValue() == "initial"
+    assert field.get_namespace() == "ns"
+    assert field.get_prefix() == "pre"
+    assert field.get_value() == "initial"
+    assert field.get_string_value() == "initial"
+    assert field.get_raw_value() == "initial"
 
 
-def test_wave311_simple_property_set_value_alias_validates_and_updates_value(
+def test_wave311_simple_property_set_value_validates_and_updates_value(
     metadata: XMPMetadata,
 ) -> None:
     field = TextType(metadata, "ns", "pre", "name", "initial")
 
-    field.setValue("updated")
+    field.set_value("updated")
 
-    assert field.getValue() == "updated"
-    assert field.getStringValue() == "updated"
+    assert field.get_value() == "updated"
+    assert field.get_string_value() == "updated"
 
     with pytest.raises(ValueError):
-        field.setValue(12)
+        field.set_value(12)
