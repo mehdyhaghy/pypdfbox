@@ -235,6 +235,228 @@ def _cubic_bernstein(t: float) -> tuple[float, float, float, float]:
     )
 
 
+# Maximum subdivision level per parametric axis. Upstream's Coons/Tensor
+# patch ``calcLevel`` returns values in ``[1, 4]`` (yielding ``2^level``
+# = 2..16 cells per axis); we use the same upper bound (level=4, N=16)
+# matching upstream's hard-coded init value. Cap is enforced in case a
+# future tuning bumps the init value — guards against pathological inputs.
+_PATCH_MAX_LEVEL: int = 4
+
+
+def _transform_point(
+    point: tuple[float, float],
+    ctm: tuple[float, float, float, float, float, float],
+) -> tuple[float, float]:
+    """Apply a 6-float CTM (row-vector form ``(a, b, c, d, e, f)``) to a
+    point. ``(x', y') = (a*x + c*y + e, b*x + d*y + f)``. Used by
+    :func:`_calc_patch_level` to measure edge lengths in device space."""
+    a, b, c_, d, e, f = ctm
+    return (a * point[0] + c_ * point[1] + e, b * point[0] + d * point[1] + f)
+
+
+def _edge_is_line(edge: list[tuple[float, float]]) -> bool:
+    """Port of upstream ``Patch.isEdgeALine``: returns ``True`` when the
+    four cubic-Bezier control points ``edge[0..3]`` deviate from the
+    straight chord ``edge[0] -> edge[3]`` by less than either the chord's
+    x-span or y-span. This is the same numerical criterion the Java
+    implementation uses.
+
+    For the Bezier control polygon ``(p0, p1, p2, p3)``, the edge-equation
+    value of point ``q`` against the chord ``p0 -> p3`` is
+    ``(p3.y - p0.y) * (q.x - p0.x) - (p3.x - p0.x) * (q.y - p0.y)`` —
+    twice the signed area of the triangle ``(p0, p3, q)``. The chord
+    deviation in x is bounded by ``|p3.x - p0.x|`` and in y by
+    ``|p3.y - p0.y|``; if BOTH inner control points stay within that
+    band, the cubic is effectively a straight line.
+    """
+    p0, p1, p2, p3 = edge[0], edge[1], edge[2], edge[3]
+    dx = p3[0] - p0[0]
+    dy = p3[1] - p0[1]
+    ctl1 = abs(dy * (p1[0] - p0[0]) - dx * (p1[1] - p0[1]))
+    ctl2 = abs(dy * (p2[0] - p0[0]) - dx * (p2[1] - p0[1]))
+    abs_dx = abs(dx)
+    abs_dy = abs(dy)
+    return (ctl1 <= abs_dx and ctl2 <= abs_dx) or (
+        ctl1 <= abs_dy and ctl2 <= abs_dy
+    )
+
+
+def _edge_length(
+    p0: tuple[float, float], p1: tuple[float, float]
+) -> float:
+    """Euclidean distance between two points. Port of
+    ``Patch.getLen``."""
+    return math.hypot(p1[0] - p0[0], p1[1] - p0[1])
+
+
+def _level_from_length(length_u_1: float, length_u_2: float) -> int:
+    """Map a pair of opposite-edge lengths (in device pixels) to a
+    subdivision level using upstream's hard-coded thresholds (see
+    ``CoonsPatch.calcLevel`` / ``TensorPatch.calcLevel``):
+
+    * either edge > 800 px → level 4 (16 cells)
+    * either edge > 400 px → level 3 (8 cells)
+    * either edge > 200 px → level 2 (4 cells)
+    * else                  → level 1 (2 cells)
+    """
+    longest = max(length_u_1, length_u_2)
+    if longest > 800.0:
+        return 4
+    if longest > 400.0:
+        return 3
+    if longest > 200.0:
+        return 2
+    return 1
+
+
+def _calc_patch_level(
+    points: list[tuple[float, float]],
+    ctm: tuple[float, float, float, float, float, float],
+) -> tuple[int, int]:
+    """Port of upstream ``CoonsPatch.calcLevel`` / ``TensorPatch.calcLevel``:
+    pick the per-axis subdivision count ``(n_u, n_v)`` adaptively from the
+    patch's control-polygon geometry. Returns the cell counts (not the
+    levels) so callers can index a ``(n_v + 1) × (n_u + 1)`` grid.
+
+    Algorithm:
+
+    1. Identify the four boundary curves: ``c1``/``c2`` (the u-parametric
+       boundaries at v=0 and v=1) and ``d1``/``d2`` (the v-parametric
+       boundaries at u=0 and u=1).
+    2. The default per-axis level is :data:`_PATCH_MAX_LEVEL` (= 4 →
+       16 cells). Each axis is reduced only when BOTH opposite boundary
+       curves are effectively straight (``_edge_is_line``).
+    3. Reduce based on the device-space chord length of the straight
+       edges using the thresholds in :func:`_level_from_length`.
+    4. Tensor patches additionally check that none of the 4 interior
+       control points falls outside the patch — if any does, the high
+       level is retained (the patch is curvy regardless of edge
+       straightness).
+
+    ``points`` is the patch's user-space control polygon: 12 points for
+    Coons (type 6), 16 points for tensor (type 7). ``ctm`` is the full
+    user-space → device-space transform (so chord lengths are measured
+    in pixels, matching upstream).
+
+    Returns the pair ``(n_u, n_v)`` where each is ``2 ** level`` capped
+    at ``2 ** _PATCH_MAX_LEVEL``.
+    """
+    n = len(points)
+    if n == 12:
+        # Coons: 4 boundary curves, see reshapeControlPoints upstream.
+        # c1 = bottom (p0..p3), c2 = top (reversed, p9..p6),
+        # d1 = left (p0,p11,p10,p9), d2 = right (p3..p6).
+        c1 = [points[0], points[1], points[2], points[3]]
+        c2 = [points[9], points[8], points[7], points[6]]
+        d1 = [points[0], points[11], points[10], points[9]]
+        d2 = [points[3], points[4], points[5], points[6]]
+        interior_points: list[tuple[float, float]] = []
+    elif n == 16:
+        # Tensor: 4×4 grid, see TensorPatch.reshapeControlPoints upstream.
+        # Boundary curves c1 = column 0, c2 = column 3, d1 = row 0,
+        # d2 = row 3. Interior control points are grid[1..2][1..2].
+        # Grid layout matches the renderer's tensor evaluator:
+        #   row 0: p0, p1, p2, p3
+        #   row 1: p11, p12, p13, p4
+        #   row 2: p10, p15, p14, p5
+        #   row 3: p9, p8, p7, p6
+        c1 = [points[0], points[11], points[10], points[9]]
+        c2 = [points[3], points[4], points[5], points[6]]
+        d1 = [points[0], points[1], points[2], points[3]]
+        d2 = [points[9], points[8], points[7], points[6]]
+        interior_points = [
+            points[12], points[13], points[15], points[14],
+        ]
+    else:  # pragma: no cover - guarded by caller
+        return (
+            2 ** _PATCH_MAX_LEVEL,
+            2 ** _PATCH_MAX_LEVEL,
+        )
+
+    level_u = _PATCH_MAX_LEVEL
+    level_v = _PATCH_MAX_LEVEL
+
+    # u-axis: parametrised by edges d1 and d2 (top and bottom run across u).
+    # Following upstream: edges c1 / c2 are tested first (these are the
+    # axis-parallel boundaries — for Coons they are the u-curves directly;
+    # for tensor they are the column edges). Reduce the corresponding axis
+    # only when BOTH opposite edges are straight lines AND no interior CP
+    # has bowed out of the patch.
+    if _edge_is_line(c1) and _edge_is_line(c2):
+        # For tensor patches, also check interior points are not on the
+        # same side of both column boundaries (i.e. inside the patch).
+        interior_ok = True
+        if interior_points:
+            for ip in interior_points:
+                if _is_on_same_side(ip, c1[0], c2[0], c1[3], c2[3]):
+                    interior_ok = False
+                    break
+        if interior_ok:
+            # Measure device-space chord lengths of c1 / c2.
+            len_c1 = _edge_length(
+                _transform_point(c1[0], ctm),
+                _transform_point(c1[3], ctm),
+            )
+            len_c2 = _edge_length(
+                _transform_point(c2[0], ctm),
+                _transform_point(c2[3], ctm),
+            )
+            level_u = _level_from_length(len_c1, len_c2)
+
+    if _edge_is_line(d1) and _edge_is_line(d2):
+        interior_ok = True
+        if interior_points:
+            for ip in interior_points:
+                if _is_on_same_side(ip, d1[0], d1[3], d2[0], d2[3]):
+                    interior_ok = False
+                    break
+        if interior_ok:
+            len_d1 = _edge_length(
+                _transform_point(d1[0], ctm),
+                _transform_point(d1[3], ctm),
+            )
+            len_d2 = _edge_length(
+                _transform_point(d2[0], ctm),
+                _transform_point(d2[3], ctm),
+            )
+            level_v = _level_from_length(len_d1, len_d2)
+
+    level_u = min(level_u, _PATCH_MAX_LEVEL)
+    level_v = min(level_v, _PATCH_MAX_LEVEL)
+    return (2 ** level_u, 2 ** level_v)
+
+
+def _is_on_same_side(
+    point: tuple[float, float],
+    e1_a: tuple[float, float],
+    e1_b: tuple[float, float],
+    e2_a: tuple[float, float],
+    e2_b: tuple[float, float],
+) -> bool:
+    """Return ``True`` when ``point`` is on the same side of both edges
+    ``(e1_a, e1_b)`` and ``(e2_a, e2_b)`` — i.e. outside the strip
+    bounded by them. Port of ``TensorPatch.isOnSameSideCC`` /
+    ``isOnSameSideDD``.
+
+    The Java code multiplies the two edge-equation values; a positive
+    product means same side. We follow that convention exactly so the
+    sign semantics match upstream.
+    """
+    v1 = _edge_equation_value(point, e1_a, e1_b)
+    v2 = _edge_equation_value(point, e2_a, e2_b)
+    return v1 * v2 > 0.0
+
+
+def _edge_equation_value(
+    p: tuple[float, float],
+    p1: tuple[float, float],
+    p2: tuple[float, float],
+) -> float:
+    """Port of ``Patch.edgeEquationValue`` — twice the signed area of the
+    triangle ``(p1, p2, p)``. Used to test on-which-side a point falls."""
+    return (p2[1] - p1[1]) * (p[0] - p1[0]) - (p2[0] - p1[0]) * (p[1] - p1[1])
+
+
 class PDFRenderer(PDFStreamEngine):
     """
     Render PDF pages to ``PIL.Image`` via aggdraw (anti-aliased AGG-backed
@@ -2607,11 +2829,13 @@ class PDFRenderer(PDFStreamEngine):
 
     # ---- Type 6 / Type 7 (Coons / tensor patch mesh) ----
 
-    # Subdivision count per patch parametric axis. Wave 1375 picks N=10
-    # (= 200 triangles per patch) — matches the upstream Java
-    # ``Type6ShadingContext`` / ``Type7ShadingContext`` adaptive default at
-    # mid-bounds and keeps render time predictable for synthetic pages.
-    _PATCH_SUBDIVISION_N: int = 10
+    # Maximum subdivision count per patch parametric axis. Wave 1377 ports
+    # upstream's adaptive ``calcLevel`` (see :func:`_calc_patch_level`);
+    # this constant is the upper bound (= ``2 ** _PATCH_MAX_LEVEL`` = 16
+    # cells per axis, 512 triangles per patch). The class-level attribute
+    # is kept for backwards compatibility with downstream code that
+    # tunes the cap (e.g. test harnesses pinning a smaller value).
+    _PATCH_SUBDIVISION_N: int = 2 ** _PATCH_MAX_LEVEL
 
     def _paint_patch_mesh_shading(
         self,
@@ -2630,10 +2854,13 @@ class PDFRenderer(PDFStreamEngine):
         backing) so the caller can still produce a solid-colour fallback
         that preserves the legacy behaviour.
 
-        Approach: subdivide each patch into an ``N×N`` grid of (u, v)
-        samples (``N = _PATCH_SUBDIVISION_N``). For Coons patches the
-        Coons surface formula combines the 4 boundary cubic Beziers with
-        a bilinear correction; for tensor patches the standard tensor-
+        Approach: subdivide each patch into an ``n_v × n_u`` grid of
+        ``(u, v)`` samples, where ``(n_u, n_v)`` are picked adaptively by
+        :func:`_calc_patch_level` (Wave 1377 — port of upstream's
+        ``CoonsPatch.calcLevel`` / ``TensorPatch.calcLevel``) and capped
+        at ``_PATCH_SUBDIVISION_N`` per axis. For Coons patches the Coons
+        surface formula combines the 4 boundary cubic Beziers with a
+        bilinear correction; for tensor patches the standard tensor-
         product Bezier formula is used. Per-vertex colours are bilinearly
         interpolated from the 4 corner colours, then routed through the
         shading's ``/Function`` (when present) plus its colour-space.
@@ -2720,10 +2947,19 @@ class PDFRenderer(PDFStreamEngine):
             else:
                 fn = raw_fn
 
-        n = self._PATCH_SUBDIVISION_N
+        # Wave 1377 — pick the per-patch subdivision adaptively from the
+        # patch's geometry (cf. upstream ``CoonsPatch.calcLevel`` /
+        # ``TensorPatch.calcLevel``). The class-level ``_PATCH_SUBDIVISION_N``
+        # acts as the maximum cap.
+        cap = self._PATCH_SUBDIVISION_N
+        full_ctm = self._full_ctm()
         for patch in patches:
+            patch_points = [tuple(p) for p in patch.points]
+            n_u, n_v = _calc_patch_level(patch_points, full_ctm)
+            n_u = min(n_u, cap)
+            n_v = min(n_v, cap)
             self._rasterise_single_patch(
-                canvas, skia, patch, control_points, n, fn, cs_name,
+                canvas, skia, patch, control_points, n_u, n_v, fn, cs_name,
                 anti_alias=anti_alias,
             )
 
@@ -2751,20 +2987,30 @@ class PDFRenderer(PDFStreamEngine):
         skia_mod: Any,
         patch: Any,
         control_points: int,
-        n: int,
+        n_u: int,
+        n_v: int,
         fn: Any,
         cs_name: str | None,
         *,
         anti_alias: bool,
     ) -> None:
-        """Subdivide one Coons / tensor patch into ``n*n`` cells, then push
-        two triangles per cell to ``canvas`` with the interpolated corner
-        colour. ``fn``, when provided, is a single-input PDFunction whose
-        outputs are routed through the shading's colour space."""
+        """Subdivide one Coons / tensor patch into ``n_v * n_u`` cells,
+        then push two triangles per cell to ``canvas`` with the
+        interpolated corner colour. ``fn``, when provided, is a
+        single-input PDFunction whose outputs are routed through the
+        shading's colour space.
+
+        ``n_u`` and ``n_v`` are independent — they come from
+        :func:`_calc_patch_level` and may differ when the patch's u-axis
+        boundaries are short and its v-axis boundaries are long (or vice
+        versa)."""
         points: list[tuple[float, float]] = list(patch.points)
         colors: list[list[float]] = [list(c) for c in patch.colors]
         if len(points) != control_points or len(colors) != 4:
             return
+
+        n_u = max(1, int(n_u))
+        n_v = max(1, int(n_v))
 
         # Evaluate (x, y) at each grid sample.
         sample = (
@@ -2772,30 +3018,30 @@ class PDFRenderer(PDFStreamEngine):
             else self._coons_patch_eval
         )
         grid_xy: list[list[tuple[float, float]]] = [
-            [(0.0, 0.0)] * (n + 1) for _ in range(n + 1)
+            [(0.0, 0.0)] * (n_u + 1) for _ in range(n_v + 1)
         ]
-        for j in range(n + 1):
-            v = j / n
-            for i in range(n + 1):
-                u = i / n
+        for j in range(n_v + 1):
+            v = j / n_v
+            for i in range(n_u + 1):
+                u = i / n_u
                 grid_xy[j][i] = sample(points, u, v)
 
         # Pre-compute byte RGBA for each grid sample (bilinear corner-
         # colour interpolation -> optional /Function -> colour space).
         grid_rgba: list[list[tuple[int, int, int, int]]] = [
-            [(0, 0, 0, 0)] * (n + 1) for _ in range(n + 1)
+            [(0, 0, 0, 0)] * (n_u + 1) for _ in range(n_v + 1)
         ]
-        for j in range(n + 1):
-            v = j / n
-            for i in range(n + 1):
-                u = i / n
+        for j in range(n_v + 1):
+            v = j / n_v
+            for i in range(n_u + 1):
+                u = i / n_u
                 grid_rgba[j][i] = self._patch_color_at(
                     colors, u, v, fn, cs_name,
                 )
 
         # Push 2 triangles per cell.
-        for j in range(n):
-            for i in range(n):
+        for j in range(n_v):
+            for i in range(n_u):
                 p00 = grid_xy[j][i]
                 p10 = grid_xy[j][i + 1]
                 p01 = grid_xy[j + 1][i]

@@ -3,6 +3,166 @@
 Substantive behavioral deviations of pypdfbox vs upstream Apache PDFBox.
 Per-release notes go here; trivial naming changes (camelCase → snake_case) are not listed.
 
+## Wave 1377 — close deferred sub-features
+
+- **Rich-text (/RV) long-tail XHTML rendering** (agent D —
+  `pypdfbox/pdmodel/interactive/form/pd_appearance_generator.py`,
+  `tests/.../test_pd_appearance_generator_rich_text_long_tail_wave1377.py`).
+  Extends wave 1375's minimal `/RV` renderer with the deferred long-tail
+  features the brief listed:
+  - **Named CSS colors** — `_parse_rv_color` now accepts the 147 W3C
+    named colors (basic 16 + extended Color-4 set), case-insensitive.
+    Implemented as a const `_RV_NAMED_COLORS` dict (no extra dep).
+    `<span style="color: rebeccapurple">` correctly emits
+    `0.4 0.2 0.6 rg`. `transparent` stays unhandled (caller falls
+    back to inherited /DA colour).
+  - **`<sub>` / `<sup>`** — subscript / superscript runs carry a
+    `text_rise` (positive for `<sup>`, negative for `<sub>`) plus a
+    `0.583 * parent` font-size shrink (matches the empirical CSS
+    rendering). `_emit_rich_text_runs` emits the PDF `Ts` operator
+    when the run's rise differs from the current.
+  - **`background-color`** — `_RichTextRun.background_color` is filled
+    via a `re` + `f` rect path painted at the run's measured advance
+    before the glyphs (text mode ended + reopened around the path
+    op since PDF disallows path ops inside `BT…ET`). Also accepts
+    CSS shorthand `background: <color>`.
+  - **`<a href="...">`** — link runs styled with the conventional
+    `#0000ee` blue plus an underline (a 1pt stroked line at
+    `y - size * 0.1` after the glyphs). No real Link annotation is
+    emitted (rich-text rendering produces an appearance stream, not
+    annotations). Explicit `style="color: ..."` overrides win.
+    `<u>` also draws the underline.
+  - **HSL color** — `_parse_rv_color` accepts `hsl(h, s%, l%)` /
+    `hsla(...)` via a stdlib HSL→RGB converter (`_hsl_to_rgb`). HSL
+    hue wraps modulo 360, saturation / lightness clamp to [0, 1].
+    `oklab` / `oklch` / `color-mix` stay deferred — rare in form
+    rich text and would need a 3-stage gamut map.
+  - **`<ul>` / `<ol>` / `<li>`** — list rendering with a marker
+    prefix per item (`"•  "` for `<ul>`, `"<n>.  "` for `<ol>`) and a
+    hard line break between items. Nested lists each maintain their
+    own counter (stack of `(kind, counter)` in the walker).
+  - **`<table>` (deferred)** — walked transparently so inner cell
+    text still renders, but without column alignment. Real table
+    layout is genuinely complex (column widths, row heights,
+    cell padding, border collapse) — deferred to a future wave.
+  Backwards-compatibility: the wave-1375
+  `test_parse_rv_color_unknown_returns_none` test asserted "red"
+  returned `None`; updated to use truly-unrecognised inputs
+  (`oklab(...)`, `color-mix(...)`, garbage). No other regressions.
+  35 new tests; 1280 form-suite tests green.
+
+- **Strip `PDAnnotationRubberStamp.getName` / `setName` camelCase aliases**
+  (`pypdfbox/pdmodel/interactive/annotation/pd_annotation_rubber_stamp.py`).
+  Closes the wave-1366 deferred item: wave-1363 agent D could not remove
+  the aliases without breaking the only caller — a single Java-name pin
+  in `tests/.../test_pd_annotation_attachment_stamp_popup.py::test_rubber_stamp_pdfbox_camelcase_name_aliases`.
+  No production caller used the aliases (verified via project-wide grep —
+  `pypdfbox/examples/pdmodel/rubber_stamp*.py` already call `set_name`),
+  so the strip is: remove the two alias methods + delete the
+  alias-pinning test. Snake-case canonicals `get_name` / `set_name` are
+  untouched. Brings `PDAnnotationRubberStamp` in line with the project's
+  no-camelCase-aliases rule (memory entry `feedback_no_camelcase_aliases`).
+- **N802 audit** (project-wide, `pypdfbox/`). 386 `# noqa: N802`
+  comments remain across 42 files — split between (a) intentional KEEPS
+  (8 fontTools `BasePen` subclass methods + 1 duck-type `getattr` probe in
+  `pypdfbox/rendering/pdf_renderer.py` line 981 for `paste`/`draw_image`/`drawImage`)
+  and (b) Java-name aliases pending removal. Largest alias clusters:
+  `pypdfbox/cos/cos_dictionary.py` (51), `pypdfbox/cos/cos_array.py` (28),
+  `pypdfbox/xmpbox/type/abstract_structured_type.py` (22),
+  `pypdfbox/xmpbox/type/array_property.py` (17),
+  `pypdfbox/xmpbox/type/abstract_simple_property.py` (6), plus the rest
+  of `xmpbox/type/`, `cos/`, `io/`, `fontbox/ttf/`, `pdmodel/encryption/`,
+  `pdmodel/font/standard14_fonts.py`, `pdmodel/graphics/state/`. Stripping
+  these requires coordinated multi-wave updates (each cluster pins
+  ≥1 wave-numbered test); enumerating here for future targeted waves.
+- **Skip audit** (`tests/`, 281 `pytest.skip` calls). Inventory of skips
+  whose reason is NOT corpus-pending / platform-specific / ICU-bidi /
+  intentional divergence enumerated in agent-E wave-1377 report for
+  future targeted waves.
+
+- **Adaptive Coons/tensor patch subdivision** (`pypdfbox/rendering/pdf_renderer.py`).
+  Wave 1375 shipped Coons (type 6) and tensor-product (type 7) patch-mesh
+  rendering with a fixed `N=10` (u, v) subdivision (200 triangles per
+  patch regardless of size). Upstream's `CoonsPatch.calcLevel` /
+  `TensorPatch.calcLevel` pick the per-axis subdivision adaptively:
+  level 1 (2 cells/axis) when both opposite boundary curves are straight
+  lines AND the device-space chord is ≤ 200 px, escalating through
+  levels 2 (≤ 400 px → 4 cells), 3 (≤ 800 px → 8 cells), and 4 (> 800 px
+  or curvy → 16 cells, the cap). Tensor patches additionally retain the
+  high level when any interior control point bows outside the strip
+  between the two opposite boundaries. Ported as module-level
+  `_calc_patch_level(points, ctm) -> (n_u, n_v)` returning per-axis cell
+  counts (not levels) so the rasteriser can index a `(n_v + 1) × (n_u + 1)`
+  grid directly. The renderer threads `_full_ctm()` into the picker so
+  chord lengths are measured in device pixels (matching upstream's
+  "length's unit is one pixel in device space" semantic). The
+  class-level `_PATCH_SUBDIVISION_N` is repurposed as the per-axis cap
+  (= `2 ** _PATCH_MAX_LEVEL` = 16). Result: short flat patches are now
+  rendered with 8 triangles (4 cells × 2) instead of 200 — ~25× faster
+  on simple gradients — while large or curvy patches keep the full
+  detail. Provenance row covers the parity port.
+
+- **Linearization hint stream — Shared Object + Thumbnail sub-tables**
+  (`pypdfbox/pdfparser/linearization_hint_table.py`,
+  `pypdfbox/pdfparser/pdf_parser.py`). Wave 1373 shipped the Page
+  Offset Hint Table decoder (PDF 32000-1 §F.3) and explicitly deferred
+  the two remaining sub-tables in CHANGES.md:721. This wave (1377)
+  closes the deferral: added `SharedObjectHintHeader` + `SharedObjectEntry`
+  + `SharedObjectHintTable` plus `parse_shared_object_hint_header` /
+  `parse_shared_object_hint_table` for §F.4 (24-byte header, per-entry
+  rows carrying a length delta, an optional 128-bit MD5 signature, and
+  a group-object count), and `ThumbnailHintHeader` + `ThumbnailEntry`
+  + `ThumbnailHintTable` plus `parse_thumbnail_hint_header` /
+  `parse_thumbnail_hint_table` for §F.5 (20-byte header, per-page rows
+  carrying a thumbnail length delta and shared-id delta). Both decoders
+  re-use the existing MSB-first `_BitReader`. Threaded into the parser
+  as `PDFParser.decode_shared_object_hint_table()` and
+  `decode_thumbnail_hint_table()`; pypdfbox treats the optional /H[2]
+  and /H[3] slots of the linearization dict's /H array as the
+  decoded-body byte offsets of the two sub-tables (a pypdfbox-specific
+  convention — upstream PDFBox never decodes the hint stream, so there
+  is no Java behaviour to match). Apache PDFBox upstream ships no
+  hint-stream decoder; this is a pypdfbox enrichment.
+
+- **Push-button rollover (/R) + down (/D) appearance variants**
+  (agent A — `pypdfbox/pdmodel/interactive/form/pd_appearance_generator.py`,
+  `tests/pdmodel/interactive/form/test_pd_appearance_generator_push_button_states_wave1377.py`).
+  Closes the wave-1374 deferred note ("Rollover (`/RC`) and alternate / down
+  (`/AC`) captions stay deferred — viewers fall back to `/CA`"). The
+  push-button generator now emits `/AP /R` and `/AP /D` appearance streams
+  alongside the existing `/N` normal stream:
+  - **`_extract_push_button_mk`** pulls `(/CA, /RC, /AC, /BG, /BC)` off the
+    widget's `/MK` dict in one walk. Captions default to `""` (sentinel
+    for "no caption to render"); colours default to `None`.
+  - **`_build_push_button_appearance(widget_cos, caption, bg, bc)`**
+    extracted from the existing `/N` path so the three variants share
+    identical bbox / rotation (`/MK /R`) / iterative shrink-to-fit
+    auto-size / border-stroke / caption-centre logic. Caller picks the
+    `(caption, bg, bc)` triple per variant.
+  - **`_regenerate_push_button_rollover`** uses `/MK /RC` (falls back to
+    `/CA` when `/RC` is the empty string) and a `/MK /BG` lightened by
+    `_PUSH_BUTTON_ROLLOVER_DELTA = 0.10` (per-component additive,
+    clamped to `[0, 1]`). Mirrors Acrobat / Reader's hover affordance.
+  - **`_regenerate_push_button_down`** uses `/MK /AC` (falls back to
+    `/CA` when `/AC` is the empty string) and a `/MK /BG` darkened by
+    `_PUSH_BUTTON_DOWN_DELTA = -0.10`. Mirrors the pressed-button look.
+  - **Empty-variant skip rule** — when `/RC` is absent **and** no
+    `/MK /BG` is set the rollover state carries no visual signal, so
+    no `/AP /R` entry is written (viewers fall back to `/N` per PDF
+    32000 §12.5.5). Same rule for `/AC` + `/BG` and `/D`. Avoids
+    emitting empty / redundant appearance streams.
+  - **`_PUSH_BUTTON_ROLLOVER_DELTA` / `_PUSH_BUTTON_DOWN_DELTA`** tuned
+    to 0.10 so a typical light-grey button `(0.85, 0.85, 0.85)` lands at
+    `(0.95, 0.95, 0.95)` on rollover and `(0.75, 0.75, 0.75)` on down —
+    enough contrast to read as "interactive" without inverting.
+  - `/MK /BC` border colour reused as-is across all three states (the
+    rollover / down signal is the fill, not the stroke).
+  No upstream parity to match here — `AppearanceGeneratorHelper.java`
+  doesn't generate `/R` or `/D` either (PDFBox's push-button surface
+  has always been `/N`-only). pypdfbox-side enrichment for viewers
+  that honour the optional variants. 12 new hand-written tests; full
+  1292-test form suite green.
+
 ## Wave 1376 — wire bundled Liberation TTFs as last-resort font fallback (CJK pattern)
 
 Closes CHANGES.md:454 — "Standard 14 substitution remains deferred". The 12

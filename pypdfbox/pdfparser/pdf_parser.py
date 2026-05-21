@@ -452,6 +452,144 @@ class PDFParser:
         except HintTableParseError:
             return None
 
+    def _read_hint_stream_decoded(self) -> bytes | None:
+        """Locate the primary hint stream object via the byte offset
+        stored in ``/H[0]`` of the linearization parameter dictionary,
+        run its ``/Filter`` chain (typically ``/FlateDecode``), and
+        return the decoded body. Returns ``None`` when the document is
+        not linearized, the hint stream cannot be located, or the
+        filter chain fails to decode.
+
+        Shared between :meth:`decode_shared_object_hint_table` and
+        :meth:`decode_thumbnail_hint_table` — both sub-tables live in
+        the same decoded hint stream body, just at different byte
+        offsets."""
+        lin = self.linearization_dict
+        if lin is None:
+            return None
+        h_arr = lin.get_dictionary_object(COSName.get_pdf_name("H"))
+        if not isinstance(h_arr, COSArray) or h_arr.size() < 2:
+            return None
+        h_off_obj = h_arr.get(0)
+        if not isinstance(h_off_obj, (COSInteger, COSFloat)):
+            return None
+        hint_stream_byte_offset = int(h_off_obj.value)
+        target_key: COSObjectKey | None = None
+        for key, entry in self._resolver.get_xref_table().items():
+            if (
+                entry.type is XrefType.TABLE or entry.type is XrefType.STREAM
+            ) and entry.offset == hint_stream_byte_offset:
+                target_key = key
+                break
+        if target_key is None:
+            return None
+        document = self._document
+        if document is None:
+            return None
+        target_obj = document.get_object(target_key)
+        if target_obj is None:
+            return None
+        resolved = target_obj.get_object()
+        if not isinstance(resolved, COSStream):
+            return None
+        try:
+            with resolved.create_input_stream() as src:
+                return src.read()
+        except (OSError, ValueError):
+            return None
+
+    def _hint_subtable_offset(self, h_index: int) -> int | None:
+        """Return the byte offset into the decoded hint stream body
+        where a non-Page-Offset sub-table starts, derived from
+        ``/H[h_index]`` of the linearization parameter dictionary.
+
+        pypdfbox treats ``/H[2]`` as the byte offset of the Shared
+        Object Hint Table within the decoded hint stream, and ``/H[3]``
+        as the byte offset of the Thumbnail Hint Table. Both are
+        optional; returns ``None`` when missing, non-numeric, or
+        negative. Apache PDFBox upstream never decodes the hint stream
+        so this convention is pypdfbox-specific."""
+        lin = self.linearization_dict
+        if lin is None:
+            return None
+        h_arr = lin.get_dictionary_object(COSName.get_pdf_name("H"))
+        if not isinstance(h_arr, COSArray) or h_arr.size() <= h_index:
+            return None
+        slot = h_arr.get(h_index)
+        if not isinstance(slot, (COSInteger, COSFloat)):
+            return None
+        value = int(slot.value)
+        if value < 0:
+            return None
+        return value
+
+    def decode_shared_object_hint_table(self) -> Any | None:
+        """Decode the Shared Object Hint Table out of the primary hint
+        stream (PDF 32000-1 Annex F.4).
+
+        The Shared Object table follows the Page Offset table in the
+        decoded hint stream body. pypdfbox lets producers signal its
+        start via ``/H[2]`` of the linearization parameter dictionary
+        (a pypdfbox-specific convention — the spec's /H array is
+        documented as [primary_off primary_len overflow_off overflow_len],
+        and slots 2-3 are absent on every-hint-in-the-primary-stream
+        PDFs); when absent, callers should call
+        :func:`parse_shared_object_hint_table` directly with the body
+        sliced past the page-offset table.
+
+        Returns the typed
+        :class:`~pypdfbox.pdfparser.linearization_hint_table.SharedObjectHintTable`
+        on success, or ``None`` when the document is not linearized, the
+        hint stream cannot be located, ``/H[2]`` is missing, or the body
+        is malformed."""
+        from .linearization_hint_table import (  # noqa: PLC0415
+            HintTableParseError,
+            parse_shared_object_hint_table,
+        )
+
+        decoded = self._read_hint_stream_decoded()
+        if decoded is None:
+            return None
+        offset = self._hint_subtable_offset(2)
+        if offset is None or offset >= len(decoded):
+            return None
+        try:
+            return parse_shared_object_hint_table(decoded[offset:])
+        except HintTableParseError:
+            return None
+
+    def decode_thumbnail_hint_table(self) -> Any | None:
+        """Decode the Thumbnail Hint Table out of the primary hint
+        stream (PDF 32000-1 Annex F.5).
+
+        The Thumbnail table sits after the Shared Object table in the
+        decoded hint stream body. pypdfbox lets producers signal its
+        start via ``/H[3]`` of the linearization parameter dictionary
+        (a pypdfbox-specific convention paralleling
+        :meth:`decode_shared_object_hint_table`).
+
+        Returns the typed
+        :class:`~pypdfbox.pdfparser.linearization_hint_table.ThumbnailHintTable`
+        on success, or ``None`` when the document is not linearized, the
+        hint stream cannot be located, ``/H[3]`` is missing, or the body
+        is malformed. Many linearized PDFs ship without thumbnails — a
+        ``None`` return is a normal, non-error outcome."""
+        from .linearization_hint_table import (  # noqa: PLC0415
+            HintTableParseError,
+            parse_thumbnail_hint_table,
+        )
+
+        decoded = self._read_hint_stream_decoded()
+        if decoded is None:
+            return None
+        offset = self._hint_subtable_offset(3)
+        if offset is None or offset >= len(decoded):
+            return None
+        try:
+            return parse_thumbnail_hint_table(decoded[offset:])
+        except HintTableParseError:
+            return None
+
     def _detect_linearization(self) -> None:
         """Parse the first indirect object after the header. If it is a
         dictionary carrying a truthy ``/Linearized`` entry, record it on

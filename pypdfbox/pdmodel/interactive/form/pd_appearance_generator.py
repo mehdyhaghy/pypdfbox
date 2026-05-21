@@ -167,7 +167,18 @@ class _RichTextRun:
     unknown elements still renders.
     """
 
-    __slots__ = ("text", "bold", "italic", "color", "font_size", "font_family", "line_break")
+    __slots__ = (
+        "text",
+        "bold",
+        "italic",
+        "color",
+        "font_size",
+        "font_family",
+        "line_break",
+        "text_rise",
+        "background_color",
+        "underline",
+    )
 
     def __init__(
         self,
@@ -178,6 +189,9 @@ class _RichTextRun:
         font_size: float | None = None,
         font_family: str | None = None,
         line_break: bool = False,
+        text_rise: float = 0.0,
+        background_color: tuple[float, ...] | None = None,
+        underline: bool = False,
     ) -> None:
         self.text = text
         self.bold = bold
@@ -186,6 +200,16 @@ class _RichTextRun:
         self.font_size = font_size
         self.font_family = font_family
         self.line_break = line_break
+        # Wave 1377: long-tail XHTML features.
+        # ``text_rise`` carries the PDF ``Ts`` operator argument used to
+        # offset the baseline for ``<sup>`` / ``<sub>`` runs (positive =
+        # superscript, negative = subscript). ``background_color`` paints
+        # a filled rect behind the run before the glyphs (``<span
+        # style="background-color:...">``). ``underline`` draws a 1pt
+        # underline below the run (``<a href="...">`` or ``<u>``).
+        self.text_rise = text_rise
+        self.background_color = background_color
+        self.underline = underline
 
 
 # Tags whose closing emits an implicit hard line break (paragraph
@@ -212,14 +236,228 @@ _RV_HEX_RE = re.compile(r"#([0-9a-fA-F]{3,8})")
 _RV_RGB_RE = re.compile(
     r"rgb\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)", re.IGNORECASE
 )
+# Wave 1377: ``hsl(h, s%, l%)`` -- standard CSS HSL. ``h`` is degrees
+# (0-360, wraps), ``s`` / ``l`` are percentages with the literal ``%``
+# suffix optional in the regex so producers that elide the ``%`` still
+# parse. ``hsla`` / ``hsl(h, s, l, a)`` alpha is silently ignored
+# (form appearance streams are flattened over the page background).
+_RV_HSL_RE = re.compile(
+    r"hsla?\s*\(\s*(-?\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)%?\s*,"
+    r"\s*(\d+(?:\.\d+)?)%?(?:\s*,\s*[^)]+)?\s*\)",
+    re.IGNORECASE,
+)
+
+# Wave 1377: W3C named colours -- the union of the original 16 HTML
+# basic + the 147 extended (Level 3 / 4) names. Stored verbatim as
+# 8-bit RGB; the caller normalises to 0..1 floats. Coverage matches
+# https://www.w3.org/TR/css-color-4/#named-colors as of 2026.
+_RV_NAMED_COLORS: dict[str, tuple[int, int, int]] = {
+    "aliceblue": (240, 248, 255),
+    "antiquewhite": (250, 235, 215),
+    "aqua": (0, 255, 255),
+    "aquamarine": (127, 255, 212),
+    "azure": (240, 255, 255),
+    "beige": (245, 245, 220),
+    "bisque": (255, 228, 196),
+    "black": (0, 0, 0),
+    "blanchedalmond": (255, 235, 205),
+    "blue": (0, 0, 255),
+    "blueviolet": (138, 43, 226),
+    "brown": (165, 42, 42),
+    "burlywood": (222, 184, 135),
+    "cadetblue": (95, 158, 160),
+    "chartreuse": (127, 255, 0),
+    "chocolate": (210, 105, 30),
+    "coral": (255, 127, 80),
+    "cornflowerblue": (100, 149, 237),
+    "cornsilk": (255, 248, 220),
+    "crimson": (220, 20, 60),
+    "cyan": (0, 255, 255),
+    "darkblue": (0, 0, 139),
+    "darkcyan": (0, 139, 139),
+    "darkgoldenrod": (184, 134, 11),
+    "darkgray": (169, 169, 169),
+    "darkgreen": (0, 100, 0),
+    "darkgrey": (169, 169, 169),
+    "darkkhaki": (189, 183, 107),
+    "darkmagenta": (139, 0, 139),
+    "darkolivegreen": (85, 107, 47),
+    "darkorange": (255, 140, 0),
+    "darkorchid": (153, 50, 204),
+    "darkred": (139, 0, 0),
+    "darksalmon": (233, 150, 122),
+    "darkseagreen": (143, 188, 143),
+    "darkslateblue": (72, 61, 139),
+    "darkslategray": (47, 79, 79),
+    "darkslategrey": (47, 79, 79),
+    "darkturquoise": (0, 206, 209),
+    "darkviolet": (148, 0, 211),
+    "deeppink": (255, 20, 147),
+    "deepskyblue": (0, 191, 255),
+    "dimgray": (105, 105, 105),
+    "dimgrey": (105, 105, 105),
+    "dodgerblue": (30, 144, 255),
+    "firebrick": (178, 34, 34),
+    "floralwhite": (255, 250, 240),
+    "forestgreen": (34, 139, 34),
+    "fuchsia": (255, 0, 255),
+    "gainsboro": (220, 220, 220),
+    "ghostwhite": (248, 248, 255),
+    "gold": (255, 215, 0),
+    "goldenrod": (218, 165, 32),
+    "gray": (128, 128, 128),
+    "green": (0, 128, 0),
+    "greenyellow": (173, 255, 47),
+    "grey": (128, 128, 128),
+    "honeydew": (240, 255, 240),
+    "hotpink": (255, 105, 180),
+    "indianred": (205, 92, 92),
+    "indigo": (75, 0, 130),
+    "ivory": (255, 255, 240),
+    "khaki": (240, 230, 140),
+    "lavender": (230, 230, 250),
+    "lavenderblush": (255, 240, 245),
+    "lawngreen": (124, 252, 0),
+    "lemonchiffon": (255, 250, 205),
+    "lightblue": (173, 216, 230),
+    "lightcoral": (240, 128, 128),
+    "lightcyan": (224, 255, 255),
+    "lightgoldenrodyellow": (250, 250, 210),
+    "lightgray": (211, 211, 211),
+    "lightgreen": (144, 238, 144),
+    "lightgrey": (211, 211, 211),
+    "lightpink": (255, 182, 193),
+    "lightsalmon": (255, 160, 122),
+    "lightseagreen": (32, 178, 170),
+    "lightskyblue": (135, 206, 250),
+    "lightslategray": (119, 136, 153),
+    "lightslategrey": (119, 136, 153),
+    "lightsteelblue": (176, 196, 222),
+    "lightyellow": (255, 255, 224),
+    "lime": (0, 255, 0),
+    "limegreen": (50, 205, 50),
+    "linen": (250, 240, 230),
+    "magenta": (255, 0, 255),
+    "maroon": (128, 0, 0),
+    "mediumaquamarine": (102, 205, 170),
+    "mediumblue": (0, 0, 205),
+    "mediumorchid": (186, 85, 211),
+    "mediumpurple": (147, 112, 219),
+    "mediumseagreen": (60, 179, 113),
+    "mediumslateblue": (123, 104, 238),
+    "mediumspringgreen": (0, 250, 154),
+    "mediumturquoise": (72, 209, 204),
+    "mediumvioletred": (199, 21, 133),
+    "midnightblue": (25, 25, 112),
+    "mintcream": (245, 255, 250),
+    "mistyrose": (255, 228, 225),
+    "moccasin": (255, 228, 181),
+    "navajowhite": (255, 222, 173),
+    "navy": (0, 0, 128),
+    "oldlace": (253, 245, 230),
+    "olive": (128, 128, 0),
+    "olivedrab": (107, 142, 35),
+    "orange": (255, 165, 0),
+    "orangered": (255, 69, 0),
+    "orchid": (218, 112, 214),
+    "palegoldenrod": (238, 232, 170),
+    "palegreen": (152, 251, 152),
+    "paleturquoise": (175, 238, 238),
+    "palevioletred": (219, 112, 147),
+    "papayawhip": (255, 239, 213),
+    "peachpuff": (255, 218, 185),
+    "peru": (205, 133, 63),
+    "pink": (255, 192, 203),
+    "plum": (221, 160, 221),
+    "powderblue": (176, 224, 230),
+    "purple": (128, 0, 128),
+    "rebeccapurple": (102, 51, 153),
+    "red": (255, 0, 0),
+    "rosybrown": (188, 143, 143),
+    "royalblue": (65, 105, 225),
+    "saddlebrown": (139, 69, 19),
+    "salmon": (250, 128, 114),
+    "sandybrown": (244, 164, 96),
+    "seagreen": (46, 139, 87),
+    "seashell": (255, 245, 238),
+    "sienna": (160, 82, 45),
+    "silver": (192, 192, 192),
+    "skyblue": (135, 206, 235),
+    "slateblue": (106, 90, 205),
+    "slategray": (112, 128, 144),
+    "slategrey": (112, 128, 144),
+    "snow": (255, 250, 250),
+    "springgreen": (0, 255, 127),
+    "steelblue": (70, 130, 180),
+    "tan": (210, 180, 140),
+    "teal": (0, 128, 128),
+    "thistle": (216, 191, 216),
+    "tomato": (255, 99, 71),
+    "turquoise": (64, 224, 208),
+    "violet": (238, 130, 238),
+    "wheat": (245, 222, 179),
+    "white": (255, 255, 255),
+    "whitesmoke": (245, 245, 245),
+    "yellow": (255, 255, 0),
+    "yellowgreen": (154, 205, 50),
+    # CSS Color-4 "transparent" keyword: treat as no-paint by mapping to
+    # ``None`` at the caller — we leave it OUT of this table so the
+    # ``transparent`` lookup falls through and the caller returns ``None``.
+}
+
+
+def _hsl_to_rgb(h: float, s: float, lightness: float) -> tuple[float, float, float]:
+    """Convert CSS HSL (h in degrees, s/l in 0..1) to 0..1 RGB.
+
+    Mirrors the CSS Color-3 formula (W3C). HSL hue wraps modulo 360;
+    saturation and lightness are clamped to [0, 1].
+    """
+    s = max(0.0, min(1.0, s))
+    lightness = max(0.0, min(1.0, lightness))
+    # Hue in [0, 1).
+    h = (h % 360.0) / 360.0
+    if s == 0.0:
+        return (lightness, lightness, lightness)
+    q = (
+        lightness * (1.0 + s)
+        if lightness < 0.5
+        else lightness + s - lightness * s
+    )
+    p = 2.0 * lightness - q
+
+    def _hue_to_rgb(t: float) -> float:
+        if t < 0.0:
+            t += 1.0
+        elif t > 1.0:
+            t -= 1.0
+        if t < 1.0 / 6.0:
+            return p + (q - p) * 6.0 * t
+        if t < 1.0 / 2.0:
+            return q
+        if t < 2.0 / 3.0:
+            return p + (q - p) * (2.0 / 3.0 - t) * 6.0
+        return p
+
+    r = _hue_to_rgb(h + 1.0 / 3.0)
+    g = _hue_to_rgb(h)
+    b = _hue_to_rgb(h - 1.0 / 3.0)
+    return (r, g, b)
 
 
 def _parse_rv_color(raw: str) -> tuple[float, ...] | None:
     """Parse a CSS color expression into a 3-tuple of 0-1 RGB floats.
 
-    Lite scope: ``#rgb`` / ``#rrggbb`` (hex) and ``rgb(r,g,b)`` only.
-    Anything else (named colours, ``hsl(...)``, etc.) returns ``None``
-    so the caller falls back to the inherited / ``/DA`` colour.
+    Scope (wave 1377-extended):
+        - ``#rgb`` / ``#rrggbb`` hex literals
+        - ``rgb(r, g, b)`` functional notation
+        - ``hsl(h, s%, l%)`` functional notation (CSS Color-3)
+        - W3C named colours -- 147 names from CSS Color-4
+          (basic 16 + extended), case-insensitive
+
+    Anything else (``oklab(...)``, ``color-mix(...)``, the
+    ``transparent`` keyword) returns ``None`` so the caller falls back
+    to the inherited / ``/DA`` colour. ``oklab`` / ``oklch`` are rare
+    in form rich text; deferred.
     """
     raw = raw.strip()
     hex_match = _RV_HEX_RE.fullmatch(raw)
@@ -255,6 +493,21 @@ def _parse_rv_color(raw: str) -> tuple[float, ...] | None:
             max(0.0, min(1.0, g / 255.0)),
             max(0.0, min(1.0, b / 255.0)),
         )
+    # Wave 1377: hsl(...) functional notation.
+    hsl_match = _RV_HSL_RE.fullmatch(raw)
+    if hsl_match is not None:
+        try:
+            h = float(hsl_match.group(1))
+            s = float(hsl_match.group(2)) / 100.0
+            lightness = float(hsl_match.group(3)) / 100.0
+        except ValueError:
+            return None
+        return _hsl_to_rgb(h, s, lightness)
+    # Wave 1377: W3C named colours (case-insensitive). Returns ``None``
+    # for unknown names so the caller can keep the inherited colour.
+    named = _RV_NAMED_COLORS.get(raw.lower())
+    if named is not None:
+        return (named[0] / 255.0, named[1] / 255.0, named[2] / 255.0)
     return None
 
 
@@ -307,9 +560,9 @@ def _parse_rv_runs(xhtml: str) -> list[_RichTextRun] | None:
 
     Returns ``None`` when the payload is not well-formed XML — caller
     falls back to the ``/V`` rendering path. The parser is intentionally
-    lenient: unknown tags (e.g. ``<font>``, ``<u>``, ``<em>``) walk
-    transparently so their text content still appears; unsupported
-    style declarations are silently dropped.
+    lenient: unknown tags (e.g. ``<font>``) walk transparently so their
+    text content still appears; unsupported style declarations are
+    silently dropped.
 
     Implementation notes:
         - Uses stdlib :mod:`xml.etree.ElementTree`; no external deps
@@ -321,12 +574,43 @@ def _parse_rv_runs(xhtml: str) -> list[_RichTextRun] | None:
           ``<body xmlns="http://www.w3.org/1999/xhtml">``).
         - Empty paragraphs (``<p/>``, ``<p></p>``) produce a single
           line-break run — matches the "vertical spacing" spec note.
+
+    Wave 1377 extensions (long-tail XHTML):
+        - ``<sup>`` / ``<sub>`` superscript / subscript — emit a
+          ``Ts`` (text-rise) offset and shrink the font size to
+          ``0.583 * parent`` (matches the de-facto CSS rendering).
+        - ``background-color: ...`` style declaration — fills a coloured
+          rect behind the run before the glyphs are painted.
+        - ``<a href="...">`` — applies the conventional blue colour
+          (``#0000ee``) plus an underline unless the producer overrode
+          the colour via ``style="color: ..."``. Doesn't wire a Link
+          annotation (rich-text rendering produces an appearance
+          stream, not annotations).
+        - ``<u>`` — underline the run.
+        - ``<ul>`` / ``<ol>`` / ``<li>`` — list rendering: each ``<li>``
+          gets a ``"•  "`` prefix (``<ul>``) or ``"<n>.  "``
+          (``<ol>``), and a hard line break between items.
+        - ``<table>`` (deferred) — walked transparently, so cell text
+          still renders but without column alignment. Real table
+          layout is genuinely complex; deferred to a future wave.
     """
     try:
         root = ET.fromstring(xhtml)
     except ET.ParseError:
         return None
     runs: list[_RichTextRun] = []
+    # Sub-/super-script font-size multiplier. CSS lays subscripts /
+    # superscripts at ~0.583em (the empirical browser default).
+    sub_sup_scale = 0.583
+    # Conventional link colour Acrobat uses when no override is present
+    # (matches HTML's ``a:link`` default ``#0000ee``).
+    link_default_color: tuple[float, float, float] = (0.0, 0.0, 238.0 / 255.0)
+
+    # Per-list state: stack of ("ul", None) / ("ol", counter) entries so
+    # nested lists pick the right marker prefix. Pushed on ``<ul>`` /
+    # ``<ol>`` enter, popped on close; the ``<li>`` enter reads the
+    # innermost entry and increments the ``<ol>`` counter.
+    list_stack: list[tuple[str, int]] = []
 
     def walk(
         element: ET.Element,
@@ -336,6 +620,9 @@ def _parse_rv_runs(xhtml: str) -> list[_RichTextRun] | None:
         color: tuple[float, ...] | None,
         font_size: float | None,
         font_family: str | None,
+        text_rise: float,
+        background_color: tuple[float, ...] | None,
+        underline: bool,
     ) -> None:
         tag = _strip_xhtml_ns(element.tag)
         # Apply per-element style overrides (style attr + tag semantics).
@@ -355,6 +642,47 @@ def _parse_rv_runs(xhtml: str) -> list[_RichTextRun] | None:
         local_font_family = font_family
         if "font-family" in style:
             local_font_family = style["font-family"].strip().strip('"\'')
+        local_text_rise = text_rise
+        local_background = background_color
+        if "background-color" in style:
+            parsed_bg = _parse_rv_color(style["background-color"])
+            if parsed_bg is not None:
+                local_background = parsed_bg
+        elif "background" in style:
+            # CSS shorthand -- accept colour-only declarations like
+            # ``background: yellow``. Anything else (URL, gradient)
+            # fails ``_parse_rv_color`` and falls through.
+            parsed_bg = _parse_rv_color(style["background"])
+            if parsed_bg is not None:
+                local_background = parsed_bg
+        local_underline = underline or tag == "u"
+        # Sub / sup: shrink size + offset the baseline. The CSS Color-3
+        # recommendation puts sup at +0.4em / sub at -0.2em on top of
+        # the 0.583 shrink. Parent ``text_rise`` is preserved so nested
+        # ``<sup><sub>`` stack correctly.
+        if tag == "sup":
+            base = local_font_size if local_font_size is not None else 0.0
+            # Caller's font size may be ``None`` (inherit /DA size). The
+            # rise is expressed in user units which the appearance
+            # renderer later treats relative to the resolved base.
+            local_font_size = (base if base > 0.0 else 1.0) * sub_sup_scale
+            # Positive rise -- raise the baseline ~0.4em of the parent.
+            local_text_rise = local_text_rise + (
+                base if base > 0.0 else 1.0
+            ) * 0.4
+        elif tag == "sub":
+            base = local_font_size if local_font_size is not None else 0.0
+            local_font_size = (base if base > 0.0 else 1.0) * sub_sup_scale
+            local_text_rise = local_text_rise - (
+                base if base > 0.0 else 1.0
+            ) * 0.2
+        # <a href="..."> -- conventional blue + underline unless the
+        # producer's own colour declaration already won above.
+        if tag == "a" and element.get("href"):
+            local_underline = True
+            if "color" not in style:
+                local_color = link_default_color
+
         # Self-closing line break.
         if tag == "br":
             runs.append(_RichTextRun(line_break=True))
@@ -368,9 +696,34 @@ def _parse_rv_runs(xhtml: str) -> list[_RichTextRun] | None:
                         color=color,
                         font_size=font_size,
                         font_family=font_family,
+                        text_rise=text_rise,
+                        background_color=background_color,
+                        underline=underline,
                     )
                 )
             return
+        # ----- list enter -----------------------------------------------------
+        if tag in ("ul", "ol"):
+            list_stack.append((tag, 0))
+        # <li> enter: emit the marker prefix as its own run.
+        if tag == "li" and list_stack:
+            kind, counter = list_stack[-1]
+            counter += 1
+            list_stack[-1] = (kind, counter)
+            marker = "•  " if kind == "ul" else f"{counter}.  "
+            runs.append(
+                _RichTextRun(
+                    text=marker,
+                    bold=local_bold,
+                    italic=local_italic,
+                    color=local_color,
+                    font_size=local_font_size,
+                    font_family=local_font_family,
+                    text_rise=local_text_rise,
+                    background_color=local_background,
+                    underline=local_underline,
+                )
+            )
         # Element text (before any children).
         if element.text:
             runs.append(
@@ -381,6 +734,9 @@ def _parse_rv_runs(xhtml: str) -> list[_RichTextRun] | None:
                     color=local_color,
                     font_size=local_font_size,
                     font_family=local_font_family,
+                    text_rise=local_text_rise,
+                    background_color=local_background,
+                    underline=local_underline,
                 )
             )
         empty_block = (
@@ -396,6 +752,9 @@ def _parse_rv_runs(xhtml: str) -> list[_RichTextRun] | None:
                 color=local_color,
                 font_size=local_font_size,
                 font_family=local_font_family,
+                text_rise=local_text_rise,
+                background_color=local_background,
+                underline=local_underline,
             )
         # Block-level close: emit line break + paragraph spacing.
         if tag in _RV_BLOCK_TAGS:
@@ -405,6 +764,12 @@ def _parse_rv_runs(xhtml: str) -> list[_RichTextRun] | None:
                 # as two line breaks so the rendered baseline advances
                 # one full line height of blank space.
                 runs.append(_RichTextRun(line_break=True))
+        # <li> close: hard line break between items.
+        if tag == "li":
+            runs.append(_RichTextRun(line_break=True))
+        # <ul> / <ol> close: pop the list stack.
+        if tag in ("ul", "ol") and list_stack:
+            list_stack.pop()
         # Tail text after the element (in the parent's context).
         if element.tail:
             runs.append(
@@ -415,6 +780,9 @@ def _parse_rv_runs(xhtml: str) -> list[_RichTextRun] | None:
                     color=color,
                     font_size=font_size,
                     font_family=font_family,
+                    text_rise=text_rise,
+                    background_color=background_color,
+                    underline=underline,
                 )
             )
 
@@ -425,6 +793,9 @@ def _parse_rv_runs(xhtml: str) -> list[_RichTextRun] | None:
         color=None,
         font_size=None,
         font_family=None,
+        text_rise=0.0,
+        background_color=None,
+        underline=False,
     )
     # Trim a single trailing line break so the rendered output doesn't
     # have an extra blank line at the bottom of the rect.
@@ -471,12 +842,16 @@ class PDAppearanceGenerator:
     breaking on whitespace, advancing the baseline by ``size * 1.15``
     per line.
 
-    **Push buttons (Wave 33+):** the widget's ``/MK /CA`` caption is
-    rendered as flat text centred in the rect, with an optional border
-    drawn from ``/MK /BC`` and a flat background fill from ``/MK /BG``.
-    Rollover (``/RC``) and alternate / down (``/AC``) captions stay
-    deferred — viewers fall back to ``/CA`` when those entries are
-    absent, so the lite surface still produces a usable widget.
+    **Push buttons (Wave 33+, /R + /D closed in Wave 1377):** the
+    widget's ``/MK /CA`` caption is rendered as flat text centred in
+    the rect, with an optional border drawn from ``/MK /BC`` and a
+    flat background fill from ``/MK /BG``. Rollover (``/MK /RC``) and
+    alternate / down (``/MK /AC``) captions emit ``/AP /R`` and ``/AP
+    /D`` appearance streams alongside ``/N`` — rollover uses a
+    lightened ``/MK /BG``, down uses a darkened ``/MK /BG``. When
+    ``/RC`` / ``/AC`` are absent **and** no ``/MK /BG`` is set the
+    variant is skipped (viewers fall back to ``/N`` per PDF 32000
+    §12.5.5).
 
     **Signature fields (Wave 33+):** when the field carries a
     ``/V`` ``PDSignature``, the visual appearance is a flat box with
@@ -1485,7 +1860,7 @@ class PDAppearanceGenerator:
         interior_w: float,
         height: float,
     ) -> None:
-        """Emit ``runs`` into ``cs`` as a single ``BT ... ET`` text object.
+        """Emit ``runs`` into ``cs`` as a sequence of text + path operations.
 
         Each run's bold/italic/font-family triple maps to a PDFont via
         :meth:`_resolve_rich_text_font`; ``color`` (when set) flushes a
@@ -1493,27 +1868,84 @@ class PDAppearanceGenerator:
         overrides the base size for the duration of the run.
         ``line_break`` runs emit ``T*`` (the PDF operator the brief
         calls out).
-        """
-        cs.begin_text()
-        default_color = base_color if base_color is not None else (0.0,)
-        cs.set_non_stroking_color(default_color)
-        cs.set_font(base_font, base_size)
-        line_height = base_size * 1.15
-        top_y = max(2.0, height - base_size * 1.15)
-        cs.new_line_at_offset(2.0, top_y)
 
+        Wave 1377 extensions:
+            - ``text_rise`` non-zero emits the ``Ts`` operator (baseline
+              offset for ``<sup>`` / ``<sub>``).
+            - ``background_color`` set: end text, paint a filled rect
+              under the run, resume text. The rect spans the run's
+              measured advance width by ``size * 1.15`` (line height).
+            - ``underline`` set: end text, draw a 1pt line below the
+              baseline (at ``y - size * 0.1``), resume text.
+
+        Pen position is tracked manually so background / underline rects
+        line up with the glyph run.
+        """
+        default_color = base_color if base_color is not None else (0.0,)
+        line_height = base_size * 1.15
+        top_y = max(2.0, height - line_height)
+        # Manual pen tracking. ``pen_x`` / ``pen_y`` mirror the text
+        # matrix translation; we update them on every show_text /
+        # line-break. Because PDF text mode forbids path operators
+        # (re / f / S), we end+re-begin the text object whenever we
+        # need to paint a background or stroke an underline.
+        pen_x = 2.0
+        pen_y = top_y
+        line_start_x = 2.0
+
+        current_font: PDFont = base_font
         current_font_cos = base_font.get_cos_object()
         current_size = base_size
         current_color = default_color
+        current_text_rise = 0.0
+        text_mode_open = False
 
+        def _open_text_mode() -> None:
+            nonlocal text_mode_open
+            if text_mode_open:
+                return
+            cs.begin_text()
+            cs.set_non_stroking_color(current_color)
+            cs.set_font(current_font, current_size)
+            # We just emitted Tf; reset rise via Ts.
+            if current_text_rise != 0.0:
+                cs.set_text_rise(current_text_rise)
+            cs._write_operands(line_height)
+            cs._write_operator(b"TL")
+            # Re-establish the text matrix at the current pen.
+            cs.new_line_at_offset(pen_x, pen_y)
+            text_mode_open = True
+
+        def _close_text_mode() -> None:
+            nonlocal text_mode_open
+            if not text_mode_open:
+                return
+            cs.end_text()
+            text_mode_open = False
+
+        # Initial open: set up the baseline and the leading.
+        cs.begin_text()
+        cs.set_non_stroking_color(default_color)
+        cs.set_font(base_font, base_size)
+        cs.new_line_at_offset(2.0, top_y)
         # T* advances by the leading parameter -- drop a TL operator
         # so subsequent T* operators advance by ``line_height``.
         cs._write_operands(line_height)
         cs._write_operator(b"TL")
+        text_mode_open = True
 
         for run in runs:
             if run.line_break:
-                cs.new_line()
+                pen_y = pen_y - line_height
+                pen_x = 2.0
+                line_start_x = 2.0
+                if text_mode_open:
+                    cs.new_line()
+                else:
+                    # Path mode left us outside BT/ET. _open_text_mode
+                    # will re-establish the text matrix at (pen_x, pen_y)
+                    # on the next text-emitting run.
+                    pass
                 continue
             if not run.text:
                 continue
@@ -1522,16 +1954,74 @@ class PDAppearanceGenerator:
             )
             run_size = run.font_size if run.font_size is not None else base_size
             run_color = run.color if run.color is not None else default_color
+            run_rise = run.text_rise
             font_cos = run_font.get_cos_object()
+            # Measure the run's advance ahead of state changes -- needed
+            # for background rect + underline regardless of which mode
+            # we're in.
+            advance = self._estimate_text_width(run_font, run_size, run.text)
+
+            # ---- background-color (paint before glyphs) ----
+            if run.background_color is not None:
+                _close_text_mode()
+                cs.save_graphics_state()
+                cs.set_non_stroking_color(run.background_color)
+                # Use the active run size for the rect height -- not the
+                # base size -- so backgrounds behind super/sub runs are
+                # also scaled.
+                rect_h = run_size * 1.15
+                # y baseline is pen_y, the rect should cover from the
+                # baseline descender (~-0.2em) upward by line height.
+                cs.add_rect(
+                    pen_x,
+                    pen_y - run_size * 0.2,
+                    advance,
+                    rect_h,
+                )
+                cs.fill()
+                cs.restore_graphics_state()
+                # Re-open text mode at the saved pen.
+                _open_text_mode()
+
+            # ---- text state ----
+            if not text_mode_open:
+                _open_text_mode()
             if font_cos is not current_font_cos or run_size != current_size:
                 cs.set_font(run_font, run_size)
+                current_font = run_font
                 current_font_cos = font_cos
                 current_size = run_size
             if run_color != current_color:
                 cs.set_non_stroking_color(run_color)
                 current_color = run_color
+            if run_rise != current_text_rise:
+                cs.set_text_rise(run_rise)
+                current_text_rise = run_rise
             cs.show_text(run.text)
-        cs.end_text()
+
+            # ---- underline (stroke after glyphs) ----
+            if run.underline:
+                _close_text_mode()
+                cs.save_graphics_state()
+                # Underline colour = run colour.
+                cs.set_stroking_color(run_color)
+                # 1pt line for typical body text; clamp to avoid the
+                # 0-width hairline for tiny sub/sup runs.
+                cs.set_line_width(max(0.5, run_size * 0.05))
+                under_y = pen_y - run_size * 0.1
+                cs.move_to(pen_x, under_y)
+                cs.line_to(pen_x + advance, under_y)
+                cs.stroke()
+                cs.restore_graphics_state()
+                _open_text_mode()
+
+            pen_x = pen_x + advance
+            # Track line_start_x for the next break (kept as a sentinel
+            # for future width-based break logic; unused right now).
+            _ = line_start_x
+
+        if text_mode_open:
+            cs.end_text()
 
     def _resolve_rich_text_font(
         self,
@@ -1816,38 +2306,102 @@ class PDAppearanceGenerator:
           auto-sized to the rect height, centered horizontally and
           vertically.
 
-        Rollover (``/MK /RC``) and alternate / down (``/MK /AC``)
-        captions stay deferred — viewers fall back to ``/CA`` when those
-        entries are absent.
+        **Wave 1377 closes the wave-1374 deferred note**: rollover
+        (``/MK /RC``) and alternate / down (``/MK /AC``) captions now
+        emit ``/AP /R`` and ``/AP /D`` appearance streams alongside the
+        ``/N`` normal stream. The rollover stream uses a lightened
+        ``/MK /BG`` (Acrobat-style hover affordance); the down stream
+        uses a darkened ``/MK /BG`` (pressed-button affordance). Both
+        reuse the ``/MK /BC`` border colour and the widget's ``/MK /R``
+        rotation. When ``/RC`` / ``/AC`` are absent **and** no ``/MK
+        /BG`` is set the variant carries no visual signal, so the
+        generator skips emitting it (PDF readers fall back to ``/N``
+        per PDF 32000 §12.5.5).
         """
         for widget in field.get_widgets():
             self._regenerate_push_button_widget(widget)
+            self._regenerate_push_button_rollover(widget)
+            self._regenerate_push_button_down(widget)
 
-    def _regenerate_push_button_widget(self, widget: PDAnnotationWidget) -> None:
-        widget_cos = widget.get_cos_object()
+    # Brightness deltas applied to /MK /BG for the rollover (hover) and
+    # down (clicked) push-button variants. Mirrors Acrobat / Reader's
+    # visual convention of a slightly lighter hover surface and a
+    # slightly darker pressed surface so a viewer that honours /R and
+    # /D immediately reads "interactive". Tuned to 0.10 so a typical
+    # light-grey button (0.85, 0.85, 0.85) lands at (0.95, 0.95, 0.95)
+    # on rollover and (0.75, 0.75, 0.75) on down — enough contrast to
+    # register but not enough to invert the colour.
+    _PUSH_BUTTON_ROLLOVER_DELTA: float = 0.10
+    _PUSH_BUTTON_DOWN_DELTA: float = -0.10
+
+    @staticmethod
+    def _adjust_color_brightness(
+        color: tuple[float, ...] | None, delta: float
+    ) -> tuple[float, ...] | None:
+        """Lighten (``delta > 0``) or darken (``delta < 0``) a ``/MK``
+        colour tuple by adding ``delta`` to each component and clamping
+        to ``[0.0, 1.0]``. ``None`` round-trips to ``None`` so callers
+        treat "no background" as "no variant tint"."""
+        if color is None:
+            return None
+        return tuple(max(0.0, min(1.0, c + delta)) for c in color)
+
+    def _extract_push_button_mk(
+        self, widget_cos: COSDictionary
+    ) -> tuple[str, str, str, tuple[float, ...] | None, tuple[float, ...] | None]:
+        """Pull ``(/CA, /RC, /AC, /BG, /BC)`` off a widget's ``/MK``.
+
+        Captions default to the empty string when absent (the empty
+        string is a sentinel for "no caption to render"). Colours
+        default to ``None`` when absent or non-numeric.
+        """
+        caption = ""
+        rollover_caption = ""
+        alternate_caption = ""
+        bg: tuple[float, ...] | None = None
+        bc: tuple[float, ...] | None = None
+        mk = widget_cos.get_dictionary_object(_MK)
+        if isinstance(mk, COSDictionary):
+            ca = mk.get_string(COSName.get_pdf_name("CA"))
+            if isinstance(ca, str):
+                caption = ca
+            rc = mk.get_string(COSName.get_pdf_name("RC"))
+            if isinstance(rc, str):
+                rollover_caption = rc
+            ac = mk.get_string(COSName.get_pdf_name("AC"))
+            if isinstance(ac, str):
+                alternate_caption = ac
+            bg = self._color_array_to_tuple(
+                mk.get_dictionary_object(COSName.get_pdf_name("BG"))
+            )
+            bc = self._color_array_to_tuple(
+                mk.get_dictionary_object(COSName.get_pdf_name("BC"))
+            )
+        return caption, rollover_caption, alternate_caption, bg, bc
+
+    def _build_push_button_appearance(
+        self,
+        widget_cos: COSDictionary,
+        caption: str,
+        bg: tuple[float, ...] | None,
+        bc: tuple[float, ...] | None,
+    ) -> PDAppearanceStream | None:
+        """Build a single push-button appearance stream for ``caption``.
+
+        Returns ``None`` when the widget rect is missing or degenerate.
+        Shared by the ``/N``, ``/R`` and ``/D`` variants — caller
+        decides which caption + background to feed in. Honours ``/MK
+        /R`` rotation (matrix + bbox swap) and iterative shrink-to-fit
+        auto-sizing exactly like the wave-1374 ``/N`` path.
+        """
         rect = _rect_from_cos(widget_cos.get_dictionary_object(_RECT))
         if rect is None:
-            return
+            return None
         llx, lly, urx, ury = rect
         width = urx - llx
         height = ury - lly
         if width <= 0.0 or height <= 0.0:
-            return
-
-        caption = ""
-        bg: tuple[float, ...] | None = None
-        bc: tuple[float, ...] | None = None
-        ac = widget_cos.get_dictionary_object(_MK)
-        if isinstance(ac, COSDictionary):
-            ca = ac.get_string(COSName.get_pdf_name("CA"))
-            if isinstance(ca, str):
-                caption = ca
-            bg = self._color_array_to_tuple(
-                ac.get_dictionary_object(COSName.get_pdf_name("BG"))
-            )
-            bc = self._color_array_to_tuple(
-                ac.get_dictionary_object(COSName.get_pdf_name("BC"))
-            )
+            return None
 
         # Wave 1374 — honor /MK /R rotation.
         rotation = self._resolve_widget_rotation(widget_cos)
@@ -1897,14 +2451,88 @@ class PDAppearanceGenerator:
                 cs.show_text(caption)
                 cs.end_text()
             cs.restore_graphics_state()
+        return appearance_stream
 
+    @staticmethod
+    def _ensure_ap_dict(widget_cos: COSDictionary) -> PDAppearanceDictionary:
+        """Get or create the widget's ``/AP`` dictionary."""
         ap_value = widget_cos.get_dictionary_object(_AP)
         if isinstance(ap_value, COSDictionary):
-            ap_dict = PDAppearanceDictionary(ap_value)
-        else:
-            ap_dict = PDAppearanceDictionary()
-            widget_cos.set_item(_AP, ap_dict.get_cos_object())
+            return PDAppearanceDictionary(ap_value)
+        ap_dict = PDAppearanceDictionary()
+        widget_cos.set_item(_AP, ap_dict.get_cos_object())
+        return ap_dict
+
+    def _regenerate_push_button_widget(self, widget: PDAnnotationWidget) -> None:
+        widget_cos = widget.get_cos_object()
+        caption, _rc, _ac, bg, bc = self._extract_push_button_mk(widget_cos)
+        appearance_stream = self._build_push_button_appearance(
+            widget_cos, caption, bg, bc
+        )
+        if appearance_stream is None:
+            return
+        ap_dict = self._ensure_ap_dict(widget_cos)
         ap_dict.set_normal_appearance(appearance_stream)
+
+    def _regenerate_push_button_rollover(
+        self, widget: PDAnnotationWidget
+    ) -> None:
+        """Emit the ``/AP /R`` rollover appearance stream (Wave 1377).
+
+        Pulls the rollover caption from ``/MK /RC`` (falling back to
+        ``/CA`` when ``/RC`` is the empty string) and tints ``/MK /BG``
+        lighter by :attr:`_PUSH_BUTTON_ROLLOVER_DELTA`. When the widget
+        has neither a distinguishing rollover caption nor a background
+        colour to tint, the rollover state carries no visual signal,
+        so the method returns without writing ``/AP /R`` (viewers fall
+        back to ``/N`` per PDF 32000 §12.5.5).
+        """
+        widget_cos = widget.get_cos_object()
+        caption, rollover_caption, _ac, bg, bc = self._extract_push_button_mk(
+            widget_cos
+        )
+        # No distinguishing rollover signal -> skip the entry entirely.
+        if not rollover_caption and bg is None:
+            return
+        effective_caption = rollover_caption if rollover_caption else caption
+        effective_bg = self._adjust_color_brightness(
+            bg, self._PUSH_BUTTON_ROLLOVER_DELTA
+        )
+        appearance_stream = self._build_push_button_appearance(
+            widget_cos, effective_caption, effective_bg, bc
+        )
+        if appearance_stream is None:
+            return
+        ap_dict = self._ensure_ap_dict(widget_cos)
+        ap_dict.set_rollover_appearance(appearance_stream)
+
+    def _regenerate_push_button_down(self, widget: PDAnnotationWidget) -> None:
+        """Emit the ``/AP /D`` down (clicked) appearance stream (Wave 1377).
+
+        Pulls the down caption from ``/MK /AC`` (falling back to ``/CA``
+        when ``/AC`` is the empty string) and tints ``/MK /BG`` darker
+        by :attr:`_PUSH_BUTTON_DOWN_DELTA`. When the widget has neither
+        a distinguishing down caption nor a background colour to tint,
+        the down state carries no visual signal, so the method returns
+        without writing ``/AP /D``.
+        """
+        widget_cos = widget.get_cos_object()
+        caption, _rc, alternate_caption, bg, bc = self._extract_push_button_mk(
+            widget_cos
+        )
+        if not alternate_caption and bg is None:
+            return
+        effective_caption = alternate_caption if alternate_caption else caption
+        effective_bg = self._adjust_color_brightness(
+            bg, self._PUSH_BUTTON_DOWN_DELTA
+        )
+        appearance_stream = self._build_push_button_appearance(
+            widget_cos, effective_caption, effective_bg, bc
+        )
+        if appearance_stream is None:
+            return
+        ap_dict = self._ensure_ap_dict(widget_cos)
+        ap_dict.set_down_appearance(appearance_stream)
 
     @staticmethod
     def _color_array_to_tuple(value: COSBase | None) -> tuple[float, ...] | None:

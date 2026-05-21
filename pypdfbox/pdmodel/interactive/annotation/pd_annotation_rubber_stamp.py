@@ -98,11 +98,5 @@ class PDAnnotationRubberStamp(PDAnnotation):
         """Return ``True`` when the resolved icon is the spec default."""
         return self.get_name() == self.NAME_DRAFT
 
-    def getName(self) -> str:  # noqa: N802 - upstream Java name
-        return self.get_name()
-
-    def setName(self, name: str | None) -> None:  # noqa: N802 - upstream Java name
-        self.set_name(name)
-
 
 __all__ = ["PDAnnotationRubberStamp"]

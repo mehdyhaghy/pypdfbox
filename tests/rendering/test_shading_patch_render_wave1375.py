@@ -4,9 +4,12 @@ shadings — Wave 1375.
 Wave 1374 ported the patch-stream geometry decoders
 (``PDShadingType6.parse_patches`` / ``PDShadingType7.parse_patches``).
 Wave 1375 wires the renderer to consume those patches and rasterise via
-N×N parametric subdivision (N=10 by default), so the structural
-assertions below sample the output for mean colour, alpha-mask area, and
-specific-pixel colour within tolerance — not pixel-exact compares.
+N×N parametric subdivision; Wave 1377 swaps the fixed N=10 for upstream's
+adaptive ``calcLevel`` (per-axis cells driven by chord length / interior
+control-point bowing), capped at ``_PATCH_SUBDIVISION_N`` cells per axis.
+The structural assertions below sample the output for mean colour,
+alpha-mask area, and specific-pixel colour within tolerance — not
+pixel-exact compares.
 """
 
 from __future__ import annotations
@@ -233,10 +236,18 @@ def test_coons_two_color_gradient_patch_mid_is_interpolated() -> None:
     img = _attach_and_render(doc, page, shading)
     # The midpoint (user x=50, y=50) → PIL (50, 50) since y is flipped
     # by the renderer's page matrix. Both red and blue should be ~ 125.
+    # Wave 1377 — the adaptive subdivision now picks N=2 for a 100x100
+    # patch (chord length < 200 px), so the central triangle's flat fill
+    # is the average of three sample corners that straddle u/v=0.5
+    # asymmetrically — relax tolerance accordingly. Mid is still
+    # "purple-ish" (red and blue both present, green low).
     mid = _sample(img, 50, 50)
-    # Red and blue components should be close (within tolerance); green
-    # should be ~ 30.
-    assert abs(mid[0] - mid[2]) <= 40, f"red/blue not balanced at midpoint: {mid}"
+    # Red and blue components should be close (within the coarse-grid
+    # tolerance); green should be ~ 30.
+    assert abs(mid[0] - mid[2]) <= 80, f"red/blue not balanced at midpoint: {mid}"
+    assert mid[0] > 40 and mid[2] > 40, (
+        f"red and blue both expected non-trivial: {mid}"
+    )
     assert mid[1] < 80, f"green channel should be low: {mid}"
     # Sample near bottom edge (y near 10 in user → near bottom of image).
     near_bottom = _sample(img, 50, 85)
@@ -455,10 +466,11 @@ def test_paint_patch_mesh_shading_returns_true_directly() -> None:
     assert mid[2] > mid[0], f"mid not blue-ish: {mid}"
 
 
-def test_coons_subdivision_count_is_default_n_10() -> None:
-    """Patch rasterisation uses N=10 (200 triangles per patch) per the
-    Wave 1375 default. Pin the constant so future tuning is explicit."""
-    assert PDFRenderer._PATCH_SUBDIVISION_N == 10
+def test_coons_subdivision_cap_matches_upstream_max_level() -> None:
+    """Wave 1377 — the renderer's ``_PATCH_SUBDIVISION_N`` is now the
+    per-axis cap, not the fixed subdivision. Upstream's ``calcLevel``
+    init value is 4, so the cap is ``2 ** 4 = 16`` cells per axis."""
+    assert PDFRenderer._PATCH_SUBDIVISION_N == 16
 
 
 def test_coons_patch_class_dispatch_constructs_typed_wrapper() -> None:

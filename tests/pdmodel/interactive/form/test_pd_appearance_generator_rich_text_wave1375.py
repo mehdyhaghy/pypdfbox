@@ -81,9 +81,14 @@ def test_parse_rv_color_rgb_func() -> None:
 
 
 def test_parse_rv_color_unknown_returns_none() -> None:
-    assert _parse_rv_color("red") is None
-    assert _parse_rv_color("hsl(0, 100%, 50%)") is None
+    # Wave 1377 widened ``_parse_rv_color`` to accept HSL and the 147
+    # CSS named colours, so "red" and "hsl(...)" now parse. Anything
+    # outside the supported grammar (``oklab``, ``color-mix``, garbage,
+    # empty string) still falls back to ``None``.
+    assert _parse_rv_color("oklab(0.7 0.1 0.1)") is None
+    assert _parse_rv_color("color-mix(in srgb, red, blue)") is None
     assert _parse_rv_color("") is None
+    assert _parse_rv_color("notacolor") is None
 
 
 # ---------- _parse_rv_font_size ----------

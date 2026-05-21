@@ -76,14 +76,6 @@ def test_rubber_stamp_name_round_trip() -> None:
     assert ann.get_name() == "Approved"
 
 
-def test_rubber_stamp_pdfbox_camelcase_name_aliases() -> None:
-    ann = PDAnnotationRubberStamp()
-    ann.setName(PDAnnotationRubberStamp.NAME_FINAL)
-    assert ann.getName() == "Final"
-    ann.setName(None)
-    assert ann.getName() == "Draft"
-
-
 def test_rubber_stamp_name_constants_exist() -> None:
     expected = {
         "NAME_APPROVED": "Approved",
