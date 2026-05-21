@@ -171,6 +171,7 @@ def test_signed_signature_with_date_emits_both_lines() -> None:
     assert b"Alice" in body
     assert b"D:20260508120000Z" in body
     assert b"Sign here" not in body
+    assert b"Click to sign" not in body
 
 
 def test_signature_with_only_date_is_treated_as_signed() -> None:
@@ -185,6 +186,7 @@ def test_signature_with_only_date_is_treated_as_signed() -> None:
     body = _normal_body(sig_field)
     assert b"D:20260508123000Z" in body
     assert b"Sign here" not in body
+    assert b"Click to sign" not in body
     assert b"[3 3] 0 d" not in body
 
 

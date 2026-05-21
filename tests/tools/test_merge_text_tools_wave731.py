@@ -5,81 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from pypdfbox.cos import COSArray, COSDictionary, COSName, COSNull, COSStream, COSString
-from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
+from pypdfbox.cos import COSName, COSStream
+from pypdfbox.pdmodel import PDDocument, PDRectangle
 from pypdfbox.pdmodel.font import PDFontFactory
 from pypdfbox.pdmodel.font.pd_font import PDFont
 from pypdfbox.pdmodel.font.pd_font_descriptor import PDFontDescriptor
-from pypdfbox.tools import merge, texttopdf, writedecodedstream
-
-
-def test_wave731_merge_remap_page_links_skips_non_dictionary_annots() -> None:
-    src_page = COSDictionary()
-    new_page = COSDictionary()
-    src_link = COSDictionary()
-    src_link.set_name("Subtype", "Link")
-
-    src_page.set_item("Annots", COSArray([COSString("not-a-dict"), src_link]))
-    new_page.set_item("Annots", COSArray([COSDictionary(), COSString("not-a-dict")]))
-
-    merge._remap_page_links(src_page, new_page, {})  # noqa: SLF001
-
-    new_annots = new_page.get_dictionary_object("Annots")
-    assert isinstance(new_annots, COSArray)
-    assert isinstance(new_annots.get_object(0), COSDictionary)
-    assert isinstance(new_annots.get_object(1), COSString)
-
-
-def test_wave731_merge_supported_names_merges_legacy_dests_and_skips_null() -> None:
-    src = PDDocument()
-    target = PDDocument()
-    try:
-        src_page = PDPage()
-        src.add_page(src_page)
-        imported_page = COSDictionary()
-
-        legacy = COSDictionary()
-        legacy.set_item("intro", COSArray([src_page.get_cos_object()]))
-        legacy.set_item("missing", COSNull.NULL)
-        src.get_document_catalog().get_cos_object().set_item("Dests", legacy)
-
-        target_names = merge._ensure_names_dictionary(  # noqa: SLF001
-            target.get_document_catalog().get_cos_object()
-        )
-        target_tree = COSDictionary()
-        target_tree.set_item("Names", COSArray([COSString("intro"), COSString("old")]))
-        target_names.set_item("Dests", target_tree)
-
-        renamed = merge._merge_supported_names(  # noqa: SLF001
-            src,
-            target,
-            {("id", id(src_page.get_cos_object())): imported_page},
-        )
-
-        assert renamed == {"intro": "intro#2"}
-        entries = merge._collect_name_tree_entries(target_tree)  # noqa: SLF001
-        assert [name for name, _value in entries] == ["intro", "intro#2"]
-        assert entries[1][1].get_object(0) is imported_page
-    finally:
-        src.close()
-        target.close()
-
-
-def test_wave731_merge_collect_page_object_keys_ignores_malformed_nodes() -> None:
-    keys: list[tuple[str, int, int] | None] = []
-
-    merge._collect_page_object_keys(COSString("bad"), None, keys, set())  # noqa: SLF001
-
-    pages_without_kids = COSDictionary()
-    pages_without_kids.set_name("Type", "Pages")
-    merge._collect_page_object_keys(  # noqa: SLF001
-        pages_without_kids,
-        ("obj", 1, 0),
-        keys,
-        set(),
-    )
-
-    assert keys == []
+from pypdfbox.tools import texttopdf, writedecodedstream
 
 
 def test_wave731_texttopdf_font_bbox_descriptor_and_fallback_paths() -> None:

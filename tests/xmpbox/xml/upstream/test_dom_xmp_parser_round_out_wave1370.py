@@ -144,13 +144,54 @@ def test_namespace_in_root_round_trips() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(
-    reason="upstream testNoSchema rejects xml:* properties; pypdfbox skips "
-    "the xml namespace silently. Requires distinguishing reserved-namespace "
-    "vs unknown-schema dispatch — out of cluster scope."
-)
-def test_no_schema_xml_namespace_rejected() -> None:  # pragma: no cover
-    pass
+def test_no_schema_xml_namespace_rejected() -> None:
+    """Upstream ``testNoSchema``: a property element whose owning namespace
+    is the reserved ``xml:`` namespace cannot be dispatched to any schema
+    (the XML reserved namespace is not a schema). Strict mode rejects with
+    ``NO_SCHEMA`` (wave 1374 closes the reserved-namespace vs
+    unknown-schema distinction)."""
+    s = (
+        b'<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n'
+        b'<?xpacket begin="\xef\xbb\xbf" id="W5M0MpCehiHzreSzNTczkc9d"?>'
+        b'<x:xmpmeta xmlns:x="adobe:ns:meta/">'
+        b'<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"'
+        b' xmlns:xml="http://www.w3.org/XML/1998/namespace">'
+        b'<rdf:Description rdf:about="">'
+        b'<xml:something>value</xml:something>'
+        b'</rdf:Description></rdf:RDF></x:xmpmeta><?xpacket end="w"?>'
+    )
+    parser = DomXmpParser()
+    with pytest.raises(XmpParsingException) as excinfo:
+        parser.parse(s)
+    assert (
+        excinfo.value.get_error_type()
+        is XmpParsingException.ErrorType.NO_SCHEMA
+    )
+
+
+def test_no_schema_xml_namespace_silently_skipped_in_lenient_mode() -> None:
+    """Lenient mode tolerates the reserved-namespace property by dropping
+    it (matches upstream's recovery path; no exception raised)."""
+    s = (
+        b'<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n'
+        b'<?xpacket begin="\xef\xbb\xbf" id="W5M0MpCehiHzreSzNTczkc9d"?>'
+        b'<x:xmpmeta xmlns:x="adobe:ns:meta/">'
+        b'<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"'
+        b' xmlns:xml="http://www.w3.org/XML/1998/namespace">'
+        b'<rdf:Description rdf:about="">'
+        b'<xml:something>value</xml:something>'
+        b'</rdf:Description></rdf:RDF></x:xmpmeta><?xpacket end="w"?>'
+    )
+    parser = DomXmpParser()
+    parser.set_strict_parsing(False)
+    # Parses without raising; the xml:* element is dropped and no schema is
+    # added for the reserved namespace.
+    meta = parser.parse(s)
+    # Confirm the xml namespace did NOT slip into the schema set.
+    for schema in meta.get_all_schemas():
+        assert schema.get_namespace() != (
+            "http://www.w3.org/XML/1998/namespace"
+        )
 
 
 def test_text_instead_of_array_rejected() -> None:

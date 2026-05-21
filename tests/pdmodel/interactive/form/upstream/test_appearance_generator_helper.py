@@ -300,7 +300,7 @@ def test_push_button_with_caption(acro_form: PDAcroForm) -> None:
 
 
 def test_unsigned_signature_placeholder(acro_form: PDAcroForm) -> None:
-    """Empty signature widget gets a "Sign here" placeholder + dashed border."""
+    """Empty sig widget gets the "Click to sign" placeholder + dashed border."""
     sig = PDSignatureField(acro_form)
     sig.get_cos_object().set_item(_RECT, _rect(0, 0, 200, 50))
     PDAppearanceGenerator().generate(sig)
@@ -313,10 +313,11 @@ def test_unsigned_signature_placeholder(acro_form: PDAcroForm) -> None:
         .create_input_stream()
         .read()
     )
-    assert b"Sign here" in body
+    # Wave 1374 — placeholder updated from "Sign here" to "Click to sign"
+    # to match upstream ``PDVisibleSigBuilder`` prompt.
+    assert b"Click to sign" in body
 
 
 # Skipped upstream tests (Java plumbing not relevant to lite port):
 # - testCustomFont — requires PDF-loading + custom-font /DR resolution.
 # - testFontSelection — same; needs a /Resources walk we haven't ported.
-# - testRotatedField — widget /MK /R rotation is deferred (CHANGES.md).

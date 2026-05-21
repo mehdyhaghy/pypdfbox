@@ -231,5 +231,51 @@ class PDShadingType6(PDShading):
         matching the base ``PDShading.get_bounds`` lite-surface contract."""
         return None
 
+    # ---------- patch-stream decode ----------
+
+    def parse_patches(
+        self,
+        stream_bytes: bytes | bytearray | memoryview | None = None,
+    ) -> list[Any]:
+        """Decode the Coons-patch mesh stream into a list of geometry-only
+        :class:`ParsedPatch` records (12 control points + 4 corner-colour
+        vectors per patch).
+
+        When ``stream_bytes`` is ``None`` the encoded body is fetched from
+        the backing ``COSStream`` (this shading's own ``/Filter`` chain is
+        applied, so the caller does not need to decode FlateDecode etc.
+        themselves). Returns an empty list when the backing object is not
+        a ``COSStream`` or the ``/Decode`` array is missing.
+
+        Mirrors upstream ``PDMeshBasedShadingType.collectPatches`` (Java)
+        with the user-space → device-space transform stripped out — that
+        belongs to the renderer. Per-vertex colour interpolation through
+        ``/Function`` is also deferred (the renderer can apply it to the
+        4 corner colours after this method returns).
+        """
+        if stream_bytes is None:
+            cos = self.get_cos_object()
+            if not isinstance(cos, COSStream):
+                return []
+            with cos.create_input_stream() as src:
+                stream_bytes = src.read()
+        decode = self.get_decode()
+        if decode is None:
+            return []
+        ncc = self.get_number_of_color_components()
+        if ncc <= 0:
+            return []
+        from .pd_mesh_based_shading_type import parse_patch_stream
+
+        return parse_patch_stream(
+            stream_bytes,
+            bits_per_coordinate=self.get_bits_per_coordinate(),
+            bits_per_component=self.get_bits_per_component(),
+            bits_per_flag=self.get_bits_per_flag(),
+            decode=decode,
+            num_color_components=ncc,
+            control_points=self._CONTROL_POINTS,
+        )
+
 
 __all__ = ["PDShadingType6"]

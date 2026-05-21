@@ -53,11 +53,14 @@ def _handler() -> _ConcreteHandler:
 # ---------- compute_encrypted_key — base method on StandardSecurityHandler ----
 
 
-def test_compute_encrypted_key_base_dispatches_to_standard() -> None:
-    """Line 370: when the base method is invoked on a
-    :class:`StandardSecurityHandler` instance, it delegates to the
-    subclass classmethod. Subclass shadowing makes this dead-on-instance
-    code; an explicit unbound call hits the branch."""
+def test_compute_encrypted_key_base_raises_type_error() -> None:
+    """Wave 1374 closure of audit item 3: the base method no longer
+    delegates to :class:`StandardSecurityHandler` — Python's MRO
+    already routes ``self.compute_encrypted_key(...)`` to the subclass
+    override when ``self`` is a Standard handler, so the previous
+    delegation was structurally unreachable. The base now raises
+    :class:`TypeError` for any handler that doesn't override (e.g.
+    :class:`PublicKeySecurityHandler`)."""
     from pypdfbox.pdmodel.encryption.standard_security_handler import (
         StandardSecurityHandler,
     )
@@ -65,23 +68,22 @@ def test_compute_encrypted_key_base_dispatches_to_standard() -> None:
     handler = StandardSecurityHandler()
     handler.set_revision(2)
     handler.set_key_length(40)
-    # Invoke the base implementation directly.
-    result = SecurityHandler.compute_encrypted_key(
-        handler,
-        password=b"foo",
-        o=b"\x00" * 32,
-        u=b"\x00" * 32,
-        oe=b"\x00" * 16,
-        ue=b"\x00" * 16,
-        permissions=-4,
-        document_id=b"\x00" * 16,
-        revision=2,
-        length_in_bits=40,
-        encrypt_metadata=True,
-    )
-    # Result must be the 5-byte key for r2.
-    assert isinstance(result, bytes)
-    assert len(result) == 5
+    # Invoking the base directly (bypassing MRO) now raises rather than
+    # silently delegating — proves the dead-code path was removed.
+    with pytest.raises(TypeError, match="does not derive keys from a password"):
+        SecurityHandler.compute_encrypted_key(
+            handler,
+            password=b"foo",
+            o=b"\x00" * 32,
+            u=b"\x00" * 32,
+            oe=b"\x00" * 16,
+            ue=b"\x00" * 16,
+            permissions=-4,
+            document_id=b"\x00" * 16,
+            revision=2,
+            length_in_bits=40,
+            encrypt_metadata=True,
+        )
 
 
 # ---------- decrypt dispatch — COSStream arm ----------

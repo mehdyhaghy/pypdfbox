@@ -197,9 +197,16 @@ class PDAppearanceGenerator:
     the signer's ``/Name`` and ``/M`` sign date in two Helvetica-10
     lines. Sigfields without a signature value get an empty stream.
 
+    **Closed in Wave 1374:** ``/MK /R`` widget rotation now applies to
+    the appearance bbox + /Matrix; iterative auto-size loop ports
+    upstream's measure-then-shrink (halve until the value fits the
+    rect width, floored at :attr:`MINIMUM_FONT_SIZE`); unsigned
+    signature widgets honour ``/MK /BC`` + ``/MK /BG`` colours and
+    render a "Click to sign" prompt (matches upstream
+    ``PDVisibleSigBuilder``).
+
     **Deferred:** font-substitution fallbacks for non-Standard-14
-    ``/DA`` fonts, rich-text (``/RV``) rendering, and a proper
-    iterative auto-size for over-flowing text values stay no-ops in
+    ``/DA`` fonts and rich-text (``/RV``) rendering stay no-ops in
     the lite surface — see ``CHANGES.md``.
     """
 
@@ -481,10 +488,13 @@ class PDAppearanceGenerator:
             # on-state always draws a filled circle).
             glyph_bytes = self._mk_ca_glyph_bytes(widget_cos)
 
+            # Wave 1374 — apply /MK /R rotation to both on / off states.
+            rotation = self._resolve_widget_rotation(widget_cos)
+
             on_stream = self._build_button_on_appearance(
-                width, height, is_radio, glyph_bytes
+                width, height, is_radio, glyph_bytes, rotation
             )
-            off_stream = self._build_empty_appearance(width, height)
+            off_stream = self._build_empty_appearance(width, height, rotation)
 
             n_subdict = COSDictionary()
             n_subdict.set_item(
@@ -552,9 +562,18 @@ class PDAppearanceGenerator:
         height: float,
         is_radio: bool,
         glyph_bytes: bytes = ZAPFDINGBATS_CHECK,
+        rotation: int = 0,
     ) -> PDAppearanceStream:
-        appearance_cos = self._fresh_form_xobject(width, height)
+        if rotation in (90, 270):
+            bbox_w, bbox_h = height, width
+        else:
+            bbox_w, bbox_h = width, height
+        appearance_cos = self._fresh_form_xobject(bbox_w, bbox_h)
         appearance_stream = PDAppearanceStream(appearance_cos)
+        if rotation != 0:
+            appearance_stream.set_matrix(
+                self._calculate_matrix(bbox_w, bbox_h, rotation)
+            )
         with PDAppearanceContentStream(appearance_stream) as raw_cs:
             cs = cast(PDAppearanceContentStream, raw_cs)
             cs.save_graphics_state()
@@ -566,10 +585,18 @@ class PDAppearanceGenerator:
         return appearance_stream
 
     def _build_empty_appearance(
-        self, width: float, height: float
+        self, width: float, height: float, rotation: int = 0
     ) -> PDAppearanceStream:
-        appearance_cos = self._fresh_form_xobject(width, height)
+        if rotation in (90, 270):
+            bbox_w, bbox_h = height, width
+        else:
+            bbox_w, bbox_h = width, height
+        appearance_cos = self._fresh_form_xobject(bbox_w, bbox_h)
         appearance_stream = PDAppearanceStream(appearance_cos)
+        if rotation != 0:
+            appearance_stream.set_matrix(
+                self._calculate_matrix(bbox_w, bbox_h, rotation)
+            )
         # Open + close the writer so the body is committed (an empty
         # byte string is valid — the appearance stream is just a no-op).
         with PDAppearanceContentStream(appearance_stream):
@@ -714,9 +741,29 @@ class PDAppearanceGenerator:
         if width <= 0.0 or height <= 0.0:
             return
 
-        appearance_cos = self._fresh_form_xobject(width, height)
+        # Wave 1374 — apply /MK /R rotation.
+        rotation = self._resolve_widget_rotation(widget_cos)
+        if rotation in (90, 270):
+            bbox_w, bbox_h = height, width
+        else:
+            bbox_w, bbox_h = width, height
+
+        appearance_cos = self._fresh_form_xobject(bbox_w, bbox_h)
         appearance_stream = PDAppearanceStream(appearance_cos)
-        resolved_size = font_size if font_size > 0.0 else self._auto_size(height)
+        if rotation != 0:
+            appearance_stream.set_matrix(
+                self._calculate_matrix(bbox_w, bbox_h, rotation)
+            )
+        if font_size > 0.0:
+            resolved_size = font_size
+        else:
+            sample = lines[0] if lines else ""
+            if sample:
+                resolved_size = self._iterative_auto_size(
+                    font, sample, max(0.0, width - 4.0), height
+                )
+            else:
+                resolved_size = self._auto_size(height)
 
         with PDAppearanceContentStream(appearance_stream) as raw_cs:
             cs = cast(PDAppearanceContentStream, raw_cs)
@@ -795,8 +842,19 @@ class PDAppearanceGenerator:
         if width <= 0.0 or height <= 0.0:
             return
 
-        appearance_cos = self._fresh_form_xobject(width, height)
+        # Wave 1374 — apply /MK /R rotation.
+        rotation = self._resolve_widget_rotation(widget_cos)
+        if rotation in (90, 270):
+            bbox_w, bbox_h = height, width
+        else:
+            bbox_w, bbox_h = width, height
+
+        appearance_cos = self._fresh_form_xobject(bbox_w, bbox_h)
         appearance_stream = PDAppearanceStream(appearance_cos)
+        if rotation != 0:
+            appearance_stream.set_matrix(
+                self._calculate_matrix(bbox_w, bbox_h, rotation)
+            )
         resolved_size = font_size if font_size > 0.0 else self._auto_size(height)
         line_height = resolved_size * 1.15
 
@@ -921,15 +979,37 @@ class PDAppearanceGenerator:
             )
             return
 
-        appearance_cos = self._fresh_form_xobject(width, height)
+        # Wave 1374 — apply /MK /R rotation to the appearance bbox + matrix.
+        # 90/270 swap width and height so the rotated content fits.
+        rotation = self._resolve_widget_rotation(widget_cos)
+        if rotation in (90, 270):
+            bbox_w, bbox_h = height, width
+        else:
+            bbox_w, bbox_h = width, height
+
+        appearance_cos = self._fresh_form_xobject(bbox_w, bbox_h)
         appearance_stream = PDAppearanceStream(appearance_cos)
+        if rotation != 0:
+            appearance_stream.set_matrix(
+                self._calculate_matrix(bbox_w, bbox_h, rotation)
+            )
 
         # ``font_size = 0`` is the "auto-size" tag in the /DA spec — pick
-        # a sane value clamped to widget height (auto-sizing rule per
-        # upstream: line height ~ 1.15 * size).
+        # a sane value clamped to widget height. Wave 1374 ports
+        # upstream's iterative shrink-to-fit so long values actually
+        # narrow to the rect width instead of overflowing the clip.
         resolved_size = font_size
         if resolved_size <= 0.0:
-            resolved_size = self._auto_size(height)
+            # Use the post-rotation interior width when sizing so the
+            # iterative shrink measures against the visible space.
+            interior_w_for_size = max(0.0, width - 2.0)
+            sample = value if value else ""
+            if is_multiline or not sample:
+                resolved_size = self._auto_size(height)
+            else:
+                resolved_size = self._iterative_auto_size(
+                    font, sample, interior_w_for_size, height
+                )
 
         interior_w = max(0.0, width - 2.0)
         interior_h = max(0.0, height - 2.0)
@@ -1198,10 +1278,27 @@ class PDAppearanceGenerator:
                 ac.get_dictionary_object(COSName.get_pdf_name("BC"))
             )
 
-        appearance_cos = self._fresh_form_xobject(width, height)
+        # Wave 1374 — honor /MK /R rotation.
+        rotation = self._resolve_widget_rotation(widget_cos)
+        if rotation in (90, 270):
+            bbox_w, bbox_h = height, width
+        else:
+            bbox_w, bbox_h = width, height
+
+        appearance_cos = self._fresh_form_xobject(bbox_w, bbox_h)
         appearance_stream = PDAppearanceStream(appearance_cos)
+        if rotation != 0:
+            appearance_stream.set_matrix(
+                self._calculate_matrix(bbox_w, bbox_h, rotation)
+            )
         font = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
-        size = self._auto_size(height)
+        # Wave 1374 — iterative shrink-to-fit replaces the height clamp.
+        if caption:
+            size = self._iterative_auto_size(
+                font, caption, max(0.0, width - 4.0), height
+            )
+        else:
+            size = self._auto_size(height)
 
         with PDAppearanceContentStream(appearance_stream) as raw_cs:
             cs = cast(PDAppearanceContentStream, raw_cs)
@@ -1279,8 +1376,11 @@ class PDAppearanceGenerator:
             self._regenerate_signature_widget(widget, signer_name, sign_date)
 
     # Default placeholder caption rendered for unsigned signature
-    # widgets — matches Acrobat's "Sign here" hint.
-    UNSIGNED_PLACEHOLDER: str = "Sign here"
+    # widgets. Mirrors the prompt shown by Acrobat's visible-signature
+    # builder (``PDVisibleSigBuilder``) for an empty sigfield — "Click to
+    # sign" reads as an actionable prompt instead of the static
+    # "Sign here" label the lite port shipped before wave 1374.
+    UNSIGNED_PLACEHOLDER: str = "Click to sign"
 
     def _regenerate_signature_widget(
         self,
@@ -1298,8 +1398,34 @@ class PDAppearanceGenerator:
         if width <= 0.0 or height <= 0.0:
             return
 
-        appearance_cos = self._fresh_form_xobject(width, height)
+        # Wave 1374 — honor widget rotation when generating sig appearance,
+        # mirroring the upstream ``prepareNormalAppearanceStream`` swap.
+        rotation = self._resolve_widget_rotation(widget_cos)
+        if rotation in (90, 270):
+            bbox_width, bbox_height = height, width
+        else:
+            bbox_width, bbox_height = width, height
+
+        # /MK /BC + /MK /BG colors — wave 1374 closes the upstream
+        # ``PDVisibleSigBuilder`` background/border parity gap for unsigned
+        # widgets.
+        bg: tuple[float, ...] | None = None
+        bc: tuple[float, ...] | None = None
+        mk = widget_cos.get_dictionary_object(_MK)
+        if isinstance(mk, COSDictionary):
+            bg = self._color_array_to_tuple(
+                mk.get_dictionary_object(COSName.get_pdf_name("BG"))
+            )
+            bc = self._color_array_to_tuple(
+                mk.get_dictionary_object(COSName.get_pdf_name("BC"))
+            )
+
+        appearance_cos = self._fresh_form_xobject(bbox_width, bbox_height)
         appearance_stream = PDAppearanceStream(appearance_cos)
+        if rotation != 0:
+            appearance_stream.set_matrix(
+                self._calculate_matrix(bbox_width, bbox_height, rotation)
+            )
         font = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
         size = 10.0
         is_signed = bool(signer_name or sign_date)
@@ -1307,10 +1433,17 @@ class PDAppearanceGenerator:
         with PDAppearanceContentStream(appearance_stream) as raw_cs:
             cs = cast(PDAppearanceContentStream, raw_cs)
             cs.save_graphics_state()
+            # /MK /BG fill — drawn first so the border + caption paint on top.
+            if bg is not None:
+                cs.set_non_stroking_color(bg)
+                cs.add_rect(0.0, 0.0, width, height)
+                cs.fill()
             # Frame the signature box with a thin border. Unsigned widgets
             # use a dashed outline so reviewers visually distinguish them
-            # from signed-and-rendered widgets.
-            cs.set_stroking_color((0.0,))
+            # from signed-and-rendered widgets. /MK /BC overrides the
+            # default black stroke.
+            border_color: tuple[float, ...] = bc if bc is not None else (0.0,)
+            cs.set_stroking_color(border_color)
             cs._buffer.extend(b"1 w\n")
             if not is_signed:
                 # 3-on / 3-off dashed line — Acrobat default for empty sigs.
@@ -1335,12 +1468,13 @@ class PDAppearanceGenerator:
                 cs.show_text(sign_date or "")
                 cs.end_text()
             else:
-                # Unsigned placeholder — 50% gray "Sign here" centered in
-                # the box. Helps Acrobat / Reader users locate empty
-                # signature fields.
-                placeholder_size = max(
-                    self.AUTO_FONT_SIZE_MIN,
-                    min(self.AUTO_FONT_SIZE_MAX, height * 0.5),
+                # Unsigned placeholder — 50% gray "Click to sign" centered
+                # in the box (wave 1374 — Acrobat visible-sig builder prompt).
+                placeholder_size = self._iterative_auto_size(
+                    font,
+                    self.UNSIGNED_PLACEHOLDER,
+                    max(0.0, width - 4.0),
+                    height,
                 )
                 placeholder = self.UNSIGNED_PLACEHOLDER
                 text_w = self._estimate_text_width(
@@ -1484,18 +1618,110 @@ class PDAppearanceGenerator:
 
     @classmethod
     def _auto_size(cls, height: float) -> float:
-        """Pick an auto-size font size from a widget rect height.
+        """Pick an auto-size font size from a widget rect height alone.
 
-        Upstream's ``calculateFontSize`` is iterative (it shrinks the size
-        until the value fits the rect width); the lite port uses a
-        constant heuristic — 0.7 of the height clamped to
-        ``[AUTO_FONT_SIZE_MIN, AUTO_FONT_SIZE_MAX]``.
+        Used by paths where the text to render is unknown (or empty) at
+        sizing time — keeps the height-only proportional heuristic and
+        clamps to ``[AUTO_FONT_SIZE_MIN, AUTO_FONT_SIZE_MAX]``. Use
+        :meth:`_iterative_auto_size` when both the text and width are
+        known and the result needs to actually fit the rect.
         """
         candidate = height * 0.7
         return max(
             cls.AUTO_FONT_SIZE_MIN,
             min(cls.AUTO_FONT_SIZE_MAX, candidate),
         )
+
+    @classmethod
+    def _iterative_auto_size(
+        cls,
+        font: PDFont,
+        text: str,
+        interior_w: float,
+        height: float,
+    ) -> float:
+        """Iteratively shrink the font size until ``text`` fits ``interior_w``.
+
+        Wave 1374 closes the upstream ``calculateFontSize`` parity gap for
+        the lite port: start at the height-based candidate (same as
+        :meth:`_auto_size`), then halve repeatedly until the rendered
+        width fits, never dipping below :attr:`MINIMUM_FONT_SIZE`. When
+        ``text`` is empty or ``interior_w`` is non-positive the height
+        clamp wins (no width constraint to satisfy).
+
+        Mirrors upstream's "measure, then shrink" loop in spirit — we
+        halve rather than decrement by 1 so the iterations stay bounded
+        (~5 iterations to walk 12 → 0.375).
+        """
+        candidate = cls._auto_size(height)
+        if not text or interior_w <= 0.0:
+            return candidate
+        size = candidate
+        # Bound the loop: at minimum size 4 from a 12pt start, halving
+        # gives 12 → 6 → 4 (clamped) — well under the 16-iteration cap.
+        for _ in range(16):
+            width = cls._estimate_text_width(font, size, text)
+            if width <= interior_w:
+                return size
+            next_size = size * 0.5
+            if next_size <= cls.MINIMUM_FONT_SIZE:
+                return cls.MINIMUM_FONT_SIZE
+            size = next_size
+        return max(size, cls.MINIMUM_FONT_SIZE)
+
+    @staticmethod
+    def _resolve_widget_rotation(widget_cos: COSDictionary) -> int:
+        """Pull the widget's ``/MK /R`` rotation, normalised to one of
+        ``{0, 90, 180, 270}``.
+
+        Mirrors upstream ``AppearanceGeneratorHelper.resolveRotation``
+        (which delegates to ``PDAppearanceCharacteristicsDictionary.getRotation``).
+        Non-multiple-of-90 values collapse to 0 — appearance generation
+        only handles the four canonical orientations.
+        """
+        mk = widget_cos.get_dictionary_object(_MK)
+        if not isinstance(mk, COSDictionary):
+            return 0
+        raw = mk.get_int(COSName.get_pdf_name("R"), 0)
+        if raw % 90 != 0:
+            return 0
+        normalised = raw % 360
+        if normalised < 0:
+            normalised += 360
+        return normalised
+
+    @staticmethod
+    def _calculate_matrix(
+        bbox_width: float,
+        bbox_height: float,
+        rotation: int,
+    ) -> tuple[float, float, float, float, float, float]:
+        """Return the ``/Matrix`` six-tuple to compose with the rotated bbox.
+
+        Mirrors upstream ``AppearanceGeneratorHelper.calculateMatrix``:
+        rotates by ``rotation`` degrees about the origin, then translates
+        so the rotated content stays inside the bbox. For a widget rect
+        of width ``W`` × height ``H``, after rotation the bbox dimensions
+        swap to ``H × W`` for 90/270 (the caller passes pre-swapped
+        ``bbox_width`` / ``bbox_height``).
+        """
+        import math
+
+        if rotation == 0:
+            return (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+        tx = 0.0
+        ty = 0.0
+        if rotation == 90:
+            tx = bbox_height
+        elif rotation == 180:
+            tx = bbox_width
+            ty = bbox_height
+        elif rotation == 270:
+            ty = bbox_width
+        rad = math.radians(rotation)
+        cos_r = math.cos(rad)
+        sin_r = math.sin(rad)
+        return (cos_r, sin_r, -sin_r, cos_r, tx, ty)
 
 
 __all__ = ["PDAppearanceGenerator"]

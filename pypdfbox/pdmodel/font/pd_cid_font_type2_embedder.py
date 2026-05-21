@@ -272,6 +272,13 @@ class PDCIDFontType2Embedder(TrueTypeEmbedder):
             _to_cid_system_info("Adobe", "Identity", 0),
         )
         cid_font.set_item(COSName.FONT_DESC, self.font_descriptor.get_cos_object())
+        # Bind ``self._cid_font`` BEFORE invoking the vertical-metrics
+        # builder: the helper writes ``/DW2`` and ``/W2`` directly through
+        # ``self._cid_font`` (mirroring upstream which mutates the bound
+        # field, not a local). When this method runs from the constructor
+        # the outer assignment at ``__init__`` has not happened yet, so
+        # the vertical branch must see the freshly-built dict here.
+        self._cid_font = cid_font
         self._build_widths_full(cid_font)
         if self._vertical:
             self._build_vertical_metrics_full(cid_font)

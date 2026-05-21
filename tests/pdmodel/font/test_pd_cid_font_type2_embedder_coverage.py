@@ -392,24 +392,33 @@ def test_check_for_cid_gid_identity_no_cff_table_returns_silently(
 
 
 def test_create_cid_font_returns_fresh_dictionary(sans_ttf: TTFont) -> None:
+    """The public alias rebuilds a CIDFont dict each call. Wave 1374
+    fix: ``_create_cid_font`` now also binds ``self._cid_font`` so the
+    vertical-metrics builder can write through it during the
+    constructor — that means repeated calls reassign the field, so we
+    snapshot the original reference before the rebuild and compare.
+    """
     embedder, _dict, _doc, _parent = _new_embedder(sans_ttf, embed_subset=True)
+    first = embedder._cid_font  # noqa: SLF001 — snapshot before rebuild
     second = embedder.create_cid_font()
     assert isinstance(second, COSDictionary)
-    assert second is not embedder._cid_font  # noqa: SLF001 — new instance
+    # Each call builds a fresh dict; the public alias is not memoised.
+    assert second is not first
 
 
 def test_get_cid_font_invokes_pdcidfonttype2_constructor(
     sans_ttf: TTFont,
 ) -> None:
-    """:meth:`get_cid_font` builds a :class:`PDCIDFontType2` from the descendant.
+    """:meth:`get_cid_font` builds a :class:`PDCIDFontType2` from the
+    descendant. Wave 1374 widened :meth:`PDCIDFontType2.__init__` to
+    accept the optional ``true_type_font`` argument the embedder
+    threads through, so the call now succeeds (previously raised
+    :class:`TypeError`)."""
+    from pypdfbox.pdmodel.font.pd_cid_font_type2 import PDCIDFontType2
 
-    Upstream ``PDCIDFontType2`` accepts ``(dict, parent, ttf)``; the
-    Python port currently accepts ``(dict)`` only — so this test pins
-    that mismatch behind a TypeError until the constructor is widened.
-    """
     embedder, _dict, _doc, _parent = _new_embedder(sans_ttf, embed_subset=True)
-    with pytest.raises(TypeError):
-        embedder.get_cid_font()
+    result = embedder.get_cid_font()
+    assert isinstance(result, PDCIDFontType2)
 
 
 # --- _encode_widths additional branches ----------------------------------

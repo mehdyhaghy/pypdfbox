@@ -501,8 +501,9 @@ def test_signature_unsigned_emits_sign_here_placeholder() -> None:
     widget_cos = sig.get_widgets()[0].get_cos_object()
     n = widget_cos.get_dictionary_object(_AP).get_dictionary_object(_N)
     body = n.create_input_stream().read()
-    # Unsigned widgets show the "Sign here" placeholder.
-    assert b"Sign here" in body
+    # Unsigned widgets show the "Click to sign" placeholder (wave 1374
+    # — matches upstream PDVisibleSigBuilder prompt).
+    assert b"Click to sign" in body
     # Dashed border (3 on / 3 off) emitted.
     assert b"[3 3] 0 d" in body
 
@@ -525,7 +526,9 @@ def test_signature_signed_emits_name_and_date() -> None:
     n = widget_cos.get_dictionary_object(_AP).get_dictionary_object(_N)
     body = n.create_input_stream().read()
     assert b"Alice Example" in body
-    # Signed widgets do NOT use the placeholder.
+    # Signed widgets do NOT use the placeholder (neither the wave-1374
+    # "Click to sign" prompt nor the historical "Sign here" label).
+    assert b"Click to sign" not in body
     assert b"Sign here" not in body
     # Solid border (no dash array).
     assert b"[3 3] 0 d" not in body
@@ -1173,3 +1176,326 @@ def test_parse_default_appearance_font_name_without_slash_ignored() -> None:
     assert name is None
     # Size is still picked up.
     assert size == 10.0
+
+
+# ---------- Wave 1374: /MK /R rotation + iterative shrink-to-fit ----------
+
+
+def _make_mk(**entries: object) -> COSDictionary:
+    mk = COSDictionary()
+    for key, value in entries.items():
+        cos_key = COSName.get_pdf_name(key)
+        if isinstance(value, COSArray):
+            mk.set_item(cos_key, value)
+        elif isinstance(value, int):
+            mk.set_int(cos_key, value)
+        elif isinstance(value, str):
+            mk.set_string(cos_key, value)
+    return mk
+
+
+def test_wave1374_resolve_widget_rotation_canonical() -> None:
+    """Rotations of 0/90/180/270 round-trip verbatim."""
+    Gen = PDAppearanceGenerator
+    for rot in (0, 90, 180, 270):
+        widget = COSDictionary()
+        widget.set_item(COSName.get_pdf_name("MK"), _make_mk(R=rot))
+        assert Gen._resolve_widget_rotation(widget) == rot
+
+
+def test_wave1374_resolve_widget_rotation_negative_normalises() -> None:
+    """Negative multiples of 90 wrap to ``[0, 360)``."""
+    Gen = PDAppearanceGenerator
+    widget = COSDictionary()
+    widget.set_item(COSName.get_pdf_name("MK"), _make_mk(R=-90))
+    assert Gen._resolve_widget_rotation(widget) == 270
+
+
+def test_wave1374_resolve_widget_rotation_non_canonical_collapses_to_zero() -> None:
+    """Non-multiple-of-90 rotations collapse to 0 (matches upstream)."""
+    Gen = PDAppearanceGenerator
+    widget = COSDictionary()
+    widget.set_item(COSName.get_pdf_name("MK"), _make_mk(R=45))
+    assert Gen._resolve_widget_rotation(widget) == 0
+
+
+def test_wave1374_resolve_widget_rotation_no_mk_returns_zero() -> None:
+    Gen = PDAppearanceGenerator
+    widget = COSDictionary()
+    assert Gen._resolve_widget_rotation(widget) == 0
+
+
+def test_wave1374_calculate_matrix_identity_for_zero_rotation() -> None:
+    Gen = PDAppearanceGenerator
+    assert Gen._calculate_matrix(100.0, 50.0, 0) == (
+        1.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+    )
+
+
+def test_wave1374_calculate_matrix_ninety_translates_y_to_x() -> None:
+    Gen = PDAppearanceGenerator
+    # 90 deg rotation about origin then translate so rotated content stays
+    # in the bbox.
+    m = Gen._calculate_matrix(50.0, 100.0, 90)
+    # cos(90)=0, sin(90)=1 (with floating-point noise)
+    assert m[0] == pytest.approx(0.0, abs=1e-9)
+    assert m[1] == pytest.approx(1.0, abs=1e-9)
+    assert m[2] == pytest.approx(-1.0, abs=1e-9)
+    assert m[3] == pytest.approx(0.0, abs=1e-9)
+    # tx = bbox_height (rotated y dim is now x), ty = 0
+    assert m[4] == pytest.approx(100.0)
+    assert m[5] == pytest.approx(0.0)
+
+
+def test_wave1374_calculate_matrix_one_eighty() -> None:
+    Gen = PDAppearanceGenerator
+    m = Gen._calculate_matrix(80.0, 40.0, 180)
+    assert m[0] == pytest.approx(-1.0, abs=1e-9)
+    assert m[3] == pytest.approx(-1.0, abs=1e-9)
+    assert m[4] == pytest.approx(80.0)
+    assert m[5] == pytest.approx(40.0)
+
+
+def test_wave1374_calculate_matrix_two_seventy() -> None:
+    Gen = PDAppearanceGenerator
+    m = Gen._calculate_matrix(50.0, 100.0, 270)
+    assert m[0] == pytest.approx(0.0, abs=1e-9)
+    assert m[1] == pytest.approx(-1.0, abs=1e-9)
+    assert m[2] == pytest.approx(1.0, abs=1e-9)
+    assert m[3] == pytest.approx(0.0, abs=1e-9)
+    assert m[4] == pytest.approx(0.0)
+    assert m[5] == pytest.approx(50.0)
+
+
+def test_wave1374_text_widget_rotation_writes_matrix_and_swaps_bbox() -> None:
+    """A /MK /R 90 rotation swaps bbox width/height and sets /Matrix."""
+    form = PDAcroForm()
+    tf = PDTextField(form)
+    cos = tf.get_cos_object()
+    cos.set_item(_RECT, _rect(0, 0, 200, 30))
+    cos.set_string(_DA, "/Helv 10 Tf 0 g")
+    # /MK /R = 90 on the widget.
+    widget_cos = tf.get_widgets()[0].get_cos_object()
+    widget_cos.set_item(COSName.get_pdf_name("MK"), _make_mk(R=90))
+
+    tf.set_value("ok", regenerate_appearance=True)
+
+    n = widget_cos.get_dictionary_object(_AP).get_dictionary_object(_N)
+    bbox = n.get_dictionary_object(_BBOX)
+    # Rotated bbox: original width=200, height=30 -> bbox should now be 30 x 200.
+    assert bbox.get_object(2).value == pytest.approx(30.0)
+    assert bbox.get_object(3).value == pytest.approx(200.0)
+    matrix = n.get_dictionary_object(COSName.get_pdf_name("Matrix"))
+    assert matrix is not None
+
+
+def test_wave1374_text_widget_no_rotation_has_no_matrix() -> None:
+    """Widgets without /MK /R keep an identity bbox and skip /Matrix."""
+    form = PDAcroForm()
+    tf = PDTextField(form)
+    cos = tf.get_cos_object()
+    cos.set_item(_RECT, _rect(0, 0, 200, 30))
+    cos.set_string(_DA, "/Helv 10 Tf 0 g")
+
+    tf.set_value("ok", regenerate_appearance=True)
+
+    widget_cos = tf.get_widgets()[0].get_cos_object()
+    n = widget_cos.get_dictionary_object(_AP).get_dictionary_object(_N)
+    matrix = n.get_dictionary_object(COSName.get_pdf_name("Matrix"))
+    # /Matrix is omitted for the identity case (upstream parity).
+    assert matrix is None
+
+
+def test_wave1374_iterative_auto_size_returns_max_for_empty_text() -> None:
+    """Empty text bypasses the shrink loop and uses the height clamp only."""
+    from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
+    from pypdfbox.pdmodel.font.standard14_fonts import Standard14Fonts
+
+    Gen = PDAppearanceGenerator
+    font = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
+    # height=30 -> height*0.7=21 -> clamped to AUTO_FONT_SIZE_MAX=12.
+    assert Gen._iterative_auto_size(font, "", 100.0, 30.0) == 12.0
+
+
+def test_wave1374_iterative_auto_size_shrinks_overflowing_text() -> None:
+    """Very long text in a narrow rect shrinks below the height clamp."""
+    from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
+    from pypdfbox.pdmodel.font.standard14_fonts import Standard14Fonts
+
+    Gen = PDAppearanceGenerator
+    font = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
+    # At 12pt Helvetica, "OVERFLOW" is ~ 8 * 500 * 12 / 1000 = 48 user units.
+    # A 10pt-wide rect cannot fit it, forcing shrink-to-fit.
+    size = Gen._iterative_auto_size(font, "OVERFLOWING", 10.0, 30.0)
+    # Final size must be smaller than the unshrunk candidate (12.0).
+    assert size < 12.0
+    # And must never drop below MINIMUM_FONT_SIZE.
+    assert size >= Gen.MINIMUM_FONT_SIZE
+
+
+def test_wave1374_iterative_auto_size_floor_at_minimum() -> None:
+    """An impossibly narrow rect drops the size to MINIMUM_FONT_SIZE."""
+    from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
+    from pypdfbox.pdmodel.font.standard14_fonts import Standard14Fonts
+
+    Gen = PDAppearanceGenerator
+    font = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
+    # 0.1pt-wide rect — no font size, even MINIMUM_FONT_SIZE, will fit.
+    size = Gen._iterative_auto_size(font, "huge text value", 0.1, 30.0)
+    assert size == Gen.MINIMUM_FONT_SIZE
+
+
+def test_wave1374_iterative_auto_size_fits_at_starting_size() -> None:
+    """Text already fitting the rect returns the starting candidate."""
+    from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
+    from pypdfbox.pdmodel.font.standard14_fonts import Standard14Fonts
+
+    Gen = PDAppearanceGenerator
+    font = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
+    # "hi" at 12pt is roughly 12 user units; rect of 100pt easily fits.
+    size = Gen._iterative_auto_size(font, "hi", 100.0, 20.0)
+    assert size == Gen._auto_size(20.0)
+
+
+def test_wave1374_iterative_auto_size_non_positive_width_uses_clamp() -> None:
+    """Non-positive widths fall back to the height-only clamp."""
+    from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
+    from pypdfbox.pdmodel.font.standard14_fonts import Standard14Fonts
+
+    Gen = PDAppearanceGenerator
+    font = PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
+    size = Gen._iterative_auto_size(font, "anything", 0.0, 10.0)
+    # height=10 -> 7.0 (between 4 and 12) — same as _auto_size.
+    assert size == 7.0
+
+
+def test_wave1374_unsigned_signature_uses_click_to_sign_label() -> None:
+    """Wave 1374 — unsigned sigs render "Click to sign" not "Sign here"."""
+    from pypdfbox.pdmodel.interactive.form.pd_signature_field import (
+        PDSignatureField,
+    )
+
+    form = PDAcroForm()
+    sig = PDSignatureField(form)
+    sig.get_cos_object().set_item(_RECT, _rect(0, 0, 200, 50))
+    PDAppearanceGenerator().generate(sig)
+
+    widget_cos = sig.get_widgets()[0].get_cos_object()
+    n = widget_cos.get_dictionary_object(_AP).get_dictionary_object(_N)
+    body = n.create_input_stream().read()
+    assert b"Click to sign" in body
+    assert b"Sign here" not in body
+
+
+def test_wave1374_unsigned_signature_honours_mk_bg_fill() -> None:
+    """/MK /BG fills the unsigned-sig background before the border."""
+    from pypdfbox.pdmodel.interactive.form.pd_signature_field import (
+        PDSignatureField,
+    )
+
+    form = PDAcroForm()
+    sig = PDSignatureField(form)
+    sig.get_cos_object().set_item(_RECT, _rect(0, 0, 200, 50))
+    widget_cos = sig.get_widgets()[0].get_cos_object()
+    bg_array = COSArray(
+        [COSFloat(0.9), COSFloat(0.95), COSFloat(1.0)]
+    )
+    mk = COSDictionary()
+    mk.set_item(COSName.get_pdf_name("BG"), bg_array)
+    widget_cos.set_item(COSName.get_pdf_name("MK"), mk)
+
+    PDAppearanceGenerator().generate(sig)
+
+    body = (
+        widget_cos.get_dictionary_object(_AP)
+        .get_dictionary_object(_N)
+        .create_input_stream()
+        .read()
+    )
+    # The background fill emits the BG color as a non-stroking ``rg`` operator
+    # followed by ``re`` + ``f``.
+    assert b"0.9 0.95 1 rg" in body
+    assert b"f\n" in body
+
+
+def test_wave1374_unsigned_signature_honours_mk_bc_stroke() -> None:
+    """/MK /BC overrides the default black border on unsigned sigs."""
+    from pypdfbox.pdmodel.interactive.form.pd_signature_field import (
+        PDSignatureField,
+    )
+
+    form = PDAcroForm()
+    sig = PDSignatureField(form)
+    sig.get_cos_object().set_item(_RECT, _rect(0, 0, 200, 50))
+    widget_cos = sig.get_widgets()[0].get_cos_object()
+    bc_array = COSArray(
+        [COSFloat(1.0), COSFloat(0.0), COSFloat(0.0)]
+    )
+    mk = COSDictionary()
+    mk.set_item(COSName.get_pdf_name("BC"), bc_array)
+    widget_cos.set_item(COSName.get_pdf_name("MK"), mk)
+
+    PDAppearanceGenerator().generate(sig)
+
+    body = (
+        widget_cos.get_dictionary_object(_AP)
+        .get_dictionary_object(_N)
+        .create_input_stream()
+        .read()
+    )
+    # 1 0 0 RG = red stroke (RG is the stroking-color operator).
+    assert b"1 0 0 RG" in body
+
+
+def test_wave1374_button_widget_rotation_swaps_bbox() -> None:
+    """Check-box widget /MK /R 90 swaps the on-stream bbox dimensions."""
+    from pypdfbox.pdmodel.interactive.form.pd_check_box import PDCheckBox
+
+    form = PDAcroForm()
+    cb = PDCheckBox(form)
+    cos = cb.get_cos_object()
+    cos.set_item(_RECT, _rect(0, 0, 40, 20))
+    widget_cos = cb.get_widgets()[0].get_cos_object()
+    widget_cos.set_item(COSName.get_pdf_name("MK"), _make_mk(R=90))
+
+    PDAppearanceGenerator().generate(cb)
+
+    n_subdict = widget_cos.get_dictionary_object(_AP).get_dictionary_object(_N)
+    # On-state stream — pick the first non-Off entry.
+    for key in n_subdict.key_set():
+        if key.name != "Off":
+            on_stream = n_subdict.get_dictionary_object(key)
+            break
+    bbox = on_stream.get_dictionary_object(_BBOX)
+    # Rotated bbox: 20 x 40 (was 40 x 20).
+    assert bbox.get_object(2).value == pytest.approx(20.0)
+    assert bbox.get_object(3).value == pytest.approx(40.0)
+    matrix = on_stream.get_dictionary_object(COSName.get_pdf_name("Matrix"))
+    assert matrix is not None
+
+
+def test_wave1374_push_button_long_caption_shrinks_below_clamp() -> None:
+    """A long /MK /CA caption in a narrow push-button shrinks to fit."""
+    from pypdfbox.pdmodel.interactive.form.pd_push_button import PDPushButton
+
+    form = PDAcroForm()
+    pb = PDPushButton(form)
+    cos = pb.get_cos_object()
+    cos.set_item(_RECT, _rect(0, 0, 30, 20))  # narrow rect
+    widget_cos = pb.get_widgets()[0].get_cos_object()
+    mk = COSDictionary()
+    mk.set_string(COSName.get_pdf_name("CA"), "Click Me Now Please!!")
+    widget_cos.set_item(COSName.get_pdf_name("MK"), mk)
+
+    PDAppearanceGenerator().generate(pb)
+
+    body = (
+        widget_cos.get_dictionary_object(_AP)
+        .get_dictionary_object(_N)
+        .create_input_stream()
+        .read()
+    )
+    # Caption is in the body, but the Tf size emitted is below the 12pt
+    # clamp (iterative shrink kicked in).
+    assert b"Click Me Now Please!!" in body
+    assert b"12 Tf" not in body

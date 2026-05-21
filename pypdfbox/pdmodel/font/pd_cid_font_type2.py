@@ -43,14 +43,20 @@ class PDCIDFontType2(PDCIDFont):
         self,
         font_dict: COSDictionary | None = None,
         parent_type0_font: PDType0Font | None = None,
+        true_type_font: TrueTypeFont | None = None,
     ) -> None:
         super().__init__(font_dict, parent_type0_font)
         self._cid_to_gid_cache: tuple[int, ...] | None = None
         self._cid_to_gid_cache_loaded = False
         # Embedded ``/FontFile2`` parsed lazily on first glyph access.
         # ``None`` means "not yet attempted"; ``False`` means "tried,
-        # no /FontFile2 or parse failed".
-        self._ttf: TrueTypeFont | None | bool = None
+        # no /FontFile2 or parse failed". When ``true_type_font`` is
+        # supplied (e.g. by ``PDCIDFontType2Embedder.get_cid_font`` which
+        # reuses the already-parsed embedded program), seed the cache so
+        # the lazy parse short-circuits.
+        self._ttf: TrueTypeFont | None | bool = (
+            true_type_font if true_type_font is not None else None
+        )
         # Memoised bounding box — mirrors upstream's ``fontBBox`` field
         # so a single resolve runs once per instance even when callers
         # ask for the bbox repeatedly.

@@ -114,4 +114,6 @@ def test_wave589_unsigned_signature_renders_dashed_placeholder() -> None:
     body = _normal_body(sig_field)
     assert b"[3 3] 0 d" in body
     assert b"[] 0 d" in body
-    assert b"Sign here" in body
+    # Wave 1374 — placeholder updated to "Click to sign" (matches
+    # upstream PDVisibleSigBuilder).
+    assert b"Click to sign" in body

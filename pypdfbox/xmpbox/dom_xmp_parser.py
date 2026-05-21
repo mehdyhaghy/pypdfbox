@@ -508,6 +508,13 @@ class DomXmpParser:
             ns, local = _strip_qname(child.tag)
             if ns == _RDF_NS:
                 continue
+            # Reserved-namespace dispatch: ``xml:*`` cannot host XMP property
+            # elements (it is reserved by the XML spec for attributes like
+            # ``xml:lang``, ``xml:space``). Upstream distinguishes this from
+            # an unknown-schema and rejects via ``NoSchema``; lenient mode
+            # silently drops the element to match upstream's recovery path.
+            if self._reject_reserved_namespace_as_property(ns, local):
+                continue
             schema = self._schema_for(
                 ns, local, desc, metadata, per_ns, about, namespace_prefixes
             )
@@ -686,6 +693,31 @@ class DomXmpParser:
                 XmpParsingException.ErrorType.INVALID_TYPE,
                 f"No type defined for {{{ns}}}{local}",
             )
+
+    def _reject_reserved_namespace_as_property(self, ns: str, local: str) -> bool:
+        """Reject the reserved ``xml:*`` namespace when used as a property
+        *element* tag.
+
+        The XML specification reserves the ``xml:`` namespace for attributes
+        such as ``xml:lang`` and ``xml:space``; it cannot host XMP property
+        *elements*. Upstream ``DomXmpParser`` treats this differently from an
+        unknown schema: a property whose owning namespace is ``xml:`` is
+        rejected with ``NoSchema`` (the property has no schema because the
+        reserved namespace is not a schema), whereas an unknown but valid
+        custom namespace is rejected via the schema-definition path.
+
+        Returns ``True`` in lenient mode so the caller skips the element
+        (matching upstream's recovery behavior). Strict mode raises.
+        """
+        if ns != _XML_NS:
+            return False
+        if not self._strict_parsing:
+            return True
+        raise XmpParsingException(
+            XmpParsingException.ErrorType.NO_SCHEMA,
+            f"The XML reserved namespace cannot host XMP property elements: "
+            f"xml:{local}",
+        )
 
     @staticmethod
     def _schema_for(
@@ -1215,6 +1247,8 @@ class DomXmpParser:
         for child in description:
             ns, local = _strip_qname(child.tag)
             if ns == _RDF_NS:
+                continue
+            if self._reject_reserved_namespace_as_property(ns, local):
                 continue
             schema = self._schema_for(
                 ns, local, description, metadata, per_ns, about, namespace_prefixes

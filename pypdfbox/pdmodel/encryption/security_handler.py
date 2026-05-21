@@ -352,35 +352,20 @@ class SecurityHandler(ABC):
         """Compute the file-encryption key from a password.
 
         Upstream Java declares this exclusively on
-        ``StandardSecurityHandler``; we keep the entry point on the base so
-        callers can program against the abstract type. The base routes to
-        ``StandardSecurityHandler``'s revision-dispatched algorithm using
-        the current handler's ``_revision`` / ``_key_length`` settings.
-        Handlers that do not derive keys from passwords (e.g.
-        ``PublicKeySecurityHandler``) raise ``TypeError`` — they wrap the
-        file key in a recipient list instead.
+        ``StandardSecurityHandler``. Subclasses that derive keys from
+        passwords (currently only :class:`StandardSecurityHandler`)
+        override this method with their concrete algorithm; non-password
+        handlers (e.g. :class:`PublicKeySecurityHandler`) inherit the
+        ``TypeError`` raised here — they wrap the file key in a recipient
+        list instead. The base intentionally does not delegate to
+        :class:`StandardSecurityHandler`: Python method dispatch already
+        routes ``self.compute_encrypted_key(...)`` to the subclass when
+        ``self`` is a :class:`StandardSecurityHandler`, so any fallthrough
+        delegation here would be structurally unreachable.
         """
-        from .standard_security_handler import StandardSecurityHandler
-
-        if not isinstance(self, StandardSecurityHandler):
-            raise TypeError(
-                f"{type(self).__name__} does not derive keys from a password;"
-                " call compute_encrypted_key on a StandardSecurityHandler."
-            )
-        return StandardSecurityHandler.compute_encrypted_key(  # type: ignore[arg-type]
-            password,
-            o if o is not None else b"",
-            u if u is not None else 0,
-            oe if oe is not None else (document_id if document_id is not None else b""),
-            ue if ue is not None else (revision if revision is not None else 0),
-            permissions if permissions is not None else (
-                (length_in_bits or 40) // 8
-            ),
-            encrypt_metadata if encrypt_metadata is not None else True,
-            revision,
-            (length_in_bits // 8) if length_in_bits is not None else None,
-            encrypt_metadata,
-            is_owner_password,
+        raise TypeError(
+            f"{type(self).__name__} does not derive keys from a password;"
+            " call compute_encrypted_key on a StandardSecurityHandler."
         )
 
     def compute_user_password(

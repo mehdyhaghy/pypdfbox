@@ -217,7 +217,8 @@ def test_unsigned_signature_renders_placeholder_and_resets_dash_wave494() -> Non
     body = _normal_body(field)
     assert b"[3 3] 0 d" in body
     assert b"[] 0 d" in body
-    assert b"Sign here" in body
+    # Wave 1374 — placeholder updated to "Click to sign".
+    assert b"Click to sign" in body
 
 
 def test_radio_dot_zero_radius_writes_no_path_ops_wave494() -> None:

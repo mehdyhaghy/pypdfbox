@@ -234,5 +234,46 @@ class PDShadingType7(PDShading):
         contract."""
         return None
 
+    # ---------- patch-stream decode ----------
+
+    def parse_patches(
+        self,
+        stream_bytes: bytes | bytearray | memoryview | None = None,
+    ) -> list[Any]:
+        """Decode the tensor-product-patch mesh stream into a list of
+        geometry-only :class:`ParsedPatch` records (16 control points + 4
+        corner-colour vectors per patch).
+
+        When ``stream_bytes`` is ``None`` the encoded body is fetched from
+        the backing ``COSStream``. Returns an empty list when the backing
+        object is not a ``COSStream`` or the ``/Decode`` array is missing.
+
+        Mirrors upstream ``PDMeshBasedShadingType.collectPatches`` (Java)
+        with the user-space → device-space transform stripped out.
+        """
+        if stream_bytes is None:
+            cos = self.get_cos_object()
+            if not isinstance(cos, COSStream):
+                return []
+            with cos.create_input_stream() as src:
+                stream_bytes = src.read()
+        decode = self.get_decode()
+        if decode is None:
+            return []
+        ncc = self.get_number_of_color_components()
+        if ncc <= 0:
+            return []
+        from .pd_mesh_based_shading_type import parse_patch_stream
+
+        return parse_patch_stream(
+            stream_bytes,
+            bits_per_coordinate=self.get_bits_per_coordinate(),
+            bits_per_component=self.get_bits_per_component(),
+            bits_per_flag=self.get_bits_per_flag(),
+            decode=decode,
+            num_color_components=ncc,
+            control_points=self._CONTROL_POINTS,
+        )
+
 
 __all__ = ["PDShadingType7"]
