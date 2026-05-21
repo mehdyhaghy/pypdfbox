@@ -9,7 +9,6 @@ bbox clipping, and the AWT-style state mutators (clip, paint, transform).
 
 from __future__ import annotations
 
-import contextlib
 import math
 
 import pytest
@@ -628,22 +627,17 @@ def test_composite_onto_generic_mode_fallback() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_backdrop_removal_rgba_branch_executes() -> None:
-    """Exercise the RGBA backdrop-removal branch. Pillow's
-    ``ImageChops.subtract`` requires matching modes; upstream parity for
-    this branch is currently a no-op (Pillow raises ``ValueError`` and
-    callers swallow it via the parent renderer's try/except). We pin the
-    branch as executed and accept either the raised ValueError or a
-    successful pixel mutation depending on the active Pillow version.
+def test_backdrop_removal_rgba_branch_subtracts_preserving_alpha() -> None:
+    """Exercise the RGBA backdrop-removal branch. The source image is
+    converted to RGB for the per-channel subtract and the original alpha
+    is restored on the result so the group buffer retains its mask.
     """
     src = Image.new("RGBA", (4, 4), (200, 100, 50, 200))
     gg = GroupGraphics(src)
     gg.set_background((50, 25, 10))
-    # Pillow mode-mismatch — branch was entered; that's all we need
-    # for coverage. Production callers wrap this in their own
-    # try/except (renderer side).
-    with contextlib.suppress(ValueError):
-        gg.backdrop_removal()
+    gg.backdrop_removal()
+    assert gg._image.mode == "RGBA"
+    assert gg._image.getpixel((0, 0)) == (150, 75, 40, 200)
 
 
 def test_backdrop_removal_rgb_mode_subtracts() -> None:

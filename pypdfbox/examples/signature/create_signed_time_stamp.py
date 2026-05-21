@@ -54,11 +54,11 @@ class CreateSignedTimeStamp(SignatureInterface):
             raise FileNotFoundError("Document for signing does not exist")
         out_path = in_path if out_file is None else Path(out_file)
 
-        from pypdfbox.loader import Loader
+        from pypdfbox.pdmodel.pd_document import PDDocument
 
         with (
             in_path.open("rb") as fh,
-            Loader.load_pdf(fh) as doc,  # type: ignore[arg-type]
+            PDDocument.load(fh) as doc,
             out_path.open("wb") as out,
         ):
             self.sign_detached_document(doc, out)

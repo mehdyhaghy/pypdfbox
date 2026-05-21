@@ -162,6 +162,15 @@ class PDTextField(PDVariableText):
         if value is None:
             self._field.remove_item(_V)
         else:
+            # Mirror upstream PDFBox: ``setValue("...\0...")`` ultimately
+            # tries to encode the value through the field font, which
+            # raises ``IllegalArgumentException`` for NUL because the
+            # standard 14 fonts (and any reasonable Latin encoding) do not
+            # carry a glyph for ``U+0000``. We reject the NUL up front so
+            # the contract matches the upstream test ``characterNUL``
+            # without depending on the font-encode side effect.
+            if "\0" in value:
+                raise ValueError("Field value contains NUL")
             self._field.set_string(_V, value)
         if regenerate_appearance:
             from .pd_appearance_generator import PDAppearanceGenerator

@@ -110,12 +110,7 @@ def test_sign_detached_with_no_out_file_uses_in_place(monkeypatch, tmp_path):
         def __exit__(self, *a):
             return False
 
-    import pypdfbox.loader as loader_mod
-
-    class FakeLoader:
-        @staticmethod
-        def load_pdf(_fh):
-            return FakeDoc()
+    from pypdfbox.pdmodel import pd_document as pd_doc_mod
 
     captured: dict[str, object] = {}
 
@@ -124,7 +119,9 @@ def test_sign_detached_with_no_out_file_uses_in_place(monkeypatch, tmp_path):
         captured["output_writable"] = hasattr(output, "write")
         output.write(b"signed-bytes-here")
 
-    monkeypatch.setattr(loader_mod, "Loader", FakeLoader)
+    monkeypatch.setattr(
+        pd_doc_mod.PDDocument, "load", staticmethod(lambda _fh: FakeDoc())
+    )
     monkeypatch.setattr(
         CreateSignedTimeStamp, "sign_detached_document", fake_sign_doc, raising=True
     )
@@ -148,17 +145,14 @@ def test_sign_detached_with_explicit_out_file_writes_there(monkeypatch, tmp_path
         def __exit__(self, *a):
             return False
 
-    import pypdfbox.loader as loader_mod
-
-    class FakeLoader:
-        @staticmethod
-        def load_pdf(_fh):
-            return FakeDoc()
+    from pypdfbox.pdmodel import pd_document as pd_doc_mod
 
     def fake_sign_doc(self, document, output):
         output.write(b"OK")
 
-    monkeypatch.setattr(loader_mod, "Loader", FakeLoader)
+    monkeypatch.setattr(
+        pd_doc_mod.PDDocument, "load", staticmethod(lambda _fh: FakeDoc())
+    )
     monkeypatch.setattr(
         CreateSignedTimeStamp, "sign_detached_document", fake_sign_doc, raising=True
     )
@@ -181,17 +175,14 @@ def test_sign_detached_accepts_str_paths(monkeypatch, tmp_path):
         def __exit__(self, *a):
             return False
 
-    import pypdfbox.loader as loader_mod
-
-    class FakeLoader:
-        @staticmethod
-        def load_pdf(_fh):
-            return FakeDoc()
+    from pypdfbox.pdmodel import pd_document as pd_doc_mod
 
     def fake_sign_doc(self, document, output):
         output.write(b"DONE")
 
-    monkeypatch.setattr(loader_mod, "Loader", FakeLoader)
+    monkeypatch.setattr(
+        pd_doc_mod.PDDocument, "load", staticmethod(lambda _fh: FakeDoc())
+    )
     monkeypatch.setattr(
         CreateSignedTimeStamp, "sign_detached_document", fake_sign_doc, raising=True
     )

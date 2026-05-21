@@ -771,6 +771,19 @@ class PDSignature:
         delimiters and hex-decodes the body, returning the binary
         signature blob.
 
+        Two ``/ByteRange`` conventions exist in the wild and both are
+        tolerated here:
+
+        * **Brackets excluded from the ranges** (upstream PDFBox /
+          ISO 32000-1 §12.8.1 wording in some interpretations): byte at
+          ``start1 + len1`` is ``<`` and byte at ``start2 - 1`` is ``>``.
+        * **Brackets included in the ranges** (pypdfbox
+          ``compute_byte_range`` helper): byte at ``start1 + len1 - 1`` is
+          ``<`` and byte at ``start2`` is ``>``.
+
+        We locate the framing bracket pair by walking the gap between the
+        two ranges so the helper round-trips against either convention.
+
         Raises :class:`IndexError` if ``/ByteRange`` is absent or
         malformed.
         """
@@ -778,10 +791,31 @@ class PDSignature:
         if br is None or len(br) != 4:
             raise IndexError("missing or malformed /ByteRange")
         start1, len1, start2, _len2 = br
-        # /Contents sits between (start1 + len1) and start2, framed by `<>`.
-        gap_start = start1 + len1 + 1
-        gap_end = start2 - 1
-        if gap_start < 0 or gap_end > len(pdf_file) or gap_end < gap_start:
+        # Probe a one-byte window on each side of the gap so we work with
+        # either convention. The hex body is whatever sits strictly
+        # between the first '<' on the left edge and the last '>' on the
+        # right edge of the gap.
+        probe_start = start1 + len1 - 1
+        probe_end = start2 + 1
+        if (
+            probe_start < 0
+            or probe_end > len(pdf_file)
+            or probe_end < probe_start
+        ):
+            raise IndexError("missing or malformed /ByteRange")
+        # Find '<' on the left (probe_start or probe_start + 1).
+        gap_start: int | None = None
+        for idx in (probe_start, probe_start + 1):
+            if 0 <= idx < len(pdf_file) and pdf_file[idx : idx + 1] == b"<":
+                gap_start = idx + 1
+                break
+        # Find '>' on the right (probe_end - 1 or probe_end - 2).
+        gap_end: int | None = None
+        for idx in (probe_end - 1, probe_end - 2):
+            if 0 <= idx < len(pdf_file) and pdf_file[idx : idx + 1] == b">":
+                gap_end = idx
+                break
+        if gap_start is None or gap_end is None or gap_end < gap_start:
             raise IndexError("missing or malformed /ByteRange")
         hex_body = pdf_file[gap_start:gap_end]
         return bytes.fromhex(hex_body.decode("ascii"))

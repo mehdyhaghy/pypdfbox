@@ -158,10 +158,14 @@ def test_choice_set_value_syncs_selected_option_indices() -> None:
 
 
 def test_choice_clear_value_removes_selected_option_indices() -> None:
+    """``set_value(None)`` clears both ``/V`` and any pre-existing ``/I``."""
     form = PDAcroForm()
     lb = PDListBox(form)
     lb.set_options(["one", "two"])
-    lb.set_value("two")
+    lb.set_multi_select(True)
+    # Use the list overload to seed /I (the str overload now clears it
+    # per upstream contract — wave 1372).
+    lb.set_value(["two"])
     assert lb.get_cos_object().get_dictionary_object(_I) is not None
 
     lb.set_value(None)

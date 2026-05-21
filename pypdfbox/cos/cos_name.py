@@ -294,3 +294,8 @@ COSName.BASE_FONT = _static_name("BaseFont")  # type: ignore[attr-defined]
 COSName.ENCODING = _static_name("Encoding")  # type: ignore[attr-defined]
 # Form-widget appearance keys (PDF 32000-1 §12.7.4).
 COSName.DA = _static_name("DA")  # type: ignore[attr-defined]
+COSName.Q = _static_name("Q")  # type: ignore[attr-defined]
+# Generic font-dictionary keys (PDF 32000-1 §9.5).
+COSName.FONT = _static_name("Font")  # type: ignore[attr-defined]
+# CIDFont / Type0-font CMap predefined values (PDF 32000-1 §9.7.5.2).
+COSName.IDENTITY = _static_name("Identity")  # type: ignore[attr-defined]

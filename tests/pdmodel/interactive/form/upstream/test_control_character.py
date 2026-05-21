@@ -4,11 +4,10 @@ Source: ``pdfbox/src/test/java/org/apache/pdfbox/
 pdmodel/interactive/form/ControlCharacterTest.java`` (PDFBox 3.0.x).
 
 Upstream asserts that ``setValue("...NUL\\0...")`` raises
-``IllegalArgumentException``. pypdfbox's ``PDTextField.set_value``
-currently accepts ``\\0`` because the underlying ``COSString`` permits
-arbitrary bytes; the test for that single case is skipped with a
-``pytest.skip`` so it shows up in the run output (CHANGES.md tracks
-the divergence).
+``IllegalArgumentException``. Wave 1372 closed this divergence:
+:meth:`PDTextField.set_value` now raises ``ValueError`` for any value
+containing ``"\\0"`` (the Python-equivalent of Java's
+``IllegalArgumentException``).
 
 Upstream also asserts that pypdfbox's appearance-stream tokens match
 Acrobat's for whitespace / linebreak characters. The lite-port's
@@ -51,12 +50,13 @@ def env() -> tuple[PDDocument, PDAcroForm]:
 
 def test_character_nul(env) -> None:
     """Upstream: ``characterNUL`` — expects ``IllegalArgumentException``
-    when setting a value containing ``\\0``.
-
-    Skipped: pypdfbox ``PDTextField.set_value`` does not yet guard
-    against the NUL character.
+    when setting a value containing ``\\0``. Python equivalent is
+    ``ValueError`` (wave 1372 closed the divergence).
     """
-    pytest.skip("pypdfbox does not enforce NUL rejection in PDTextField.set_value")
+    _, acro_form = env
+    field = acro_form.get_field("pdfbox-nul")
+    with pytest.raises(ValueError):
+        field.set_value("NUL\0NUL")
 
 
 def _decode_pdf_string(raw: str) -> str:

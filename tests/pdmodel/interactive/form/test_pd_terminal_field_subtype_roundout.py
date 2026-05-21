@@ -178,11 +178,18 @@ def test_radio_button_get_selected_export_values_with_opt() -> None:
     ``PDRadioButton.getSelectedExportValues``: when ``/Opt`` is non-empty,
     on_values comes from /Opt itself; the entries equal to ``getValue()``
     yield the matching export values.
+
+    Wave 1372: ``set_value`` now dispatches into ``update_by_option`` when
+    ``/Opt`` is present, which requires a 1:1 widget-to-option pairing.
+    The read-side surface this test exercises does not need real widgets,
+    so we write ``/V`` directly through the COS dictionary to bypass the
+    new propagation path (matches the test's intent — the function under
+    test is ``get_selected_export_values``).
     """
     form = PDAcroForm()
     rb = PDRadioButton(form)
     rb.set_export_values(["expA", "expB"])
-    rb.set_value("expB")
+    rb.get_cos_object().set_name(COSName.get_pdf_name("V"), "expB")
     selected = rb.get_selected_export_values()
     assert "expB" in selected
 

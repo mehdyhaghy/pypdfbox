@@ -4189,6 +4189,331 @@ No latent source bugs flagged.
   and rely solely on `read_long`'s clamp — Java's signed-32 → signed-64
   pattern lives in exactly one place upstream; we mirror it in two.
 
+## Wave 1372 — close audited deviations (agent A)
+
+Five surgical fixes addressing latent crashes and stale pinning tests
+flagged in the CHANGES.md audit. No new dependencies; no camelCase
+aliases added; no `# noqa` suppressions added.
+
+- `pypdfbox/cos/cos_name.py`: registered three missing static-name
+  constants — `COSName.Q` ("Q"), `COSName.FONT` ("Font"), and
+  `COSName.IDENTITY` ("Identity"). All three are referenced in pypdfbox
+  source (`appearance_generator_helper.py:226` calls `COSName.Q`;
+  `pd_cid_font_type2_embedder.py:265,278` references `COSName.FONT` and
+  `COSName.IDENTITY`) but were missing from the registration block,
+  guaranteeing `AttributeError` on first use. Audit cited
+  CHANGES.md:6986/8714/8739/8760. `FONT_DESC`, `BASE_FONT`, `ENCODING`,
+  `DA`, `XOBJECT`, `IMAGE` are already registered from prior waves.
+- `pypdfbox/pdmodel/interactive/form/appearance_generator_helper.py`:
+  switched `apply_padding`'s `PDRectangle` import from
+  `pypdfbox.pdmodel.common` (re-export added in wave 1357) to the
+  canonical `pypdfbox.pdmodel.pd_rectangle` source module so the import
+  is unambiguous and won't break if `common/__init__.py` is ever
+  trimmed. Updated the two `get_text_align` tests at
+  `tests/pdmodel/interactive/form/test_appearance_generator_helper_coverage.py`
+  that previously pinned the `COSName.Q` AttributeError — they now
+  assert correct behaviour (widget-Q fallback to field-Q; widget-Q
+  fallback to 0 when neither side has /Q).
+- `pypdfbox/rendering/group_graphics.py`: confirmed lines 559-568 already
+  do `ImageChops.subtract(RGB, RGB)` with alpha restored separately;
+  upgraded `test_backdrop_removal_rgba_branch_executes` (which used
+  `contextlib.suppress(ValueError)` to tolerate the legacy
+  mode-mismatch bug) to
+  `test_backdrop_removal_rgba_branch_subtracts_preserving_alpha`, which
+  asserts the subtracted pixel value and that the original alpha
+  channel is preserved. Removed the now-unused `import contextlib`.
+- `pypdfbox/multipdf/pdf_merger_utility.py`: verified the inner-finally
+  source-close blocks at lines 627-636 and 756-765 already use an
+  `else:` arm so `opened_sources[-1] = (source_doc, False)` (ownership
+  release) only happens on a clean close. The outer-finally retry at
+  lines 657-662 / 786-791 reaches still-owned docs when the inner close
+  raised. No `# pragma: no cover` markers to remove. No source change
+  needed.
+- `tests/pdmodel/graphics/image/test_jpeg_factory_wave1337.py`: removed
+  the stale docstring claim that the file tests Java-style camelCase
+  aliases (`createFromByteArray` / `createFromStream` /
+  `createFromImage`). The file never actually contained alias-pinning
+  tests; the aliases themselves were already absent from the source.
+  No dedicated alias-pinning test file existed to delete.
+
+### Wave 1372 — audited deviations across signature / examples / tools (agent B)
+
+Closed nine audited latent issues that were flagged "NOT fixed this
+wave" between waves 1335-1337. Several had already been silently
+fixed in intervening waves; the remaining items are addressed here.
+No new dependencies, no camelCase aliases, no `# noqa` suppressions
+added.
+
+- `pypdfbox/pdmodel/interactive/digitalsignature/pd_signature.py`:
+  fixed the off-by-one in `get_contents_from_bytes` (CHANGES.md:3158).
+  The previous implementation hard-coded `gap_start = start1 + len1 + 1`
+  / `gap_end = start2 - 1`, which assumed the upstream PDFBox
+  convention where the `<`/`>` framing bytes sit OUTSIDE the
+  ``/ByteRange`` chunks. pypdfbox's own `compute_byte_range` helper
+  in `sig_utils.py` uses the ISO 32000-1 §12.8.1 convention where the
+  brackets are INSIDE the byte-range chunks (line 384: "includes ``<``").
+  The two conventions disagree by one byte on each side, so a
+  document built with `compute_byte_range` would round-trip through
+  `get_contents_from_bytes` with the first and last hex characters
+  silently dropped. Replaced the fixed offsets with a one-byte probe
+  on each side of the gap that locates the actual `<`/`>` bytes and
+  extracts the strict hex body between them — works against either
+  convention.
+- `tests/pdmodel/interactive/digitalsignature/test_pd_signature_wave1337.py`:
+  removed the off-by-one padding that `_build_minimal_signed_doc`
+  and `test_pd_signature_get_contents_from_bytes_with_real_pkcs7`
+  added to work around the bug. Tests now assert byte-exact
+  round-trip (`bytes.fromhex("deadbeef" * 4)` for the minimal doc;
+  `extracted[:len(blob)] == blob` for the real-PKCS#7 fixture).
+  Bumped the real-PKCS#7 placeholder from 1024 to 4096 bytes — the
+  prior 1024 size was insufficient for the generated PKCS#7 blob and
+  the test was structurally broken because `body_padded` overflowed
+  the placeholder, shifting the actual `>` past the byte-range
+  boundary.
+- `pypdfbox/examples/signature/create_signed_time_stamp.py`:
+  swapped `Loader.load_pdf(fh)` → `PDDocument.load(fh)` at the
+  context-manager site (CHANGES.md:2917-2919 class of bug).
+  `Loader.load_pdf` returns a `COSDocument` but the immediately
+  following `sign_detached_document` calls
+  `add_signature(signature, signer)` and `save_incremental(output)`
+  which are `PDDocument` methods. Same fix wave 1334 applied to the
+  sibling examples.
+- `tests/examples/signature/test_create_signed_time_stamp.py`:
+  retargeted the three `sign_detached` lifecycle tests to stub
+  `PDDocument.load` instead of `Loader.load_pdf` so they continue
+  exercising the helper's path-handling logic.
+- Verified items 1, 2, 4, 5, 6, 7, 8, 9 from the wave-1372 task list
+  were already closed by earlier waves (current `main`):
+  `create_signature.py`, `create_embedded_time_stamp.py`,
+  `benchmark/load_and_save.py`, `create_visible_signature.py` all
+  use `PDDocument.load`; `PDSignature.get_contents_from_bytes`
+  exists; `xmp_serializer.py::_append_field` has a defensive
+  `isinstance(field, AbstractField)` guard at line 205 and the
+  serializer's dict-wrap path in `_wrap_primitive` already produces
+  `LangAlt` for `dict[str, str]` values stored by
+  `set_unqualified_language_property_value`;
+  `custom_page_drawer.py` already uses `color.to_rgb_int()`;
+  `field_remover.py` already calls `page.set_annotations(annotations)`
+  after the widget-removal walk; `create_signed_time_stamp.py`
+  already passes plain strings (`"DocTimeStamp"` /
+  `"ETSI.RFC3161"`) to `set_type` / `set_sub_filter`; `text_to_pdf.py`
+  already uses `PDFontFactory.create_default_font(...)` and
+  `content.split("\n")`; `decompress_objectstreams.py` has no
+  `-skipImages` branch (the audit description pointed at the wrong
+  file — `write_decoded_doc.py` does have the branch and
+  `COSName.XOBJECT` / `COSName.IMAGE` are both registered).
+
+Verified: full `tests/examples/`, `tests/tools/`, `tests/benchmark/`,
+and `tests/pdmodel/interactive/digitalsignature/` — 2701 passed,
+0 failed. Full ruff clean.
+
+### Wave 1372 — close form-contract deviations (agent C)
+
+Closes the four form-contract deviations from CHANGES.md:6641-6644
+(documented in wave 1360 agent B) so the pypdfbox surface matches the
+visible PDFBox contract. No new dependencies, no camelCase aliases,
+no `# noqa` suppressions added.
+
+- `pypdfbox/pdmodel/interactive/form/pd_text_field.py`:
+  `PDTextField.set_value` now raises `ValueError("Field value contains
+  NUL")` when the input string contains `"\0"`. Upstream
+  `PDTextField.setValue(String)` indirectly rejects NUL via the
+  font-encode pipeline (Standard 14 fonts carry no glyph for
+  ``U+0000``); pypdfbox's lite appearance path doesn't always
+  exercise that branch, so the guard is now explicit at the
+  ``setValue`` entry. Matches the upstream
+  `ControlCharacterTest#characterNUL` assertion
+  (`IllegalArgumentException`).
+
+- `pypdfbox/pdmodel/interactive/form/pd_choice.py`:
+  `PDChoice.set_value` now splits the single-value (`str`) and
+  multi-value (`list`) overloads explicitly. The `str` path mirrors
+  upstream `PDChoice.setValue(String)` (PDChoice.java line 387–395)
+  — writes `/V` as a COSString and *removes* `/I` via
+  `setSelectedOptionsIndex(null)`. The `list` path continues to
+  populate `/I` from the option indices (matches upstream
+  `PDChoice.setValue(List)`). New private helper
+  `_validate_value_against_options` factors out the upstream
+  `checkValue`-shaped membership gate that the `str` path needs
+  (editable combo boxes still bypass it for free text).
+
+- `pypdfbox/pdmodel/interactive/form/pd_button.py`:
+  `PDButton.set_value(String)` now dispatches into `update_by_option`
+  when `/Opt` is set and `update_by_value` otherwise (mirroring
+  upstream `PDButton.setValue(String)`, PDButton.java line 150). The
+  `_check_value_if_known` validation gate is preserved. Both helpers
+  walk every widget's `/AP /N` and install the matching key as
+  `/AS` — closing the local divergence where `set_value` only wrote
+  `/V` and left widget `/AS` stale. `set_value_by_index` continues
+  to call `update_by_value(str(index))` directly (mirrors upstream
+  `setValue(int)` at PDButton.java line 188 which bypasses the
+  `updateByOption` dispatch).
+
+- `pypdfbox/pdmodel/interactive/form/pd_appearance_generator.py`:
+  Regenerated text-field, combo-box, and list-box appearances now
+  preserve the source `/DA` font alias (e.g. `/Helv`) instead of the
+  auto-allocated `F0`. New instance helper
+  `_resolve_font_for_field(field, font_name)` walks the form's
+  `/DR /Font` first (returning the existing typed `PDFont` when the
+  alias resolves there), falling back to the classmethod
+  `_resolve_font` for the alias-mapped Standard 14 default. New
+  static helper `_register_font_alias(cs, font, alias)` pre-registers
+  the resolved font under the source alias key in the appearance's
+  ``/Resources /Font`` dict — :meth:`set_font` then resolves the
+  resource key by identity and emits the original alias in the
+  ``/<alias> <size> Tf`` token. Skips the seeding when the alias slot
+  is already taken by a different font COS object (lets
+  ``set_font`` auto-allocate a fresh ``F<n>`` for the corner case).
+
+Pinning tests updated (every test that previously asserted the
+local-divergent behaviour now asserts the upstream-faithful one):
+
+- `tests/pdmodel/interactive/form/upstream/test_control_character.py::test_character_nul`
+  — unskipped; asserts `ValueError`.
+- `tests/pdmodel/interactive/form/upstream/test_radio_buttons.py`
+  — `test_radio_button_pd_model`, `test_pdf_box_4617_index_for_set_by_option`
+  now drive widget `/AS` via `set_value` directly; module docstring
+  notes the wave 1372 closure.
+- `tests/pdmodel/interactive/form/test_pd_choice_roundout.py`
+  — `test_set_value_string_writes_cos_string_and_clears_indices`
+  renamed from `*_and_updates_indices`; asserts `/I` is absent.
+  `test_set_value_single_value_string_clears_indices` renamed from
+  `test_set_value_single_value_writes_single_index`; asserts the
+  str/list split (list overload populates `/I`, str overload
+  clears it).
+- `tests/pdmodel/interactive/form/test_pd_field_values.py::test_choice_clear_value_removes_selected_option_indices`
+  — seeds `/I` through the list overload (str overload no longer
+  populates it).
+- `tests/pdmodel/interactive/form/test_helpers_wave283.py::test_choice_field_type_aware_has_and_clear_helpers`
+  — seeds `/I` through the list overload for the same reason.
+- `tests/pdmodel/interactive/form/test_pd_terminal_field_subtype_roundout.py::test_radio_button_get_selected_export_values_with_opt`
+  — writes `/V` directly via COSName because the new `set_value`
+  dispatch requires a 1:1 widget-to-option pairing, which the
+  read-side test setup doesn't provide.
+- `tests/pdmodel/interactive/form/test_appearance_generator_helper_coverage.py::test_validate_and_ensure_acro_form_resources_with_real_field`
+  — flips from `pytest.raises(TypeError)` to a no-exception
+  assertion: with the alias preserved, the hoist path sees the
+  font already in `/DR` and short-circuits.
+- `tests/pdmodel/interactive/form/test_acro_form_refresh_appearances.py::test_refresh_appearances_text_field_emits_tj_with_value`
+  — asserts `/Helv 12 Tf` (the source `/DA` alias) instead of
+  `/F0 12 Tf`; module docstring updated.
+
+Verified: `tests/pdmodel/interactive/form/` — 1175 passed,
+22 skipped, 0 failed. Full `tests/pdmodel/` — 20872 passed, 60
+skipped. Full repo — 42414 passed, 196 skipped, 0 failed. Ruff clean.
+
+## Wave 1371 — close xmpbox deviations
+
+### Wave 1371 — OECFType structured-type ported; EXIF schema typed-struct accessors for OECF / SpatialFrequencyResponse / CFAPattern (agent A)
+
+Closes the EXIF-side deviation flagged on `pypdfbox/xmpbox/exif_schema.py:95` and the
+TestExifXmp `testGenerate` skip.
+
+- New `pypdfbox/xmpbox/type/oecf_type.py` — port of upstream
+  `org.apache.xmpbox.type.OECFType`. Subclass of `AbstractStructuredType` carrying
+  the EXIF Opto-Electronic Conversion Function shape: `Columns` (Integer), `Rows`
+  (Integer), `Names` (Seq<Text>), `Values` (Seq<Real>). Adds typed getter
+  helpers (`get_columns` / `get_rows`) plus list accessors (`get_names`,
+  `add_name`, `get_values`, `add_value`) that materialise the underlying
+  `ArrayProperty` on first use, matching the `CFAPatternType` shape that
+  already shipped.
+- `pypdfbox/xmpbox/type/__init__.py` + `pypdfbox/xmpbox/__init__.py` — re-export
+  `OECFType` alongside the existing `CFAPatternType`.
+- `pypdfbox/xmpbox/type/type_mapping.py` — register `OECFType` in the
+  `_STRUCTURED` dispatch table under the upstream key `"OECF"` so the parser
+  side picks it up by name (mirrors the `Types.OECF` enum entry that has been
+  in place since the type-tag scaffolding landed).
+- `pypdfbox/xmpbox/exif_schema.py` — typed struct getter/setter pairs for
+  `OECF` (`OECFType`), `SpatialFrequencyResponse` (`OECFType`), and
+  `CFAPattern` (`CFAPatternType`). Setters install the struct under the
+  property-store entry for the local-name; getters route through a
+  type-narrowing helper. The serializer's existing
+  `AbstractStructuredType` branch handles emission with no further
+  wiring.
+- `pypdfbox/xmpbox/tiff_schema.py` — docstring updated to record that EXIF
+  metadata embedded alongside TIFF tags now round-trips through the typed
+  struct API on the sibling `ExifSchema`; the TIFF schema itself does not
+  declare those properties (matches upstream where TIFFSchema does not own
+  `OECFType` / `CFAPatternType` fields).
+- `tests/xmpbox/schema/upstream/test_exif_xmp.py` — removed the
+  `@pytest.mark.skip` placeholder and rewrote `test_generate` against the
+  real `OECFType` API. The test now matches upstream `testGenerate` shape
+  exactly: build the OECF struct via the `TypeMapping.create_integer`
+  factory, install a `Columns=14` IntegerType, set the struct's
+  property-name to `ExifSchema.OECF`, route through
+  `ExifSchema.set_oecf_property`, and serialise. Belt-and-suspenders
+  read-back via `get_oecf_property` + `OECFType.get_columns` confirms
+  the typed accessor route.
+- xmpbox suite: 2997 passed, 31 skipped (was 32 — the OECFType placeholder
+  is gone). No regressions; ruff clean.
+
+No latent bugs discovered. The existing `CFAPatternType` (landed in an
+earlier wave but never wired to `ExifSchema`) is finally reachable through
+typed accessors.
+
+### Wave 1371 — DomXmpParser typed-property registry + bj-namespace promotion + strict-flag consumption + non-rdf parseType gate (agent B)
+
+Closes the four `dom_xmp_parser.py` deviations flagged in wave 1360 (line
+6616): the strict-parsing flag was only partially consumed, the `bj`
+namespace fell back to a generic `XMPSchema`, and the parser had no
+cardinality registry so upstream-shape rejections were missing.
+
+- `pypdfbox/xmpbox/dom_xmp_parser.py` — new `_TYPED_PROPERTY_REGISTRY`
+  keyed by `(namespace URI, property local-name)` -> `Cardinality`.
+  Hand-mirrors upstream `TypeMapping#getSpecifiedPropertyType` for the
+  subset `DomXmpParser` actually consults during array/structure shape
+  validation: Dublin Core (title/description/rights = Alt, creator/date
+  = Seq, contributor/publisher/subject/language/relation/type = Bag,
+  coverage/format/identifier/source = Simple), XMP Basic (Advisory /
+  Identifier = Bag), XMP Rights (UsageTerms = Alt, Owner = Bag), Adobe
+  PDF (Keywords / PDFVersion / Producer = Simple), Photoshop
+  (DocumentAncestors = Bag, TextLayers = Seq). When the parser
+  encounters a property in this registry, three new helpers
+  (`_validate_attribute_form_cardinality`,
+  `_validate_element_form_cardinality`, and
+  `_validate_parse_type_namespace`) enforce the upstream-faithful shape
+  rules: bare Text on a declared LangAlt is rejected with
+  `XmpParsingException(INVALID_TYPE)`; an array container of the wrong
+  flavour (Bag where Seq expected, etc.) is rejected; attribute-shorthand
+  on a declared-array property is rejected; and any non-rdf-namespaced
+  `parseType` attribute (e.g. upstream `testBadInner`'s
+  `xmpMM:parseType="Resource"`) is rejected. All three validators consult
+  `_strict_parsing` — lenient mode silently coerces / drops every
+  mismatch.
+- `pypdfbox/xmpbox/dom_xmp_parser.py::_SCHEMA_REGISTRY` — added the
+  `XMPBasicJobTicketSchema.NAMESPACE` (`http://ns.adobe.com/xap/1.0/bj/`)
+  → `XMPBasicJobTicketSchema` entry so a packet carrying
+  `xmlns:xmpBJ="…/bj/"` materialises a properly-typed
+  `XMPBasicJobTicketSchema` (with `JobRef` accessors, etc.) instead of a
+  generic `XMPSchema`.
+- `pypdfbox/xmpbox/dom_xmp_parser.py` — routed the upstream-named helper
+  methods (`parse_description_root_attr`, `parse_children_as_properties`,
+  `try_parse_attributes_as_properties`) through the same cardinality /
+  parseType validators so every property-walk entry point gets identical
+  strict-mode semantics. Reflowed the strict-parsing-toggle docstring to
+  enumerate the three validations the flag now drives.
+- `tests/xmpbox/xml/upstream/test_dom_xmp_parser_round_out_wave1370.py` —
+  unskipped two wave-1370 placeholders (the `testTextInsteadOfArray` and
+  `testBadInner` ports) and translated them into real assertions against
+  `XmpParsingException(INVALID_TYPE)`. The third skip
+  (`test_no_schema_xml_namespace_rejected`) remains intentionally skipped
+  — that one needs the upstream reserved-namespace vs unknown-schema
+  dispatch distinction which is orthogonal to this cluster.
+- `tests/xmpbox/parser/test_dom_xmp_parser_typed_registry_wave1371.py`
+  (NEW, +14 tests) — covers the four wins: dc:title bare-Text rejection
+  (strict) vs tolerance (lenient); dc:title LangAlt acceptance; dc:creator
+  Bag-vs-Seq mismatch; dc:title attribute-shorthand rejection;
+  `xmpMM:parseType="Resource"` rejection; `rdf:parseType="Resource"`
+  acceptance; strict↔lenient toggle parity on both validators;
+  `set_throw_exception_on_invalid_xmp` alias drives the same path; and
+  the `bj` namespace → `XMPBasicJobTicketSchema` promotion (plus
+  `meta.get_basic_job_ticket_schema()` round-trip).
+- Suite: 3013 pass (was 2997), 29 skip (was 31), 0 regressions; ruff clean.
+
+No latent source bugs surfaced. The promotion + cardinality registry
+were intentional pypdfbox-side gaps documented since wave 1360; this is
+the planned closeout.
+
 ## Wave 1370 — parity round-out (5 parallel agents)
 
 ### Wave 1370 — xmpbox/parser + xmpbox/xml round-out: DomXmpParser tolerance, XmpSerializer envelope, ResourceRef / Thumbnail / Job structured types, LangAlt x-default reorganisation, PdfaExtensionHelper populate (agent A)
@@ -6588,11 +6913,15 @@ Backfill wave: with coverage at 100.000% (wave 1356) and all TODOs closed (wave 
 - 14 upstream JUnit→pytest ports for `tests/pdmodel/interactive/form/upstream/` (+76 tests, 11 documented skips). Files: `test_acro_forms_rotation.py`, `test_alignment.py`, `test_comb_alignment.py`, `test_control_character.py`, `test_handle_different_da_levels.py`, `test_multiline_fields.py`, `test_pd_acro_form_from_annots.py` (all-skip — network), `test_pd_acro_form_generate_appearances.py` (all-skip — network), `test_plain_text.py`, `test_check_box.py`, `test_fields.py`, `test_list_box.py`, `test_radio_buttons.py`, `test_utils.py`.
 - 11 verbatim PDF fixtures copied to `tests/fixtures/pdmodel/interactive/form/` (AcroFormsBasicFields, AcroFormsRotation, AlignmentTests, CombTest, ControlCharacters, DifferentDALevels, MultilineFields, PDFBOX-3656-SF1199AEG (Complete), PDFBOX-3835-input-acrobat-wrap, PDFBOX-5784, PDFBOX3812-acrobat-multiline-auto). PROVENANCE.md row per fixture.
 - **Latent source bug fixed**: `pypdfbox/pdmodel/interactive/form/pd_appearance_generator.py` `_regenerate_text_widget` now `remove_item(_AP)` on widgets that lack `/Rect` instead of silently returning. Mirrors upstream `AppearanceGeneratorHelper.setAppearanceContent` line 227 ("widgets without /Rect lose their /AP to behave like Adobe Acrobat"). Caught by `tests/pdmodel/interactive/form/upstream/test_fields.py::test_widget_missing_rect`.
-- **Documented divergences (not fixed in this port)**:
+- **Documented divergences (closed by wave 1372 agent C — see entry above)**:
   - `PDTextField.set_value` accepts NUL ("\0") characters; upstream rejects with `IllegalArgumentException`. Test `test_character_nul` skipped.
+    **Wave 1372:** raises `ValueError("Field value contains NUL")`; test unskipped.
   - `PDChoice.set_value(str)` writes both `/V` and the matching `/I` index; upstream `PDChoice.setValue(String)` clears `/I` (PDFBox 3.0 line 392). Pre-existing pypdfbox tests pin the local behaviour; the upstream `assertNull(I)` assertion in `TestListBox.testFieldValueSetterGetter` is dropped.
+    **Wave 1372:** single-value (`str`) path now clears `/I` per upstream; multi-value (`list`) path retains `/I`.
   - `PDButton.set_value(str)` does not propagate to widget `/AS`; upstream dispatches into `updateByValue` / `updateByOption`. The radio-button test calls `update_by_value` / `update_by_option` directly to mirror the upstream visible contract.
+    **Wave 1372:** `set_value(str)` now dispatches into the same helpers and propagates widget `/AS`.
   - `PDAppearanceGenerator` regenerates the widget content stream with the font alias the fresh `PDResources` registers (typically `/F0`) rather than the field's source `/DA` alias (e.g. `/Helv`). The `HandleDifferentDALevels` port matches `/<font-alias> <size> Tf` regex instead of upstream's substring equality.
+    **Wave 1372:** appearance now emits the source `/DA` alias (e.g. `/Helv`).
   - PDFBOX-3835 multiline wrap parity loosened — pypdfbox's wrap engine emits a different line count than Acrobat's for the same value; `testMultilineBreak` asserts only that the regenerated stream contains some line of the value.
 
 ### Wave 1360 — pdmodel/text/rendering/xmpbox-type parity ports (agent E)

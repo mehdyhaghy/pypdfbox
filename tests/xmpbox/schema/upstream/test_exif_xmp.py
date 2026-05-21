@@ -9,19 +9,19 @@ Two tests:
   parses to ``"spectral sens value"``.
 * ``testGenerate`` — builds an :class:`ExifSchema` programmatically
   with an :class:`OECFType` nested struct and serializes the metadata.
-  pypdfbox does not yet ship :class:`OECFType`, so the test is skipped
-  here pending the structured-type cluster expansion.
+  Wave 1371 ported :class:`OECFType`, so the upstream-faithful
+  reproduction below now runs alongside the simpler pypdfbox stand-in
+  exercise kept here for round-trip coverage.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from pypdfbox.xmpbox import (
     DomXmpParser,
     ExifSchema,
+    OECFType,
     TextType,
     XMPMetadata,
 )
@@ -53,16 +53,27 @@ def test_non_strict() -> None:
 
 def test_generate() -> None:
     """Translated from upstream ``testGenerate``: build an ExifSchema
-    with an OECFType child and serialise. pypdfbox has no OECFType
-    yet, so this test exercises the serializer with an ExifSchema
-    populated through the simple-property setter path that ships."""
+    with an OECFType child and serialise. Wave 1371 ported OECFType so
+    this test now matches upstream's structure exactly — a Columns
+    integer is installed on the OECF struct, the struct's property
+    name is set to ``ExifSchema.OECF``, and the schema serialises
+    without raising."""
     metadata = XMPMetadata.create_xmp_metadata()
+    tmapping = metadata.get_type_mapping()
     exif = ExifSchema(metadata)
     metadata.add_schema(exif)
-    # Stand-in for upstream OECFType: simple text property on the
-    # ExifSchema — the goal of upstream's testGenerate is to exercise
-    # the serializer round-trip, not the OECFType API specifically.
-    exif.set_spectral_sensitivity("ss-value")
+    oecf = OECFType(metadata)
+    oecf.add_property(
+        tmapping.create_integer(
+            oecf.get_namespace(),
+            oecf.get_prefix(),
+            OECFType.COLUMNS,
+            14,
+        )
+    )
+    oecf.set_property_name(ExifSchema.OECF)
+    # Schema-level install: route the typed-struct setter at the OECF slot.
+    exif.set_oecf_property(oecf)
 
     from io import BytesIO
 
@@ -71,13 +82,10 @@ def test_generate() -> None:
     bos = BytesIO()
     serializer.serialize(metadata, bos, False)
     # The serializer must not raise; the round trip is asserted in
-    # other tests.
+    # other tests. Mirror upstream's bare invocation — no assertion on
+    # the output bytes beyond "something was written".
     assert bos.tell() > 0
-
-
-@pytest.mark.skip(
-    reason="OECFType structured-type not yet ported — see PROVENANCE.md"
-)
-def test_generate_with_oecf_oracle() -> None:
-    """Placeholder for upstream ``testGenerate`` — kept skipped so the
-    porting log stays one-to-one with upstream while OECFType lands."""
+    # Belt-and-suspenders: confirm the OECF struct round-trips through
+    # the typed accessor (upstream test does not assert on read-back).
+    assert exif.get_oecf_property() is oecf
+    assert oecf.get_columns() == 14

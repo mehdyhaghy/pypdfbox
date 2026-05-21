@@ -90,11 +90,25 @@ class PDButton(PDTerminalField):
         return "Off" if item is None else ""
 
     def set_value(self, value: str | None) -> None:
+        """Set the selected option's name and update each widget's ``/AS``.
+
+        Mirrors upstream ``PDButton.setValue(String)`` (PDButton.java 150):
+        the value is validated through :meth:`check_value`, then dispatched
+        into :meth:`update_by_option` when ``/Opt`` (export values) is set
+        and :meth:`update_by_value` otherwise. Both helpers walk every
+        widget's ``/AP /N`` subdictionary, install the matching appearance
+        key as that widget's ``/AS``, and write the resolved ``/V`` to the
+        field. Wave 1372 closed the divergence where ``set_value`` wrote
+        only ``/V`` and left widget ``/AS`` stale.
+        """
         if value is None:
             self._field.remove_item(_V)
+            return
+        self._check_value_if_known(value)
+        if self.get_export_values():
+            self.update_by_option(value)
         else:
-            self._check_value_if_known(value)
-            self._field.set_name(_V, value)
+            self.update_by_value(value)
 
     def has_value(self) -> bool:
         """Return ``True`` when this button has a parsable local ``/V`` value."""
@@ -123,7 +137,11 @@ class PDButton(PDTerminalField):
                 f"{self.get_fully_qualified_name()}, valid indices are from 0 "
                 f"to {valid_upper}"
             )
-        self.set_value(str(index))
+        # Mirror upstream PDButton.setValue(int) (PDButton.java line 188):
+        # this overload calls ``updateByValue`` directly with the
+        # ``String.valueOf(index)`` token — bypassing the ``updateByOption``
+        # dispatch ``setValue(String)`` would use when /Opt is present.
+        self.update_by_value(str(index))
 
     def check_value(self, value: str) -> None:
         """Validate that ``value`` is a permitted on-state name or ``Off``.

@@ -65,16 +65,25 @@ def test_set_value_none_clears_v_and_i() -> None:
 # ---------- _selected_option_indices_for_values via set_value ----------
 
 
-def test_set_value_string_writes_cos_string_and_updates_indices() -> None:
-    """A single-string ``set_value`` writes a COSString and records the
-    matching ``/I`` entry."""
+def test_set_value_string_writes_cos_string_and_clears_indices() -> None:
+    """A single-string ``set_value`` writes a COSString and *removes*
+    any existing ``/I`` entry. Mirrors upstream
+    ``PDChoice.setValue(String)`` which terminates with
+    ``setSelectedOptionsIndex(null)`` (wave 1372 closed the divergence
+    that previously had pypdfbox writing both ``/V`` and ``/I`` on the
+    single-value path)."""
     form = PDAcroForm()
     lb = PDListBox(form)
     lb.set_options(["alpha", "beta", "gamma"])
 
+    # Pre-populate /I so we can prove set_value(str) clears it.
+    lb.set_selected_options_indices([0])
+
     lb.set_value("beta")
     assert lb.get_value() == ["beta"]
-    assert lb.get_selected_options_indices() == [1]
+    # /I must be absent — upstream contract.
+    assert lb.get_selected_options_indices() == []
+    assert not lb.get_cos_object().contains_key(_I)
     v = lb.get_cos_object().get_dictionary_object(_V)
     assert isinstance(v, COSString)
 
@@ -408,14 +417,22 @@ def test_set_value_sorts_selected_option_indices_ascending() -> None:
     assert lb.get_selected_options_indices() == [0, 2, 3]
 
 
-def test_set_value_single_value_writes_single_index() -> None:
-    """Single-value set_value still produces a one-element /I — sort is a
-    no-op for length-1 lists."""
+def test_set_value_single_value_string_clears_indices() -> None:
+    """Upstream ``PDChoice.setValue(String)`` clears ``/I`` after
+    writing ``/V``. Wave 1372 closed the previous local divergence
+    where the single-value path computed and wrote ``/I``."""
     form = PDAcroForm()
     lb = PDListBox(form)
     lb.set_options(["a", "b", "c"])
-    lb.set_value("c")
+    # Multi-value path (list) still records /I for the multi-select
+    # contract; the single-value path drops it. Pre-seed via list.
+    lb.set_multi_select(True)
+    lb.set_value(["c"])
     assert lb.get_selected_options_indices() == [2]
+    # Now the str overload clears /I.
+    lb.set_multi_select(False)
+    lb.set_value("c")
+    assert lb.get_selected_options_indices() == []
 
 
 # ---------- Wave 247: /TI ----------

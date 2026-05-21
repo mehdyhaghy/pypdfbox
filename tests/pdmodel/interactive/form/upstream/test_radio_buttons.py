@@ -4,12 +4,10 @@ Source: ``pdfbox/src/test/java/org/apache/pdfbox/pdmodel/interactive/form/TestRa
 (PDFBox 3.0.x).
 
 Pypdfbox port notes:
-- Upstream ``PDButton.setValue(String)`` propagates to widget ``/AS``
-  via ``updateByValue``. pypdfbox keeps ``set_value`` as a plain ``/V``
-  writer and exposes the propagation through ``update_by_value`` /
-  ``update_by_option`` (see test_pd_button.py upstream port). This port
-  uses ``update_by_value`` to drive widget state, matching upstream's
-  visible contract.
+- Wave 1372 closed the divergence where ``PDButton.set_value(str)`` was
+  a plain ``/V`` writer that did not touch widget ``/AS``. ``set_value``
+  now dispatches into ``update_by_value`` / ``update_by_option`` exactly
+  like upstream ``PDButton.setValue(String)``.
 - Network-fetched fixture tests (``testPDFBox5831NumericValueForOpt``,
   ``testPDFBox6178NonAsciiRadioButtonValue``) are skipped — pypdfbox
   doesn't fetch fixtures from Jira at test time.
@@ -83,23 +81,24 @@ def test_radio_button_pd_model() -> None:
             widgets.append(widget)
         radio_button.set_widgets(widgets)
 
-        # Drive widget /AS via update_by_value — mirrors upstream's
-        # setValue -> updateByValue dispatch.
-        radio_button.update_by_value("Value01")
+        # ``set_value`` now drives widget /AS directly (wave 1372 closed
+        # the divergence). Upstream calls ``setValue`` here — both paths
+        # are equivalent.
+        radio_button.set_value("Value01")
         assert radio_button.get_value() == "Value01"
         assert len(radio_button.get_selected_export_values()) == 1
         assert radio_button.get_selected_export_values()[0] == "Value01"
         assert widgets[0].get_appearance_state() == "Value01"
         assert widgets[1].get_appearance_state() == "Off"
 
-        radio_button.update_by_value("Value02")
+        radio_button.set_value("Value02")
         assert radio_button.get_value() == "Value02"
         assert len(radio_button.get_selected_export_values()) == 1
         assert radio_button.get_selected_export_values()[0] == "Value02"
         assert widgets[0].get_appearance_state() == "Off"
         assert widgets[1].get_appearance_state() == "Value02"
 
-        radio_button.update_by_value("Off")
+        radio_button.set_value("Off")
         assert radio_button.get_value() == "Off"
         assert len(radio_button.get_selected_export_values()) == 0
         assert widgets[0].get_appearance_state() == "Off"
@@ -211,15 +210,13 @@ def test_pdf_box_4617_index_for_set_by_option() -> None:
 
     The PDFBOX-3656 fixture stores widget appearance keys as numeric
     indices ("0".."5") and uses ``/Opt`` to map them to "Checking" /
-    "Savings". Upstream ``setValue("Checking")`` dispatches into
-    ``updateByOption`` because ``/Opt`` is present; the lite-port
-    ``set_value`` doesn't propagate to widgets so we call
-    ``update_by_option`` directly to mirror that dispatch.
+    "Savings". Wave 1372 wired ``set_value`` through ``update_by_option``
+    when ``/Opt`` is present — matches upstream's dispatch directly.
     """
     with PDDocument.load(_TESTFILE_3656) as doc:
         acro_form = doc.get_document_catalog().get_acro_form()
         field = acro_form.get_field("Checking/Savings")
-        field.update_by_option("Checking")
+        field.set_value("Checking")
         assert field.get_selected_index() == 0
 
 
@@ -229,8 +226,9 @@ def test_pdf_box_4617_index_for_set_by_index() -> None:
     Upstream ``PDButton.setValue(int)`` propagates via ``updateByValue``
     (PDButton.java line 188), which on this fixture flips widget index 4
     because each widget's ``/AP /N`` is keyed by its own numeric index
-    string. pypdfbox's ``set_value_by_index`` writes ``/V`` only; drive
-    the widget ``/AS`` via ``update_by_value`` to match upstream.
+    string. Wave 1372 wired ``set_value`` through the same dispatch;
+    ``set_value_by_index`` still writes ``/V`` only — drive the widget
+    ``/AS`` via ``update_by_value`` to match upstream's int-overload.
     """
     with PDDocument.load(_TESTFILE_3656) as doc:
         acro_form = doc.get_document_catalog().get_acro_form()

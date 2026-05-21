@@ -381,7 +381,7 @@ class AppearanceGeneratorHelper:
         """Return a new rectangle with ``padding`` units of inset on
         each side. Mirrors upstream lines 1044–1050.
         """
-        from pypdfbox.pdmodel.common import PDRectangle
+        from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
         # ``PDRectangle.__init__`` takes (llx, lly, urx, ury). Use the
         # ``from_xywh`` factory so the source-shaped (x, y, w, h) tuple

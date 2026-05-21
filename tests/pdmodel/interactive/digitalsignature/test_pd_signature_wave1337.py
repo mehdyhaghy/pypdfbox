@@ -641,18 +641,14 @@ def _build_minimal_signed_doc() -> tuple[bytes, list[int]]:
     Returns ``(document_bytes, byte_range)``. Caller has all the info
     needed to drive ``get_contents_from_bytes``.
 
-    NOTE — wave 1337 flags a latent off-by-one in
-    :meth:`PDSignature.get_contents_from_bytes`: it computes
-    ``gap_start = start1 + len1 + 1`` / ``gap_end = start2 - 1`` which
-    skips one extra byte on each side of the ``<>``-framed hex payload.
-    The test below feeds an extra pad byte at each boundary so the
-    method returns the intended hex-decoded payload regardless.
+    Wave 1372 fixed the off-by-one in
+    :meth:`PDSignature.get_contents_from_bytes`; this helper now feeds
+    an exact-length hex payload so the round-trip is byte-for-byte
+    identical.
     """
     prefix = b"%PDF-1.7\n" + b"A" * 16
     suffix = b"B" * 16 + b"\n%%EOF\n"
-    # Two extra hex digits on each side as padding the buggy off-by-one
-    # extraction will strip. ``deadbeef`` (16 bytes) framed by ``00`` pads.
-    hex_payload = b"00" + b"deadbeef" * 4 + b"00"
+    hex_payload = b"deadbeef" * 4
     document = prefix + b"<" + hex_payload + b">" + suffix
     open_idx = len(prefix)
     close_idx = open_idx + 1 + len(hex_payload)
@@ -663,23 +659,15 @@ def _build_minimal_signed_doc() -> tuple[bytes, list[int]]:
 def test_get_contents_from_bytes_extracts_hex_payload() -> None:
     """Exercise the method's documented happy path.
 
-    Padded against a latent off-by-one — see docstring of
-    :func:`_build_minimal_signed_doc`. The method extracts everything
-    between (gap_start, gap_end) which is one byte INSIDE the
-    ``<>``-framed payload on each side.
+    Post wave-1372 the extraction is byte-exact: ``deadbeef`` * 4 hex
+    chars decode to a 16-byte blob (``\\xde\\xad\\xbe\\xef`` repeated 4
+    times).
     """
     document, byte_range = _build_minimal_signed_doc()
     sig = PDSignature()
     sig.set_byte_range(byte_range)
     contents = sig.get_contents_from_bytes(document)
-    # Because of the off-by-one the extracted hex chops the first and
-    # last hex characters (``0`` and ``0``) — the remaining body is the
-    # original "deadbeef" * 4 plus the trimmed two halves of the pad
-    # bytes producing an off-aligned hex sequence. We just confirm the
-    # result is bytes-decodable; exact value is asserted via the
-    # extra-padded test below.
-    assert isinstance(contents, bytes)
-    assert len(contents) >= 1
+    assert contents == bytes.fromhex("deadbeef" * 4)
 
 
 def test_get_contents_from_bytes_missing_byte_range_raises() -> None:
@@ -717,16 +705,18 @@ def test_get_contents_from_bytes_gap_out_of_range_raises() -> None:
 
 def test_pd_signature_get_contents_from_bytes_with_real_pkcs7() -> None:
     """Build a full PKCS#7-signed document and confirm the extracted
-    /Contents bytes hex-decode without raising.
+    /Contents bytes hex-decode to the exact signed blob.
 
-    Asserts only on the type + non-emptiness because of the latent
-    off-by-one flagged in :func:`_build_minimal_signed_doc` — exact-byte
-    parity would require working around the bug.
+    Wave 1372 fixed the off-by-one in
+    :meth:`PDSignature.get_contents_from_bytes` so exact-byte parity is
+    now required (no padding compensation).
     """
     cert, key = _make_root_rsa("real-pkcs7")
     prefix = b"%PDF-1.7\n" + b"A" * 32
     suffix = b"B" * 32 + b"\n%%EOF\n"
-    placeholder = b"\x00" * 1024
+    # Size the placeholder big enough to hold the PKCS#7 hex string.
+    placeholder_size = 4096
+    placeholder = b"\x00" * placeholder_size
     template = prefix + b"<" + placeholder + b">" + suffix
     open_idx = len(prefix)
     close_idx = open_idx + 1 + len(placeholder)
@@ -738,16 +728,14 @@ def test_pd_signature_get_contents_from_bytes_with_real_pkcs7() -> None:
     signer = Pkcs7Signature(cert, key)
     blob = signer.sign(io.BytesIO(bracketed))
     splice_hex = blob.hex().encode("ascii")
-    # Pad to placeholder length with hex zeros. Add 2-byte pad on each
-    # side to compensate for the off-by-one.
-    pad_per_side = b"00"
-    body = pad_per_side + splice_hex + pad_per_side
-    body_padded = body + b"0" * (len(placeholder) - len(body))
+    assert len(splice_hex) <= placeholder_size
+    body_padded = splice_hex + b"0" * (placeholder_size - len(splice_hex))
     document = prefix + b"<" + body_padded + b">" + suffix
 
     sig = PDSignature()
     sig.set_byte_range(byte_range)
     extracted = sig.get_contents_from_bytes(document)
-    # Confirm the extraction succeeded and produced a non-empty payload.
     assert isinstance(extracted, bytes)
-    assert len(extracted) > 0
+    # Extracted payload is the signed blob followed by zero padding.
+    assert extracted[: len(blob)] == blob
+    assert extracted[len(blob) :] == b"\x00" * (placeholder_size // 2 - len(blob))

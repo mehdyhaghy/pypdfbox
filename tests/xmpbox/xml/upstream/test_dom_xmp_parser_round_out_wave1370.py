@@ -153,19 +153,54 @@ def test_no_schema_xml_namespace_rejected() -> None:  # pragma: no cover
     pass
 
 
-@pytest.mark.skip(
-    reason="upstream testTextInsteadOfArray detects rdf:Alt vs Text shape "
-    "mismatch on a known LangAlt property (dc:title). Requires a typed "
-    "property registry that knows dc:title is Alt — see PROVENANCE.md."
-)
-def test_text_instead_of_array_rejected() -> None:  # pragma: no cover
-    pass
+def test_text_instead_of_array_rejected() -> None:
+    """Upstream ``testTextInsteadOfArray``: ``dc:title`` is declared as
+    LangAlt; presenting it as a bare Text node is rejected in strict mode
+    via the typed-property registry (wave 1371)."""
+    s = (
+        b'<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n'
+        b'<?xpacket begin="\xef\xbb\xbf" id="W5M0MpCehiHzreSzNTczkc9d"?>\n'
+        b'<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="3.1-701">\n'
+        b'\t<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">\n'
+        b'\t\t<rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/"\n'
+        b'\t\t                 rdf:about="">\n'
+        b'\t\t\t<dc:title>Title</dc:title>\n'
+        b'\t\t</rdf:Description>\n'
+        b'\t</rdf:RDF>\n'
+        b'</x:xmpmeta><?xpacket end="w"?>'
+    )
+    parser = DomXmpParser()
+    with pytest.raises(XmpParsingException) as excinfo:
+        parser.parse(s)
+    assert (
+        excinfo.value.get_error_type()
+        is XmpParsingException.ErrorType.INVALID_TYPE
+    )
 
 
-@pytest.mark.skip(
-    reason="upstream testBadInner detects xmpMM:parseType=\"Resource\" vs "
-    "rdf:parseType. Requires structured-type parseType handling not yet "
-    "ported in this cluster."
-)
-def test_bad_inner_parse_type_mismatch_rejected() -> None:  # pragma: no cover
-    pass
+def test_bad_inner_parse_type_mismatch_rejected() -> None:
+    """Upstream ``testBadInner``: ``xmpMM:parseType="Resource"`` (non-rdf
+    namespace on ``parseType``) is rejected; only ``rdf:parseType`` is
+    honoured (wave 1371)."""
+    s = (
+        b'<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n'
+        b'<?xpacket begin="\xef\xbb\xbf" id="W5M0MpCehiHzreSzNTczkc9d"?>'
+        b'<x:xmpmeta xmlns:x="adobe:ns:meta/">\n'
+        b'    <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">\n'
+        b'        <rdf:Description'
+        b' xmlns:stRef="http://ns.adobe.com/xap/1.0/sType/ResourceRef#"'
+        b' xmlns:xmpMM="http://ns.adobe.com/xap/1.0/mm/">\n'
+        b'            <xmpMM:DerivedFrom xmpMM:parseType="Resource">\n'
+        b'                <stRef:instanceID>uuid:abc</stRef:instanceID>\n'
+        b'            </xmpMM:DerivedFrom>\n'
+        b'        </rdf:Description>\n'
+        b'    </rdf:RDF>\n'
+        b'</x:xmpmeta><?xpacket end="w"?>'
+    )
+    parser = DomXmpParser()
+    with pytest.raises(XmpParsingException) as excinfo:
+        parser.parse(s)
+    assert (
+        excinfo.value.get_error_type()
+        is XmpParsingException.ErrorType.INVALID_TYPE
+    )

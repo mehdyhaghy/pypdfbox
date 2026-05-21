@@ -23,6 +23,7 @@ from .lang_alt import LangAlt
 from .layer_type import LayerType
 from .locale_type import LocaleType
 from .mime_type import MIMEType
+from .oecf_type import OECFType
 from .part_type import PartType
 from .pdfa_field_description_type import PDFAFieldType
 from .pdfa_property_type import PDFAPropertyType
@@ -78,6 +79,7 @@ _STRUCTURED: dict[str, type[AbstractStructuredType]] = {
     "Layer": LayerType,
     "Job": JobType,
     "CFAPattern": CFAPatternType,
+    "OECF": OECFType,
     "PDFAField": PDFAFieldType,
     "PDFAProperty": PDFAPropertyType,
     "PDFASchema": PDFASchemaType,

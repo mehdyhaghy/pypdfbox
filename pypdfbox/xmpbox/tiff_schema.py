@@ -78,11 +78,14 @@ class TiffSchema(XMPSchema):
         * ``NativeDigest`` (Text) — internal property used by Adobe
           applications to detect XMP/legacy-EXIF round-trip mismatches.
 
-    Deferred until the typed ``OECFType`` / ``CFAPattern`` structs land:
-    none — TIFF schema does not use those structures (they live on
-    ``ExifSchema``). The Rational accessors provided here keep both a string
-    "<num>/<den>" form (round-trip parity with upstream wire format) and a
-    typed :class:`RationalType` form (callers can use
+    Structured-type wiring: TIFF schema does not declare ``OECFType`` /
+    ``CFAPatternType`` properties — those structures live on
+    :class:`ExifSchema` (``exif:OECF``, ``exif:SpatialFrequencyResponse``,
+    ``exif:CFAPattern``). Wave 1371 added the typed struct wrappers, so any
+    EXIF metadata embedded alongside TIFF tags now round-trips through the
+    typed-struct API. The Rational accessors provided here keep both a
+    string "<num>/<den>" form (round-trip parity with upstream wire format)
+    and a typed :class:`RationalType` form (callers can use
     :meth:`RationalType.as_fraction`).
     """
 

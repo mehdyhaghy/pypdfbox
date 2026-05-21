@@ -122,7 +122,10 @@ def test_choice_field_type_aware_has_and_clear_helpers() -> None:
     cos.set_item(_V, COSInteger(7))
     assert field.has_value() is False
     field.set_options(["a", "b"])
-    field.set_value("a")
+    field.set_multi_select(True)
+    # Use the list overload to populate /I (the str overload now clears
+    # /I per upstream contract — wave 1372).
+    field.set_value(["a"])
     assert field.has_value() is True
     assert field.has_selected_options_indices() is True
     field.clear_value()

@@ -400,6 +400,7 @@ class PDAppearanceGenerator:
         value = field.get_value() or ""
         da = self._resolve_default_appearance(field)
         font_name, font_size, color = _parse_default_appearance(da)
+        font = self._resolve_font_for_field(field, font_name)
 
         is_multiline = field.is_multiline()
         is_comb = field.is_comb()
@@ -426,6 +427,7 @@ class PDAppearanceGenerator:
             self._regenerate_text_widget(
                 widget,
                 value,
+                font,
                 font_name,
                 font_size,
                 color,
@@ -657,6 +659,7 @@ class PDAppearanceGenerator:
 
         da = self._resolve_default_appearance(field)
         font_name, font_size, color = _parse_default_appearance(da)
+        font = self._resolve_font_for_field(field, font_name)
 
         is_listbox = isinstance(field, PDListBox)
         options: list[str] = []
@@ -682,19 +685,21 @@ class PDAppearanceGenerator:
                     selected_values,
                     selected_indices,
                     top_index,
+                    font,
                     font_name,
                     font_size,
                     color,
                 )
             else:
                 self._regenerate_choice_widget(
-                    widget, selected_values, font_name, font_size, color
+                    widget, selected_values, font, font_name, font_size, color
                 )
 
     def _regenerate_choice_widget(
         self,
         widget: PDAnnotationWidget,
         lines: list[str],
+        font: PDFont,
         font_name: str | None,
         font_size: float,
         color: tuple[float, ...] | None,
@@ -711,11 +716,12 @@ class PDAppearanceGenerator:
 
         appearance_cos = self._fresh_form_xobject(width, height)
         appearance_stream = PDAppearanceStream(appearance_cos)
-        font = self._resolve_font(font_name)
         resolved_size = font_size if font_size > 0.0 else self._auto_size(height)
 
         with PDAppearanceContentStream(appearance_stream) as raw_cs:
             cs = cast(PDAppearanceContentStream, raw_cs)
+            # Wave 1372 — preserve the /DA font alias (see text-field path).
+            self._register_font_alias(cs, font, font_name)
             cs._buffer.extend(b"/Tx BMC\n")
             cs.save_graphics_state()
             interior_w = max(0.0, width - 2.0)
@@ -759,6 +765,7 @@ class PDAppearanceGenerator:
         selected_values: list[str],
         selected_indices: list[int],
         top_index: int,
+        font: PDFont,
         font_name: str | None,
         font_size: float,
         color: tuple[float, ...] | None,
@@ -790,7 +797,6 @@ class PDAppearanceGenerator:
 
         appearance_cos = self._fresh_form_xobject(width, height)
         appearance_stream = PDAppearanceStream(appearance_cos)
-        font = self._resolve_font(font_name)
         resolved_size = font_size if font_size > 0.0 else self._auto_size(height)
         line_height = resolved_size * 1.15
 
@@ -804,6 +810,8 @@ class PDAppearanceGenerator:
 
         with PDAppearanceContentStream(appearance_stream) as raw_cs:
             cs = cast(PDAppearanceContentStream, raw_cs)
+            # Wave 1372 — preserve the /DA font alias (see text-field path).
+            self._register_font_alias(cs, font, font_name)
             cs._buffer.extend(b"/Tx BMC\n")
             cs.save_graphics_state()
             interior_w = max(0.0, width - 2.0)
@@ -879,6 +887,7 @@ class PDAppearanceGenerator:
         self,
         widget: PDAnnotationWidget,
         value: str,
+        font: PDFont,
         font_name: str | None,
         font_size: float,
         color: tuple[float, ...] | None,
@@ -915,10 +924,9 @@ class PDAppearanceGenerator:
         appearance_cos = self._fresh_form_xobject(width, height)
         appearance_stream = PDAppearanceStream(appearance_cos)
 
-        # Resolve the font + size. ``font_size = 0`` is the "auto-size" tag
-        # in the /DA spec — pick a sane value clamped to widget height
-        # (auto-sizing rule per upstream: line height ~ 1.15 * size).
-        font = self._resolve_font(font_name)
+        # ``font_size = 0`` is the "auto-size" tag in the /DA spec — pick
+        # a sane value clamped to widget height (auto-sizing rule per
+        # upstream: line height ~ 1.15 * size).
         resolved_size = font_size
         if resolved_size <= 0.0:
             resolved_size = self._auto_size(height)
@@ -929,6 +937,12 @@ class PDAppearanceGenerator:
 
         with PDAppearanceContentStream(appearance_stream) as raw_cs:
             cs = cast(PDAppearanceContentStream, raw_cs)
+            # Pre-register the font under the original /DA alias so the
+            # emitted ``/<alias> <size> Tf`` token matches the source /DA
+            # (upstream parity — wave 1372). When the alias is missing or
+            # already taken by a different font object, fall back to the
+            # auto-allocated ``F<n>`` key.
+            self._register_font_alias(cs, font, font_name)
             # /Tx BMC marked-content tag — Acrobat looks for this on form
             # field appearance streams.
             cs._buffer.extend(b"/Tx BMC\n")
@@ -1389,23 +1403,84 @@ class PDAppearanceGenerator:
 
     @classmethod
     def _resolve_font(cls, font_name: str | None) -> PDFont:
-        """Return a :class:`PDFont` for ``font_name``.
+        """Return a :class:`PDFont` for ``font_name`` without walking the
+        form's ``/DR`` resources.
 
         The /DA font key is a /Resources/Font dict alias (e.g. ``Helv``).
-        Resolving it to a fully-qualified font dictionary requires walking
-        the AcroForm /DR resource tree, which is wider than the lite scope.
-        Instead we map the alias to a Standard 14 font via
+        Without access to the AcroForm, the alias is mapped through
         :attr:`DA_FONT_ALIASES` (``Helv`` -> Helvetica, ``HeBo`` ->
         Helvetica-Bold, ``TiRo`` -> Times-Roman, ``CoRo`` -> Courier,
-        ``ZaDb`` -> ZapfDingbats, etc.) and fall back to Helvetica
-        otherwise. Callers who rely on a custom embedded font in their
-        /DA are deferred — see ``CHANGES.md``.
+        ``ZaDb`` -> ZapfDingbats, etc.) with Helvetica as a final
+        fallback. Use :meth:`_resolve_font_for_field` when a field is
+        available — that path also consults the form's ``/DR /Font``
+        dictionary so embedded /DA fonts are preserved (wave 1372).
         """
         if font_name:
             mapped = cls.DA_FONT_ALIASES.get(font_name, font_name)
             if Standard14Fonts.get_mapped_font_name(mapped) is not None:
                 return PDFontFactory.create_default_font(mapped)
         return PDFontFactory.create_default_font(Standard14Fonts.HELVETICA)
+
+    def _resolve_font_for_field(
+        self, field: PDField, font_name: str | None
+    ) -> PDFont:
+        """Resolve ``font_name`` to a :class:`PDFont`, walking the form's
+        ``/DR /Font`` dictionary first so embedded /DA fonts survive
+        appearance regeneration. Falls back to the alias-mapped Standard
+        14 font when the ``/DR`` lookup is empty or non-resolvable.
+
+        Mirrors the upstream ``PDDefaultAppearanceString`` chain (parse
+        ``/DA`` -> resolve through ``/DR``) collapsed to the lite surface
+        we actually use here.
+        """
+        if font_name:
+            try:
+                acro_form = field.get_acro_form()
+            except Exception:  # noqa: BLE001 — defensive on lite-port surface
+                acro_form = None
+            if acro_form is not None:
+                dr = acro_form.get_default_resources()
+                if dr is not None:
+                    key = COSName.get_pdf_name(font_name)
+                    entry = dr.get_font(key)
+                    if isinstance(entry, PDFont):
+                        return entry
+        return self._resolve_font(font_name)
+
+    @staticmethod
+    def _register_font_alias(
+        cs: PDAppearanceContentStream,
+        font: PDFont,
+        alias: str | None,
+    ) -> None:
+        """Pre-register ``font`` under ``alias`` in ``cs``'s resources.
+
+        :meth:`PDPageContentStream.set_font` later resolves the resource
+        key by identity, so seeding the alias here makes the emitted
+        ``/<alias> <size> Tf`` token preserve the source ``/DA`` alias.
+        When ``alias`` is already taken by a different font COS object,
+        the seeding is skipped — :meth:`set_font` will then auto-allocate
+        a fresh ``F<n>`` slot, matching the historical lite-port shape
+        for that edge case. ``alias=None`` (no source ``/DA`` font name)
+        is also a no-op.
+        """
+        if not alias:
+            return
+        key = COSName.get_pdf_name(alias)
+        resources = cs.get_resources()
+        sub = resources.get_cos_object().get_dictionary_object(
+            COSName.get_pdf_name("Font")
+        )
+        font_cos = font.get_cos_object()
+        if isinstance(sub, COSDictionary):
+            existing = sub.get_dictionary_object(key)
+            if existing is font_cos:
+                return
+            if existing is not None:
+                # The alias is already claimed by a different font — let
+                # set_font auto-allocate so we don't clobber the slot.
+                return
+        resources.put(COSName.get_pdf_name("Font"), key, font_cos)
 
     @classmethod
     def _auto_size(cls, height: float) -> float:

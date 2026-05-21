@@ -2,10 +2,8 @@
 
 Targets the remaining branches around TypeError input validation, the
 ``P`` palette + 1-bit mode dispatch in ``get_color_image``, the
-``BITMASK`` rejection in ``get_alpha_image``, the Java-style camelCase
-aliases (``createFromByteArray`` / ``createFromStream`` /
-``createFromImage``), and the module-level ``_retrieve_dimensions``
-back-compat alias.
+``BITMASK`` rejection in ``get_alpha_image``, and the module-level
+``_retrieve_dimensions`` back-compat alias.
 """
 
 from __future__ import annotations

@@ -20,6 +20,7 @@ from .type import (
     Cardinality,
     LayerType,
 )
+from .xmp_basic_job_ticket_schema import XMPBasicJobTicketSchema
 from .xmp_basic_schema import XMPBasicSchema
 from .xmp_media_management_schema import XMPMediaManagementSchema
 from .xmp_metadata import RDF_NAMESPACE, XMPMetadata
@@ -135,6 +136,70 @@ _SCHEMA_REGISTRY: dict[str, type[XMPSchema]] = {
     AdobePDFSchema.NAMESPACE: AdobePDFSchema,
     TiffSchema.NAMESPACE: TiffSchema,
     ExifSchema.NAMESPACE: ExifSchema,
+    XMPBasicJobTicketSchema.NAMESPACE: XMPBasicJobTicketSchema,
+}
+
+
+# Built-in typed-property cardinality registry.
+#
+# Maps ``(schema namespace URI, property local-name)`` -> expected
+# :class:`Cardinality` for the property's XML shape. Upstream
+# ``TypeMapping#getSpecifiedPropertyType`` plus the schema's
+# ``PropertiesDescription`` populate the equivalent table from
+# ``@PropertyType`` annotations on each schema's ``public static final``
+# property constants. We hand-mirror the subset upstream's
+# ``DomXmpParser`` actually consults during the array/structure-shape
+# validation pass (see upstream ``createProperty`` line 436 and
+# ``manageArray`` line 569).
+#
+# When a property in this registry is encountered, the parser confirms
+# the actual XML shape matches the declared cardinality:
+#
+#   * ``Cardinality.Simple`` — must be bare text (str) or an
+#     ``rdf:resource`` attribute; rdf:Bag/rdf:Seq/rdf:Alt container is
+#     a mismatch.
+#   * ``Cardinality.Alt``   — must be wrapped in ``<rdf:Alt>`` (LangAlt).
+#     Anything else (bare Text, Bag, Seq) is a mismatch.
+#   * ``Cardinality.Bag``   — must be wrapped in ``<rdf:Bag>``. Alt/Seq
+#     are tolerated in lenient mode but raise in strict mode.
+#   * ``Cardinality.Seq``   — must be wrapped in ``<rdf:Seq>``. Alt/Bag
+#     are tolerated in lenient mode but raise in strict mode.
+#
+# Mismatches always raise :class:`XmpParsingException` (INVALID_TYPE),
+# matching upstream's "Invalid array definition, expecting … and found …"
+# message format. The strict / lenient flag only affects the message
+# routing for properties NOT in this registry (those still flow through
+# ``_validate_strict_property`` and the ``KNOWN_PROPERTIES`` allow-list).
+_TYPED_PROPERTY_REGISTRY: dict[tuple[str, str], Cardinality] = {
+    # Dublin Core — see upstream ``DublinCoreSchema`` @PropertyType lines.
+    (DublinCoreSchema.NAMESPACE, DublinCoreSchema.TITLE): Cardinality.Alt,
+    (DublinCoreSchema.NAMESPACE, DublinCoreSchema.DESCRIPTION): Cardinality.Alt,
+    (DublinCoreSchema.NAMESPACE, DublinCoreSchema.RIGHTS): Cardinality.Alt,
+    (DublinCoreSchema.NAMESPACE, DublinCoreSchema.CREATOR): Cardinality.Seq,
+    (DublinCoreSchema.NAMESPACE, DublinCoreSchema.DATE): Cardinality.Seq,
+    (DublinCoreSchema.NAMESPACE, DublinCoreSchema.CONTRIBUTOR): Cardinality.Bag,
+    (DublinCoreSchema.NAMESPACE, DublinCoreSchema.PUBLISHER): Cardinality.Bag,
+    (DublinCoreSchema.NAMESPACE, DublinCoreSchema.SUBJECT): Cardinality.Bag,
+    (DublinCoreSchema.NAMESPACE, DublinCoreSchema.LANGUAGE): Cardinality.Bag,
+    (DublinCoreSchema.NAMESPACE, DublinCoreSchema.RELATION): Cardinality.Bag,
+    (DublinCoreSchema.NAMESPACE, DublinCoreSchema.TYPE): Cardinality.Bag,
+    (DublinCoreSchema.NAMESPACE, DublinCoreSchema.COVERAGE): Cardinality.Simple,
+    (DublinCoreSchema.NAMESPACE, DublinCoreSchema.FORMAT): Cardinality.Simple,
+    (DublinCoreSchema.NAMESPACE, DublinCoreSchema.IDENTIFIER): Cardinality.Simple,
+    (DublinCoreSchema.NAMESPACE, DublinCoreSchema.SOURCE): Cardinality.Simple,
+    # XMP Basic — Advisory + Identifier are Bag<Text>/Bag<XPath>.
+    (XMPBasicSchema.NAMESPACE, XMPBasicSchema.ADVISORY): Cardinality.Bag,
+    (XMPBasicSchema.NAMESPACE, XMPBasicSchema.IDENTIFIER): Cardinality.Bag,
+    # XMP Rights Management — UsageTerms is LangAlt; Owner is Bag.
+    (XMPRightsManagementSchema.NAMESPACE, "UsageTerms"): Cardinality.Alt,
+    (XMPRightsManagementSchema.NAMESPACE, "Owner"): Cardinality.Bag,
+    # Adobe PDF — Keywords/PDFVersion/Producer are Simple Text.
+    (AdobePDFSchema.NAMESPACE, AdobePDFSchema.KEYWORDS): Cardinality.Simple,
+    (AdobePDFSchema.NAMESPACE, AdobePDFSchema.PDF_VERSION): Cardinality.Simple,
+    (AdobePDFSchema.NAMESPACE, AdobePDFSchema.PRODUCER): Cardinality.Simple,
+    # Photoshop — DocumentAncestors is Bag.
+    (PhotoshopSchema.NAMESPACE, PhotoshopSchema.DOCUMENT_ANCESTORS): Cardinality.Bag,
+    (PhotoshopSchema.NAMESPACE, PhotoshopSchema.TEXT_LAYERS): Cardinality.Seq,
 }
 
 
@@ -255,7 +320,19 @@ class DomXmpParser:
         return self.parse(source)
 
     # ------------------------------------------------------------------
-    # strict-parsing toggle (placeholder; not yet consumed — see CHANGES.md)
+    # strict-parsing toggle.
+    #
+    # Strict mode (the upstream default) enforces three additional
+    # validations:
+    #   * the schema's ``KNOWN_PROPERTIES`` allow-list (existing);
+    #   * the typed-property registry cardinality match
+    #     (``_validate_element_form_cardinality`` /
+    #     ``_validate_attribute_form_cardinality``);
+    #   * the rdf-namespace gate on ``parseType="Resource"``
+    #     (``_validate_parse_type_namespace``).
+    # Lenient mode (``set_strict_parsing(False)``) tolerates every
+    # mismatch the parser can still round-trip safely; only structural
+    # / format errors that prevent loading the packet still raise.
     # ------------------------------------------------------------------
 
     def set_strict_parsing(self, b: bool) -> None:
@@ -418,6 +495,11 @@ class DomXmpParser:
                 ns, local, desc, metadata, per_ns, about, namespace_prefixes
             )
             self._validate_strict_property(schema, ns, local)
+            # Attribute-form is shorthand for Simple text. If the registry
+            # says this property is an array (Alt/Bag/Seq), upstream rejects
+            # the shorthand outright; treat that as INVALID_TYPE in strict
+            # mode and silently coerce to text otherwise.
+            self._validate_attribute_form_cardinality(ns, local)
             schema.set_text_property_value(local, value)
 
         # Element-form properties: each direct child whose namespace is not RDF
@@ -430,6 +512,11 @@ class DomXmpParser:
                 ns, local, desc, metadata, per_ns, about, namespace_prefixes
             )
             self._validate_strict_property(schema, ns, local)
+            # Reject non-rdf-namespaced ``parseType`` attributes on typed
+            # properties (testBadInner): the only honoured parseType lives
+            # in the rdf namespace; ``xmpMM:parseType="Resource"`` etc.
+            # silently dropped upstream content and is rejected.
+            self._validate_parse_type_namespace(child, ns, local)
             # Typed-array path: if this (namespace, local-name) slot has a
             # registered structured element type, port upstream
             # ``manageArray`` + ``parseLiElement`` and install an
@@ -448,7 +535,145 @@ class DomXmpParser:
                 schema._properties[local] = typed_array  # noqa: SLF001
                 continue
             parsed_value = self._parse_property_value(child)
+            self._validate_element_form_cardinality(child, ns, local, parsed_value)
             self._assign(schema, local, parsed_value)
+
+    def _expected_cardinality(self, ns: str, local: str) -> Cardinality | None:
+        """Return the declared cardinality for ``(ns, local)`` if known.
+
+        Mirrors upstream ``TypeMapping#getSpecifiedPropertyType`` →
+        ``PropertyType.card`` lookup. Used by the array/structure shape
+        validation pass to detect ``rdf:Alt`` vs ``rdf:Text`` mismatches
+        the way upstream's ``DomXmpParser`` does.
+        """
+        return _TYPED_PROPERTY_REGISTRY.get((ns, local))
+
+    def _validate_attribute_form_cardinality(self, ns: str, local: str) -> None:
+        """Reject attribute-shorthand for declared-array properties.
+
+        Upstream raises ``XmpParsingException`` when a property declared
+        as ``Bag``/``Seq``/``Alt`` is presented in attribute-shorthand form
+        (which only carries a single text value). Lenient mode tolerates
+        the shorthand by coercing to text.
+        """
+        expected = self._expected_cardinality(ns, local)
+        if expected is None or expected is Cardinality.Simple:
+            return
+        if not self._strict_parsing:
+            return
+        raise XmpParsingException(
+            XmpParsingException.ErrorType.INVALID_TYPE,
+            f"Invalid array definition, expecting {expected.value} and "
+            f"found Text [namespace={ns}; name={local}]",
+        )
+
+    def _validate_parse_type_namespace(
+        self, element: ET.Element, ns: str, local: str
+    ) -> None:
+        """Reject non-rdf-namespaced ``parseType="Resource"`` attributes.
+
+        Mirrors upstream ``testBadInner`` (line 1150) — when a structured
+        property carries ``xmpMM:parseType="Resource"`` (or any other
+        non-rdf-namespaced ``parseType``), upstream fails because only
+        ``rdf:parseType="Resource"`` is honoured; the child element list
+        is treated as untyped, and the structured-type validator then
+        complains about the unexpected child shape.
+        """
+        for qname in element.attrib:
+            attr_ns, attr_local = _strip_qname(qname)
+            if attr_local != "parseType":
+                continue
+            if attr_ns == _RDF_NS:
+                continue
+            if attr_ns in ("", _XML_NS):
+                # Unprefixed parseType is also invalid but the existing
+                # ElementTree round-trip never produces an unprefixed
+                # ``parseType`` because all qnames carry their declared
+                # namespace.
+                continue
+            # Non-rdf parseType: strict mode raises with the upstream
+            # "inner element should contain child elements" shape;
+            # lenient mode just ignores the attribute.
+            if not self._strict_parsing:
+                return
+            raise XmpParsingException(
+                XmpParsingException.ErrorType.INVALID_TYPE,
+                f"inner element should contain child elements : "
+                f"unexpected parseType attribute in namespace "
+                f"'{attr_ns}' on {ns}:{local}",
+            )
+
+    def _validate_element_form_cardinality(
+        self,
+        element: ET.Element,  # noqa: ARG002 - reserved for future shape detail
+        ns: str,
+        local: str,
+        parsed_value: object,
+    ) -> None:
+        """Validate the actual XML shape against the declared cardinality.
+
+        Walks the registry; if ``(ns, local)`` has a declared cardinality
+        and the parsed value's shape doesn't match (e.g. dc:title declared
+        ``Alt`` but parsed as a bare ``str``), raise INVALID_TYPE in
+        strict mode. Lenient mode silently accepts the mismatch.
+
+        Cardinality → expected ``parsed_value`` shape mapping:
+          * ``Simple`` — ``str`` (text node or ``rdf:resource`` attribute).
+          * ``Alt``    — ``dict`` (LangAlt: lang → value).
+          * ``Bag``    — ``list``.
+          * ``Seq``    — ``list``.
+        """
+        expected = self._expected_cardinality(ns, local)
+        if expected is None:
+            return
+        if expected is Cardinality.Simple:
+            actual_shape = "Text" if isinstance(parsed_value, str) else (
+                "Alt" if isinstance(parsed_value, dict) else "Array"
+            )
+            if isinstance(parsed_value, str):
+                return
+            if not self._strict_parsing:
+                return
+            raise XmpParsingException(
+                XmpParsingException.ErrorType.INVALID_TYPE,
+                f"Invalid array definition, expecting Simple and "
+                f"found {actual_shape} [namespace={ns}; name={local}]",
+            )
+        if expected is Cardinality.Alt:
+            if isinstance(parsed_value, dict):
+                return
+            actual_shape = (
+                "Text"
+                if isinstance(parsed_value, str)
+                else "Bag/Seq"
+                if isinstance(parsed_value, list)
+                else "Resource"
+            )
+            if not self._strict_parsing:
+                return
+            raise XmpParsingException(
+                XmpParsingException.ErrorType.INVALID_TYPE,
+                f"Invalid array definition, expecting Alt and "
+                f"found {actual_shape} [namespace={ns}; name={local}]",
+            )
+        # Bag / Seq: list is required. Alt (dict) and bare Text (str)
+        # are mismatches; in strict mode raise, in lenient mode tolerate.
+        if isinstance(parsed_value, list):
+            return
+        if not self._strict_parsing:
+            return
+        actual_shape = (
+            "Text"
+            if isinstance(parsed_value, str)
+            else "Alt"
+            if isinstance(parsed_value, dict)
+            else "Resource"
+        )
+        raise XmpParsingException(
+            XmpParsingException.ErrorType.INVALID_TYPE,
+            f"Invalid array definition, expecting {expected.value} and "
+            f"found {actual_shape} [namespace={ns}; name={local}]",
+        )
 
     def _validate_strict_property(
         self, schema: XMPSchema, ns: str, local: str
@@ -973,6 +1198,7 @@ class DomXmpParser:
             ns, local, description, metadata, per_ns, about, namespace_prefixes
         )
         self._validate_strict_property(schema, ns, local)
+        self._validate_attribute_form_cardinality(ns, local)
         schema.set_text_property_value(local, attr_value)
 
     def parse_children_as_properties(
@@ -994,7 +1220,9 @@ class DomXmpParser:
                 ns, local, description, metadata, per_ns, about, namespace_prefixes
             )
             self._validate_strict_property(schema, ns, local)
+            self._validate_parse_type_namespace(child, ns, local)
             parsed_value = self._parse_property_value(child)
+            self._validate_element_form_cardinality(child, ns, local, parsed_value)
             self._assign(schema, local, parsed_value)
 
     def parse_schema_extensions(
@@ -1098,6 +1326,7 @@ class DomXmpParser:
                 ns, local, li_element, metadata, per_ns, about, namespace_prefixes
             )
             self._validate_strict_property(schema, ns, local)
+            self._validate_attribute_form_cardinality(ns, local)
             schema.set_text_property_value(local, value)
         return per_ns
 

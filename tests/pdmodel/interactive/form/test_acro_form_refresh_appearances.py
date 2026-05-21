@@ -8,8 +8,10 @@ these tests assert the exact ``/AP /N`` content-stream shape produced by
 beachhead field-type the wave-1304 work was scoped to. ``/Btn`` /
 ``/Ch`` / ``/Sig`` are covered indirectly by the existing
 ``test_pd_appearance_generator*`` suites; this file pins the
-text-specific operator sequence (``BT … /F0 12 Tf … (value) Tj ET``)
-that downstream consumers rely on.
+text-specific operator sequence (``BT … /<da-alias> 12 Tf … (value) Tj ET``)
+that downstream consumers rely on. Wave 1372 changed the emitted
+font-alias from the auto-allocated ``/F0`` to the source ``/DA`` alias
+(e.g. ``/Helv``) so the assertions below now match the original ``/DA``.
 """
 
 from __future__ import annotations
@@ -64,7 +66,11 @@ def _appearance_body(field: PDTextField) -> str:
 
 def test_refresh_appearances_text_field_emits_tj_with_value() -> None:
     """Tx field with /V "Hello", /DA "/Helv 12 Tf 0 g", /Rect [10 10 100 30] →
-    the new /AP /N stream contains ``BT … /F0 12 Tf … (Hello) Tj ET``."""
+    the new /AP /N stream contains ``BT … /Helv 12 Tf … (Hello) Tj ET``.
+
+    Wave 1372 — emitted font alias matches the source ``/DA`` alias
+    (``Helv``) rather than the auto-allocated ``F0``.
+    """
     _doc, form = _make_form()
     field = _make_text_field(
         form,
@@ -80,7 +86,7 @@ def test_refresh_appearances_text_field_emits_tj_with_value() -> None:
     body = _appearance_body(field)
     # Operator sequence — the test pins the order Acrobat / Reader rely on.
     assert "BT" in body
-    assert "/F0 12 Tf" in body
+    assert "/Helv 12 Tf" in body
     assert "(Hello) Tj" in body
     assert "ET" in body
     # /Tx BMC marked-content sentinel — required for Acrobat to recognise

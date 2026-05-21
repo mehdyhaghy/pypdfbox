@@ -353,15 +353,55 @@ class PDChoice(PDVariableText):
             self.set_selected_options_indices(None)
         return values
 
+    def _validate_value_against_options(self, value: str) -> None:
+        """Single-value membership check used by :meth:`set_value(str)`.
+
+        Editable combo boxes bypass this gate (free-text is permitted);
+        anything else with a non-empty ``/Opt`` rejects values that are
+        not in the export-values list. Matches the upstream
+        ``checkValue``-shaped contract that ``PDChoice.setValue(String)``
+        relies on indirectly through ``updateSelectedOptionsIndex``.
+        """
+        options = self.get_options_export_values()
+        if not options:
+            return
+        if value in options:
+            return
+        if self.is_combo() and bool(getattr(self, "is_edit", lambda: False)()):
+            return
+        raise ValueError(f"value {value!r} is not one of the field options")
+
     def get_value(self) -> list[str]:
         item = self.get_inheritable_attribute(_V)
         return self._read_string_or_array(item)
 
     def set_value(self, value: list[str] | str | None) -> None:
+        """Set the field's ``/V`` value.
+
+        Mirrors upstream PDFBox's two overloads on one entry point:
+
+        * ``setValue(String)`` — single value path. Writes ``/V`` as a
+          ``COSString`` and *removes* ``/I`` (upstream
+          ``PDChoice.setValue(String)`` ends with
+          ``setSelectedOptionsIndex(null)``; pypdfbox closed the
+          divergence in wave 1372). Multi-select callers that need
+          ``/I`` populated must use the list overload.
+        * ``setValue(List)`` — multi-value path. Writes ``/V`` and
+          recomputes ``/I`` from the option indices.
+        """
         if value is None:
             self._field.remove_item(_V)
             self.set_selected_options_indices(None)
             return
+
+        # Upstream single-value path: writes /V, clears /I.
+        if isinstance(value, str):
+            self._validate_value_against_options(value)
+            self._field.set_string(_V, value)
+            self.set_selected_options_indices(None)
+            return
+
+        # Upstream multi-value (list) path: writes /V, recomputes /I.
         values = self._normalize_value_for_set(value)
         # Mirrors upstream PDChoice.setValue(List): an empty list clears both
         # /V and /I rather than writing an empty COSArray.

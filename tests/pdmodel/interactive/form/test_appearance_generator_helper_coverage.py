@@ -166,17 +166,20 @@ def test_validate_and_ensure_acro_form_resources_acroform_none() -> None:
 
 
 def test_validate_and_ensure_acro_form_resources_with_real_field() -> None:
-    # The hoisting branch tries to copy widget-level font entries to the
-    # form-level /DR via PDResources.put — but PDResources.put refuses raw
-    # COSDictionary values it cannot classify. Pinned so a future fix to
-    # PDResources.put is caught.
+    """Wave 1372: regenerated widget appearances now key the font by the
+    source ``/DA`` alias (``/Helv``) instead of an auto-allocated
+    ``/F0``. ``validate_and_ensure_acro_form_resources`` sees the alias
+    is already present in the form's ``/DR`` and skips the hoist — no
+    ``TypeError`` reaches the call site.
+    """
     acro_form = PDAcroForm()
     acro_form.set_default_appearance("/Helv 12 Tf 0 g")
     tf = _make_text_field(acro_form)
     tf.set_value("hi", regenerate_appearance=True)
     helper = AppearanceGeneratorHelper(tf)
-    with pytest.raises(TypeError):
-        helper.validate_and_ensure_acro_form_resources()
+    # No exception — the alias already lives in /DR (added by
+    # ``_attach_default_resources``).
+    helper.validate_and_ensure_acro_form_resources()
 
 
 def test_validate_and_ensure_acro_form_resources_widget_stream_none() -> None:
@@ -469,20 +472,18 @@ def test_initialize_set_insert_appearance_stubs_delegate() -> None:
 # ---------- get_text_align ----------
 
 
-def test_get_text_align_raises_attribute_error_due_to_cosname_constant() -> None:
-    # The helper currently references COSName.Q which is not exported on
-    # the lite-port COSName facade. Calling get_text_align raises
-    # AttributeError. Pinned to document existing behaviour.
+def test_get_text_align_falls_back_to_field_q_when_widget_has_no_q() -> None:
+    # Wave 1372 registered ``COSName.Q``. ``get_text_align`` now returns
+    # the field's quadding value when the widget COS dict has no /Q.
     acro_form = PDAcroForm()
     tf = _make_text_field(acro_form)
     tf.set_q(2)
     helper = AppearanceGeneratorHelper(tf)
     widget = tf.get_widgets()[0]
-    with pytest.raises(AttributeError):
-        helper.get_text_align(widget)
+    assert helper.get_text_align(widget) == 2
 
 
-def test_get_text_align_attribute_error_propagates_when_get_q_missing() -> None:
+def test_get_text_align_returns_zero_when_field_lacks_get_q() -> None:
     class _Field:
         def get_default_appearance_string(self):
             return None
@@ -492,10 +493,8 @@ def test_get_text_align_attribute_error_propagates_when_get_q_missing() -> None:
             return COSDictionary()
 
     helper = AppearanceGeneratorHelper(_Field())  # type: ignore[arg-type]
-    # field has no get_q → caught → fallback 0, but COSName.Q still
-    # bombs the final cos.get_int call.
-    with pytest.raises(AttributeError):
-        helper.get_text_align(_Widget())
+    # field has no get_q → caught → fallback 0; widget has no /Q either.
+    assert helper.get_text_align(_Widget()) == 0
 
 
 # ---------- calculate_matrix ----------

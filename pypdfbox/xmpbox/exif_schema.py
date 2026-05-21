@@ -5,10 +5,12 @@ from typing import TYPE_CHECKING
 from .type import (
     AbstractSimpleProperty,
     Attribute,
+    CFAPatternType,
     DateType,
     GPSCoordinateType,
     IntegerType,
     LangAlt,
+    OECFType,
     RationalType,
     TextType,
 )
@@ -89,16 +91,24 @@ class ExifSchema(XMPSchema):
       * ``GPSLatitude``, ``GPSLongitude``, ``GPSDestLatitude``,
         ``GPSDestLongitude``.
 
-    Deferred until the typed-struct wrappers land for the EXIF-specific
-    structures (Wave 33 ships only the foundation structured types):
+    Structured-type accessors (Wave 1371 round-out):
 
-      * ``OECF`` / ``SpatialFrequencyResponse`` (OECFType — not yet ported).
-      * ``CFAPattern`` / ``CFAPatternType`` (CFAPattern struct — not yet ported).
+      * ``OECF`` / ``SpatialFrequencyResponse`` (:class:`OECFType` — typed
+        getter/setter pairs install the matrix-shaped struct under the EXIF
+        property name).
+      * ``CFAPattern`` (:class:`CFAPatternType` — colour-filter-array shape
+        + per-cell integer values).
+
+    Still deferred (typed-struct wrappers not yet ported):
+
       * ``Flash`` (Flash struct — not yet ported).
       * ``DeviceSettingDescription`` (DeviceSettings struct — not yet ported).
+      * ``CFAPatternType`` (alias slot — local-name constant exposed for
+        round-trip parity with upstream).
 
-    Constants for the deferred fields are exposed so the parser can still round-
-    trip the raw values via the generic :meth:`XMPSchema.get_property` accessor.
+    Constants for the still-deferred fields are exposed so the parser can
+    round-trip the raw values via the generic :meth:`XMPSchema.get_property`
+    accessor.
     """
 
     NAMESPACE = "http://ns.adobe.com/exif/1.0/"
@@ -1365,3 +1375,58 @@ class ExifSchema(XMPSchema):
         self, value: GPSCoordinateType | None
     ) -> None:
         self._set_gps_coord_property(self.GPS_DEST_LONGITUDE, value)
+
+    # --- Structured-type accessors (OECF / CFAPattern) --------------
+    #
+    # Wave 1371 wires the typed :class:`OECFType` and :class:`CFAPatternType`
+    # structs into the EXIF schema. ``OECF`` and ``SpatialFrequencyResponse``
+    # share the OECFType shape (Columns / Rows / Names / Values); ``CFAPattern``
+    # uses the CFAPatternType shape (Columns / Rows / Values). The struct
+    # instance is installed under the property-store entry for the local-name;
+    # the serializer recognises :class:`AbstractStructuredType` children and
+    # emits the nested rdf:Description / li tree.
+
+    def _typed_struct_get(
+        self, local_name: str, expected: type
+    ) -> object | None:
+        raw = self._properties.get(local_name)
+        if isinstance(raw, expected):
+            return raw
+        return None
+
+    def _typed_struct_set(self, local_name: str, value: object | None) -> None:
+        if value is None:
+            self.remove_property(local_name)
+            return
+        if hasattr(value, "set_property_name"):
+            value.set_property_name(local_name)
+        self._properties[local_name] = value
+
+    # --- OECF (OECFType) --------------------------------------------
+
+    def get_oecf_property(self) -> OECFType | None:
+        result = self._typed_struct_get(self.OECF, OECFType)
+        return result if isinstance(result, OECFType) else None
+
+    def set_oecf_property(self, value: OECFType | None) -> None:
+        self._typed_struct_set(self.OECF, value)
+
+    # --- SpatialFrequencyResponse (OECFType) ------------------------
+
+    def get_spatial_frequency_response_property(self) -> OECFType | None:
+        result = self._typed_struct_get(self.SPATIAL_FREQUENCY_RESPONSE, OECFType)
+        return result if isinstance(result, OECFType) else None
+
+    def set_spatial_frequency_response_property(
+        self, value: OECFType | None
+    ) -> None:
+        self._typed_struct_set(self.SPATIAL_FREQUENCY_RESPONSE, value)
+
+    # --- CFAPattern (CFAPatternType) --------------------------------
+
+    def get_cfa_pattern_property(self) -> CFAPatternType | None:
+        result = self._typed_struct_get(self.CFA_PATTERN, CFAPatternType)
+        return result if isinstance(result, CFAPatternType) else None
+
+    def set_cfa_pattern_property(self, value: CFAPatternType | None) -> None:
+        self._typed_struct_set(self.CFA_PATTERN, value)
