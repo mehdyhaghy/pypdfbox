@@ -4189,6 +4189,301 @@ No latent source bugs flagged.
   and rely solely on `read_long`'s clamp — Java's signed-32 → signed-64
   pattern lives in exactly one place upstream; we mirror it in two.
 
+## Wave 1369 — parity round-out (5 parallel agents)
+
+### Wave 1369 — fontbox/ttf round-out: TTFParser internals, hmtx/vmtx boundary, maxp outline-flavour, kerning dispatch, TTC v2 header, GSUB single-substitution cache, VORG, glyph renderer multi-contour, TTFSubsetter glyph dependency expansion (agent A)
+
+Widened hand-written coverage of the TTF / OpenType stack in
+`pypdfbox/fontbox/ttf/`. Nine new test files (+122 tests, 1730 → 1852
+in the directory) covering the lesser-tested TTFParser internals
+(`_check_scaler_type` accepting TrueType / 'true' / 'typ1' magic and
+rejecting 'OTTO' / unknown scalers with the upstream message,
+`_build_directory_entry` field wiring + the upstream "zero-length
+non-glyf entry → None" guard, parse_tables idempotence across
+re-invocation, parse_table_headers reporting errors via
+`FontHeaders.set_error` rather than raising on garbled byte input,
+OTFParser tolerating a TTF-flavoured stream per its `_check_scaler_type`
+override, parse_embedded permanently flipping the `is_embedded` flag,
+parse_font / parse_embedded_font class-method convenience aliases,
+FontHeaders setter round-trip including the `set_non_otf_gcid_142` /
+`set_non_otf_gcid142` aliasing pair and `set_otf_ros` ROS triple,
+`_check_tables` raising in non-embedded mode vs. silently accepting in
+embedded mode), HorizontalMetricsTable / VerticalMetricsTable boundary
+GIDs (`gid == num_h_metrics - 1` resolves from the per-glyph array not
+the fallback last-entry shortcut, `num_glyphs == num_h_metrics` skip
+the trailing LSB array, monospaced fallback returning the last
+hMetric width while LSBs come from the dedicated array, signed-short
+boundary -32768 / 32767 for both LSB and TSB, full unsigned-short
+0..65535 advance range, default-advance-width 250 / default-LSB 0 from
+an unread table, truncated TSB array padding with zeros, `numberOfVMetrics
+> numGlyphs` hardening on the vmtx side), MaximumProfileTable outline-
+flavour predicate boundary across the strict `< 1.0` / `>= 1.0` 16.16
+fixed-point threshold (`0x0000FFFF` still PostScript / exactly 1.0
+TrueType / 1.0 + 1 ULP TrueType / fresh-instance default 0.0 →
+PostScript), PDFBOX-6105 `maxComponentDepth == 0 → 1` promotion bounded
+by the v1.0 branch (a v0.5 read leaves the field at 0, a post-read
+setter to 0 is not re-promoted), every uint16 field at 0xFFFF round-trip
+through the v1.0 layout, KerningSubtable `read(...)` dispatch through
+the OpenType subtable header (format 0 sorted pair list, format 2
+class-based lookup with `(leftClass + rightClass) // 2` index math,
+unsupported format silently skipped, version!=0 subtable header bail-
+out, length<6 too-short bail-out, version=1 Apple stub leaving pairs
+unset, version=other raising ValueError), `binary_search_pair` parity
+helper matching the dict-backed `get_kerning` for every queried pair
+plus negative-input rejection, `is_horizontal_kerning(cross=True/False)`
+predicate excluding cross-stream / minimum / vertical subtables in the
+default form, `is_bits_set` / `get_bits` static helpers on the coverage
+word, `KerningTable.from_fonttools` propagating empty / multi-subtable
+input + `get_horizontal_kerning_subtable` skipping the minimum subtable,
+TrueTypeCollection error paths (missing 'ttcf' magic raising with the
+upstream "Missing TTC header" message, zero / >1024 numFonts boundary
+rejection), v2 TTC header consumption (three trailing uint16 DSig
+fields parsed and discarded with the font-offset table re-based +6
+bytes), `get_font_offsets` returning a defensive copy that does not
+perturb internal state on mutation, `get_font_by_name` returning None
+for an unknown name, `create_font_parser_at_index_and_seek` raising
+IndexError for negative / out-of-range indices, the instance-flavoured
+`process_all_font_headers` iterator delivering one FontHeaders per
+font in collection order with no error, context-manager invoking
+`close()` on `__exit__`, GlyphSubstitutionTable single-substitution
+edge cases (gid == -1 sentinel short-circuit before consulting the
+GSUB graph, bare table with no `_gsub_table` passing every GID through
+unchanged, lookup cache populating on first call and shielding the
+result from underlying-mapping mutation on a second call,
+`get_unsubstitution` reversing a previous substitution and identity-
+mapping unseen GIDs, lookup-type filter applying only `LookupType ==
+1` and skipping types 2 / 4 / 7, out-of-range feature index / lookup
+index silently skipped, `enabled_features=None` running every default
+feature, empty enabled-features list returning the input GID, empty /
+None script_tags falling back to the first available script,
+`get_gsub_data` always returning None per the documented deviation,
+`get_supported_script_tags` returning a fresh set copy that mutations
+do not propagate to the table), VerticalOriginTable (VORG) multi-
+entry mixed-sign round-trip, 16.16 fixed-point version reconstruction
+(1.5 = 0x0001_8000), unmapped GIDs falling back to the default
+without interpolation, zero-metrics-only-default case, consecutive
+reads overwriting state cleanly, GlyphRenderer multi-contour glyph
+(two contours → two moveTo + two closePath emitted in order), describe
+marking end-of-contour on the last point of every contour, qCurveTo
+emission using the off-curve as control + next on-curve as endpoint,
+two consecutive off-curve points generating an implicit midpoint as
+the segment endpoint, `_mid_int` truncating toward zero (Java
+semantics) on sign-mixed inputs, single-point contour still emitting
+moveTo + closePath, TTFSubsetter registration set semantics
+(add_all deduplication, add_glyph_ids accepting arbitrary iterables
+including generators, GID 0 / `.notdef` always preserved across
+expansion / additions), `get_gid_map` always returning `new_gid 0 →
+old_gid 0` with monotone old-GID ordering, `to_bytes` determinism
+across calls (`recalc_timestamp = False`), `set_prefix` accepting
+arbitrary strings without validation per upstream's caller-trust
+contract, and the upstream byte-stream parity helpers `log2` (powers
+of two / non-power floor / zero / negative input contract) and
+`to_u_int32` in both two-uint16 and four-byte big-endian overloads
+with masking on out-of-range inputs.
+
+No latent bugs found — the implementation already mirrors upstream
+PDFBox 3.0.5 TTF / OpenType semantics on every probed branch (no
+source changes required this wave).
+
+### Wave 1369 — fontbox/type1 + fontbox/afm + fontbox/pfb round-out: eexec/charstring ciphers, PFA hex eexec, PFB three-segment framing, AFM kerning + char-metric round-trip, Type 1 subrs (agent B)
+
+Widened hand-written coverage of the Type 1 / AFM / PFB stack in
+`pypdfbox/fontbox/type1/`, `pypdfbox/fontbox/afm/`, and
+`pypdfbox/fontbox/pfb/`. Nine new test files (+118 tests) covering the
+eexec cipher invariants (4-byte random salt + LCG recurrence with seed
+55665 / constants 52845 / 22719, salt randomness across runs,
+zero-prefix static-helper determinism, known-answer for the recurrence,
+``Type1Parser.decrypt`` ``n == -1`` no-encryption tolerance), the
+charstring cipher (seed 4330) with the full ``lenIV`` parameter sweep
+(0 / 1 / 2 / 4 / 8 / 16), seed-cross-check (eexec ciphertext through
+charstring decryptor must NOT recover plaintext), the parser's
+header-section dispatch (FontName / FontInfo dict / FontMatrix /
+FontBBox / Encoding StandardEncoding shortcut vs explicit
+``[ N1 N2 ... ]`` array vs the streaming PostScript-built
+``256 array ... dup K /name put`` positional list, unknown predefined
+encoding rejection), the CharStrings section (each entry charstring-
+decrypted via key 4330, empty-dict tolerance), the PFB three-segment
+framing (segment 1 ASCII / segment 2 binary / segment 3 ASCII +
+cleartomark, length-field round-trip across 0 / 1 / 255 / 256 / 65535 /
+65536 / 1 000 000, cleartomark heuristic that excludes short trailing
+ASCII records vs the >= 600 byte fall-back into segment 1, multi-record
+ASCII concatenation, error paths for short header / wrong start
+marker), the Type1FontUtil binary-to-hex helpers (uppercase + no-
+whitespace ``hex_encode``, whitespace-stripping + mixed-case +
+odd-length-rejecting ``hex_decode``, full 0..255 byte range round-trip,
+upstream-parity ``Type1Parser.hex_to_binary`` dropping the unmatched
+trailing nibble), the PFA vs PFB eexec format heuristic
+(``Type1Parser.is_binary`` for first-4-byte hex/whitespace detection,
+short-input default to binary, lowercase + mixed-whitespace + odd-nibble
+PFA tolerance), AFM track-kerning round-trip (TrackKern degree /
+min/max point size / kern, empty block, multi-entry ordering), AFM
+pair-kerning across all four commands (KP xy, KPX x-only, KPY y-only,
+KPH hex glyph names + malformed-hex rejection), AFM direction buckets
+(StartKernPairs0 / StartKernPairs1 land in their dedicated lists),
+AFM header + char-metric round-trip (StartFontMetrics envelope, full
+header directive set including Notice / Version / EncodingScheme / dim
+helpers, all 15 CharMetric sub-directives including N / C / CH / WX /
+W0X / W1X / W / W0 / W1 / WY / W0Y / W1Y / VV / B / L, the average-
+character-width convenience, CH with angle-bracket hex codes, unknown
+sub-directive rejection, reduced-dataset kern skip), and the Type 1
+subroutine dispatch (positional index 0..N with no Type 2-style bias,
+out-of-order declaration still slotting payloads at their declared
+index, unused slots remaining as empty bytes vs upstream's null, opaque
+opcode-byte preservation including callsubr 0x0a, lenIV variants for
+subr decrypt). Two test files build a synthetic PFA + Private-dict
+fixture in-place via ``Type1FontUtil.eexec_encrypt`` /
+``charstring_encrypt`` so the fixture is fully deterministic without
+shipping a real .pfb / .afm binary.
+
+### Wave 1369 — pdmodel/font/encoding DictionaryEncoding /Differences inheritance + CMapManager predefined matrix + PDType0Font Identity/UCS2 dispatch (agent C)
+
+Widened hand-written coverage for the font-encoding dispatch surface in
+`pypdfbox/pdmodel/font/encoding/` and the predefined-CMap loader in
+`pypdfbox/fontbox/cmap/`. Eight new test files (+89 tests) covering the
+full /BaseEncoding fall-through matrix (Standard / WinAnsi / MacRoman /
+MacExpert layered with /Differences overlays), the writer-side
+/Differences round-trip via `set_differences` (both dict and COSArray
+forms) plus `set_base_encoding` and `clear_differences`, BuiltInEncoding
+read from a Type 1 /Encoding array, Adobe Glyph List + ZapfDingbats
+glyph list CharCode-to-Unicode dispatch (including the /A.alt dot-suffix
+fallback and the uniXXXX/uXXXX(X)(X) synthesised lookup), CMapManager
+predefined matrix (Adobe-GB1/CNS1/Japan1/Korea1-UCS2, Identity-H/V,
+UniCNS-UTF16-H/V, UniGB-UTF16-H/V, UniJIS-UTF16-H/V, UniKS-UTF16-H/V),
+PDType0Font Identity-H/V encoding-name dispatch + predefined UCS2
+fallback for each Adobe CJK collection, the
+`is_descendant_cjk`/`is_cmap_predefined` predicate pair gating the
+PDFBOX-6022 UCS2-fallback trigger, the predefined-singleton identity
+contract across `Encoding.get_instance` (predefined-vs-font-specific
+classifier disjointness, COS round-trip via /Name vs /Type
+/Encoding), and the layered fallback chain (built-in -> /BaseEncoding
+default -> /Differences overlay) the symbolic / non-symbolic /
+Type 3 reader paths walk.
+
+No latent bugs found.
+
+### Wave 1369 — pdmodel/common/function PDFunctionType0/2/3 round-out + PDFunction.create dispatch matrix (agent D)
+
+Widened hand-written test coverage across the four sampled / exponential /
+stitching / postscript PDFunction subclasses in
+`pypdfbox/pdmodel/common/function/`. Six new test files (+164 tests, 838
+→ 1002 in the directory) cover PDFunctionType0 `/BitsPerSample` matrix
+(every supported width 1, 2, 4, 8, 12, 16, 24, 32 at corners, mid-grid,
+linear midpoint, 2D first-dim-varies-fastest layout, and reject-on-
+unsupported-width); PDFunctionType0 `/Order` linear vs cubic Catmull-Rom
+Hermite parity (grid-point agreement, non-grid-point divergence, hand-
+computed Hermite basis at the midpoint between samples 1 and 2, `/Order`
+fallback-to-linear for unsupported values, cubic overshoot clipped by
+`/Range`, 2D edge-clamped neighbour lookup); PDFunctionType0 multi-
+dimensional `/Size` (3D `2×3×4` first-dim-fastest indexing, 3-in / 3-out
+CMYK→RGB centre-symmetry, asymmetric `/Size` shapes, `/Encode` reversal
++ default-from-/Size, `/Decode` to negative ranges + default-from-/Range,
+per-axis input clipping); PDFunctionType2 `/N` exponent matrix (identity,
+square, cube, sqrt, fourth-root, fourth-power closed-form values at
+characteristic inputs, /N=0 constant interpolation, integer vs fractional
+/N for negative bases, vector /C0/C1 4-channel transform, /Range
+clamping, monotonicity invariant); PDFunctionType3 stitching partition
+semantics (left-closed / right-open boundary predicate, exact-bound
+upper-partition dispatch, /Encode end-point mapping, zero-width
+partition non-crash, mixed Type 2 + Type 4 subfunctions, /Bounds longer
+than n-1 raises, empty /Functions raises, missing /Domain raises, top-
+level /Range clipping, three-partition routing); plus a PDFunction.create
+dispatch matrix (parametrised across /FunctionType 0/2/3/4, /Identity
+sentinel, COSObject indirect reference, malformed /FunctionType including
+1/5/-1/missing, get_function_type identity for each concrete class, and
+the cross-product is_function_type_N predicate exclusivity) and base-
+class clip_input / clip_output clamping against /Domain and /Range
+including ±inf and inverted-pair normalisation.
+
+No latent bugs found — the implementation already mirrors upstream
+PDFBox 3.0.5 PDFunctionType0/2/3 semantics correctly (no source changes
+required this wave).
+
+### Wave 1369 — contentstream PDFStreamEngine / PDContentStream / PDFStreamParser / PDFGraphicsStreamEngine / LegacyPDFStreamEngine round-out (agent E)
+
+Widened hand-written test coverage across the contentstream dispatch
+surface in `pypdfbox/contentstream/`. Nine new test files (+143 tests)
+under `tests/contentstream/`:
+
+- `test_pdf_stream_engine_wave1369_graphics_state_stack.py` — graphics-
+  state stack snapshot/restore fence (un-copyable frame fallback, empty-
+  stack edge), recursion-guard via `increase_level`/`decrease_level`
+  with the defensive zero-floor, `add_operator`/`register_operator_processor`
+  context rebind invariant across multiple engines, `set_resources`
+  push semantics, `transform_width` identity default, `_set_should_process_color_operators`
+  flag round-trip.
+- `test_pd_content_stream_wave1369_concat_inherit.py` — `/Contents`
+  single-stream vs `COSArray`-of-streams concatenation (newline-joined
+  per upstream `DELIMITER`), array with mixed non-stream entries
+  silently filtered, `push_resources` four-branch fall-through (stream-
+  owned, parent-inherit per PDFBOX-1359, page-resources, fresh empty
+  `PDResources` synthesised), `process_stream` push-then-pop fence.
+- `test_pdf_stream_parser_wave1369_inline_image.py` — `Operator.get_operator`
+  singleton-pool interning across runs, `BI`/`ID` cache-bypass invariant
+  (per-occurrence payloads), inline-image depth + offset bookkeeping,
+  nested-`BI` PDFBOX-6038 diagnostic shape, image-data byte-boundary
+  cases (literal `EI` inside payload, NUL separator, EOF terminator),
+  short-name (`W`/`H`/`BPC`/`CS`) round-trip through `PDInlineImage`,
+  operator repr/to_string/len + `/`-prefix rejection.
+- `test_pdf_stream_engine_wave1369_show_text_glyphs.py` — `Tj` per-byte
+  `show_glyph` dispatch, octal-escape decode, empty-string no-op, `TJ`
+  array default-`show_text_strings` no-op + subclass-iteration glyph
+  dispatch, `'` (apostrophe) and `"` (quote) operator decomposition
+  (T*/Tj and Tw/Tc/'), multi-byte font `read_code` path with short-chunk
+  break, `show_font_glyph` default-chain vs override-suppresses behaviour.
+- `test_pdf_stream_engine_wave1369_marked_content_balance.py` — balanced
+  `BMC`/`EMC` and nested `BMC`/`BMC`/`EMC`/`EMC` order preservation,
+  `BDC` inline-property-dict pass-through, `BDC` named-property lookup
+  via the engine's `/Properties` resource frame, unbalanced sequence
+  surfaces (extra `EMC`, missing `EMC`, dangling start-of-stream `EMC`),
+  malformed operands (`BMC`/`BDC` with no operand) fire hooks with
+  `tag=None`/`properties=None`.
+- `test_legacy_pdf_stream_engine_wave1369.py` — adapter identity
+  (subclass-of-PDFStreamEngine), default-state init slots (rotation,
+  page_size, translate_matrix, font_height_map), `process_page`
+  rotation + crop-box capture, origin-crop-box no-translate-matrix vs
+  non-origin builds-translate-matrix, `show_glyph`/`process_text_position`
+  no-op defaults overridable by subclass.
+- `test_pdf_graphics_stream_engine_wave1369_dispatch.py` — full
+  process_operator dispatch table (m/l/c/v/y/re/h, S/s/f/F/f*/B/B*/b/b*/n,
+  W/W*, sh), malformed-operand silent-skip leniency (short operand list,
+  non-numeric operand, missing current-point for `v`), unknown-operator
+  fall-through to `unsupported_operator` via `super()`, q/Q route through
+  the engine's `save_graphics_state`/`restore_graphics_state` hooks,
+  `transformed_point` identity default + subclass override applies to
+  every path-construction op.
+- `test_pdf_stream_engine_wave1369_operand_accum.py` — operand
+  accumulation between operators with mid-dispatch reset, deep operand
+  stack (500-element prefix, 100-entry `TJ` array) survives intact,
+  `_adopt_parser_operator` intern-via-`Operator.get_operator` invariant
+  with `image_data`/`image_parameters` payload forwarding, `BI` engine
+  dispatch builds `PDInlineImage` and invokes `show_inline_image` hook
+  plus the lite log-stub processor, `get_operators` live-map invariant,
+  `str`-form `process_operator` normalisation, malformed-token (raw
+  `object()`) silent-skip in `_dispatch_tokens`, `COSName` operand
+  verbatim through `unsupported_operator`.
+- `test_pdf_stream_engine_wave1369_entry_dispatch.py` — `process_page`
+  sets-then-clears `_current_page`/`is_processing_page` (even on
+  exception via the `finally`), `init_page(None)` raises `ValueError`,
+  empty-`/Contents` no-op, `process_stream` does NOT touch page context
+  but DOES bump `_level` + swap resources for the dispatch window,
+  `process_child_stream` swaps in `(page=...)` for the window vs leaves
+  context untouched on `page=None`, `process_stream_operators` is the
+  bare driver (no level bump, no resources swap), `process_form` alias
+  for `process_stream`.
+
+No latent bugs found — the dispatch surface already mirrors upstream
+PDFBox 3.0.5 `PDFStreamEngine` / `PDFGraphicsStreamEngine` /
+`PDFStreamParser` semantics correctly (no source changes required this
+wave). The contentstream cluster is the most-traveled code path in the
+codebase and was the focus of waves 479 / 684 / 740 / 742 / 854 / 860 /
+876 / 891 / 905 / 1018 / 1019 / 1228 / 1236 / 1275 / 1281 / 1337; this
+wave consolidates the round-out by pinning the public dispatch
+contract (entry-point fences, operand accumulation, operator-name
+interning, inline-image entry/exit, glyph-dispatch chain, marked-
+content balance, graphics-state-stack fence) in a single thematic set
+of tests so any future refactor of the engine immediately surfaces
+behavioural drift.
+
 ## Wave 1368 — parity round-out (5 parallel agents)
 
 ### Wave 1368 — pdmodel/graphics/color tinting / lookup / conversion round-out + PDIndexed.create factory port + PDLab.set_range initial-color invalidation latent-bug fix (agent A)
