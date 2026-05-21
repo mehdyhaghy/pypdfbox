@@ -395,7 +395,13 @@ class BaseParser:
     # ---------- numbers ----------
 
     def read_int(self) -> int:
-        """Parse an integer literal: optional ``+``/``-`` followed by digits."""
+        """Parse an integer literal: optional ``+``/``-`` followed by digits.
+
+        Mirrors upstream ``BaseParser.readInt`` (Java line 600): leading
+        PDF whitespace (including ``%`` comments) is consumed before the
+        digit run so callers may rely on the same behaviour as Java.
+        """
+        self.skip_whitespace()
         start_pos = self.position
         sign = 1
         b = self._src.read()
@@ -418,8 +424,10 @@ class BaseParser:
         return sign * int(digits.decode("ascii"))
 
     def read_long(self) -> int:
-        """Alias for ``read_int`` — Python ints are unbounded; the
-        method exists for PDFBox API parity."""
+        """Read a long integer; mirrors upstream ``BaseParser.readLong``
+        (Java line 628). Python ints are unbounded so this delegates to
+        :meth:`read_int`.
+        """
         return self.read_int()
 
     def read_string_number(self) -> str:

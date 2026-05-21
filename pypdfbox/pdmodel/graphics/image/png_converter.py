@@ -113,24 +113,69 @@ class PNGConverter:
         }.get(int(render_intent))
 
     @staticmethod
-    def check_converter_state(state: _PNGConverterState) -> bool:
-        """Validate that the parsed PNG state is internally consistent."""
-        return (
-            state.ihdr is not None
-            and bool(state.idats)
-            and state.width > 0
-            and state.height > 0
-        )
+    def check_converter_state(state: _PNGConverterState | None) -> bool:
+        """Validate that the parsed PNG state is internally consistent.
+
+        Mirrors upstream ``PNGConverter.checkConverterState`` (Java line
+        618-655): ``None`` state → ``False``; ``IHDR`` must exist and pass
+        :meth:`check_chunk_sane`; each optional chunk (``PLTE``, ``iCCP``,
+        ``tRNS``, ``sRGB``, ``cHRM``, ``gAMA``) — when present — must also
+        pass sanity; at least one ``IDAT`` chunk is required and every
+        IDAT must pass sanity.
+
+        Aligned in wave 1363; the previous implementation only checked
+        the existence (and width/height >0) of ``IHDR`` + ``IDATs`` so
+        invalid chunks slipped through silently.
+        """
+        if state is None:
+            return False
+        if state.ihdr is None or not PNGConverter.check_chunk_sane(state.ihdr):
+            return False
+        for optional in (
+            state.plte,
+            state.iccp,
+            state.trns,
+            state.srgb,
+            state.chrm,
+            state.gama,
+        ):
+            if not PNGConverter.check_chunk_sane(optional):
+                return False
+        if not state.idats:
+            return False
+        return all(PNGConverter.check_chunk_sane(idat) for idat in state.idats)
 
     @staticmethod
-    def check_chunk_sane(chunk: Chunk) -> bool:
-        """Verify the chunk's CRC matches the byte stream."""
+    def check_chunk_sane(chunk: Chunk | None) -> bool:
+        """Verify the chunk's CRC matches the byte stream.
+
+        Mirrors upstream ``PNGConverter.checkChunkSane`` (Java line 657-684):
+
+        * ``None`` → ``True`` (a missing optional chunk is not an error).
+        * ``start + length > bytes.length`` → ``False`` (out of bounds).
+        * ``start < 4`` → ``False`` (chunk type prefix must precede ``start``).
+        * Computes the CRC over ``bytes[start-4 : start+length]`` — i.e.
+          including the 4 type bytes that immediately precede ``start`` —
+          and compares against ``chunk.crc`` modulo ``2**32``.
+
+        Aligned in wave 1363: the previous implementation rebuilt the
+        4-byte type prefix from ``chunk.chunk_type`` rather than reading
+        it from ``chunk.bytes_``, which silently desynced from upstream
+        whenever the parser populated ``bytes_`` without also writing the
+        type back into ``chunk_type`` (or vice versa).
+        """
+        if chunk is None:
+            return True
         if chunk.bytes_ is None or chunk.length < 0:
             return False
-        # Type + data
-        type_bytes = chunk.chunk_type.to_bytes(4, "big")
-        data = chunk.bytes_[chunk.start : chunk.start + chunk.length]
-        computed = zlib.crc32(type_bytes + data) & 0xFFFFFFFF
+        if chunk.start + chunk.length > len(chunk.bytes_):
+            return False
+        if chunk.start < 4:
+            return False
+        computed = (
+            zlib.crc32(chunk.bytes_[chunk.start - 4 : chunk.start + chunk.length])
+            & 0xFFFFFFFF
+        )
         return computed == (chunk.crc & 0xFFFFFFFF)
 
     # --- Upstream surface parity ----------------------------------------

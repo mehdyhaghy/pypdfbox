@@ -131,13 +131,21 @@ def test_compose_exclusion_formula() -> None:
 
 
 def test_compose_color_dodge_white_src_returns_white() -> None:
+    # PDF 2.0 §11.3.5.1 ColorDodge: ``dest == 0 → 0`` (pure black cannot be
+    # brightened by any source); otherwise white source saturates the
+    # backdrop to 1. Aligned with upstream PDFBox 3.0.x ``BlendMode.java``
+    # line 75-86 in wave 1363.
     out = _run_compose(BlendMode.COLOR_DODGE, [1.0, 1.0, 1.0], [0.3, 0.5, 0.0])
-    assert out == pytest.approx([1.0, 1.0, 1.0])
+    assert out == pytest.approx([1.0, 1.0, 0.0])
 
 
 def test_compose_color_burn_black_src_returns_black() -> None:
+    # PDF 2.0 §11.3.5.1 ColorBurn: ``dest == 1 → 1`` (pure white cannot be
+    # darkened by any source); otherwise black source saturates the backdrop
+    # to 0. Aligned with upstream PDFBox 3.0.x ``BlendMode.java`` line 88-99
+    # in wave 1363.
     out = _run_compose(BlendMode.COLOR_BURN, [0.0, 0.0, 0.0], [0.5, 0.7, 1.0])
-    assert out == pytest.approx([0.0, 0.0, 0.0])
+    assert out == pytest.approx([0.0, 0.0, 1.0])
 
 
 def test_compose_hard_light_low_src_doubles_multiply() -> None:

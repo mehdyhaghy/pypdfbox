@@ -153,23 +153,30 @@ def test_chunk_get_data_slices_buffer() -> None:
 
 
 def test_check_chunk_sane_validates_correct_crc() -> None:
+    # Upstream CRC is computed over ``bytes[start-4 : start+length]`` —
+    # the 4 type bytes immediately precede ``start`` in the chunk's
+    # framing. Aligned with upstream PDFBox ``PNGConverter.checkChunkSane``
+    # in wave 1363; the prior fixture (which prepended ``"prefix__"``
+    # rather than the literal type bytes) pinned a divergent CRC.
     type_bytes = (0x49484452).to_bytes(4, "big")  # 'IHDR'
     data = b"abcd"
-    crc = zlib.crc32(type_bytes + data) & 0xFFFFFFFF
-    payload = b"prefix__" + data
+    payload = type_bytes + data
+    crc = zlib.crc32(payload) & 0xFFFFFFFF
     chunk = Chunk(
         bytes_=payload,
         chunk_type=0x49484452,
         crc=crc,
-        start=len(payload) - 4,
+        start=4,
         length=4,
     )
     assert PNGConverter.check_chunk_sane(chunk) is True
 
 
 def test_check_chunk_sane_rejects_bad_crc() -> None:
+    # start must be >= 4 so the type prefix has room; otherwise upstream's
+    # sanity check short-circuits before the CRC is examined.
     chunk = Chunk(
-        bytes_=b"hello_data", chunk_type=0x49484452, crc=0xDEADBEEF, start=6, length=4,
+        bytes_=b"IHDRdata!!", chunk_type=0x49484452, crc=0xDEADBEEF, start=4, length=4,
     )
     assert PNGConverter.check_chunk_sane(chunk) is False
 

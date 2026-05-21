@@ -223,20 +223,21 @@ def test_two_walkers_independent_when_called_directly() -> None:
 
 # --------------------------------------------------------------- offset-table loop body
 #
-# These two tests step into the loop body of
+# These tests step into the loop body of
 # ``_private_read_object_numbers`` / ``_private_read_object_offsets``.
 # Each ``(obj_num offset)`` pair is read by calling ``read_object_number``
-# followed by ``read_long``; the latter does not consume leading
-# whitespace in the current port. To exercise the loop without tripping
-# on that, we lay the pair out without an intervening separator —
-# enough to land at least one iteration on the recorded path.
+# followed by ``read_long``; wave 1363 aligned ``read_long`` with upstream
+# Java by having it ``skip_whitespace`` first. Malformed truncated input
+# (only the object number, no offset) therefore still surfaces a
+# ``PDFParseError`` from ``read_long`` once it runs off the end of the
+# stream looking for digits.
 
 
 def test_read_object_numbers_loop_body_executes_then_raises() -> None:
     """Walker enters its for-loop and surfaces the underlying parse
-    error when the pair-format separator is missing. Exercises the
+    error when the pair-format offset is missing. Exercises the
     loop-body lines that the empty-stream tests don't reach."""
-    stream = _make_stream(b"42 0 (x) ", n=1, first=5)
+    stream = _make_stream(b"42  ", n=1, first=5)
     parser = PDFObjectStreamParser(stream, COSDocument())
     with pytest.raises(PDFParseError):
         parser.read_object_numbers()
@@ -247,7 +248,7 @@ def test_read_object_numbers_loop_body_executes_then_raises() -> None:
 def test_private_read_object_offsets_loop_body_executes_then_raises() -> None:
     """Same as above but for the ``_private_read_object_offsets`` impl,
     which is keyed on offset (not object number)."""
-    stream = _make_stream(b"42 0 (x) ", n=1, first=5)
+    stream = _make_stream(b"42  ", n=1, first=5)
     parser = PDFObjectStreamParser(stream, COSDocument())
     with pytest.raises(PDFParseError):
         parser.private_read_object_offsets()
@@ -256,7 +257,7 @@ def test_private_read_object_offsets_loop_body_executes_then_raises() -> None:
 def test_parse_all_objects_surfaces_error_from_offsets_walker() -> None:
     """When the offset-table walker raises, ``parse_all_objects``
     propagates the exception and still runs its finally block."""
-    stream = _make_stream(b"42 0 (x) ", n=1, first=5)
+    stream = _make_stream(b"42  ", n=1, first=5)
     parser = PDFObjectStreamParser(stream, COSDocument())
     with pytest.raises(PDFParseError):
         parser.parse_all_objects()
@@ -265,7 +266,7 @@ def test_parse_all_objects_surfaces_error_from_offsets_walker() -> None:
 
 def test_parse_object_surfaces_error_from_offsets_walker() -> None:
     """Same for the single-object dispatcher."""
-    stream = _make_stream(b"42 0 (x) ", n=1, first=5)
+    stream = _make_stream(b"42  ", n=1, first=5)
     parser = PDFObjectStreamParser(stream, COSDocument())
     with pytest.raises(PDFParseError):
         parser.parse_object(42)
@@ -274,20 +275,20 @@ def test_parse_object_surfaces_error_from_offsets_walker() -> None:
 
 # --------------------------------------------------------------- full loop bodies
 #
-# Wave 1320 reactivates the previously-deferred parse paths. The upstream
-# Java ``BaseParser.readLong`` calls ``skipSpaces()`` at the top; the
-# pypdfbox port currently delegates to ``read_int``, which does *not* skip
-# leading whitespace. The fixture below mirrors upstream behaviour by
-# patching ``BaseParser.read_long`` for the duration of the test — this
-# unblocks coverage of lines 58-64, 88, 91-107, 145, 148, 166, 169 in
-# :mod:`pypdfbox.pdfparser.pdf_object_stream_parser`. The deviation is
-# documented at the call site (see PDFBox-parity TODO in BaseParser).
+# Wave 1363 aligned ``BaseParser.read_long`` with upstream Java by
+# prefixing it with ``skip_whitespace``; the fixture below originally
+# patched the missing skip in but is now a no-op kept for clarity (and to
+# keep the test bodies unchanged from the wave that introduced them).
 
 
 @pytest.fixture
 def patched_read_long(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Make ``BaseParser.read_long`` skip leading whitespace before
-    reading the digits — mirrors upstream Java behaviour."""
+    """No-op fixture — kept as a breadcrumb for wave 1363's read_long fix.
+
+    Earlier waves patched ``BaseParser.read_long`` to skip leading
+    whitespace as a workaround for the missing upstream-parity skip; the
+    source now does that itself.
+    """
     from pypdfbox.pdfparser.base_parser import BaseParser
 
     original = BaseParser.read_long

@@ -2953,13 +2953,21 @@ class PDFRenderer(PDFStreamEngine):
                 return 2.0 * b * s
             return 1.0 - 2.0 * (1.0 - b) * (1.0 - s)
         if mode_name == "ColorDodge":
-            if s >= 1.0:
-                return 1.0
-            return min(1.0, b / (1.0 - s))
-        if mode_name == "ColorBurn":
-            if s <= 0.0:
+            # PDF 2.0 §11.3.5.1 ColorDodge — matches upstream PDFBox 3.0.x
+            # ``BlendMode.java`` line 75-86. Aligned in wave 1363.
+            if b == 0.0:
                 return 0.0
-            return 1.0 - min(1.0, (1.0 - b) / s)
+            if b >= 1.0 - s:
+                return 1.0
+            return b / (1.0 - s)
+        if mode_name == "ColorBurn":
+            # PDF 2.0 §11.3.5.1 ColorBurn — matches upstream PDFBox 3.0.x
+            # ``BlendMode.java`` line 88-99. Aligned in wave 1363.
+            if b == 1.0:
+                return 1.0
+            if 1.0 - b >= s:
+                return 0.0
+            return 1.0 - (1.0 - b) / s
         if mode_name == "SoftLight":
             # PDF spec form (matches Adobe's): two-piece quadratic.
             if s <= 0.5:

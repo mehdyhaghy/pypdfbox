@@ -50,15 +50,29 @@ def _b_overlay(s: float, b: float) -> float:
 
 
 def _b_color_dodge(s: float, b: float) -> float:
-    if s >= 1.0:
+    # PDF 2.0 spec algorithm (matches upstream PDFBox 3.0.x
+    # ``BlendMode.java`` line 75-86). Returns 0 when the backdrop is 0,
+    # 1 when the backdrop saturates ``1 - src``, otherwise ``b / (1 - s)``.
+    # The old PDF 1.7 form ``min(1, b / (1 - s)) with s>=1 → 1`` gives a
+    # different answer when ``s == 1`` and ``b == 0`` (PDF 1.7: 1; PDF 2.0
+    # and PDFBox upstream: 0) — this is the formal divergence resolved in
+    # PDFBox wave 1361's upstream-parity audit.
+    if b == 0.0:
+        return 0.0
+    if b >= 1.0 - s:
         return 1.0
-    return min(1.0, b / (1.0 - s))
+    return b / (1.0 - s)
 
 
 def _b_color_burn(s: float, b: float) -> float:
-    if s <= 0.0:
+    # PDF 2.0 spec algorithm (matches upstream PDFBox 3.0.x
+    # ``BlendMode.java`` line 88-99). Returns 1 when the backdrop is 1,
+    # 0 when ``1 - dest`` saturates ``src``, otherwise ``1 - (1 - b) / s``.
+    if b == 1.0:
+        return 1.0
+    if 1.0 - b >= s:
         return 0.0
-    return 1.0 - min(1.0, (1.0 - b) / s)
+    return 1.0 - (1.0 - b) / s
 
 
 def _b_soft_light(s: float, b: float) -> float:

@@ -63,12 +63,15 @@ def test_blend_scalar_difference_exclusion() -> None:
 
 
 def test_blend_scalar_color_dodge_burn() -> None:
-    # ColorDodge: s>=1 → 1, else min(1, b/(1-s))
-    assert PDFRenderer._blend_scalar(0.0, 1.0, "ColorDodge") == 1.0
+    # ColorDodge (PDF 2.0 §11.3.5.1, aligned with upstream PDFBox 3.0.x
+    # ``BlendMode.java`` in wave 1363):
+    #   b == 0 → 0; b >= 1 - s → 1; else b / (1 - s).
+    assert PDFRenderer._blend_scalar(0.0, 1.0, "ColorDodge") == 0.0
     assert PDFRenderer._blend_scalar(0.5, 0.0, "ColorDodge") == 0.5  # b / (1-0) = b
-    # ColorBurn: s<=0 → 0, else 1 - min(1, (1-b)/s)
-    assert PDFRenderer._blend_scalar(1.0, 0.0, "ColorBurn") == 0.0
-    assert PDFRenderer._blend_scalar(0.5, 1.0, "ColorBurn") == 0.5  # 1 - min(1, 0.5/1) = 0.5
+    # ColorBurn:
+    #   b == 1 → 1; 1 - b >= s → 0; else 1 - (1 - b) / s.
+    assert PDFRenderer._blend_scalar(1.0, 0.0, "ColorBurn") == 1.0
+    assert PDFRenderer._blend_scalar(0.5, 1.0, "ColorBurn") == 0.5  # 1 - 0.5/1 = 0.5
 
 
 def test_blend_scalar_hardlight() -> None:
@@ -172,29 +175,29 @@ def test_blend_hardlight_blue_source_yields_blue() -> None:
 
 
 def test_blend_color_dodge_red_blue() -> None:
-    """ColorDodge:
-       r: s=0 → b/(1-0)=1
-       g: s=0 → 0
-       b: s=1 → 1
-       → magenta.
+    """ColorDodge (PDF 2.0 §11.3.5.1):
+       r: b=1, s=0 → b != 0, b >= 1 - 0 → 1
+       g: b=0, s=0 → 0 (dest == 0 short-circuit)
+       b: b=0, s=1 → 0 (dest == 0 short-circuit)
+       → red preserved.
     """
     src = _solid((0, 0, 255, 255))
     bg = _solid((255, 0, 0, 255))
     out = PDFRenderer._blend(src, bg, BlendMode.COLOR_DODGE)
-    assert _close(out.getpixel((0, 0)), (255, 0, 255))
+    assert _close(out.getpixel((0, 0)), (255, 0, 0))
 
 
-def test_blend_color_burn_red_blue_is_black() -> None:
-    """ColorBurn:
-       r: s=0 → 0
-       g: s=0 → 0
-       b: s=1 → 1 - min(1, (1-0)/1) = 0
-       → black.
+def test_blend_color_burn_red_blue_is_red() -> None:
+    """ColorBurn (PDF 2.0 §11.3.5.1):
+       r: b=1, s=0 → 1 (dest == 1 short-circuit)
+       g: b=0, s=0 → 1 - 0 >= 0 → 0
+       b: b=0, s=1 → 1 - 0 >= 1 → 0
+       → red preserved (matches upstream PDFBox PDF 2.0 algorithm).
     """
     src = _solid((0, 0, 255, 255))
     bg = _solid((255, 0, 0, 255))
     out = PDFRenderer._blend(src, bg, BlendMode.COLOR_BURN)
-    assert _close(out.getpixel((0, 0)), (0, 0, 0))
+    assert _close(out.getpixel((0, 0)), (255, 0, 0))
 
 
 def test_blend_soft_light_red_backdrop_preserves_red() -> None:

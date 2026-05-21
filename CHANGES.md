@@ -4189,6 +4189,363 @@ No latent source bugs flagged.
   and rely solely on `read_long`'s clamp — Java's signed-32 → signed-64
   pattern lives in exactly one place upstream; we mirror it in two.
 
+## Wave 1363 — parity round-out (5 parallel agents)
+
+### Wave 1363 — contentstream / pdmodel.graphics parity ports (agent C)
+
+Closed the remaining gaps in the `contentstream` + `pdmodel.graphics`
+upstream test surface. Each new port revealed (and resolved) a latent
+behavioural divergence against upstream PDFBox 3.0.x:
+
+- `tests/pdmodel/graphics/upstream/test_pd_line_dash_pattern.py` — 1
+  test, `testGetCOSObject`. Confirms the on-disk `[dash_array, phase]`
+  form round-trips through `PDLineDashPattern(COSArray([1, 2]), 3)` and
+  exposes `COSFloat.ONE` / `COSFloat(2)` for the inner entries and
+  `COSInteger.THREE` for the phase. The Java-only `System.out.println(dash)`
+  diagnostic at the end of the upstream test is replaced with a direct
+  `str(dash)` round-trip so the toString surface is pinned rather than
+  silently dropped.
+- `tests/pdmodel/graphics/upstream/test_blend_mode_channels.py` — 17
+  tests completing the per-mode parity surface left out of the
+  earlier `test_blend_mode.py` port: `testInstances` (dispatch through
+  `BlendMode.get_instance` against every `COSName` constant, the
+  `COSArray` fallback chain, and the `COSInteger` "no recognised name"
+  return path) plus `testBlendModeNormal..Color` (the channel-function /
+  `get_blend_function` / `get_cos_name` triplet for each standard mode).
+  The COLOR_DODGE and COLOR_BURN per-mode tests exercise the PDF 2.0
+  `(s=1, b=0)` and `(s=0, b=1)` corner cases against
+  `BlendMode.get_blend_channel_function()(s, b)`.
+
+  **Latent bug closed:** the previous `_b_color_dodge` /
+  `_b_color_burn` (and the duplicate copies in
+  `PDFRenderer._blend_scalar`) implemented the older PDF 1.7 form
+  (`s >= 1 → 1`; `s <= 0 → 0`; otherwise the divide-by-`(1-s)`
+  formula). Upstream PDFBox switched to the PDF 2.0 algorithm in
+  `BlendMode.java` lines 75-99, which dispatches on the *backdrop*
+  (`dest == 0 → 0`, `dest >= 1 - src → 1`, else `dest / (1 - src)` for
+  ColorDodge; `dest == 1 → 1`, `1 - dest >= src → 0`, else
+  `1 - (1 - dest) / src` for ColorBurn). Aligning gives the same answer
+  in nearly every renderer scenario; the only observable change is at
+  the saturation extremes (where the PDF 1.7 form silently let
+  full-source ColorDodge brighten pure-black backdrops to white — a
+  regression against Adobe Acrobat that nobody had caught). Three
+  existing renderer/blend-composite tests that pinned the legacy
+  behaviour at the extremes (`test_compose_color_dodge_white_src_returns_white`,
+  `test_compose_color_burn_black_src_returns_black`,
+  `test_blend_color_dodge_red_blue`, `test_blend_color_burn_red_blue_is_black`,
+  `test_blend_scalar_color_dodge_burn`) are updated in lockstep with the
+  new spec-compliant formula.
+- `tests/pdmodel/graphics/image/upstream/test_png_converter.py` — 4
+  active tests + 1 documented skip. Ports `testChunkSane`,
+  `testCheckConverterState`, `testCRCImpl` and `testMapPNGRenderIntent`
+  verbatim against the bundled pypdfbox state surface. The 12
+  image-conversion tests
+  (`testImageConversionRGB`, `...RGBGamma`, `...RGB16BitICC`,
+  `...RGBIndexed`, `...RGBIndexedAlpha[1248]Bit`,
+  `testImageConversionIntentIndexed` and the failure-path counterparts
+  `testImageConversionRGBAlpha`, `...GrayAlpha`, `...Gray`,
+  `...GrayGamma`) each need a raw binary PNG fixture that pypdfbox does
+  not bundle — equivalent end-to-end coverage already lives in
+  `tests/pdmodel/graphics/image/test_png_converter_coverage.py`
+  against Pillow-generated PNGs, so the upstream port keeps a single
+  documented `pytest.skip` rather than re-pinning the same coverage
+  with raw bytes.
+
+  **Two latent bugs closed in `pypdfbox.pdmodel.graphics.image.png_converter`:**
+
+  1. `PNGConverter.check_chunk_sane` rebuilt the 4-byte type prefix
+     from `chunk.chunk_type.to_bytes(4, "big")` and concatenated it
+     onto the data slice for the CRC computation. Upstream slices
+     `bytes[start-4 : start+length]` from the underlying buffer (which
+     is what the PNG parser populated with the literal type bytes).
+     The previous form returned the right answer only when the parser
+     also wrote the chunk-type integer into `chunk.chunk_type` —
+     a coincidence that held for our own parser but did not match the
+     upstream invariant "`bytes[start-4:start]` is the canonical type
+     prefix." The replacement now also handles `None` chunks
+     (returning `True`, matching upstream's "missing optional chunk is
+     not an error" contract) and the `start < 4` / `start + length >
+     len(bytes_)` guards from upstream lines 657-684.
+  2. `PNGConverter.check_converter_state` only checked
+     `state.ihdr is not None`, `state.idats` non-empty, and
+     `width > 0 and height > 0`. Upstream lines 618-655 also require
+     `check_chunk_sane` to succeed against the IHDR, every optional
+     chunk (`PLTE` / `iCCP` / `tRNS` / `sRGB` / `cHRM` / `gAMA`) when
+     present, and every IDAT in the list. The replacement closes the
+     gap; existing coverage-targeted tests (which all parse real PNG
+     bytes with valid CRCs) continue to pass and the new upstream port
+     verifies the per-attribute validation matrix.
+
+### Wave 1363 — pdmodel/interactive parity ports (agent D)
+
+Ported every remaining upstream JUnit test under the
+`org.apache.pdfbox.pdmodel.interactive` subtree that lacked a counterpart
+on the Python side. No source-side behavioural changes were needed —
+each Java test mapped cleanly onto the existing pypdfbox API surface
+(URI decode, outline tree mutations, transition dispatch, AcroForm
+flatten).
+
+- `tests/pdmodel/interactive/action/upstream/test_pd_action_uri.py` — 4
+  tests covering PDFBOX-3913 (UTF-8 / UTF-16 BE / UTF-16 LE encoded
+  `/URI`) + PDFBOX-3946 (no-NPE-on-absent-`/URI`).
+- `tests/pdmodel/interactive/documentnavigation/outline/upstream/test_pd_outline_item.py`
+  — 14 tests, full sibling-insertion parity matrix
+  (`insert_sibling_after` / `insert_sibling_before` × every combination
+  of open/closed parent + child + head/tail/no-parent edges +
+  no-multi-node-insert rejection). Java `IllegalArgumentException`
+  becomes Python `ValueError` matching the existing pypdfbox contract.
+- `tests/pdmodel/interactive/documentnavigation/outline/upstream/test_pd_outline_item_iterator.py`
+  — 4 tests covering single-item, multi-item, `None`-head, and
+  unsupported-`remove`. The Java `Iterator.remove()` →
+  `UnsupportedOperationException` parity is Python's
+  `NotImplementedError`.
+- `tests/pdmodel/interactive/pagenavigation/upstream/test_pd_transition.py`
+  — 10 tests covering default `/Type /Trans`, default style `/S /R`,
+  default `/Di` zero, set/get for dimension / motion / duration / fly
+  scale, `/Di /None` name vs integer dispatch via `set_direction`, and
+  fly-area-opaque toggle. Java enum `.name()` calls collapse to direct
+  use of the Python string constants on `PDTransitionStyle` /
+  `PDTransitionMotion` / `PDTransitionDimension`.
+- `tests/pdmodel/interactive/pagenavigation/upstream/test_pd_transition_direction.py`
+  — 1 test reading every defined direction sentinel through
+  `PDTransitionDirection.get_cos_base(direction)` and asserting the
+  expected `COSName /None` or `COSInteger` projection.
+- `tests/pdmodel/interactive/form/upstream/test_pd_acro_form_flatten.py`
+  — 1 active test (`flattenSingleField` against bundled
+  `MultilineFields.pdf`) + 12 skip-placeholders for the upstream
+  network-fetch + renderer-compare matrix. The skip rationale matches
+  the established pattern from wave 1360 `PDAcroFormFromAnnots` /
+  `PDAcroFormGenerateAppearances`: each parametrised sample PDF is
+  fetched from Apache JIRA over HTTPS and compared to a generated PNG
+  via `TestPDFToImage`. pypdfbox tests are forbidden from making
+  network calls and renderer pixel parity is tracked outside the
+  AcroForm flatten harness.
+- Added `tests/pdmodel/interactive/pagenavigation/upstream/__init__.py`
+  (new package marker; no upstream Java counterpart).
+
+No source bug fixes — every test passed against the existing pypdfbox
+implementation on first run, validating wave 1360's deeper parity
+work in `pd_action_uri`, `pd_outline_item`, `pd_outline_node`,
+`pd_transition`, `pd_transition_direction`, and `pd_acro_form.flatten`.
+
+### Wave 1363 — cos / pdfparser / io parity ports (agent A)
+
+Ported the remaining upstream JUnit tests for the io and pdfparser
+clusters that lacked a counterpart on the Python side, and closed two
+latent upstream-parity gaps that the ported tests exposed.
+
+- `tests/io/upstream/test_non_seekable_random_access_read_input_stream.py`
+  — 21 tests covering position/skip/read/peek/rewind, view rejection,
+  buffer rotation across the 4 KiB salvage path, parameter validation
+  on `read_into`, and the PDFBOX-5158 / PDFBOX-5161 regressions.
+- `tests/io/upstream/test_random_access_input_stream.py` — 5 tests
+  covering the `InputStream` adapter's position-aware `skip` / `read` /
+  `available` plus the empty-buffer + past-EOF branches.
+- `tests/io/upstream/test_sequence_random_access_read.py` — 6 tests
+  covering concatenation of `RandomAccessRead` sources: length, seek/
+  peek/rewind across the underlying boundary, the empty-stream-in-the-
+  middle filter, and the PDFBOX-5981 many-segment regression.
+- `tests/pdfparser/upstream/test_pdf_object_stream_parser.py` — 5
+  tests covering object-stream offset parsing, `parse_all_objects`,
+  the `stream_index` xref hint, and the malformed-index drop path.
+- `tests/pdfparser/upstream/test_pdf_parser.py` — 1 active port of
+  `testPDFParserMissingCatalog` (PDFBOX-3060) plus 17 placeholders
+  marked `pytest.mark.skip` for upstream tests that consume the
+  unbundled `target/pdfs` corpus.
+
+Source bug fixes uncovered by the ports:
+
+- `pypdfbox/pdfparser/base_parser.py` — `read_int` / `read_long` now
+  call `skip_whitespace()` at the entry to mirror upstream Java's
+  `BaseParser.readInt` / `readLong` (which call `skipSpaces()`). The
+  previous behaviour broke `PDFObjectStreamParser._private_read_object_offsets`
+  which expects `read_long` to consume the inter-pair space — wave
+  1320's `patched_read_long` fixture was the workaround; it is now
+  redundant. Coverage tests that intentionally fed malformed input
+  exploiting the bug have been retargeted at malformed-but-still-
+  triggering input (truncated pair, EOF mid-pair).
+- `pypdfbox/io/non_seekable_random_access_read_input_stream.py` —
+  `_available_on_underlying` now interrogates `getbuffer().nbytes -
+  tell()` when the underlying file-like exposes no `available()`
+  method. Mirrors upstream Java's `ByteArrayInputStream.available()`
+  for in-memory streams so `length()` and `available()` report the
+  correct remainder before any buffered fetch has happened. Updates
+  the wave-1341 BytesIO assertions to the corrected values.
+
+New fixture:
+- `tests/fixtures/pdfparser/MissingCatalog.pdf` (433 bytes) — copied
+  from upstream `pdfbox/src/test/resources/org/apache/pdfbox/pdfparser/`.
+
+### Wave 1363 — filter / pdfwriter / multipdf parity ports (agent B)
+
+Filled the remaining upstream-test gaps in the filter, pdfwriter, and
+multipdf clusters. Every new port runs against either pypdfbox
+synthetic inputs or upstream fixtures bundled in-tree (no
+Maven-downloaded `target/pdfs/` corpus dependencies).
+
+- `tests/filter/upstream/test_predictor_class.py` — 2 tests porting
+  upstream `PredictorTest#testGetBitSeq` and `testCalcSetBitSeq`
+  (the package-private bit-window helpers `Predictor.get_bit_seq` /
+  `Predictor.calc_set_bit_seq` used by the sub-byte
+  `BitsPerComponent` predictor path).
+- `tests/filter/upstream/test_filters_extended.py` — 11 tests porting
+  the remaining slice of upstream `TestFilters`: the deterministic
+  10-seed random round-trip across every registered roundtrip-safe
+  filter (`testFilters`) and the PDFBOX-1977 LZW regression
+  (`testPDFBOX1977`) against the **bundled** 19 321-byte upstream
+  fixture.
+- `tests/pdfwriter/upstream/test_cos_writer_compression_pool.py` — 1
+  test mirroring upstream `COSWriterCompressionPoolTest#testPDFBox6036`
+  in its own file (the equivalent slice already lived inside
+  `test_cos_writer.py`; this file pins the upstream test class to the
+  same-named pypdfbox file for cross-reference).
+- `tests/pdfwriter/upstream/test_cos_document_compression_fixtures.py`
+  — 4 tests: `testCompressAcroformDoc` (13-annotation round-trip),
+  `testCompressAttachmentsDoc` (embedded `A4Unicode.pdf` length =
+  14997), `testCompressEncryptedDoc` (StandardProtectionPolicy
+  re-protect + reload), and a `testAlteredDoc` variant that asserts
+  page count + non-empty content stream (the byte-exact-length
+  assertion is left to the structural surrogate in
+  `test_cos_document_compression.py` because Java
+  `PDPageContentStream` and pypdfbox `PDPageContentStream` produce
+  different whitespace/operator layouts even when semantically
+  equivalent).
+- `tests/multipdf/upstream/test_pdf_clone_utility_wave1363.py` — 1
+  test porting `PDFCloneUtilityTest#testClonePDFWithCosArrayStream2`,
+  the broader PDFBOX-2052 round-trip that drives three-layered
+  content streams through `PDFMergerUtility.append_document` and
+  reloads both source and merged copies.
+- `tests/multipdf/upstream/test_merge_acro_forms_legacy.py` — 1
+  test porting `MergeAcroFormsTest#testLegacyModeMerge` in full
+  (previously skip-only because the fixtures looked Maven-gated —
+  they're actually bundled in the upstream source tree under
+  `src/test/resources/org/apache/pdfbox/multipdf/`).
+- `tests/multipdf/upstream/test_pdf_merger_utility_struct_tree_4.py`
+  — 3 tests porting `testStructureTreeMerge4` (PDFBOX-4417-001031
+  104-element doubling), `testStructureTreeMerge5` (PDFBOX-4417-054080
+  /K-starts-with-two-dicts doubling), and `testStructureTreeMergeIDTree`
+  (PDFBOX-4416 /IDTree two-step merge with the PDFBOX-4009 empty-dest
+  ParentTreeNextKey == 4 invariant). Re-implements upstream's private
+  `ElementCounter` walker.
+- `tests/multipdf/upstream/test_pdf_merger_utility_5198.py` — 2
+  tests porting `testPDFBox5198_2` / `testPDFBox5198_3` (two-way and
+  three-way self-merge of `PDFA3A.pdf` asserting the `/StructTreeRoot/K`
+  is `/Document` with one `/Part` per page). Bundles `PDFA3A.pdf`.
+- `tests/multipdf/upstream/test_pdf_merger_utility_structure_tree.py`
+  — traceability file documenting the seven remaining upstream
+  `testStructureTreeMerge{,2,3,6,7}` /
+  `testMissingParentTreeNextKey` tests that stay skipped because
+  their fixtures (PDFBOX-3999-GeneralForbearance,
+  PDFBOX-4408, PDFBOX-4418-000314, PDFBOX-4423) live under the
+  Maven-downloaded `target/pdfs/` corpus and are not in the upstream
+  source tree.
+
+New bundled fixtures (verbatim copies from upstream PDFBox 3.0
+`src/test/resources/`):
+- `tests/fixtures/filter/PDFBOX-1977.bin` (19 321 bytes)
+- `tests/fixtures/pdfwriter/acroform.pdf` (64 609 bytes)
+- `tests/fixtures/pdfwriter/attachment.pdf` (79 414 bytes)
+- `tests/fixtures/pdfwriter/unencrypted.pdf` (71 020 bytes)
+- `tests/fixtures/multipdf/AcroFormForMerge.pdf` (18 543 bytes)
+- `tests/fixtures/multipdf/PDFBoxLegacyMerge-SameMerged.pdf` (46 334 bytes)
+- `tests/fixtures/multipdf/PDFA3A.pdf` (49 917 bytes)
+- `tests/fixtures/multipdf/PDFBOX-4417-054080.pdf` (48 925 bytes)
+
+### Wave 1363 — fontbox cff/ttf/gsub + tools/pdf_text2_html parity ports (agent E)
+
+Filled the remaining upstream-test gaps in fontbox.cff, fontbox.ttf.gsub
+and tools.pdf_text2_html, surfacing three latent source bugs in
+``PDFText2HTML`` + ``PDFont`` that the wave 1316 coverage harness had
+masked by stubbing ``PDFTextStripper.write_string``.
+
+- `tests/fontbox/cff/upstream/test_cff_charset.py` — 6 tests porting
+  upstream ``CFFCharsetTest`` verbatim. Covers the ``EmbeddedCharset``
+  CID/Type1 dispatcher, the concrete ``CFFCharsetCID`` / ``CFFCharsetType1``
+  classes, and the three singleton built-in charsets (``CFFExpertCharset``,
+  ``CFFExpertSubsetCharset``, ``CFFISOAdobeCharset``). Java's
+  ``IllegalStateException`` on type-mismatched operations maps to
+  Python ``RuntimeError`` per the existing ``pypdfbox.fontbox.cff``
+  convention (mirrors the ``RuntimeError`` chosen by the original port
+  in ``cff_charset_type1.py`` / ``cff_charset_cid.py``).
+- `tests/fontbox/ttf/gsub/upstream/test_default_gsub_worker.py` — 1
+  test for ``DefaultGsubWorker.apply_transforms``. Documents the
+  pre-existing divergence vs upstream's ``Collections.unmodifiableList``:
+  pypdfbox returns a defensive mutable copy, so the upstream
+  ``assertThrows(UnsupportedOperationException.class, …)`` collapses
+  to "mutating the result does not affect the worker".
+- `tests/fontbox/ttf/gsub/upstream/test_gsub_worker_for_bengali.py`
+  (12 placeholders), `…_devanagari.py` (10), `…_gujarati.py` (10),
+  `…_dflt.py` (6), `…_latin.py` (2) — skip-placeholders following the
+  wave 1360 Lohit-Tamil policy decision: pypdfbox does not bundle the
+  SIL OFL 1.1 Lohit fonts or JosefinSans, and FoglihtenNo07.otf carries
+  a custom non-Apache license. Each ported placeholder cross-references
+  the equivalent hand-written shaper test that already covers the same
+  ``GsubWorker`` surface synthetically.
+- `tests/tools/upstream/test_pdf_text2_html.py` — 2 tests porting
+  upstream ``TestPDFText2HTML#testEscapeTitle`` + ``testStyle``. Drives
+  a real ``PDDocument`` + ``PDPageContentStream`` + Helvetica /
+  Helvetica-Bold render through ``PDFText2HTML.get_text`` (no
+  monkeypatch — first end-to-end exercise of the HTML wrapping path
+  since the parent ``PDFTextStripper`` signature changed). Surfaced
+  three latent source bugs:
+
+  **Latent bug #1 closed:** ``PDFText2HTML.start_document`` /
+  ``end_document`` / ``start_article`` / ``end_article`` /
+  ``write_string`` / ``write_paragraph_end`` called
+  ``super().write_string(...)`` with a 1-arg signature. The parent's
+  ``write_string`` now takes 3 args ``(text, text_positions, sink)``
+  — every call site raised ``TypeError`` the moment a real
+  ``get_text`` walk reached them. Repaired by:
+  - Introducing a ``_active_sink`` slot on ``PDFTextStripper`` that
+    exposes the per-walk emission gateway (the closure that previously
+    lived inside ``get_text``). Mirrors upstream's protected
+    ``output`` field. The slot is set during ``get_text`` and restored
+    on completion so overlapping walks cannot leak.
+  - Adding a ``_emit_html(text)`` helper on ``PDFText2HTML`` that
+    routes through ``_active_sink`` during a real walk and falls back
+    to ``super().write_string(text)`` so the wave 1316 coverage tests
+    (which monkeypatch the parent's ``write_string``) still observe
+    every wrapping emission.
+  - Reworking ``write_string`` / ``write_paragraph_end`` to accept
+    the optional ``sink`` argument the internal page loop passes, and
+    routing through it when present so streamed output stays balanced.
+  - Adding a ``write_article_start`` / ``write_article_end`` pair
+    that opens / closes ``<p>...</p>`` around each page's article
+    body (mirrors upstream's per-page ``writeParagraphStart`` /
+    ``writeParagraphEnd`` calls in ``PDFTextStripper.processPage``;
+    pypdfbox's lite stripper only emits paragraph markers around
+    mid-page line breaks, so the open-on-page-start contract has to
+    live in the HTML subclass for now). The article-end hook also
+    flushes any open ``<b>`` / ``<i>`` tags through ``FontState.clear``
+    so a paragraph never leaks style state across the closing tag.
+
+  **Latent bug #2 closed:** ``PDFText2HTML.get_title`` read
+  ``self.document``, which is an upstream PDFBox field name pypdfbox
+  does not expose. The title was always coming back empty. Repaired
+  to read ``self._active_document`` (the per-walk document handle
+  ``PDFTextStripper.get_text`` already populates) with a fallback to
+  ``self.document`` so the wave 1316 coverage tests that pin the
+  field directly still work.
+
+  **Latent bug #3 closed:** ``PDFont.load_font_descriptor`` returned
+  ``None`` for Standard 14 fonts even though upstream synthesizes a
+  descriptor from the AFM in that case
+  (``PDFont.java:140-144``: ``else if (afmStandard14 != null)
+  return PDType1FontEmbedder.buildFontDescriptor(afmStandard14)``).
+  Without a descriptor, ``PDFText2HTML.FontState`` cannot detect
+  bold / italic because both flag checks dispatch on the descriptor
+  it pulls off ``TextPosition.get_font()``. Repaired
+  ``load_font_descriptor`` to fall back to
+  ``get_standard14_afm()`` →
+  ``PDType1FontEmbedder.build_font_descriptor_from_metrics`` when the
+  explicit ``/FontDescriptor`` is absent. Bold / italic detection now
+  works on Standard 14 Helvetica-Bold (and the rest of the family)
+  without callers having to pre-populate descriptors manually.
+
+Bundled fixtures: none (the new tests drive synthetic ``PDDocument``
+instances; the gsub skip-placeholders explicitly do not bundle any new
+font binaries).
+
 ## Wave 1362 — opt-in Noto Sans CJK auto-downloader for last-resort CJK fallback
 
 Closes the long-standing gap where pypdfbox produced `.notdef` glyphs for

@@ -186,13 +186,22 @@ class NonSeekableRandomAccessReadInputStream(RandomAccessRead):
         return self._size + self._available_on_underlying()
 
     def _available_on_underlying(self) -> int:
-        # Standard Python file-like streams do not expose ``available``;
-        # mirror the upstream method by falling back to 0. Subclasses
-        # backed by sockets can override.
+        # Python's ``InputStream`` analogues do not expose ``available``;
+        # mirror the upstream method by detecting the common in-memory
+        # cases (BytesIO buffers, files reporting size) so ``length()`` /
+        # ``available()`` line up with Java's ``ByteArrayInputStream.
+        # available()`` for the typical pdf-parser usage.
         available = getattr(self._is, "available", None)
         if callable(available):
             try:
                 return int(available())
+            except Exception:
+                return 0
+        getbuffer = getattr(self._is, "getbuffer", None)
+        tell = getattr(self._is, "tell", None)
+        if callable(getbuffer) and callable(tell):
+            try:
+                return max(0, int(getbuffer().nbytes) - int(tell()))
             except Exception:
                 return 0
         return 0

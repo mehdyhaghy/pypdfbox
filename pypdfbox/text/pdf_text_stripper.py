@@ -200,6 +200,17 @@ class PDFTextStripper:
         # Document handle for ``process_pages`` bookmark resolution.
         # Populated by ``get_text`` while a walk is in progress.
         self._active_document: PDDocument | None = None
+        # Per-walk sink used by subclass hooks (``start_document`` /
+        # ``end_document`` / ``start_article`` / ``end_article`` /
+        # ``write_string`` overrides) that want to stream text through
+        # the same gateway as the parent's page loop. Populated by
+        # ``get_text`` for the duration of a walk; restored to its
+        # previous value (typically ``None``) when the walk completes.
+        # Mirrors upstream's per-walk ``output`` field but exposes it as
+        # a callable so the lite stripper's in-memory ``chunks`` path
+        # and any externally installed :class:`io.TextIO` writer share
+        # the same emission point.
+        self._active_sink: Callable[[str], None] | None = None
 
     # ---------- configuration accessors ----------
 
@@ -537,6 +548,16 @@ class PDFTextStripper:
             if out is not None:
                 out.write(piece)
 
+        # Expose the active sink so subclass hooks
+        # (``start_document``/``end_document``/etc.) can stream text
+        # through the same gateway as the parent's page loop. Upstream
+        # PDFBox accomplishes the same via a per-walk ``output`` field;
+        # we mirror that contract here. The slot is restored in the
+        # ``finally`` block so it does not leak across overlapping
+        # ``get_text`` calls.
+        previous_sink = self._active_sink
+        self._active_sink = _sink
+
         # Mirror upstream's ``startDocument`` / ``endDocument`` hooks —
         # invoked once per ``get_text`` walk around the page loop. The
         # base implementations are no-ops; subclasses override.
@@ -558,6 +579,7 @@ class PDFTextStripper:
             self.end_document(document)
             self._current_page_no = 0
             self._active_document = None
+            self._active_sink = previous_sink
         return "".join(chunks)
 
     def write_text(self, document: PDDocument, output: _TextWriter) -> None:

@@ -3,10 +3,11 @@
 
 Pre-wave the module sat at 92.9 %. Remaining uncovered surface:
 
-* ``_available_on_underlying`` fallback when the underlying stream has
-  no ``available`` callable (line 198) — exercised against a plain
-  ``io.BytesIO`` since the existing ``_AvailableStream`` test fixture
-  carries ``available()``.
+* ``_available_on_underlying`` fallback — exercised against a plain
+  ``io.BytesIO``; wave 1363 taught the fallback to interrogate
+  ``getbuffer().nbytes - tell()`` so ``length()`` / ``available()`` now
+  reflect the underlying byte count for in-memory streams (matches the
+  upstream contract for ``ByteArrayInputStream``).
 * ``_fetch`` salvage branch (lines 281-286) — triggered when the
   underlying stream EOFs mid-buffer after a full LAST buffer, and the
   caller drives one more fetch attempt.
@@ -28,24 +29,26 @@ from pypdfbox.io.non_seekable_random_access_read_input_stream import (
 
 
 # ---------------------------------------------------------------------------
-# ``_available_on_underlying`` fallback when underlying lacks ``available``
+# ``_available_on_underlying`` fallback on a BytesIO (wave 1363 parity fix)
 # ---------------------------------------------------------------------------
 def test_length_on_bytesio_returns_buffered_size_only() -> None:
-    """``io.BytesIO`` exposes no ``available()`` callable, so
-    :meth:`_available_on_underlying` falls through line 198 and returns 0.
-    ``length()`` therefore reflects only the already-buffered bytes."""
+    """``io.BytesIO`` exposes no ``available()`` callable; wave 1363 made
+    the fallback consult ``getbuffer().nbytes - tell()`` so ``length()``
+    mirrors upstream Java's ``ByteArrayInputStream.available`` parity."""
     raw = NonSeekableRandomAccessReadInputStream(io.BytesIO(b"abcdef"))
-    # Nothing buffered yet, underlying advertises 0 available → length 0.
-    assert raw.length() == 0
-    # After a single ``read()`` the helper buffers a full chunk.
+    # Nothing buffered yet — fallback reports the full underlying size.
+    assert raw.length() == 6
+    # After a single ``read()`` the helper buffers a full chunk;
+    # length stays >= 1.
     raw.read()
     assert raw.length() >= 1
 
 
 def test_available_on_bytesio_reports_buffered_remainder() -> None:
     raw = NonSeekableRandomAccessReadInputStream(io.BytesIO(b"abc"))
-    # No bytes buffered → both buffered and underlying available report 0.
-    assert raw.available() == 0
+    # Fresh stream — underlying reports 3 bytes available via the
+    # ``getbuffer()`` fallback.
+    assert raw.available() == 3
     raw.read()
     # One byte consumed from a 3-byte buffer → 2 left.
     assert raw.available() == 2

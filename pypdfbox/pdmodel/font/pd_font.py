@@ -133,7 +133,15 @@ class PDFont:
         """Read ``/FontDescriptor`` and wrap it as a :class:`PDFontDescriptor`.
 
         Mirrors upstream ``PDFont.loadFontDescriptor`` (private in Java).
-        Returns ``None`` when the entry is absent or not a dictionary.
+        Returns ``None`` when the entry is absent and the font is not a
+        Standard 14 font. For Standard 14 fonts without an explicit
+        ``/FontDescriptor`` (the common case — they are unembedded and
+        live entirely in the AFM), upstream synthesises a descriptor
+        from the AFM via ``PDType1FontEmbedder.buildFontDescriptor``;
+        we mirror that path so callers like :class:`PDFText2HTML`'s
+        ``FontState`` can introspect bold/italic flags on Standard 14
+        fonts.
+
         Unlike upstream, the wrapper is constructed on each call rather
         than eagerly cached at construction time — pypdfbox's font
         descriptor objects are stateless wrappers, so a fresh instance is
@@ -145,6 +153,20 @@ class PDFont:
         fd = self._dict.get_dictionary_object(_FONT_DESCRIPTOR)
         if isinstance(fd, COSDictionary):
             return PDFontDescriptor(fd)
+        # Standard 14 fallback — synthesize from the AFM. Matches
+        # upstream PDFont.loadFontDescriptor's ``else if (afmStandard14
+        # != null)`` branch (PDFont.java:140-144).
+        try:
+            afm = self.get_standard14_afm()
+        except (AttributeError, NotImplementedError, ValueError, OSError):
+            afm = None
+        if afm is not None:
+            from .pd_type1_font_embedder import PDType1FontEmbedder
+
+            try:
+                return PDType1FontEmbedder.build_font_descriptor_from_metrics(afm)
+            except (AttributeError, TypeError, ValueError):
+                return None
         return None
 
     def set_font_descriptor(self, font_descriptor: PDFontDescriptor | None) -> None:
