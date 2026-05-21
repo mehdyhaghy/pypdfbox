@@ -337,9 +337,8 @@ def test_delete_path_recursively_swallows_oserror(
 
 # --- IOUtils.close_and_log_exception facade (line 71) --------------------
 # --- IOUtils.create_protected_temp_file facade (line 83) -----------------
-# Both facades have signature drift from the underlying functions; they
-# raise TypeError when invoked. Exercising them satisfies the line-coverage
-# requirement without asserting the buggy semantics.
+# Wave 1367 fixed the signature drift on both facades; they now mirror the
+# upstream IOUtils static-method shape.
 
 
 def test_ioutils_close_and_log_exception_facade_close_succeeds() -> None:
@@ -349,6 +348,12 @@ def test_ioutils_close_and_log_exception_facade_close_succeeds() -> None:
     assert target.closed is True
 
 
-def test_ioutils_create_protected_temp_file_facade_signature_mismatch_raises() -> None:
-    with pytest.raises(TypeError):
-        IOUtils.create_protected_temp_file()
+def test_ioutils_create_protected_temp_file_facade_default_args() -> None:
+    # After wave 1367 fix, calling with no args succeeds (defaults match
+    # upstream zero-arg form).
+    path = IOUtils.create_protected_temp_file()
+    try:
+        assert path.exists()
+        assert path.is_file()
+    finally:
+        path.unlink()

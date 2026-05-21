@@ -275,6 +275,20 @@ class COSStream(COSDictionary):
         if isinstance(type_name, COSName) and type_name.name == "XRef":
             self._skip_encryption = True
             return
+        # /Type /Metadata streams stay cleartext when the active handler has
+        # /EncryptMetadata=false. Mirrors the write-side exemption in
+        # ``COSWriter.visit_from_stream`` (wave 1367) so the bytes that
+        # landed on disk un-ciphered are read back without an undo pass.
+        if (
+            isinstance(type_name, COSName)
+            and type_name.name == "Metadata"
+            and handler is not None
+            and not bool(
+                getattr(handler, "is_encrypt_metadata", lambda: True)()
+            )
+        ):
+            self._skip_encryption = True
+            return
         self._security_handler = handler
         self._object_number = int(obj_num)
         self._generation_number = int(gen_num)

@@ -4189,6 +4189,151 @@ No latent source bugs flagged.
   and rely solely on `read_long`'s clamp — Java's signed-32 → signed-64
   pattern lives in exactly one place upstream; we mirror it in two.
 
+## Wave 1367 — parity round-out (5 parallel agents)
+
+### Wave 1367 — encryption per-revision round-trip matrix + /EncryptMetadata latent-bug fix (agent B)
+
+Widened the per-revision round-trip coverage of the standard security
+handler (R2 / R3 / R4 / R5 / R6) and fixed three coupled latent bugs in
+the `/EncryptMetadata false` write+read pipeline.
+
+**Latent bugs fixed:**
+
+- `pypdfbox/pdmodel/encryption/standard_security_handler.py`:
+  `_compute_user_password_r2_r4` hard-coded `encrypt_metadata=True` when
+  re-deriving the file key for the /U validator. Documents protected
+  with `/EncryptMetadata false` therefore wrote a /U entry derived from
+  a different file key than the one actually used to cipher streams, so
+  reloading the document with the correct password failed `Algorithm 6`
+  validation (`PDInvalidPasswordException`). The helper now accepts an
+  `encrypt_metadata` keyword and the `prepare_document` call site
+  threads `self._encrypt_metadata` through; the public
+  `compute_user_password` classmethod propagates its existing flag too.
+- `pypdfbox/pdmodel/encryption/standard_security_handler.py`:
+  `prepare_document` constructed a fresh `PDEncryption` but never wrote
+  the handler's `_encrypt_metadata` into it via
+  `set_encrypt_meta_data`. The on-the-wire dict therefore always
+  defaulted to `EncryptMetadata=true` (the spec default), so the read
+  side derived a different file key than the writer used. Now mirrors
+  the handler flag onto the dict when it differs from the spec default,
+  and reads the corresponding flag off `StandardProtectionPolicy` via a
+  new `is_encrypt_metadata` accessor.
+- `pypdfbox/pdfwriter/cos_writer.py` + `pypdfbox/cos/cos_stream.py`:
+  `/Type /Metadata` streams were always pushed through the encryption
+  pipeline regardless of the active handler's `is_encrypt_metadata`
+  flag, contradicting PDF 32000-1 §7.6.3.2 ("if false, the document's
+  /Metadata stream(s) shall be passed through to the document
+  unchanged"). The writer now skips ciphering metadata streams when the
+  handler reports `is_encrypt_metadata() == False`, and the read-side
+  `COSStream.set_security_handler` mirrors the exemption so the
+  on-disk cleartext bytes aren't decrypted back into garbage on the
+  reload pass.
+
+**Surface additions:**
+
+- `StandardProtectionPolicy.set_encrypt_metadata(bool)` /
+  `is_encrypt_metadata()` — caller-facing knob for the new flag.
+  Default remains `True` (matches PDF 32000-1 §7.6.3.2 default).
+
+**New tests** (`tests/pdmodel/encryption/test_revision_matrix_wave1367.py`):
+
+- Per-revision (R2, R3, R4, R6) round-trip matrix exercising
+  user-password decrypt, owner-password decrypt, restricted-permission
+  propagation, wrong-password rejection, and blank-user-password
+  (owner-only protection) for every (R, V) pair the
+  `StandardProtectionPolicy` can produce.
+- Each round trip recovers a content-stream payload, a /Info /Title
+  COSString, and a /Metadata stream verbatim.
+- R5 (deprecated Adobe Extension Level 3) read-path coverage via a
+  hand-built /Encrypt dict — the policy upgrades R5 → R6 on save, so
+  the only way to exercise the R5 branch of `_compute_encryption_key_r5_r6`
+  is to synthesise a valid R5 dict and assert `prepare_for_decryption`
+  recovers the same file key plus owner-level access permission.
+- `/EncryptMetadata=false` end-to-end round-trip for R3 / R4 / R6 —
+  asserts the metadata XML appears verbatim in the saved bytes
+  (cleartext on disk) while the content payload does not, and the
+  loader still recovers both.
+- Public-key envelope variations: single-recipient round-trip per
+  supported key length (128 = AESV2, 256 = AESV3); mismatched private
+  key rejected; four-recipient grouping across two distinct permission
+  masks yields exactly two PKCS#7 envelopes regardless of recipient
+  count.
+
+29 new tests, all green; 725 / 13-skipped in `tests/pdmodel/encryption/`.
+
+### Wave 1367 — io facade signature drift fixes + boundary coverage (agent C)
+
+Two latent bugs found and fixed in `pypdfbox/io/io_utils.py`:
+
+- `IOUtils.close_and_log_exception(closeable, log_name, resource_name)`
+  passed `log_name` (a `str | None`) directly into the module-level
+  `close_and_log_exception(..., logger, ...)` helper, which then called
+  `logger.warning(...)` — raising `AttributeError: 'str' object has no
+  attribute 'warning'` whenever the closeable's `close()` threw. The
+  facade now accepts a `logging.Logger | str | None` argument (resolving
+  string names via `logging.getLogger`) plus the upstream-shaped
+  `initial_exception` carry-forward parameter, mirroring upstream
+  `IOUtils.closeAndLogException` semantics.
+- `IOUtils.create_protected_temp_file(prefix, suffix)` invoked the
+  module-level `create_protected_temp_file(directory, prefix, suffix)`
+  with the wrong number of positional arguments, raising
+  `TypeError: missing 1 required positional argument: 'directory'` on
+  every call. The facade now defaults `directory=None` (system temp) and
+  forwards positionally, matching the upstream zero-/two-/three-arg
+  shapes.
+
+New hand-written tests under `tests/io/test_*_wave1367.py` covering
+boundary cases that prior waves left untouched:
+
+- `random_access_read_buffer`: seek-past-EOF clamp, zero-length read at
+  EOF, `read_remaining_bytes` validation, `next_buffer` EOF raise,
+  `reset_buffers`, stream-source ctor failure paths, per-thread view-copy
+  recycling.
+- `random_access_read_view`: nested-view rejection, parent-EOF before
+  view-EOF, `rewind` arithmetic, `close_input` / `close_parent` kwarg
+  alias, post-close raises.
+- `random_access_read_buffered_file`: seek-past-EOF clamp, zero-length
+  EOF probe, `read_page` page-size semantics, `remove_eldest_entry`
+  always-false parity stub.
+- `random_access_read_memory_mapped`: zero-length file (mmap-rejects-empty
+  branch), partial tail reads, independent `create_view` mapping.
+- `random_access_input_stream`: `read(-1)` and `read(None)` slurp,
+  `available()` against closed parent, `readinto(memoryview)` round-trip,
+  EOF-logging path verification.
+- `scratch_file`: free-page LIFO ordering, `mark_pages_as_free` dedup +
+  out-of-range filtering, MIXED-mode rationing across the cap, MIXED
+  default-cap fallback to 16 MiB, `create_buffer_from_input` failure
+  cleanup, `remove_buffer` no-op on unknown buffer.
+- `scratch_file_buffer`: read-modify-write neighbour preservation,
+  multi-page span, multi-buffer interleaving against the shared free
+  pool, `seek` past length raises `EOFError`, `create_view` raises
+  `NotImplementedError`.
+- `sequence_random_access_read`: cross-boundary reads (single and bulk),
+  forward and backward seek-direction heuristic, empty-readers filtered
+  at construction, broken-child `length()` rejection.
+- `memory_usage_setting`: `setup_mixed` validation matrix, `set_temp_dir`
+  fluent setter, all four `to_string` narrative templates.
+- `io_utils`: `populate_buffer` partial-read loop, `unmap` close-swallow
+  path, both facade fix paths.
+
+### Wave 1367 — tagged-PDF / accessibility structure-tree round-trip tests (agent E)
+
+56 hand-written tests at `tests/pdmodel/documentinterchange/logicalstructure/test_tagged_pdf_roundtrip_wave1367.py` covering full `PDDocument.save` → `Loader.load_pdf` round-trips for the documentinterchange surface:
+
+- `PDMarkInfo` + `/StructTreeRoot` catalog wiring — `/Marked true` / `/Marked false` (explicit) / `/UserProperties` / `/Suspects` round-trip; `is_tagged` / `uses_user_properties` / `is_suspect` upstream-name aliases verified.
+- `PDStructureTreeRoot` construction + walking — multi-level Document → Sect → P trees survive `save → reload` with the same descendant set via `iter_descendants`.
+- Retrieve-by-id via `/IDTree` — `has_id_tree()` true after reload when the `Names`-shaped flat tree is wired.
+- `PDStructureElement.append_kid` validation rules — negative MCID rejected (raw int and `append_kid_mcid`), `bool` rejected as `TypeError`, `PDMarkedContent` with missing or negative `/MCID` rejected on `append_kid_marked_content_object`.
+- `/K` integer / MCR / object-reference / mixed-array / single-to-array promotion round-trips — `wrap_kid` dispatches int → MCID, `/Type MCR` → `PDMarkedContentReference`, `/Type OBJR` → `PDObjectReference`, `StructElem` → `PDStructureElement` after reload.
+- `/ParentTree` lookups — `get_struct_element_for_mcid` resolves a wired per-page MCID array; `get_parent_tree_value` returns a typed `PDParentTreeValue`; `next_parent_tree_key` allocator atomic-bump survives.
+- `/ClassMap` dispatch — single-entry + multi-entry `PDStructureClassMap` classes round-trip with typed `PDLayoutAttributeObject` / `PDTableAttributeObject` per owner; empty class map is elided on set.
+- Standard structure types — 28 PDF 32000-1 §14.8.4 types parametrised (P, H1-H6, L, LI, Lbl, LBody, Table, TR, TH, TD, Span, Quote, Note, Reference, BibEntry, Code, Link, Annot, Ruby, Warichu, Figure, Formula, Form) — each survives the round-trip with `/S` intact and resolves as standard.
+- Role-map cycle detection — `A ↔ B` two-name cycle, `X → X` self-cycle, and 3-hop chain `A → B → C → P` all terminate (no infinite loop) and resolve correctly.
+- Identifier accessors (`/ID` / `/T` / `/Lang` / `/Alt` / `/E` / `/ActualText` / `/R`) and `increment_revision_number` survive `save → reload`.
+- `Loader.load_pdf` low-level entry-point sanity — directly invoking `Loader.load_pdf(bytes)` + `PDDocument(cos_doc)` exposes the same tree topology as `PDDocument.load`.
+
+No latent bugs found in the documentinterchange surface during this round-trip audit — all assertions held on the first run after the one expected `set_referenced_object` type-narrowing fix (use `set_obj` for the raw `COSDictionary` path; `set_referenced_object` is the typed `PDAnnotation` / `PDXObject` overload).
+
 ## Wave 1366 — parity round-out (5 parallel agents)
 
 ### Wave 1366 — content-stream operator parity tests (agent A)

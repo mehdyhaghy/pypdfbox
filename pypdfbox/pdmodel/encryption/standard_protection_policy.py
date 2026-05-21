@@ -23,6 +23,13 @@ class StandardProtectionPolicy(ProtectionPolicy):
         self._permissions: AccessPermission = (
             permissions if permissions is not None else AccessPermission()
         )
+        # /EncryptMetadata flag (wave 1367) — default True per PDF 32000-1
+        # §7.6.3.2 Table 21. Callers wanting cleartext metadata (search
+        # engines, library catalogs) set this to False so the standard
+        # handler skips metadata streams during encryption AND emits the
+        # corresponding /EncryptMetadata false on the on-the-wire dict so
+        # the reader's file-key derivation stays consistent.
+        self._encrypt_metadata: bool = True
 
     def get_owner_password(self) -> str | None:
         return self._owner_password
@@ -79,6 +86,26 @@ class StandardProtectionPolicy(ProtectionPolicy):
         standard handler actually encrypt anything if asked?".
         """
         return self.is_owner_password_set() or self.is_user_password_set()
+
+    def is_encrypt_metadata(self) -> bool:
+        """Return ``True`` when /Metadata streams should be encrypted.
+
+        Mirrors PDF 32000-1 §7.6.3.2 /EncryptMetadata (default ``True``).
+        Wave 1367 added this accessor so the standard security handler's
+        ``prepare_document`` can propagate the flag from the policy through
+        to the on-the-wire ``PDEncryption`` dictionary.
+        """
+        return self._encrypt_metadata
+
+    def set_encrypt_metadata(self, b: bool) -> None:
+        """Set the /EncryptMetadata flag.
+
+        ``False`` leaves the catalog's /Metadata stream cleartext on disk
+        so external search engines / library tooling can index it without
+        needing the password. The standard handler will still encrypt
+        every other stream and string.
+        """
+        self._encrypt_metadata = bool(b)
 
     def clear_passwords(self) -> None:
         """Reset both passwords to ``None``.

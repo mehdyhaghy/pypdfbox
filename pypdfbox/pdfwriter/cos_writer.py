@@ -2393,11 +2393,33 @@ class COSWriter(ICOSVisitor):
         is_xref_stream = (
             isinstance(type_name, COSName) and type_name.name == "XRef"
         )
+        # /Type /Metadata streams stay cleartext on disk when the active
+        # security handler has /EncryptMetadata=false (PDF 32000-1 §7.6.3.2
+        # /EncryptMetadata note: "if false, the document's /Metadata
+        # stream(s) shall be passed through to the document unchanged").
+        # Without this exemption a writer that obeys ``/EncryptMetadata
+        # false`` only in the key-derivation step would still emit
+        # ciphertext metadata, and any external indexer / search engine
+        # trying to read the cleartext catalog would see scrambled bytes
+        # — exactly the regression /EncryptMetadata false is designed to
+        # avoid. (Wave 1367 latent-bug fix.)
+        is_metadata_stream = (
+            isinstance(type_name, COSName) and type_name.name == "Metadata"
+        )
+        skip_metadata_encrypt = is_metadata_stream and (
+            self._security_handler is not None
+            and not bool(
+                getattr(
+                    self._security_handler, "is_encrypt_metadata", lambda: True
+                )()
+            )
+        )
         if (
             self._security_handler is not None
             and self._current_object_key is not None
             and not self._in_encrypt_subtree
             and not is_xref_stream
+            and not skip_metadata_encrypt
         ):
             raw = self._security_handler.encrypt_stream(
                 raw,

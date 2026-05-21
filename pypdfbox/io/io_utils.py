@@ -62,13 +62,26 @@ class IOUtils:
     @staticmethod
     def close_and_log_exception(
         closeable: _Closeable | None,
-        log_name: str | None = None,
+        logger: logging.Logger | str | None = None,
         resource_name: str | None = None,
-    ) -> None:
+        initial_exception: BaseException | None = None,
+    ) -> BaseException | None:
         """Close *closeable* (if any) and log a warning if it raises.
 
-        Mirrors upstream ``IOUtils.closeAndLogException``."""
-        close_and_log_exception(closeable, log_name, resource_name)
+        Mirrors upstream ``IOUtils.closeAndLogException``. Accepts either a
+        :class:`logging.Logger` instance or a logger *name* (string) so call
+        sites that pass the upstream ``LogFactory.getLog(name)`` idiom keep
+        working; ``None`` falls back to this module's logger.
+        """
+        if closeable is None:
+            return initial_exception
+        if isinstance(logger, str) or logger is None:
+            resolved = logging.getLogger(logger) if logger else _log
+        else:
+            resolved = logger
+        return close_and_log_exception(
+            closeable, resolved, resource_name or "", initial_exception
+        )
 
     @staticmethod
     def create_protected_temp_dir() -> Path:
@@ -77,10 +90,16 @@ class IOUtils:
 
     @staticmethod
     def create_protected_temp_file(
-        prefix: str = "pypdfbox-", suffix: str = ""
+        prefix: str = "pypdfbox-",
+        suffix: str = "",
+        directory: Path | str | None = None,
     ) -> Path:
-        """Mirrors upstream ``IOUtils.createProtectedTempFile``."""
-        return create_protected_temp_file(prefix=prefix, suffix=suffix)
+        """Mirrors upstream ``IOUtils.createProtectedTempFile``.
+
+        The ``directory`` argument defaults to ``None`` (system temp), so
+        callers using the upstream zero-/two-arg shapes work unchanged.
+        """
+        return create_protected_temp_file(directory, prefix, suffix)
 
     @staticmethod
     def apply_owner_only_permissions(path: Path, *, is_directory: bool) -> None:

@@ -265,6 +265,7 @@ class StandardSecurityHandler(SecurityHandler):
             document_id,
             revision,
             key_len_bytes,
+            encrypt_metadata=encrypt_metadata,
         )
 
     @classmethod
@@ -1031,6 +1032,14 @@ class StandardSecurityHandler(SecurityHandler):
             if hasattr(policy, "get_permissions") and policy.get_permissions() is not None
             else DEFAULT_PERMISSIONS
         )
+        # /EncryptMetadata propagation from the policy (wave 1367). When the
+        # policy advertises ``is_encrypt_metadata=False`` we mirror that on
+        # the handler so the file-key derivation below sees the correct
+        # value, and the on-the-wire ``PDEncryption`` gets the matching
+        # boolean. Missing accessor → keep whatever the caller set directly
+        # on ``self._encrypt_metadata`` (default True at __init__).
+        if hasattr(policy, "is_encrypt_metadata"):
+            self._encrypt_metadata = bool(policy.is_encrypt_metadata())
 
         if key_len_bits == 256:
             revision, version = 6, 5
@@ -1057,6 +1066,15 @@ class StandardSecurityHandler(SecurityHandler):
         encryption.set_revision(revision)
         encryption.set_length(key_len_bits)
         encryption.set_p(permissions)
+        # /EncryptMetadata propagation (wave 1367) — the file-encryption-key
+        # derivation in Algorithm 2 (r4) and the /Perms block in Algorithm
+        # 8/9 (r5/r6) both depend on whether metadata is encrypted. Without
+        # echoing the handler's flag into the on-the-wire ``PDEncryption``
+        # the reader would derive a different file key (r4) or fail the
+        # /Perms validation (r5/r6) on reload. PDF 32000-1 §7.6.3.2 default
+        # is True so we only emit the entry when it differs.
+        if not self._encrypt_metadata:
+            encryption.set_encrypt_meta_data(False)
 
         # PDF 32000-2 §7.6.4.3.4 — r6 writes UTF-8 (after SaslPrep), r2-r4
         # use Latin-1. Match upstream's ``prepareDocumentForEncryption``.
@@ -1107,7 +1125,13 @@ class StandardSecurityHandler(SecurityHandler):
             )
             self.set_encryption_key(file_key)
             u = self._compute_user_password_r2_r4(
-                user_pw, o, permissions, document_id, revision, key_len_bits // 8
+                user_pw,
+                o,
+                permissions,
+                document_id,
+                revision,
+                key_len_bits // 8,
+                encrypt_metadata=self._encrypt_metadata,
             )
             encryption.set_o(o)
             encryption.set_u(u)
@@ -1274,8 +1298,18 @@ class StandardSecurityHandler(SecurityHandler):
         document_id: bytes,
         revision: int,
         key_len_bytes: int,
+        encrypt_metadata: bool = True,
     ) -> bytes:
-        """PDF 32000-1 §7.6.4.4.3-.4 algorithms 4 and 5 — produce /U entry."""
+        """PDF 32000-1 §7.6.4.4.3-.4 algorithms 4 and 5 — produce /U entry.
+
+        The ``encrypt_metadata`` flag (wave 1367 latent-bug fix) MUST be
+        consistent with the value used for :meth:`_compute_encryption_key`
+        — Algorithm 5 step 1 derives the same file key Algorithm 2 would
+        produce, and Algorithm 2 step 6 conditionally mixes in
+        ``0xFFFFFFFF`` when revision >= 4 and metadata isn't encrypted.
+        Defaulting to ``True`` preserves the pre-1367 behaviour for callers
+        that don't supply the flag (most paths emit encrypted metadata).
+        """
         file_key = cls._compute_encryption_key(
             password,
             o,
@@ -1283,7 +1317,7 @@ class StandardSecurityHandler(SecurityHandler):
             document_id,
             revision,
             key_len_bytes,
-            encrypt_metadata=True,
+            encrypt_metadata=encrypt_metadata,
         )
         if revision == 2:
             return _rc4(file_key, _PASSWORD_PADDING)
