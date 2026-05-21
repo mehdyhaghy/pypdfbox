@@ -4189,6 +4189,304 @@ No latent source bugs flagged.
   and rely solely on `read_long`'s clamp — Java's signed-32 → signed-64
   pattern lives in exactly one place upstream; we mirror it in two.
 
+## Wave 1366 — parity round-out (5 parallel agents)
+
+### Wave 1366 — content-stream operator parity tests (agent A)
+
+Hand-written parity tests for 10 previously untested operator classes under
+`pypdfbox/contentstream/operator/text/` and `pypdfbox/contentstream/operator/state/`.
+All 10 are the upstream-named registry-routing stubs / engine-coupled handlers that
+the standalone `OperatorRegistry` wires; the engine-coupled siblings that share the
+same operator token are already covered separately. Each test file exercises the
+operator-name constant, `get_name()`, inheritance from `OperatorProcessor`,
+`process()` happy + degenerate + wrong-typed paths, `_log_invocation` debug-level
+emission, and `OperatorRegistry` lookup + dispatch. For `Save` the engine-coupled
+`save_graphics_state` notification is verified via a spy subclass.
+
+Operator classes covered (file → operator token):
+- `text/move_text_position.py` → `Td`
+- `text/set_character_spacing.py` → `Tc`
+- `text/set_horizontal_scaling.py` → `Tz`
+- `text/set_text_matrix.py` → `Tm`
+- `text/show_text_array.py` → `TJ`
+- `text/show_text_with_position.py` → `'`
+- `text/show_text_with_word_and_char_spacing.py` → `"`
+- `text/set_font_and_size_handler.py` → `Tf`
+- `text/move_text_set_leading_handler.py` → `TD`
+- `state/save.py` → `q`
+
+Added 125 tests (10 files, 11–13 tests each). No source changes; no PROVENANCE rows
+(hand-written tests do not need them).
+
+### Wave 1366 — digitalsignature + example/cert verifier parity tests (agent B)
+
+Eight new test files covering the signature subsystem at the boundary of
+`pdmodel/interactive/digitalsignature` → `examples/signature/cert` →
+`examples/signature/validation`. One file is a proper upstream JUnit port
+(PROVENANCE row added); the other seven are hand-written branch-coverage
+files for the example-cert helpers (no PROVENANCE rows per the project
+convention).
+
+- `tests/pdmodel/interactive/digitalsignature/upstream/test_pd_signature_get_contents.py`
+  — port of upstream `PDSignatureFieldTest#testGetContents` (PDFBOX-4822).
+  The upstream test sits under the form-field suite but exercises the
+  digital-signature `getContents(byte[])` routine, so the port lives in
+  the digitalsignature/upstream/ directory (PROVENANCE row added). 6 tests.
+- `tests/examples/signature/cert/test_ocsp_helper_wave1366_b.py` — 10 tests
+  covering the `revocation_time_utc` vs `revocation_time` fallback inside
+  `verify_resp_status`, the `OCSPNonce`-`ImportError` arm of
+  `build_ocsp_request` (forced via a synthetic `__import__` shim),
+  `get_basic_ocsp_resp` / `verify_ocsp_response` mirroring the canonical
+  accessor, the `OCSPCertStatus.UNKNOWN` raise path, and accessor
+  round-trips (`get_certificate_to_check`, `get_issuer_certificate`,
+  `get_ocsp_url`, `get_nonce`).
+- `tests/examples/signature/cert/test_certificate_verifier_wave1366_b.py` —
+  8 tests covering the `verify_certificate` exception-wrapping branches
+  (typed `CertificateVerificationException` fast path vs the catch-all
+  re-wrap with the leaf subject in the message), the `_verify_signed_by`
+  fallback for non-RSA / non-EC public keys (both success and exception
+  arms), and the `extract_ocsp_url` / `extract_ca_issuers_url` skip
+  branches for non-URI access locations.
+- `tests/examples/signature/test_tsa_client_wave1366_b.py` — 12 tests
+  covering the `_reset` helper's "no `.name` attribute" fallback to
+  `sha256`, multi-chunk streaming reads (>8 KiB payload), nonce
+  uniqueness across calls, the `urlopen` fallback path with a
+  monkeypatched `urlopen`, the `Authorization`-header gating on truthy
+  user+password (parametrised over the four falsy-pair combinations with
+  `ids=[...]` per the CLAUDE.md cross-platform note), and the
+  algorithm-name round-trip for SHA-512.
+- `tests/examples/signature/cert/test_crl_verifier_wave1366_b.py` — 9
+  tests covering certificates with multiple http(s) CRL distribution
+  points, the inner `isinstance(name, UniformResourceIdentifier)` skip
+  for non-URI `full_name` entries, `ldap://` URL skip via the
+  `startswith("http")` guard, multi-revoked-entry CRLs (verifier picks
+  the matching serial via `get_revoked_certificate_by_serial_number`),
+  and the `sign_date=None` short-circuit in `check_revocation`.
+- `tests/examples/signature/validation/test_cert_information_collector_wave1366_b.py`
+  — 15 tests covering deep-chain traversal (leaf → intermediate → root
+  with `BasicConstraints(ca=True)` on the issuers), the upstream-typo
+  alias `CertificateProccessingException is CertificateProcessingException`,
+  the `MAX_CERTIFICATE_CHAIN_DEPTH = 5` constant, `_build_node` set
+  idempotency, the depth-cap guard, `process_signer_store` with multiple
+  cert holders (picks the first non-`None`), and the
+  `process_signature_certificate` self-signed flag wiring.
+- `tests/pdmodel/interactive/digitalsignature/test_signing_support_wave1366_b.py`
+  — 9 tests covering the external-signing bridge: `get_content` returns
+  the writer's data-to-sign stream, `set_signature` installs the bytes,
+  context-manager auto-closes on both normal exit and exception paths,
+  the closed-state `RuntimeError` guards on both `get_content` and
+  `set_signature`, `close()` idempotency, and the realistic
+  read-hash-sign round-trip.
+- `tests/examples/signature/validation/test_cert_signature_information_wave1366_b.py`
+  — 16 tests covering every getter / setter pair on the
+  `CertSignatureInformation` bag class (certificate, signature_hash,
+  self_signed, ocsp_url, crl_url, issuer_url, cert_chain, tsa_certs,
+  alternative_cert_chain), the `issuer_certificates` mutable-set
+  accessor with mutation-via-getter, the per-instance ctor sentinel
+  defence (no shared mutable default), and a three-level chained tree
+  walk via `set_cert_chain`.
+
+Total: 8 files, 85 new tests; 1 PROVENANCE row, no CHANGES bug fixes
+(all behaviour matches the existing implementation under test). No
+source changes — the round-out exercises latent branches the previous
+suites missed.
+
+### Wave 1366 — PDDocument save/load + Loader round-trip parity (agent E)
+
+Hand-written parity tests for the top-level `PDDocument.save` / `Loader.load_pdf` /
+`PDDocument.load` / `save_incremental` surfaces — scenarios that pypdfbox and upstream
+must agree on across the save→reload boundary. Eight new test files in
+`tests/pdmodel/`, `tests/pdfparser/`, and `tests/multipdf/`:
+
+- `tests/pdmodel/test_pd_document_save_roundtrip_wave1366.py` (13 tests) — synthesised
+  documents with varied COS shapes (nested arrays, zero-length and binary streams,
+  names with PDF specials, 150-key dicts, info strings with escape-needing chars,
+  Unicode titles, multi-page, double-save idempotency) survive `COSWriter →
+  Loader.load_pdf` with structural equivalence.
+- `tests/pdmodel/test_pd_document_save_compress_parameters_wave1366.py` (12 tests) —
+  the trailing `compress_parameters` arg on `save()` accepts every parity-pass-through
+  shape (`None`, `NO_COMPRESSION`, `DEFAULT_COMPRESSION`, custom sizes, opaque object),
+  positional + kwarg spellings, file + BytesIO sinks; reload integrity confirmed.
+- `tests/pdfparser/test_loader_memory_usage_wave1366.py` (10 tests) — all four
+  `MemoryUsageSetting` backing strategies (default, main-memory-only, mixed,
+  temp-file-only) parse the same document with identical page count + trailer; scratch
+  file ownership transferred to the document; `Loader.load` alias accepts the same
+  setting kwarg.
+- `tests/pdfparser/test_loader_password_paths_wave1366.py` (11 tests) — encrypted-but-
+  no-password returns an encrypted COSDocument (no auto-decrypt); correct password
+  auto-decrypts and stream bytes round-trip; wrong password raises
+  `PDInvalidPasswordException`; empty-string vs `None` distinction; `str`/`bytes`
+  password equivalence; lenient default `True`; strict-mode parse still works; empty +
+  garbage input raise `OSError` at the Loader boundary.
+- `tests/pdmodel/test_pd_document_save_incremental_roundtrip_wave1366.py` (7 tests) —
+  incremental save preserves source byte prefix, mutations propagate through reload,
+  two chained increments stack `/Prev` correctly, `objects_to_write` set form
+  force-includes dirty-walk misses, non-COSDictionary entries raise `TypeError`,
+  source-less documents raise `ValueError`, path target equivalence with BytesIO.
+- `tests/pdfparser/test_loader_source_shapes_wave1366.py` (20 tests) — every accepted
+  source shape (`str` / `Path` / custom PathLike / `bytes` / `bytearray` /
+  `memoryview` / `BytesIO` / duck-typed stream / `RandomAccessRead`) parses
+  identically; the eager-validation entries `load_pdf_from_bytes` and
+  `load_pdf_from_file` reject mismatched input shapes with clear messages; the
+  passed-RAR path leaves ownership with the caller.
+- `tests/multipdf/test_loader_pddocument_equivalence_wave1366.py` (10 tests) —
+  `PDDocument.load` and `Loader.load_pdf` produce structurally identical documents
+  (page count, /Info title across empty / ASCII / Unicode / long-string forms);
+  path-vs-bytes equivalence; password arg threaded through; context-manager close
+  semantics; `Loader.load` alias parity.
+- `tests/pdmodel/test_pd_document_cos_structural_parity_wave1366.py` (8 tests) —
+  COSDocument-level fingerprint preserved across save→load: trailer /Size grows
+  monotonically with pages, /Root resolves to /Type /Catalog, PDF version 1.4 default,
+  catalog-version 1.5 bump round-trips, unencrypted-document round-trip leaves no
+  /Encrypt entry, source-bytes immutability, full-save (post-load) emits no /Prev
+  (no incremental leakage).
+
+Added 91 tests across 8 files. No source changes; no PROVENANCE rows (hand-written
+tests do not need them).
+
+### Wave 1366 — shading + pattern + blend parity round-out (agent C)
+
+Hand-written + upstream-placeholder parity tests for the
+`pdmodel/graphics/shading`, `pdmodel/graphics/pattern`, and
+`pdmodel/graphics/blend` clusters. Filled the last upstream-test gap for the
+Type 6 / Type 7 mesh shadings (upstream PDFBox ships no JUnit class for either —
+both surfaces were render-output-only). Pinned the cross-type `/Decode` guard
+behaviour shared by Types 4–7 and the `BlendMode` COSName ↔ singleton dispatch
+symmetry across all 16 standard modes.
+
+- `tests/pdmodel/graphics/shading/upstream/test_pd_shading_type_6.py` — 27 tests:
+  Coons-patch metadata (`/BitsPerCoordinate` / `/BitsPerComponent` /
+  `/BitsPerFlag` accept every PDF 32000-1 §8.7.4.5.7 Table 88 value),
+  `get_decode_for_parameter` xy + per-component dispatch, `get_number_of_color_components`
+  function-vs-CS fallback, `to_paint` / `get_bounds` ``None`` contracts,
+  `generate_patch` 12-control-point + 4-corner-colour arity validation.
+- `tests/pdmodel/graphics/shading/upstream/test_pd_shading_type_7.py` — 27 tests:
+  tensor-product-patch metadata (Table 89), `/Decode` x/y/component decoding,
+  `generate_patch` 16-control-point arity validation including the cross-type
+  guard that rejects the 12-point Coons arity.
+- `tests/pdmodel/graphics/shading/test_pd_shading_validation_wave1366.py` —
+  29 hand-written tests for the `/Background` / `/BBox` / `/AntiAlias` /
+  `/Function` validation paths on `PDShading`: non-numeric arrays rejected,
+  empty / short / non-array entries refused, `clear_*` no-ops, both long
+  `/ColorSpace` and short `/CS` cleared by `clear_color_space`, and
+  `is_valid_shading_type` boundary cases.
+- `tests/pdmodel/graphics/shading/test_pd_shading_decode_guards_wave1366.py` —
+  59 parametrized tests pinning the `/Decode` parsing contract uniformly
+  across `PDShadingType4` / `5` / `6` / `7`: missing entry, non-array entry,
+  negative index, too-short array, non-numeric pair, integer-pair acceptance,
+  `set_decode` list / tuple / generator / `COSArray` / `None` round-trip,
+  and the Type-4 / Type-5 `collect_triangles` degeneracy branches.
+- `tests/pdmodel/graphics/shading/test_pd_shading_mesh_metadata_wave1366.py` —
+  90 parametrized tests covering the `/BitsPerCoordinate` / `/BitsPerComponent`
+  / `/BitsPerFlag` round-trip on every mesh type, the Type-5-only
+  `/VerticesPerRow` accessor, and `create_shaded_triangle_list` 2-per-cell
+  emission across a 4×5 lattice.
+- `tests/pdmodel/graphics/shading/test_pd_shading_create_dispatch_wave1366.py` —
+  36 tests for `PDShading.create` dispatch: ``None`` input, type rejection,
+  stream-required types refuse plain dictionaries, plain-dict types accept
+  ``COSStream``, unknown / missing / negative ShadingType raises ``OSError``,
+  and family-predicate partition invariant (every dispatched instance answers
+  exactly one of `is_function_based` / `is_axial` / `is_radial` /
+  `is_mesh_based`).
+- `tests/pdmodel/graphics/pattern/test_pd_tiling_pattern_wave1366.py` —
+  21 tests: `/Resources` PDResources-or-raw-dict acceptance and clearing,
+  `/BBox` PDRectangle round-trip, `/XStep` / `/YStep` defaults and negative
+  values, `PDContentStream` surface (`get_contents` /
+  `get_contents_for_random_access` / `get_contents_for_stream_parsing`),
+  paint-type and tiling-type constants matching PDF 32000-1 §8.7.3.3 Table 75.
+- `tests/pdmodel/graphics/pattern/test_pd_shading_pattern_wave1366.py` —
+  22 tests: typed `/Shading` accessor dispatching to each of Type 1–7
+  (stream-required types 4–7 backed by `COSStream`), typed
+  `/ExtGState` accessor returning `PDExtendedGraphicsState`, factory chain
+  through `PDAbstractPattern.create` yielding the right shading subclass.
+- `tests/pdmodel/graphics/pattern/test_pd_abstract_pattern_wave1366.py` —
+  27 tests: factory dispatch (`None`, non-dict, unknown / zero / type 1+2),
+  abstract `get_pattern_type` ``NotImplementedError`` vs stored-value fallback,
+  `/Matrix` round-trip (list / tuple / ``None`` / wrong-length / AffineTransform-like
+  adapter), permissive `Matrix.createMatrix` semantics on short / non-numeric /
+  non-array entries, raw-vs-typed `/ExtGState` accessors, and the
+  `is_tiling_pattern` / `is_shading_pattern` predicate partition.
+- `tests/pdmodel/graphics/blend/test_blend_mode_dispatch_wave1366.py` —
+  131 parametrized tests pinning the COSName ↔ singleton dispatch for all
+  16 standard modes via `get_instance(COSName)`, `get_instance(str)`,
+  `from_cos(COSName)`, `get(name)` (all four entry points yield the same
+  interned instance), `get_cos_name()` round-trip, `Compatible` → `NORMAL`
+  alias on every entry point, case-sensitivity of mode names (lower /
+  upper / mixed / truncated / suffix variants all fall back to `NORMAL`),
+  `create_blend_mode_map` 17-entry shape (16 + Compatible) with per-entry
+  identity checks, and the `iter_standard` vs `STANDARD_NAMES` invariant.
+
+Added 469 tests across 10 files. No source changes; 2 PROVENANCE rows added
+for the new `upstream/test_pd_shading_type_{6,7}.py` placeholders. Pure
+test-coverage round-out — no behavioural changes.
+
+### Wave 1366 — pdmodel/interactive action + annotation + viewerpreferences upstream-mirror ports (agent D)
+
+Deeper upstream-Java-source-mirror parity tests for ten action / annotation /
+handler / viewer-preferences classes where Apache PDFBox 3.0.x ships no dedicated
+JUnit test. Each new file ports the corresponding ``*.java`` source's behavioural
+contract (constants, accessor pairs, spec defaults, type dispatch, validation
+branches) — closing the gap between "API exists in pypdfbox" and "API is
+upstream-mirror-tested".
+
+New files (13 total):
+
+- `tests/pdmodel/interactive/action/upstream/test_pd_action_factory.py` —
+  parametrised dispatch across all 14 ``SUB_TYPE`` keys, null + missing-/S +
+  unknown-/S branches, utility-class TypeError.
+- `tests/pdmodel/interactive/action/upstream/test_pd_action_java_script.py` —
+  four-constructor cover (no-arg, str, COSDictionary), ``/JS`` COSString vs
+  COSStream dispatch, missing + unexpected-type fallthrough.
+- `tests/pdmodel/interactive/action/upstream/test_pd_action_named.py` —
+  ``/N`` round-trip and known PDF named-action tokens.
+- `tests/pdmodel/interactive/action/upstream/test_pd_action_hide.py` — ``/T``
+  COSString / COSArray / COSDictionary acceptance, ``/H`` default-true.
+- `tests/pdmodel/interactive/action/upstream/test_pd_action_go_to.py` — ``/D``
+  destination dispatch + the IllegalArgumentException → ValueError mapping when
+  a ``PDPageDestination``'s first element is non-page.
+- `tests/pdmodel/interactive/action/upstream/test_pd_action_launch.py` —
+  ``/F /D /O /P`` string accessor cluster, typed ``/Win`` round-trip, and the
+  tri-state ``/NewWindow`` → ``OpenMode`` projection (USER_PREFERENCE absent,
+  NEW_WINDOW true, SAME_WINDOW false, None / USER_PREFERENCE both remove).
+- `tests/pdmodel/interactive/action/upstream/test_pd_windows_launch_params.py`
+  — OPERATION_* constants, ``/F /D /O /P`` round-trips, the documented
+  upstream ``setOperation`` bug (upstream writes to ``/D``) confirmed corrected
+  in pypdfbox by asserting ``/O`` (and not ``/D``) is the write target.
+- `tests/pdmodel/interactive/annotation/upstream/test_pd_annotation_line.py`
+  — ``/L`` seed, ``/LE`` start/end style array (default ``None``, null
+  coercion), ``/Cap``, ``/CO`` x/y offset pair, ``/LL /LLE /LLO`` leader
+  lengths, ``/CP`` caption positioning, ``/IC`` interior color, ``IT_*`` +
+  ``LE_*`` constant block.
+- `tests/pdmodel/interactive/annotation/upstream/test_pd_annotation_free_text.py`
+  — ``/DA``, ``/DS``, ``/Q`` quadding default 0, ``/CL`` 4- and 6-element
+  callout, ``/LE`` ending default ``None``, ``/RD`` rect differences,
+  ``/BE`` border-effect typed wrapper, ``IT_*`` constants.
+- `tests/pdmodel/interactive/annotation/upstream/test_pd_annotation_rubber_stamp.py`
+  — ``/Name`` accessor with spec default ``Draft``, parametrised cover for
+  all 14 standard ``NAME_*`` constants (Table 183).
+- `tests/pdmodel/interactive/annotation/upstream/test_pd_annotation_widget_extras.py`
+  — supplement to wave 1363's widget test: ``HIGHLIGHT_MODE_*`` constants,
+  ``/H`` default ``I``, validation rejecting unknown modes,
+  ``/A`` action dispatch through ``PDActionFactory``, ``/BS`` + ``/MK`` typed
+  round-trips.
+- `tests/pdmodel/interactive/annotation/upstream/test_pd_annotation_popup.py`
+  — ``/Open`` default ``False``, ``/Parent`` typed lookup, ``/P`` fallback,
+  silent ``None`` return when the parent's annotation subtype is not markup.
+- `tests/pdmodel/interactive/annotation/handlers/upstream/test_annotation_border.py`
+  — precedence between ``PDBorderStyleDictionary`` and the legacy ``/Border``
+  array, all-zero dash-array drop, ``STYLE_UNDERLINE`` flag projection.
+- `tests/pdmodel/interactive/viewerpreferences/upstream/test_pd_viewer_preferences.py`
+  — boolean-flag defaults (``False`` for all six visibility / fit flags),
+  name-valued defaults (``UseNone``, ``L2R``, ``CropBox``, ``AppDefault``),
+  Duplex ``None`` default, ``None_`` enum-member round-trip for PrintScaling
+  ``None``, ``clear_*`` removal semantics, and the PDF 32000-1 §12.2 Table 150
+  string constant block.
+
+Added 154 tests across 14 new test files (and three new ``__init__.py`` package
+markers for the previously-absent ``tests/pdmodel/interactive/viewerpreferences``
+subtree and ``tests/pdmodel/interactive/annotation/handlers/upstream``). No
+source changes; PROVENANCE rows added for each upstream-mirror placeholder.
+
 ## Wave 1365 — parity round-out (5 parallel agents)
 
 ### Wave 1365 — strip 5 camelCase aliases (agent A)
