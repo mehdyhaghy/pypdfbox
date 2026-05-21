@@ -27,6 +27,7 @@ from __future__ import annotations
 import heapq
 import logging
 import threading
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from pypdfbox.fontbox.cid_font_mapping import CIDFontMapping
@@ -179,7 +180,17 @@ class FontMapperImpl(FontMapper):
         self._substitutes: dict[str, list[str]] = {}
         for canonical, names in _STANDARD14_SUBSTITUTES.items():
             self._substitutes[canonical.lower()] = list(names)
+        # Legacy single-slot cache (kept for backwards-compat with code
+        # that pokes ``impl._last_resort_font = sentinel`` for tests).
         self._last_resort_font: Any | None = None
+        # Descriptor-keyed cache (e.g. ``"Sans-Regular"``,
+        # ``"Mono-Bold"``) — populated lazily by
+        # :meth:`_get_last_resort_font` via :mod:`liberation_loader`.
+        self._last_resort_by_key: dict[str, Any] = {}
+        # Parallel cache: descriptor key -> resolved Path. Useful for
+        # tests + diagnostics — the FontBox font itself (a fontTools
+        # ``TTFont``) doesn't carry a stable name attribute.
+        self._last_resort_paths: dict[str, Any] = {}
 
     # ---------- FontProvider plumbing ----------
 
@@ -261,15 +272,21 @@ class FontMapperImpl(FontMapper):
         """
         return _post_script_names(post_script_name)
 
-    @staticmethod
-    def is_fallback_font_loaded() -> bool:
-        """Return ``True`` when the bundled last-resort font has been loaded.
+    def is_fallback_font_loaded(self) -> bool:
+        """Return ``True`` once at least one bundled last-resort font is cached.
 
-        Companion accessor to :meth:`_get_last_resort_font` — upstream
-        keeps no such check so we return ``False`` until pypdfbox bundles
-        a fallback font.
+        Companion accessor to :meth:`_get_last_resort_font`. Wave 1376
+        wired the bundled Liberation TTFs through the descriptor-keyed
+        cache (:attr:`_last_resort_by_key`); this method exposes whether
+        any of them have been resolved during the lifetime of this
+        mapper. The legacy single-slot ``_last_resort_font`` is also
+        checked so callers that explicitly seed the cache (tests, custom
+        subclasses) flip the flag too.
         """
-        return False
+        return (
+            self._last_resort_font is not None
+            or bool(self._last_resort_by_key)
+        )
 
     @staticmethod
     def create_font_info_by_name(
@@ -312,7 +329,7 @@ class FontMapperImpl(FontMapper):
         fallback_name = self._get_fallback_font_name(font_descriptor)
         ttf = self._find_font(FontFormat.TTF, fallback_name)
         if ttf is None:
-            ttf = self._get_last_resort_font()
+            ttf = self._get_last_resort_font(font_descriptor)
         return FontMapping(ttf, is_fallback=True) if ttf is not None else None
 
     def get_open_type_font(
@@ -327,7 +344,7 @@ class FontMapperImpl(FontMapper):
         fallback_name = self._get_fallback_font_name(font_descriptor)
         otf = self._find_font(FontFormat.OTF, fallback_name)
         if otf is None:
-            otf = self._get_last_resort_font()
+            otf = self._get_last_resort_font(font_descriptor)
         return FontMapping(otf, is_fallback=True) if otf is not None else None
 
     def get_font_box_font(
@@ -345,7 +362,7 @@ class FontMapperImpl(FontMapper):
         fallback_name = self._get_fallback_font_name(font_descriptor)
         font = self._find_font_box_font(fallback_name)
         if font is None:
-            font = self._get_last_resort_font()
+            font = self._get_last_resort_font(font_descriptor)
         return FontMapping(font, is_fallback=True) if font is not None else None
 
     def get_cid_font(
@@ -388,7 +405,7 @@ class FontMapperImpl(FontMapper):
                 fetched = self._try_fetch_noto_cjk(ordering)
                 if fetched is not None:
                     return CIDFontMapping(None, fetched, True)
-        last = self._get_last_resort_font()
+        last = self._get_last_resort_font(font_descriptor)
         return CIDFontMapping(None, last, True) if last is not None else None
 
     def _try_fetch_noto_cjk(self, ordering: str) -> Any | None:
@@ -726,17 +743,110 @@ class FontMapperImpl(FontMapper):
             return f"{base}-Roman"
         return _stylise("Helvetica", is_bold, font_descriptor.is_italic())
 
-    def _get_last_resort_font(self) -> Any | None:
+    def _get_last_resort_font(
+        self,
+        font_descriptor: PDFontDescriptor | None = None,
+    ) -> Any | None:
         """Load and cache the bundled last-resort font, if available.
 
         Mirrors upstream's eager load in the constructor (Java line
         117-133). pypdfbox defers the load so missing fonts don't break
-        import.
+        import. Wave 1376 extends the upstream behaviour: instead of
+        always returning ``LiberationSans-Regular``, the descriptor
+        flags pick the closest Liberation family + weight via
+        :func:`liberation_loader.ensure_font`. ``font_descriptor=None``
+        still resolves to Sans-Regular (matches upstream).
+
+        Resolution path:
+
+        1. Descriptor-keyed cache check — repeated lookups for the same
+           descriptor style are free.
+        2. Legacy single-slot cache (``self._last_resort_font``) — kept
+           so tests that seed the cache via attribute assignment
+           continue to work.
+        3. :func:`liberation_loader.ensure_font` -> bundled TTF path.
+        4. Feed the path through the active provider's ``scan_fonts``
+           (mirrors :meth:`_try_fetch_noto_cjk` plumbing) and look up
+           the freshly-indexed FontBox font.
         """
-        if self._last_resort_font is not None:
+        # 1. Descriptor-keyed cache.
+        from pypdfbox.fontbox import liberation_loader  # noqa: PLC0415
+
+        key = liberation_loader.descriptor_to_key(font_descriptor)
+        cached = self._last_resort_by_key.get(key)
+        if cached is not None:
+            self._last_resort_font = cached
+            return cached
+        # 2. Legacy single-slot — preserves the pre-1376 test idiom
+        # ``impl._last_resort_font = sentinel`` for tests that don't
+        # care about per-descriptor dispatch.
+        if self._last_resort_font is not None and font_descriptor is None:
             return self._last_resort_font
-        # pypdfbox doesn't bundle LiberationSans-Regular. Return None and
-        # let callers fall back to the Standard 14 path.
+
+        path = liberation_loader.ensure_font(font_descriptor)
+        if path is None:
+            return None
+        font = self._load_bundled_path(path)
+        if font is None:
+            return None
+        self._last_resort_by_key[key] = font
+        self._last_resort_paths[key] = path
+        self._last_resort_font = font
+        return font
+
+    def _load_bundled_path(self, path: Any) -> Any | None:
+        """Feed *path* through the active provider's ``scan_fonts``.
+
+        Mirrors the plumbing in :meth:`_try_fetch_noto_cjk` so newly
+        bundled / fetched fonts surface through the standard provider
+        index. Returns the parsed FontBox font, or ``None`` if the
+        provider can't ingest the path or no matching name appears in
+        the refreshed index.
+        """
+        provider = self.get_provider()
+        scan = getattr(provider, "scan_fonts", None)
+        if not callable(scan):
+            return None
+        try:
+            scan([path])
+        except OSError as ex:
+            _LOG.warning(
+                "pypdfbox: scan of bundled Liberation font %s failed: %s",
+                path,
+                ex,
+            )
+            return None
+        # Refresh the local name index so the freshly-scanned font is
+        # reachable through the standard lookup path.
+        self.set_provider(provider)
+        stem = path.stem  # e.g. ``LiberationSans-Regular``
+        info = self._font_info_by_name.get(stem.lower())
+        if info is not None:
+            font = info.get_font()
+            if font is not None:
+                return font
+        # Liberation publishes the Regular variant's PostScript name
+        # *without* the ``-Regular`` suffix (so
+        # ``LiberationSans-Regular.ttf`` -> ``LiberationSans``). Strip
+        # the suffix and retry.
+        if stem.lower().endswith("-regular"):
+            short = stem[: -len("-Regular")].lower()
+            info = self._font_info_by_name.get(short)
+            if info is not None:
+                font = info.get_font()
+                if font is not None:
+                    return font
+        # Final defensive fallback: locate the freshly-indexed
+        # :class:`FSFontInfo` whose backing path matches ``path`` (the
+        # provider may have stored it under an unexpected name). This
+        # also keeps the lookup deterministic when the dict iteration
+        # order would otherwise pick a different Liberation variant.
+        for candidate in self._font_info_by_name.values():
+            cand_file = getattr(candidate, "file", None)
+            if cand_file is not None and Path(str(cand_file)) == path:
+                font = candidate.get_font()
+                if font is not None:
+                    return font
         return None
 
 

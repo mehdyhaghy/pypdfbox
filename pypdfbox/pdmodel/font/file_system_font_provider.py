@@ -90,6 +90,14 @@ def _default_font_dirs() -> list[Path]:
     # missing roots.
     from pypdfbox.fontbox.cjk_loader import cache_dir as _cjk_cache_dir  # noqa: PLC0415
     dirs.append(_cjk_cache_dir())
+    # pypdfbox extension (wave 1376): include the bundled
+    # ``pypdfbox/resources/ttf/`` directory so a lookup by PostScript
+    # name (e.g. ``"LiberationSans"``) resolves through the normal
+    # provider path without forcing callers to go through
+    # ``liberation_loader.ensure_font``.
+    from pypdfbox.fontbox.liberation_loader import bundled_dir as _liberation_dir  # noqa: PLC0415
+    with contextlib.suppress(OSError, ModuleNotFoundError):
+        dirs.append(_liberation_dir())
     return dirs
 
 

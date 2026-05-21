@@ -161,7 +161,11 @@ def test_static_wrapper_post_script_names_matches() -> None:
 
 
 def test_is_fallback_font_loaded_false() -> None:
-    assert FontMapperImpl.is_fallback_font_loaded() is False
+    # Wave 1376: ``is_fallback_font_loaded`` flipped from a static
+    # always-False stub to an instance method that reports whether any
+    # Liberation TTF has been resolved. A fresh mapper has resolved
+    # nothing yet, so it must still return False here.
+    assert FontMapperImpl().is_fallback_font_loaded() is False
 
 
 # ---------- substitute table public APIs ----------
@@ -710,14 +714,23 @@ def test_print_matches_logs_and_returns_first(
 # ---------- last-resort + provider auto-init ----------
 
 
-def test_get_last_resort_font_returns_none() -> None:
+def test_get_last_resort_font_resolves_bundled_liberation() -> None:
+    # Wave 1376: pypdfbox now bundles the 12 Liberation TTFs and the
+    # last-resort path resolves through the active provider's
+    # ``scan_fonts`` to a real FontBox font. The previous incarnation
+    # of this test asserted ``None`` because the loader was a stub —
+    # that assertion is now obsolete.
     impl = FontMapperImpl()
-    # Force the cache miss + early-return branch.
-    assert impl._get_last_resort_font() is None  # type: ignore[attr-defined]
+    resolved = impl._get_last_resort_font()  # type: ignore[attr-defined]
+    assert resolved is not None
+    # The descriptor-keyed cache should now report fallback as loaded.
+    assert impl.is_fallback_font_loaded() is True
 
 
 def test_get_last_resort_font_returns_cached_value() -> None:
     impl = FontMapperImpl()
     sentinel = object()
     impl._last_resort_font = sentinel  # type: ignore[attr-defined]
+    # No descriptor means the legacy single-slot cache wins, preserving
+    # the pre-1376 test idiom.
     assert impl._get_last_resort_font() is sentinel  # type: ignore[attr-defined]

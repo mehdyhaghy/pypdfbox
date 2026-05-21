@@ -3,6 +3,71 @@
 Substantive behavioral deviations of pypdfbox vs upstream Apache PDFBox.
 Per-release notes go here; trivial naming changes (camelCase → snake_case) are not listed.
 
+## Wave 1376 — wire bundled Liberation TTFs as last-resort font fallback (CJK pattern)
+
+Closes CHANGES.md:454 — "Standard 14 substitution remains deferred". The 12
+Liberation TTFs (Sans / Serif / Mono × Regular / Bold / Italic / BoldItalic,
+3.94 MB total, SIL OFL 1.1) plus DejaVuSans were already bundled at
+`pypdfbox/resources/ttf/`, but `font_mapper_impl._get_last_resort_font` was
+returning `None` with a stale "pypdfbox doesn't bundle LiberationSans-Regular"
+comment, so any PDF that referenced a font that was neither embedded nor on
+the system rendered as `.notdef` (a placeholder rectangle).
+
+- `pypdfbox/fontbox/liberation_loader.py` (NEW): adapts the architectural
+  pattern established by `cjk_loader.py` (wave 1362) — dedicated loader
+  module, public `ensure_font(font_descriptor) -> Path | None` dispatch,
+  lazy on-demand load. Key differences vs the CJK loader: (1) **bundled,
+  not fetched** (resources live inside the wheel via
+  `importlib.resources.files("pypdfbox.resources.ttf")`); (2) **default,
+  not opt-in** (no env-var gate — upstream PDFBox eagerly loads
+  LiberationSans-Regular in its constructor, we mirror that); (3)
+  **descriptor-keyed dispatch** (12 family + weight combinations) instead
+  of CJK's ordering-keyed dispatch (5 language codes). Family selection:
+  `is_fixed_pitch()` -> Mono, `is_serif()` -> Serif, otherwise Sans. Bold
+  detection: `/FontWeight >= 600` OR `/FontName` contains
+  `"bold"`/`"black"`/`"heavy"` (case-insensitive). Italic: `is_italic()`.
+  `font_descriptor=None` -> `"Sans-Regular"` (matches upstream default).
+  `dejavu_path()` exposes the bundled DejaVuSans as a secondary path for
+  Indic / Devanagari content whose glyphs aren't carried by Liberation.
+
+- `pypdfbox/pdmodel/font/font_mapper_impl.py`: `_get_last_resort_font(...)`
+  gained an optional `font_descriptor` parameter and now resolves through
+  `liberation_loader.ensure_font(font_descriptor)`, feeding the resulting
+  path through the active `FontProvider`'s `scan_fonts(...)` (mirrors
+  `_try_fetch_noto_cjk` plumbing) so the resulting FontBox font surfaces
+  through the standard index. Descriptor-keyed cache
+  (`_last_resort_by_key`) memoises per-style lookups; the legacy
+  single-slot `_last_resort_font` is preserved for pre-1376 test idioms.
+  Updated 4 call sites to pass the descriptor: `get_true_type_font`,
+  `get_open_type_font`, `get_font_box_font`, `get_cid_font` (last-resort
+  branch runs *after* the existing CJK substitution + Noto CJK fetch).
+  `is_fallback_font_loaded()` flipped from a static always-False stub to
+  an instance method that returns `True` once any Liberation font is
+  cached. Stale "pypdfbox doesn't bundle LiberationSans-Regular" comment
+  at line 738 removed.
+
+- `pypdfbox/pdmodel/font/file_system_font_provider.py`: `_default_font_dirs`
+  now also appends `liberation_loader.bundled_dir()` so an explicit lookup
+  by PostScript name (e.g. `"LiberationSans"`) resolves through the
+  normal provider path without forcing callers through
+  `ensure_font(...)`. Mirrors the CJK cache_dir append pattern.
+
+Coverage gain: Latin, Latin Extended, Cyrillic, Greek, Hebrew, Arabic and
+~120 other languages now substitute to real Liberation outlines instead
+of `.notdef` placeholders. CJK is unchanged — that path remains
+`pypdfbox.fontbox.cjk_loader` and still requires `pip install
+pypdfbox[cjk]` plus `PYPDFBOX_CJK_AUTODOWNLOAD=1`. Devanagari / Bengali /
+Tamil / Thai content falls back to `liberation_loader.dejavu_path()`
+(broader Unicode coverage than Liberation) — wiring DejaVu through the
+renderer's glyph-resolution path is left to a follow-up wave.
+
+License: SIL OFL 1.1 (Liberation) + Bitstream Vera / DejaVu (BSD-style)
+— both permissive, already on the project allow-list and attributed in
+the root `NOTICE` file plus `pypdfbox/resources/ttf/LICENSE.txt` and
+`pypdfbox/resources/ttf/LICENSE-DejaVu.txt`.
+
+
+
 ## Format
 
 ```
