@@ -4189,6 +4189,65 @@ No latent source bugs flagged.
   and rely solely on `read_long`'s clamp — Java's signed-32 → signed-64
   pattern lives in exactly one place upstream; we mirror it in two.
 
+## Wave 1362 — opt-in Noto Sans CJK auto-downloader for last-resort CJK fallback
+
+Closes the long-standing gap where pypdfbox produced `.notdef` glyphs for
+CIDFonts whose descendant ordering is one of `Adobe-GB1` / `Adobe-CNS1` /
+`Adobe-Japan1` / `Adobe-Korea1` and the system carried no matching CJK
+font. Upstream PDFBox has the same `.notdef` behaviour — this wave adds
+a strict opt-in mechanism on top, without altering the default.
+
+New module (original work, no upstream counterpart):
+
+- `pypdfbox/fontbox/cjk_loader.py` — pinned manifest of the five
+  single-language Noto Sans CJK release zips (upstream tag `Sans2.004`,
+  2022-01-27, SIL OFL 1.1). `ensure_language(ordering)` resolves the
+  Adobe ordering to a Noto language code (JP/KR/SC/TC), downloads the
+  zip from `github.com/notofonts/noto-cjk/releases` using stdlib
+  `urllib.request`, verifies SHA-256 against the manifest, and extracts
+  only the Regular weight into a per-user cache dir. On any failure
+  (network error, SHA mismatch, missing entry) the function logs a
+  warning and returns `None` so callers fall through to upstream-parity
+  `.notdef` rendering rather than raising.
+
+Two-stage opt-in (both required, default is inert):
+1. `pip install pypdfbox[cjk]` — empty marker extra in `pyproject.toml`.
+2. `PYPDFBOX_CJK_AUTODOWNLOAD=1` env var. Without this second toggle
+   the loader stays inert even when the extra is installed, so a user
+   who pulls the extra for other reasons never accidentally triggers
+   network access.
+
+Wiring (no upstream counterpart at either call site):
+
+- `pypdfbox/pdmodel/font/font_mapper_impl.py::FontMapperImpl.get_cid_font`
+  — after the Adobe-CJK character-collection-aware substitution queue
+  is exhausted, calls a new private helper `_try_fetch_noto_cjk` which
+  delegates to `cjk_loader.ensure_language`, scans the resulting path
+  into the active `FontProvider`, refreshes the name index via
+  `set_provider`, and returns the parsed font. Behaviour is unchanged
+  when the loader is inert.
+- `pypdfbox/pdmodel/font/file_system_font_provider.py::_default_font_dirs`
+  — the opt-in CJK cache dir is appended to the platform-default scan
+  roots so any pre-fetched fonts are picked up on subsequent provider
+  constructions without re-download. Missing directories are tolerated
+  by the existing defensive `_collect_font_files` walk.
+
+`pyproject.toml` — `[project.optional-dependencies] cjk = []`. The
+extra is intentionally empty (no Python deps): the loader needs only
+`urllib`, `zipfile`, `hashlib`, `pathlib`, which are all stdlib.
+
+Tests: `tests/fontbox/test_cjk_loader.py` (25 tests) cover the inert
+default, ordering→language mapping, env-flag truthiness, cache-dir
+resolution (`XDG_CACHE_HOME`, `LOCALAPPDATA`, `PYPDFBOX_CJK_CACHE_DIR`),
+the happy path with a fake in-memory zip, cached-file short-circuit,
+SHA-256 mismatch refusal, `URLError` swallowing, and missing-zip-entry
+handling. All exercised through an injected `opener` fixture — no real
+network access in CI.
+
+External font assets recorded in `PROVENANCE.md` under a new section
+"External font assets (runtime-fetched, never bundled)" with the five
+pinned SHA-256 digests.
+
 ## Wave 1361 — fix latent PDFBOX-4453 COSString-decrypt bug
 
 Root cause: ``PDDocument.decrypt`` only attached the standard security

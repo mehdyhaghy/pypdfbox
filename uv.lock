@@ -428,6 +428,7 @@ requires-dist = [
     { name = "pillow", specifier = ">=12.2.0" },
     { name = "skia-python", specifier = ">=144" },
 ]
+provides-extras = ["cjk"]
 
 [package.metadata.requires-dev]
 dev = [

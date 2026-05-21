@@ -2864,3 +2864,25 @@ Backfill of upstream Java paths for source files added in earlier waves (mostly 
 | `tests/fixtures/xmpbox/validxmp/metadata.rdf` | 3.0.x | `xmpbox/src/test/resources/validxmp/metadata.rdf` (wave 1360 agent E; verbatim copy for `TestXMPWithDefinedSchemas`) |
 | `tests/fixtures/xmpbox/validxmp/PDFBOX-6099.xmp` | 3.0.x | `xmpbox/src/test/resources/validxmp/PDFBOX-6099.xmp` (wave 1360 agent E; verbatim copy for `TestXMPWithDefinedSchemas`) |
 | `tests/fixtures/xmpbox/undefinedxmp/prism.xmp` | 3.0.x | `xmpbox/src/test/resources/undefinedxmp/prism.xmp` (wave 1360 agent E; verbatim copy for `TestXMPWithUndefinedSchemas`) |
+
+
+## External font assets (runtime-fetched, never bundled)
+
+These are **not** Apache PDFBox ports — they are upstream font binaries
+that the opt-in :mod:`pypdfbox.fontbox.cjk_loader` may fetch on the
+user's behalf when both `pip install pypdfbox[cjk]` and
+`PYPDFBOX_CJK_AUTODOWNLOAD=1` are set. The loader verifies the SHA-256
+below before extraction and never redistributes the binaries through
+pypdfbox itself.
+
+Upstream project: <https://github.com/notofonts/noto-cjk>
+Upstream release tag: `Sans2.004` (2022-01-27)
+License: SIL Open Font License 1.1 (permissive; on the project allow-list)
+
+| asset (release) | SHA-256 | extracted font (Regular weight only) |
+|---|---|---|
+| `16_NotoSansJP.zip` | `2bbdd2c20f30670b39ca735c96d75f1fdabdb348103e43b820cf17701fd22b18` | `NotoSansJP-Regular.otf` |
+| `17_NotoSansKR.zip` | `ac7eeb4e2b0d41de8ff31b2d6e1e2a41caf253fd5cefb380bfa1f40f1747b612` | `NotoSansKR-Regular.otf` |
+| `18_NotoSansSC.zip` | `4d107c09ada479d3e48b6e78c83835773cbd9214bf6e12cdb7b60f8e068292ec` | `NotoSansSC-Regular.otf` |
+| `19_NotoSansTC.zip` | `fbbcb216be8056a436c7ec142847f302bb1932d07bdad8b322f4953a389d7cbc` | `NotoSansTC-Regular.otf` |
+| `20_NotoSansHK.zip` | `c2d8a17fc668116920b75a3bc6f63606faefe43722efec7bb03c66164b3ec52f` | `NotoSansHK-Regular.otf` |

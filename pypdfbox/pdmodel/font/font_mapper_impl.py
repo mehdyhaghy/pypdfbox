@@ -380,8 +380,65 @@ class FontMapperImpl(FontMapper):
                     font = best.info.get_font()
                     if font is not None:
                         return CIDFontMapping(None, font, True)
+                # pypdfbox extension (no upstream counterpart): try the
+                # opt-in Noto Sans CJK auto-downloader. Returns ``None``
+                # unless the user opted in via ``pypdfbox[cjk]`` + the
+                # ``PYPDFBOX_CJK_AUTODOWNLOAD`` env var, so default
+                # behaviour matches PDFBox (.notdef glyphs).
+                fetched = self._try_fetch_noto_cjk(ordering)
+                if fetched is not None:
+                    return CIDFontMapping(None, fetched, True)
         last = self._get_last_resort_font()
         return CIDFontMapping(None, last, True) if last is not None else None
+
+    def _try_fetch_noto_cjk(self, ordering: str) -> Any | None:
+        """Resolve *ordering* through :mod:`pypdfbox.fontbox.cjk_loader`.
+
+        Returns the parsed FontBox font, or ``None`` if auto-download is
+        disabled, the ordering has no Noto Sans CJK equivalent, the
+        download failed, or the provider could not load the resulting
+        file. The loader itself is the gatekeeper for the env-var
+        opt-in — we just need to feed the resulting path back through
+        the active :class:`FontProvider` so the rest of the mapper
+        stays uniform.
+        """
+        from pypdfbox.fontbox.cjk_loader import ensure_language  # noqa: PLC0415
+
+        path = ensure_language(ordering)
+        if path is None:
+            return None
+        provider = self.get_provider()
+        scan = getattr(provider, "scan_fonts", None)
+        if not callable(scan):
+            return None
+        try:
+            scan([path])
+        except OSError as ex:
+            _LOG.warning(
+                "pypdfbox: scan of fetched Noto CJK font %s failed: %s",
+                path,
+                ex,
+            )
+            return None
+        # Refresh the local name index so newly-scanned fonts are
+        # reachable through the standard lookup path.
+        self.set_provider(provider)
+        # Search the freshly-indexed names for any font whose
+        # PostScript name matches the file we just fetched. Falling
+        # back to the first NotoSans*-Regular ensures the lookup
+        # succeeds even if the upstream PostScript name drifts.
+        stem = path.stem  # e.g. ``NotoSansJP-Regular``
+        for key, info in self._font_info_by_name.items():
+            if key.lower() == stem.lower():
+                font = info.get_font()
+                if font is not None:
+                    return font
+        for key, info in self._font_info_by_name.items():
+            if key.lower().startswith("notosans") and "regular" in key.lower():
+                font = info.get_font()
+                if font is not None:
+                    return font
+        return None
 
     # ---------- internal: lookup ----------
 

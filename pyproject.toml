@@ -64,6 +64,16 @@ dependencies = [
     "jbig2-parser",       # MIT — JBIG2 image decoder (Rust-backed, used by /JBIG2Decode filter)
 ]
 
+# Marker extra for opt-in CJK font auto-download (see pypdfbox/fontbox/cjk_loader.py).
+# Empty by default — the loader uses stdlib (urllib + zipfile + hashlib) and only
+# fetches the upstream Noto Sans CJK release zips when both:
+#   1. The user installed pypdfbox with ``pip install pypdfbox[cjk]``  AND
+#   2. The environment variable ``PYPDFBOX_CJK_AUTODOWNLOAD=1`` is set.
+# Fonts are pinned to upstream tag Sans2.004 (SIL OFL 1.1) and verified by SHA-256
+# before extraction into the per-user cache dir.
+[project.optional-dependencies]
+cjk = []
+
 [project.urls]
 Homepage = "https://github.com/mehdyhaghy/pypdfbox"
 Repository = "https://github.com/mehdyhaghy/pypdfbox"

@@ -83,6 +83,13 @@ def _default_font_dirs() -> list[Path]:
             dirs.append(
                 Path(local_app) / "Microsoft" / "Windows" / "Fonts"
             )
+    # pypdfbox extension: include the opt-in Noto Sans CJK cache dir so any
+    # fonts fetched by ``pypdfbox.fontbox.cjk_loader`` are picked up on
+    # subsequent scans without a re-download. The directory may not exist
+    # (loader is off by default) — ``_collect_font_files`` already tolerates
+    # missing roots.
+    from pypdfbox.fontbox.cjk_loader import cache_dir as _cjk_cache_dir  # noqa: PLC0415
+    dirs.append(_cjk_cache_dir())
     return dirs
 
 

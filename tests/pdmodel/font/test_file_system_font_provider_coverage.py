@@ -111,7 +111,12 @@ def test_default_font_dirs_unknown_platform(
 ) -> None:
     monkeypatch.setattr(mod.sys, "platform", "freebsd")
     dirs = mod._default_font_dirs()
-    assert dirs == []
+    # Unknown OS contributes no platform-default font roots, but the
+    # opt-in Noto CJK cache dir is always appended (wave 1362). The
+    # directory will not exist unless the auto-downloader has run, so
+    # ``_collect_font_files`` skips it silently.
+    assert all("noto-cjk" in str(p) for p in dirs)
+    assert len(dirs) == 1
 
 
 # ---------- _collect_font_files ----------
