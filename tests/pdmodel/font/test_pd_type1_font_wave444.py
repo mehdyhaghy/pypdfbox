@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import io
-
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSStream
 from pypdfbox.fontbox.type1.type1_font import Type1Font
 from pypdfbox.pdmodel.font import PDFontDescriptor, PDType1Font
@@ -155,10 +153,11 @@ def test_get_type1_font_caches_absent_descriptor_as_failed_lookup() -> None:
     assert font.get_font_program() is None
 
 
-def test_read_code_advances_stream_and_reports_eof() -> None:
+def test_read_code_walks_buffer_and_terminates_at_eof() -> None:
     font = PDType1Font()
-    stream = io.BytesIO(b"\x00\xff")
+    data = b"\x00\xff"
 
-    assert font.read_code(stream) == 0
-    assert font.read_code(stream) == 255
-    assert font.read_code(stream) == -1
+    assert font.read_code(data, 0) == (0, 1)
+    assert font.read_code(data, 1) == (0xFF, 1)
+    # Past end of buffer returns (0, 0) — the caller terminates.
+    assert font.read_code(data, 2) == (0, 0)

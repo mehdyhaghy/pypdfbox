@@ -225,19 +225,20 @@ def test_get_normalized_path_int_falls_back_to_notdef() -> None:
 
 def test_read_code_returns_single_byte_value() -> None:
     font = PDType1CFont()
-    stream = io.BytesIO(b"\x41\x42")
-    assert font.read_code(stream) == 0x41
-    assert font.read_code(stream) == 0x42
+    data = b"\x41\x42"
+    assert font.read_code(data, 0) == (0x41, 1)
+    assert font.read_code(data, 1) == (0x42, 1)
 
 
-def test_read_code_returns_minus_one_at_eof() -> None:
+def test_read_code_returns_zero_zero_at_eof() -> None:
     font = PDType1CFont()
-    assert font.read_code(io.BytesIO(b"")) == -1
+    assert font.read_code(b"") == (0, 0)
 
 
 def test_read_code_accepts_bytes_directly() -> None:
-    """Convenience: pass raw bytes instead of a stream."""
-    assert PDType1CFont().read_code(b"\xff") == 0xFF
+    """``read_code`` walks a bytes buffer at the given offset and
+    returns ``(code, consumed)``."""
+    assert PDType1CFont().read_code(b"\xff") == (0xFF, 1)
 
 
 # ---------- read_encoding_from_font ----------

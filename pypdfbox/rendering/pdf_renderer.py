@@ -95,6 +95,25 @@ class _GState:
     stroke_rgb: tuple[int, int, int] = (0, 0, 0)
     fill_rgb: tuple[int, int, int] = (0, 0, 0)
     line_width: float = 1.0
+    # ---- stroke-state parameters (PDF 32000-1 §8.4.3 / Table 52) ----
+    # Spec defaults: line cap = 0 (butt), line join = 0 (miter), miter
+    # limit = 10.0, dash pattern = solid line. Wired by the ``w`` / ``gs``
+    # operators (the dedicated ``J`` / ``j`` / ``M`` / ``d`` ops are
+    # currently routed through ``gs`` for the ExtGState parity path —
+    # the in-stream operators register as no-ops in the lite renderer).
+    line_cap: int = 0
+    line_join: int = 0
+    miter_limit: float = 10.0
+    # ``(dash_array_tuple, phase)`` — ``None`` means "solid line"
+    # (spec default).  An empty dash array also means "solid line"
+    # per PDF 32000-1 §8.4.3.6.
+    dash_pattern: tuple[tuple[float, ...], float] | None = None
+    # ---- rendering intent (PDF 32000-1 §8.6.5.8) ----
+    # The renderer doesn't honour ICC rendering intent (skia / PIL don't
+    # carry an ICC-aware pipeline at the rasterisation level), but we
+    # record it for any downstream consumer that walks the GS for
+    # bookkeeping (e.g. tests that pin the parsed ExtGState shape).
+    rendering_intent: str | None = None
     # ---- pattern / shading paints (non-stroking + stroking) ----
     # When non-None, the corresponding paint is sourced from a
     # ``PDAbstractPattern`` (tiling or shading) instead of the solid RGB
@@ -102,6 +121,17 @@ class _GState:
     # that don't yet support the requested pattern type.
     fill_pattern: Any | None = None
     stroke_pattern: Any | None = None
+    # ---- uncolored tiling pattern tint (PDF 32000-1 §8.7.3.3) ----
+    # When the active fill / stroke pattern is a Type 2 uncolored tiling
+    # pattern, the leading components of ``scn`` / ``SCN`` carry the
+    # **tint colour** the pattern paints with. The renderer reads these
+    # back at tile-render time and pre-seeds the recursive ``_GState``
+    # with the matching ``*_rgb`` so any uncolored op inside the cell
+    # (which doesn't carry its own colour) paints in the tint. ``None``
+    # means "no tint vector available" (the pattern is Type 1, or the
+    # components were absent / unconvertible).
+    fill_pattern_tint: tuple[int, int, int] | None = None
+    stroke_pattern_tint: tuple[int, int, int] | None = None
     # ---- active colour space (PDF 32000-1 §8.6) ----
     # Tracks the colour space last set by ``cs`` / ``CS`` so the next
     # ``scn`` / ``SCN`` can run its component vector through the right
@@ -119,6 +149,10 @@ class _GState:
     text_leading: float = 0.0
     text_rise: float = 0.0
     text_horizontal_scaling: float = 100.0
+    # ---- text rendering mode (PDF 32000-1 §9.3.6) ----
+    # Set by the ``Tr`` operator; 0..7 per Table 106. Default 0 = fill.
+    # Modes 4-7 also add the glyph paths to the clipping path at ET.
+    text_rendering_mode: int = 0
     # ---- clip ----
     # A PIL "L" image of the same size as the canvas, or None for "no clip".
     # Each pixel is the alpha multiplier (0 = clipped out, 255 = fully visible).
@@ -147,6 +181,29 @@ class _GState:
     # fill brushes directly).
     stroke_alpha: float = 1.0
     fill_alpha: float = 1.0
+    # ---- ExtGState flags / tolerances (PDF 32000-1 §8.4.5 Table 58) ----
+    # ``alpha_is_shape`` (``/AIS``) selects whether ``CA`` / ``ca``
+    # multiply the source colour's alpha or its shape; the lite renderer
+    # carries the flag but the SMask compositing path already honours
+    # the result via the source alpha channel.
+    alpha_is_shape: bool = False
+    # ``text_knockout`` (``/TK``) defaults to True per spec — controls
+    # whether glyphs in a text-showing operator knock each other out at
+    # composite time. Carried for parity; the lite renderer paints
+    # glyphs sequentially and does not currently fork the composite path
+    # on this flag.
+    text_knockout: bool = True
+    # ``flatness`` (``/FL``) — curve-flattening tolerance for the
+    # rasteriser. Skia uses adaptive subdivision; the field is carried
+    # for parity but not consulted by the lite renderer.
+    flatness: float = 1.0
+    # ``smoothness`` (``/SM``) — gradient smoothness tolerance. Not
+    # consulted by the renderer (skia handles gradient sampling).
+    smoothness: float = 0.0
+    # ``stroke_adjustment`` (``/SA``) — automatic stroke adjustment for
+    # narrow strokes at low resolution. Carried for parity; skia's
+    # native ``StrokeWidth`` already prevents sub-pixel disappearance.
+    stroke_adjustment: bool = False
 
     def clone(self) -> _GState:
         # ``replace`` would re-share the field defaults — manually copy mutable
@@ -157,8 +214,15 @@ class _GState:
             stroke_rgb=self.stroke_rgb,
             fill_rgb=self.fill_rgb,
             line_width=self.line_width,
+            line_cap=self.line_cap,
+            line_join=self.line_join,
+            miter_limit=self.miter_limit,
+            dash_pattern=self.dash_pattern,
+            rendering_intent=self.rendering_intent,
             fill_pattern=self.fill_pattern,
             stroke_pattern=self.stroke_pattern,
+            fill_pattern_tint=self.fill_pattern_tint,
+            stroke_pattern_tint=self.stroke_pattern_tint,
             fill_color_space=self.fill_color_space,
             stroke_color_space=self.stroke_color_space,
             text_font=self.text_font,
@@ -170,11 +234,17 @@ class _GState:
             text_leading=self.text_leading,
             text_rise=self.text_rise,
             text_horizontal_scaling=self.text_horizontal_scaling,
+            text_rendering_mode=self.text_rendering_mode,
             clip_mask=self.clip_mask,
             blend_mode=self.blend_mode,
             soft_mask=self.soft_mask,
             stroke_alpha=self.stroke_alpha,
             fill_alpha=self.fill_alpha,
+            alpha_is_shape=self.alpha_is_shape,
+            text_knockout=self.text_knockout,
+            flatness=self.flatness,
+            smoothness=self.smoothness,
+            stroke_adjustment=self.stroke_adjustment,
         )
 
 
@@ -255,6 +325,96 @@ def _resolve_builtin_color_spaces() -> dict[str, Any]:
 
 
 _BUILTIN_DEVICE_COLOR_SPACES: dict[str, Any] = _resolve_builtin_color_spaces()
+
+
+def _decode_inline_image_static(
+    params: Any, data: Any
+) -> Any:
+    """Resource-less inline image decoder — covers the pre-1385 device
+    CS surface (DeviceGray / DeviceRGB / DeviceCMYK / their abbreviated
+    aliases + DCT / JPX filters). Used by the backwards-compat
+    ``PDFRenderer._decode_inline_image(params, data)`` static-call
+    form. The bound-method form on :class:`PDFRenderer` adds Indexed /
+    ICCBased / Separation / DeviceN resolution via ``self._resources``.
+    """
+    import io as _io  # noqa: PLC0415
+
+    from PIL import Image as _Image  # noqa: PLC0415
+
+    if not isinstance(params, COSDictionary):
+        return None
+
+    def _expand(key_short: str, key_long: str) -> Any:
+        v = params.get_dictionary_object(COSName.get_pdf_name(key_short))
+        if v is None:
+            v = params.get_dictionary_object(COSName.get_pdf_name(key_long))
+        return v
+
+    w_obj = _expand("W", "Width")
+    h_obj = _expand("H", "Height")
+    bpc_obj = _expand("BPC", "BitsPerComponent")
+    cs_obj = _expand("CS", "ColorSpace")
+    filter_obj = _expand("F", "Filter")
+
+    if not isinstance(w_obj, (COSInteger, COSFloat, COSNumber)):
+        return None
+    if not isinstance(h_obj, (COSInteger, COSFloat, COSNumber)):
+        return None
+    width = int(_to_float(w_obj))
+    height = int(_to_float(h_obj))
+    if width <= 0 or height <= 0:
+        return None
+
+    filter_names: set[str] = set()
+    _abbrev_map = {
+        "A85": "ASCII85Decode",
+        "AHx": "ASCIIHexDecode",
+        "CCF": "CCITTFaxDecode",
+        "DCT": "DCTDecode",
+        "Fl": "FlateDecode",
+        "LZW": "LZWDecode",
+        "RL": "RunLengthDecode",
+    }
+
+    def _add_filter(value: Any) -> None:
+        if isinstance(value, COSName):
+            filter_names.add(_abbrev_map.get(value.name, value.name))
+
+    if isinstance(filter_obj, COSArray):
+        for entry in filter_obj:
+            _add_filter(entry)
+    elif filter_obj is not None:
+        _add_filter(filter_obj)
+
+    if "DCTDecode" in filter_names:
+        return _Image.open(_io.BytesIO(data)).convert("RGB")
+    if "JPXDecode" in filter_names:
+        return _Image.open(_io.BytesIO(data)).convert("RGB")
+    if filter_names:
+        return None
+
+    bpc = int(_to_float(bpc_obj)) if bpc_obj is not None else 8
+    if bpc != 8:
+        return None
+    cs_name = cs_obj.name if isinstance(cs_obj, COSName) else None
+    cs_abbrev = {"G": "DeviceGray", "RGB": "DeviceRGB", "CMYK": "DeviceCMYK"}
+    if cs_name in cs_abbrev:
+        cs_name = cs_abbrev[cs_name]
+    if cs_name == "DeviceRGB" or (
+        cs_name is None and len(data) >= width * height * 3
+    ):
+        return _Image.frombytes(
+            "RGB", (width, height), data[: width * height * 3]
+        )
+    if cs_name == "DeviceGray":
+        return _Image.frombytes(
+            "L", (width, height), data[: width * height]
+        ).convert("RGB")
+    # DeviceCMYK + Indexed + ICCBased + Separation + DeviceN go through
+    # the bound-method form on :class:`PDFRenderer` (which has access to
+    # ``self._resources``). The static-call form is the pre-1385 surface
+    # and rejects them by design.
+    return None
 
 
 def _cubic_bezier_pt(
@@ -626,6 +786,15 @@ class PDFRenderer(PDFStreamEngine):
             tuple[int, str, int, int, tuple[float, ...], tuple[float, ...]],
             int,
         ] = {}
+        # ---- text-rendering clipping accumulator (wave 1385) ----
+        # Modes 4..7 of the ``Tr`` operator (PDF 32000-1 §9.3.6) add each
+        # painted glyph's outline to the current clipping path. Per spec
+        # the clip is committed AT the matching ``ET`` (not at each glyph),
+        # so the union of all glyph paths in the BT/ET block becomes a
+        # single intersection with the current GS clip. Each entry is a
+        # raw ``skia.Path`` whose coordinates already live in device-pixel
+        # space (after the per-glyph PDF→PIL affine has been applied).
+        self._text_clip_paths: list[Any] = []
         # ---- public render-config flags (mirror upstream PDFRenderer) ----
         # These are stored only — the lite renderer doesn't yet consult them,
         # but downstream tooling that ports from PDFBox calls these setters
@@ -633,6 +802,10 @@ class PDFRenderer(PDFStreamEngine):
         # upstream ``PDFRenderer`` field initialisers in PDFBox 3.0.x.
         self._subsampling_allowed: bool = False
         self._default_destination: str = "View"
+        # Active destination resolved per render_image call — annotation
+        # visibility consults this for the four-arg renderImage overload
+        # without mutating ``_default_destination``.
+        self._active_destination: Any = None
         self._image_downscaling_optimization_threshold: float = 0.5
         # ---- transparency-group state (PDF spec §11.4.7) ----
         # When ``_knockout_active`` is True we restore ``_knockout_snapshot``
@@ -654,6 +827,14 @@ class PDFRenderer(PDFStreamEngine):
         # recursive render — the group's paints accumulate raw, then the mask
         # is multiplied at the very end.
         self._transparency_group_depth: int = 0
+        # ---- Form XObject recursion cap (wave 1385) ----
+        # Mirrors upstream ``DrawObject.java`` (line 84-89) which caps the
+        # ``Do`` Form-XObject recursion depth at 50 to prevent malicious or
+        # malformed PDFs from blowing the rasteriser's call stack. The
+        # counter is bumped in ``_op_do`` only for Form-XObject invocations
+        # (not images); upstream's cap has the same scope.
+        self._form_x_object_depth: int = 0
+        self._form_x_object_depth_limit: int = 50
         # ---- annotation filter (mirrors upstream ``AnnotationFilter``) ----
         # Upstream's default filter accepts every annotation
         # (``annotation -> true``); we model the filter as a plain
@@ -808,7 +989,17 @@ class PDFRenderer(PDFStreamEngine):
         # value (e.g. resolving the device CTM during constructor work).
         self._scale = scale
         self._page_height_px = float(height_px)
-        page_drawer.draw_page(image, media_box)
+        # Stash the resolved destination so annotation visibility checks
+        # in ``_annotation_should_skip`` see the per-call override
+        # without mutating ``_default_destination`` (mirrors upstream's
+        # four-arg ``renderImage(int, float, ImageType, RenderDestination)``
+        # which threads ``destination`` straight into PageDrawer).
+        previous_active_destination = getattr(self, "_active_destination", None)
+        self._active_destination = resolved_destination
+        try:
+            page_drawer.draw_page(image, media_box)
+        finally:
+            self._active_destination = previous_active_destination
 
         # Convert to the caller-requested image type if needed.
         # Pillow handles every direction (RGB → L / "1" / RGBA / etc.)
@@ -902,6 +1093,33 @@ class PDFRenderer(PDFStreamEngine):
 
         try:
             self.process_page(page)
+            # After the page content stream is processed, walk the page
+            # annotations and paint each one's appearance on top.
+            # Mirrors upstream ``PageDrawer.drawPage`` which loops
+            # ``page.getAnnotations(annotationFilter)`` and calls
+            # ``showAnnotation`` per entry. The filter is consulted
+            # inside ``get_annotations`` (matching upstream's
+            # ``getAnnotations(AnnotationFilter)`` overload); per-annotation
+            # visibility flags (Hidden / NoView / Print=false) are checked
+            # inside ``_render_annotation`` mirroring upstream's
+            # ``shouldSkipAnnotation``.
+            try:
+                annotations = page.get_annotations(self._annotation_filter)
+            except Exception as exc:  # noqa: BLE001 — defensive
+                _log.debug("annotation iteration failed: %s", exc)
+                annotations = []
+            for annotation in annotations:
+                try:
+                    self._render_annotation(annotation)
+                except Exception as exc:  # noqa: BLE001 — log-and-continue
+                    subtype = None
+                    with contextlib.suppress(Exception):
+                        subtype = annotation.get_subtype()
+                    _log.debug(
+                        "annotation render failed (subtype=%r): %s",
+                        subtype,
+                        exc,
+                    )
         finally:
             # Flush whatever aggdraw wrapper is currently bound — it may
             # have been replaced mid-render by ``_paste_image`` or
@@ -1465,6 +1683,14 @@ class PDFRenderer(PDFStreamEngine):
         # its component vector through the right ``to_rgb`` transform.
         # /Pattern is special-cased — no transform applies, the components
         # carry an underlying-tint payload that the pattern paints itself.
+        #
+        # PDF 32000-1 §8.6.5.1 + upstream
+        # ``SetStrokingColorSpace.process`` reset the current colour to
+        # the colour space's initial colour (typically black for
+        # RGB/Gray/CMYK, [0.0] for indexed). Honour that here so a
+        # ``CS … S`` without an intervening ``SCN`` paints in the
+        # colour space's initial colour instead of the previous value.
+        self._gs.stroke_pattern_tint = None
         if not operands or not isinstance(operands[0], COSName):
             self._gs.stroke_pattern = None
             self._gs.stroke_color_space = None
@@ -1474,12 +1700,17 @@ class PDFRenderer(PDFStreamEngine):
             self._gs.stroke_color_space = None
             return
         self._gs.stroke_pattern = None
-        self._gs.stroke_color_space = self._resolve_color_space(name)
+        cs = self._resolve_color_space(name)
+        self._gs.stroke_color_space = cs
+        rgb = self._initial_color_rgb(cs)
+        if rgb is not None:
+            self._gs.stroke_rgb = rgb
 
     def _op_set_fill_color_space(
         self, _op: Any, operands: list[COSBase]
     ) -> None:
         # cs — non-stroking colour space. Mirrors ``_op_set_stroke_color_space``.
+        self._gs.fill_pattern_tint = None
         if not operands or not isinstance(operands[0], COSName):
             self._gs.fill_pattern = None
             self._gs.fill_color_space = None
@@ -1489,7 +1720,41 @@ class PDFRenderer(PDFStreamEngine):
             self._gs.fill_color_space = None
             return
         self._gs.fill_pattern = None
-        self._gs.fill_color_space = self._resolve_color_space(name)
+        cs = self._resolve_color_space(name)
+        self._gs.fill_color_space = cs
+        rgb = self._initial_color_rgb(cs)
+        if rgb is not None:
+            self._gs.fill_rgb = rgb
+
+    def _initial_color_rgb(
+        self, colour_space: Any | None
+    ) -> tuple[int, int, int] | None:
+        """Return the 8-bit RGB triple for ``colour_space``'s initial
+        colour (per PDF 32000-1 §8.6.4 / upstream
+        ``PDColorSpace.getInitialColor``). Returns ``None`` when the
+        colour space is missing or the conversion fails."""
+        if colour_space is None:
+            return None
+        get_initial_color = getattr(colour_space, "get_initial_color", None)
+        if not callable(get_initial_color):
+            return None
+        try:
+            initial = get_initial_color()
+        except Exception as exc:  # noqa: BLE001
+            _log.debug(
+                "rendering: get_initial_color on %s failed: %s",
+                type(colour_space).__name__,
+                exc,
+            )
+            return None
+        if initial is None:
+            return None
+        components = getattr(initial, "_components", None)
+        if components is None:
+            components = getattr(initial, "components", None)
+        if not components:
+            return None
+        return self._color_components_to_rgb(tuple(components), colour_space)
 
     def _resolve_color_space(self, name: COSName) -> Any | None:
         """Return the ``PDColorSpace`` named in /Resources/ColorSpace or
@@ -1517,11 +1782,23 @@ class PDFRenderer(PDFStreamEngine):
         # SCN — last operand is a /PatternName when the current colour space
         # is /Pattern; otherwise all operands are colour components in the
         # current stroking colour space. Wire both forms.
+        #
+        # Uncolored tiling patterns (PaintType=2, PDF 32000-1 §8.7.3.3):
+        # the *leading* N components are the tint colour the pattern paints
+        # with. The pattern's content stream operates against this tint,
+        # which is converted to RGB via the underlying ("alternate") colour
+        # space carried on the Pattern CS. Mirrors upstream
+        # ``TilingPaintFactory.create`` building a tint ``PDColor`` over
+        # the Pattern's underlying CS.
         pattern = self._resolve_pattern_operand(operands)
         if pattern is not None:
             self._gs.stroke_pattern = pattern
+            self._gs.stroke_pattern_tint = self._extract_pattern_tint_rgb(
+                operands, self._gs.stroke_color_space
+            )
             return
         self._gs.stroke_pattern = None
+        self._gs.stroke_pattern_tint = None
         components = _coerce_color_components(operands)
         if components is None:
             return
@@ -1538,8 +1815,12 @@ class PDFRenderer(PDFStreamEngine):
         pattern = self._resolve_pattern_operand(operands)
         if pattern is not None:
             self._gs.fill_pattern = pattern
+            self._gs.fill_pattern_tint = self._extract_pattern_tint_rgb(
+                operands, self._gs.fill_color_space
+            )
             return
         self._gs.fill_pattern = None
+        self._gs.fill_pattern_tint = None
         components = _coerce_color_components(operands)
         if components is None:
             return
@@ -1548,6 +1829,49 @@ class PDFRenderer(PDFStreamEngine):
         )
         if rgb is not None:
             self._gs.fill_rgb = rgb
+
+    def _extract_pattern_tint_rgb(
+        self,
+        operands: list[COSBase],
+        pattern_color_space: Any | None,
+    ) -> tuple[int, int, int] | None:
+        """Pull the leading-N tint components out of an ``scn`` / ``SCN``
+        call that selected a pattern, and resolve them to an RGB triple
+        via the Pattern CS's underlying ("alternate") colour space.
+        Returns ``None`` when no tint components are present (Type 1
+        colored tiling, or shading) — the pattern then paints its own
+        colours.
+        """
+        if not operands:
+            return None
+        # The pattern name is the trailing operand; everything before is
+        # numeric (PDNumber) — those are the tint components.
+        components: list[float] = []
+        for op in operands[:-1]:
+            if isinstance(op, COSName):
+                return None
+            if hasattr(op, "float_value"):
+                components.append(float(op.float_value()))
+                continue
+            if hasattr(op, "int_value"):
+                components.append(float(op.int_value()))
+                continue
+            try:
+                components.append(float(op))  # type: ignore[arg-type]
+            except (TypeError, ValueError):
+                return None
+        if not components:
+            return None
+        # Locate the underlying colour space — for the array form
+        # ``[/Pattern <CS>]`` PDPattern carries it on ``_underlying``.
+        underlying = None
+        if pattern_color_space is not None:
+            get_underlying = getattr(
+                pattern_color_space, "get_underlying_color_space", None
+            )
+            if callable(get_underlying):
+                underlying = get_underlying()
+        return self._color_components_to_rgb(tuple(components), underlying)
 
     def _color_components_to_rgb(
         self,
@@ -1650,12 +1974,27 @@ class PDFRenderer(PDFStreamEngine):
     ) -> None:
         """``gs`` — apply the named ExtGState dictionary's parameters.
 
-        The lite renderer consumes ``/BM`` (blend mode), ``/SMask``
-        (soft mask — Alpha or Luminosity types per PDF 32000-1
-        §11.6.5.3, with ``/BC`` backdrop colour and ``/TR`` transfer
-        function), and ``/CA``/``/ca`` (stroke / non-stroke alpha
-        constants). Other ExtGState entries (line dash, smoothness,
-        halftone, …) are deferred — see ``CHANGES.md``."""
+        Mirrors the entries enumerated in
+        :meth:`PDExtendedGraphicsState.copy_into_graphics_state`
+        (upstream ``copyIntoGraphicsState``):
+
+        * ``/LW`` line width, ``/LC`` cap, ``/LJ`` join, ``/ML`` miter limit,
+          ``/D`` dash pattern, ``/RI`` rendering intent — stroke-state plumb-
+          through (PDF 32000-1 §8.4.3 + §8.6.5.8).
+        * ``/Font [font size]`` — text font + size pair (§9.3.1).
+        * ``/BM`` blend mode (§11.3.5), ``/SMask`` soft mask (§11.6.5.3),
+          ``/CA`` stroke alpha + ``/ca`` non-stroke alpha (§11.6.4.4),
+          ``/AIS`` alpha-is-shape (§11.6.4.3).
+        * ``/FL`` flatness tolerance, ``/SM`` smoothness tolerance,
+          ``/SA`` stroke adjustment, ``/TK`` text knockout — carried on
+          the GS for parity-test bookkeeping; the lite renderer doesn't
+          consult them at paint time.
+
+        Deferred (don't affect skia-rendered output but the GS fields are
+        carried elsewhere): ``/OP``/``/op``/``/OPM`` (overprint — affects
+        colour separations we don't model), ``/BG``/``/BG2``/``/UCR``/``/UCR2``
+        (CMYK device-gamut mapping), ``/TR``/``/TR2`` (output-device transfer
+        function), ``/HT`` (halftone)."""
         if not operands or not isinstance(operands[0], COSName):
             return
         if self._resources is None:
@@ -1712,6 +2051,128 @@ class PDFRenderer(PDFStreamEngine):
             ca_ns = None
         if ca_ns is not None:
             self._gs.fill_alpha = max(0.0, min(1.0, float(ca_ns)))
+
+        # ---- /LW (line width) — §8.4.3.2 ----
+        try:
+            lw = ext_gstate.get_line_width()
+        except Exception:  # noqa: BLE001
+            lw = None
+        if lw is not None:
+            self._gs.line_width = max(0.0, float(lw))
+
+        # ---- /LC (line cap) — §8.4.3.3 ----
+        try:
+            lc = ext_gstate.get_line_cap_style()
+        except Exception:  # noqa: BLE001
+            lc = None
+        if lc is not None:
+            cap = int(lc)
+            if cap < 0:
+                cap = 0
+            elif cap > 2:
+                cap = 2
+            self._gs.line_cap = cap
+
+        # ---- /LJ (line join) — §8.4.3.4 ----
+        try:
+            lj = ext_gstate.get_line_join_style()
+        except Exception:  # noqa: BLE001
+            lj = None
+        if lj is not None:
+            join = int(lj)
+            if join < 0:
+                join = 0
+            elif join > 2:
+                join = 2
+            self._gs.line_join = join
+
+        # ---- /ML (miter limit) — §8.4.3.5 ----
+        try:
+            ml = ext_gstate.get_miter_limit()
+        except Exception:  # noqa: BLE001
+            ml = None
+        if ml is not None:
+            try:
+                miter = float(ml)
+            except (TypeError, ValueError):
+                miter = None
+            if miter is not None and miter > 0.0:
+                self._gs.miter_limit = miter
+
+        # ---- /D (line dash pattern) — §8.4.3.6 ----
+        try:
+            dash = ext_gstate.get_line_dash_pattern()
+        except Exception:  # noqa: BLE001
+            dash = None
+        if dash is not None:
+            try:
+                arr = tuple(float(x) for x in dash.get_dash_array())
+                phase = float(dash.get_phase())
+            except Exception:  # noqa: BLE001
+                arr = None
+            else:
+                # Empty dash array means "solid" per spec — store as None
+                # so downstream code can short-circuit cleanly.
+                self._gs.dash_pattern = (
+                    None if not arr else (arr, phase)
+                )
+
+        # ---- /RI (rendering intent) — §8.6.5.8 ----
+        try:
+            ri = ext_gstate.get_rendering_intent()
+        except Exception:  # noqa: BLE001
+            ri = None
+        if ri is not None:
+            self._gs.rendering_intent = str(ri)
+
+        # ---- /Font [font size] — §9.3.1 ----
+        try:
+            font_setting = ext_gstate.get_font_setting()
+        except Exception:  # noqa: BLE001
+            font_setting = None
+        if font_setting is not None:
+            try:
+                font_obj = font_setting.get_font()
+                font_size = font_setting.get_font_size()
+            except Exception:  # noqa: BLE001
+                font_obj = None
+                font_size = None
+            if font_obj is not None:
+                self._gs.text_font = font_obj
+            if font_size is not None and font_size > 0.0:
+                self._gs.text_font_size = float(font_size)
+
+        # ---- /AIS (alpha-is-shape) — §11.6.4.3 ----
+        with contextlib.suppress(Exception):
+            self._gs.alpha_is_shape = bool(ext_gstate.get_alpha_source_flag())
+
+        # ---- /TK (text knockout) — §9.3.8 ----
+        with contextlib.suppress(Exception):
+            self._gs.text_knockout = bool(ext_gstate.get_text_knockout_flag())
+
+        # ---- /FL (flatness tolerance) — §10.6.2 ----
+        try:
+            fl = ext_gstate.get_flatness()
+        except Exception:  # noqa: BLE001
+            fl = None
+        if fl is not None:
+            with contextlib.suppress(TypeError, ValueError):
+                self._gs.flatness = float(fl)
+
+        # ---- /SM (smoothness tolerance) — §10.6.3 ----
+        try:
+            sm = ext_gstate.get_smoothness()
+        except Exception:  # noqa: BLE001
+            sm = None
+        if sm is not None:
+            with contextlib.suppress(TypeError, ValueError):
+                self._gs.smoothness = float(sm)
+
+        # ---- /SA (stroke adjustment) — §10.6.5 ----
+        with contextlib.suppress(Exception):
+            self._gs.stroke_adjustment = bool(
+                ext_gstate.get_stroke_adjustment()
+            )
 
     # ---- path construction ----
 
@@ -2362,12 +2823,25 @@ class PDFRenderer(PDFStreamEngine):
         bbox_w_px = max(1, min(tile_w_px, int(round(bbox.get_width() * scale))))
         bbox_h_px = max(1, min(tile_h_px, int(round(bbox.get_height() * scale))))
 
+        # PaintType=2 uncolored tiling: seed the recursive _GState with
+        # the tint colour so any cell op that consults the active fill /
+        # stroke colour (e.g. plain ``f`` after a ``re``) paints in the
+        # tint. PaintType=1 (colored) ignores the tint — the cell's own
+        # content stream supplies all colour ops.
+        tint_rgb: tuple[int, int, int] | None = None
+        if (
+            hasattr(pattern, "get_paint_type")
+            and pattern.get_paint_type() == 2
+        ):
+            tint_rgb = self._gs.fill_pattern_tint
+
         try:
             tile = self._render_tiling_cell(
                 pattern,
                 bbox=bbox,
                 tile_size=(tile_w_px, tile_h_px),
                 cell_size=(bbox_w_px, bbox_h_px),
+                tint_rgb=tint_rgb,
             )
         except Exception as exc:  # noqa: BLE001
             _log.debug("rendering: tiling pattern cell render failed: %s", exc)
@@ -2403,6 +2877,7 @@ class PDFRenderer(PDFStreamEngine):
         bbox: Any,
         tile_size: tuple[int, int],
         cell_size: tuple[int, int] | None = None,
+        tint_rgb: tuple[int, int, int] | None = None,
     ) -> Image.Image | None:
         """Render one cell of ``pattern`` to a fresh PIL image of size
         ``tile_size``.
@@ -2412,6 +2887,13 @@ class PDFRenderer(PDFStreamEngine):
         ``/XStep`` or ``/YStep`` exceeds the cell dimension the cell
         paints only the cell-sized region of the tile and the surrounding
         pixels stay fully transparent (PDF 32000-1 §8.7.3.3).
+
+        ``tint_rgb`` is the tint colour for ``PaintType=2`` (uncolored)
+        tiling patterns — used to seed the recursive ``_GState``'s fill
+        and stroke colours so the cell's content stream paints in the
+        tint when it doesn't explicitly set a colour. ``None`` (default)
+        means ``PaintType=1`` (colored) tiling — the cell paints its own
+        colours.
 
         Internally swaps in a sub-renderer state targeting the tile image
         and feeds the pattern's content stream through the existing
@@ -2473,7 +2955,15 @@ class PDFRenderer(PDFStreamEngine):
         # in operators that consult ``_page_height_px`` matches the
         # device-CTM we just installed.
         self._page_height_px = float(cell_h)
-        self._gs_stack = [_GState()]
+        # Seed the recursive _GState with the uncolored-tiling tint when
+        # the caller supplied one — the cell's content stream then paints
+        # in the tint for any op that consults the current colour without
+        # setting it explicitly.
+        cell_gs = _GState()
+        if tint_rgb is not None:
+            cell_gs.fill_rgb = tint_rgb
+            cell_gs.stroke_rgb = tint_rgb
+        self._gs_stack = [cell_gs]
         self._subpaths = []
         self._current_subpath = None
         self._current_point = (0.0, 0.0)
@@ -3690,6 +4180,22 @@ class PDFRenderer(PDFStreamEngine):
         )
 
         if isinstance(xobject, PDImageXObject):
+            # PDF spec §8.9.5.4: an image XObject with ``/ImageMask true``
+            # is a stencil mask — the sample data is a 1-bit alpha matte
+            # and the image is painted as the current non-stroking colour
+            # wherever the matte is opaque. Upstream PDFBox handles this
+            # in ``PageDrawer.drawImage`` (line 1078-1244); without the
+            # branch our renderer would silently drop stencils.
+            try:
+                is_stencil = bool(xobject.is_stencil())
+            except Exception:  # noqa: BLE001
+                is_stencil = False
+            if is_stencil:
+                try:
+                    self._paint_stencil_mask(xobject)
+                except Exception as exc:  # noqa: BLE001
+                    _log.debug("rendering: cannot paint stencil mask: %s", exc)
+                return
             try:
                 pil_image = self._decode_image_xobject(xobject)
             except Exception as exc:  # noqa: BLE001
@@ -3716,11 +4222,232 @@ class PDFRenderer(PDFStreamEngine):
             # present (upstream PDFormXObject in newer versions exposes
             # is_transparency_group()), else fall back to inspecting
             # /Group/S directly.
-            if self._is_transparency_group(xobject):
-                self._render_transparency_group(xobject)
-            else:
-                self._render_form_xobject(xobject)
+            #
+            # Recursion cap (wave 1385): upstream's ``DrawObject``
+            # processor caps Form-XObject ``Do`` recursion at 50 levels
+            # (DrawObject.java:84-89) to prevent a maliciously-crafted
+            # PDF that nests ``/XObject /Fm0 = <stream with Do /Fm0>``
+            # from blowing the Python stack. We mirror that exact limit.
+            if self._form_x_object_depth >= self._form_x_object_depth_limit:
+                _log.warning(
+                    "rendering: Form XObject recursion depth %d exceeds "
+                    "limit %d; skipping nested Do %s",
+                    self._form_x_object_depth,
+                    self._form_x_object_depth_limit,
+                    name.name,
+                )
+                return
+            self._form_x_object_depth += 1
+            try:
+                if self._is_transparency_group(xobject):
+                    self._render_transparency_group(xobject)
+                else:
+                    self._render_form_xobject(xobject)
+            finally:
+                self._form_x_object_depth -= 1
             return
+
+    def _annotation_should_skip(self, annotation: Any) -> bool:
+        """Mirror upstream ``PageDrawer.shouldSkipAnnotation`` —
+        consult the annotation's visibility flags against the active
+        render destination so widgets that opt out of the current
+        target are dropped before their appearance is resolved.
+
+        Skip rules (per PDF 32000-1 §12.5.3):
+        - ``/F`` bit 2 (Hidden) — never display the annotation.
+        - ``/F`` bit 6 (NoView) — skip for View / Export destinations.
+        - ``/F`` bit 3 (Print=false) — skip when destination is Print.
+        - Unknown subtypes with ``/F`` bit 1 (Invisible) set.
+        """
+        destination = getattr(self, "_active_destination", None)
+        if destination is None:
+            destination = self._default_destination
+        if isinstance(destination, RenderDestination):
+            destination = destination.value
+        try:
+            if annotation.is_hidden():
+                return True
+            if destination == "Print" and not annotation.is_printed():
+                return True
+            if destination in ("View", "Export") and annotation.is_no_view():
+                return True
+        except Exception:  # noqa: BLE001 — defensive: malformed flags
+            return False
+        # Unknown subtypes with the Invisible bit set are dropped per spec.
+        if annotation.__class__.__name__ == "PDAnnotationUnknown":
+            try:
+                if annotation.is_invisible():
+                    return True
+            except Exception:  # noqa: BLE001
+                pass
+        return False
+
+    def _render_annotation(self, annotation: Any) -> None:
+        """Render a single annotation's Normal Appearance.
+
+        Mirrors upstream ``PageDrawer.showAnnotation`` →
+        ``PDFStreamEngine.processAnnotation`` (PageDrawer.java line 1550
+        and PDFStreamEngine.java line 321):
+
+        1. Honour ``shouldSkipAnnotation`` so Hidden / NoView / Print
+           flags drop the annotation before any work happens.
+        2. Resolve the Normal Appearance stream
+           (``annotation.get_normal_appearance_stream()``); when absent,
+           try ``construct_appearances`` and re-resolve. Annotations
+           with no appearance (e.g. plain Link annotations) are
+           silently skipped — matches upstream's no-op path.
+        3. Compute the transform that maps the appearance's ``/BBox``
+           (after its ``/Matrix``) onto the annotation's ``/Rect``.
+        4. Push a graphics state, concat the transform onto the CTM,
+           clip to ``/BBox``, switch resources to the appearance's
+           ``/Resources``, walk the appearance content stream.
+        5. Pop graphics state and restore resources.
+        """
+        if self._annotation_should_skip(annotation):
+            return
+        # Resolve the normal appearance stream. If absent, give the
+        # annotation one chance to synthesise one (upstream calls
+        # ``annotation.constructAppearances(renderer.document)``).
+        try:
+            appearance = annotation.get_normal_appearance_stream()
+        except Exception as exc:  # noqa: BLE001
+            _log.debug("annotation: cannot resolve appearance: %s", exc)
+            return
+        if appearance is None:
+            construct = getattr(annotation, "construct_appearances", None)
+            if callable(construct):
+                try:
+                    try:
+                        construct(self._document)
+                    except TypeError:
+                        construct()
+                    appearance = annotation.get_normal_appearance_stream()
+                except Exception as exc:  # noqa: BLE001
+                    _log.debug(
+                        "annotation: construct_appearances failed: %s", exc
+                    )
+                    appearance = None
+        if appearance is None:
+            return
+        # Annotation rectangle in user space.
+        try:
+            rect = annotation.get_rectangle()
+        except Exception:  # noqa: BLE001
+            return
+        if rect is None:
+            return
+        # Appearance bounding box + matrix (defaults to identity).
+        try:
+            bbox = appearance.get_bbox()
+        except Exception:  # noqa: BLE001
+            return
+        if bbox is None:
+            return
+        # PDFBOX-4783: zero-sized rectangles are not valid — skip silently
+        # so a malformed annotation can't crash the page render.
+        if rect.get_width() <= 0 or rect.get_height() <= 0:
+            return
+        if bbox.get_width() <= 0 or bbox.get_height() <= 0:
+            return
+        try:
+            matrix = appearance.get_matrix()
+        except Exception:  # noqa: BLE001
+            matrix = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+        if matrix is None or len(matrix) < 6:
+            matrix = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+        m_appear: _Matrix = (
+            float(matrix[0]),
+            float(matrix[1]),
+            float(matrix[2]),
+            float(matrix[3]),
+            float(matrix[4]),
+            float(matrix[5]),
+        )
+        # Compute the transformed bounding box (the axis-aligned bounds
+        # of the four bbox corners after applying ``m_appear``). Mirrors
+        # upstream's ``bbox.transform(matrix).getBounds2D()``.
+        x1 = bbox.get_lower_left_x()
+        y1 = bbox.get_lower_left_y()
+        x2 = bbox.get_upper_right_x()
+        y2 = bbox.get_upper_right_y()
+        corners = [(x1, y1), (x2, y1), (x2, y2), (x1, y2)]
+        transformed_xs: list[float] = []
+        transformed_ys: list[float] = []
+        for cx, cy in corners:
+            tx = m_appear[0] * cx + m_appear[2] * cy + m_appear[4]
+            ty = m_appear[1] * cx + m_appear[3] * cy + m_appear[5]
+            transformed_xs.append(tx)
+            transformed_ys.append(ty)
+        tb_x = min(transformed_xs)
+        tb_y = min(transformed_ys)
+        tb_w = max(transformed_xs) - tb_x
+        tb_h = max(transformed_ys) - tb_y
+        if tb_w <= 0 or tb_h <= 0:
+            return
+        # Build matrix ``a`` that scales/translates the transformed
+        # appearance box onto the annotation rectangle (upstream
+        # PDFStreamEngine.processAnnotation lines 343-346):
+        #   a = T(rect.llx, rect.lly) * S(rect.w / tb.w, rect.h / tb.h)
+        #       * T(-tb.x, -tb.y)
+        sx = rect.get_width() / tb_w
+        sy = rect.get_height() / tb_h
+        a_matrix: _Matrix = (
+            sx,
+            0.0,
+            0.0,
+            sy,
+            rect.get_lower_left_x() - tb_x * sx,
+            rect.get_lower_left_y() - tb_y * sy,
+        )
+        # Concatenate ``a`` with the appearance's own ``/Matrix`` — see
+        # PDFBox-3083: the combined transform is ``aa = a * matrix``
+        # (upstream's ``Matrix.concatenate(a, matrix)``). Our ``_matmul``
+        # convention applies the right argument first then the left, so
+        # ``_matmul(a, m_appear)`` yields the correct composition.
+        aa = _matmul(a_matrix, m_appear)
+        # Save GS + resources, push the transform, clip to bbox, then
+        # walk the appearance stream's bytes.
+        self._push_gs()
+        prev_resources = self._resources
+        try:
+            self._gs.ctm = _matmul(aa, self._gs.ctm)
+            # Clip to the appearance's /BBox in pre-transform space.
+            self._subpaths = []
+            self._current_subpath = None
+            self._start_subpath(x1, y1)
+            assert self._current_subpath is not None
+            self._current_subpath.append(("L", x2, y1))
+            self._current_subpath.append(("L", x2, y2))
+            self._current_subpath.append(("L", x1, y2))
+            self._current_subpath.append(("Z",))
+            self._pending_clip = "W"
+            self._apply_pending_clip(default_even_odd=False)
+            self._reset_path()
+            # Switch resources to the appearance's /Resources if any.
+            try:
+                form_res = appearance.get_resources()
+            except Exception:  # noqa: BLE001
+                form_res = None
+            if form_res is not None:
+                self._resources = form_res
+            # Walk the appearance content stream.
+            try:
+                cos_stream = appearance.get_cos_object()
+            except Exception:  # noqa: BLE001
+                cos_stream = None
+            if isinstance(cos_stream, COSStream):
+                try:
+                    data = cos_stream.to_byte_array()
+                except Exception as exc:  # noqa: BLE001
+                    _log.debug(
+                        "annotation: cannot decode appearance stream: %s", exc
+                    )
+                    data = b""
+                if data:
+                    self._process_form_bytes(data)
+        finally:
+            self._resources = prev_resources
+            self._pop_gs()
 
     def _render_form_xobject(self, form: Any) -> None:
         """Render a Form XObject by recursing into its content stream.
@@ -4662,21 +5389,123 @@ class PDFRenderer(PDFStreamEngine):
                 data = src.read()
             return Image.open(io.BytesIO(data)).convert("RGB")
 
-        # Raw raster path: 8 bpc DeviceRGB or DeviceGray only.
+        # Raw raster path. ``PDColorSpace`` wrappers expose
+        # ``get_name()`` (the spec colour-space name, e.g.
+        # ``"DeviceRGB"`` / ``"ICCBased"`` / ``"Indexed"`` /
+        # ``"Separation"`` / ``"DeviceN"``) and ``to_rgb_image(raster,
+        # w, h)`` for the generic sample-through-transform conversion.
+        # Direct ``DeviceRGB`` / ``DeviceGray`` cases build the PIL
+        # image straight from the bytes (fastest path); every other
+        # colour space (Indexed, ICCBased, Separation, DeviceN, CalRGB,
+        # CalGray, Lab) is routed through the typed wrapper's transform.
+        #
+        # Wave 1385 reworked colour-space dispatch — the old
+        # ``image.get_color_space().name`` pattern raised
+        # ``AttributeError`` on every non-``Device*`` colour space
+        # because the typed wrappers don't expose a literal ``.name``
+        # attribute; the exception fell into the outer ``_op_do``
+        # ``except`` and the image was silently dropped. Mirrors
+        # upstream ``PageDrawer.drawImage`` which routes through
+        # ``PDColorSpace.toRGBImage``.
         bpc = image.get_bits_per_component()
         if bpc not in (8, -1):  # -1 means absent → assume 8
             return None
-        cs_name = image.get_color_space()
-        cs = cs_name.name if cs_name is not None else None
+        try:
+            cs = image.get_color_space()
+        except Exception:  # noqa: BLE001
+            cs = None
+        cs_name = cs.get_name() if cs is not None else None
         with image.create_input_stream() as src:
             data = src.read()
-        if cs == "DeviceRGB" or (cs is None and len(data) >= width * height * 3):
-            return Image.frombytes("RGB", (width, height), data[: width * height * 3])
-        if cs == "DeviceGray":
-            return Image.frombytes("L", (width, height), data[: width * height]).convert(
-                "RGB"
+        if cs_name == "DeviceRGB" or (
+            cs_name is None and len(data) >= width * height * 3
+        ):
+            return Image.frombytes(
+                "RGB", (width, height), data[: width * height * 3]
             )
+        if cs_name == "DeviceGray":
+            return Image.frombytes(
+                "L", (width, height), data[: width * height]
+            ).convert("RGB")
+        if cs is not None:
+            to_rgb_image = getattr(cs, "to_rgb_image", None)
+            if callable(to_rgb_image):
+                try:
+                    result = to_rgb_image(data, width, height)
+                except Exception as exc:  # noqa: BLE001
+                    _log.debug(
+                        "rendering: %s.to_rgb_image failed: %s",
+                        type(cs).__name__,
+                        exc,
+                    )
+                    return None
+                if isinstance(result, Image.Image):
+                    return result.convert("RGB")
         return None
+
+    def _paint_stencil_mask(self, image: Any) -> None:
+        """Paint a stencil-mask image XObject in the current non-stroking
+        colour. Mirrors upstream ``PageDrawer.drawImage`` (lines
+        1078-1244) which detects ``isStencil()`` and feeds the 1-bit
+        matte into a coloured-mask paint.
+
+        Per PDF spec §8.9.5.4, a stencil image (``/ImageMask true``)
+        sample bytes are a 1-bit-per-pixel matte: a ``0`` bit means the
+        pixel is *opaque* and is painted with the current non-stroking
+        colour; a ``1`` bit means the pixel is *transparent* and the
+        backdrop shows through (the ``/Decode`` array can invert this —
+        the default for a stencil is ``[0 1]``).
+
+        Steps:
+
+        1. Decode the 1-bit matte to an 8-bit alpha plane via
+           :func:`_unpack_sub_byte_samples` (existing helper).
+        2. Apply ``/Decode`` semantics: a default ``[0 1]`` means
+           sample-0 → 255 (opaque) and sample-1 → 0 (transparent).
+           When ``/Decode [1 0]`` is supplied the polarity is swapped.
+        3. Build an RGBA image where every pixel carries the current
+           non-stroking RGB colour and the alpha is the decoded matte.
+        4. Hand that off to :meth:`_paste_image` so the existing CTM /
+           clip / blend / SMask pipeline still runs on the stencil
+           output exactly as it would for an inline-coloured image.
+        """
+        from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (  # noqa: PLC0415
+            _unpack_sub_byte_samples,
+        )
+
+        width = int(image.get_width())
+        height = int(image.get_height())
+        if width <= 0 or height <= 0:
+            return
+        bpc = image.get_bits_per_component()
+        if bpc not in (1, -1):
+            # Stencils are spec-mandated 1 bpc; reject malformed ones.
+            return
+        with image.create_input_stream() as src:
+            data = src.read()
+        samples = _unpack_sub_byte_samples(data, width, height, 1)
+        if samples is None:
+            return
+        # Apply /Decode. Spec default for a stencil is [0 1] → 0 paints,
+        # 1 is transparent. [1 0] reverses (0 transparent, 1 paints).
+        decode = image.get_decode()
+        if decode is not None and len(decode) >= 2 and decode[0] > decode[1]:
+            opaque_sample = 1
+        else:
+            opaque_sample = 0
+        # Build the per-pixel alpha plane (255 where the stencil is
+        # opaque, 0 elsewhere).
+        alpha_bytes = bytearray(width * height)
+        for i, s in enumerate(samples):
+            alpha_bytes[i] = 255 if s == opaque_sample else 0
+        alpha = Image.frombytes("L", (width, height), bytes(alpha_bytes))
+        # Tint every pixel with the active non-stroking colour and
+        # apply the matte as the alpha channel; the paste path then
+        # alpha-composites onto the page canvas.
+        r, g, b = self._gs.fill_rgb
+        rgba = Image.new("RGBA", (width, height), (r, g, b, 0))
+        rgba.putalpha(alpha)
+        self._paste_image(rgba)
 
     def _paste_image(self, pil_image: Image.Image) -> None:
         """Paste ``pil_image`` onto the canvas honouring the current CTM.
@@ -4864,16 +5693,37 @@ class PDFRenderer(PDFStreamEngine):
             return
         self._paste_image(pil_image)
 
-    @staticmethod
     def _decode_inline_image(
-        params: COSDictionary, data: bytes
+        self, params: COSDictionary | None = None, data: bytes | None = None
     ) -> Image.Image | None:
         """Build a PIL image from inline-image parameters + bytes.
 
         Inline-image dictionaries use abbreviated keys per PDF spec
-        §8.9.7 Table 92 (W/H/CS/BPC/F). We recognise the same subset as
-        :meth:`_decode_image_xobject` for XObject-form images.
+        §8.9.7 Table 92 (W/H/CS/BPC/F). Recognises the same colour-space
+        set as :meth:`_decode_image_xobject` for XObject-form images:
+        DeviceGray, DeviceRGB, DeviceCMYK, Indexed, ICCBased, Separation,
+        DeviceN, and their abbreviated forms (G, RGB, CMYK, I). Per-pixel
+        components are routed through the colour space's ``to_rgb``
+        transform (mirrors upstream ``PDImageXObject.getColorImage`` +
+        ``PDInlineImage`` decode).
+
+        Backwards-compatibility: pre-1385 callers invoked this as a
+        ``@staticmethod`` (``PDFRenderer._decode_inline_image(params,
+        data)``). When that calling form lands here ``self`` arrives as
+        the params dict; we detect it and forward to the bound-method
+        path with ``self._resources`` left implicit (``None`` means
+        only the direct device CSes resolve, which is exactly what the
+        pre-1385 implementation supported).
         """
+        # Pre-1385 static call: ``PDFRenderer._decode_inline_image(
+        # params, data)`` → here ``self == params`` and ``params ==
+        # data``. Detect and dispatch.
+        if not isinstance(self, PDFRenderer):
+            return _decode_inline_image_static(self, params)
+        # Else: instance method form. `params` and `data` are now the
+        # named args.
+        if params is None or data is None:
+            return None
 
         def _expand(key_short: str, key_long: str) -> Any:
             v = params.get_dictionary_object(COSName.get_pdf_name(key_short))
@@ -4931,20 +5781,154 @@ class PDFRenderer(PDFStreamEngine):
         bpc = int(_to_float(bpc_obj)) if bpc_obj is not None else 8
         if bpc != 8:
             return None
-        cs_name = cs_obj.name if isinstance(cs_obj, COSName) else None
-        # Abbreviated colour-space names.
-        cs_abbrev = {"G": "DeviceGray", "RGB": "DeviceRGB", "CMYK": "DeviceCMYK"}
-        if cs_name in cs_abbrev:
-            cs_name = cs_abbrev[cs_name]
-        if cs_name == "DeviceRGB" or (cs_name is None and len(data) >= width * height * 3):
+
+        # Resolve the colour space. Inline images can name the space
+        # directly (DeviceRGB / G / RGB / CMYK / I / …) or reference a
+        # named entry in /Resources/ColorSpace (Indexed, ICCBased,
+        # Separation, DeviceN). Abbreviated names map straight to the
+        # built-in singletons; everything else routes through
+        # :meth:`_resolve_color_space` for resource lookup.
+        cs_abbrev = {
+            "G": "DeviceGray",
+            "RGB": "DeviceRGB",
+            "CMYK": "DeviceCMYK",
+            "I": "Indexed",
+        }
+        colour_space: Any | None = None
+        cs_name: str | None = None
+        if isinstance(cs_obj, COSName):
+            cs_name = cs_abbrev.get(cs_obj.name, cs_obj.name)
+            if cs_name in _BUILTIN_DEVICE_COLOR_SPACES:
+                colour_space = _BUILTIN_DEVICE_COLOR_SPACES[cs_name]
+            else:
+                # Try the resources lookup with the *unabbreviated* name
+                # so /Resources/ColorSpace entries resolve.
+                resolved = self._resolve_color_space(
+                    COSName.get_pdf_name(cs_name)
+                )
+                if resolved is not None:
+                    colour_space = resolved
+        elif cs_obj is not None:
+            # Direct CS array form (e.g. ``[/Indexed /DeviceRGB 255 < … >]``,
+            # ``[/ICCBased <stream>]``, ``[/Separation /Name /DeviceCMYK <fn>]``).
+            try:
+                from pypdfbox.pdmodel.graphics.color.pd_color_space import (  # noqa: PLC0415
+                    PDColorSpace,
+                )
+
+                colour_space = PDColorSpace.create(cs_obj)
+            except Exception as exc:  # noqa: BLE001
+                _log.debug(
+                    "rendering: inline image CS array failed to resolve: %s",
+                    exc,
+                )
+                colour_space = None
+
+        # Default colour space when ``/CS`` is absent: DeviceRGB if the
+        # payload looks 3-channel, else DeviceGray. Mirrors the legacy
+        # behaviour from before colour-space dispatch landed.
+        if colour_space is None:
+            if cs_name is None and len(data) >= width * height * 3:
+                colour_space = _BUILTIN_DEVICE_COLOR_SPACES["DeviceRGB"]
+            elif cs_name is None:
+                colour_space = _BUILTIN_DEVICE_COLOR_SPACES["DeviceGray"]
+            else:
+                _log.debug(
+                    "rendering: inline image CS %s did not resolve", cs_name
+                )
+                return None
+
+        # Fast paths for the device singletons — avoid the per-pixel
+        # Python loop that the generic path would take.
+        builtin_gray = _BUILTIN_DEVICE_COLOR_SPACES["DeviceGray"]
+        builtin_rgb = _BUILTIN_DEVICE_COLOR_SPACES["DeviceRGB"]
+        builtin_cmyk = _BUILTIN_DEVICE_COLOR_SPACES["DeviceCMYK"]
+        if colour_space is builtin_rgb:
             return Image.frombytes(
                 "RGB", (width, height), data[: width * height * 3]
             )
-        if cs_name == "DeviceGray":
+        if colour_space is builtin_gray:
             return Image.frombytes(
                 "L", (width, height), data[: width * height]
             ).convert("RGB")
-        return None
+        if colour_space is builtin_cmyk:
+            # PIL native CMYK -> RGB conversion (perceptual, no profile).
+            return Image.frombytes(
+                "CMYK", (width, height), data[: width * height * 4]
+            ).convert("RGB")
+
+        # Indexed: 1 byte per pixel, palette lookup via
+        # ``PDIndexed.to_rgb_image`` (library-first Pillow palette path).
+        to_rgb_image = getattr(colour_space, "to_rgb_image", None)
+        if callable(to_rgb_image):
+            try:
+                rgb_image = to_rgb_image(
+                    data[: width * height], width, height
+                )
+            except Exception as exc:  # noqa: BLE001
+                _log.debug(
+                    "rendering: inline image %s.to_rgb_image failed: %s",
+                    type(colour_space).__name__,
+                    exc,
+                )
+                rgb_image = None
+            if rgb_image is not None:
+                # Some palette paths return raw "P" or "L"; ensure RGB.
+                if rgb_image.mode != "RGB":
+                    rgb_image = rgb_image.convert("RGB")
+                return rgb_image
+
+        # Generic multi-channel path — walk pixels through the colour
+        # space's ``to_rgb`` and stage to an RGB Pillow image. Handles
+        # ICCBased / Separation / DeviceN / CalGray / CalRGB / Lab.
+        components_count = 0
+        try:
+            components_count = int(colour_space.get_number_of_components())
+        except Exception:  # noqa: BLE001
+            components_count = 0
+        if components_count <= 0:
+            _log.debug(
+                "rendering: inline image %s reports zero components",
+                type(colour_space).__name__,
+            )
+            return None
+        expected = width * height * components_count
+        if len(data) < expected:
+            return None
+        pixels = bytearray(width * height * 3)
+        i = 0
+        out = 0
+        to_rgb = getattr(colour_space, "to_rgb", None)
+        if not callable(to_rgb):
+            return None
+        try:
+            for _ in range(width * height):
+                comps = tuple(
+                    data[i + k] / 255.0 for k in range(components_count)
+                )
+                i += components_count
+                rgb_floats = to_rgb(comps)
+                if (
+                    rgb_floats is None
+                    or not isinstance(rgb_floats, (tuple, list))
+                    or len(rgb_floats) < 3
+                ):
+                    pixels[out] = 0
+                    pixels[out + 1] = 0
+                    pixels[out + 2] = 0
+                else:
+                    pixels[out] = _clamp_byte(float(rgb_floats[0]))
+                    pixels[out + 1] = _clamp_byte(float(rgb_floats[1]))
+                    pixels[out + 2] = _clamp_byte(float(rgb_floats[2]))
+                out += 3
+        except Exception as exc:  # noqa: BLE001
+            _log.debug(
+                "rendering: inline image %s per-pixel to_rgb failed: %s",
+                type(colour_space).__name__,
+                exc,
+            )
+            return None
+        return Image.frombytes("RGB", (width, height), bytes(pixels))
 
     # ------------------------------------------------------------------
     # text operators (BT/ET, Tf, Tc/Tw/TL/Tz/Ts, Td/TD/Tm/T*, Tj/TJ/'/")
@@ -4955,11 +5939,79 @@ class PDFRenderer(PDFStreamEngine):
         # to the identity. Font/size/etc. carry over from previous BT.
         self._gs.text_matrix = _IDENTITY
         self._gs.text_line_matrix = _IDENTITY
+        # Text rendering modes 4..7 accumulate glyph outlines for the
+        # next ET to intersect into the GS clip — start fresh per spec
+        # PDF 32000-1 §9.3.6 ("the clipping path … is established at the
+        # end of the text object that initiated it").
+        self._text_clip_paths = []
 
     def _op_end_text(self, _op: Any, _operands: list[COSBase]) -> None:
-        # Nothing to do — text state lives on GS and persists for the GS
-        # scope, but text matrices are reset by the next BT.
-        pass
+        # PDF 32000-1 §9.3.6: at ET, if any glyph was shown under a Tr
+        # mode in {4, 5, 6, 7}, the union of those glyph outlines becomes
+        # an addition to the current clipping path. We intersect with any
+        # existing GS clip so subsequent paint operators are clipped to
+        # the union of all such glyph outlines.
+        if self._text_clip_paths:
+            self._commit_text_clip()
+        self._text_clip_paths = []
+
+    def _commit_text_clip(self) -> None:
+        """Rasterise the union of accumulated text-clip paths into an
+        alpha mask and intersect with the active GS clip. Called at
+        ``ET`` whenever the BT/ET block invoked a clipping ``Tr`` mode
+        (4..7)."""
+        if self._image is None or not self._text_clip_paths:
+            return
+        try:
+            import skia  # type: ignore[import-not-found]  # noqa: PLC0415
+        except Exception as exc:  # noqa: BLE001
+            _log.debug("rendering: skia unavailable for text clip commit: %s", exc)
+            return
+        width_px, height_px = self._image.size
+        # Union all paths into one composite path (skia handles overlapping
+        # subpaths via the non-zero / even-odd rule on the resulting
+        # `addPath`-merged outline). PDF text-clip uses the non-zero rule
+        # per upstream PageDrawer.endText -> Type3PageDrawer behaviour.
+        union = skia.Path()
+        for sub in self._text_clip_paths:
+            union.addPath(sub)
+        union.setFillType(skia.PathFillType.kWinding)
+        bounds = union.getBounds()
+        if (
+            bounds.width() <= 0.0
+            or bounds.height() <= 0.0
+            or not (math.isfinite(bounds.width())
+                    and math.isfinite(bounds.height()))
+        ):
+            return
+        # Rasterise directly — the path is already in device pixels so
+        # we do not need the page CTM here.
+        row_bytes = width_px * 4
+        pixels = bytearray(width_px * height_px * 4)
+        info = skia.ImageInfo.Make(
+            width_px, height_px,
+            skia.kRGBA_8888_ColorType,
+            skia.kUnpremul_AlphaType,
+        )
+        surface = skia.Surface.MakeRasterDirect(info, pixels, row_bytes)
+        if surface is None:  # pragma: no cover - skia always succeeds
+            return
+        canvas = surface.getCanvas()
+        paint = skia.Paint(
+            Color=skia.ColorSetARGB(255, 255, 255, 255),
+            Style=skia.Paint.kFill_Style,
+            AntiAlias=True,
+        )
+        canvas.drawPath(union, paint)
+        surface.flushAndSubmit()
+        rgba = Image.frombytes(
+            "RGBA", (width_px, height_px), bytes(pixels),
+        )
+        new_clip = rgba.split()[3]
+        existing = self._gs.clip_mask
+        if existing is not None:
+            new_clip = ImageChops.multiply(existing, new_clip)
+        self._gs.clip_mask = new_clip
 
     def _op_set_font(self, _op: Any, operands: list[COSBase]) -> None:
         if len(operands) < 2:
@@ -5026,6 +6078,25 @@ class PDFRenderer(PDFStreamEngine):
         if not operands:
             return
         self._gs.text_rise = _to_float(operands[0])
+
+    def _op_set_text_rendering_mode(
+        self, _op: Any, operands: list[COSBase]
+    ) -> None:
+        """``Tr`` — set the text rendering mode (PDF 32000-1 §9.3.6 /
+        Table 106). Operand is an integer in 0..7; values outside that
+        range are clamped (mirrors upstream
+        ``SetTextRenderingMode.process`` which calls
+        ``RenderingMode.fromInt`` with a try/catch and falls back to
+        ``FILL`` on out-of-range, but PDFBox swallows the
+        IndexOutOfBoundsException with a debug log)."""
+        if not operands:
+            return
+        mode = int(_to_float(operands[0]))
+        if mode < 0:
+            mode = 0
+        elif mode > 7:
+            mode = 7
+        self._gs.text_rendering_mode = mode
 
     def _op_text_move(self, _op: Any, operands: list[COSBase]) -> None:
         # Td tx ty — translate text-line matrix by (tx, ty); reset text
@@ -5637,18 +6708,91 @@ class PDFRenderer(PDFStreamEngine):
     ) -> None:
         """Fill ``path`` (already in glyph-local em coordinates, scaled to
         unit em via the pen) onto the canvas using ``ctm`` as the affine
-        transform."""
+        transform.
+
+        Back-compat wrapper around :meth:`_paint_glyph_path` for the
+        fill-only call sites. Routes through the mode-aware helper so any
+        active ``Tr`` (text rendering mode) picks up the matching paint
+        dispatch without the caller having to change.
+        """
+        self._paint_glyph_path(path, ctm, rgb)
+
+    def _paint_glyph_path(
+        self,
+        path: aggdraw.Path,
+        ctm: _Matrix,
+        fill_rgb: tuple[int, int, int],
+    ) -> None:
+        """Paint ``path`` according to the current text rendering mode
+        (PDF 32000-1 §9.3.6 / Table 106).
+
+        ``path`` lives in glyph-local em coordinates and is mapped to the
+        device by ``ctm`` (the per-glyph affine already folds in font
+        size + horizontal scaling + rise + text matrix + page CTM).
+
+        Mode dispatch:
+
+        * 0 / 4 — fill (modes 4..7 also accumulate the glyph outline
+          into :attr:`_text_clip_paths` so ``ET`` intersects the union
+          into the GS clip);
+        * 1 / 5 — stroke (uses ``stroke_rgb`` + ``line_width``);
+        * 2 / 6 — fill *then* stroke;
+        * 3 / 7 — invisible (no paint; still records the clip for 7).
+        """
+        mode = self._gs.text_rendering_mode
+        do_fill = mode in (0, 2, 4, 6)
+        do_stroke = mode in (1, 2, 5, 6)
+        do_clip = mode in (4, 5, 6, 7)
+
+        if do_clip:
+            self._accumulate_text_clip_path(path, ctm)
+
+        if not (do_fill or do_stroke):
+            return  # modes 3 / 7 — invisible (clip-only for 7).
+
         clip_mask = self._gs.clip_mask
         if clip_mask is None:
-            assert self._draw is not None
-            self._draw.settransform(_to_pil_affine(ctm))
-            try:
-                self._draw.path(path, None, aggdraw.Brush(rgb))
-            finally:
-                self._draw.settransform()
-            return
+            self._paint_glyph_path_direct(
+                path, ctm, fill_rgb,
+                do_fill=do_fill, do_stroke=do_stroke,
+            )
+        else:
+            self._paint_glyph_path_through_clip(
+                path, ctm, fill_rgb,
+                do_fill=do_fill, do_stroke=do_stroke, clip_mask=clip_mask,
+            )
 
-        # Through-clip: render onto an RGBA layer then composite.
+    def _paint_glyph_path_direct(
+        self,
+        path: aggdraw.Path,
+        ctm: _Matrix,
+        fill_rgb: tuple[int, int, int],
+        *,
+        do_fill: bool,
+        do_stroke: bool,
+    ) -> None:
+        """Paint ``path`` directly onto the canvas (no through-clip)."""
+        assert self._draw is not None
+        brush = aggdraw.Brush(fill_rgb) if do_fill else None
+        pen = self._build_stroke_pen(ctm) if do_stroke else None
+        self._draw.settransform(_to_pil_affine(ctm))
+        try:
+            self._draw.path(path, pen, brush)
+        finally:
+            self._draw.settransform()
+
+    def _paint_glyph_path_through_clip(
+        self,
+        path: aggdraw.Path,
+        ctm: _Matrix,
+        fill_rgb: tuple[int, int, int],
+        *,
+        do_fill: bool,
+        do_stroke: bool,
+        clip_mask: Any,
+    ) -> None:
+        """Paint ``path`` onto a fresh transparent layer then composite
+        through the active GS clip mask."""
         assert self._image is not None
         assert self._draw is not None
         self._draw.flush()
@@ -5656,7 +6800,9 @@ class PDFRenderer(PDFStreamEngine):
         layer_draw = aggdraw.Draw(layer)
         layer_draw.setantialias(True)
         layer_draw.settransform(_to_pil_affine(ctm))
-        layer_draw.path(path, None, aggdraw.Brush(rgb))
+        brush = aggdraw.Brush(fill_rgb) if do_fill else None
+        pen = self._build_stroke_pen(ctm) if do_stroke else None
+        layer_draw.path(path, pen, brush)
         layer_draw.settransform()
         layer_draw.flush()
         layer_alpha = layer.split()[3]
@@ -5665,6 +6811,66 @@ class PDFRenderer(PDFStreamEngine):
         self._image.paste(rgb_layer, (0, 0), combined)
         self._draw = aggdraw.Draw(self._image)
         self._draw.setantialias(True)
+
+    def _build_stroke_pen(self, ctm: _Matrix) -> aggdraw.Pen:
+        """Return an :class:`aggdraw.Pen` configured from the current GS
+        stroke colour + line width.
+
+        The line width on the GS is in **user space** (per PDF 32000-1
+        §8.4.3.2). The per-glyph ``ctm`` we settransform onto the canvas
+        before stroking carries the glyph-local-to-device affine — its
+        scale is roughly ``font_size × page_scale``. Since skia strokes
+        the path *before* the inverse of the canvas transform is applied,
+        the effective stroke width in device pixels is
+        ``pen.width × ctm_scale``. To land in device pixels at the GS
+        line width, we therefore divide the user-space line width by the
+        glyph-local-to-user portion of the transform (``ctm_scale /
+        page_scale``) — which simplifies to using only the
+        page-to-device scale for the pen width.
+
+        The aggdraw shim's pen surface tops out at colour + width;
+        line-cap / line-join / miter-limit / dash-pattern are carried on
+        the GS for parity-test bookkeeping but the shim doesn't apply
+        them at stroke time. Downstream tooling can still read them via
+        the public PDExtendedGraphicsState getters.
+        """
+        ctm_scale = self._approx_scale(ctm)
+        page_scale = self._approx_scale(self._full_ctm())
+        # ``ctm_scale <= 0.0`` is a pathological / degenerate text matrix —
+        # fall back to the page scale only (stroke ends up at user-space
+        # width interpreted in glyph-local units, which is still better
+        # than dividing by zero).
+        ratio = page_scale if ctm_scale <= 0.0 else page_scale / ctm_scale
+        width_px = max(0.5, self._gs.line_width * ratio)
+        return aggdraw.Pen(self._gs.stroke_rgb, width=width_px)
+
+    def _accumulate_text_clip_path(
+        self, path: aggdraw.Path, ctm: _Matrix,
+    ) -> None:
+        """Bake ``path`` (glyph-local em coords) through ``ctm`` into a
+        device-space ``skia.Path`` and append to :attr:`_text_clip_paths`.
+
+        Text rendering modes 4..7 (PDF 32000-1 §9.3.6) add each glyph's
+        outline to the clipping path; the spec says the clip update is
+        deferred until ``ET``. We accumulate raw skia paths here and
+        commit the union in :meth:`_op_end_text`.
+        """
+        try:
+            import skia  # type: ignore[import-not-found]  # noqa: PLC0415
+        except Exception as exc:  # noqa: BLE001
+            _log.debug("rendering: skia unavailable for text clip: %s", exc)
+            return
+        try:
+            sk_path: Any = path._sk  # noqa: SLF001
+        except AttributeError:
+            return
+        # aggdraw's PIL-style affine: (a, b, c, d, e, f) means
+        # x' = a*x + b*y + c ; y' = d*x + e*y + f. Map to skia's MakeAll.
+        a, b, c, d, e, f = _to_pil_affine(ctm)
+        matrix = skia.Matrix.MakeAll(a, b, c, d, e, f, 0.0, 0.0, 1.0)
+        transformed = skia.Path()
+        sk_path.transform(matrix, transformed)
+        self._text_clip_paths.append(transformed)
 
     def _draw_placeholder_box(
         self, ctm: _Matrix, advance_units: float
@@ -6147,6 +7353,7 @@ _DISPATCH: dict[str, Any] = {
     "TL": PDFRenderer._op_set_leading,
     "Tz": PDFRenderer._op_set_horizontal_scaling,
     "Ts": PDFRenderer._op_set_text_rise,
+    "Tr": PDFRenderer._op_set_text_rendering_mode,
     "Td": PDFRenderer._op_text_move,
     "TD": PDFRenderer._op_text_move_set_leading,
     "Tm": PDFRenderer._op_text_matrix,

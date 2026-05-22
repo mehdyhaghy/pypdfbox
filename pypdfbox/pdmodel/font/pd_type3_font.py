@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import IO, TYPE_CHECKING, Any, overload
+from typing import TYPE_CHECKING, Any, overload
 
 from pypdfbox.cos import (
     COSArray,
@@ -461,19 +461,23 @@ class PDType3Font(PDSimpleFont):
 
     # ---------- read_code — single byte ----------
 
-    def read_code(self, input_stream: IO[bytes]) -> int:
-        """Read the next character code as a single byte.
+    def read_code(
+        self,
+        data: bytes | bytearray | memoryview,
+        offset: int = 0,
+    ) -> tuple[int, int]:
+        """Read one character code from ``data`` starting at ``offset``.
 
         Mirrors upstream ``PDType3Font.readCode(InputStream) → in.read()``.
-        Type 3 fonts use 1-byte codes (simple-font convention). Raises
-        :class:`EOFError` when the stream is exhausted (parallels Java's
-        ``read()`` returning ``-1``, which the upstream callers treat as
-        end-of-stream).
+        Type 3 fonts use 1-byte codes (simple-font convention). Returns
+        ``(code, bytes_consumed)`` to match the uniform pypdfbox renderer
+        signature shared by composite (Type0) and simple fonts. At or
+        past end-of-buffer returns ``(0, 0)`` so callers terminate the
+        decode loop (parallels Java's ``read()`` returning ``-1``).
         """
-        b = input_stream.read(1)
-        if not b:
-            raise EOFError("unexpected end of stream while reading Type 3 code")
-        return b[0]
+        if offset < 0 or offset >= len(data):
+            return (0, 0)
+        return (data[offset] & 0xFF, 1)
 
     # ---------- /Encoding parsing helpers ----------
 

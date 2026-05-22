@@ -10,7 +10,6 @@ Exercises the small remaining gaps relative to upstream:
 
 from __future__ import annotations
 
-import io
 from pathlib import Path
 
 import pytest
@@ -126,31 +125,31 @@ def test_get_font_box_font_none_when_not_embedded() -> None:
 
 
 def test_read_code_reads_one_byte_from_bytes() -> None:
-    """``read_code`` accepts raw bytes for caller convenience and returns
-    the integer value of the first byte."""
+    """``read_code`` accepts raw bytes at an offset and returns
+    ``(code, consumed)`` — TrueType simple fonts always consume 1 byte."""
     font = PDTrueTypeFont()
-    assert font.read_code(b"X") == ord("X")
+    assert font.read_code(b"X") == (ord("X"), 1)
 
 
-def test_read_code_reads_one_byte_from_bytesio() -> None:
+def test_read_code_walks_offsets() -> None:
     font = PDTrueTypeFont()
-    stream = io.BytesIO(b"\x41\x42\x43")
-    assert font.read_code(stream) == 0x41
-    assert font.read_code(stream) == 0x42
-    assert font.read_code(stream) == 0x43
-    # End-of-stream returns -1 (mirrors InputStream.read contract).
-    assert font.read_code(stream) == -1
+    data = b"\x41\x42\x43"
+    assert font.read_code(data, 0) == (0x41, 1)
+    assert font.read_code(data, 1) == (0x42, 1)
+    assert font.read_code(data, 2) == (0x43, 1)
+    # Past end of buffer returns (0, 0) — caller terminates the loop.
+    assert font.read_code(data, 3) == (0, 0)
 
 
-def test_read_code_empty_stream_returns_minus_one() -> None:
+def test_read_code_empty_buffer_returns_zero_zero() -> None:
     font = PDTrueTypeFont()
-    assert font.read_code(b"") == -1
+    assert font.read_code(b"") == (0, 0)
 
 
 def test_read_code_accepts_bytearray_and_memoryview() -> None:
     font = PDTrueTypeFont()
-    assert font.read_code(bytearray(b"Z")) == ord("Z")
-    assert font.read_code(memoryview(b"Y")) == ord("Y")
+    assert font.read_code(bytearray(b"Z")) == (ord("Z"), 1)
+    assert font.read_code(memoryview(b"Y")) == (ord("Y"), 1)
 
 
 # ---------- get_path_by_name -------------------------------------------

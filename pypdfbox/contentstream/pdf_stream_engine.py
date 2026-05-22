@@ -1075,25 +1075,61 @@ class PDFStreamEngine:
 
     @staticmethod
     def _decode_codes_via_font(string: bytes, font: Any) -> list[int]:
-        """Drive ``font.read_code`` over a BytesIO of ``string`` until
-        EOF. Returns the list of codes (one per glyph)."""
-        import io as _stdio  # noqa: PLC0415
+        """Drive ``font.read_code`` over ``string`` until exhausted.
 
+        ``read_code`` follows pypdfbox's uniform signature:
+        ``(data, offset) -> (code, consumed)`` (composite or simple fonts).
+        Older test doubles may still implement the legacy stream form
+        ``read_code(buf) -> int`` — detected via ``TypeError`` and routed
+        through a ``BytesIO`` shim so they keep working. Returns the list
+        of codes (one per glyph)."""
         codes: list[int] = []
-        buf = _stdio.BytesIO(string)
-        while True:
-            pos = buf.tell()
+        offset = 0
+        n = len(string)
+        legacy_stream_form: bool | None = None
+        legacy_buf: Any | None = None
+        while offset < n:
+            if legacy_stream_form is True:
+                # Legacy stream-form font: stash a single BytesIO and walk
+                # it via the stream-style return-int API.
+                if legacy_buf is None:
+                    import io as _stdio  # noqa: PLC0415
+
+                    legacy_buf = _stdio.BytesIO(bytes(string[offset:]))
+                pos = legacy_buf.tell()
+                try:
+                    code = font.read_code(legacy_buf)
+                except (OSError, EOFError, ValueError):
+                    break
+                if code is None:
+                    break
+                if legacy_buf.tell() == pos:
+                    break
+                codes.append(int(code))
+                offset += legacy_buf.tell() - pos
+                continue
             try:
-                code = font.read_code(buf)
+                result = font.read_code(string, offset)
+            except TypeError:
+                # Legacy stream-form font discovered.
+                legacy_stream_form = True
+                continue
             except (OSError, EOFError, ValueError):
                 break
-            if code is None:
+            if result is None:
                 break
-            if buf.tell() == pos:
-                # No progress — break to avoid infinite loop on a
-                # misbehaving font implementation.
-                break
-            codes.append(int(code))
+            # Tuple form: (code, consumed).
+            if isinstance(result, tuple):
+                code, consumed = result
+                if consumed <= 0:
+                    break
+                codes.append(int(code))
+                offset += consumed
+            else:
+                # Stream-style font that ignored the offset arg — treat
+                # the return as a single-byte code at ``offset``.
+                codes.append(int(result))
+                offset += 1
         return codes
 
     @staticmethod

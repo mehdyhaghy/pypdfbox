@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import re
 from typing import TYPE_CHECKING
 
@@ -9,8 +8,6 @@ from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger, COSName,
 from .standard14_fonts import Standard14Fonts
 
 if TYPE_CHECKING:
-    from typing import BinaryIO
-
     from pypdfbox.fontbox.cmap.cmap import CMap
     from pypdfbox.fontbox.encoding.glyph_list import GlyphList
     from pypdfbox.pdmodel.pd_rectangle import PDRectangle
@@ -680,12 +677,19 @@ class PDFont:
             "encode_codepoint must be implemented by a concrete subclass"
         )
 
-    def read_code(self, input_stream: BinaryIO) -> int:
-        """Read the next character code from ``input_stream``.
+    def read_code(
+        self,
+        data: bytes | bytearray | memoryview,
+        offset: int = 0,
+    ) -> tuple[int, int]:
+        """Read one character code from ``data`` starting at ``offset``.
 
-        Mirrors upstream ``abstract int readCode(InputStream)``. Codes
-        may be 1–4 bytes long depending on the font subtype's CMap. Base
-        implementation raises :class:`NotImplementedError`.
+        Returns ``(code, bytes_consumed)``. Mirrors upstream
+        ``abstract int readCode(InputStream)`` in spirit, but the Python
+        port uses a buffer + offset (so the renderer can dispatch through
+        a single uniform signature across composite and simple fonts).
+        Codes may be 1–4 bytes long depending on the font subtype's CMap.
+        Base implementation raises :class:`NotImplementedError`.
         """
         raise NotImplementedError(
             "read_code must be implemented by a concrete subclass"
@@ -699,11 +703,15 @@ class PDFont:
         that have a tight string-level shortcut may override.
         """
         data = self.encode(text)
-        stream = io.BytesIO(data)
         total = 0.0
-        while stream.tell() < len(data):
-            code = self.read_code(stream)
+        offset = 0
+        n = len(data)
+        while offset < n:
+            code, consumed = self.read_code(data, offset)
+            if consumed <= 0:
+                break
             total += self.get_width(code)
+            offset += consumed
         return total
 
     # ---------- to_unicode ----------

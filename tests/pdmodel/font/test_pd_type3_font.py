@@ -5,8 +5,6 @@
 
 from __future__ import annotations
 
-import io
-
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName, COSStream
@@ -434,22 +432,23 @@ def test_get_displacement_zero_for_unmapped_code() -> None:
 
 
 def test_read_code_returns_single_byte() -> None:
-    # Mirrors upstream PDType3Font.readCode -> in.read().
+    # Mirrors upstream PDType3Font.readCode -> in.read(), adapted to the
+    # uniform pypdfbox (bytes, offset) -> (code, consumed) signature.
     font = PDType3Font()
-    assert font.read_code(io.BytesIO(b"\x41")) == 0x41
+    assert font.read_code(b"\x41") == (0x41, 1)
 
 
-def test_read_code_consumes_one_byte_of_stream() -> None:
+def test_read_code_walks_offsets() -> None:
     font = PDType3Font()
-    stream = io.BytesIO(b"\x41\x42")
-    assert font.read_code(stream) == 0x41
-    assert font.read_code(stream) == 0x42
+    data = b"\x41\x42"
+    assert font.read_code(data, 0) == (0x41, 1)
+    assert font.read_code(data, 1) == (0x42, 1)
 
 
-def test_read_code_raises_at_eof() -> None:
+def test_read_code_eof_returns_zero_zero() -> None:
     font = PDType3Font()
-    with pytest.raises(EOFError):
-        font.read_code(io.BytesIO(b""))
+    assert font.read_code(b"") == (0, 0)
+    assert font.read_code(b"\x00", 1) == (0, 0)
 
 
 # ---------- get_path / get_font_box_font / encode_codepoint / read_encoding_from_font ----------

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 import logging
 import secrets
 import string
@@ -562,23 +561,24 @@ class PDTrueTypeFont(PDSimpleFont):
         """
         return self.get_true_type_font()
 
-    def read_code(self, stream: BinaryIO | bytes | bytearray | memoryview) -> int:
-        """Read one byte from ``stream`` and return its integer code.
+    def read_code(
+        self,
+        data: bytes | bytearray | memoryview,
+        offset: int = 0,
+    ) -> tuple[int, int]:
+        """Read one character code from ``data`` starting at ``offset``.
 
         Mirrors upstream ``PDTrueTypeFont.readCode(InputStream)`` —
         TrueType simple fonts use single-byte character codes, so the
-        reader is just a one-byte pull. Accepts either a binary file
-        object (anything with a ``.read(int)`` method) or a raw
-        ``bytes`` / ``bytearray`` / ``memoryview`` for caller
-        convenience. Returns ``-1`` at end-of-stream to mirror Java's
-        ``InputStream.read`` contract.
+        reader is just a one-byte pull. Returns ``(code, bytes_consumed)``
+        to match the uniform pypdfbox renderer signature shared by
+        composite (Type0) and simple (Type1 / Type1C / TrueType / Type3)
+        fonts. At or past end-of-buffer returns ``(0, 0)`` so callers
+        terminate the decode loop.
         """
-        if isinstance(stream, (bytes, bytearray, memoryview)):
-            stream = io.BytesIO(bytes(stream))
-        chunk = stream.read(1)
-        if not chunk:
-            return -1
-        return chunk[0]
+        if offset < 0 or offset >= len(data):
+            return (0, 0)
+        return (data[offset] & 0xFF, 1)
 
     def get_gid_to_code(self) -> dict[int, int]:
         """Inverted ``glyph id → first character code`` mapping.

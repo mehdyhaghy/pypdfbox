@@ -489,12 +489,10 @@ def test_encode_empty_string_returns_empty_bytes_on_bare_base() -> None:
 
 
 def test_read_code_raises_not_implemented_on_bare_base() -> None:
-    import io as _io
-
     import pytest
 
     with pytest.raises(NotImplementedError):
-        _BarePDFont().read_code(_io.BytesIO(b"\x41"))
+        _BarePDFont().read_code(b"\x41")
 
 
 def test_get_width_from_font_raises_not_implemented_on_bare_base() -> None:

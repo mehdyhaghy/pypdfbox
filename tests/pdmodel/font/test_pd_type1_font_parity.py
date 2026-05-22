@@ -322,29 +322,26 @@ def test_has_glyph_false_when_no_program() -> None:
 # ---------- read_code ----------
 
 
-def test_read_code_reads_single_byte_from_stream() -> None:
-    import io as _io
-
-    stream = _io.BytesIO(b"\x41\x42\x43")
+def test_read_code_reads_single_byte_walking_offsets() -> None:
     font = PDType1Font()
-    assert font.read_code(stream) == 0x41
-    assert font.read_code(stream) == 0x42
-    assert font.read_code(stream) == 0x43
+    data = b"\x41\x42\x43"
+    assert font.read_code(data, 0) == (0x41, 1)
+    assert font.read_code(data, 1) == (0x42, 1)
+    assert font.read_code(data, 2) == (0x43, 1)
 
 
-def test_read_code_returns_minus_one_at_eof() -> None:
-    import io as _io
-
+def test_read_code_past_end_returns_zero_zero() -> None:
     font = PDType1Font()
-    assert font.read_code(_io.BytesIO(b"")) == -1
+    assert font.read_code(b"") == (0, 0)
+    assert font.read_code(b"\x00", 1) == (0, 0)
 
 
 def test_read_code_accepts_bytes_argument() -> None:
-    """For caller convenience ``read_code`` also accepts a bytes
-    payload — it wraps it in BytesIO internally."""
+    """``read_code`` walks a bytes buffer at the given offset and
+    returns ``(code, consumed)``."""
     font = PDType1Font()
-    assert font.read_code(b"\x7f") == 0x7F
-    assert font.read_code(b"") == -1
+    assert font.read_code(b"\x7f") == (0x7F, 1)
+    assert font.read_code(b"") == (0, 0)
 
 
 # ---------- get_type1_font alias ----------

@@ -25,9 +25,10 @@ class _Stub(PDFont):
     def encode_codepoint(self, unicode: int) -> bytes:
         return bytes([unicode & 0xFF])
 
-    def read_code(self, input_stream) -> int:
-        b = input_stream.read(1)
-        return b[0] if b else -1
+    def read_code(self, data, offset: int = 0) -> tuple[int, int]:
+        if offset < 0 or offset >= len(data):
+            return (0, 0)
+        return (data[offset] & 0xFF, 1)
 
     def get_width_from_font(self, code: int) -> float:
         return 0.0
