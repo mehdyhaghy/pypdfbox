@@ -102,6 +102,13 @@ class _GState:
     # that don't yet support the requested pattern type.
     fill_pattern: Any | None = None
     stroke_pattern: Any | None = None
+    # ---- active colour space (PDF 32000-1 §8.6) ----
+    # Tracks the colour space last set by ``cs`` / ``CS`` so the next
+    # ``scn`` / ``SCN`` can run its component vector through the right
+    # ``to_rgb`` transform. ``None`` means the renderer falls back to the
+    # spec default (DeviceGray) until a ``cs`` / ``CS`` runs.
+    fill_color_space: Any | None = None
+    stroke_color_space: Any | None = None
     # ---- text state (PDF spec §9.3) ----
     text_font: Any | None = None  # PDFont subclass or None
     text_font_size: float = 0.0
@@ -152,6 +159,8 @@ class _GState:
             line_width=self.line_width,
             fill_pattern=self.fill_pattern,
             stroke_pattern=self.stroke_pattern,
+            fill_color_space=self.fill_color_space,
+            stroke_color_space=self.stroke_color_space,
             text_font=self.text_font,
             text_font_size=self.text_font_size,
             text_matrix=self.text_matrix,
@@ -199,6 +208,53 @@ def _cmyk_to_rgb_bytes(c: float, m: float, y: float, k: float) -> tuple[int, int
     g = (1.0 - m) * (1.0 - k)
     b = (1.0 - y) * (1.0 - k)
     return _rgb_bytes(r, g, b)
+
+
+def _coerce_color_components(
+    operands: list[COSBase],
+) -> tuple[float, ...] | None:
+    """Convert ``scn`` / ``SCN`` operand list to a tuple of floats. Returns
+    ``None`` when the operand list isn't a pure-numeric vector (e.g. when
+    a trailing ``COSName`` indicates a pattern dispatch)."""
+    out: list[float] = []
+    for op in operands:
+        if isinstance(op, COSName):
+            return None
+        if hasattr(op, "float_value"):
+            out.append(float(op.float_value()))
+            continue
+        if hasattr(op, "int_value"):
+            out.append(float(op.int_value()))
+            continue
+        try:
+            out.append(float(op))  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return None
+    return tuple(out) if out else None
+
+
+def _resolve_builtin_color_spaces() -> dict[str, Any]:
+    """Lazy load the singleton built-in color-space wrappers."""
+    # Lazy import — pulls the full colour module on first use only.
+    from pypdfbox.pdmodel.graphics.color import (  # noqa: PLC0415
+        PDDeviceCMYK,
+        PDDeviceGray,
+        PDDeviceRGB,
+        PDPattern,
+    )
+
+    return {
+        "DeviceGray": PDDeviceGray.INSTANCE,
+        "G": PDDeviceGray.INSTANCE,
+        "DeviceRGB": PDDeviceRGB.INSTANCE,
+        "RGB": PDDeviceRGB.INSTANCE,
+        "DeviceCMYK": PDDeviceCMYK.INSTANCE,
+        "CMYK": PDDeviceCMYK.INSTANCE,
+        "Pattern": PDPattern(),
+    }
+
+
+_BUILTIN_DEVICE_COLOR_SPACES: dict[str, Any] = _resolve_builtin_color_spaces()
 
 
 def _cubic_bezier_pt(
@@ -1345,16 +1401,21 @@ class PDFRenderer(PDFStreamEngine):
     def _op_set_stroke_color_space(
         self, _op: Any, operands: list[COSBase]
     ) -> None:
-        # CS — selects the stroking colour space. We only special-case the
-        # /Pattern colour space here (so a subsequent ``SCN /Name`` can be
-        # routed to the named pattern). Other colour spaces fall through to
-        # the existing solid-colour state.
+        # CS — selects the stroking colour space. Stores the resolved PD
+        # wrapper on ``stroke_color_space`` so a subsequent ``SCN`` can run
+        # its component vector through the right ``to_rgb`` transform.
+        # /Pattern is special-cased — no transform applies, the components
+        # carry an underlying-tint payload that the pattern paints itself.
         if not operands or not isinstance(operands[0], COSName):
             self._gs.stroke_pattern = None
+            self._gs.stroke_color_space = None
             return
         name: COSName = operands[0]
-        if name.name != "Pattern":
-            self._gs.stroke_pattern = None
+        if name.name == "Pattern":
+            self._gs.stroke_color_space = None
+            return
+        self._gs.stroke_pattern = None
+        self._gs.stroke_color_space = self._resolve_color_space(name)
 
     def _op_set_fill_color_space(
         self, _op: Any, operands: list[COSBase]
@@ -1362,27 +1423,110 @@ class PDFRenderer(PDFStreamEngine):
         # cs — non-stroking colour space. Mirrors ``_op_set_stroke_color_space``.
         if not operands or not isinstance(operands[0], COSName):
             self._gs.fill_pattern = None
+            self._gs.fill_color_space = None
             return
-        name: COSName = operands[0]
-        if name.name != "Pattern":
-            self._gs.fill_pattern = None
+        name = operands[0]
+        if name.name == "Pattern":
+            self._gs.fill_color_space = None
+            return
+        self._gs.fill_pattern = None
+        self._gs.fill_color_space = self._resolve_color_space(name)
+
+    def _resolve_color_space(self, name: COSName) -> Any | None:
+        """Return the ``PDColorSpace`` named in /Resources/ColorSpace or
+        one of the built-in singletons (DeviceGray / DeviceRGB / DeviceCMYK
+        / Pattern). Returns ``None`` if the name doesn't resolve."""
+        # Built-in device + pattern names — mirrors upstream
+        # PDColorSpace.create(name, …) name-dispatch.
+        builtin = _BUILTIN_DEVICE_COLOR_SPACES.get(name.name)
+        if builtin is not None:
+            return builtin
+        resources = self._resources
+        if resources is None:
+            return None
+        try:
+            return resources.get_color_space(name)
+        except Exception as exc:  # noqa: BLE001
+            _log.debug(
+                "rendering: cannot resolve colour space %s: %s", name.name, exc
+            )
+            return None
 
     def _op_set_stroke_color_n(
         self, _op: Any, operands: list[COSBase]
     ) -> None:
         # SCN — last operand is a /PatternName when the current colour space
-        # is /Pattern; preceding operands are tint components for an
-        # uncoloured tiling pattern's underlying colour space. Only the
-        # pattern lookup is wired here; the underlying tint isn't applied
-        # (uncoloured tiling patterns paint via their content stream's own
-        # colour ops).
-        self._gs.stroke_pattern = self._resolve_pattern_operand(operands)
+        # is /Pattern; otherwise all operands are colour components in the
+        # current stroking colour space. Wire both forms.
+        pattern = self._resolve_pattern_operand(operands)
+        if pattern is not None:
+            self._gs.stroke_pattern = pattern
+            return
+        self._gs.stroke_pattern = None
+        components = _coerce_color_components(operands)
+        if components is None:
+            return
+        rgb = self._color_components_to_rgb(
+            components, self._gs.stroke_color_space
+        )
+        if rgb is not None:
+            self._gs.stroke_rgb = rgb
 
     def _op_set_fill_color_n(
         self, _op: Any, operands: list[COSBase]
     ) -> None:
         # scn — non-stroking equivalent of SCN.
-        self._gs.fill_pattern = self._resolve_pattern_operand(operands)
+        pattern = self._resolve_pattern_operand(operands)
+        if pattern is not None:
+            self._gs.fill_pattern = pattern
+            return
+        self._gs.fill_pattern = None
+        components = _coerce_color_components(operands)
+        if components is None:
+            return
+        rgb = self._color_components_to_rgb(
+            components, self._gs.fill_color_space
+        )
+        if rgb is not None:
+            self._gs.fill_rgb = rgb
+
+    def _color_components_to_rgb(
+        self,
+        components: tuple[float, ...],
+        colour_space: Any | None,
+    ) -> tuple[int, int, int] | None:
+        """Run *components* through *colour_space*'s ``to_rgb``, returning
+        an 8-bit ``(r, g, b)`` tuple. Defaults to DeviceGray for the n=1
+        case and DeviceRGB for n=3 when no space is active. Returns
+        ``None`` if conversion fails."""
+        if colour_space is None:
+            # Spec default: a fresh content stream's initial colour space
+            # is DeviceGray. Use it for 1-component vectors; fall back to
+            # DeviceRGB for 3-component, DeviceCMYK for 4.
+            colour_space = _BUILTIN_DEVICE_COLOR_SPACES.get(
+                {1: "DeviceGray", 3: "DeviceRGB", 4: "DeviceCMYK"}.get(
+                    len(components), ""
+                )
+            )
+            if colour_space is None:
+                return None
+        try:
+            rgb_floats = colour_space.to_rgb(components)
+        except Exception as exc:  # noqa: BLE001
+            _log.debug(
+                "rendering: colour-space %s to_rgb failed for %s: %s",
+                type(colour_space).__name__,
+                components,
+                exc,
+            )
+            return None
+        if (
+            rgb_floats is None
+            or not isinstance(rgb_floats, (tuple, list))
+            or len(rgb_floats) < 3
+        ):
+            return None
+        return _rgb_bytes(rgb_floats[0], rgb_floats[1], rgb_floats[2])
 
     def _resolve_pattern_operand(
         self, operands: list[COSBase]
