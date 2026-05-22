@@ -239,7 +239,16 @@ class PDFDebugger:
             self._master.title(self.TITLE)  # type: ignore[union-attr]
 
         with contextlib.suppress(AttributeError, tk.TclError):
-            x, y, w, h = self._window_prefs.get_bounds()
+            # Mirror upstream WindowPrefs.getBounds, which reads the real
+            # screen dimensions from ``Toolkit.getDefaultToolkit()``. The
+            # Python WindowPrefs defaults are 1280x800 — too small for
+            # modern displays. Pass actual screen size so the default
+            # bounds (screen/4 offset, screen/2 width+height) adapt.
+            sw = self._master.winfo_screenwidth()  # type: ignore[union-attr]
+            sh = self._master.winfo_screenheight()  # type: ignore[union-attr]
+            x, y, w, h = self._window_prefs.get_bounds(
+                screen_width=sw, screen_height=sh
+            )
             self._master.geometry(f"{w}x{h}+{x}+{y}")  # type: ignore[union-attr]
 
     def _init_menu_bar(self) -> None:
