@@ -57,8 +57,8 @@ def _select_nth_tree_child(debugger: PDFDebugger, n: int) -> None:
     tree.see(target)
 
 
-def _select_first_page(debugger: PDFDebugger) -> None:
-    """Walk into the document root and select the first Page node."""
+def _select_first_page(debugger: PDFDebugger, page_index: int = 0) -> None:
+    """Walk into the document root and select page ``page_index`` (0-based)."""
     tree = debugger._tree  # noqa: SLF001
     roots = tree.get_children()
     if not roots:
@@ -68,13 +68,9 @@ def _select_first_page(debugger: PDFDebugger) -> None:
     children = tree.get_children(doc_root)
     if not children:
         return
-    # First child is typically the page (or "Pages" container per view mode)
-    target = children[0]
-    tree.item(target, open=True)
-    # If it has children (Pages → Page 1), drill one more level
-    grandchildren = tree.get_children(target)
-    if grandchildren:
-        target = grandchildren[0]
+    if page_index < 0 or page_index >= len(children):
+        page_index = 0
+    target = children[page_index]
     tree.selection_set(target)
     tree.focus(target)
     tree.see(target)
@@ -114,6 +110,12 @@ def main(argv: list[str] | None = None) -> int:
         help="auto-select the first page node (drilling past doc root)",
     )
     parser.add_argument(
+        "--page-index",
+        type=int,
+        default=0,
+        help="0-based index of the page to select when --select-page is set",
+    )
+    parser.add_argument(
         "--settle-ms",
         type=int,
         default=800,
@@ -147,7 +149,7 @@ def main(argv: list[str] | None = None) -> int:
         _select_nth_tree_child(debugger, args.select)
         _settle(root, args.settle_ms)
     if args.select_page:
-        _select_first_page(debugger)
+        _select_first_page(debugger, args.page_index)
         # Page rendering can be slow; double the settle window.
         _settle(root, args.settle_ms * 2)
 

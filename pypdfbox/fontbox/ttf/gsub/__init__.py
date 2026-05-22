@@ -47,6 +47,7 @@ from .lookup_subtable import (
     SequenceRuleSet,
     SequenceTable,
     SubstitutionLookupRecord,
+    apply_lookup_table,
 )
 from .lookup_table import LookupTable
 from .script_table import ScriptTable
@@ -104,4 +105,5 @@ __all__ = [
     "SequenceRuleSet",
     "SequenceTable",
     "SubstitutionLookupRecord",
+    "apply_lookup_table",
 ]

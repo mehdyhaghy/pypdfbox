@@ -3,6 +3,10 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .lookup_table import LookupTable
 
 _LOG = logging.getLogger(__name__)
 
@@ -129,6 +133,119 @@ class LookupSubTable(ABC):
         return) own the substitution semantics.
         """
 
+    def apply(
+        self,
+        glyph_ids: list[int],
+        position: int,
+        all_lookups: tuple[LookupTable, ...] | list[LookupTable],
+    ) -> int:
+        """Apply this subtable at ``position`` in ``glyph_ids``.
+
+        Mutates ``glyph_ids`` in place. Returns the number of *input*
+        glyphs consumed by the match (caller should advance by
+        ``max(1, returned)`` to make progress on no-match cases). Net-new
+        contract (not present upstream) — gives every lookup subtable a
+        single unified "apply yourself at this position" signature, which
+        is what contextual (Type 5 / 6) and reverse-chained (Type 8)
+        lookups need to dispatch nested ``SubstitutionLookupRecord``
+        invocations. Simple substitutions (Types 1 / 2 / 3 / 4) override
+        :meth:`apply` to delegate to their existing ``do_substitution`` /
+        ``do_substitution_glyphs`` / ``do_substitution_multiple``
+        implementations.
+
+        The default returns ``0`` so unimplemented subtypes don't
+        silently consume input.
+        """
+        return 0
+
+
+def apply_lookup_table(
+    glyph_ids: list[int],
+    lookup_table: LookupTable,
+    all_lookups: tuple[LookupTable, ...] | list[LookupTable],
+) -> None:
+    """Drive one :class:`LookupTable` across ``glyph_ids``.
+
+    Walks ``glyph_ids`` left-to-right (Types 1-7) or right-to-left
+    (Type 8 — reverse chained context). At each position, tries every
+    subtable of the lookup in order; the first subtable that returns
+    a non-zero consumption count wins and the position is advanced by
+    that count (at least one). ``all_lookups`` is the *full* LookupList
+    from the GSUB table — needed by contextual lookups to dispatch
+    nested ``SubstitutionLookupRecord`` invocations into.
+
+    Mutates ``glyph_ids`` in place. This is the entry point text
+    shapers call once per lookup-index in a feature's ``LookupListIndex``
+    array.
+    """
+    if not glyph_ids or not lookup_table.sub_tables:
+        return
+    # Type 8 — reverse chained context — must walk right-to-left per
+    # spec (OpenType GSUB §6.5). Every other lookup type walks LTR.
+    is_reverse = lookup_table.lookup_type == 8
+    if is_reverse:
+        i = len(glyph_ids) - 1
+        while i >= 0:
+            for subtable in lookup_table.sub_tables:
+                consumed = subtable.apply(glyph_ids, i, all_lookups)
+                if consumed > 0:
+                    break
+            # Type 8 substitutes a single glyph and walks backward;
+            # we always step by -1 regardless of consumed.
+            i -= 1
+        return
+    i = 0
+    while i < len(glyph_ids):
+        consumed = 0
+        for subtable in lookup_table.sub_tables:
+            consumed = subtable.apply(glyph_ids, i, all_lookups)
+            if consumed > 0:
+                break
+        i += max(1, consumed)
+
+
+def _dispatch_substitution_records(
+    glyph_ids: list[int],
+    start_index: int,
+    records: tuple[SubstitutionLookupRecord, ...],
+    all_lookups: tuple[LookupTable, ...] | list[LookupTable],
+) -> None:
+    """Apply each :class:`SubstitutionLookupRecord` of a Type-5 / Type-6
+    rule to ``glyph_ids`` at the right position.
+
+    Each record names a ``sequence_index`` (offset into the matched
+    input sequence, counting from the first input glyph) and a
+    ``lookup_list_index`` (index into the GSUB LookupList). The inner
+    lookup is applied at ``glyph_ids[start_index + sequence_index]``;
+    it must be one of Types 1-4 per the spec (a contextual rule can
+    only invoke "real" substitution lookups, not further contextual
+    ones).
+
+    Mutates ``glyph_ids`` in place. ``records`` is intentionally
+    applied in *list order* per the spec — the OpenType normative
+    text says "Apply the substitutions in the order in which they
+    appear in the SubstLookupRecord array", and the position offsets
+    are interpreted in the *original* sequence (so out-of-order
+    records that target the same position both fire on the same
+    starting glyph, which is fine as long as the lookups themselves
+    don't shift the run length — Types 2 / 4 *can* shift, in which
+    case fontTools' shaping engine treats subsequent record offsets
+    as fragile too; we do the same).
+    """
+    for record in records:
+        seq_index = record.sequence_index
+        target = start_index + seq_index
+        if target < 0 or target >= len(glyph_ids):
+            continue
+        lookup_index = record.lookup_list_index
+        if lookup_index < 0 or lookup_index >= len(all_lookups):
+            continue
+        inner_lookup = all_lookups[lookup_index]
+        for subtable in inner_lookup.sub_tables:
+            consumed = subtable.apply(glyph_ids, target, all_lookups)
+            if consumed > 0:
+                break
+
 
 @dataclass
 class LookupTypeSingleSubstFormat1(LookupSubTable):
@@ -170,6 +287,32 @@ class LookupTypeSingleSubstFormat1(LookupSubTable):
             return original_glyph_id
         # Per spec: substituted GID is computed mod 65536.
         return (original_glyph_id + self.delta_glyph_id) & 0xFFFF
+
+    def apply(
+        self,
+        glyph_ids: list[int],
+        position: int,
+        all_lookups: tuple[LookupTable, ...] | list[LookupTable],
+    ) -> int:
+        """Apply single substitution (Format 1) at ``position``.
+
+        Returns ``1`` on match (one input glyph consumed and replaced
+        in place), ``0`` otherwise. ``all_lookups`` is accepted for
+        signature uniformity but unused — single substitutions don't
+        dispatch nested lookups.
+        """
+        if position < 0 or position >= len(glyph_ids):
+            return 0
+        gid = glyph_ids[position]
+        cov_idx = -1
+        for c_i, c_gid in enumerate(self.coverage_table):
+            if c_gid == gid:
+                cov_idx = c_i
+                break
+        if cov_idx < 0:
+            return 0
+        glyph_ids[position] = self.do_substitution(gid, cov_idx)
+        return 1
 
     def to_string(self) -> str:
         """Mirror upstream ``LookupTypeSingleSubstFormat1.toString()``.
@@ -232,6 +375,30 @@ class LookupTypeSingleSubstFormat2(LookupSubTable):
         if coverage_index >= len(self.substitute_glyph_ids):
             return original_glyph_id
         return int(self.substitute_glyph_ids[coverage_index])
+
+    def apply(
+        self,
+        glyph_ids: list[int],
+        position: int,
+        all_lookups: tuple[LookupTable, ...] | list[LookupTable],
+    ) -> int:
+        """Apply single substitution (Format 2) at ``position``.
+
+        Returns ``1`` on match, ``0`` otherwise. See the Format 1 docstring
+        for the contract.
+        """
+        if position < 0 or position >= len(glyph_ids):
+            return 0
+        gid = glyph_ids[position]
+        cov_idx = -1
+        for c_i, c_gid in enumerate(self.coverage_table):
+            if c_gid == gid:
+                cov_idx = c_i
+                break
+        if cov_idx < 0 or cov_idx >= len(self.substitute_glyph_ids):
+            return 0
+        glyph_ids[position] = int(self.substitute_glyph_ids[cov_idx])
+        return 1
 
     def to_string(self) -> str:
         """Mirror upstream ``LookupTypeSingleSubstFormat2.toString()``.
@@ -357,6 +524,33 @@ class LookupTypeMultipleSubstitutionFormat1(LookupSubTable):
             return [original_glyph_id]
         return list(self.sequence_tables[coverage_index].substitute_glyph_ids)
 
+    def apply(
+        self,
+        glyph_ids: list[int],
+        position: int,
+        all_lookups: tuple[LookupTable, ...] | list[LookupTable],
+    ) -> int:
+        """Apply multiple substitution (one input glyph -> N outputs) at
+        ``position``.
+
+        On match, replaces ``glyph_ids[position]`` with the substitute
+        sequence (in place) and returns ``1`` (one input glyph
+        consumed). Returns ``0`` on no match.
+        """
+        if position < 0 or position >= len(glyph_ids):
+            return 0
+        gid = glyph_ids[position]
+        cov_idx = -1
+        for c_i, c_gid in enumerate(self.coverage_table):
+            if c_gid == gid:
+                cov_idx = c_i
+                break
+        if cov_idx < 0 or cov_idx >= len(self.sequence_tables):
+            return 0
+        replacement = list(self.sequence_tables[cov_idx].substitute_glyph_ids)
+        glyph_ids[position : position + 1] = replacement
+        return 1
+
 
 @dataclass
 class AlternateSetTable:
@@ -463,6 +657,40 @@ class LookupTypeAlternateSubstitutionFormat1(LookupSubTable):
             return ()
         return self.alternate_set_tables[coverage_index].alternate_glyph_ids
 
+    def apply(
+        self,
+        glyph_ids: list[int],
+        position: int,
+        all_lookups: tuple[LookupTable, ...] | list[LookupTable],
+    ) -> int:
+        """Apply alternate substitution at ``position``, picking the
+        first alternate by default.
+
+        Real layout engines drive alternate selection from the active
+        feature (`salt`, `aalt`, `swsh`, ...). When no layout engine is
+        in the loop the default is "first alternate wins" — this matches
+        the convention adopted in
+        :meth:`GlyphSubstitutionDataExtractor.extract_data_from_alternate_substitution_subst_format1_table`
+        (first alternate that differs from the coverage glyph wins).
+        Returns ``1`` on match, ``0`` otherwise.
+        """
+        if position < 0 or position >= len(glyph_ids):
+            return 0
+        gid = glyph_ids[position]
+        cov_idx = -1
+        for c_i, c_gid in enumerate(self.coverage_table):
+            if c_gid == gid:
+                cov_idx = c_i
+                break
+        if cov_idx < 0 or cov_idx >= len(self.alternate_set_tables):
+            return 0
+        alternates = self.alternate_set_tables[cov_idx].alternate_glyph_ids
+        for alternate_glyph_id in alternates:
+            if alternate_glyph_id != gid:
+                glyph_ids[position] = int(alternate_glyph_id)
+                return 1
+        return 0
+
 
 @dataclass
 class LookupTypeLigatureSubstitutionSubstFormat1(LookupSubTable):
@@ -509,6 +737,53 @@ class LookupTypeLigatureSubstitutionSubstFormat1(LookupSubTable):
             "Ligature substitution requires a glyph sequence; "
             "use do_substitution_glyphs instead."
         )
+
+    def apply(
+        self,
+        glyph_ids: list[int],
+        position: int,
+        all_lookups: tuple[LookupTable, ...] | list[LookupTable],
+    ) -> int:
+        """Apply ligature substitution at ``position``.
+
+        On match returns the number of *input* glyphs consumed by the
+        ligature (the implicit first component + the trailing
+        components). The matched range in ``glyph_ids`` is collapsed
+        in place to the single ligature GID. The longest-matching
+        candidate in the LigatureSet wins (matches the spec's
+        "search the array of Ligatures in order" rule combined with
+        the conventional longest-match tie-break).
+        """
+        if position < 0 or position >= len(glyph_ids):
+            return 0
+        gid = glyph_ids[position]
+        cov_idx = -1
+        for c_i, c_gid in enumerate(self.coverage_table):
+            if c_gid == gid:
+                cov_idx = c_i
+                break
+        if cov_idx < 0 or cov_idx >= len(self.ligature_set_tables):
+            return 0
+        n = len(glyph_ids)
+        best: LigatureTable | None = None
+        best_len = 0
+        for lig in self.ligature_set_tables[cov_idx].ligature_tables:
+            comps = lig.component_glyph_ids
+            if not comps:
+                continue
+            end = position + 1 + len(comps)
+            if end > n:
+                continue
+            if all(
+                glyph_ids[position + 1 + k] == comps[k] for k in range(len(comps))
+            ) and len(comps) >= best_len:
+                best = lig
+                best_len = len(comps)
+        if best is None:
+            return 0
+        consumed = 1 + best_len
+        glyph_ids[position : position + consumed] = [best.ligature_glyph]
+        return consumed
 
     def do_substitution_glyphs(self, glyph_ids: list[int]) -> list[int]:
         """Apply ligature substitution to a glyph run.
@@ -856,6 +1131,32 @@ class LookupTypeContextualSubstitutionFormat1(LookupSubTable):
                 return rule
         return None
 
+    def apply(
+        self,
+        glyph_ids: list[int],
+        position: int,
+        all_lookups: tuple[LookupTable, ...] | list[LookupTable],
+    ) -> int:
+        """Apply contextual substitution (Format 1) at ``position``.
+
+        On match, dispatches each :class:`SubstitutionLookupRecord` of
+        the matched rule against ``all_lookups`` at the right offset
+        within the matched run. Returns the number of input glyphs
+        consumed by the rule (``= rule.glyph_count``) or ``0`` if no
+        rule matches.
+        """
+        rule = self.match_rule(glyph_ids, position)
+        if rule is None:
+            return 0
+        consumed = rule.glyph_count
+        _dispatch_substitution_records(
+            glyph_ids,
+            position,
+            rule.substitution_lookup_records,
+            all_lookups,
+        )
+        return consumed
+
 
 @dataclass
 class ClassRule:
@@ -984,6 +1285,24 @@ class LookupTypeContextualSubstitutionFormat2(LookupSubTable):
                 return rule
         return None
 
+    def apply(
+        self,
+        glyph_ids: list[int],
+        position: int,
+        all_lookups: tuple[LookupTable, ...] | list[LookupTable],
+    ) -> int:
+        rule = self.match_rule(glyph_ids, position)
+        if rule is None:
+            return 0
+        consumed = rule.glyph_count
+        _dispatch_substitution_records(
+            glyph_ids,
+            position,
+            rule.substitution_lookup_records,
+            all_lookups,
+        )
+        return consumed
+
 
 @dataclass
 class LookupTypeContextualSubstitutionFormat3(LookupSubTable):
@@ -1051,6 +1370,23 @@ class LookupTypeContextualSubstitutionFormat3(LookupSubTable):
             glyph_ids[start_index + k] in cov
             for k, cov in enumerate(self.input_coverages)
         )
+
+    def apply(
+        self,
+        glyph_ids: list[int],
+        position: int,
+        all_lookups: tuple[LookupTable, ...] | list[LookupTable],
+    ) -> int:
+        if not self.matches(glyph_ids, position):
+            return 0
+        consumed = len(self.input_coverages)
+        _dispatch_substitution_records(
+            glyph_ids,
+            position,
+            self.substitution_lookup_records,
+            all_lookups,
+        )
+        return consumed
 
 
 @dataclass
@@ -1191,6 +1527,24 @@ class LookupTypeChainedContextualSubstitutionFormat1(LookupSubTable):
             if rule.matches(glyph_ids, start_index):
                 return rule
         return None
+
+    def apply(
+        self,
+        glyph_ids: list[int],
+        position: int,
+        all_lookups: tuple[LookupTable, ...] | list[LookupTable],
+    ) -> int:
+        rule = self.match_rule(glyph_ids, position)
+        if rule is None:
+            return 0
+        consumed = 1 + len(rule.input_sequence)
+        _dispatch_substitution_records(
+            glyph_ids,
+            position,
+            rule.substitution_lookup_records,
+            all_lookups,
+        )
+        return consumed
 
 
 @dataclass
@@ -1348,6 +1702,24 @@ class LookupTypeChainedContextualSubstitutionFormat2(LookupSubTable):
             return rule
         return None
 
+    def apply(
+        self,
+        glyph_ids: list[int],
+        position: int,
+        all_lookups: tuple[LookupTable, ...] | list[LookupTable],
+    ) -> int:
+        rule = self.match_rule(glyph_ids, position)
+        if rule is None:
+            return 0
+        consumed = 1 + len(rule.input_classes)
+        _dispatch_substitution_records(
+            glyph_ids,
+            position,
+            rule.substitution_lookup_records,
+            all_lookups,
+        )
+        return consumed
+
 
 @dataclass
 class LookupTypeChainedContextualSubstitutionFormat3(LookupSubTable):
@@ -1428,6 +1800,23 @@ class LookupTypeChainedContextualSubstitutionFormat3(LookupSubTable):
             if glyph_ids[input_end + i] not in cov:
                 return False
         return True
+
+    def apply(
+        self,
+        glyph_ids: list[int],
+        position: int,
+        all_lookups: tuple[LookupTable, ...] | list[LookupTable],
+    ) -> int:
+        if not self.matches(glyph_ids, position):
+            return 0
+        consumed = len(self.input_coverages)
+        _dispatch_substitution_records(
+            glyph_ids,
+            position,
+            self.substitution_lookup_records,
+            all_lookups,
+        )
+        return consumed
 
 
 @dataclass
@@ -1518,6 +1907,22 @@ class LookupTypeExtensionSubstitutionFormat1(LookupSubTable):
             # (e.g. Type 2 / 3 / 4). Mirror the type-1/3 passthrough
             # contract so a generic walk doesn't crash.
             return original_glyph_id
+
+    def apply(
+        self,
+        glyph_ids: list[int],
+        position: int,
+        all_lookups: tuple[LookupTable, ...] | list[LookupTable],
+    ) -> int:
+        """Transparently delegate to the wrapped inner subtable.
+
+        Type 7 exists purely to break the 16-bit offset ceiling — its
+        substitution semantics are identical to whatever inner type it
+        wraps. The ``apply`` contract dispatches straight through.
+        """
+        if self.inner_subtable is None:
+            return 0
+        return self.inner_subtable.apply(glyph_ids, position, all_lookups)
 
     def to_string(self) -> str:
         """Mirror upstream ``LookupTypeExtensionSubstitutionFormat1.toString()``.
@@ -1682,6 +2087,30 @@ class LookupTypeReverseChainedContextualSubstitutionFormat1(LookupSubTable):
                 result[position] = new_gid
         return result
 
+    def apply(
+        self,
+        glyph_ids: list[int],
+        position: int,
+        all_lookups: tuple[LookupTable, ...] | list[LookupTable],
+    ) -> int:
+        """Apply reverse-chained substitution at ``position``.
+
+        Mutates ``glyph_ids[position]`` in place if the context matches.
+        Returns ``1`` on match, ``0`` otherwise. ``all_lookups`` is
+        accepted for signature uniformity but unused — Type 8 doesn't
+        dispatch nested lookups (it's a single-glyph substitution with a
+        context-aware match predicate). The right-to-left walk is the
+        caller's job (see :func:`apply_lookup_table` for the
+        ``lookup_type == 8`` branch).
+        """
+        if position < 0 or position >= len(glyph_ids):
+            return 0
+        new_gid = self.do_substitution_at(glyph_ids, position)
+        if new_gid < 0 or new_gid == glyph_ids[position]:
+            return 0
+        glyph_ids[position] = new_gid
+        return 1
+
     def to_string(self) -> str:
         """Mirror upstream ``LookupTypeReverseChainedContextualSubstitutionFormat1.toString()``.
 
@@ -1713,6 +2142,7 @@ __all__ = [
     "LigatureSetTable",
     "LigatureTable",
     "LookupSubTable",
+    "apply_lookup_table",
     "LookupTypeAlternateSubstitutionFormat1",
     "LookupTypeChainedContextualSubstitutionFormat1",
     "LookupTypeChainedContextualSubstitutionFormat2",

@@ -543,9 +543,14 @@ class PDFRenderer(PDFStreamEngine):
       Embedded Type1 (PFB) and Type1C (CFF) glyph outlines are sourced
       from ``PDType1Font.get_glyph_path`` / ``PDType1CFont.get_glyph_path``
       (fontTools-backed) and rasterised through the same aggdraw pipeline.
-      Type3 / Standard 14 (no embedded program) fall back to a faint
-      placeholder rectangle with a one-time debug log — non-fatal, no
-      crash.
+      Type 3 fonts (PDF 32000-1 §9.6.5) execute each glyph's /CharProcs
+      content stream through the same dispatch loop as a Form XObject,
+      scaled by /FontMatrix into text space — see
+      :meth:`_show_type3_string` / :meth:`_render_type3_charproc` for
+      the routing. ``d0`` (uncoloured glyph advance) and ``d1``
+      (coloured-glyph advance + bbox clip) are honoured. Standard 14
+      (no embedded program) fall back to a faint placeholder rectangle
+      with a one-time debug log — non-fatal, no crash.
     - Clip: ``W`` / ``W*`` — stage a clip-pending flag; the next path-end
       operator (paint or ``n``) intersects the path with the current clip
       mask via PIL polygon flattening.
@@ -557,8 +562,10 @@ class PDFRenderer(PDFStreamEngine):
 
     - Shadings, patterns, transparency groups, soft masks, blend modes,
       line dash/cap/join, ``Tr`` text rendering modes (clipping/stroke),
-      Type3 charprocs and Standard 14 glyph outlines without an embedded
-      program (placeholder rectangle instead — see ``CHANGES.md``).
+      and Standard 14 glyph outlines without an embedded program
+      (placeholder rectangle instead — see ``CHANGES.md``). Type 3
+      charprocs are NOT deferred — they paint through the engine's
+      Form-XObject dispatch (see :meth:`_render_type3_charproc`).
     """
 
     def __init__(self, document: PDDocument) -> None:
@@ -599,6 +606,26 @@ class PDFRenderer(PDFStreamEngine):
         # had nothing", so we don't re-walk the mapper per-glyph. Filled
         # by ``_resolve_font_program`` (PDF 32000-1 §9.8 / §9.10).
         self._font_program_cache: dict[int, Any | None] = {}
+        # Type 3 charproc per-glyph metric overrides. ``d0`` sets
+        # ``_type3_d0_wx`` (uncoloured glyph — advance only); ``d1`` sets
+        # ``_type3_d1_wx`` plus installs a bbox clip (coloured glyph). The
+        # values are read after charproc dispatch by ``_show_type3_string``
+        # to override the ``/Widths`` value for the just-rendered glyph,
+        # matching upstream PDFBox's ``Type3Glyph2D`` width-override
+        # behaviour (PDF 32000-1 §9.6.5.3). Reset to ``None`` before each
+        # charproc invocation.
+        self._type3_d0_wx: float | None = None
+        self._type3_d1_wx: float | None = None
+        # Type 3 glyph cache — (id(font), glyph_name, font_size_q,
+        # ctm_scale_q, fill_rgb, stroke_rgb) -> rendered glyph image +
+        # bounding box. Allows multi-glyph runs to skip re-dispatching the
+        # charproc when the same glyph is shown again at the same size
+        # and colour. Quantisation buckets size + ctm-scale to integer 100ths
+        # so floating-point jitter doesn't bust the cache.
+        self._type3_glyph_cache: dict[
+            tuple[int, str, int, int, tuple[float, ...], tuple[float, ...]],
+            int,
+        ] = {}
         # ---- public render-config flags (mirror upstream PDFRenderer) ----
         # These are stored only — the lite renderer doesn't yet consult them,
         # but downstream tooling that ports from PDFBox calls these setters
@@ -618,6 +645,15 @@ class PDFRenderer(PDFStreamEngine):
         self._knockout_active: bool = False
         self._knockout_snapshot: Image.Image | None = None
         self._knockout_form_depth: int = 0
+        # ---- soft-mask depth (wave 1384) ----
+        # When > 0 we're rendering INTO a transparency-group canvas (or the
+        # soft-mask group itself); the active ExtGState ``/SMask`` is applied
+        # at group-composite time, so per-paint SMask application must be
+        # suppressed here to avoid double-masking. Mirrors upstream's behaviour
+        # where ``applySoftMaskToPaint`` is bypassed during the group's own
+        # recursive render — the group's paints accumulate raw, then the mask
+        # is multiplied at the very end.
+        self._transparency_group_depth: int = 0
         # ---- annotation filter (mirrors upstream ``AnnotationFilter``) ----
         # Upstream's default filter accepts every annotation
         # (``annotation -> true``); we model the filter as a plain
@@ -1361,40 +1397,63 @@ class PDFRenderer(PDFStreamEngine):
     # ---- colour ----
 
     def _op_set_stroke_rgb(self, _op: Any, operands: list[COSBase]) -> None:
+        # RG — PDF 32000-1 §8.6.5.3. Sets the stroking colour space to
+        # DeviceRGB AND clears any active pattern. Mirrors upstream
+        # SetStrokingDeviceRGBColor.process which constructs a new PDColor
+        # over DeviceRGB.
         if len(operands) < 3:
             return
         r, g, b = (_to_float(operands[i]) for i in range(3))
         self._gs.stroke_rgb = _rgb_bytes(r, g, b)
+        self._gs.stroke_color_space = _BUILTIN_DEVICE_COLOR_SPACES["DeviceRGB"]
+        self._gs.stroke_pattern = None
 
     def _op_set_fill_rgb(self, _op: Any, operands: list[COSBase]) -> None:
+        # rg — same as RG for the non-stroking colour.
         if len(operands) < 3:
             return
         r, g, b = (_to_float(operands[i]) for i in range(3))
         self._gs.fill_rgb = _rgb_bytes(r, g, b)
+        self._gs.fill_color_space = _BUILTIN_DEVICE_COLOR_SPACES["DeviceRGB"]
+        self._gs.fill_pattern = None
 
     def _op_set_stroke_gray(self, _op: Any, operands: list[COSBase]) -> None:
+        # G — PDF 32000-1 §8.6.5.2. Sets stroking colour space to
+        # DeviceGray; clears pattern.
         if not operands:
             return
         g = _to_float(operands[0])
         self._gs.stroke_rgb = _rgb_bytes(g, g, g)
+        self._gs.stroke_color_space = _BUILTIN_DEVICE_COLOR_SPACES["DeviceGray"]
+        self._gs.stroke_pattern = None
 
     def _op_set_fill_gray(self, _op: Any, operands: list[COSBase]) -> None:
+        # g — same as G for the non-stroking colour.
         if not operands:
             return
         g = _to_float(operands[0])
         self._gs.fill_rgb = _rgb_bytes(g, g, g)
+        self._gs.fill_color_space = _BUILTIN_DEVICE_COLOR_SPACES["DeviceGray"]
+        self._gs.fill_pattern = None
 
     def _op_set_stroke_cmyk(self, _op: Any, operands: list[COSBase]) -> None:
+        # K — PDF 32000-1 §8.6.5.4. Sets stroking colour space to
+        # DeviceCMYK; clears pattern.
         if len(operands) < 4:
             return
         c, m, y, k = (_to_float(operands[i]) for i in range(4))
         self._gs.stroke_rgb = _cmyk_to_rgb_bytes(c, m, y, k)
+        self._gs.stroke_color_space = _BUILTIN_DEVICE_COLOR_SPACES["DeviceCMYK"]
+        self._gs.stroke_pattern = None
 
     def _op_set_fill_cmyk(self, _op: Any, operands: list[COSBase]) -> None:
+        # k — same as K for the non-stroking colour.
         if len(operands) < 4:
             return
         c, m, y, k = (_to_float(operands[i]) for i in range(4))
         self._gs.fill_rgb = _cmyk_to_rgb_bytes(c, m, y, k)
+        self._gs.fill_color_space = _BUILTIN_DEVICE_COLOR_SPACES["DeviceCMYK"]
+        self._gs.fill_pattern = None
 
     # ---- pattern / shading colour selection (cs / CS / scn / SCN) ----
 
@@ -1824,10 +1883,24 @@ class PDFRenderer(PDFStreamEngine):
             return
 
         clip_mask = self._gs.clip_mask
-        if clip_mask is not None:
-            # Draw onto a fresh transparent layer, then composite via clip.
+        # Wave 1384 — when an ExtGState /SMask is active and we're NOT
+        # already inside a transparency group (where the mask applies at
+        # composite time), each direct fill/stroke must be modulated by
+        # the mask alpha plane. Mirrors upstream's ``applySoftMaskToPaint``
+        # invoked from ``getNonStrokingPaint`` / ``getStrokingPaint`` in
+        # PageDrawer.java.
+        active_soft_mask = (
+            self._gs.soft_mask if self._transparency_group_depth == 0 else None
+        )
+        if clip_mask is not None or active_soft_mask is not None:
+            # Draw onto a fresh transparent layer, then composite via clip
+            # and/or soft mask.
             self._paint_through_clip(
-                stroke=stroke, fill=fill, even_odd=even_odd, clip_mask=clip_mask
+                stroke=stroke,
+                fill=fill,
+                even_odd=even_odd,
+                clip_mask=clip_mask,
+                soft_mask=active_soft_mask,
             )
         elif stroke or fill:
             # Wave 1330B — skia's PathFillType.kEvenOdd is honoured natively
@@ -1846,13 +1919,20 @@ class PDFRenderer(PDFStreamEngine):
         stroke: bool,
         fill: bool,
         even_odd: bool,
-        clip_mask: Image.Image,
+        clip_mask: Image.Image | None,
+        soft_mask: Any | None = None,
     ) -> None:
-        """Composite the painted result through ``clip_mask``.
+        """Composite the painted result through ``clip_mask`` / ``soft_mask``.
 
         Strategy: render the path onto a fresh transparent RGBA layer,
-        then ``Image.composite(layer, base, layer.split()[3] * clip_mask)``
-        so anything outside the clip drops back to the existing pixels.
+        then ``Image.composite(layer, base, layer.split()[3] * clip_mask
+        * soft_mask_alpha)`` so anything outside the clip drops back to
+        the existing pixels and the soft mask further modulates alpha.
+
+        Wave 1384 — accepts an active ExtGState ``/SMask`` (``soft_mask``)
+        and multiplies the rendered soft-mask alpha plane into the layer
+        alpha. Mirrors upstream's ``applySoftMaskToPaint`` (PageDrawer.java
+        line 606) which wraps the paint inside a ``SoftMask`` AWT paint.
         """
         assert self._image is not None
         assert self._draw is not None
@@ -1891,9 +1971,22 @@ class PDFRenderer(PDFStreamEngine):
             self._draw = prev_draw
             self._image = prev_image
 
-        # Combine layer alpha with clip mask: out_alpha = layer.a * clip / 255.
+        # Combine layer alpha with clip mask + soft mask:
+        # out_alpha = layer.a * clip * smask_alpha / 255**k.
         layer_alpha = layer.split()[3]
-        combined = ImageChops.multiply(layer_alpha, clip_mask)
+        combined = layer_alpha
+        if clip_mask is not None:
+            combined = ImageChops.multiply(combined, clip_mask)
+        if soft_mask is not None:
+            try:
+                mask_alpha = self._render_soft_mask_alpha(
+                    soft_mask, (width_px, height_px)
+                )
+            except Exception as exc:  # noqa: BLE001
+                _log.debug("rendering: soft-mask paint failed: %s", exc)
+                mask_alpha = None
+            if mask_alpha is not None:
+                combined = ImageChops.multiply(combined, mask_alpha)
         # Composite the layer's RGB onto the base image using the combined mask.
         rgb = layer.convert("RGB")
         prev_image.paste(rgb, (0, 0), combined)
@@ -4250,6 +4343,10 @@ class PDFRenderer(PDFStreamEngine):
         self._knockout_active = False
         self._knockout_snapshot = None
         self._knockout_form_depth = 0
+        # Suppress per-paint SMask handling inside the soft-mask group's
+        # own recursive render — its content stream paints land raw onto
+        # ``mask_canvas`` and we extract the alpha/luminance channel after.
+        self._transparency_group_depth += 1
         try:
             self._render_form_xobject(group_form)
             current = self._draw
@@ -4259,6 +4356,7 @@ class PDFRenderer(PDFStreamEngine):
             _log.debug("rendering: soft-mask group render failed: %s", exc)
             return None
         finally:
+            self._transparency_group_depth -= 1
             self._image = prev_image
             self._draw = prev_draw
             self._gs_stack = prev_gs_stack
@@ -4425,9 +4523,13 @@ class PDFRenderer(PDFStreamEngine):
             # form Do calls then run at depth >= 1 and don't fire the
             # snapshot reset.
             self._knockout_form_depth = -1
+        # Suppress per-paint SMask while rendering the group's own contents
+        # (the SMask is applied once at the group's composite step below).
+        self._transparency_group_depth += 1
         try:
             self._render_form_xobject(form)
         finally:
+            self._transparency_group_depth -= 1
             # Commit any final group strokes, then composite back.
             current = self._draw
             if current is not None:
@@ -5598,6 +5700,66 @@ class PDFRenderer(PDFStreamEngine):
     # Type 3 font (charproc) rendering — PDF 32000-1 §9.6.5
     # ------------------------------------------------------------------
 
+    def _op_type3_d0(self, _op: Any, operands: list[COSBase]) -> None:
+        """``wx wy d0`` — sets the glyph advance for an *uncoloured* Type 3
+        glyph. The charproc must not specify colour after ``d0`` (it
+        inherits the calling context's colour). The lite renderer records
+        the advance on the engine so callers can override the ``/Widths``
+        value (PDFBox parity); painting otherwise proceeds normally.
+        """
+        if len(operands) < 2:
+            return
+        self._type3_d0_wx = _to_float(operands[0])
+        # wy (operand 1) is reserved as 0 per spec.
+
+    def _op_type3_d1(self, _op: Any, operands: list[COSBase]) -> None:
+        """``wx wy llx lly urx ury d1`` — sets the glyph advance and
+        bounding box for a *coloured* Type 3 glyph. Per PDF 32000-1
+        §9.6.5.3 the bbox MUST tightly enclose the glyph; the renderer
+        treats it as a clip so any stray paint outside the bbox is
+        suppressed (matches upstream ``Type3PageDrawer.processType3Stream``
+        glyph-bounds clipping). Painting otherwise proceeds with the
+        charproc's own colour.
+        """
+        if len(operands) < 6:
+            return
+        self._type3_d1_wx = _to_float(operands[0])
+        # Operand 1 (wy) is reserved.
+        llx = _to_float(operands[2])
+        lly = _to_float(operands[3])
+        urx = _to_float(operands[4])
+        ury = _to_float(operands[5])
+        # Degenerate / inverted bboxes: skip the clip (PDFBox ignores them
+        # — the painted glyph still shows up).
+        if urx <= llx or ury <= lly:
+            return
+        # Build a rectangle subpath in glyph-space coords; the active CTM
+        # already folds /FontMatrix + text_local + page_ctm, so the rect
+        # lands in the right place after the engine's transform.
+        prev_subpaths = self._subpaths
+        prev_current_subpath = self._current_subpath
+        prev_current_point = self._current_point
+        prev_pending_clip = self._pending_clip
+        self._subpaths = []
+        self._current_subpath = None
+        self._pending_clip = None
+        self._start_subpath(llx, lly)
+        assert self._current_subpath is not None
+        self._current_subpath.append(("L", urx, lly))
+        self._current_subpath.append(("L", urx, ury))
+        self._current_subpath.append(("L", llx, ury))
+        self._current_subpath.append(("Z",))
+        self._pending_clip = "W"
+        # Apply the clip immediately so the rest of the charproc paints
+        # clipped to the declared bounds.
+        self._apply_pending_clip(default_even_odd=False)
+        # Restore the page-level path state so the charproc's own path
+        # construction starts from a clean slate.
+        self._subpaths = prev_subpaths
+        self._current_subpath = prev_current_subpath
+        self._current_point = prev_current_point
+        self._pending_clip = prev_pending_clip
+
     def _show_type3_string(self, font: Any, data: bytes) -> None:
         """Render a Tj / TJ string against a :class:`PDType3Font` by
         recursively driving each glyph's /CharProcs content stream.
@@ -5644,16 +5806,27 @@ class PDFRenderer(PDFStreamEngine):
             with contextlib.suppress(Exception):
                 charproc = font.get_char_proc(glyph_name)
 
+            # Reset the d0/d1 metric overrides; the charproc dispatch will
+            # populate them if the glyph stream contains those operators.
+            self._type3_d0_wx = None
+            self._type3_d1_wx = None
             if charproc is not None:
                 self._render_type3_charproc(font, charproc, font_matrix)
 
             # Advance — /Widths is indexed by (code - FirstChar). When the
             # entry is missing or zero, use 0.0 (the upstream fallback
-            # for Type 3 — there's no implicit metric source).
+            # for Type 3 — there's no implicit metric source). ``d0`` /
+            # ``d1`` inside the charproc override the /Widths value
+            # (PDFBox parity, PDF 32000-1 §9.6.5.3); ``d1`` takes
+            # precedence over ``d0`` when both somehow appear.
             advance_units = 0.0
             idx = int(code) - first_char
             if 0 <= idx < len(widths):
                 advance_units = widths[idx] * width_to_advance_units
+            if self._type3_d1_wx is not None:
+                advance_units = self._type3_d1_wx * width_to_advance_units
+            elif self._type3_d0_wx is not None:
+                advance_units = self._type3_d0_wx * width_to_advance_units
 
             wordspace = self._gs.text_wordspace if code == 0x20 else 0.0
             tx = (
@@ -5931,6 +6104,14 @@ _DISPATCH: dict[str, Any] = {
     "cs": PDFRenderer._op_set_fill_color_space,
     "SCN": PDFRenderer._op_set_stroke_color_n,
     "scn": PDFRenderer._op_set_fill_color_n,
+    # PDF 32000-1 §8.6.8 — SC / sc are SCN/scn restricted to non-special
+    # colour spaces. Same operand shape (numeric components only), same
+    # handler. Missing entries silently dropped every sc / SC in
+    # real-world PDFs, leaving the colour at its previous value (default
+    # black) — confirmed by wave-1384 audit (e.g. poems-beads + BidiSample
+    # whose page-fill rectangle paints stayed black).
+    "SC": PDFRenderer._op_set_stroke_color_n,
+    "sc": PDFRenderer._op_set_fill_color_n,
     "sh": PDFRenderer._op_shading_fill,
     # path construction
     "m": PDFRenderer._op_move_to,
@@ -5974,6 +6155,9 @@ _DISPATCH: dict[str, Any] = {
     "TJ": PDFRenderer._op_show_text_array,
     "'": PDFRenderer._op_show_text_line,
     '"': PDFRenderer._op_show_text_line_with_spacing,
+    # Type 3 font glyph-metric setters (PDF 32000-1 §9.6.5.3).
+    "d0": PDFRenderer._op_type3_d0,
+    "d1": PDFRenderer._op_type3_d1,
 }
 
 
