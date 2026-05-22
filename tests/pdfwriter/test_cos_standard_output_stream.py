@@ -29,25 +29,25 @@ def test_upstream_class_constants_are_exposed() -> None:
     assert COSStandardOutputStream.EOL == EOL == b"\n"
 
 
-def test_pdfbox_spelled_aliases_delegate_to_line_and_position_helpers() -> None:
+def test_line_and_position_helpers_round_trip() -> None:
     out, sink = _stream()
 
-    out.writeCRLF()
+    out.write_crlf()
     assert sink.getvalue() == CRLF
-    assert out.getPos() == 2
-    assert out.isOnNewLine() is False
+    assert out.get_pos() == 2
+    assert out.is_on_newline() is False
 
-    out.writeEOL()
+    out.write_eol()
     assert sink.getvalue() == CRLF + EOL
-    assert out.isOnNewLine() is True
+    assert out.is_on_newline() is True
 
-    out.writeEOL()
+    out.write_eol()
     assert sink.getvalue() == CRLF + EOL
 
-    out.setOnNewLine(False)
-    out.writeLF()
+    out.set_on_newline(False)
+    out.write_lf()
     assert sink.getvalue() == CRLF + EOL + b"\n"
-    assert out.get_position() == out.getPos() == len(sink.getvalue())
+    assert out.get_position() == out.get_pos() == len(sink.getvalue())
 
 
 def test_write_bytes_advances_position() -> None:

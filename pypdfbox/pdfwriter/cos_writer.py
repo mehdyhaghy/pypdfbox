@@ -1249,13 +1249,28 @@ class COSWriter(ICOSVisitor):
     # ---------- incremental save ----------
 
     def _reject_signed_with_byterange_placeholder(self, doc: COSDocument) -> None:
-        """Refuse to re-save a signed document while the security cluster's
-        digest computation is still stubbed out.
+        """Refuse to re-save a signed document while a ``/ByteRange``
+        placeholder is still in flight.
 
         ISO 32000-1 §12.8 reserves a ``/ByteRange [0 0 0 0]`` placeholder
-        inside the signature dict; touching the file without recomputing
-        the digest invalidates the signature. We raise here rather than
-        silently corrupt the signature."""
+        inside the signature dict during the signing pipeline; touching
+        the file before the digest is recomputed silently corrupts the
+        signature. We raise here rather than emit a busted document.
+
+        An *already-signed* PDF (whose ``/ByteRange`` honestly brackets
+        the existing file end-to-end) is fine to incrementally append
+        to — that's how PAdES-LTV stamps work (PDF 32000-2 §12.8.4).
+        We detect a true placeholder vs a valid byterange by inspecting
+        the third entry: a placeholder's ``br[2]`` is either zero
+        (the ``[0 0 0 0]`` sentinel) or points past the input source's
+        end (the post-render placeholder). Either way, the file content
+        clearly isn't in agreement with the byterange yet.
+        """
+        input_length: int | None = (
+            self._incremental_input.length()
+            if self._incremental_input is not None
+            else None
+        )
         for cos_obj in doc.get_objects():
             resolved = cos_obj.get_object()
             if not isinstance(resolved, COSDictionary):
@@ -1270,15 +1285,22 @@ class COSWriter(ICOSVisitor):
             )
             if not isinstance(byte_range, COSArray) or byte_range.size() != 4:
                 continue
-            # Upstream sniffs for ``br[2] > inputData.length()`` to detect
-            # the placeholder. The canonical placeholder is ``[0 0 0 0]``;
-            # any 4-int byterange whose third entry doesn't actually point
-            # past the (signed) source's end is also a no-go for us until
-            # the security cluster ports the digest pipeline.
-            raise NotImplementedError(
-                "re-signing with PDFBox-style ByteRange placeholders requires "
-                "the security cluster"
+            ints = byte_range.to_cos_number_integer_list()
+            if any(i is None for i in ints):
+                continue
+            br = [int(i) for i in ints]  # type: ignore[arg-type]
+            # Canonical placeholder shapes: all zeros, or br[2] beyond
+            # the input source's end (mirrors PDFBox's
+            # ``br[2] > inputData.length()`` detection).
+            is_zero_placeholder = br == [0, 0, 0, 0]
+            is_past_eof_placeholder = (
+                input_length is not None and br[2] > input_length
             )
+            if is_zero_placeholder or is_past_eof_placeholder:
+                raise NotImplementedError(
+                    "re-signing with PDFBox-style ByteRange placeholders "
+                    "requires the security cluster"
+                )
 
     def _do_write_increment(self, doc: COSDocument) -> None:
         """Append-only path: copy original bytes verbatim, then emit only

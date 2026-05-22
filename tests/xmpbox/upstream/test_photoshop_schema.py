@@ -380,7 +380,19 @@ def test_random_property_setter_in_array(metadata: XMPMetadata) -> None:
     assert layers[1].get_layer_text() == "Second layer text"
 
 
-@pytest.mark.parametrize(("field_name", "type_token", "card"), _PARAMETERS)
+# Upstream's ``testRandomSetterSimple`` excludes ``Urgency`` / ``ColorMode``
+# (Integer return type does not match the String parameter) and
+# ``DateCreated`` (random Calendar input is not what the String-form setter
+# expects). Narrow the parametrize input so those rows do not generate
+# pytest skip noise — the exclusion is upstream-faithful, not a deviation
+# placeholder.
+_RANDOM_EXCLUDED = {"Urgency", "ColorMode", "DateCreated"}
+_RANDOM_SIMPLE_PARAMETERS = tuple(
+    p for p in _PARAMETERS if p[0] not in _RANDOM_EXCLUDED
+)
+
+
+@pytest.mark.parametrize(("field_name", "type_token", "card"), _RANDOM_SIMPLE_PARAMETERS)
 def test_random_setter_simple(
     metadata: XMPMetadata, field_name: str, type_token: str, card: str
 ) -> None:
@@ -392,13 +404,10 @@ def test_random_setter_simple(
     sequence so the test stays reproducible while still exercising the same
     contract.
 
-    Upstream excludes ``Urgency`` / ``ColorMode`` (Integer return type !=
-    String parameter) and ``DateCreated`` (random Calendar is not the
-    String-form setter's expected input). We mirror that exclusion.
+    Upstream excludes ``Urgency`` / ``ColorMode`` / ``DateCreated`` — the
+    narrowed parametrize input above mirrors that exclusion.
     """
     del card
-    if field_name in {"Urgency", "ColorMode", "DateCreated"}:
-        pytest.skip("upstream excludes return-type-mismatched fields from this round")
     schema = PhotoshopSchema(metadata)
     getter_name, setter_name = _ACCESSORS[field_name]
     samples = (_sample_value(type_token), "another-value-2", "another-value-3")

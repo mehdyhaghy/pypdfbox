@@ -132,9 +132,6 @@ class COSFloat(COSNumber):
         the ``getValue()`` accessor pattern used across COS leaf types."""
         return self._value
 
-    def getValue(self) -> float:  # noqa: N802 - upstream Java name
-        return self.get_value()
-
     def float_value(self) -> float:
         return self._value
 
@@ -151,15 +148,9 @@ class COSFloat(COSNumber):
         """Original parsed string, or ``None`` if constructed from a float."""
         return self._original
 
-    def getOriginalForm(self) -> str | None:  # noqa: N802 - upstream Java name
-        return self.get_original_form()
-
     def set_value(self, value: float) -> None:
         self._value = _to_float32(value)
         self._original = None
-
-    def setValue(self, value: float) -> None:  # noqa: N802 - upstream Java name
-        self.set_value(value)
 
     def format_string(self) -> str:
         """Textual form used by ``write_pdf`` — mirrors PDFBox's private

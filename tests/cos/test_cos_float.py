@@ -25,17 +25,6 @@ def test_set_value_clears_original() -> None:
     assert f.get_original_form() is None
 
 
-def test_pdfbox_camelcase_aliases() -> None:
-    f = COSFloat("2.500")
-    assert f.getValue() == 2.5
-    assert f.getOriginalForm() == "2.500"
-
-    f.setValue(3.25)
-
-    assert f.get_value() == 3.25
-    assert f.getOriginalForm() is None
-
-
 def test_negative_and_scientific() -> None:
     assert COSFloat("-0.5").value == -0.5
     # COSFloat clamps to IEEE-754 single precision (Java float parity), so

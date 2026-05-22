@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from .cos_filter_input_stream import COSFilterInputStream
+from .pd_document_security_store import (
+    PDDocumentSecurityStore,
+    PDValidationInformation,
+)
 from .pd_prop_build import PDPropBuild
 from .pd_prop_build_data_dict import PDPropBuildDataDict
 from .pd_seed_value import PDSeedValue
@@ -31,6 +35,7 @@ __all__ = [
     "COSFilterInputStream",
     "DEFAULT_SIGNATURE_SIZE",
     "DocumentTimestampSigner",
+    "PDDocumentSecurityStore",
     "PDPropBuild",
     "PDPropBuildDataDict",
     "PDSeedValue",
@@ -39,6 +44,7 @@ __all__ = [
     "PDSeedValueTimeStamp",
     "PDSignature",
     "PDSignatureLock",
+    "PDValidationInformation",
     "Pkcs7Signature",
     "SignatureInterface",
     "SignatureOptions",

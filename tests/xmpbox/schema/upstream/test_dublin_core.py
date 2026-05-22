@@ -150,7 +150,17 @@ def test_initialized_to_null(
     assert getattr(schema, getter_name)() is None
 
 
-@pytest.mark.parametrize(("field_name", "type_token", "card"), _PARAMETERS)
+# Pre-filtered parameter sets — the Java tester reflects every property
+# through one method and early-returns on the wrong cardinality, leaving
+# the per-cardinality branches as bookkeeping noise. The Python port keeps
+# the upstream ``_PARAMETERS`` table intact for re-syncs and narrows the
+# parametrize input per test so non-applicable rows do not generate
+# pytest skip noise.
+_SIMPLE_PARAMETERS = tuple(p for p in _PARAMETERS if p[2] is Cardinality.Simple)
+_ARRAY_PARAMETERS = tuple(p for p in _PARAMETERS if p[2] is not Cardinality.Simple)
+
+
+@pytest.mark.parametrize(("field_name", "type_token", "card"), _SIMPLE_PARAMETERS)
 def test_setting_value(
     schema: DublinCoreSchema,
     field_name: str,
@@ -159,17 +169,14 @@ def test_setting_value(
 ) -> None:
     """Translated from upstream ``testSettingValue`` (simple cardinality
     branch only — upstream early-returns for non-simple)."""
-    if card is not Cardinality.Simple:
-        pytest.skip(
-            "upstream testSettingValue early-returns for non-Simple cardinality"
-        )
+    del card
     getter, setter, _, _ = _ACCESSORS[field_name]
     value = "application/pdf" if type_token == "MIMEType" else "value-for-" + field_name
     getattr(schema, setter)(value)
     assert getattr(schema, getter)() == value
 
 
-@pytest.mark.parametrize(("field_name", "type_token", "card"), _PARAMETERS)
+@pytest.mark.parametrize(("field_name", "type_token", "card"), _ARRAY_PARAMETERS)
 def test_setting_value_in_array(
     schema: DublinCoreSchema,
     field_name: str,
@@ -178,10 +185,7 @@ def test_setting_value_in_array(
 ) -> None:
     """Translated from upstream ``testSettingValueInArray`` (Bag/Seq
     branch only)."""
-    if card is Cardinality.Simple:
-        pytest.skip(
-            "upstream testSettingValueInArray early-returns for Simple cardinality"
-        )
+    del card
     getter, adder, _, _ = _ACCESSORS[field_name]
     if type_token == "Date":
         from datetime import UTC, datetime
@@ -195,7 +199,7 @@ def test_setting_value_in_array(
     assert len(result) == 1
 
 
-@pytest.mark.parametrize(("field_name", "type_token", "card"), _PARAMETERS)
+@pytest.mark.parametrize(("field_name", "type_token", "card"), _SIMPLE_PARAMETERS)
 def test_property_setter_simple(
     metadata: XMPMetadata,
     schema: DublinCoreSchema,
@@ -205,10 +209,7 @@ def test_property_setter_simple(
 ) -> None:
     """Translated from upstream ``testPropertySetterSimple`` (simple
     cardinality branch only)."""
-    if card is not Cardinality.Simple:
-        pytest.skip(
-            "upstream testPropertySetterSimple early-returns for non-Simple cardinality"
-        )
+    del card
     _, _, typed_getter, typed_setter = _ACCESSORS[field_name]
     assert typed_getter is not None and typed_setter is not None
     if type_token == "MIMEType":
@@ -232,7 +233,7 @@ def test_property_setter_simple(
     assert fetched is not None
 
 
-@pytest.mark.parametrize(("field_name", "type_token", "card"), _PARAMETERS)
+@pytest.mark.parametrize(("field_name", "type_token", "card"), _ARRAY_PARAMETERS)
 def test_property_setter_in_array(
     metadata: XMPMetadata,
     schema: DublinCoreSchema,
@@ -242,10 +243,7 @@ def test_property_setter_in_array(
 ) -> None:
     """Translated from upstream ``testPropertySetterInArray`` (Bag/Seq
     branch only)."""
-    if card is Cardinality.Simple:
-        pytest.skip(
-            "upstream testPropertySetterInArray early-returns for Simple cardinality"
-        )
+    del card
     if type_token == "Date":
         # Upstream uses reflection to wire a Date adder; pypdfbox's
         # `add_date` already takes a `datetime`, exercised in

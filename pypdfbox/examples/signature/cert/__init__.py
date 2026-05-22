@@ -11,6 +11,12 @@ from pypdfbox.examples.signature.cert.certificate_verification_result import (
 from pypdfbox.examples.signature.cert.certificate_verifier import CertificateVerifier
 from pypdfbox.examples.signature.cert.crl_verifier import CRLVerifier
 from pypdfbox.examples.signature.cert.ocsp_helper import OcspHelper
+from pypdfbox.examples.signature.cert.revocation_collector import (
+    RevocationInfoBundle,
+    build_synthetic_crl,
+    build_synthetic_ocsp_response,
+    collect_revocation_info,
+)
 from pypdfbox.examples.signature.cert.revoked_certificate_exception import (
     RevokedCertificateException,
 )
@@ -23,6 +29,10 @@ __all__ = [
     "CertificateVerificationResult",
     "CertificateVerifier",
     "OcspHelper",
+    "RevocationInfoBundle",
     "RevokedCertificateException",
     "SHA1DigestCalculator",
+    "build_synthetic_crl",
+    "build_synthetic_ocsp_response",
+    "collect_revocation_info",
 ]

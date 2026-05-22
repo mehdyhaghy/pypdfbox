@@ -458,7 +458,11 @@ def test_timestamped_signature_invokes_tsa() -> None:
         transport=_fake_tsa_transport_factory(fake_token),
     )
 
-    ts_signer = TimestampedPkcs7Signature(signer, tsa)
+    # embed_timestamp=False keeps the wave-1380 semantics: the TSA token
+    # is exposed only via last_time_stamp_token, the PKCS#7 blob is
+    # untouched. Wave 1382 added the embedding default (covered by
+    # test_cms_helpers_wave1382.py with a real DER-shaped token).
+    ts_signer = TimestampedPkcs7Signature(signer, tsa, embed_timestamp=False)
     pkcs7_bytes = ts_signer.sign(io.BytesIO(b"document bytes to sign"))
 
     # The PKCS#7 blob is a real, DER-decodable SignedData.

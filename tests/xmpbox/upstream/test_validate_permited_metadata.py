@@ -117,10 +117,13 @@ def test_check_existence(
     """
     cls_by_ns = {cls.NAMESPACE: cls for cls in _REGISTERED_SCHEMAS}
     schema_cls = cls_by_ns.get(namespace)
-    if schema_cls is None:
-        pytest.skip(
-            f"Schema namespace {namespace!r} has no port in _REGISTERED_SCHEMAS"
-        )
+    # Every namespace in ``permited_metadata.txt`` resolves to a registered
+    # schema port. Assertion replaces the wave-1377-era ``pytest.skip``
+    # placeholder, which was inherited from the period when several PDF/A 1
+    # schemas were unported.
+    assert schema_cls is not None, (
+        f"Schema namespace {namespace!r} has no port in _REGISTERED_SCHEMAS"
+    )
 
     # Mirror upstream's ``getPreferedPrefix()`` check.
     assert preferred == schema_cls.PREFERRED_PREFIX
@@ -137,8 +140,11 @@ def test_check_existence(
             found = True
             break
 
-    if not found:
-        pytest.skip(
-            f"Schema {schema_cls.__name__} does not yet declare {field_name!r} "
-            "as a class-level constant"
-        )
+    # Every field listed for a registered schema is declared as a class-level
+    # constant in the pypdfbox port (matches upstream's
+    # ``@PropertyType``-annotated static fields). Assertion replaces the
+    # previously dead ``pytest.skip`` placeholder.
+    assert found, (
+        f"Schema {schema_cls.__name__} does not declare {field_name!r} "
+        "as a class-level constant"
+    )

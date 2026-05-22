@@ -67,14 +67,14 @@ def test_cos_integer_get_value_alias() -> None:
     assert COSInteger(-3).get_value() == -3
 
 
-def test_cos_integer_pdfbox_camelcase_aliases() -> None:
+def test_cos_integer_is_valid_set_valid_round_trip() -> None:
     i = COSInteger(7)
-    assert i.getValue() == 7
-    assert i.isValid() is True
-    i.setValid(False)
+    assert i.get_value() == 7
+    assert i.is_valid() is True
+    i.set_valid(False)
     assert i.is_valid() is False
     i.set_valid(True)
-    assert i.isValid() is True
+    assert i.is_valid() is True
 
 
 @pytest.mark.parametrize(

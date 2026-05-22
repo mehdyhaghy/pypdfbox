@@ -183,8 +183,11 @@ def test_setter_then_getter(
     structured = _build(cls)
     setter = getattr(structured, _setter_method_name(field_name), None)
     getter = getattr(structured, _getter_method_name(field_name), None)
-    if setter is None or getter is None:
-        pytest.skip(f"no typed setter/getter pair for {field_name}")
+    # Every row in ``_PARAMS`` corresponds to a declared upstream ``setXxx``
+    # / ``getXxx`` pair; the assertion documents the invariant (previously
+    # a never-firing ``pytest.skip`` placeholder).
+    assert setter is not None, f"missing setter for {cls.__name__}.{field_name}"
+    assert getter is not None, f"missing getter for {cls.__name__}.{field_name}"
     value = _java_value(type_name)
     setter(value)
     asp = structured.get_property(field_name)

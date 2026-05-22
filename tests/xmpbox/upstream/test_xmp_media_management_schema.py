@@ -199,8 +199,11 @@ def test_set_then_get_typed_form(
     in pypdfbox (no setXxxProperty in the upstream class itself).
     """
     string_getter, string_setter, typed_getter, typed_setter = _ACCESSORS[field_name]
-    if typed_getter is None:
-        pytest.skip(f"no typed accessor pair for {field_name}")
+    # Every entry in ``_ACCESSORS`` exposes a typed read accessor — upstream
+    # declares ``ArrayProperty getXxxProperty()`` for the Bag/Seq rows and the
+    # full typed pair for the Simple rows. This assertion documents the
+    # invariant (previously a never-firing ``pytest.skip`` placeholder).
+    assert typed_getter is not None
     if card != "Simple":
         # Array-cardinality rows: upstream declares no ``setXxxProperty`` for
         # ``Versions`` / ``History`` / ``Ingredients`` (only the read accessor
@@ -223,8 +226,10 @@ def test_set_then_get_typed_form(
             children = typed_result.get_all_properties()
             assert len(children) >= 1
         return
-    if typed_setter is None:
-        pytest.skip(f"typed setXxxProperty not declared upstream for {field_name}")
+    # Simple-cardinality rows always declare ``setXxxProperty`` upstream;
+    # array-cardinality rows return above. Assert the invariant rather than
+    # skipping (the skip was a never-firing placeholder).
+    assert typed_setter is not None
     value = _sample_value(type_token)
     type_cls = _TYPED_CLASS[type_token]
     prop = type_cls(
