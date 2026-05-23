@@ -1678,6 +1678,31 @@ class COSParser(BaseParser):
         # (which has access to the password). Subclasses (PDFParser) call
         # super().prepare_decryption() then perform the heavy work.
 
+    def get_security_handler(self):
+        """Return the security handler bound to this parser.
+
+        Mirrors upstream ``COSParser.getSecurityHandler()`` (Java line
+        1820). Returns the handler the document was decrypted with, or
+        ``None`` for unencrypted PDFs / parsers that never staged
+        decryption. The document must already be parsed."""
+        return getattr(self, "_security_handler", None)
+
+    def read_object_marker(self) -> None:
+        """Consume the literal ``obj`` keyword. Mirrors upstream
+        ``COSParser.readObjectMarker()`` (Java line 1543) — a thin
+        wrapper around :meth:`read_expected_string` used by subclasses
+        that hand-walk the indirect-object preamble."""
+        self.read_expected_string(self.OBJ_MARKER, True)
+
+    def parse_cos_literal_string(self) -> COSString:
+        """Parse a ``(...)`` literal PDF string.
+
+        Mirrors upstream ``COSParser.parseCOSLiteralString()`` (Java
+        line 1903) — wraps :meth:`read_literal_string` into a
+        :class:`COSString`. Used by subclasses that need to dispatch
+        on the leading ``(`` token themselves."""
+        return COSString(self.read_literal_string())
+
     # ---------- xref-recovery / startxref / trailer parsing ----------
     #
     # Upstream's ``COSParser`` private xref-recovery helpers, surfaced

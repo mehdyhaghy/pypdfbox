@@ -278,23 +278,32 @@ def _ttf_glyph_path_for_gid(
         glyph = glyph_set[glyph_name]
     except Exception:  # noqa: BLE001
         return []
+    from pypdfbox.rendering._pen_bridge import (  # noqa: PLC0415
+        make_base_pen_bridge,
+    )
+
     inner = _CommandRecordingPen()
     pen = _DecomposingCommandPen(glyph_set, inner)
     try:
-        glyph.draw(pen)
+        glyph.draw(make_base_pen_bridge(pen, glyph_set=glyph_set))
     except Exception:  # noqa: BLE001
         return []
     return inner.commands
 
 
 class _DecomposingCommandPen:
-    """Resolve composite ``addComponent`` references against ``glyph_set``
+    """Resolve composite ``add_component`` references against ``glyph_set``
     and forward the flat segments to an inner :class:`_CommandRecordingPen`.
 
     Mirrors fontTools' :class:`DecomposingPen` contract — composite TTF
     glyphs (every Greek capital in DejaVu Sans, plus many math symbols)
     only emit through ``addComponent``; without flattening, our recording
     pen never sees the underlying outline and the path comes back empty.
+
+    Exposes a snake_case Pen protocol; when passed to fontTools'
+    ``glyph.draw(...)`` it must be wrapped via :func:`pypdfbox.rendering
+    ._pen_bridge.make_base_pen_bridge` so the BasePen camelCase contract
+    is satisfied.
     """
 
     __slots__ = ("_glyph_set", "_inner")
@@ -305,49 +314,57 @@ class _DecomposingCommandPen:
         self._glyph_set = glyph_set
         self._inner = inner
 
-    def moveTo(self, pt: tuple[float, float]) -> None:  # noqa: N802
-        self._inner.moveTo(pt)
+    def move_to(self, pt: tuple[float, float]) -> None:
+        self._inner.move_to(pt)
 
-    def lineTo(self, pt: tuple[float, float]) -> None:  # noqa: N802
-        self._inner.lineTo(pt)
+    def line_to(self, pt: tuple[float, float]) -> None:
+        self._inner.line_to(pt)
 
-    def curveTo(  # noqa: N802
-        self, *points: tuple[float, float]
-    ) -> None:
-        self._inner.curveTo(*points)
+    def curve_to(self, *points: tuple[float, float]) -> None:
+        self._inner.curve_to(*points)
 
-    def qCurveTo(  # noqa: N802
+    def q_curve_to(
         self, *points: tuple[float, float] | None
     ) -> None:
-        self._inner.qCurveTo(*points)
+        self._inner.q_curve_to(*points)
 
-    def closePath(self) -> None:  # noqa: N802
-        self._inner.closePath()
+    def close_path(self) -> None:
+        self._inner.close_path()
 
-    def endPath(self) -> None:  # noqa: N802
-        self._inner.endPath()
+    def end_path(self) -> None:
+        self._inner.end_path()
 
-    def addComponent(  # noqa: N802
+    def add_component(
         self,
-        glyphName: str,  # noqa: N803
+        glyph_name: str,
         transformation: tuple[float, float, float, float, float, float],
     ) -> None:
         # Resolve the referenced component, transform its outline, and
         # forward the flat segments to the inner pen. Mirrors fontTools'
         # ``DecomposingPen.addComponent`` body (which we can't subclass
-        # directly because our recording pen has its own moveTo/lineTo
+        # directly because our recording pen has its own move_to/line_to
         # contract — fontTools' :class:`AbstractPen` API is just a list
         # of well-named callbacks).
         try:
-            component = self._glyph_set[glyphName]
+            component = self._glyph_set[glyph_name]
         except KeyError:
             return
         # Build a transforming pen that applies the affine on the way to
-        # the inner recorder.
+        # the inner recorder. fontTools' TransformPen expects a BasePen
+        # camelCase target, so wrap ``self`` through the bridge first.
         from fontTools.pens.transformPen import TransformPen  # noqa: PLC0415
 
+        from pypdfbox.rendering._pen_bridge import (  # noqa: PLC0415
+            make_base_pen_bridge,
+        )
+
         try:
-            component.draw(TransformPen(self, transformation))
+            component.draw(
+                TransformPen(
+                    make_base_pen_bridge(self, glyph_set=self._glyph_set),
+                    transformation,
+                )
+            )
         except Exception:  # noqa: BLE001
             return
 
@@ -365,13 +382,13 @@ class _CommandRecordingPen:
     def __init__(self) -> None:
         self.commands: list[tuple[Any, ...]] = []
 
-    def moveTo(self, pt: tuple[float, float]) -> None:  # noqa: N802
+    def move_to(self, pt: tuple[float, float]) -> None:
         self.commands.append(("moveto", float(pt[0]), float(pt[1])))
 
-    def lineTo(self, pt: tuple[float, float]) -> None:  # noqa: N802
+    def line_to(self, pt: tuple[float, float]) -> None:
         self.commands.append(("lineto", float(pt[0]), float(pt[1])))
 
-    def curveTo(
+    def curve_to(
         self,
         *points: tuple[float, float],
     ) -> None:
@@ -386,7 +403,7 @@ class _CommandRecordingPen:
                  float(x), float(y))
             )
 
-    def qCurveTo(  # noqa: N802
+    def q_curve_to(
         self,
         *points: tuple[float, float] | None,
     ) -> None:
@@ -426,22 +443,22 @@ class _CommandRecordingPen:
             )
             last_on = on
 
-    def closePath(self) -> None:  # noqa: N802
+    def close_path(self) -> None:
         self.commands.append(("closepath",))
 
-    def endPath(self) -> None:  # noqa: N802
+    def end_path(self) -> None:
         # Open contours close implicitly in PDF stroking; nothing to emit.
         pass
 
-    def addComponent(  # noqa: N802
+    def add_component(
         self,
-        glyphName: str,  # noqa: N803
+        glyph_name: str,
         transformation: tuple[float, float, float, float, float, float],
     ) -> None:
         # Composite glyphs are decomposed by fontTools' ``DecomposingPen``
         # before they reach us in the typical path; this no-op is the
         # safety net for direct-pen invocations.
-        del glyphName, transformation
+        del glyph_name, transformation
 
     def _last_point(self) -> tuple[float, float] | None:
         for cmd in reversed(self.commands):

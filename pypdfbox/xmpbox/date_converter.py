@@ -78,6 +78,19 @@ _DIGIT_START_FORMATS: tuple[str, ...] = (
     "M/d/yy HH:mm:ss",
     "M/d/yy HH:mm",
     "M/d/yy",
+    # Wave 1388 — explicit US-default slash patterns (Locale.US in upstream's
+    # ``DateConverter.parseSimpleDate`` via ``Locale.ENGLISH`` which defaults
+    # to the en_US calendar). Upstream's ``M/d/yy`` regex already accepts
+    # 4-digit years (``\d{2,4}``) so ``5/12/2005`` and ``05/12/2005`` already
+    # match via the lenient ``M/d/yy`` handler; these aliases mirror the
+    # commented-out upstream entries (DateConverter.java lines 136-142) so
+    # the format-table read matches Java code-by-code and the dispatch table
+    # carries every pattern an upstream maintainer would search for. Order
+    # after ``M/d/yy*`` so the lenient handler still wins for ambiguous
+    # 2-digit-month / 2-digit-day cases.
+    "MM/dd/yyyy HH:mm:ss",
+    "MM/dd/yyyy HH:mm",
+    "MM/dd/yyyy",
 )
 
 
@@ -1079,6 +1092,78 @@ def _make_handler_md_yy(text: str) -> tuple[_GregLike | None, int]:
     return cal, match.end()
 
 
+def _make_handler_mmdd_yyyy_hms(text: str) -> tuple[_GregLike | None, int]:
+    """Wave 1388 — explicit ``MM/dd/yyyy HH:mm:ss`` (US default).
+
+    Java's ``SimpleDateFormat("MM/dd/yyyy HH:mm:ss", Locale.ENGLISH)`` parses
+    month-first then day with strict 4-digit year — mirrors the commented-out
+    upstream rule on ``DateConverter.java`` line 137. Lenient at parse time
+    on the month / day width to match Java's SimpleDateFormat
+    ``setLenient(false)`` calendar rules (which apply to the *Calendar*
+    value, not the numeric-field width). Out-of-range months / days fall
+    through via ``cal.validate()``.
+    """
+    match = re.match(
+        r"^(\d{1,2})/(\d{1,2})/(\d{4})\s+(\d{1,2}):(\d{1,2}):(\d{1,2})", text
+    )
+    if match is None:
+        return None, 0
+    cal = DateConverter.new_greg()
+    try:
+        cal.set_fields(
+            int(match.group(3)),
+            int(match.group(1)) - 1,
+            int(match.group(2)),
+            int(match.group(4)),
+            int(match.group(5)),
+            int(match.group(6)),
+        )
+        cal.validate()
+    except (ValueError, OverflowError):
+        return None, 0
+    return cal, match.end()
+
+
+def _make_handler_mmdd_yyyy_hm(text: str) -> tuple[_GregLike | None, int]:
+    """Wave 1388 — explicit ``MM/dd/yyyy HH:mm`` (US default)."""
+    match = re.match(
+        r"^(\d{1,2})/(\d{1,2})/(\d{4})\s+(\d{1,2}):(\d{1,2})", text
+    )
+    if match is None:
+        return None, 0
+    cal = DateConverter.new_greg()
+    try:
+        cal.set_fields(
+            int(match.group(3)),
+            int(match.group(1)) - 1,
+            int(match.group(2)),
+            int(match.group(4)),
+            int(match.group(5)),
+        )
+        cal.validate()
+    except (ValueError, OverflowError):
+        return None, 0
+    return cal, match.end()
+
+
+def _make_handler_mmdd_yyyy(text: str) -> tuple[_GregLike | None, int]:
+    """Wave 1388 — explicit ``MM/dd/yyyy`` (US default, no time)."""
+    match = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})", text)
+    if match is None:
+        return None, 0
+    cal = DateConverter.new_greg()
+    try:
+        cal.set_fields(
+            int(match.group(3)),
+            int(match.group(1)) - 1,
+            int(match.group(2)),
+        )
+        cal.validate()
+    except (ValueError, OverflowError):
+        return None, 0
+    return cal, match.end()
+
+
 def _make_handler_locale(fmt: str):
     """Build a handler that delegates to :func:`parse_with_locale`.
 
@@ -1223,6 +1308,13 @@ _SIMPLE_FORMAT_HANDLERS = {
     "M/d/yy HH:mm:ss": _make_handler_md_yy_hms,
     "M/d/yy HH:mm": _make_handler_md_yy_hm,
     "M/d/yy": _make_handler_md_yy,
+    # Wave 1388 — explicit US-default MM/dd/yyyy variants. The "M/d/yy"
+    # handler above already accepts these inputs (it matches \d{1,2}/\d{1,2}/
+    # \d{2,4}); registering them explicitly makes the dispatch table 1:1 with
+    # the upstream-commented format list (DateConverter.java lines 136-142).
+    "MM/dd/yyyy HH:mm:ss": _make_handler_mmdd_yyyy_hms,
+    "MM/dd/yyyy HH:mm": _make_handler_mmdd_yyyy_hm,
+    "MM/dd/yyyy": _make_handler_mmdd_yyyy,
     # Wave 1387 — alpha-start formats wired through the bundled locale tables.
     "EEEE, dd MMM yy hh:mm:ss a": _make_handler_locale("EEEE, dd MMM yy hh:mm:ss a"),
     "EEEE, MMM dd, yy hh:mm:ss a": _make_handler_locale("EEEE, MMM dd, yy hh:mm:ss a"),

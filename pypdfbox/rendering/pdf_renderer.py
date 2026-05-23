@@ -24,6 +24,7 @@ from pypdfbox.cos import (
 )
 from pypdfbox.io.random_access_read_buffer import RandomAccessReadBuffer
 from pypdfbox.rendering import _aggdraw_compat as aggdraw
+from pypdfbox.rendering._pen_bridge import make_base_pen_bridge
 from pypdfbox.rendering.image_type import ImageType
 from pypdfbox.rendering.render_destination import RenderDestination
 
@@ -1647,7 +1648,7 @@ class PDFRenderer(PDFStreamEngine):
         # the duck-typed ``draw_image`` / ``paste`` API; fall back to a
         # silent no-op so a downstream caller's custom hook can pick up
         # the rendered image via ``get_page_image()``.
-        for attr in ("paste", "draw_image", "drawImage"):  # noqa: N802
+        for attr in ("paste", "draw_image", "drawImage"):
             fn = getattr(graphics, attr, None)
             if callable(fn):
                 try:
@@ -7256,7 +7257,7 @@ class PDFRenderer(PDFStreamEngine):
                 glyph_name = ttf._tt.getGlyphName(gid)  # noqa: SLF001
                 glyph = glyph_set[glyph_name]
                 pen = _AggdrawPathPen(scale=1.0 / ttf.get_units_per_em())
-                glyph.draw(pen)
+                glyph.draw(make_base_pen_bridge(pen, glyph_set=glyph_set))
                 # Prefer the PDFont's declared advance width (already in
                 # 1/1000 em — populated from /Widths for simple TTF fonts
                 # and from the descendant CIDFont's /W array for Type0
@@ -7960,14 +7961,15 @@ class PDFRenderer(PDFStreamEngine):
 
 
 class _AggdrawPathPen:
-    """Minimal fontTools Pen that captures glyph outlines into an
+    """Minimal snake_case Pen that captures glyph outlines into an
     :class:`aggdraw.Path`. Coordinates are scaled by ``scale`` so the
     resulting path lives in unit-em space (1.0 = one em) — the calling
     transform then multiplies by ``font_size`` to land in user space.
 
-    Implements the subset of the fontTools ``AbstractPen`` interface that
-    matters for SegmentPen-style glyph drawing: ``moveTo``, ``lineTo``,
-    ``curveTo``, ``qCurveTo``, ``closePath``, ``endPath``.
+    Implements the snake_case Pen protocol; pass to fontTools'
+    ``glyph.draw(...)`` via :func:`pypdfbox.rendering._pen_bridge
+    .make_base_pen_bridge` so the BasePen camelCase contract is
+    satisfied without leaking camelCase aliases onto this class.
     """
 
     def __init__(self, scale: float) -> None:
@@ -7979,19 +7981,19 @@ class _AggdrawPathPen:
     def _xy(self, pt: tuple[float, float]) -> tuple[float, float]:
         return (pt[0] * self._scale, pt[1] * self._scale)
 
-    def moveTo(self, pt: tuple[float, float]) -> None:  # noqa: N802
+    def move_to(self, pt: tuple[float, float]) -> None:
         x, y = self._xy(pt)
         self.path.moveto(x, y)
         self.has_segments = True
         self._last = (x, y)
 
-    def lineTo(self, pt: tuple[float, float]) -> None:  # noqa: N802
+    def line_to(self, pt: tuple[float, float]) -> None:
         x, y = self._xy(pt)
         self.path.lineto(x, y)
         self.has_segments = True
         self._last = (x, y)
 
-    def curveTo(self, *points: tuple[float, float]) -> None:  # noqa: N802
+    def curve_to(self, *points: tuple[float, float]) -> None:
         # Cubic Bezier: 3 control points per segment; fontTools allows
         # superpaths but for TTF (after converted by the glyphSet wrapper)
         # we always get cubic triples or qCurveTo.
@@ -8004,7 +8006,7 @@ class _AggdrawPathPen:
             self._last = (x3, y3)
         self.has_segments = True
 
-    def qCurveTo(self, *points: tuple[float, float]) -> None:  # noqa: N802
+    def q_curve_to(self, *points: tuple[float, float]) -> None:
         # Quadratic — convert to cubic (CP2 = CP1; simple Bezier elevation
         # gives an exact representation: cubic CPs at 1/3 & 2/3 between the
         # quadratic endpoints/control). For TT glyphs, qCurveTo arrives as
@@ -8072,23 +8074,22 @@ class _AggdrawPathPen:
         y2 = y3 + (2.0 / 3.0) * (cy - y3)
         self.path.curveto(x1, y1, x2, y2, x3, y3)
 
-    def closePath(self) -> None:  # noqa: N802
+    def close_path(self) -> None:
         self.path.close()
 
-    def endPath(self) -> None:  # noqa: N802
+    def end_path(self) -> None:
         # Open subpath — aggdraw doesn't have a separate endPath; just
         # leave the subpath open. Filling unclosed subpaths is undefined
         # in PostScript-land; aggdraw's brush will close implicitly.
         pass
 
-    # fontTools sometimes uses the deprecated lowercase verbs:
-    def addComponent(  # noqa: N802
+    def add_component(
         self,
-        baseGlyphName: str,  # noqa: ARG002, N803
+        base_glyph_name: str,  # noqa: ARG002
         transformation: tuple[float, float, float, float, float, float],  # noqa: ARG002
     ) -> None:
         # Composite glyph — the glyphSet wrapper for TT fonts already
-        # decomposes components into segments before calling moveTo/lineTo,
+        # decomposes components into segments before calling move_to/line_to,
         # so this hook is rarely hit. When it is, the safest behaviour is
         # to silently skip rather than half-render.
         pass

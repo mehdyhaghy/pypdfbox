@@ -128,6 +128,22 @@ class CharStringCommand:
             return self._type1_key_word.key
         return None
 
+    def get_value(self) -> int:
+        """Mirror upstream ``CharStringCommand.getValue()``
+        (CharStringCommand.java:112).
+
+        In PDFBox 3.0.x ``CharStringCommand`` was refactored into an
+        enum whose constants each carry an ``int value`` (the merged
+        operator hash, with ``99`` for ``UNKNOWN``). Our port keeps the
+        older class-with-Key shape, so the value comes from the
+        underlying ``Key.hash_value``; an unbound command falls back to
+        ``_KEY_UNKNOWN`` (99) matching upstream's ``UNKNOWN`` sentinel.
+        """
+        key = self.get_key()
+        if key is None:
+            return _KEY_UNKNOWN
+        return key.hash_value
+
     # ---------- behaviour mirroring Java Object overrides ---------------
     def to_string(self) -> str:
         """Mirrors upstream ``toString`` (CharStringCommand.java:234-250).

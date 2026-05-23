@@ -58,14 +58,27 @@ def test_extract_null_returns_none() -> None:
     assert DateConverter.to_calendar(None) is None
 
 
-@pytest.mark.skip(
-    reason="upstream parses 'D:05/12/2005' and '5/12/2005 15:57:16' via Java "
-    "SimpleDateFormat 'MM/dd/yyyy [HH:mm:ss]' — the Python port's "
-    "_SIMPLE_FORMAT_HANDLERS table has handlers for digit-start M/d/yy "
-    "patterns; the ambiguous slash-separated forms remain JVM-locale "
-    "territory."
-)
-def test_extract_slash_separated_date_with_optional_time() -> None: ...
+def test_extract_slash_separated_date_with_optional_time() -> None:
+    """Mirror upstream ``testExtract`` slash-separated cases (lines 60-63).
+
+    Wave 1388 closed the divergence — upstream's ``D:05/12/2005`` and
+    ``5/12/2005 15:57:16`` route through ``DateConverter.parseSimpleDate``
+    under ``Locale.ENGLISH`` which defaults to month-first
+    (``MM/dd/yyyy``). The Python port hits the same US-default semantics
+    via the lenient ``M/d/yy`` handler (4-digit-year tolerant) plus the
+    new explicit ``MM/dd/yyyy`` aliases (see
+    ``_SIMPLE_FORMAT_HANDLERS`` in ``pypdfbox/xmpbox/date_converter.py``).
+    """
+    # ``D:05/12/2005`` — May 12, 2005 (US default).
+    cal = DateConverter.to_calendar("D:05/12/2005")
+    assert cal is not None
+    expected = datetime(2005, 5, 12, tzinfo=UTC)
+    assert cal == expected
+    # ``5/12/2005 15:57:16`` — same date with explicit time.
+    cal2 = DateConverter.to_calendar("5/12/2005 15:57:16")
+    assert cal2 is not None
+    expected2 = datetime(2005, 5, 12, 15, 57, 16, tzinfo=UTC)
+    assert cal2 == expected2
 
 
 # --------------------------------------------------------------------- #

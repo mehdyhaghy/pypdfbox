@@ -332,6 +332,17 @@ class COSArray(COSBase):
     # ---------- factory constructors ----------
 
     @classmethod
+    def of(cls, floats: Iterable[float]) -> COSArray:
+        """Mirror upstream ``COSArray.of(float... floats)``.
+
+        Wraps each ``float`` in a :class:`COSFloat` and returns a new
+        ``COSArray``. Upstream uses a Java varargs signature; we accept any
+        iterable of floats to stay idiomatic in Python while preserving
+        the public name FDF / annotation code calls.
+        """
+        return cls([COSFloat(float(f)) for f in floats])
+
+    @classmethod
     def of_cos_names(cls, names: Iterable[str]) -> COSArray:
         return cls([COSName.get_pdf_name(n) for n in names])
 

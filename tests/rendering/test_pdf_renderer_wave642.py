@@ -86,7 +86,7 @@ def test_pattern_fill_returns_for_absent_pattern_or_degenerate_mask(
 def test_aggdraw_pen_curve_to_records_complete_cubic_segment() -> None:
     pen = _AggdrawPathPen(scale=0.5)
 
-    pen.curveTo((2.0, 4.0), (6.0, 8.0), (10.0, 12.0))
+    pen.curve_to((2.0, 4.0), (6.0, 8.0), (10.0, 12.0))
 
     assert pen.has_segments is True
     assert pen._last == (5.0, 6.0)  # noqa: SLF001

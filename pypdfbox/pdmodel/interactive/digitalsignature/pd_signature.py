@@ -425,10 +425,10 @@ class PDSignature:
     """Signature value dictionary (``/Type /Sig``). Mirrors PDFBox
     ``PDSignature`` lite surface (PDF 32000-1 §12.8.1, Table 252).
 
-    Deferred upstream behavior: structured ``Calendar`` / ``datetime``
-    conversion for ``/M`` is not implemented (raw PDF date strings only),
-    actual signing/verification (``/Contents`` placeholder population,
-    PKCS#7 generation) is out of scope for this lite port.
+    Datetime conversion for ``/M`` is supported via
+    :meth:`get_sign_date_as_datetime` / :meth:`set_sign_date_as_datetime`.
+    Actual signing/verification (``/Contents`` placeholder population,
+    PKCS#7 generation) lives in the ``signing_support`` cluster.
     """
 
     TYPE = "Sig"

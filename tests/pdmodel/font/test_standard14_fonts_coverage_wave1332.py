@@ -33,10 +33,10 @@ from pypdfbox.pdmodel.font.standard14_fonts import (
 
 def test_command_recording_pen_records_moveto_lineto_and_close() -> None:
     pen = _CommandRecordingPen()
-    pen.moveTo((1.0, 2.0))
-    pen.lineTo((3.0, 4.0))
-    pen.closePath()
-    pen.endPath()  # no-op safety net (lines 427-429).
+    pen.move_to((1.0, 2.0))
+    pen.line_to((3.0, 4.0))
+    pen.close_path()
+    pen.end_path()  # no-op safety net (lines 427-429).
     assert pen.commands == [
         ("moveto", 1.0, 2.0),
         ("lineto", 3.0, 4.0),
@@ -46,53 +46,53 @@ def test_command_recording_pen_records_moveto_lineto_and_close() -> None:
 
 def test_command_recording_pen_curveto_three_points_emits_segment() -> None:
     pen = _CommandRecordingPen()
-    pen.moveTo((0.0, 0.0))
-    pen.curveTo((1.0, 2.0), (3.0, 4.0), (5.0, 6.0))
+    pen.move_to((0.0, 0.0))
+    pen.curve_to((1.0, 2.0), (3.0, 4.0), (5.0, 6.0))
     # Last command is a 7-tuple curveto.
     assert pen.commands[-1] == ("curveto", 1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
 
 
 def test_command_recording_pen_curveto_skip_non_cubic() -> None:
     pen = _CommandRecordingPen()
-    pen.moveTo((0.0, 0.0))
+    pen.move_to((0.0, 0.0))
     # Two-point input is not cubic — the if-len-3 guard (line 377) skips it.
-    pen.curveTo((1.0, 1.0), (2.0, 2.0))
+    pen.curve_to((1.0, 1.0), (2.0, 2.0))
     assert len([c for c in pen.commands if c[0] == "curveto"]) == 0
 
 
 def test_command_recording_pen_qcurveto_emits_cubic_segments() -> None:
     pen = _CommandRecordingPen()
-    pen.moveTo((0.0, 0.0))
+    pen.move_to((0.0, 0.0))
     # Two qCurveTo control points: triggers the implicit-midpoint branch
     # (lines 403-422), producing two cubic segments.
-    pen.qCurveTo((1.0, 1.0), (2.0, 0.0), (3.0, 3.0))
+    pen.q_curve_to((1.0, 1.0), (2.0, 0.0), (3.0, 3.0))
     curves = [c for c in pen.commands if c[0] == "curveto"]
     assert len(curves) >= 2
 
 
 def test_command_recording_pen_qcurveto_with_only_none_returns_early() -> None:
     pen = _CommandRecordingPen()
-    pen.moveTo((0.0, 0.0))
-    pen.qCurveTo(None)  # type: ignore[arg-type]
+    pen.move_to((0.0, 0.0))
+    pen.q_curve_to(None)  # type: ignore[arg-type]
     # Line 395-396 — early return because the filtered list is empty.
     assert all(c[0] != "curveto" for c in pen.commands)
 
 
 def test_command_recording_pen_qcurveto_without_last_point_returns_early() -> None:
     pen = _CommandRecordingPen()
-    # No prior moveTo — _last_point returns None (line 401-402 early return).
-    pen.qCurveTo((1.0, 1.0))
+    # No prior move_to — _last_point returns None (line 401-402 early return).
+    pen.q_curve_to((1.0, 1.0))
     assert pen.commands == []
 
 
 def test_command_recording_pen_last_point_walks_back_through_curveto() -> None:
     pen = _CommandRecordingPen()
-    pen.moveTo((0.0, 0.0))
-    pen.curveTo((1.0, 1.0), (2.0, 2.0), (3.0, 3.0))
+    pen.move_to((0.0, 0.0))
+    pen.curve_to((1.0, 1.0), (2.0, 2.0), (3.0, 3.0))
     # After a curveto the _last_point should resolve to (3.0, 3.0).
     assert pen._last_point() == (3.0, 3.0)  # noqa: SLF001
     # Closepath does not change the last point.
-    pen.closePath()
+    pen.close_path()
     assert pen._last_point() == (3.0, 3.0)  # noqa: SLF001
     # Empty pen returns None (line 448).
     assert _CommandRecordingPen()._last_point() is None  # noqa: SLF001
@@ -100,7 +100,7 @@ def test_command_recording_pen_last_point_walks_back_through_curveto() -> None:
 
 def test_command_recording_pen_addcomponent_is_noop() -> None:
     pen = _CommandRecordingPen()
-    pen.addComponent("X", (1, 0, 0, 1, 0, 0))  # noqa: NPY002 — no numpy needed
+    pen.add_component("X", (1, 0, 0, 1, 0, 0))
     # Lines 431-439 — del-only safety net.
     assert pen.commands == []
 
@@ -108,12 +108,12 @@ def test_command_recording_pen_addcomponent_is_noop() -> None:
 def test_decomposing_command_pen_forwards_simple_callbacks() -> None:
     inner = _CommandRecordingPen()
     pen = _DecomposingCommandPen({}, inner)
-    pen.moveTo((1.0, 2.0))
-    pen.lineTo((3.0, 4.0))
-    pen.curveTo((1.0, 1.0), (2.0, 2.0), (3.0, 3.0))
-    pen.qCurveTo((4.0, 4.0))
-    pen.closePath()
-    pen.endPath()
+    pen.move_to((1.0, 2.0))
+    pen.line_to((3.0, 4.0))
+    pen.curve_to((1.0, 1.0), (2.0, 2.0), (3.0, 3.0))
+    pen.q_curve_to((4.0, 4.0))
+    pen.close_path()
+    pen.end_path()
     # Forwarded into the inner recorder.
     assert any(cmd[0] == "moveto" for cmd in inner.commands)
     assert any(cmd[0] == "lineto" for cmd in inner.commands)
@@ -124,7 +124,7 @@ def test_decomposing_command_pen_missing_component_is_ignored() -> None:
     pen = _DecomposingCommandPen({}, inner)
     # Empty glyph_set raises KeyError; the except path swallows it
     # (lines 338-339).
-    pen.addComponent("missing", (1, 0, 0, 1, 0, 0))
+    pen.add_component("missing", (1, 0, 0, 1, 0, 0))
     assert inner.commands == []
 
 
@@ -137,7 +137,7 @@ def test_decomposing_command_pen_component_draw_failure_is_ignored() -> None:
 
     pen = _DecomposingCommandPen({"X": _BadComponent()}, inner)
     # Lines 344-347 — draw raises, except clause swallows it.
-    pen.addComponent("X", (1, 0, 0, 1, 0, 0))
+    pen.add_component("X", (1, 0, 0, 1, 0, 0))
     assert inner.commands == []
 
 
@@ -146,11 +146,13 @@ def test_decomposing_command_pen_component_resolves_and_draws() -> None:
 
     class _Component:
         def draw(self, pen: Any) -> None:
+            # fontTools BasePen contract — bridged into snake_case
+            # delegate by the bridge wrapper inside the decomposer.
             pen.moveTo((10.0, 20.0))
             pen.lineTo((30.0, 40.0))
 
     pen = _DecomposingCommandPen({"X": _Component()}, inner)
-    pen.addComponent("X", (1, 0, 0, 1, 5, 6))
+    pen.add_component("X", (1, 0, 0, 1, 5, 6))
     # The component drew through a TransformPen; the inner recorder saw
     # transformed points.
     assert any(cmd[0] == "moveto" for cmd in inner.commands)

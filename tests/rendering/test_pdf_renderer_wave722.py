@@ -88,10 +88,10 @@ def test_aggdraw_path_pen_qcurve_handles_trailing_single_offcurve(
         return original_len(value)
 
     pen = _AggdrawPathPen(scale=1.0)
-    pen.moveTo((0.0, 0.0))
+    pen.move_to((0.0, 0.0))
     monkeypatch.setattr(builtins, "len", fake_len)
 
-    pen.qCurveTo((1.0, 1.0), (2.0, 2.0))
+    pen.q_curve_to((1.0, 1.0), (2.0, 2.0))
 
     assert pen.has_segments is True
     assert pen._last == (1.0, 1.0)  # noqa: SLF001

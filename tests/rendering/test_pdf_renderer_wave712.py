@@ -120,7 +120,7 @@ def test_hsl_helpers_cover_tie_and_in_gamut_paths() -> None:
 def test_aggdraw_path_pen_qcurve_ignores_empty_and_missing_current_point() -> None:
     pen = _AggdrawPathPen(scale=1.0)
 
-    pen.qCurveTo()
-    pen.qCurveTo((1.0, 2.0))
+    pen.q_curve_to()
+    pen.q_curve_to((1.0, 2.0))
 
     assert pen.has_segments is False

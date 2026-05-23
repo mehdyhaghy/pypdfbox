@@ -63,7 +63,7 @@ def test_type1_command_builder_returns_none_for_move_only_path() -> None:
 def test_aggdraw_pen_ignores_quadratic_without_current_point() -> None:
     pen = _AggdrawPathPen(scale=1.0)
 
-    pen.qCurveTo((1.0, 1.0), (2.0, 2.0))
+    pen.q_curve_to((1.0, 1.0), (2.0, 2.0))
 
     assert pen.has_segments is False
 
@@ -71,8 +71,8 @@ def test_aggdraw_pen_ignores_quadratic_without_current_point() -> None:
 def test_aggdraw_pen_single_quadratic_marks_segment_after_move() -> None:
     pen = _AggdrawPathPen(scale=1.0)
 
-    pen.moveTo((0.0, 0.0))
-    pen.qCurveTo((2.0, 2.0))
+    pen.move_to((0.0, 0.0))
+    pen.q_curve_to((2.0, 2.0))
 
     assert pen.has_segments is True
     assert pen._last == (2.0, 2.0)  # noqa: SLF001

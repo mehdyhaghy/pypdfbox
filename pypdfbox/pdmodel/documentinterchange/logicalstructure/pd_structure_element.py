@@ -758,12 +758,9 @@ class PDStructureElement(PDStructureNode):
     def set_standard_structure_type(self, structure_type: str) -> None:
         """Mirror upstream ``setStandardStructureType``.
 
-        Upstream PDFBox writes the supplied name to ``/S`` after validating
-        it against the standard-structure-types whitelist. The whitelist
-        check is deferred (PDF 32000-1 §14.7.4 enumerates the standard
-        types but the ``Standard14`` constants live in a future cluster);
-        for now we delegate straight to :meth:`set_structure_type` so the
-        public API name lines up with upstream callers.
+        Writes ``structure_type`` to ``/S``. Upstream does not enforce a
+        whitelist either — the standard-structure-types check is exposed
+        separately via :meth:`is_standard_structure_type`.
         """
         if structure_type is None:
             raise ValueError("standard structure type shall not be null")

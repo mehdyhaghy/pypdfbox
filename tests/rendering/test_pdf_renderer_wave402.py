@@ -178,17 +178,17 @@ def test_type1_path_builder_and_aggdraw_pen_quadratic_branches() -> None:
     ) is not None
 
     pen = _AggdrawPathPen(scale=0.5)
-    pen.qCurveTo((1.0, 1.0))
+    pen.q_curve_to((1.0, 1.0))
     assert pen.has_segments is False
 
-    pen.moveTo((0.0, 0.0))
-    pen.qCurveTo()
-    pen.qCurveTo((2.0, 0.0))
-    pen.qCurveTo((3.0, 1.0), (4.0, 0.0))
-    pen.qCurveTo((5.0, 1.0), (6.0, 1.0), (7.0, 0.0))
-    pen.curveTo((7.0, 0.0), (8.0, 1.0))
-    pen.addComponent("base", (1.0, 0.0, 0.0, 1.0, 0.0, 0.0))
-    pen.closePath()
-    pen.endPath()
+    pen.move_to((0.0, 0.0))
+    pen.q_curve_to()
+    pen.q_curve_to((2.0, 0.0))
+    pen.q_curve_to((3.0, 1.0), (4.0, 0.0))
+    pen.q_curve_to((5.0, 1.0), (6.0, 1.0), (7.0, 0.0))
+    pen.curve_to((7.0, 0.0), (8.0, 1.0))
+    pen.add_component("base", (1.0, 0.0, 0.0, 1.0, 0.0, 0.0))
+    pen.close_path()
+    pen.end_path()
 
     assert pen.has_segments is True

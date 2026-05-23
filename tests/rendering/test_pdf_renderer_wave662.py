@@ -209,7 +209,7 @@ def test_placeholder_and_pen_empty_paths_are_noops() -> None:
         ) is None
 
         pen = _AggdrawPathPen(scale=1.0)
-        pen.qCurveTo((10.0, 10.0))
+        pen.q_curve_to((10.0, 10.0))
         assert not pen.has_segments
     finally:
         doc.close()
