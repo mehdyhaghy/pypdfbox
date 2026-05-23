@@ -13,8 +13,13 @@ back to a bundled substitute TTF carried in this package:
   Courier New / Courier.
 * ``DejaVuSans.ttf``     — Symbol & ZapfDingbats fallback. DejaVu Sans
   carries the full Zapf Dingbats Unicode block (U+2700-U+27BF) and the
-  Greek-letter + math-operator portions of Adobe Symbol (84% glyph
-  coverage; the remaining PUA-encoded variants are visually inert).
+  Greek-letter + math-operator portions of Adobe Symbol. As of wave
+  1387, a PUA → DejaVu-codepoint synthesis table in
+  :mod:`pypdfbox.pdmodel.font.standard14_fonts` routes the 31 Adobe-
+  specific PUA glyph names (bracket-extension pieces, serif/sans
+  register marks, stretchable extension bars) to their nearest base
+  glyph in DejaVu, lifting Symbol coverage to 188/189 (the residual
+  ``space`` is zero-contour by design).
 
 License chain:
 

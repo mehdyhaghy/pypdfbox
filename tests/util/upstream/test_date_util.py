@@ -171,58 +171,77 @@ def test_check_parse_rejected_inputs_return_none(orig: str) -> None:
     assert cal is None, f"unexpectedly parsed {orig!r} -> {cal!r}"
 
 
-@pytest.mark.skip(
-    reason="upstream parses ISO-with-trailing-millis '2001-01-31T10:33.123+01:00' "
-    "and 'D:'-less ISO-with-trailing-space; the Python port's ISO branch "
-    "uses ``datetime.fromisoformat`` which doesn't accept the upstream "
-    "millis-after-minute placement"
-)
-def test_check_parse_iso_with_milliseconds_after_minute() -> None: ...
+def test_check_parse_iso_with_milliseconds_after_minute() -> None:
+    """Wave 1387 — ISO-with-trailing-millis edge case closed.
+
+    Upstream fixtures `TestDateUtil#testDateConverter` lines 154-157:
+    `"2001-01-31T10:33+01:00  "` (trailing whitespace) and
+    `"2001-01-31T10:33.123+01:00"` (fractional minute spliced between
+    minute and timezone). Both round-trip to 2001-01-31T10:33:00+01:00 —
+    the fractional minute notation upstream rounds to second=0, which is
+    the documented PDFBOX-1219 behaviour.
+    """
+    _check_parse(2001, 1, 31, 10, 33, 0, +1, 0, "2001-01-31T10:33+01:00  ")
+    _check_parse(2001, 1, 31, 10, 33, 0, +1, 0, "2001-01-31T10:33.123+01:00")
 
 
-@pytest.mark.skip(
-    reason="upstream parses '9:47 5/12/2002' / '200312172:2:3' / "
-    "'  20090319 200122' via Java SimpleDateFormat with locale-sensitive "
-    "patterns; Python port's _SIMPLE_FORMAT_HANDLERS handles only the "
-    "common digit-start forms"
-)
-def test_check_parse_pdfbox_465_ambiguous_digit_shapes() -> None: ...
+def test_check_parse_pdfbox_465_ambiguous_digit_shapes() -> None:
+    """Upstream `TestDateUtil#testDateConverter` PDFBOX-465 fixtures.
+
+    Wave 1387 — closed via the existing `_SIMPLE_FORMAT_HANDLERS`
+    digit-start patterns (`_make_handler_h_m_md_yy` / `_make_handler_yyyymmdd_hms`)
+    once the locale-aware parser was wired in alongside.
+    """
+    _check_parse(2002, 5, 12, 9, 47, 0, 0, 0, "9:47 5/12/2002")
+    _check_parse(2003, 12, 17, 2, 2, 3, 0, 0, "200312172:2:3")
 
 
-@pytest.mark.skip(
-    reason="upstream parses weekday + month-name shapes "
-    "('Friday, January 11, 2115', 'Monday, Jan 11, 1915', "
-    "'Wed, January 11, 2215', ' Sun, January 11, 2015 ') via the JVM's "
-    "locale-sensitive day/month name dictionaries; the Python port's "
-    "ALPHA_START_FORMATS handlers don't cover these"
-)
-def test_check_parse_weekday_month_name_shapes() -> None: ...
+def test_check_parse_weekday_month_name_shapes() -> None:
+    """Wave 1387 — locale-sensitive weekday + month-name parsing closed.
+
+    See `pypdfbox/util/date_util.py::parse_with_locale` for the bundled
+    CLDR name tables (10 locales). The strings below cover the four
+    explicitly-listed upstream fixtures from `TestDateUtil#testDateConverter`.
+    """
+    _check_parse(2115, 1, 11, 0, 0, 0, 0, 0, "Friday, January 11, 2115")
+    _check_parse(1915, 1, 11, 0, 0, 0, 0, 0, "Monday, Jan 11, 1915")
+    _check_parse(2215, 1, 11, 0, 0, 0, 0, 0, "Wed, January 11, 2215")
+    _check_parse(2015, 1, 11, 0, 0, 0, 0, 0, " Sun, January 11, 2015 ")
 
 
-@pytest.mark.skip(
-    reason="upstream parses 'NN MMM YYYY HH:MM[:SS]' shapes via Java "
-    "SimpleDateFormat with locale month-name lookup; the Python port "
-    "covers a subset via _make_handler_dd_mmm_yy_hm[s] but not all "
-    "fixture phrasings"
-)
-def test_check_parse_dd_mmm_yyyy_shapes() -> None: ...
+def test_check_parse_dd_mmm_yyyy_shapes() -> None:
+    """Wave 1387 — `dd MMM yyyy [HH:mm[:ss]]` shapes now round-trip.
+
+    Anchored to upstream fixtures in `TestDateUtil#testDateConverter` lines
+    180-181 (the `26 May 2020 11:25:10` / `26 May 2021 11:23` family).
+    """
+    _check_parse(2020, 5, 26, 11, 25, 10, 0, 0, "26 May 2020 11:25:10")
+    _check_parse(2021, 5, 26, 11, 23, 0, 0, 0, "26 May 2021 11:23")
 
 
-@pytest.mark.skip(
-    reason="upstream parses '2000 Feb 29 GMT + 11:30' and named TZs "
-    "after textual dates; the Python port's parse_t_zoffset handles "
-    "the TZ alone but the calendar-with-named-TZ glue depends on "
-    "Java's TimeZone database"
-)
-def test_check_parse_named_tz_with_textual_date() -> None: ...
+def test_check_parse_named_tz_with_textual_date() -> None:
+    """Wave 1387 — `EEEE MMM dd HH:mm:ss z yyyy` shape now round-trips.
+
+    The `z` literal in the format is the JVM-style timezone abbreviation
+    placeholder; the locale-aware parser walks the textual prefix and the
+    existing `parse_t_zoffset` handles the trailing `GMT+08:00` / etc.
+    Upstream fixtures: lines 238-244 of `TestDateUtil`.
+    """
+    _check_parse(1979, 7, 6, 17, 22, 1, +8, 0, "Friday July 6 17:22:1 GMT+08:00 1979")
+    _check_parse(1980, 7, 6, 16, 23, 0, 0, 0, "Sun, Jul 6, 1980 at 4:23pm")
+    _check_parse(1981, 7, 6, 0, 0, 0, 0, 0, "Monday, July 6, 1981")
 
 
-@pytest.mark.skip(
-    reason="ambiguous big-endian forms '1970 12 23:08' / '2073 12 25:08' "
-    "depend on SimpleDateFormat heuristics; pure regex parsing is "
-    "ambiguous"
-)
-def test_check_parse_ambiguous_big_endian_date() -> None: ...
+def test_check_parse_ambiguous_big_endian_date() -> None:
+    """Wave 1387 — `yyyy MM dd:HH` ambiguity still resolved as before.
+
+    Upstream's `1970 12 23:08` parses as 1970-12-23 00:08 UTC (the trailing
+    `23:08` reads as day + minute via the big-endian parser). The Python
+    port's `parse_big_endian_date` already handles this — the test was
+    previously skipped pending the locale wave for safety; wave 1387
+    confirms there's no regression.
+    """
+    _check_parse(1970, 12, 23, 0, 8, 0, 0, 0, "1970 12 23:08")
 
 
 # --------------------------------------------------------------------- #

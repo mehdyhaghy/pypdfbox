@@ -210,11 +210,20 @@ def _from_iso8601(date_string: str) -> datetime:
 
     Tries to parse a zoned ISO 8601 string first; falls back to a naive
     ``ISO_LOCAL_DATE_TIME`` and attaches UTC, matching upstream behaviour.
+
+    Wave 1387 — also handles the upstream edge case
+    ``"2001-01-31T10:33.123+01:00"`` where milliseconds are spliced between
+    minute and timezone (Java's ISO parser accepts the fraction as a
+    decimal minute and rounds; we drop the fraction to match upstream's
+    observed result of ``second=0``).
     """
     cleaned = date_string.strip()
     iso = cleaned
     if iso.endswith("Z"):
         iso = iso[:-1] + "+00:00"
+    # Strip fractional-minute notation: ``HH:MM.fff`` -> ``HH:MM``.
+    # Upstream's expected parse drops the fraction, so we do too.
+    iso = _ISO_FRACTIONAL_MINUTE_RE.sub(r"\1", iso)
     try:
         parsed = datetime.fromisoformat(iso)
     except ValueError as exc:
@@ -223,6 +232,14 @@ def _from_iso8601(date_string: str) -> datetime:
         # upstream falls back to LocalDateTime + UTC zone
         parsed = parsed.replace(tzinfo=UTC)
     return parsed
+
+
+# Match ``HH:MM.fff`` (fractional minute, NOT seconds) — we only want to
+# strip a fractional component that appears *immediately* after the minute
+# and before the TZ offset / end-of-string.
+_ISO_FRACTIONAL_MINUTE_RE = re.compile(
+    r"(T\d{2}:\d{2})\.\d+(?=(?:[+\-Z]|$))"
+)
 
 
 def to_calendar(date_string: str | None) -> datetime | None:
@@ -264,12 +281,27 @@ def to_calendar(date_string: str | None) -> datetime | None:
     if not date.strip():
         return None
     pos_of_t = date.find("T")
-    if pos_of_t != 10 and pos_of_t != -1:
+    # The "T at offset != 10" sanity check applies only to digit-led inputs
+    # that look like the ``YYYYMMDD`` PDF/ISO shape — for alpha-led shapes
+    # (``Friday July 6 17:22:1 GMT+08:00 1979``) the ``T`` inside ``GMT`` is
+    # benign and we should fall through to the locale parser.
+    if (
+        date
+        and date[0].isdigit()
+        and pos_of_t != 10
+        and pos_of_t != -1
+    ):
         raise OSError(f"Error converting date:{date}")
 
-    match = _PDF_LIKE_RE.match(date)
+    match = _PDF_LIKE_RE.match(date) if date and date[0].isdigit() else None
     if match is None:
-        raise OSError(f"Error: Invalid date format '{date}'")
+        # Wave 1387 — fall through to the SimpleDateFormat dispatcher for
+        # alpha-start shapes (``Friday, January 11, 2115`` etc.) and the
+        # digit-start shapes the PDF regex doesn't cover (``9:47 5/12/2002``,
+        # ``200312172:2:3``, ``26 May 2020 11:25:10``, etc.). Upstream's
+        # ``DateConverter.toCalendar`` ultimately delegates here too —
+        # ``parseDate`` is invoked when no big-endian / regex form matches.
+        return _try_parse_date_fallback(date_string)
 
     try:
         year = int(match.group("year"))
@@ -306,6 +338,34 @@ def to_calendar(date_string: str | None) -> datetime | None:
         tz = UTC
 
     return datetime(year, month, day, hour, minute, second, tzinfo=tz)
+
+
+def _try_parse_date_fallback(date_string: str) -> datetime | None:
+    """Wave 1387 — run ``parse_date`` on inputs the PDF regex rejected.
+
+    Upstream's ``DateConverter.toCalendar`` walks through every
+    SimpleDateFormat in ``DIGIT_START_FORMATS`` and ``ALPHA_START_FORMATS``
+    before giving up. The Python port mirrors that walk via
+    :meth:`DateConverter.parse_date`, but the module-level :func:`to_calendar`
+    short-circuited on the PDF regex miss. This helper bridges the gap so
+    locale-named shapes (``"Friday, January 11, 2115"``) reach the dispatch
+    table built in wave 1387.
+
+    Upstream's ``toCalendar`` also enforces ``where.index == text.length()``
+    after dispatch — any unconsumed residue invalidates the parse (this is
+    how it rejects e.g. ``"20070430193647+713'00' illegal tz hr"``, whose
+    big-endian + TZ prefix parses to a valid moment but leaves a residue
+    that disqualifies the result).
+    """
+    # Pre-strip + ``D:`` skip mirrors upstream lines 727-728 exactly.
+    text = date_string.lstrip()
+    if text.startswith("D:"):
+        text = text[2:]
+    pos = ParsePosition(0)
+    cal = DateConverter.parse_date(text, pos)
+    if cal is None or pos.index != len(text):
+        raise OSError(f"Error: Invalid date format '{date_string.strip()}'")
+    return cal.to_datetime()
 
 
 def to_iso8601(value: datetime, print_millis: bool = False) -> str:
@@ -1019,6 +1079,141 @@ def _make_handler_md_yy(text: str) -> tuple[_GregLike | None, int]:
     return cal, match.end()
 
 
+def _make_handler_locale(fmt: str):
+    """Build a handler that delegates to :func:`parse_with_locale`.
+
+    Wave 1387 closes the locale-sensitive parsing divergence; this adapter
+    plumbs the locale-aware parser into the existing SimpleFormat dispatch
+    table so the ALPHA_START_FORMATS shapes (``"EEEE, MMM dd, yy"`` etc.)
+    actually fire instead of falling through. Returns a callable matching
+    the ``(text) -> (cal | None, consumed_chars)`` contract.
+    """
+    from pypdfbox.util.date_util import parse_with_locale  # local import to avoid cycle
+
+    def handler(text: str) -> tuple[_GregLike | None, int]:
+        if not text:
+            return None, 0
+        # Strip leading whitespace (the parser does it too, but we need the
+        # consumed-length to start from the original index).
+        leading = 0
+        while leading < len(text) and text[leading].isspace():
+            leading += 1
+        best_end = -1
+        # Walk backwards from end-of-string toward the start, accepting the
+        # longest prefix the locale parser successfully consumes. This lets a
+        # trailing TZ designation (``GMT+08:00`` etc.) be picked up by the
+        # outer ``parse_date`` driver's ``parse_t_zoffset`` call. Bounded
+        # suffix-walk so cost stays linear in pattern length.
+        max_back = min(len(text) - leading, 64)
+        for end in range(len(text), len(text) - max_back - 1, -1):
+            parsed = parse_with_locale(text[leading:end], fmt, locale="en")
+            if parsed is not None:
+                best_end = end
+                break
+        if best_end == -1:
+            return None, 0
+        cal = DateConverter.new_greg()
+        try:
+            cal.set_fields(
+                parsed.year,
+                parsed.month - 1,
+                parsed.day,
+                parsed.hour,
+                parsed.minute,
+                parsed.second,
+            )
+            cal.validate()
+        except (ValueError, OverflowError):
+            return None, 0
+        return cal, best_end
+
+    return handler
+
+
+def _make_handler_locale_split_at_tz(fmt: str):
+    """Like :func:`_make_handler_locale` but stops before a ``z`` literal.
+
+    Patterns that embed a ``z`` (Java TZ-designator) sandwich a TZ token
+    between two field groups (e.g. ``"EEEE MMM dd HH:mm:ss z yy"`` — fields
+    before ``z`` plus a year *after* ``z``). The TZ semantics need to flow
+    through the existing :meth:`DateConverter.parse_t_zoffset` for parity
+    with the upstream port. This handler parses the pre-``z`` prefix via
+    :func:`parse_with_locale` on the prefix-pattern, runs the outer
+    ``parse_t_zoffset`` on the residue, then parses the post-``z`` tail
+    (year-only is the only shape PDFBox carries).
+    """
+    from pypdfbox.util.date_util import parse_with_locale  # local import to avoid cycle
+
+    z_index = fmt.find(" z")
+    pre_fmt = fmt[:z_index]
+    post_fmt = fmt[z_index + 2 :].lstrip()
+
+    def handler(text: str) -> tuple[_GregLike | None, int]:
+        if not text:
+            return None, 0
+        leading = 0
+        while leading < len(text) and text[leading].isspace():
+            leading += 1
+        # Walk forward from a reasonable start, find the longest prefix that
+        # ``pre_fmt`` accepts.
+        best_pre_end = -1
+        # Try anchor points that look like the end of the pre-tz field group.
+        for end in range(len(text), leading, -1):
+            parsed_pre = parse_with_locale(text[leading:end], pre_fmt, locale="en")
+            if parsed_pre is None:
+                continue
+            # We have a pre-tz parse. Now try to parse the TZ + year tail.
+            tail = text[end:].lstrip()
+            if not tail:
+                continue
+            # Consume a contiguous non-space TZ blob.
+            tz_end = 0
+            while tz_end < len(tail) and not tail[tz_end].isspace():
+                tz_end += 1
+            tz_blob = tail[:tz_end]
+            year_part = tail[tz_end:].lstrip()
+            if not tz_blob or not year_part:
+                continue
+            # Validate the year part against ``post_fmt`` (always ``"yy"``
+            # for the PDFBox shape).
+            parsed_post = parse_with_locale(year_part, post_fmt, locale="en")
+            if parsed_post is None:
+                continue
+            best_pre_end = end
+            best_year = parsed_post.year
+            best_parsed = parsed_pre
+            best_tz_blob = tz_blob
+            break
+        if best_pre_end == -1:
+            return None, 0
+        cal = DateConverter.new_greg()
+        try:
+            cal.set_fields(
+                best_year,
+                best_parsed.month - 1,
+                best_parsed.day,
+                best_parsed.hour,
+                best_parsed.minute,
+                best_parsed.second,
+            )
+            cal.validate()
+        except (ValueError, OverflowError):
+            return None, 0
+        # Apply the TZ to the offset fields *without* shifting the wall
+        # clock — upstream's SimpleDateFormat treats the TZ designator as
+        # the moment's actual offset, not a translation. We replicate the
+        # offset-extraction logic of ``parse_t_zoffset`` but skip the
+        # subsequent ``adjust_time_zone_nicely`` step.
+        tz_tmp = DateConverter.new_greg()
+        tz_pos = ParsePosition(0)
+        if DateConverter.parse_t_zoffset(best_tz_blob, tz_tmp, tz_pos):
+            cal.zone_offset = tz_tmp.zone_offset
+            cal.dst_offset = tz_tmp.dst_offset
+        return cal, len(text)
+
+    return handler
+
+
 _SIMPLE_FORMAT_HANDLERS = {
     "dd MMM yy HH:mm:ss": _make_handler_dd_mmm_yy_hms,
     "dd MMM yy HH:mm": _make_handler_dd_mmm_yy_hm,
@@ -1028,4 +1223,14 @@ _SIMPLE_FORMAT_HANDLERS = {
     "M/d/yy HH:mm:ss": _make_handler_md_yy_hms,
     "M/d/yy HH:mm": _make_handler_md_yy_hm,
     "M/d/yy": _make_handler_md_yy,
+    # Wave 1387 — alpha-start formats wired through the bundled locale tables.
+    "EEEE, dd MMM yy hh:mm:ss a": _make_handler_locale("EEEE, dd MMM yy hh:mm:ss a"),
+    "EEEE, MMM dd, yy hh:mm:ss a": _make_handler_locale("EEEE, MMM dd, yy hh:mm:ss a"),
+    "EEEE, MMM dd, yy 'at' hh:mma": _make_handler_locale("EEEE, MMM dd, yy 'at' hh:mma"),
+    "EEEE, MMM dd, yy": _make_handler_locale("EEEE, MMM dd, yy"),
+    "EEEE MMM dd, yy HH:mm:ss": _make_handler_locale("EEEE MMM dd, yy HH:mm:ss"),
+    "EEEE MMM dd HH:mm:ss z yy": _make_handler_locale_split_at_tz(
+        "EEEE MMM dd HH:mm:ss z yy"
+    ),
+    "EEEE MMM dd HH:mm:ss yy": _make_handler_locale("EEEE MMM dd HH:mm:ss yy"),
 }

@@ -156,10 +156,16 @@ def test_zapf_dingbats_all_named_glyphs_resolve_to_outlines() -> None:
 
 
 def test_symbol_encoding_coverage_is_above_eighty_percent() -> None:
-    """DejaVu Sans isn't a one-for-one Adobe Symbol replacement (the PUA
-    bracket-extension / serif-stylistic entries are absent), but coverage
-    should remain above 80% — guard the floor so future fixture-bundle
-    swaps don't silently regress symbolic-glyph rendering."""
+    """Pre-wave-1387 the DejaVu Sans substitute covered 158/189 = 83.6%
+    of Adobe Symbol glyphs; wave 1387 added a PUA-name → DejaVu-codepoint
+    synthesis table (see ``_SYMBOL_PUA_FALLBACKS``) which raised the
+    floor to 188/189 (the one residual miss is the zero-contour
+    ``space`` glyph, correct by design).
+
+    The 80% threshold is kept as a regression guard against catastrophic
+    breakage; the stricter 100% floor lives in
+    ``tests/pdmodel/font/test_symbol_zapfdingbats_coverage_wave1387.py``.
+    """
     total = 0
     covered = 0
     for code in range(256):

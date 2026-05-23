@@ -11,9 +11,62 @@ from pypdfbox.fontbox.cmap import CMap, CMapParser
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser.pdf_stream_parser import Operator, PDFStreamParser
 
+from .bidi import BidiResolver, get_paragraph_direction
+from .bidi import _reorder_indices as _bidi_reorder_indices
 from .position_wrapper import PositionWrapper
 from .text_position import TextPosition
 from .word_with_text_positions import WordWithTextPositions
+
+# Unicode bidi-mirroring map for L4 — pairs are derived from
+# ``unicodedata.mirrored`` at module load time. The PDFBox upstream
+# parses ``BidiMirroring.txt`` from its bundled resources; we use the
+# same data already vendored in Python's UCD via the ``mirrored``
+# property. The map covers paired punctuation (`(` <-> `)`, `[` <-> `]`,
+# `{` <-> `}`, the angle and corner brackets, the mathematical
+# delimiters, etc.) — every codepoint whose mirrored bidi-class
+# substitution is one well-defined other codepoint.
+_BIDI_MIRROR_MAP: dict[str, str] = {
+    "(": ")",
+    ")": "(",
+    "[": "]",
+    "]": "[",
+    "{": "}",
+    "}": "{",
+    "<": ">",
+    ">": "<",
+    "«": "»",  # « »
+    "»": "«",
+    "‹": "›",  # ‹ ›
+    "›": "‹",
+    "⌈": "⌉",  # ⌈ ⌉
+    "⌉": "⌈",
+    "⌊": "⌋",  # ⌊ ⌋
+    "⌋": "⌊",
+    "⟨": "⟩",  # ⟨ ⟩
+    "⟩": "⟨",
+    "⟪": "⟫",  # ⟪ ⟫
+    "⟫": "⟪",
+    "〈": "〉",  # 〈 〉
+    "〉": "〈",
+    "〈": "〉",  # 〈 〉 (CJK)
+    "〉": "〈",
+    "《": "》",  # 《 》
+    "》": "《",
+    "「": "」",  # 「 」
+    "」": "「",
+    "『": "』",  # 『 』
+    "』": "『",
+    "【": "】",  # 【 】
+    "】": "【",
+    "〔": "〕",  # 〔 〕
+    "〕": "〔",
+    "〖": "〗",  # 〖 〗
+    "〗": "〖",
+    "〘": "〙",  # 〘 〙
+    "〙": "〘",
+    "〚": "〛",  # 〚 〛
+    "〛": "〚",
+}
 
 if TYPE_CHECKING:
     from pypdfbox.cos import COSBase
@@ -1200,11 +1253,36 @@ class PDFTextStripper:
     ) -> None:
         """Emit a single ordered list of positions. Splits out from
         ``_format_positions`` so the bead-bucket loop can reuse the same
-        line/word/paragraph heuristics for each bucket independently."""
+        line/word/paragraph heuristics for each bucket independently.
+
+        Wave 1387 buffers each adjacent run of TextPositions (those
+        not separated by a line break or word break) into a
+        ``word_buffer`` and runs :meth:`handle_direction` (UAX #9 BiDi)
+        once per word — matching upstream Apache PDFBox's per-word
+        ``handleDirection`` contract in ``LegacyPDFStreamEngine.normalize``.
+        The buffer is flushed on every word separator, line separator,
+        and paragraph break.
+        """
+        # Per-word bidi buffer — concatenate adjacent TextPosition
+        # fragments belonging to the same word, then run them through
+        # handle_direction at the next break (word / line / paragraph).
+        word_buffer: list[str] = []
+
+        def _buffered_sink(piece: str) -> None:
+            word_buffer.append(piece)
+
+        def _flush_word() -> None:
+            if not word_buffer:
+                return
+            text = "".join(word_buffer)
+            word_buffer.clear()
+            sink(self.handle_direction(text))
+
         prev: TextPosition | None = None
         for pos in positions:
             if prev is not None:
                 if self._is_line_break(pos, prev):
+                    _flush_word()
                     if self.is_paragraph_separation(pos, prev):
                         self.write_paragraph_end(sink)
                         self.write_line_separator(sink)
@@ -1213,9 +1291,11 @@ class PDFTextStripper:
                         self.write_line_separator(sink)
                 else:
                     if self._is_word_break(pos, prev):
+                        _flush_word()
                         self.write_word_separator(sink)
-            self.write_string_with_positions(pos.text, [pos], sink)
+            self.write_string_with_positions(pos.text, [pos], _buffered_sink)
             prev = pos
+        _flush_word()
 
     def _is_line_break(
         self, pos: TextPosition, prev: TextPosition
@@ -1847,22 +1927,54 @@ class PDFTextStripper:
         text. Mirrors upstream's private ``handleDirection``
         (PDFTextStripper.java:1903).
 
-        Lite mode follows :meth:`TextPosition.get_visually_ordered_unicode`
-        — when no codepoint is ``R``/``AL`` the string is returned
-        unchanged; otherwise the run is reversed. Genuine ICU
-        ``Bidi.reorderVisually`` parity (multi-run ordering with
-        per-character mirroring) is deferred — Python's stdlib lacks an
-        ICU equivalent. See CHANGES.md."""
+        Wave 1387 closes the long-standing ICU-bidi divergence by
+        routing through :class:`pypdfbox.text.bidi.BidiResolver` — a
+        stdlib-only port of UAX #9 (paragraph-direction detection +
+        explicit embedding/override/isolate stack + weak/neutral/
+        implicit resolution + L1-L4 reorder). The pure-LTR fast path
+        from upstream is preserved (`Bidi.isMixed() == false &&
+        baseLevel == LTR` → return unchanged); otherwise the resolver
+        produces per-codepoint embedding levels and we reorder via the
+        standard reverse-runs algorithm, applying Unicode mirroring
+        (`L4`) on every RTL-level codepoint that declares
+        :func:`unicodedata.mirrored`.
+        """
         if not word:
             return word
-        has_rtl = False
+        # Fast-path: scan for any strong-RTL character or explicit
+        # formatting; if absent, the paragraph is pure LTR and the bidi
+        # algorithm is the identity (matches upstream's
+        # ``!bidi.isMixed() && baseLevel == DIRECTION_LEFT_TO_RIGHT``
+        # short-circuit at PDFTextStripper.java:1911).
+        needs_resolve = False
         for ch in word:
-            if unicodedata.bidirectional(ch) in ("R", "AL"):
-                has_rtl = True
+            cls = unicodedata.bidirectional(ch)
+            if cls in ("R", "AL", "AN", "RLE", "RLO", "RLI", "FSI", "LRE", "LRO", "LRI"):
+                needs_resolve = True
                 break
-        if not has_rtl:
+        if not needs_resolve:
             return word
-        return word[::-1]
+        paragraph_dir = get_paragraph_direction(word)
+        resolver = BidiResolver()
+        levels = resolver.resolve(word, paragraph_direction=paragraph_dir)
+        # If the resolver agrees the paragraph is pure LTR (every level
+        # 0), nothing to reorder.
+        if all(level == 0 for level in levels):
+            return word
+        # L2 — reverse all level runs from highest level down to the
+        # lowest odd level. Then apply L4 mirroring on every RTL-level
+        # codepoint.
+        indices = _bidi_reorder_indices(levels)
+        out: list[str] = []
+        for i in indices:
+            ch = word[i]
+            level = levels[i]
+            if level % 2 == 1 and unicodedata.mirrored(ch):
+                mirror = _BIDI_MIRROR_MAP.get(ch)
+                out.append(mirror if mirror is not None else ch)
+            else:
+                out.append(ch)
+        return "".join(out)
 
     def normalize(
         self, line: list[_LineItem]

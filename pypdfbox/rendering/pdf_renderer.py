@@ -194,11 +194,20 @@ class _GState:
     # on this flag.
     text_knockout: bool = True
     # ``flatness`` (``/FL``) — curve-flattening tolerance for the
-    # rasteriser. Skia uses adaptive subdivision; the field is carried
-    # for parity but not consulted by the lite renderer.
+    # rasteriser. Wave 1387: when ``flatness > 1.0`` the curve
+    # operators (``c`` / ``v`` / ``y``) pre-flatten the cubic Bezier
+    # into a polyline at the declared tolerance before storing it as
+    # ``L`` segments (see :meth:`PDFRenderer._append_curve`). For
+    # ``flatness <= 1.0`` (the spec default) skia's own adaptive
+    # subdivision is finer than the spec tolerance so the ``C``
+    # segment is kept unchanged.
     flatness: float = 1.0
-    # ``smoothness`` (``/SM``) — gradient smoothness tolerance. Not
-    # consulted by the renderer (skia handles gradient sampling).
+    # ``smoothness`` (``/SM``) — gradient / shading smoothness
+    # tolerance. Wave 1387: forwarded to :func:`_calc_patch_level`
+    # for Coons / tensor patch-mesh shadings so smaller ``/SM`` values
+    # scale up the per-axis subdivision count for finer colour
+    # gradation. Default ``0.0`` (device-default) preserves the
+    # wave-1377 adaptive-only behaviour.
     smoothness: float = 0.0
     # ``stroke_adjustment`` (``/SA``) — automatic stroke adjustment for
     # narrow strokes at low resolution. Carried for parity; skia's
@@ -599,11 +608,28 @@ def _level_from_length(length_u_1: float, length_u_2: float) -> int:
 def _calc_patch_level(
     points: list[tuple[float, float]],
     ctm: tuple[float, float, float, float, float, float],
+    smoothness: float = 0.0,
 ) -> tuple[int, int]:
     """Port of upstream ``CoonsPatch.calcLevel`` / ``TensorPatch.calcLevel``:
     pick the per-axis subdivision count ``(n_u, n_v)`` adaptively from the
     patch's control-polygon geometry. Returns the cell counts (not the
     levels) so callers can index a ``(n_v + 1) × (n_u + 1)`` grid.
+
+    Wave 1387: the optional ``smoothness`` argument (the active
+    ``_GState.smoothness`` / ``/SM`` tolerance per PDF 32000-1 §10.6.3)
+    scales the adaptive count for finer colour gradation when the file
+    declares a tight tolerance. The mapping is:
+
+    * ``smoothness <= 0.0`` (the spec default — "device default") →
+      scale 1.0 (preserves the wave-1377 adaptive-only behaviour).
+    * ``0 < smoothness < 0.1`` → scale = ``0.1 / smoothness``,
+      clamped to ``[1.0, 16.0]``.
+    * ``smoothness >= 0.1`` → scale 1.0 (the file is happy with
+      coarse gradation; no need to over-subdivide).
+
+    The scale is multiplied into the geometry-derived cell counts after
+    clamping to ``2 ** _PATCH_MAX_LEVEL``; the caller still applies its
+    ``_PATCH_SUBDIVISION_N`` cap on the result.
 
     Algorithm:
 
@@ -710,7 +736,22 @@ def _calc_patch_level(
 
     level_u = min(level_u, _PATCH_MAX_LEVEL)
     level_v = min(level_v, _PATCH_MAX_LEVEL)
-    return (2 ** level_u, 2 ** level_v)
+    n_u = 2 ** level_u
+    n_v = 2 ** level_v
+
+    # Wave 1387: scale by /SM smoothness when the file declared a tight
+    # tolerance (smaller /SM → larger N → finer colour interpolation).
+    # Default 0.0 (or any /SM >= 0.1) leaves the geometry-derived counts
+    # unchanged.
+    if 0.0 < smoothness < 0.1:
+        scale = 0.1 / smoothness
+        if scale > 16.0:
+            scale = 16.0
+        if scale > 1.0:
+            n_u = int(round(n_u * scale))
+            n_v = int(round(n_v * scale))
+
+    return (n_u, n_v)
 
 
 def _is_on_same_side(
@@ -923,6 +964,23 @@ class PDFRenderer(PDFStreamEngine):
         # through unconditionally; storing it keeps that path
         # AttributeError-free.
         self._rendering_hints: Any | None = None
+        # ---- /TK (text knockout) sub-canvas state (wave 1387) ----
+        # When ``_text_knockout_layer`` is non-None the current BT/ET
+        # block is rendering into an isolated transparent sub-canvas
+        # (per PDF 32000-1 §9.3.8 — TK=true means glyphs in the same
+        # text object knock each other out at composite time rather
+        # than accumulating alpha). ``_op_begin_text`` sets up the
+        # sub-canvas and saves the previous ``_image`` / ``_draw`` /
+        # fill / stroke alpha; ``_op_end_text`` composites the layer
+        # back onto the parent with the saved alpha then restores.
+        # ``None`` means "knockout off OR knockout has no observable
+        # effect (alpha=1.0 + Normal blend) so we skipped the fork".
+        self._text_knockout_layer: Image.Image | None = None
+        self._text_knockout_prev_image: Image.Image | None = None
+        self._text_knockout_prev_draw: aggdraw.Draw | None = None
+        self._text_knockout_saved_fill_alpha: float = 1.0
+        self._text_knockout_saved_stroke_alpha: float = 1.0
+        self._text_knockout_saved_blend_mode: Any | None = None
 
     # ------------------------------------------------------------------
     # public API (mirrors PDFRenderer.java)
@@ -1161,6 +1219,14 @@ class PDFRenderer(PDFStreamEngine):
         self._font_cache = {}
         self._warned_standard14_fonts = set()
         self._font_program_cache = {}
+        # Reset text-knockout sub-canvas state (wave 1387) — defensive
+        # in case a previous render aborted mid-BT/ET.
+        self._text_knockout_layer = None
+        self._text_knockout_prev_image = None
+        self._text_knockout_prev_draw = None
+        self._text_knockout_saved_fill_alpha = 1.0
+        self._text_knockout_saved_stroke_alpha = 1.0
+        self._text_knockout_saved_blend_mode = None
 
         try:
             self.process_page(page)
@@ -2692,13 +2758,45 @@ class PDFRenderer(PDFStreamEngine):
         self._current_subpath.append(("L", x, y))
         self._current_point = (x, y)
 
+    def _append_curve(
+        self,
+        x0: float, y0: float,
+        x1: float, y1: float,
+        x2: float, y2: float,
+        x3: float, y3: float,
+    ) -> None:
+        """Append a cubic Bezier to the current subpath.
+
+        Wave 1387: honour ``/FL`` (flatness tolerance) — when the
+        active ``_GState.flatness`` is > 1.0 (the spec default), the
+        curve is pre-flattened to a polyline via
+        :func:`_flatten_cubic_bezier` and stored as ``("L", x, y)``
+        segments. This means the downstream skia path builder receives
+        line segments instead of ``cubicTo`` calls and the rendered
+        edge matches the file-declared coarser tolerance. For
+        ``/FL <= 1.0`` (the default), skia's own adaptive subdivision
+        is already finer than the spec tolerance so we keep the
+        single ``C`` segment unchanged.
+        """
+        assert self._current_subpath is not None
+        flatness = self._gs.flatness if self._gs_stack else 1.0
+        if flatness > 1.0:
+            polyline = _flatten_cubic_bezier(
+                x0, y0, x1, y1, x2, y2, x3, y3, float(flatness),
+            )
+            for px, py in polyline:
+                self._current_subpath.append(("L", px, py))
+        else:
+            self._current_subpath.append(("C", x1, y1, x2, y2, x3, y3))
+
     def _op_curve_to(self, _op: Any, operands: list[COSBase]) -> None:
         # c x1 y1 x2 y2 x3 y3
         if len(operands) < 6 or self._current_subpath is None:
             return
         vals = [_to_float(operands[i]) for i in range(6)]
         x1, y1, x2, y2, x3, y3 = vals
-        self._current_subpath.append(("C", x1, y1, x2, y2, x3, y3))
+        x0, y0 = self._current_point
+        self._append_curve(x0, y0, x1, y1, x2, y2, x3, y3)
         self._current_point = (x3, y3)
 
     def _op_curve_to_v(self, _op: Any, operands: list[COSBase]) -> None:
@@ -2708,7 +2806,7 @@ class PDFRenderer(PDFStreamEngine):
         x0, y0 = self._current_point
         x2, y2 = _to_float(operands[0]), _to_float(operands[1])
         x3, y3 = _to_float(operands[2]), _to_float(operands[3])
-        self._current_subpath.append(("C", x0, y0, x2, y2, x3, y3))
+        self._append_curve(x0, y0, x0, y0, x2, y2, x3, y3)
         self._current_point = (x3, y3)
 
     def _op_curve_to_y(self, _op: Any, operands: list[COSBase]) -> None:
@@ -2717,7 +2815,8 @@ class PDFRenderer(PDFStreamEngine):
             return
         x1, y1 = _to_float(operands[0]), _to_float(operands[1])
         x3, y3 = _to_float(operands[2]), _to_float(operands[3])
-        self._current_subpath.append(("C", x1, y1, x3, y3, x3, y3))
+        x0, y0 = self._current_point
+        self._append_curve(x0, y0, x1, y1, x3, y3, x3, y3)
         self._current_point = (x3, y3)
 
     def _op_rect(self, _op: Any, operands: list[COSBase]) -> None:
@@ -4217,12 +4316,15 @@ class PDFRenderer(PDFStreamEngine):
         # Wave 1377 — pick the per-patch subdivision adaptively from the
         # patch's geometry (cf. upstream ``CoonsPatch.calcLevel`` /
         # ``TensorPatch.calcLevel``). The class-level ``_PATCH_SUBDIVISION_N``
-        # acts as the maximum cap.
+        # acts as the maximum cap. Wave 1387: forward the active
+        # ``_GState.smoothness`` (``/SM``) so a tighter tolerance scales
+        # up the per-patch subdivision for finer colour gradation.
         cap = self._PATCH_SUBDIVISION_N
         full_ctm = self._full_ctm()
+        smoothness = self._gs.smoothness if self._gs_stack else 0.0
         for patch in patches:
             patch_points = [tuple(p) for p in patch.points]
-            n_u, n_v = _calc_patch_level(patch_points, full_ctm)
+            n_u, n_v = _calc_patch_level(patch_points, full_ctm, smoothness)
             n_u = min(n_u, cap)
             n_v = min(n_v, cap)
             self._rasterise_single_patch(
@@ -6507,8 +6609,24 @@ class PDFRenderer(PDFStreamEngine):
         # PDF 32000-1 §9.3.6 ("the clipping path … is established at the
         # end of the text object that initiated it").
         self._text_clip_paths = []
+        # Wave 1387 — /TK text-knockout fork (PDF 32000-1 §9.3.8). When
+        # TK=true (the spec default) glyphs in the same BT/ET behave as
+        # a single shape with respect to compositing — overlapping glyphs
+        # do NOT accumulate alpha. To realise that, we redirect glyph
+        # paints into a fresh transparent sub-canvas at alpha=1.0 / Normal
+        # blend, then at ET composite the assembled sub-canvas onto the
+        # parent with the saved fill/stroke alpha and blend mode applied
+        # once. Skipped when knockout has no observable effect (alpha=1.0
+        # AND blend=Normal) to avoid a costly per-text-object layer
+        # allocation for the overwhelmingly-common case.
+        self._maybe_begin_text_knockout()
 
     def _op_end_text(self, _op: Any, _operands: list[COSBase]) -> None:
+        # Wave 1387 — close the /TK sub-canvas (if one was opened at BT)
+        # BEFORE the text-clip commit so the clip intersects with pixels
+        # already composited back onto the parent canvas. See
+        # ``_maybe_begin_text_knockout`` for the rationale.
+        self._maybe_end_text_knockout()
         # PDF 32000-1 §9.3.6: at ET, if any glyph was shown under a Tr
         # mode in {4, 5, 6, 7}, the union of those glyph outlines becomes
         # an addition to the current clipping path. We intersect with any
@@ -6517,6 +6635,123 @@ class PDFRenderer(PDFStreamEngine):
         if self._text_clip_paths:
             self._commit_text_clip()
         self._text_clip_paths = []
+
+    # ------------------------------------------------------------------
+    # /TK (text knockout) sub-canvas helpers — wave 1387
+    # ------------------------------------------------------------------
+
+    def _text_knockout_has_visible_effect(self) -> bool:
+        """Return True when the /TK semantics produce a visibly different
+        composite than direct-paint.
+
+        For TK=true the spec (§9.3.8) groups all glyphs in a BT/ET into
+        a single composite shape. When fill_alpha = stroke_alpha = 1.0
+        AND the blend mode is Normal, group-compositing-then-paint is
+        pixel-identical to direct-paint (opaque pixels overwrite the
+        backdrop the same way regardless of intermediate accumulation).
+        Skip the sub-canvas fork in that case to spare the allocation.
+        """
+        return bool(
+            self._gs.fill_alpha < 1.0
+            or self._gs.stroke_alpha < 1.0
+            or self._gs.blend_mode is not None
+        )
+
+    def _maybe_begin_text_knockout(self) -> None:
+        """If /TK is true AND has a visible effect, redirect glyph paints
+        into a fresh transparent RGBA sub-canvas for the duration of the
+        BT/ET block. See :meth:`_op_begin_text`.
+        """
+        if not self._gs.text_knockout:
+            return
+        if not self._text_knockout_has_visible_effect():
+            return
+        if self._image is None or self._draw is None:
+            return
+        # Already inside a text-knockout fork? (defensive — BT/ET don't
+        # nest per spec, but parsers in the wild occasionally re-emit BT
+        # without ET; treat the second BT as a no-op for the fork.)
+        if self._text_knockout_layer is not None:
+            return
+        # Flush pending aggdraw work so the parent canvas pixels are
+        # current before we swap.
+        self._draw.flush()
+        layer = Image.new("RGBA", self._image.size, (0, 0, 0, 0))
+        layer_draw = aggdraw.Draw(layer)
+        layer_draw.setantialias(True)
+        self._text_knockout_prev_image = self._image
+        self._text_knockout_prev_draw = self._draw
+        self._text_knockout_saved_fill_alpha = self._gs.fill_alpha
+        self._text_knockout_saved_stroke_alpha = self._gs.stroke_alpha
+        self._text_knockout_saved_blend_mode = self._gs.blend_mode
+        self._text_knockout_layer = layer
+        self._image = layer
+        self._draw = layer_draw
+        # Glyphs paint at alpha=1 / Normal on the sub-canvas so overlap
+        # regions stay flat-opaque; the saved alpha + blend mode is
+        # re-applied at ET when the sub-canvas is composited back.
+        self._gs.fill_alpha = 1.0
+        self._gs.stroke_alpha = 1.0
+        self._gs.blend_mode = None
+
+    def _maybe_end_text_knockout(self) -> None:
+        """Composite the active /TK sub-canvas onto the parent canvas
+        with the saved fill alpha + blend mode applied once, then
+        restore the previous canvas state.
+        """
+        if self._text_knockout_layer is None:
+            return
+        layer = self._text_knockout_layer
+        prev_image = self._text_knockout_prev_image
+        prev_draw = self._text_knockout_prev_draw
+        saved_fill_alpha = self._text_knockout_saved_fill_alpha
+        saved_stroke_alpha = self._text_knockout_saved_stroke_alpha
+        saved_blend_mode = self._text_knockout_saved_blend_mode
+        # Clear the fork state first so any re-entrant paint inside the
+        # composite path doesn't think it's still inside a knockout BT.
+        self._text_knockout_layer = None
+        self._text_knockout_prev_image = None
+        self._text_knockout_prev_draw = None
+        self._gs.fill_alpha = saved_fill_alpha
+        self._gs.stroke_alpha = saved_stroke_alpha
+        self._gs.blend_mode = saved_blend_mode
+        if prev_image is None or prev_draw is None:
+            return
+        # Flush the sub-canvas aggdraw so its alpha plane is fresh.
+        current_draw = self._draw
+        if current_draw is not None:
+            current_draw.flush()
+        # Apply the per-text-object alpha by scaling the sub-canvas's
+        # alpha plane. The lite renderer doesn't distinguish fill vs
+        # stroke at the composite level (separate alpha tracks would
+        # need per-pixel source-type tags), so we use the fill alpha as
+        # the unified knockout-group opacity — matches upstream behaviour
+        # for the dominant case of fill-only text. When the renderer
+        # mode used both fill+stroke (modes 2 / 6) the fill alpha wins;
+        # callers that need precise stroke-only TK should set CA = ca.
+        group_alpha = max(0.0, min(1.0, saved_fill_alpha))
+        bands = layer.split()
+        if group_alpha < 1.0:
+            scaled_alpha = bands[3].point(lambda v: int(round(v * group_alpha)))
+            layer = Image.merge(
+                "RGBA", (bands[0], bands[1], bands[2], scaled_alpha)
+            )
+        # Restore the parent canvas binding.
+        self._image = prev_image
+        self._draw = prev_draw
+        # Composite via blend_mode if non-Normal, else plain alpha-over.
+        parent_rgba = prev_image.convert("RGBA")
+        if saved_blend_mode is not None:
+            blended = PDFRenderer._blend(layer, parent_rgba, saved_blend_mode)
+            composited = blended.convert("RGB")
+        else:
+            parent_rgba.alpha_composite(layer)
+            composited = parent_rgba.convert("RGB")
+        prev_image.paste(composited, (0, 0))
+        # Re-bind aggdraw to the mutated parent so subsequent ops see
+        # the composited pixels.
+        self._draw = aggdraw.Draw(prev_image)
+        self._draw.setantialias(True)
 
     def _commit_text_clip(self) -> None:
         """Rasterise the union of accumulated text-clip paths into an
@@ -7879,6 +8114,87 @@ def _bezier_point(
     x = b0 * x0 + b1 * x1 + b2 * x2 + b3 * x3
     y = b0 * y0 + b1 * y1 + b2 * y2 + b3 * y3
     return (x, y)
+
+
+def _flatten_cubic_bezier(
+    x0: float, y0: float,
+    x1: float, y1: float,
+    x2: float, y2: float,
+    x3: float, y3: float,
+    tolerance: float,
+    *,
+    _depth: int = 0,
+) -> list[tuple[float, float]]:
+    """Recursively flatten a cubic Bezier into a polyline at the given
+    user-space distance ``tolerance``.
+
+    Implements the PDF 32000-1 §10.6.2 ``/FL`` semantic: the maximum
+    distance between the rasterised polygon and the true curve is
+    bounded by ``tolerance``. Uses the standard control-polygon
+    flatness test (max perpendicular distance from each interior
+    control point to the chord ``p0 -> p3``); when that distance is
+    below the tolerance the chord is accepted as flat. Otherwise the
+    curve is bisected at ``t = 0.5`` via de Casteljau and both halves
+    recurse.
+
+    Returns the polyline as a list of ``(x, y)`` points EXCLUDING the
+    starting point ``(x0, y0)`` and INCLUDING the endpoint ``(x3, y3)``,
+    so callers can append directly to an existing subpath.
+
+    Recursion is capped at depth 18 (~262k segments worst-case) as a
+    safety guard against pathological control polygons; in practice
+    typical curves flatten in 3-6 levels at the spec-default 1.0 px
+    tolerance.
+    """
+    # Recursion-depth safety guard - emit the chord and bail.
+    if _depth >= 18:
+        return [(x3, y3)]
+
+    dx = x3 - x0
+    dy = y3 - y0
+    chord_len_sq = dx * dx + dy * dy
+    if chord_len_sq <= 0.0:
+        # Degenerate chord - fall back to control-polygon span as the
+        # flatness criterion (otherwise every loop-back curve recurses
+        # forever).
+        d1 = math.hypot(x1 - x0, y1 - y0)
+        d2 = math.hypot(x2 - x0, y2 - y0)
+        if max(d1, d2) <= tolerance:
+            return [(x3, y3)]
+    else:
+        # Perpendicular distance of each interior control point to the
+        # chord (p0 -> p3). cross / |chord| gives the unsigned distance.
+        cross1 = abs((x1 - x0) * dy - (y1 - y0) * dx)
+        cross2 = abs((x2 - x0) * dy - (y2 - y0) * dx)
+        chord_len = math.sqrt(chord_len_sq)
+        d1 = cross1 / chord_len
+        d2 = cross2 / chord_len
+        if max(d1, d2) <= tolerance:
+            return [(x3, y3)]
+
+    # Subdivide via de Casteljau at t = 0.5.
+    x01 = 0.5 * (x0 + x1)
+    y01 = 0.5 * (y0 + y1)
+    x12 = 0.5 * (x1 + x2)
+    y12 = 0.5 * (y1 + y2)
+    x23 = 0.5 * (x2 + x3)
+    y23 = 0.5 * (y2 + y3)
+    x012 = 0.5 * (x01 + x12)
+    y012 = 0.5 * (y01 + y12)
+    x123 = 0.5 * (x12 + x23)
+    y123 = 0.5 * (y12 + y23)
+    xm = 0.5 * (x012 + x123)
+    ym = 0.5 * (y012 + y123)
+
+    left = _flatten_cubic_bezier(
+        x0, y0, x01, y01, x012, y012, xm, ym,
+        tolerance, _depth=_depth + 1,
+    )
+    right = _flatten_cubic_bezier(
+        xm, ym, x123, y123, x23, y23, x3, y3,
+        tolerance, _depth=_depth + 1,
+    )
+    return left + right
 
 
 # Operator-name → bound-method-name dispatch. Built after the class so we

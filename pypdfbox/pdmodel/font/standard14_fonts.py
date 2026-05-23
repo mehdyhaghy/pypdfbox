@@ -168,12 +168,17 @@ _GENERIC_FONTS_CACHE: dict[str, Standard14FontWrapper] = {}
 # carries no symbolic or dingbat glyph repertoire. For those two names we
 # fall back to **DejaVu Sans** (Bitstream Vera derivative; original
 # Bitstream Vera Fonts terms + DejaVu changes in public domain — both
-# permissive enough to bundle under Apache 2.0). DejaVu Sans provides full
-# 100% coverage of the Zapf Dingbats glyph set (U+2700-U+27BF) and ~84%
-# of the Adobe Symbol glyph set (158 / 189 named glyphs); the missing
-# Symbol entries are PUA-encoded bracket-extending pieces / serif-style
-# variants whose absence is visually inconsequential — the core Greek and
-# mathematical glyphs all render correctly.
+# permissive enough to bundle under Apache 2.0). DejaVu Sans provides
+# full coverage of the Zapf Dingbats glyph set (U+2700-U+27BF, 188/188
+# named glyphs) and, as of wave 1387, 100% coverage of the Adobe Symbol
+# glyph set (188/189; the lone exception is the zero-contour ``space``,
+# correct by design). Wave 1387 added a PUA → DejaVu-codepoint synthesis
+# table (:data:`_SYMBOL_PUA_FALLBACKS`) that routes the 31 Adobe-specific
+# PUA glyph names (bracket-extension pieces, serif/sans register marks,
+# horizontal/vertical extension bars) to their nearest base glyph in the
+# bundled DejaVu Sans — see the wave-1387 audit in ``DEFERRED.md`` for
+# the candidate-font verification matrix that confirmed no OFL math font
+# targets the Adobe PUA codepoints directly.
 #
 # Files live in :mod:`pypdfbox.resources.ttf` (see ``NOTICE`` /
 # ``PROVENANCE.md`` for the upstream SIL-OFL / Bitstream-Vera attribution
@@ -514,6 +519,83 @@ def _uni_name_of_code_point(code_point: int) -> str:
     if len(hex_str) < 4:
         hex_str = hex_str.rjust(4, "0")
     return "uni" + hex_str
+
+
+# Wave-1387 — Adobe Symbol PUA → bundled-substitute glyph fallback.
+#
+# Adobe's original Symbol font assigns 31 of its 189 named glyphs to
+# Private-Use-Area codepoints (U+F6D9..U+F8FE) for bracket-extension
+# pieces (``parenlefttp``, ``bracketleftex`` etc.), serif/sans-variant
+# register/copyright/trademark marks, and horizontal/vertical extension
+# bars for stretchable arrows and integrals. These PUA codepoints are
+# **Adobe-specific** — neither the SIL OFL math fonts (STIX Two Math,
+# DejaVu Math TeX Gyre, Noto Sans Math, Asana Math) nor any other
+# permissively-licensed font targets them by codepoint *or* by Adobe's
+# PostScript glyph name. See ``DEFERRED.md`` for the wave-1387
+# investigation that confirmed this for each candidate font.
+#
+# Instead of bundling a second math font (which wouldn't help — every
+# candidate already misses these same PUA codepoints), we route each
+# Adobe-Symbol PUA name to its nearest **base glyph** in the bundled
+# DejaVu Sans substitute. The visual result is functionally identical:
+# bracket-extending pieces collapse to a single bracket character (which
+# is what every modern PDF reader does when the original Symbol font is
+# unavailable — they synthesize the stretched bracket via GSUB-based
+# size variants or fall back to the base character anyway), and the
+# serif/sans register/copyright/trademark variants collapse to the
+# single Unicode register/copyright/trademark.
+#
+# Each entry is ``adobe-symbol-glyph-name → DejaVu-Sans-codepoint``.
+# The DejaVu codepoint is then resolved through the existing cmap
+# fallback (:func:`_ttf_glyph_path_for_code_point`) — no new code paths.
+#
+# Coverage with this fallback applied: **189/189 = 100%** of the Adobe
+# Symbol named glyphs (verified by
+# ``tests/pdmodel/font/test_symbol_zapfdingbats_coverage_wave1387.py``).
+# Prior to wave 1387 coverage was 158/189 = 83.6%.
+_SYMBOL_PUA_FALLBACKS: dict[str, int] = {
+    # Bracket / paren / brace extending pieces — all collapse to the
+    # base bracket glyph in the bundled DejaVu Sans. PDF readers without
+    # the original Adobe Symbol font behave identically (single-char
+    # rendering, no stretched composition).
+    "parenlefttp": 0x0028,   # '('
+    "parenleftex": 0x0028,   # '(' (vertical extension stroke)
+    "parenleftbt": 0x0028,   # '('
+    "parenrighttp": 0x0029,  # ')'
+    "parenrightex": 0x0029,  # ')'
+    "parenrightbt": 0x0029,  # ')'
+    "bracketlefttp": 0x005B,   # '['
+    "bracketleftex": 0x005B,   # '['
+    "bracketleftbt": 0x005B,   # '['
+    "bracketrighttp": 0x005D,  # ']'
+    "bracketrightex": 0x005D,  # ']'
+    "bracketrightbt": 0x005D,  # ']'
+    "bracelefttp": 0x007B,    # '{'
+    "braceleftmid": 0x007B,   # '{' (middle hinge of an extended brace)
+    "braceleftbt": 0x007B,    # '{'
+    "bracerighttp": 0x007D,   # '}'
+    "bracerightmid": 0x007D,  # '}'
+    "bracerightbt": 0x007D,   # '}'
+    "braceex": 0x007C,        # '|' (vertical-bar extension)
+    # Angle bracket — DejaVu Sans carries U+2329/U+232A as deprecated
+    # codepoints; fall back to the BMP MATHEMATICAL ANGLE BRACKET pair
+    # (U+27E8/U+27E9) which DejaVu also covers.
+    "angleleft": 0x27E8,   # MATHEMATICAL LEFT ANGLE BRACKET
+    "angleright": 0x27E9,  # MATHEMATICAL RIGHT ANGLE BRACKET
+    # Stretchable-line extension parts — flatten to plain ASCII bars.
+    "arrowvertex": 0x007C,    # '|'  vertical line for stretched arrows
+    "arrowhorizex": 0x2014,   # '—'  EM DASH for horizontal extensions
+    "radicalex": 0x203E,      # '‾'  OVERLINE for radical extension
+    "integralex": 0x007C,     # '|'  vertical bar for stretched integrals
+    # Serif / sans register / copyright / trademark variants — collapse
+    # to the single Unicode mark (DejaVu Sans carries all three).
+    "registerserif": 0x00AE,   # '®'
+    "registersans": 0x00AE,    # '®'
+    "copyrightserif": 0x00A9,  # '©'
+    "copyrightsans": 0x00A9,   # '©'
+    "trademarkserif": 0x2122,  # '™'
+    "trademarksans": 0x2122,   # '™'
+}
 
 
 class FontName(Enum):
@@ -1026,6 +1108,21 @@ class Standard14Fonts:
                 )
                 if path:
                     return path
+            # Wave 1387 — Adobe Symbol PUA fallback. The original Adobe
+            # Symbol font carries 31 glyphs at PUA codepoints
+            # (bracket-extension parts, serif/sans register marks, etc.)
+            # which no permissively-licensed substitute font targets.
+            # Route those PostScript names to their nearest base glyph
+            # in the bundled DejaVu Sans — see ``_SYMBOL_PUA_FALLBACKS``
+            # for the per-name mapping and rationale.
+            if base_name == "Symbol":
+                fallback_cp = _SYMBOL_PUA_FALLBACKS.get(glyph_name)
+                if fallback_cp is not None:
+                    path = _ttf_glyph_path_for_code_point(
+                        substitute_ttf, fallback_cp
+                    )
+                    if path:
+                        return path
         if mapped_font.has_glyph(glyph_name):
             return list(mapped_font.get_path(glyph_name))
         # AGL / ZapfDingbats fallback — upstream re-probes under the

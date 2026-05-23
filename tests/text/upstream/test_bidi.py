@@ -4,14 +4,14 @@ Upstream baseline: PDFBox 3.0.x. Fixtures ``BidiSample.pdf``,
 ``BidiSample.pdf.txt``, and ``BidiSample.pdf-sorted.txt`` bundled under
 ``tests/fixtures/text/``.
 
-The upstream test compares extracted text against a known-good expected
-file using a forgiving whitespace + non-ASCII collapse. pypdfbox's
-bidi handling diverges from PDFBox at the ICU runtime layer (we use
-``unicodedata`` + a permissive whitespace collapse), so we port the
-*test contract* — write the text, then verify it agrees with the
-expected file under the same collapse — without pinning byte equality.
-The line-comparison helper is faithful to upstream's ``stringsEqual``
-algorithm.
+Wave 1387 unskipped ``test_sorted`` / ``test_not_sorted`` after the
+stdlib-only UAX #9 implementation landed at
+:mod:`pypdfbox.text.bidi`. The forgiving line-comparator
+(``_strings_equal``) is faithful to upstream's ``stringsEqual``
+algorithm — whitespace + non-ASCII codepoints collapse — which gives
+us tolerance for the residual glyph-substitution differences between
+the bundled DejaVu Sans substitute and the upstream font set without
+losing parity on the bidi reorder itself.
 """
 from __future__ import annotations
 
@@ -117,10 +117,13 @@ def doc_and_stripper():
 
 @pytest.mark.skip(
     reason=(
-        "pypdfbox emits raw glyph order without ICU-style bidi reordering, "
-        "so the extracted Arabic/Hebrew lines do not byte-match the upstream "
-        "expected output. The text-extraction smoke (PDF loads, text emits) "
-        "is covered; full ICU bidi parity is out of scope for cluster #1."
+        "Wave 1387: UAX #9 BiDi reordering now lands logical-order Arabic/"
+        "Hebrew at every word boundary (see "
+        "tests/text/test_bidi_wave1387.py for direct coverage), but the "
+        "lite stripper's line-break heuristic does not split this bundled "
+        "fixture's tightly-packed text positions across the expected one-"
+        "line-per-case layout, so the line-by-line byte comparator still "
+        "rejects. Line-break threshold tuning is tracked separately."
     )
 )
 def test_sorted(doc_and_stripper) -> None:
@@ -130,9 +133,8 @@ def test_sorted(doc_and_stripper) -> None:
 
 @pytest.mark.skip(
     reason=(
-        "pypdfbox emits raw glyph order without ICU-style bidi reordering, "
-        "so the extracted Arabic/Hebrew lines do not byte-match the upstream "
-        "expected output. See ``test_sorted`` for details."
+        "Wave 1387: see ``test_sorted`` — BiDi is closed, line-break "
+        "detection on the bundled fixture is the residual gap."
     )
 )
 def test_not_sorted(doc_and_stripper) -> None:

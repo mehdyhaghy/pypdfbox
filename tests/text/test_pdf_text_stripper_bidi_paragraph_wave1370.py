@@ -23,8 +23,6 @@ skipped — it is the documented divergence.
 """
 from __future__ import annotations
 
-import pytest
-
 from pypdfbox.text import LineItem, PDFTextStripper, TextPosition
 
 
@@ -74,14 +72,17 @@ def test_handle_direction_single_rtl_codepoint_returns_unchanged() -> None:
     assert s.handle_direction("ا") == "ا"
 
 
-def test_handle_direction_mixed_rtl_ltr_reverses_whole_word() -> None:
-    """Mixed-direction words are reversed whole (lite-mode divergence
-    from ICU which would split at script boundaries)."""
+def test_handle_direction_mixed_rtl_ltr_uses_uax9_levels() -> None:
+    """Mixed-direction words follow UAX #9 reordering (wave 1387: stdlib
+    BiDi resolver replaced the lite "reverse whole" behaviour).
+
+    Input ``aا``: paragraph base direction is LTR (first strong is 'a'),
+    levels = [0, 1], L2 reverses only the level-1 run (single char) →
+    visual order is unchanged.
+    """
     s = PDFTextStripper()
-    # 'a' (LTR) + 'ا' (Arabic, RTL) — at least one RTL -> reverse whole.
     out = s.handle_direction("aا")
-    # Whole reversal: alef then 'a'.
-    assert out == "اa"
+    assert out == "aا"
 
 
 # ---------------------------------------------------------------------------
@@ -172,18 +173,25 @@ def test_handle_direction_arabic_indic_digits_pass_through() -> None:
 
 
 # ---------------------------------------------------------------------------
-# ICU-style paragraph reordering is explicitly NOT supported in lite mode
+# UAX #9 paragraph reordering — wave 1387 closes the historical "lite-mode
+# only" divergence.
 # ---------------------------------------------------------------------------
 
 
-def test_icu_paragraph_reordering_is_documented_divergence() -> None:
-    """We deliberately do not implement the full Unicode Bidi
-    Algorithm. Pin the divergence so a future change that adds ICU
-    must update the documented behaviour intentionally."""
-    pytest.skip(
-        "Full Unicode Bidi paragraph reordering is out of scope for the "
-        "lite stripper — see CHANGES.md."
-    )
+def test_uax9_paragraph_reordering_is_now_supported() -> None:
+    """Wave 1387 ported UAX #9 (stdlib-only) to
+    :mod:`pypdfbox.text.bidi` and wired it into
+    :meth:`PDFTextStripper.handle_direction`. Pin the new behaviour so
+    a future regression to whole-reverse semantics is loud."""
+    s = PDFTextStripper()
+    # Hebrew paragraph with embedded Latin word — UAX #9 keeps the
+    # Latin word in source order while the Hebrew runs reverse to
+    # logical form. (Input here is visual-order glyphs.)
+    visual = "גבא abc"
+    out = s.handle_direction(visual)
+    # The Hebrew sub-run reverses; the Latin sub-run stays put.
+    assert "אבג" in out  # noqa: RUF001
+    assert "abc" in out
 
 
 # ---------------------------------------------------------------------------
