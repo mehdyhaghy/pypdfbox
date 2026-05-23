@@ -525,6 +525,63 @@ class PDFontDescriptor:
             self._dict.set_item(_STYLE, style)
         style.set_item(_PANOSE, COSString(data))
 
+    def get_font_family_class(self) -> int | None:
+        """Return the PANOSE family-kind byte (byte 0 of the 10-byte
+        PANOSE block under ``/Style/Panose``), or ``None`` when no
+        PANOSE entry is present.
+
+        pypdfbox extension. Distinct from :meth:`get_font_family`
+        (which returns the ``/FontFamily`` *string* on the descriptor —
+        the PDF 32000-1 §9.8.2 Table 122 ``preferred font family
+        name``). Both accessors are spec-defined but reference
+        different metadata: the string is human-readable typeface
+        family (e.g. ``"Times"``), the integer is the OS/2 PANOSE
+        family-kind classifier (e.g.
+        :attr:`PDPanoseClassification.FAMILY_KIND_LATIN_TEXT`).
+        Returning ``int`` instead of going through the
+        :class:`PDPanoseClassification` wrapper lets callers branch on
+        family kind without paying for the 12-byte slice + 10-byte
+        copy.
+        """
+        panose = self.get_panose()
+        if panose is None:
+            return None
+        return panose.get_panose().get_family_kind()
+
+    def is_panose_symbolic_consistent(self) -> bool | None:
+        """Return whether the PANOSE family-kind classifier agrees with
+        the ``/Flags`` SYMBOLIC / NON-SYMBOLIC bit pair.
+
+        pypdfbox extension. The PDF 32000-1 §9.8.2 Table 123 SYMBOLIC
+        flag and the OS/2 PANOSE family-kind byte are independent
+        metadata sources for the same property; well-formed font
+        descriptors agree on the classification. This helper returns
+        ``True`` when both sources say "symbolic" or both say
+        "non-symbolic", ``False`` when they disagree, and ``None``
+        when no PANOSE entry is present (consistency cannot be
+        evaluated). A descriptor is considered SYMBOLIC by PANOSE
+        when ``family_kind ==`` :attr:`PDPanoseClassification.FAMILY_KIND_LATIN_SYMBOL`,
+        and NON-SYMBOLIC for the Latin Text / Hand Written /
+        Decorative families; the universal :attr:`FAMILY_KIND_ANY` /
+        :attr:`FAMILY_KIND_NO_FIT` values are unclassified and treated
+        as agreeing with whatever ``/Flags`` says.
+        """
+        family_class = self.get_font_family_class()
+        if family_class is None:
+            return None
+        # FAMILY_KIND_ANY / FAMILY_KIND_NO_FIT carry no opinion — defer
+        # to /Flags by reporting "consistent".
+        if family_class in (
+            PDPanoseClassification.FAMILY_KIND_ANY,
+            PDPanoseClassification.FAMILY_KIND_NO_FIT,
+        ):
+            return True
+        panose_says_symbolic = (
+            family_class == PDPanoseClassification.FAMILY_KIND_LATIN_SYMBOL
+        )
+        flags_say_symbolic = self.is_symbolic()
+        return panose_says_symbolic == flags_say_symbolic
+
     # ---------- /Lang (PDF 32000-1 Table 122) ----------
     # Note: upstream PDFBox 3.0 PDFontDescriptor does NOT expose these — they
     # are PDF-spec-mandated entries we surface for completeness. Recorded in
@@ -973,6 +1030,40 @@ class PDPanoseClassification:
         sub-classification slots.
         """
         return self.get_family_kind() == self.FAMILY_KIND_LATIN_TEXT
+
+    def is_latin_hand_written(self) -> bool:
+        """``True`` when ``family_kind == 3`` ("Latin Hand Written" —
+        script / calligraphic typefaces).
+
+        pypdfbox extension. Symmetric to :meth:`is_latin_text`. Hand
+        written family fonts list their own per-byte sub-classification
+        slots in the OS/2 PANOSE specification (Tool Kind, Spacing,
+        Aspect Ratio, etc.) which we surface only via the generic
+        :meth:`get_byte` accessor — pypdfbox does not promote the
+        hand-written-specific bucket constants because no shipping
+        upstream Java caller branches on them.
+        """
+        return self.get_family_kind() == self.FAMILY_KIND_LATIN_HAND_WRITTEN
+
+    def is_latin_decorative(self) -> bool:
+        """``True`` when ``family_kind == 4`` ("Latin Decorative" —
+        display / decorative typefaces).
+
+        pypdfbox extension. Symmetric to :meth:`is_latin_text`.
+        """
+        return self.get_family_kind() == self.FAMILY_KIND_LATIN_DECORATIVE
+
+    def is_latin_symbol(self) -> bool:
+        """``True`` when ``family_kind == 5`` ("Latin Symbol" —
+        symbol / pi / dingbat typefaces).
+
+        pypdfbox extension. Symmetric to :meth:`is_latin_text`. Fonts
+        in this family are typically also marked ``/Flags`` SYMBOLIC
+        on the host :class:`PDFontDescriptor`; use
+        :meth:`PDFontDescriptor.is_panose_symbolic_consistent` to
+        cross-check the two metadata sources.
+        """
+        return self.get_family_kind() == self.FAMILY_KIND_LATIN_SYMBOL
 
     def __bytes__(self) -> bytes:
         """Pythonic alias for :meth:`get_bytes` — enables ``bytes(classification)``."""

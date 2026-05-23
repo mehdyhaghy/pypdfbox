@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import logging
 from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import COSArray, COSFloat, COSName, COSStream
@@ -11,6 +13,45 @@ from .pd_color_space import PDColorSpace
 
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.pd_resources import PDResources
+
+_log = logging.getLogger(__name__)
+
+# Content-addressed caches for ICC profile parses and the sRGB transforms
+# built off them. ICC profile bytes are immutable for the life of a PDF
+# stream, so a SHA-256 digest is a safe key. Multiple PDFs (or multiple
+# images inside a single PDF) sharing the same embedded profile reuse
+# the same parsed ``ImageCmsProfile`` and ``ImageCmsTransform`` — mirrors
+# upstream PDFBox's ``ICC_Profile`` / ``ICC_ColorSpace`` reuse, which
+# AWT itself caches inside the Java CMM.
+_PROFILE_CACHE: dict[str, Any] = {}
+_TRANSFORM_CACHE: dict[tuple[str, str, str, int], Any] = {}
+_SRGB_CACHE: list[Any] = []  # one-slot lazy holder for the sRGB output profile
+
+# Mapping from ICC ``colorSpace`` 4-byte signature (header offset 16) to
+# the Pillow image mode used as the CMM input mode. ICCBased colour
+# spaces in PDF are constrained by §8.6.5.5 to /N ∈ {1, 3, 4}; the modes
+# below are what LittleCMS2 (and therefore ``ImageCms``) expects.
+_SIGNATURE_TO_MODE: dict[str, str] = {
+    "RGB ": "RGB",
+    "GRAY": "L",
+    "CMYK": "CMYK",
+    "Lab ": "LAB",
+}
+_N_TO_MODE: dict[int, str] = {1: "L", 3: "RGB", 4: "CMYK"}
+
+
+def _clear_icc_caches() -> None:
+    """Drop the module-level ICC profile + transform + sRGB caches.
+
+    Intended for test isolation only: production code should never call
+    this — the caches are content-addressed and immutable per profile,
+    so they're safe to keep across the life of the process. Tests that
+    monkeypatch ``ImageCms.ImageCmsProfile`` / ``ImageCms.createProfile``
+    / ``ImageCms.buildTransform`` need to clear the caches between cases
+    so a fake profile from one test doesn't leak into the next."""
+    _PROFILE_CACHE.clear()
+    _TRANSFORM_CACHE.clear()
+    _SRGB_CACHE.clear()
 
 _N: COSName = COSName.get_pdf_name("N")
 _ALTERNATE: COSName = COSName.get_pdf_name("Alternate")
@@ -668,13 +709,19 @@ class PDICCBased(PDColorSpace):
         ``PDICCBased.toRGBImage(WritableRaster)`` (line 312 of
         ``PDICCBased.java``).
 
-        Defers to :meth:`PDColorSpace.to_rgb_image`, which iterates the
-        raster through :meth:`to_rgb` per pixel — the same conversion
-        path upstream uses (just without the AWT raster shortcut). When
-        the embedded profile is unreadable :meth:`to_rgb` falls back to
-        the alternate color space, matching upstream's
-        ``alternateColorSpace.toRGBImage(raster)`` branch.
+        Bulk-applies the cached LittleCMS2 transform built from the
+        embedded ICC profile to the entire raster in one call — matches
+        upstream's ``toRGBImageAWT(raster, awtColorSpace)`` path which
+        hands the raw raster to ``ICC_ColorSpace.toRGB`` rather than
+        looping per pixel. When the embedded profile is unreadable
+        (corrupt, unsupported channel count, ImageCms missing) we fall
+        through to the per-pixel path in the base class, which then
+        defers to ``/Alternate`` via :meth:`to_rgb`. A warning is logged
+        on the first failure so corruption is observable.
         """
+        image = self._try_icc_to_rgb_image(raster, width, height)
+        if image is not None:
+            return image
         return super().to_rgb_image(raster, width, height)
 
     def to_raw_image(
@@ -736,6 +783,120 @@ class PDICCBased(PDColorSpace):
         # Build a PDColor in the alternate CS and let it dispatch.
         return PDColor(components, alternate).to_rgb()
 
+    def _resolve_in_mode(self, profile_bytes: bytes) -> str | None:
+        """Pick the Pillow ``ImageCms`` input mode for the embedded ICC
+        profile. Honours the profile header's data colour-space signature
+        (bytes 16..19) first so v2/v4 profiles whose signature disagrees
+        with the stream's ``/N`` (rare but legal — PDF can carry a 1-
+        component ICCBased over a GRAY-typed profile, etc.) still feed
+        LittleCMS the mode it actually wants. Falls back to ``/N`` when
+        the signature is unrecognised."""
+        if len(profile_bytes) >= 20:
+            sig = profile_bytes[16:20].decode("ascii", errors="replace")
+            mode = _SIGNATURE_TO_MODE.get(sig)
+            if mode is not None:
+                return mode
+        return _N_TO_MODE.get(self.get_n())
+
+    def _get_input_profile(self, profile_bytes: bytes) -> Any | None:
+        """Return a cached ``ImageCmsProfile`` for ``profile_bytes``.
+        Cache key is the SHA-256 of the bytes (content-addressed); two
+        PDFs embedding the same profile share the same parse — mirrors
+        the AWT-level ``ICC_Profile`` cache that upstream PDFBox piggy-
+        backs on. Returns ``None`` when Pillow's CMM rejects the bytes."""
+        try:
+            from io import BytesIO
+
+            from PIL import ImageCms
+        except ImportError:  # pragma: no cover — Pillow is a hard dep
+            return None
+        key = hashlib.sha256(profile_bytes).hexdigest()
+        cached = _PROFILE_CACHE.get(key)
+        if cached is not None:
+            return cached
+        try:
+            profile = ImageCms.ImageCmsProfile(BytesIO(profile_bytes))
+        except (OSError, ValueError, ImageCms.PyCMSError) as exc:
+            _log.warning(
+                "ICCBased: Pillow rejected embedded profile (%d bytes): %s",
+                len(profile_bytes),
+                exc,
+            )
+            return None
+        _PROFILE_CACHE[key] = profile
+        return profile
+
+    @staticmethod
+    def _get_srgb_profile() -> Any | None:
+        """Return the singleton sRGB output profile used for every
+        ICC→sRGB conversion in this module. Built once and stashed in
+        ``_SRGB_CACHE`` so the per-conversion cost is one dict lookup,
+        not a fresh ``createProfile('sRGB')`` parse. Returns ``None``
+        when ImageCms is unavailable (kept for surface symmetry; in
+        practice Pillow ≥12.2 always provides it)."""
+        if _SRGB_CACHE:
+            return _SRGB_CACHE[0]
+        try:
+            from PIL import ImageCms
+        except ImportError:  # pragma: no cover
+            return None
+        try:
+            profile = ImageCms.createProfile("sRGB")
+        except (OSError, ValueError, ImageCms.PyCMSError):
+            return None
+        _SRGB_CACHE.append(profile)
+        return profile
+
+    def _get_transform(
+        self, profile_bytes: bytes, in_mode: str, out_mode: str = "RGB",
+        intent: int = 0,
+    ) -> Any | None:
+        """Return a cached ``ImageCms`` transform from the embedded ICC
+        profile to sRGB. Keyed on ``(sha256(profile_bytes), in_mode,
+        out_mode, intent)`` so distinct render modes against the same
+        profile (e.g. n-component ``to_rgb`` and bulk image) reuse the
+        underlying LittleCMS LUT — same caching shape as upstream's AWT
+        ``ICC_ColorSpace`` instances.
+
+        ``intent`` follows the ICC.1:2010 §B.2 enumeration (0 =
+        Perceptual, 1 = RelativeColorimetric, 2 = Saturation, 3 =
+        AbsoluteColorimetric). Defaults to Perceptual (0) to match the
+        PDF 32000-1 §8.6.5.5 default ``/Intent``."""
+        try:
+            from PIL import ImageCms
+        except ImportError:  # pragma: no cover
+            return None
+        key = (
+            hashlib.sha256(profile_bytes).hexdigest(),
+            in_mode,
+            out_mode,
+            int(intent),
+        )
+        cached = _TRANSFORM_CACHE.get(key)
+        if cached is not None:
+            return cached
+        in_profile = self._get_input_profile(profile_bytes)
+        if in_profile is None:
+            return None
+        srgb_profile = self._get_srgb_profile()
+        if srgb_profile is None:
+            return None
+        try:
+            transform = ImageCms.buildTransform(
+                in_profile, srgb_profile, in_mode, out_mode,
+                renderingIntent=int(intent),
+            )
+        except (OSError, ValueError, ImageCms.PyCMSError) as exc:
+            _log.warning(
+                "ICCBased: buildTransform(%s->%s) failed: %s",
+                in_mode,
+                out_mode,
+                exc,
+            )
+            return None
+        _TRANSFORM_CACHE[key] = transform
+        return transform
+
     def _try_icc_to_rgb(
         self, components: list[float]
     ) -> tuple[float, float, float] | None:
@@ -747,8 +908,6 @@ class PDICCBased(PDColorSpace):
         runtime error occurs while building / running the transform.
         """
         try:
-            from io import BytesIO
-
             from PIL import Image, ImageCms
         except ImportError:
             return None
@@ -763,51 +922,96 @@ class PDICCBased(PDColorSpace):
         if len(components) < n:
             return None
 
-        try:
-            in_profile = ImageCms.ImageCmsProfile(BytesIO(profile_bytes))
-        except (OSError, ValueError, ImageCms.PyCMSError):
-            return None
-        try:
-            srgb_profile = ImageCms.createProfile("sRGB")
-        except (OSError, ValueError, ImageCms.PyCMSError):
+        in_mode = self._resolve_in_mode(profile_bytes)
+        if in_mode is None:
             return None
 
-        if n == 1:
-            in_mode = "L"
-            sample: int | tuple[int, int, int] | tuple[int, int, int, int] = int(
+        if in_mode == "L":
+            sample: int | tuple[int, ...] = int(
                 round(_clamp_unit(components[0]) * 255.0)
             )
-        elif n == 3:
-            in_mode = "RGB"
-            sample = (
-                int(round(_clamp_unit(components[0]) * 255.0)),
-                int(round(_clamp_unit(components[1]) * 255.0)),
-                int(round(_clamp_unit(components[2]) * 255.0)),
-            )
-        else:  # n == 4
-            in_mode = "CMYK"
-            sample = (
-                int(round(_clamp_unit(components[0]) * 255.0)),
-                int(round(_clamp_unit(components[1]) * 255.0)),
-                int(round(_clamp_unit(components[2]) * 255.0)),
-                int(round(_clamp_unit(components[3]) * 255.0)),
+        else:
+            sample = tuple(
+                int(round(_clamp_unit(components[i]) * 255.0)) for i in range(n)
             )
 
+        transform = self._get_transform(profile_bytes, in_mode)
+        if transform is None:
+            return None
         try:
-            transform = ImageCms.buildTransform(
-                in_profile, srgb_profile, in_mode, "RGB"
-            )
             src = Image.new(in_mode, (1, 1), sample)
             dst = ImageCms.applyTransform(src, transform)
-            if dst is None:
-                return None
-            pixel = dst.getpixel((0, 0))
-        except (OSError, ValueError, ImageCms.PyCMSError):
+        except (OSError, ValueError, ImageCms.PyCMSError) as exc:
+            _log.warning(
+                "ICCBased: applyTransform single-pixel failed: %s", exc,
+            )
             return None
+        if dst is None:
+            return None
+        pixel = dst.getpixel((0, 0))
         if not isinstance(pixel, tuple) or len(pixel) < 3:
             return None
         r, g, b = pixel[:3]
         return (r / 255.0, g / 255.0, b / 255.0)
+
+    def _try_icc_to_rgb_image(
+        self, raster: bytes, width: int, height: int
+    ) -> Any | None:
+        """Bulk-apply the cached LittleCMS transform to a full 8-bpc
+        raster. Returns a Pillow RGB ``Image`` on success, ``None`` when
+        any prerequisite is missing (Pillow not importable, profile too
+        short, unsupported channel count, transform build / apply
+        failure).
+
+        Matches upstream's ``toRGBImageAWT(raster, awtColorSpace)``
+        path: hand the whole raster to the CMM in one call. For an
+        H×W ICC image this is orders of magnitude faster than the base
+        class's per-pixel fallback, and produces identical output to
+        upstream because Pillow's ImageCms and PDFBox's AWT path both
+        bottom out in LittleCMS2.
+        """
+        try:
+            from PIL import Image, ImageCms
+        except ImportError:
+            return None
+
+        profile_bytes = self.get_iccprofile_bytes()
+        if not profile_bytes:
+            return None
+
+        n = self.get_n()
+        if n not in (1, 3, 4):
+            return None
+        in_mode = self._resolve_in_mode(profile_bytes)
+        if in_mode is None:
+            return None
+        # Channels per pixel in the raster must match the profile's
+        # input mode so frombytes can stride correctly.
+        expected_channels = 1 if in_mode == "L" else (
+            3 if in_mode == "RGB" else 4
+        )
+        expected = int(width) * int(height) * expected_channels
+        data = bytes(raster)
+        if len(data) < expected:
+            data = data + b"\x00" * (expected - len(data))
+        transform = self._get_transform(profile_bytes, in_mode)
+        if transform is None:
+            return None
+        try:
+            src = Image.frombytes(in_mode, (int(width), int(height)), data)
+            dst = ImageCms.applyTransform(src, transform)
+        except (OSError, ValueError, ImageCms.PyCMSError) as exc:
+            _log.warning(
+                "ICCBased: bulk applyTransform(%dx%d, %s) failed: %s",
+                int(width),
+                int(height),
+                in_mode,
+                exc,
+            )
+            return None
+        if dst is None:
+            return None
+        return dst
 
 
     # ---------- string form ----------

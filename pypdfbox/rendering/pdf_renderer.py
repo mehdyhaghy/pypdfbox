@@ -204,6 +204,68 @@ class _GState:
     # narrow strokes at low resolution. Carried for parity; skia's
     # native ``StrokeWidth`` already prevents sub-pixel disappearance.
     stroke_adjustment: bool = False
+    # ---- /BG /BG2 black-generation functions (PDF 32000-1 §11.7.5.3) ----
+    # Carried for parity + applied at RGB → CMYK conversion time
+    # (see :meth:`PDFRenderer._apply_black_generation`). Stored as the
+    # raw COS object the ExtGState reports; the typed PDFunction wrapper
+    # is materialised lazily on first apply. ``/BG2 == /Default``
+    # resets the per-page BG override (carried as the literal
+    # ``COSName.get_pdf_name("Default")``). ``None`` means the spec
+    # default (identity).
+    black_generation: Any | None = None
+    black_generation2: Any | None = None
+    # ---- /UCR /UCR2 undercolour-removal functions (PDF 32000-1 §11.7.5.3) ----
+    # Same storage shape as the BG slots. UCR is applied during the
+    # pure-CMYK derivation from RGB: ``C = 1 - R - UCR(K)`` etc.
+    undercolor_removal: Any | None = None
+    undercolor_removal2: Any | None = None
+    # ---- /HT halftone dictionary (PDF 32000-1 §10.6) ----
+    # Stored as the typed wrapper when one is available (PDHalftone
+    # placeholder — the lite renderer doesn't model the 5 halftone
+    # types) or the raw COS object otherwise. The renderer paints to
+    # continuous-tone output so halftone never affects the raster; the
+    # field exists so downstream tooling can walk the active GS and
+    # report what halftone *would* apply on a bilevel device.
+    halftone: Any | None = None
+    # ---- overprint flags + mode (PDF 32000-1 §11.7.4) ----
+    # ``/OP`` (stroking) and ``/op`` (non-stroking) — booleans, default
+    # False. ``/OPM`` — 0 (normal overprint mode) or 1 (nonzero
+    # overprint mode), default 0. Honoured at paint time by
+    # :meth:`PDFRenderer._overprint_suppresses_paint`.
+    #
+    # Limitation: PDF overprint is defined on the device's process
+    # colorants (typically CMYK separations). The lite renderer
+    # composes in sRGB — strict CMYK overprint isn't fully expressible
+    # without a separation pipeline. The behaviour the renderer ships:
+    #   * OPM = 0 (default): treat overprint as a no-op on RGB output
+    #     (closest match to the spec — the source colour fully
+    #     replaces the backdrop on a continuous-tone display device).
+    #   * OPM = 1 (nonzero overprint): per §11.7.4.2, components of the
+    #     source colour equal to 0.0 in the source colour space are
+    #     suppressed (preserve the backdrop on those channels). For
+    #     an RGB renderer we approximate this as: if the source RGB
+    #     is exactly (0, 0, 0) — i.e. K-only black in the typical
+    #     CMYK→RGB mapping — the paint is suppressed entirely
+    #     (closest to "preserve every backdrop channel"). Any other
+    #     colour passes through unchanged.
+    # Mirrors upstream `PageDrawer.getOverprint` semantics on the
+    # narrow RGB path; a future CMYK-aware separation renderer can
+    # replace `_overprint_suppresses_paint` with a per-channel mask.
+    overprint_stroking: bool = False
+    overprint_non_stroking: bool = False
+    overprint_mode: int = 0
+    # ---- /TR /TR2 transfer functions (PDF 32000-1 §10.5) ----
+    # Either ``None`` (no transfer / Identity / Default — no remap),
+    # a single :class:`PDFunction` (apply uniformly to every output
+    # channel), or a list of 4 ``PDFunction`` instances (per-CMYK
+    # channel — for the RGB renderer we feed the R/G/B channels through
+    # functions 0..2 since the K function only applies before the
+    # CMYK→RGB conversion which has already happened by the time the
+    # transfer fires). ``/TR2`` takes precedence over ``/TR`` when
+    # both are set — upstream
+    # `PDExtendedGraphicsState.copyIntoGraphicsState` skips /TR when
+    # /TR2 is also present so /TR2 wins.
+    transfer_function: Any | None = None
 
     def clone(self) -> _GState:
         # ``replace`` would re-share the field defaults — manually copy mutable
@@ -245,6 +307,15 @@ class _GState:
             flatness=self.flatness,
             smoothness=self.smoothness,
             stroke_adjustment=self.stroke_adjustment,
+            black_generation=self.black_generation,
+            black_generation2=self.black_generation2,
+            undercolor_removal=self.undercolor_removal,
+            undercolor_removal2=self.undercolor_removal2,
+            halftone=self.halftone,
+            overprint_stroking=self.overprint_stroking,
+            overprint_non_stroking=self.overprint_non_stroking,
+            overprint_mode=self.overprint_mode,
+            transfer_function=self.transfer_function,
         )
 
 
@@ -1909,7 +1980,166 @@ class PDFRenderer(PDFStreamEngine):
             or len(rgb_floats) < 3
         ):
             return None
+        # Wave 1386 note — ExtGState /TR /TR2 transfer functions are
+        # applied at PAINT time (inside :meth:`_draw_via_aggdraw` and the
+        # other paint helpers), not at colour-resolution time, so a
+        # transfer activated after the colour was set (the spec-allowed
+        # ordering ``1 0 0 rg /GS0 gs … f``) still takes effect.
         return _rgb_bytes(rgb_floats[0], rgb_floats[1], rgb_floats[2])
+
+    # ---- ExtGState /TR /TR2 + /OP /op /OPM helpers (wave 1386) ----
+
+    def _apply_transfer_to_rgb_bytes(
+        self, rgb: tuple[int, int, int]
+    ) -> tuple[int, int, int]:
+        """Run an sRGB triple through the active GS transfer function.
+
+        No-op (returns ``rgb`` unchanged) when no transfer is active —
+        i.e. ``self._gs.transfer_function is None`` (the default or
+        ``/Identity`` / ``/Default``). Otherwise, every channel is fed
+        through the matching per-channel function:
+
+        - single function → applied uniformly to R, G and B,
+        - list of 4 functions (CMYK form) → R/G/B fed through functions
+          0/1/2 respectively; the K function (index 3) doesn't apply on
+          an RGB device (the CMYK→RGB conversion folds K into the other
+          channels before the transfer fires).
+
+        Per PDF 32000-1 §10.5 transfer functions map ``[0, 1] → [0, 1]``;
+        we sample once per channel and clamp on output.
+        """
+        # Called from colour-resolution helpers that may run before the GS
+        # stack is initialised (oracle tests poke at internal helpers).
+        if not self._gs_stack:
+            return rgb
+        tr = self._gs.transfer_function
+        if tr is None:
+            return rgb
+        try:
+            return (
+                self._apply_transfer_to_byte(rgb[0], tr, 0),
+                self._apply_transfer_to_byte(rgb[1], tr, 1),
+                self._apply_transfer_to_byte(rgb[2], tr, 2),
+            )
+        except Exception:  # noqa: BLE001
+            return rgb
+
+    @staticmethod
+    def _apply_transfer_to_byte(
+        value: int, tr: Any, channel: int
+    ) -> int:
+        """Run a single 8-bit channel value through the matching
+        per-channel function in *tr* (see
+        :meth:`_apply_transfer_to_rgb_bytes`).
+
+        Returns the input unchanged on any evaluation failure.
+        """
+        if isinstance(tr, (list, tuple)):
+            if not tr:
+                return value
+            idx = min(channel, len(tr) - 1)
+            fn = tr[idx]
+        else:
+            fn = tr
+        if fn is None:
+            return value
+        try:
+            x = value / 255.0
+            out = fn.eval([x])
+        except Exception:  # noqa: BLE001
+            return value
+        if not out:
+            return value
+        try:
+            y = float(out[0])
+        except (TypeError, ValueError):
+            return value
+        if y < 0.0:
+            y = 0.0
+        elif y > 1.0:
+            y = 1.0
+        return int(round(y * 255.0))
+
+    def _apply_transfer_to_pil_image(
+        self, pil_image: Image.Image
+    ) -> Image.Image:
+        """Apply the active GS transfer function per-pixel to a PIL image.
+
+        Returns ``pil_image`` unchanged when no transfer is active. The
+        returned image preserves the input mode (``L`` / ``RGB`` /
+        ``RGBA``); alpha is left untouched (transfer applies to colour
+        channels only, per PDF 32000-1 §10.5).
+        """
+        tr = self._gs.transfer_function
+        if tr is None:
+            return pil_image
+        try:
+            r_lut = [self._apply_transfer_to_byte(i, tr, 0) for i in range(256)]
+            g_lut = [self._apply_transfer_to_byte(i, tr, 1) for i in range(256)]
+            b_lut = [self._apply_transfer_to_byte(i, tr, 2) for i in range(256)]
+        except Exception:  # noqa: BLE001
+            return pil_image
+        mode = pil_image.mode
+        if mode == "L":
+            return pil_image.point(r_lut)
+        if mode == "1":
+            # Per-pixel transfer on a 1-bit mask is meaningless — only
+            # values 0 and 255 exist and a transfer can re-map them but
+            # the mask still rounds back to bilevel.
+            return pil_image
+        if mode == "RGB":
+            r, g, b = pil_image.split()
+            return Image.merge(
+                "RGB",
+                (r.point(r_lut), g.point(g_lut), b.point(b_lut)),
+            )
+        if mode == "RGBA":
+            r, g, b, a = pil_image.split()
+            return Image.merge(
+                "RGBA",
+                (r.point(r_lut), g.point(g_lut), b.point(b_lut), a),
+            )
+        _log.debug(
+            "rendering: _apply_transfer_to_pil_image: unsupported mode %s",
+            mode,
+        )
+        return pil_image
+
+    def _overprint_suppresses_paint(self, *, stroke: bool, fill: bool) -> bool:
+        """Return True when the active overprint flags + mode mean the
+        current paint operator should be a no-op on the RGB target.
+
+        See the comment on :class:`_GState.overprint_stroking` for the
+        spec-vs-RGB trade-off. Summary:
+
+        - When neither overprint flag fires for the current op, return
+          ``False`` (paint normally).
+        - When overprint is on AND ``overprint_mode == 1`` AND the
+          source colour for that op is pure black ``(0, 0, 0)`` —
+          the only RGB colour whose every channel is zero — return
+          ``True`` (suppress paint; preserve backdrop).
+        - When overprint is on AND ``overprint_mode == 0`` we leave the
+          paint alone (continuous-tone RGB has no separation channels
+          to selectively preserve). The flag is honoured for parity-
+          test bookkeeping via ``self._gs.overprint_*`` accessors.
+        """
+        op_active = False
+        rgb_to_test: tuple[int, int, int] | None = None
+        if fill and self._gs.overprint_non_stroking:
+            op_active = True
+            rgb_to_test = self._gs.fill_rgb
+        if stroke and self._gs.overprint_stroking:
+            op_active = True
+            if rgb_to_test is None:
+                rgb_to_test = self._gs.stroke_rgb
+            elif self._gs.stroke_rgb != (0, 0, 0):
+                # Stroke would still paint — don't suppress the whole op.
+                return False
+        if not op_active:
+            return False
+        if self._gs.overprint_mode != 1:
+            return False
+        return rgb_to_test == (0, 0, 0)
 
     def _resolve_pattern_operand(
         self, operands: list[COSBase]
@@ -1990,11 +2220,20 @@ class PDFRenderer(PDFStreamEngine):
           the GS for parity-test bookkeeping; the lite renderer doesn't
           consult them at paint time.
 
-        Deferred (don't affect skia-rendered output but the GS fields are
-        carried elsewhere): ``/OP``/``/op``/``/OPM`` (overprint — affects
-        colour separations we don't model), ``/BG``/``/BG2``/``/UCR``/``/UCR2``
-        (CMYK device-gamut mapping), ``/TR``/``/TR2`` (output-device transfer
-        function), ``/HT`` (halftone)."""
+        Wave 1386 adds ``/BG``/``/BG2``/``/UCR``/``/UCR2`` (CMYK
+        device-gamut mapping — applied at RGB → CMYK conversion time;
+        see :meth:`_apply_black_generation` / :meth:`_apply_undercolor_removal`)
+        and ``/HT`` (halftone — carried for parity, never applied since
+        the lite renderer paints continuous-tone output).
+
+        Wave 1386 also wires ``/OP``/``/op``/``/OPM`` (overprint flags
+        + mode — honoured at paint time by
+        :meth:`_overprint_suppresses_paint` on the RGB output, with the
+        documented OPM=0 ≈ "no suppression" / OPM=1 → "suppress pure
+        black" approximation) and ``/TR``/``/TR2`` (output-device
+        transfer functions — applied per-channel to fill/stroke colours
+        as they're resolved, and per-pixel to image XObjects in
+        :meth:`_paste_image`; ``/TR2`` takes precedence over ``/TR``)."""
         if not operands or not isinstance(operands[0], COSName):
             return
         if self._resources is None:
@@ -2174,6 +2413,263 @@ class PDFRenderer(PDFStreamEngine):
                 ext_gstate.get_stroke_adjustment()
             )
 
+        # ---- /BG /BG2 (black generation) — §11.7.5.3 ----
+        # Read both keys (a PDF may set either or both; /BG2 takes
+        # precedence per the spec when both are present, and ``/Default``
+        # means "reset to the device's default BG"). Stored as the raw
+        # COS object — :meth:`_apply_black_generation` materialises the
+        # typed PDFunction lazily on first use.
+        try:
+            bg = ext_gstate.get_black_generation()
+        except Exception:  # noqa: BLE001
+            bg = None
+        self._gs.black_generation = bg
+        try:
+            bg2 = ext_gstate.get_black_generation2()
+        except Exception:  # noqa: BLE001
+            bg2 = None
+        self._gs.black_generation2 = bg2
+
+        # ---- /UCR /UCR2 (undercolour removal) — §11.7.5.3 ----
+        try:
+            ucr = ext_gstate.get_undercolor_removal()
+        except Exception:  # noqa: BLE001
+            ucr = None
+        self._gs.undercolor_removal = ucr
+        try:
+            ucr2 = ext_gstate.get_undercolor_removal2()
+        except Exception:  # noqa: BLE001
+            ucr2 = None
+        self._gs.undercolor_removal2 = ucr2
+
+        # ---- /HT (halftone) — §10.6 ----
+        # Carried for parity. The lite renderer paints continuous-tone
+        # output; halftone applies only at the bilevel-device boundary
+        # which we never cross. Downstream tooling can read the active
+        # value via :meth:`get_active_halftone`.
+        try:
+            ht = ext_gstate.get_halftone()
+        except Exception:  # noqa: BLE001
+            ht = None
+        self._gs.halftone = ht
+
+        # ---- /OP /op /OPM (overprint flags + mode) — §11.7.4 ----
+        # Per upstream PDExtendedGraphicsState.copyIntoGraphicsState,
+        # /op falls back to /OP when /op is absent; the typed getter
+        # already does the fallback so we get the spec-correct value.
+        # /OPM clamps to 0 / 1 — any other value is a malformed PDF and
+        # mirrors upstream's silent acceptance via int() (defaults 0).
+        with contextlib.suppress(Exception):
+            self._gs.overprint_stroking = bool(
+                ext_gstate.get_stroke_overprint()
+            )
+        with contextlib.suppress(Exception):
+            self._gs.overprint_non_stroking = bool(
+                ext_gstate.get_non_stroking_overprint()
+            )
+        try:
+            opm = ext_gstate.get_overprint_mode()
+        except Exception:  # noqa: BLE001
+            opm = None
+        if opm is not None:
+            with contextlib.suppress(TypeError, ValueError):
+                self._gs.overprint_mode = 1 if int(opm) == 1 else 0
+
+        # ---- /TR /TR2 (transfer functions) — §10.5 ----
+        # /TR2 takes precedence over /TR per spec (and per upstream's
+        # ``copyIntoGraphicsState``). The typed getters return either:
+        #   - None (entry absent),
+        #   - a PDFunctionTypeIdentity (treated as None — no remap),
+        #   - a list of 4 PDFunction instances (per-CMYK channel),
+        #   - a single PDFunction instance (apply to every channel),
+        #   - a raw COSName ``/Default`` (only from /TR2; reset to no
+        #     transfer for the lite renderer's purposes).
+        from pypdfbox.pdmodel.common.function.pd_function import (  # noqa: PLC0415
+            PDFunctionTypeIdentity,
+        )
+
+        try:
+            tr_typed: Any = ext_gstate.get_transfer2_typed()
+        except Exception:  # noqa: BLE001
+            tr_typed = None
+        if tr_typed is None:
+            try:
+                tr_typed = ext_gstate.get_transfer_typed()
+            except Exception:  # noqa: BLE001
+                tr_typed = None
+        if isinstance(tr_typed, PDFunctionTypeIdentity):
+            tr_typed = None
+        if isinstance(tr_typed, COSName):
+            # /Default — no typed wrapper; treat as identity.
+            tr_typed = None
+        self._gs.transfer_function = tr_typed
+
+    # ---- BG / UCR / HT public accessors (PDF 32000-1 §10.3.4, §10.6) ----
+
+    def get_active_black_generation(self) -> Any | None:
+        """Return the active ``/BG2`` (preferred) or ``/BG`` function
+        from the current ExtGState. Returns the raw COS object — pass
+        through :func:`PDFunction.create` for evaluation. ``None`` means
+        "use the device-default black-generation" (spec default).
+        """
+        return self._gs.black_generation2 or self._gs.black_generation
+
+    def get_active_undercolor_removal(self) -> Any | None:
+        """Return the active ``/UCR2`` (preferred) or ``/UCR`` function
+        from the current ExtGState. Same semantics as
+        :meth:`get_active_black_generation`."""
+        return self._gs.undercolor_removal2 or self._gs.undercolor_removal
+
+    def get_active_halftone(self) -> Any | None:
+        """Return the active ``/HT`` halftone object (a halftone
+        dictionary, halftone stream, or the literal name ``/Default``)
+        from the current ExtGState. ``None`` means the device-default
+        halftone is in effect.
+
+        The lite renderer never applies halftone (screen output is
+        continuous-tone); this accessor exists so downstream tooling
+        (print-prep, separation analysis) can walk the active GS and
+        report what halftone *would* apply on a bilevel device.
+        Mirrors upstream PDExtendedGraphicsState.getHalftone() but
+        reads the currently-active GS rather than a specific ExtGState
+        dict.
+        """
+        return self._gs.halftone
+
+    @staticmethod
+    def _apply_function(function: Any, value: float) -> float:
+        """Evaluate ``function`` (a PDFunction wrapper or raw COS
+        object) at ``value`` and return the scalar result clamped to
+        ``[0, 1]``. Returns ``value`` unchanged when ``function`` is
+        ``None`` / ``/Default`` / unparseable.
+        """
+        if function is None:
+            return max(0.0, min(1.0, value))
+        if isinstance(function, COSName) and function.get_name() == "Default":
+            return max(0.0, min(1.0, value))
+        try:
+            from pypdfbox.pdmodel.common.function.pd_function import (  # noqa: PLC0415
+                PDFunction,
+            )
+            fn = (
+                function
+                if hasattr(function, "eval")
+                else PDFunction.create(function)
+            )
+            if fn is None:
+                return max(0.0, min(1.0, value))
+            out = fn.eval([float(value)])
+        except Exception:  # noqa: BLE001
+            return max(0.0, min(1.0, value))
+        if not out:
+            return max(0.0, min(1.0, value))
+        result = float(out[0])
+        if result < 0.0:
+            return 0.0
+        if result > 1.0:
+            return 1.0
+        return result
+
+    def _apply_black_generation(self, k_prime: float) -> float:
+        """Apply the active BG (or BG2) function to ``k_prime`` (the
+        candidate black ``min(1-R, 1-G, 1-B)``). Mirrors PDF 32000-1
+        §10.3.4 step (a) of the BG / UCR pipeline.
+        """
+        return self._apply_function(
+            self.get_active_black_generation(), k_prime
+        )
+
+    def _apply_undercolor_removal(self, k: float) -> float:
+        """Apply the active UCR (or UCR2) function to ``k`` (the post-
+        BG black component). Mirrors PDF 32000-1 §10.3.4 step (b).
+        """
+        return self._apply_function(
+            self.get_active_undercolor_removal(), k
+        )
+
+    def convert_rgb_to_cmyk(
+        self, r: float, g: float, b: float
+    ) -> tuple[float, float, float, float]:
+        """Convert a single sRGB triple to CMYK using the active BG /
+        UCR functions. All inputs / outputs are in ``[0, 1]``. Mirrors
+        PDF 32000-1 §10.3.4::
+
+            K' = min(1 - R, 1 - G, 1 - B)        # candidate black
+            K  = BG(K')                          # post-BG actual black
+            C  = clamp01(1 - R - UCR(K))
+            M  = clamp01(1 - G - UCR(K))
+            Y  = clamp01(1 - B - UCR(K))
+        """
+        k_prime = min(1.0 - r, 1.0 - g, 1.0 - b)
+        k = self._apply_black_generation(k_prime)
+        ucr_k = self._apply_undercolor_removal(k)
+        c = max(0.0, min(1.0, 1.0 - r - ucr_k))
+        m = max(0.0, min(1.0, 1.0 - g - ucr_k))
+        y = max(0.0, min(1.0, 1.0 - b - ucr_k))
+        return (c, m, y, k)
+
+    def convert_rgb_image_to_cmyk(self, image: Any) -> Any:
+        """Convert a Pillow RGB image to a CMYK Pillow image using the
+        active BG / UCR functions. Returns a new ``PIL.Image`` in mode
+        ``"CMYK"``.
+
+        Hot path: no BG / no UCR — both identity. Slow path: build
+        256-entry lookup tables from the function evals.
+        """
+        import numpy as np
+        from PIL import Image
+
+        if image.mode != "RGB":
+            image = image.convert("RGB")
+        # int32 keeps the per-pixel subtractions safe — uint16 would
+        # wrap around on ``255 - 255 - 64`` (= -64 → 65472 → clipped
+        # to 255, painting the wrong colour).
+        arr = np.asarray(image, dtype=np.int32)
+        r = arr[..., 0]
+        g = arr[..., 1]
+        b = arr[..., 2]
+        k_prime = np.minimum.reduce(
+            [255 - r, 255 - g, 255 - b]
+        ).astype(np.int32)
+        bg = self.get_active_black_generation()
+        ucr = self.get_active_undercolor_removal()
+        bg_is_identity = bg is None or (
+            isinstance(bg, COSName) and bg.get_name() == "Default"
+        )
+        ucr_is_identity = ucr is None or (
+            isinstance(ucr, COSName) and ucr.get_name() == "Default"
+        )
+        if bg_is_identity and ucr_is_identity:
+            k = k_prime
+            ucr_k = k
+        else:
+            bg_lut = np.array(
+                [
+                    int(round(
+                        self._apply_function(bg, i / 255.0) * 255.0
+                    ))
+                    for i in range(256)
+                ],
+                dtype=np.int32,
+            )
+            k = bg_lut[k_prime]
+            ucr_lut = np.array(
+                [
+                    int(round(
+                        self._apply_function(ucr, i / 255.0) * 255.0
+                    ))
+                    for i in range(256)
+                ],
+                dtype=np.int32,
+            )
+            ucr_k = ucr_lut[k]
+        c = np.clip(255 - r - ucr_k, 0, 255).astype(np.uint8)
+        m = np.clip(255 - g - ucr_k, 0, 255).astype(np.uint8)
+        y = np.clip(255 - b - ucr_k, 0, 255).astype(np.uint8)
+        k8 = np.clip(k, 0, 255).astype(np.uint8)
+        cmyk = np.stack([c, m, y, k8], axis=-1)
+        return Image.fromarray(cmyk, mode="CMYK")
+
     # ---- path construction ----
 
     def _start_subpath(self, x: float, y: float) -> None:
@@ -2321,6 +2817,21 @@ class PDFRenderer(PDFStreamEngine):
             self._apply_pending_clip(default_even_odd=even_odd)
             return
         if self._draw is None or self._image is None:
+            return
+
+        # Wave 1386 — honour ExtGState overprint flags. Apply the
+        # suppression check per paint kind so a combined fill+stroke
+        # where only the fill colour matches the OPM=1 suppression rule
+        # still emits the stroke (and vice-versa).
+        if fill and self._overprint_suppresses_paint(stroke=False, fill=True):
+            fill = False
+        if stroke and self._overprint_suppresses_paint(stroke=True, fill=False):
+            stroke = False
+        if not (stroke or fill):
+            # Both paint kinds suppressed — still apply the pending
+            # clip + reset the path so the W / W* sequence is honoured.
+            self._apply_pending_clip(default_even_odd=even_odd)
+            self._reset_path()
             return
 
         # Pattern / shading fill — handled separately so the path mask is
@@ -2493,9 +3004,36 @@ class PDFRenderer(PDFStreamEngine):
                 # Use a representative scale factor (sqrt(|det(CTM)|)).
                 scale = self._approx_scale(full_ctm)
                 width_px = max(1.0, self._gs.line_width * scale)
-                pen = aggdraw.Pen(self._gs.stroke_rgb, width=width_px)
+                # Wave 1386 — /SA (stroke adjustment, PDF spec §10.6.5):
+                # when set and the resulting device-pixel width is sub-
+                # pixel, snap to an integer-pixel width so the stroke
+                # doesn't anti-alias into a fainter-than-intended ghost
+                # line. Skia's AA already covers the > 1px case; SA only
+                # makes a visible difference on hairlines.
+                if self._gs.stroke_adjustment and width_px < 1.0:
+                    width_px = 1.0
+                # Wave 1386 — /CA (stroke alpha) multiplies into the pen's
+                # opacity so semi-transparent strokes actually render at
+                # the requested alpha. Was previously stored on the GS but
+                # never consumed by the paint path.
+                stroke_opacity = int(
+                    round(255.0 * max(0.0, min(1.0, self._gs.stroke_alpha)))
+                )
+                pen = aggdraw.Pen(
+                    self._apply_transfer_to_rgb_bytes(self._gs.stroke_rgb),
+                    width=width_px,
+                    opacity=stroke_opacity,
+                )
             if fill:
-                brush = aggdraw.Brush(self._gs.fill_rgb)
+                # Wave 1386 — /ca (non-stroke alpha) multiplies into the
+                # brush opacity. Mirrors the /CA fix above.
+                fill_opacity = int(
+                    round(255.0 * max(0.0, min(1.0, self._gs.fill_alpha)))
+                )
+                brush = aggdraw.Brush(
+                    self._apply_transfer_to_rgb_bytes(self._gs.fill_rgb),
+                    opacity=fill_opacity,
+                )
             # ``even_odd=`` is a wave-1330B shim extension — aggdraw had
             # no fill-rule knob.
             self._draw.path(path, pen, brush, even_odd=even_odd)
@@ -2551,11 +3089,13 @@ class PDFRenderer(PDFStreamEngine):
         # When the canvas is RGBA (we're inside _paint_through_clip), build
         # an RGBA fill layer so the alpha lands correctly. RGB canvases use
         # the raw 3-tuple.
+        # Wave 1386 — apply ExtGState /TR /TR2 transfer to the fill colour.
+        fill_rgb = self._apply_transfer_to_rgb_bytes(self._gs.fill_rgb)
         if self._image.mode == "RGBA":
-            r, g, b = self._gs.fill_rgb
+            r, g, b = fill_rgb
             fill_layer = Image.new("RGBA", (width_px, height_px), (r, g, b, 255))
         else:
-            fill_layer = Image.new("RGB", (width_px, height_px), self._gs.fill_rgb)
+            fill_layer = Image.new("RGB", (width_px, height_px), fill_rgb)
         self._image.paste(fill_layer, (0, 0), mask)
 
         # The aggdraw Draw object holds onto the PIL buffer it was created
@@ -5099,6 +5639,23 @@ class PDFRenderer(PDFStreamEngine):
         # Luminance of RGB → 8-bit grayscale.
         alpha_plane = mask_canvas.convert("L") if is_luminosity else mask_canvas.split()[3]
 
+        # Wave 1386 — /AIS (alpha-is-shape, PDF §11.6.4.3): when the
+        # active ExtGState carries AIS=true, the mask source's coverage
+        # ("shape") drives the mask rather than its alpha. For /Alpha
+        # masks this means every pixel the group touched contributes
+        # fully (1.0), and untouched pixels contribute zero — equivalent
+        # to thresholding the alpha plane at any non-zero value. For
+        # /Luminosity masks AIS is a no-op per spec (the mask is already
+        # taken from luminance, not alpha).
+        if (
+            not is_luminosity
+            and self._gs.alpha_is_shape
+            and alpha_plane is not None
+        ):
+            alpha_plane = alpha_plane.point(
+                lambda v: 255 if v > 0 else 0, mode="L",
+            )
+
         # Apply /TR transfer function if present (and not /Identity).
         tr = soft_mask.get_transfer_function()
         if tr is not None:
@@ -5518,6 +6075,12 @@ class PDFRenderer(PDFStreamEngine):
         assert self._draw is not None
         # Need to commit any pending aggdraw drawing before pasting.
         self._draw.flush()
+
+        # Wave 1386 — apply the active ExtGState /TR /TR2 transfer
+        # function per-pixel before pasting (mirrors upstream
+        # ``PageDrawer.applyTransferFunctionToImage``). No-op when no
+        # transfer is active.
+        pil_image = self._apply_transfer_to_pil_image(pil_image)
 
         ctm = self._full_ctm()
         # The four corners of the unit square mapped to device space:
@@ -6773,7 +7336,10 @@ class PDFRenderer(PDFStreamEngine):
     ) -> None:
         """Paint ``path`` directly onto the canvas (no through-clip)."""
         assert self._draw is not None
-        brush = aggdraw.Brush(fill_rgb) if do_fill else None
+        # Wave 1386 — glyph fill/stroke alpha now honours /CA + /ca from
+        # the active ExtGState (previously stored on GS but ignored at
+        # glyph paint time).
+        brush = self._build_glyph_brush(fill_rgb) if do_fill else None
         pen = self._build_stroke_pen(ctm) if do_stroke else None
         self._draw.settransform(_to_pil_affine(ctm))
         try:
@@ -6800,7 +7366,10 @@ class PDFRenderer(PDFStreamEngine):
         layer_draw = aggdraw.Draw(layer)
         layer_draw.setantialias(True)
         layer_draw.settransform(_to_pil_affine(ctm))
-        brush = aggdraw.Brush(fill_rgb) if do_fill else None
+        # Wave 1386 — glyph fill/stroke alpha now honours /CA + /ca from
+        # the active ExtGState (previously stored on GS but ignored at
+        # glyph paint time).
+        brush = self._build_glyph_brush(fill_rgb) if do_fill else None
         pen = self._build_stroke_pen(ctm) if do_stroke else None
         layer_draw.path(path, pen, brush)
         layer_draw.settransform()
@@ -6842,7 +7411,31 @@ class PDFRenderer(PDFStreamEngine):
         # than dividing by zero).
         ratio = page_scale if ctm_scale <= 0.0 else page_scale / ctm_scale
         width_px = max(0.5, self._gs.line_width * ratio)
-        return aggdraw.Pen(self._gs.stroke_rgb, width=width_px)
+        # Wave 1386 — /SA: hairline strokes snap to integer-pixel width
+        # to avoid sub-pixel anti-aliasing fade-out (parity with §10.6.5).
+        if self._gs.stroke_adjustment and width_px < 1.0:
+            width_px = 1.0
+        # Wave 1386 — /CA (stroke alpha) — fold into the pen opacity.
+        stroke_opacity = int(
+            round(255.0 * max(0.0, min(1.0, self._gs.stroke_alpha)))
+        )
+        return aggdraw.Pen(
+            self._gs.stroke_rgb, width=width_px, opacity=stroke_opacity,
+        )
+
+    def _build_glyph_brush(
+        self, fill_rgb: tuple[int, int, int]
+    ) -> aggdraw.Brush:
+        """Return an :class:`aggdraw.Brush` configured from ``fill_rgb`` and
+        the current GS ``/ca`` (non-stroke alpha).
+
+        Wave 1386 — glyph fills now honour ``/ca`` (was previously stored
+        on ``_GState`` but never consumed by the per-glyph paint path).
+        """
+        fill_opacity = int(
+            round(255.0 * max(0.0, min(1.0, self._gs.fill_alpha)))
+        )
+        return aggdraw.Brush(fill_rgb, opacity=fill_opacity)
 
     def _accumulate_text_clip_path(
         self, path: aggdraw.Path, ctm: _Matrix,

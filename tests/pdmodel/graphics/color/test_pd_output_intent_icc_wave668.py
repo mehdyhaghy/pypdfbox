@@ -8,8 +8,22 @@ from PIL import Image, ImageCms
 from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel.common.pd_stream import PDStream
 from pypdfbox.pdmodel.graphics.color import PDOutputIntent
-from pypdfbox.pdmodel.graphics.color.pd_icc_based import PDICCBased
+from pypdfbox.pdmodel.graphics.color.pd_icc_based import (
+    PDICCBased,
+    _clear_icc_caches,
+)
 from pypdfbox.pdmodel.pd_document import PDDocument
+
+
+@pytest.fixture(autouse=True)
+def _isolate_icc_caches() -> None:
+    """Wave 1386 added content-addressed caches for parsed ICC profiles
+    and ImageCms transforms inside ``pd_icc_based``. These tests
+    monkeypatch ``ImageCms.ImageCmsProfile`` / ``createProfile`` /
+    ``buildTransform`` to inject fake objects; flush both caches before
+    each test so a fake profile cached by an earlier case doesn't
+    short-circuit the next ``_try_icc_to_rgb`` call."""
+    _clear_icc_caches()
 
 
 def _icc_with_signature(colorspace: bytes = b"RGB ") -> bytes:
@@ -131,11 +145,10 @@ def _patch_icc_success(
     samples: list[tuple[str, object]] = []
     monkeypatch.setattr(ImageCms, "ImageCmsProfile", lambda src: _FakeProfile())
     monkeypatch.setattr(ImageCms, "createProfile", lambda name: _FakeProfile())
-    monkeypatch.setattr(
-        ImageCms,
-        "buildTransform",
-        lambda in_profile, out_profile, in_mode, out_mode: _FakeTransform(),
-    )
+    def fake_build_transform(in_profile, out_profile, in_mode, out_mode, **kwargs):
+        return _FakeTransform()
+
+    monkeypatch.setattr(ImageCms, "buildTransform", fake_build_transform)
 
     def fake_new(mode, size, sample):
         assert size == (1, 1)
@@ -214,11 +227,11 @@ def test_wave668_try_icc_to_rgb_returns_none_when_transform_raises(
     monkeypatch.setattr(cs, "get_n", lambda: 3)
     monkeypatch.setattr(ImageCms, "ImageCmsProfile", lambda src: _FakeProfile())
     monkeypatch.setattr(ImageCms, "createProfile", lambda name: _FakeProfile())
-    monkeypatch.setattr(
-        ImageCms,
-        "buildTransform",
-        lambda *args: (_ for _ in ()).throw(ImageCms.PyCMSError("bad transform")),
-    )
+
+    def _raise_bad_transform(*args, **kwargs):
+        raise ImageCms.PyCMSError("bad transform")
+
+    monkeypatch.setattr(ImageCms, "buildTransform", _raise_bad_transform)
 
     assert cs._try_icc_to_rgb([0.1, 0.2, 0.3]) is None
 
