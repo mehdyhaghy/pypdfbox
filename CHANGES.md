@@ -38,6 +38,165 @@ Divergences that remain live (will affect observable behaviour vs Java PDFBox):
 - **`PDFRenderer` pixel-exact parity not portable.** Upstream JUnit comparisons against stored TIFF/PNG references are *not* ported. Pypdfbox uses Pillow + a skia-backed `_aggdraw_compat` rasteriser; byte-equivalent raster output across the Java AWT and the Python pipeline is unachievable. Affected paths use structural parity (page count, MediaBox, Rotation, Contents shape, Resources keys, save-reload round-trip) anchored to the bundled reference PDFs. `pypdfbox/rendering/pdf_renderer.py`.
 - **Skia anti-aliasing vs upstream Java2D AA.** The `_aggdraw_compat` skia path may render edge pixels differently from upstream Java2D in low-resolution rasters. Recorded as a known limitation; full pixel parity is not in scope (see preceding bullet).
 
+## Wave 1394 (cont.) — small-file coverage stragglers (17 files closed to 100%)
+
+- **Audit-driven cleanup of wave-1392 Agent B inventory.** Closed the ~80
+  missing-line cluster across 17 small files identified as 90-99% range
+  coverage stragglers. All closures behavioural — no production-code
+  changes other than the documented Pillow `# pragma: no cover` marker
+  noted below.
+- **Tests added (120 new across 12 files):**
+  - `tests/pdfparser/test_pdf_parser_hint_early_exits_wave1394.py` (30
+    tests) — every defensive `return None` in
+    `decode_page_offset_hint_table` / `_read_hint_stream_decoded` /
+    `_hint_subtable_offset` / `decode_shared_object_hint_table` /
+    `decode_thumbnail_hint_table`, including OSError-on-read, missing
+    document, non-`COSStream` resolved object, and `HintTableParseError`
+    paths.
+  - `tests/debugger/test_pd_debugger_public_delegates_wave1394.py` (16
+    tests) — the listener-shaped public methods on `PDFDebugger`
+    (`open_menu_item_action_performed` / `j_tree1_value_changed` /
+    `read_pd_furl` / `show_page` / `show_color_pane` / `show_flag_pane`
+    / `show_stream` / `show_font` / `show_signature_pane` /
+    `show_string`) plus the `is_encrypt` / `is_signature` /
+    `is_flag_node` classmethod delegates.
+  - `tests/debugger/pagepane/test_page_pane_dispatch_none_wave1394.py`
+    (7 tests) — `action_performed` invokes `start_rendering`;
+    `mouse_clicked(None)` / `mouse_exited(None)` / `mouse_moved(None)`
+    short-circuit; the same methods with a real event delegate to the
+    `_on_*` callbacks.
+  - `tests/debugger/hexviewer/test_hex_pane_listener_none_wave1394.py`
+    (4 tests) — `mouse_clicked(None)` / `key_pressed(None)`
+    short-circuit; with an event they delegate to `_on_click` / `_on_key`.
+  - `tests/pdmodel/graphics/color/test_pd_icc_based_defensive_branches_wave1394.py`
+    (7 tests) — every defensive branch in `_try_icc_to_rgb` /
+    `_try_icc_to_rgb_image` (invalid `/N`, too-few components,
+    `_resolve_in_mode` returns `None`, `ImageCms.applyTransform`
+    raises, `applyTransform` returns `None`).
+  - `tests/pdmodel/graphics/shading/test_pd_mesh_based_shading_validation_wave1394.py`
+    (10 tests) — `_PatchBitReader.read_bits(0)` zero-bit fast-path,
+    `_interpolate` zero-range branch, `_patch_flag_color` invalid-flag
+    raise, `parse_patch_stream` argument-validation raises for
+    non-positive bits-per-coordinate / bits-per-component /
+    bits-per-flag / num-color-components.
+  - `tests/xmpbox/test_exif_schema_typed_struct_wave1394.py` (9 tests)
+    — round-trip + None-clear + wrong-type-stored branches on each of
+    `set_oecf_property` / `get_oecf_property`,
+    `set_spatial_frequency_response_property` /
+    `get_spatial_frequency_response_property`,
+    `set_cfa_pattern_property` / `get_cfa_pattern_property`.
+  - `tests/xmpbox/test_dom_xmp_parser_lenient_branches_wave1394.py` (9
+    tests) — lenient-mode early-returns in
+    `_validate_attribute_form_cardinality` /
+    `_validate_element_form_cardinality`, `parseType` attribute in the
+    `xml:` namespace silent skip, strict-mode INVALID_TYPE raise on
+    Simple-cardinality mismatch, and the reserved-namespace
+    property-element skip in `parse_children_as_properties`.
+  - `tests/fontbox/test_cjk_loader_branches_wave1394.py` (4 tests) —
+    `target.parent.mkdir` OSError (loader returns `None` + WARNING
+    log); `_extract_regular` finally-branch unlinks the `.partial`
+    stranded file when `tmp.replace(target)` raises; happy-path
+    end-to-end through the finally branch.
+  - `tests/fontbox/ttf/gsub/test_gsub_worker_for_tamil_branches_wave1394.py`
+    (4 tests) — `apply_transforms` skips a feature whose value is
+    `None`; `reposition_glyphs` reph + before-half drag (the elif
+    branch where the loop lands on the virama-reph glyph and the slot
+    after it carries a before-half glyph).
+  - `tests/multipdf/test_splitter_branches_wave1394.py` (4 tests) —
+    `_finalize_annotation_links` exception caught + logged per chunk;
+    cross-chunk resolver returns a 2-tuple with non-str filename /
+    non-int page-index (null-out fallback + WARNING log); orphan
+    destination without a link record path through
+    `_rewrite_cross_chunk_destination` still returns `True` and
+    rewrites slot 0.
+  - `tests/xmpbox/test_date_converter_branches_wave1394.py` (17 tests)
+    — `_try_simple_format` unknown-format fast-path; `MM/dd/yyyy
+    HH:mm:ss` / `MM/dd/yyyy HH:mm` / `MM/dd/yyyy` handler success +
+    invalid-date `cal.validate()` exception paths; locale-handler
+    empty-text and leading-whitespace branches; `set_fields` raise
+    defensive path; `_make_handler_locale_split_at_tz` empty-text,
+    leading-whitespace, empty-tail, empty-tz-blob, post-fmt-miss,
+    set_fields-raise continue branches.
+- **Coverage deltas** (line %, before → after, per file):
+  - `pypdfbox/pdfparser/pdf_parser.py`: 96% → **100%** (28 missing → 0)
+  - `pypdfbox/xmpbox/date_converter.py`: 95% → **100%** (27 missing → 0)
+  - `pypdfbox/debugger/pd_debugger.py`: 99% → **100%** (16 missing → 0)
+  - `pypdfbox/pdmodel/graphics/color/pd_icc_based.py`: 97% → **100%**
+    (12 missing → 0; one `# pragma: no cover` on line 912's `except
+    ImportError` matching the existing Pillow-import pattern at lines
+    811/841/867)
+  - `pypdfbox/debugger/pagepane/page_pane.py`: 98% → **100%** (10
+    missing → 0)
+  - `pypdfbox/xmpbox/exif_schema.py`: 99% → **100%** (9 missing → 0)
+  - `pypdfbox/xmpbox/dom_xmp_parser.py`: 98% → **100%** (8 missing → 0)
+  - `pypdfbox/pdmodel/graphics/shading/pd_mesh_based_shading_type.py`:
+    96% → **100%** (7 missing → 0)
+  - `pypdfbox/debugger/hexviewer/hex_pane.py`: 97% → **100%** (6 missing
+    → 0)
+  - `pypdfbox/fontbox/ttf/gsub/gsub_worker_for_tamil.py`: 92% → **100%**
+    (6 missing → 0)
+  - `pypdfbox/fontbox/cjk_loader.py`: 94% → **100%** (5 missing → 0)
+  - `pypdfbox/multipdf/splitter.py`: 99% → **100%** (5 missing → 0)
+  - `pypdfbox/pdmodel/font/pd_font.py`,
+    `pypdfbox/pdmodel/interactive/digitalsignature/pd_seed_value.py`,
+    `pypdfbox/contentstream/pdf_stream_engine.py` — already at 100%
+    from earlier waves; included in the audit but no new work needed.
+- **Files touched:**
+  - 12 new test files listed above (120 new tests).
+  - `pypdfbox/pdmodel/graphics/color/pd_icc_based.py` — added
+    `# pragma: no cover — Pillow is a hard dep` to the `except
+    ImportError` at line 912 (matches the same marker pattern already
+    in place at the other three Pillow import sites).
+  - `CHANGES.md` (this entry).
+- **Blockers**: none.
+
+## Wave 1394 (cont.) — branch-coverage closure on `text/bidi.py` + discrepancy audit between wave-1391 and wave-1392 measurements
+
+- **Discrepancy resolution.** Wave 1391 Agent E reported `pypdfbox/text/bidi.py` closed to 0 missing **statement** lines (90 → 0 with 47 new tests in `tests/text/test_bidi_wave1391.py` + 3 documented `# pragma: no cover` markers on truly unreachable defensive guards). Wave 1392 Agent C's audit then reported "281 missing" lines, which contradicted the on-disk `coverage.json` snapshot. Re-measurement under wave 1394 confirms Wave 1391's report is the accurate one: `coverage.json` carries `pypdfbox/text/bidi.py` at 312 / 312 statements covered (100%, 0 missing) with 8 excluded lines from the wave-1391 pragmas, and a fresh `.venv/bin/python -m coverage run --include='*/pypdfbox/text/bidi.py' -m pytest tests/text/` reproduces the same: **312 statements, 0 missing, 100% line coverage** as of wave 1394 baseline. Wave 1392 Agent C's "281 missing" was either a stale measurement (predating wave 1391 close-out), a misreporting of branch totals (the file has 196 branches; "281" doesn't match any single dimension), or an off-by-one against a different file. No real coverage gap existed at the statement level when wave 1392 ran.
+- **Real residual gap found — branch coverage.** Switching to `--branch` revealed `pypdfbox/text/bidi.py` at 99% branch coverage (5 partial branches): `179->181` (LRE/RLE/LRO/RLO encountered while `overflow_isolate > 0` — inner `if overflow_isolate == 0` guard never flipped FALSE), `246->259` (`_fsi_substring_direction` loop falls off the end without finding strong or hitting matching PDI), `353->350` (W2 inner backward-scan iterates past at least one non-strong type without breaking), `405->410` (W7 inner backward-scan similarly walks past non-{L, R} chars), and `461->459` (N1 backward-scan encounters a non-strong type — e.g. BN — and continues to the next iteration). All five were genuinely reachable via behavioural inputs (no `# pragma: no cover` markers needed).
+- **Tests added (32 new in `tests/text/test_bidi_wave1394.py`):**
+  - 2 branch-targeted: LRE / RLO inside an overflowed-isolate region built by stacking 126 RLIs / LRIs (62 valid frames pushing the level up to 124-125, then 63+ overflow_isolate increments) so the embed-marker hits `overflow_isolate > 0` and falls through line 179 to 181.
+  - 2 branch-targeted: bare FSI followed only by whitespace / ON-neutrals with no matching PDI (loop exhausts → return 0 fallthrough at 246->259).
+  - 2 branch-targeted: AN-then-EN and ZWSP-then-EN in an LTR paragraph (W2 inner scan iterates past the non-strong type without breaking; EN gets W7-demoted to L by sos == 'L').
+  - 2 branch-targeted: same shapes covering W7 inner scan at 405->410.
+  - 2 branch-targeted: ZWSP-then-space-then-L and ZWSP-ZWSP-space-L (N1 backward scan iterates past BN — neither strong nor in `_NEUTRAL_TYPES` — at 461->459).
+  - 6 behavioural UAX #9 regressions: pure-LTR English keeps all level 0, pure-Hebrew on level 1, pure-Arabic AL on level 1, English-inside-Hebrew nests at level 2, Hebrew-inside-English nests at level 1, Arabic-numerals-inside-Arabic land on level 2.
+  - 3 reorder regressions: pure-RTL paragraph reverses end-to-end, pure-LTR stays in logical order, `reorder_runs_visually` reorders a parallel object array consistently.
+  - 6 end-to-end `PDFTextStripper.handle_direction` checks: ASCII pass-through, empty-input pass-through, Hebrew word reverses, L4 bracket-mirror with Hebrew context (`(`/`)` round-trip through visual reorder + mirror so they remain a paired open-before-close), LTR word inside RTL paragraph, idempotent on pure-LTR.
+  - 5 `get_paragraph_direction` corner cases: empty / first-strong-L / first-strong-R / AL counts as RTL / no-strong falls back to LTR.
+  - 1 `_bidi_class` unassigned-codepoint fallback.
+  - 1 longer mixed-paragraph smoke test exercising every resolver phase (X-W-N-I-L).
+- **Coverage delta.** `pypdfbox/text/bidi.py` branch coverage 99% → **100%** (5 → 0 partial branches). Statement coverage stays at 100% (no regression). No new `# pragma: no cover` markers (the 5 residual branches were behaviourally reachable). UAX #9 bundled conformance suites (`BidiCharacterTest.txt` / `BidiTest.txt`) are not in `tests/fixtures/` — Apache PDFBox upstream doesn't bundle them either; the W1-W7 / N0-N2 / L1-L4 spec rules are covered through the resolver-stage assertions above instead.
+- **Files touched:**
+  - `tests/text/test_bidi_wave1394.py` (new, 32 tests).
+  - `CHANGES.md` (this entry).
+
+## Wave 1394 (cont.) — standalone-file coverage closure for `text_position.py` (generic-angle `get_*_dir_adj` fallback)
+
+- **Context.** Wave 1392 Agent C flagged two text-module files as having large missing-line counts: `pypdfbox/text/text_position.py` (alleged 130 missing) and `pypdfbox/text/pdf_marked_content_extractor.py` (alleged 115 missing). The wave 1393/1394 full-suite coverage run shows both already at **100% line coverage** — the 130/115 figures came from a focused-tests-only measurement that missed the transitive coverage from `PDFTextStripper`, `PDFMarkedContentExtractor`, and `LegacyPDFStreamEngine` paths. Running coverage with only `tests/text/test_text_position.py` (plus the wave-307 / parity / upstream variants) leaves 4 lines uncovered: the generic-angle (non-cardinal) trigonometric fallback inside `get_x_dir_adj` (lines 361-362) and `get_y_dir_adj` (lines 385-386).
+- **Branch analysis.** Both `get_x_dir_adj` and `get_y_dir_adj` short-circuit on the four cardinal page rotations (0 / 90 / 180 / 270) and return a coordinate read or page-extent subtraction. Any other ``dir`` value (e.g. 37, 45, 60, 135) falls through to the generic rotation about the page origin: `x' = x·cos(θ) + y·sin(θ)`, `y' = -x·sin(θ) + y·cos(θ)`. Upstream PDFBox doesn't actually emit these — the production path always picks one of the four cardinals — but the lite port keeps the trig fallback for callers that synthesise rotated text positions in tests or for future non-rectilinear-page support.
+- **Tests added (6 new in `tests/text/test_text_position.py`):**
+  - `test_get_x_dir_adj_generic_angle_rotates_about_origin` — 45-deg ``dir`` lands on the trig branch; asserts `x·cos+y·sin`.
+  - `test_get_x_dir_adj_generic_angle_negative_quadrant` — 135-deg exercises a negative-cosine value.
+  - `test_get_x_dir_adj_generic_angle_normalises_modulo_360` — 405 deg (= 45 after `% 360`) still hits the trig path because the cardinal-match runs against the modulo result.
+  - `test_get_y_dir_adj_generic_angle_rotates_about_origin` — 45-deg ``dir`` for the y-axis: `-x·sin+y·cos`.
+  - `test_get_y_dir_adj_generic_angle_60_deg` — 60 deg exercises a non-degenerate-cos / non-degenerate-sin pair.
+  - `test_get_x_dir_adj_and_y_dir_adj_generic_angle_orthogonal` — invariant: rotation preserves L2 norm of (x, y) for any θ.
+- **Coverage delta.** `pypdfbox/text/text_position.py` standalone (its own four test files only): 4 → 0 missing = 100%. Full-suite coverage: was already 100% (no change). `pypdfbox/text/pdf_marked_content_extractor.py`: already at 100% standalone — no test additions needed.
+- **Files touched:**
+  - `tests/text/test_text_position.py` (+6 tests + `import math`)
+  - `CHANGES.md` (this entry)
+
+## Wave 1394 — close final missing line in `pdf_text_stripper.py` (`handle_direction` all-LTR post-resolve branch)
+
+- **Context.** Wave 1392 Agent C flagged `pypdfbox/text/pdf_text_stripper.py` as the largest remaining coverage gap (alleged 406 missing lines). The latest pre-wave-1394 `coverage.json` rebuild showed the file was already at 99.89% (951/952 statements covered) — the 406-line estimate was stale, predating the wave-1370 / 1387 / 1391 stripper rounds. Only one statement was uncovered: `pdf_text_stripper.py:1963`, the `if all(level == 0 for level in levels): return word` short-circuit inside `PDFTextStripper.handle_direction`.
+- **Branch analysis.** The branch fires when (1) the cheap pre-scan finds at least one character whose `unicodedata.bidirectional` class is in `{R, AL, AN, RLE, RLO, RLI, FSI, LRE, LRO, LRI}` (so the resolver is invoked), but (2) the UAX #9 resolver assigns embedding level 0 to every codepoint (so reordering is a no-op). The minimal reproducer is a word consisting solely of explicit-isolate format characters with no strong-directional content between them — e.g. a bare U+2068 First-Strong Isolate, or a U+2068 + U+2069 pair with empty isolate body. The pre-scan sees FSI (class `FSI`) and proceeds to `BidiResolver`, which returns `[0]` / `[0, 0]` because there is no strong content to embed.
+- **Test added.** `tests/text/test_bidi_wave1387.py::test_handle_direction_explicit_iso_chars_resolve_to_all_ltr_unchanged` — passes the bare FSI and the FSI+PDI pair through `PDFTextStripper.handle_direction` and asserts the input is returned verbatim (no reorder, no mirroring).
+- **Result.** `pypdfbox/text/pdf_text_stripper.py`: 1 → 0 missing lines (100% statement coverage). No `# pragma: no cover` markers added; the branch is reachable by real input. No source code changed.
+- **Files touched:**
+  - `tests/text/test_bidi_wave1387.py` (+1 test)
+  - `CHANGES.md` (this entry)
+
 ## Wave 1393 — `pdfbox-app` CLI parity (unified `pdfbox` console script, missing flags, latent loader bugs)
 
 - **Context.** Upstream `pdfbox-app/` is a Maven shading-only module with no Java source — it bundles `pdfbox-tools` into a single executable JAR whose `Main-Class` is `org.apache.pdfbox.tools.PDFBox` (picocli dispatcher). Porting "pdfbox-app" therefore means: (a) confirm every subcommand registered by upstream `PDFBox.java` is reachable through `pypdfbox.tools.pdf_box.PDFBox.main`, (b) audit each subcommand's flag surface against the corresponding `@Option` set in its upstream `*.java` counterpart, and (c) expose the dispatcher as a real console script so `pdfbox <subcmd> …` matches the `java -jar pdfbox-app.jar <subcmd>` muscle memory.

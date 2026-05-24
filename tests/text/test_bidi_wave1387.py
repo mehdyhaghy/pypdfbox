@@ -311,3 +311,27 @@ def test_handle_direction_round_trips_BidiSample_first_line() -> None:
     # visually-ordered output reverses again — net effect on a fully-
     # RTL paragraph is the original input).
     assert twice == first_line
+
+
+# ---------- post-resolve all-LTR short-circuit (Wave 1394) ---------------
+
+
+def test_handle_direction_explicit_iso_chars_resolve_to_all_ltr_unchanged() -> None:
+    """Wave 1394 — close the last uncovered line of pdf_text_stripper.py.
+
+    A word whose only "RTL-ish" content is a bare First-Strong Isolate
+    (U+2068) or an FSI + matching PDI (U+2069) pair contains code
+    points that pass the cheap pre-scan (FSI is in the explicit-
+    formatting set the fast-path checks for), so the UAX #9 resolver
+    runs — but the resolver returns all-zero embedding levels because
+    there's no actual strong directional content to embed. That hits
+    the ``all(level == 0 for level in levels)`` short-circuit, which
+    must return the input verbatim (no reorder, no mirroring).
+    """
+    stripper = PDFTextStripper()
+    fsi = "⁨"
+    pdi = "⁩"
+    # Bare FSI — pre-scan triggers resolve, resolver yields [0].
+    assert stripper.handle_direction(fsi) == fsi
+    # FSI followed by PDI with nothing between them — same outcome.
+    assert stripper.handle_direction(fsi + pdi) == fsi + pdi

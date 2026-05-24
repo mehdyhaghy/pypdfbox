@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import unicodedata
 
 from pypdfbox.text.text_position import TextPosition
@@ -728,3 +729,67 @@ def test_create_diacritics_returns_fresh_dict():
     a[0xFFFF] = "z"
     b = TextPosition.create_diacritics()
     assert 0xFFFF not in b
+
+
+# ---------------------------------------------------------------------------
+# Wave 1394 (cont.): generic (non-cardinal) angle fallback in
+# get_x_dir_adj / get_y_dir_adj — covers the trigonometric branch that
+# fires only when ``dir`` is not one of the four cardinal multiples-of-90.
+# ---------------------------------------------------------------------------
+
+
+def test_get_x_dir_adj_generic_angle_rotates_about_origin():
+    # 45 deg: x'(45) = x*cos(45) + y*sin(45).
+    tp = _make(x=10.0, y=20.0, dir=45.0)
+    expected = 10.0 * math.cos(math.radians(45.0)) + 20.0 * math.sin(
+        math.radians(45.0)
+    )
+    assert tp.get_x_dir_adj() == expected
+
+
+def test_get_x_dir_adj_generic_angle_negative_quadrant():
+    # 135 deg falls outside {0, 90, 180, 270} so should trigger the
+    # generic trig fallback.
+    tp = _make(x=7.0, y=3.0, dir=135.0)
+    expected = 7.0 * math.cos(math.radians(135.0)) + 3.0 * math.sin(
+        math.radians(135.0)
+    )
+    assert tp.get_x_dir_adj() == expected
+
+
+def test_get_x_dir_adj_generic_angle_normalises_modulo_360():
+    # 405 deg % 360 == 45, but the cardinal-match runs against the
+    # *raw* modulo result. 405 % 360 == 45 → falls through to generic.
+    tp = _make(x=10.0, y=20.0, dir=405.0)
+    # Should match the 45-deg result.
+    twin = _make(x=10.0, y=20.0, dir=45.0)
+    assert tp.get_x_dir_adj() == twin.get_x_dir_adj()
+
+
+def test_get_y_dir_adj_generic_angle_rotates_about_origin():
+    # 45 deg: y'(45) = -x*sin(45) + y*cos(45).
+    tp = _make(x=10.0, y=20.0, dir=45.0)
+    expected = -10.0 * math.sin(math.radians(45.0)) + 20.0 * math.cos(
+        math.radians(45.0)
+    )
+    assert tp.get_y_dir_adj() == expected
+
+
+def test_get_y_dir_adj_generic_angle_60_deg():
+    # 60 deg is non-cardinal — exercises the trig fallback.
+    tp = _make(x=5.0, y=8.0, dir=60.0)
+    expected = -5.0 * math.sin(math.radians(60.0)) + 8.0 * math.cos(
+        math.radians(60.0)
+    )
+    assert tp.get_y_dir_adj() == expected
+
+
+def test_get_x_dir_adj_and_y_dir_adj_generic_angle_orthogonal():
+    # For any generic angle, (x', y') is a rotation; preserves magnitude.
+    tp = _make(x=3.0, y=4.0, dir=37.0)
+    x_prime = tp.get_x_dir_adj()
+    y_prime = tp.get_y_dir_adj()
+    # rotation preserves L2 norm of (x, y).
+    assert math.isclose(
+        math.hypot(x_prime, y_prime), math.hypot(3.0, 4.0), rel_tol=1e-9
+    )

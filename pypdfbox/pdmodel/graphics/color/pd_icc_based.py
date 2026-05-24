@@ -972,7 +972,7 @@ class PDICCBased(PDColorSpace):
         """
         try:
             from PIL import Image, ImageCms
-        except ImportError:
+        except ImportError:  # pragma: no cover — Pillow is a hard dep
             return None
 
         profile_bytes = self.get_iccprofile_bytes()
