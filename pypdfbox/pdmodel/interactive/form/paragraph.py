@@ -167,7 +167,13 @@ class Paragraph:
                 remainder = segments[i][split_offset:]
                 if remainder:
                     segments[i] = remainder
-                else:
+                else:  # pragma: no cover - unreachable in valid input
+                    # find_max_fitting_chars caps at the largest k with
+                    # prefix_width[k] < width; since we entered the
+                    # split branch with word_width > width, k is always
+                    # < len(word_text) so the remainder slice has at
+                    # least one char. Kept as a defensive arm mirroring
+                    # upstream's iterator-advance shape.
                     i += 1
             else:
                 i += 1

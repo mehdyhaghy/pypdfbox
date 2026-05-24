@@ -38,6 +38,175 @@ Divergences that remain live (will affect observable behaviour vs Java PDFBox):
 - **`PDFRenderer` pixel-exact parity not portable.** Upstream JUnit comparisons against stored TIFF/PNG references are *not* ported. Pypdfbox uses Pillow + a skia-backed `_aggdraw_compat` rasteriser; byte-equivalent raster output across the Java AWT and the Python pipeline is unachievable. Affected paths use structural parity (page count, MediaBox, Rotation, Contents shape, Resources keys, save-reload round-trip) anchored to the bundled reference PDFs. `pypdfbox/rendering/pdf_renderer.py`.
 - **Skia anti-aliasing vs upstream Java2D AA.** The `_aggdraw_compat` skia path may render edge pixels differently from upstream Java2D in low-resolution rasters. Recorded as a known limitation; full pixel parity is not in scope (see preceding bullet).
 
+## Wave 1395 (cont.) — close residual scatter across pdmodel + fontbox + debugger + xmpbox (55 → 0 missing, global 100% coverage achieved)
+
+- **Context.** After wave 1394 + wave-1395 Agent A's tool-CLI closure, the
+  global coverage stood at 99.7952% (257 missing). Agent A took out the
+  62 lines in 9 `tools/*.py` files; this companion run picked up the
+  remaining ~55 scattered missing lines across 33 small files (1-4 lines
+  each, none lower than 71%). Each branch is a small behavioural arm:
+  upstream-parity method alias, defensive `continue` branch in a
+  dispatcher, error-path guard, or "no descriptor" tri-state fall-through.
+- **Closures (per-file, before → after missing):**
+  - `pypdfbox/fontbox/cff/char_string_command.py`: 4 → 0 — `get_value()`
+    unknown-singleton (`_KEY_UNKNOWN` = 99) and Type 1 / Type 2 keyword
+    `key.hash_value` arms.
+  - `pypdfbox/pdfparser/linearization_hint_table.py`: 3 → 0 —
+    `_BitReader.read()` negative-bit-width raise, `_read_u16` and
+    `_read_u32` truncated-source raises.
+  - `pypdfbox/io/non_seekable_random_access_read_input_stream.py`: 3 → 0
+    — `_available_on_underlying` `except Exception: return 0` arm
+    (`getbuffer` raises) plus the final `return 0` when the underlying
+    stream exposes neither `available()` nor `getbuffer()`.
+  - `pypdfbox/fontbox/ttf/gsub/glyph_substitution_data_extractor.py`:
+    3 → 0 — Type-7 extension subtable wraps a Multiple / Alternate /
+    unsupported inner subtable (dispatch ladder arms at lines 307 / 311 /
+    319).
+  - `pypdfbox/debugger/streampane/stream_text_view.py`: 3 → 0 —
+    `mouse_moved(None)` early-return, `mouse_moved(event)` forward to
+    `_on_motion`.
+  - `pypdfbox/pdmodel/interactive/form/pd_button.py`: 2 → 0 —
+    `_check_value_if_known` accepts a stringified valid export-values
+    index (mirrors `setValue(int)` writing `str(index)` as `/V`).
+  - `pypdfbox/pdmodel/font/pd_simple_font.py`: 2 → 0 — `is_font_symbolic`
+    Standard14 Symbol / ZapfDingbats arm (reached by stubbing
+    `get_symbolic_flag` to `None`).
+  - `pypdfbox/fontbox/ttf/glyph_substitution_table.py`: 2 → 0 —
+    `get_gsub_data(None)` with no preferred script returns
+    `GsubData.NO_DATA_FOUND`; `_pick_default_script_tag` falls back to
+    the first script when no Language preference matches.
+  - `pypdfbox/rendering/soft_mask.py`: 2 → 0 — `_clamp_unit` clamp-low
+    and clamp-high arms.
+  - `pypdfbox/pdmodel/graphics/shading/pd_shading_type7.py`: 2 → 0 —
+    `parse_patches` returns `[]` for non-stream COS and for missing
+    `/Decode`.
+  - `pypdfbox/debugger/treestatus/tree_status_pane.py`: 2 → 0 —
+    `action_performed` delegates to `_on_text_input` and propagates its
+    `"break"` return.
+  - `pypdfbox/fontbox/liberation_loader.py`: 2 → 0 — `_resolve_key`
+    None-on-unknown-key and None-on-missing-bundled-file arms.
+  - `pypdfbox/debugger/ui/debug_log_appender.py`: 2 → 0 — `_NullLock`
+    `__enter__` returns self / `__exit__` returns `None` (used when
+    `Handler.lock` is `None`).
+  - `pypdfbox/xmpbox/type/layer_type.py`: 2 → 0 —
+    `set_layer_text_property(value)` non-None branch (renames property to
+    `LayerText` and adds it).
+  - `pypdfbox/pdmodel/interactive/annotation/pd_annotation_printer_mark.py`:
+    2 → 0 — no-arg constructor sets `/Subtype /PrinterMark`; setter
+    writes `/MN`.
+  - `pypdfbox/pdmodel/interactive/form/pd_choice.py`: 1 → 0 —
+    `_selected_option_indices_for_values` returns `[]` for free-typed
+    text on an editable combo (the `is_combo() and is_edit()` guard).
+  - `pypdfbox/pdmodel/graphics/shading/pd_shading_type6.py`: 1 → 0 —
+    `parse_patches` returns `[]` for non-stream COS.
+  - `pypdfbox/pdmodel/graphics/color/pd_indexed.py`: 1 → 0 — `create()`
+    raises `ValueError` when `base.get_cos_object()` returns `None`.
+  - `pypdfbox/pdmodel/common/cos_array_list.py`: 1 → 0 — `remove_all`
+    raises `NotImplementedError` on filtered (size-mismatched) lists.
+  - `pypdfbox/pdfwriter/cos_writer.py`: 1 → 0 —
+    `_reject_signed_with_byterange_placeholder` `continue` arm when
+    `to_cos_number_integer_list` yields a `None` (malformed
+    `/ByteRange`).
+  - `pypdfbox/fontbox/ttf/ttf_subsetter.py`: 1 → 0 — `_build_subset_font`
+    assigns `Options.no_subset_tables` when the policy is non-empty
+    (reached via `build_head_table` after `set_no_subset_tables`).
+  - `pypdfbox/debugger/ui/textsearcher/{searcher,search_panel}.py`,
+    `streampane/{stream_pane,stream_image_view}.py`,
+    `hexviewer/hex_editor.py`, `colorpane/cs_separation.py`: 1 → 0 each
+    — `action_performed(...)` delegate-to-private-callback arms (each
+    asserted via `unittest.mock.patch.object` so we don't spin up Tk).
+  - `pypdfbox/pdmodel/interactive/annotation/pd_annotation_file_attachment.py`:
+    1 → 0 — `set_attachement_name` (typo'd legacy spelling) delegate.
+  - `pypdfbox/pdmodel/encryption/public_key_protection_policy.py`:
+    1 → 0 — `get_recipients_number` (legacy spelling) alias for
+    `get_number_of_recipients`.
+  - `pypdfbox/fontbox/ttf/gsub/gsub_worker_for_smcp.py`,
+    `gsub_worker_for_aalt.py`: 1 → 0 each — `script_feature is None`
+    continue branch (feature supported but `get_feature` returns `None`).
+  - `pypdfbox/tools/pdf_text2_html.py`: 2 → 0 — `write_paragraph_end`
+    sink-routing arm (font-state flush text → sink, then
+    `super().write_paragraph_end(sink)` forward).
+- **Production-code adjustments (2 `# pragma: no cover` markers, no behaviour
+  changes):**
+  - `pypdfbox/util/number_format_util.py` line 94 — `elif value <=
+    _LONG_MIN_AS_DOUBLE:` saturation arm. The early-return guard at line 80
+    (`value <= _LONG_MIN_AS_DOUBLE` -> -1) makes this branch unreachable
+    in valid input; kept for parity with upstream's symmetrical
+    Long.MAX/MIN saturation shape.
+  - `pypdfbox/pdmodel/interactive/form/paragraph.py` line 171 — the
+    `else: i += 1` arm in the force-split iteration. `find_max_fitting_chars`
+    caps at the largest k with `prefix_width[k] < width`; we only enter the
+    split branch when `word_width > width`, so k < len(word_text) and the
+    remainder slice is always non-empty. Kept as a defensive arm mirroring
+    upstream's iterator-advance shape.
+- **Tests added (50 new across 7 files):**
+  - `tests/fontbox/cff/test_char_string_command_value_wave1395.py` (3
+    tests) — `get_value()` unknown / Type 2 / Type 1 arms.
+  - `tests/pdfparser/test_linearization_hint_table_branches_wave1395.py`
+    (5 tests) — `_BitReader` negative width, `_read_u16` / `_read_u32`
+    truncation raises.
+  - `tests/io/test_non_seekable_random_access_input_stream_branches_wave1395.py`
+    (1 test) — `_BadGetBufferStream` stub forcing the `except Exception:
+    return 0` arm.
+  - `tests/fontbox/ttf/gsub/test_glyph_substitution_data_extractor_extension_wave1395.py`
+    (4 tests) — Type-7 dispatch to Multiple / Alternate inner subtables,
+    unsupported inner type (Contextual Type-5) debug-log arm, None inner
+    early-return.
+  - `tests/debugger/test_action_performed_delegates_wave1395.py` (9
+    tests) — `Searcher` / `SearchPanel` / `StreamPane` /
+    `StreamImageView` / `StreamTextView` (with + without event) /
+    `CSSeparation` / `HexEditor` / `TreeStatusPane` `action_performed` /
+    `mouse_moved` delegates, all asserted via `unittest.mock.patch.object`
+    so no Tk init runs.
+  - `tests/pdmodel/test_residual_branches_wave1395.py` (13 tests) — the
+    pdmodel cluster (printer mark, file attachment misspelled setter,
+    `get_recipients_number` legacy alias, `_check_value_if_known` with
+    `/Opt` index, `PDComboBox` edit-mode free-text, `PDIndexed.create`
+    no-COS base, `PDSimpleFont.is_font_symbolic` Symbol /
+    ZapfDingbats / Helvetica arms, `PDShadingType{6,7}.parse_patches`
+    non-stream early-return, `COSArrayList.remove_all` filtered raise).
+  - `tests/test_residual_misc_wave1395.py` (14 tests) — the
+    cross-package miscellany (liberation_loader unknown-key /
+    missing-file, TTFSubsetter `no_subset_tables` policy, GSUB table
+    default-script picker, gsub workers None-feature continue,
+    LayerType.set_layer_text_property non-None branch,
+    `_clamp_unit`, `_NullLock` context manager, pdf_text2_html sink
+    routing, cos_writer None-byterange continue, pd_shading_type7
+    decode-None early-return, NonSeekable bare-readable final return 0).
+- **Global coverage after:** **100.0000% (0 / 125,462 statements
+  missing; 2,093 statements explicitly excluded with `# pragma: no cover`
+  reasons)**, **45,265 tests passing** (138 documented skips, 4
+  canonical deselects, 0 failures, full pytest with coverage 254.5s).
+- **Files touched:**
+  - `pypdfbox/util/number_format_util.py` (1 `# pragma: no cover` marker).
+  - `pypdfbox/pdmodel/interactive/form/paragraph.py` (1 `# pragma: no cover`
+    marker with explanation).
+  - `tests/fontbox/cff/test_char_string_command_value_wave1395.py` (new).
+  - `tests/pdfparser/test_linearization_hint_table_branches_wave1395.py`
+    (new).
+  - `tests/io/test_non_seekable_random_access_input_stream_branches_wave1395.py`
+    (new).
+  - `tests/fontbox/ttf/gsub/test_glyph_substitution_data_extractor_extension_wave1395.py`
+    (new).
+  - `tests/debugger/test_action_performed_delegates_wave1395.py` (new).
+  - `tests/pdmodel/test_residual_branches_wave1395.py` (new).
+  - `tests/test_residual_misc_wave1395.py` (new).
+- **Ruff:** clean (auto-fixed `E402` import-order in 3 files plus a
+  combined `with` statement in `tests/pdmodel/test_residual_branches_wave1395.py`).
+
+## Wave 1395 — close wave-1393 leftover coverage in nine `tools/*.py` modules (62 → 0 missing)
+
+- **Context.** Wave 1393 fixed 6 latent `COSDocument`-vs-`PDDocument` bugs in `pypdfbox/tools/` plus a `str`-vs-`ImageType`-enum bug in `pdf_to_image.py`. Each fix introduced new defensive branches (`_open_doc` context-manager helpers detecting the loader return type; `ImageType[name.upper()]` resolution; `_help` / `_Help` / `_debug_class` / `_Debug` adapters; `-page N=FILE` argparse map parsing). The 15 wave-1393 CLI smoke tests in `tests/tools/test_pdfbox_app_cli_wave1393.py` exercise every tool end-to-end, but they shell out via `subprocess.run` so the in-process coverage tracer doesn't see the executed lines. The wave-1394 authoritative refresh accordingly flagged 62 newly-uncovered lines across 9 files.
+- **Closures (per-file, before → after missing):**
+  - `pypdfbox/tools/pdf_box.py`: 19 → 0 — `_help([])` listing branch, `_help(["bogus"])` unknown-command branch, `_help(["render"])` subcommand-help proxy (with both the `int(cls.main(["--help"]) or 0)` happy path *and* the `SystemExit` → `int(exc.code or 0)` rescue path), `_Help.main(None)` `args or []` default, `_debug_class()` lazy `PDFDebugger` import, `_Debug.main(...)` dispatch (with a stub class injected so we don't spin up Tk).
+  - `pypdfbox/tools/pdf_to_image.py`: 9 → 0 — `_open_doc` `isinstance(result, COSDocument)` PD-wrap branch (in-process invocation against a real fixture PDF, no `Loader` monkeypatch), `ImageType[name.upper()]` resolution for every canonical name (RGB / GRAY / BINARY / ARGB + case-insensitive), the `KeyError`-on-unknown-name branch with exit code 2 and stderr signal, and the `else` branch that bypasses resolution when `image_type` is already an `ImageType` enum.
+  - `pypdfbox/tools/decompress_objectstreams.py`, `extract_images.py`, `extract_text.py`, `extract_xmp.py`, `pdf_split.py`, `write_decoded_doc.py`: 5 → 0 each — the `_open_doc` `COSDocument` PD-wrap branch (same in-process-fixture pattern).
+  - `pypdfbox/tools/overlay_pdf.py`: 4 → 0 — `-page N=FILE` argparse map parsing (valid entry, invalid token raising `SystemExit`, multiple-entry append).
+- **Tests added (26 in 1 new file):** `tests/tools/test_tools_loader_fallback_wave1395.py`. All behavioural; no production-code changes; no new dependencies; no `# pragma: no cover` markers added (every wave-1393-introduced line is reachable from an in-process CLI invocation against a real fixture PDF).
+- **Files touched:**
+  - `tests/tools/test_tools_loader_fallback_wave1395.py` (new, 26 tests).
+- **Ruff:** clean.
+
 ## Wave 1394 (cont.) — small-file coverage stragglers (17 files closed to 100%)
 
 - **Audit-driven cleanup of wave-1392 Agent B inventory.** Closed the ~80

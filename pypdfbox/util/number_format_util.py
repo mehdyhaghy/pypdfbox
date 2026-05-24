@@ -90,7 +90,11 @@ class NumberFormatUtil:
         # Python yields ``2**63``. Clamp explicitly for parity.
         if value >= _LONG_MAX_AS_DOUBLE:
             integer_part = _LONG_MAX
-        elif value <= _LONG_MIN_AS_DOUBLE:
+        elif value <= _LONG_MIN_AS_DOUBLE:  # pragma: no cover - guarded above
+            # The early-return at the top of this method already rejects
+            # ``value <= _LONG_MIN_AS_DOUBLE`` (-> -1), so this arm is
+            # unreachable. Kept for parity with upstream's symmetrical
+            # Long.MAX/MIN saturation shape.
             integer_part = _LONG_MIN
         else:
             integer_part = int(value)  # truncates toward zero, matches Java cast
