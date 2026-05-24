@@ -183,6 +183,17 @@ class StreamPane:
         header = self.create_header_panel(available_filters, selected)
         header.pack(fill="x")
 
+    def action_performed(self, event: tk.Event[Any] | None = None) -> None:
+        """Re-route filter-selection events through the upstream-shaped entry.
+
+        Mirrors ``StreamPane.actionPerformed(ActionEvent)`` from the
+        ``ActionListener`` interface implementation. Upstream listens to
+        the filter ``JComboBox`` directly; here the same logic lives in
+        :meth:`_on_filter_changed` and ``action_performed`` is the
+        upstream-named delegate.
+        """
+        self._on_filter_changed(event)
+
     def _on_filter_changed(self, _event: tk.Event[Any] | None = None) -> None:
         if self._filter_combo is None:
             return

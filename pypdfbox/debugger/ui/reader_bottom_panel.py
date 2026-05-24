@@ -57,3 +57,14 @@ class ReaderBottomPanel(ttk.Frame):
         toplevel = dialog.show()
         with contextlib.suppress(tk.TclError):
             toplevel.geometry("800x400")
+
+    def mouse_clicked(self, event: tk.Event | None = None) -> None:
+        """Open :class:`LogDialog` in response to a mouse click on the log label.
+
+        Mirrors upstream's anonymous ``MouseAdapter.mouseClicked(MouseEvent)``
+        attached to the log label. Tkinter wires the same behaviour via
+        :meth:`_on_log_clicked` bound to ``<Button-1>``; this public
+        spelling lets parity tooling and call-sites that prefer the upstream
+        method shape invoke the same logic directly.
+        """
+        self._on_log_clicked(event)  # type: ignore[arg-type]

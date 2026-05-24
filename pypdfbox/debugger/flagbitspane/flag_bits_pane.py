@@ -53,16 +53,21 @@ class FlagBitsPane:
         """
         self._document = document
         self._view: FlagBitsPaneView | None = None
-        self._create_pane(dictionary, flag_type, master)
+        self.create_pane(dictionary, flag_type, master)
 
-    # ---- private dispatch --------------------------------------------------
+    # ---- dispatch ----------------------------------------------------------
 
-    def _create_pane(
+    def create_pane(
         self,
         dictionary: COSDictionary,
         flag_type: COSName,
         master: tk.Misc | None,
     ) -> None:
+        """Build the flag-decoded view for ``dictionary[flag_type]``.
+
+        Mirrors upstream private ``FlagBitsPane.createPane()``. Public on
+        the Python port for parity tooling.
+        """
         flag = self._select_flag(dictionary, flag_type)
         if flag is None:
             return
@@ -73,6 +78,9 @@ class FlagBitsPane:
             flag.get_flag_bits(),
             flag.get_column_names(),
         )
+
+    # Back-compat private alias.
+    _create_pane = create_pane
 
     def _select_flag(
         self, dictionary: COSDictionary, flag_type: COSName

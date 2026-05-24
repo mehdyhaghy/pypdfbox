@@ -30,6 +30,7 @@ from .pdf_parser import PDFParser
 from .pdf_stream_parser import Operator, PDFStreamParser
 from .pdf_xref_stream import PDFXRefStream
 from .pdf_xref_stream_parser import PDFXrefStreamParser
+from .xref_parser import XrefParser
 from .xref_trailer_obj import XrefTrailerObj
 from .xref_trailer_resolver import XrefEntry, XrefTrailerResolver, XrefType
 
@@ -58,6 +59,7 @@ __all__ = [
     "ThumbnailHintHeader",
     "ThumbnailHintTable",
     "XrefEntry",
+    "XrefParser",
     "XrefTrailerObj",
     "XrefTrailerResolver",
     "XrefType",

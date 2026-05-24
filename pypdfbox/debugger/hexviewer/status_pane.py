@@ -22,9 +22,14 @@ class StatusPane(ttk.Frame):
         self._line_var = tk.StringVar(master=self, value="")
         self._col_var = tk.StringVar(master=self, value="")
         self._index_var = tk.StringVar(master=self, value="")
-        self._create_view()
+        self.create_view()
 
-    def _create_view(self) -> None:
+    def create_view(self) -> None:
+        """Build the line / column / index label row.
+
+        Mirrors upstream private ``StatusPane.createView()``. Public on
+        the Python port for parity tooling.
+        """
         ttk.Label(self, text="Line:").grid(row=0, column=0, padx=(4, 2))
         ttk.Label(self, textvariable=self._line_var, width=10).grid(
             row=0, column=1, padx=(0, 8)
@@ -37,6 +42,9 @@ class StatusPane(ttk.Frame):
         ttk.Label(self, textvariable=self._index_var, width=12).grid(
             row=0, column=5, padx=(0, 4)
         )
+
+    # Back-compat private alias.
+    _create_view = create_view
 
     def update_status(self, index: int) -> None:
         self._line_var.set(str(HexModel.line_number(index)))

@@ -215,6 +215,19 @@ class HexEditor(ttk.Frame):
 
         return dialog
 
+    def action_performed(self, event: object | None = None) -> None:  # noqa: ARG002
+        """Trigger the jump-to-index dialog from a menu / accelerator action.
+
+        Mirrors the three anonymous ``ActionListener.actionPerformed``
+        bodies upstream uses for (a) the OK button in the jump dialog,
+        (b) the document-mutation actions, and (c) the ``Ctrl+G`` key
+        binding — all three ultimately open / commit the jump dialog.
+        The Tkinter port routes a high-level public entry through
+        :meth:`_show_jump_dialog`; the event argument is accepted for
+        upstream signature parity but unused.
+        """
+        self._show_jump_dialog()
+
     def _show_jump_dialog(self) -> None:  # pragma: no cover - dialog
         # Preserved for the Ctrl+G accelerator path. The upstream Swing
         # action calls ``createJumpDialog().setVisible(true)``; we use

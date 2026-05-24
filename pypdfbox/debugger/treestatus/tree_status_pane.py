@@ -114,6 +114,22 @@ class TreeStatusPane:
         path: TreePath = tuple(self._build_path(item))
         self.update_text(self._status_obj.get_string_for_path(path))
 
+    def action_performed(self, event: tk.Event[Any] | None = None) -> str:
+        """Resolve the typed path and update the tree selection.
+
+        Mirrors upstream's anonymous ``ActionListener.actionPerformed``
+        body wired to the status field via an ``AbstractAction`` /
+        ``InputMap`` accelerator. Tk dispatches to :meth:`_on_text_input`
+        via the ``<Return>`` binding; this public spelling lets parity
+        tooling and call-sites that prefer the upstream shape invoke the
+        same path. Returns ``"break"`` to mirror Tk's "event consumed"
+        convention so callers can chain this from a custom binding.
+        """
+        del event  # mirrors upstream's unused ActionEvent
+        # ``_on_text_input`` ignores its event arg; pass a sentinel for
+        # type-checker happiness.
+        return self._on_text_input(None)  # type: ignore[arg-type]
+
     def _on_text_input(self, _event: tk.Event[Any]) -> str:
         if self._status_obj is None or self._status_var is None or self._status_field is None:
             return "break"

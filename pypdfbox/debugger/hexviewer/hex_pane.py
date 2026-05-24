@@ -305,6 +305,71 @@ class HexPane(tk.Text):
                 )
         return "break"
 
+    # ---- listener-shaped public surface (upstream parity) ------------------
+
+    def mouse_clicked(self, event: tk.Event | None = None) -> str | None:
+        """Handle a single-click event on the hex grid.
+
+        Mirrors upstream ``HexPane.mouseClicked(MouseEvent)`` from the
+        ``MouseListener`` interface implementation. The Tk port wires the
+        underlying logic via :meth:`_on_click` bound to ``<Button-1>``;
+        this public spelling lets parity tooling invoke the same path.
+        """
+        if event is None:
+            return None
+        return self._on_click(event)
+
+    def mouse_pressed(self, event: tk.Event | None = None) -> None:  # noqa: ARG002
+        """No-op — kept for upstream ``MouseListener`` parity.
+
+        Upstream's body is empty (``// do nothing``).
+        """
+
+    def mouse_released(self, event: tk.Event | None = None) -> None:  # noqa: ARG002
+        """No-op — kept for upstream ``MouseListener`` parity.
+
+        Upstream's body is empty (``// do nothing``).
+        """
+
+    def mouse_entered(self, event: tk.Event | None = None) -> None:  # noqa: ARG002
+        """No-op — kept for upstream ``MouseListener`` parity."""
+
+    def mouse_exited(self, event: tk.Event | None = None) -> None:  # noqa: ARG002
+        """No-op — kept for upstream ``MouseListener`` parity."""
+
+    def mouse_dragged(self, event: tk.Event | None = None) -> None:  # noqa: ARG002
+        """No-op — kept for upstream ``MouseMotionListener`` parity."""
+
+    def mouse_moved(self, event: tk.Event | None = None) -> None:  # noqa: ARG002
+        """No-op — kept for upstream ``MouseMotionListener`` parity."""
+
+    def key_pressed(self, event: tk.Event | None = None) -> str | None:
+        """Handle a key-press event.
+
+        Mirrors upstream ``HexPane.keyPressed(KeyEvent)`` from the
+        ``KeyListener`` interface implementation. Tk dispatches to
+        :meth:`_on_key` via the ``<Key>`` binding; this public spelling
+        accepts the same Tk event and routes through the existing logic.
+        ``None`` is accepted for parity-tool invocation.
+        """
+        if event is None:
+            return None
+        return self._on_key(event)
+
+    def key_released(self, event: tk.Event | None = None) -> None:  # noqa: ARG002
+        """No-op — kept for upstream ``KeyListener`` parity.
+
+        Upstream's body is empty (``// do nothing``).
+        """
+
+    def key_typed(self, event: tk.Event | None = None) -> None:  # noqa: ARG002
+        """No-op — kept for upstream ``KeyListener`` parity.
+
+        Upstream's body delegates to ``keyPressed``'s logic; the Tk
+        ``<Key>`` binding fires once per logical key event so we route
+        through :meth:`key_pressed` only.
+        """
+
     def _on_key(self, event: tk.Event) -> str | None:
         if self._selected_index == -1 or not event.char:
             return None

@@ -94,6 +94,18 @@ class Searcher:
             self.update_high_lighter(self._current_match, self._current_match - 1)
             self.update_navigation_buttons()
 
+    def action_performed(self, event: Any = None) -> None:  # noqa: ARG002
+        """Advance to the next match (default action) on a menu / accelerator event.
+
+        Mirrors the two anonymous ``ActionListener.actionPerformed``
+        bodies upstream uses (one for the "next" navigation button,
+        one for the "previous" button). The canonical accelerator
+        ("Find Next") maps to :meth:`_next_action`; callers needing
+        the previous-match path can invoke :meth:`_previous_action`
+        directly.
+        """
+        self._next_action()
+
     # ------------------------------------------------------------------
     # Document listener equivalents
     # ------------------------------------------------------------------

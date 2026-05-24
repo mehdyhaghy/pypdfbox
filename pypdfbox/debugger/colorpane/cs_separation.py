@@ -210,10 +210,22 @@ class CSSeparation:
     # Back-compat private alias for the slider callback wiring.
     _on_slider = state_changed
 
+    def action_performed(self, event: tk.Event | None = None) -> None:
+        """User pressed Enter (or left the field) — parse tint and refresh.
+
+        Mirrors upstream ``CSSeparation.actionPerformed(ActionEvent)``
+        from the ``ActionListener`` interface implementation. The
+        Tk-side event is optional — upstream's ``ActionEvent`` is
+        never inspected.
+        """
+        self._on_tint_entry(event)
+
     def _on_tint_entry(self, _event: tk.Event | None = None) -> None:
         """User pressed Enter (or left the field) — parse tint and refresh.
 
-        Mirrors upstream ``actionPerformed(ActionEvent)``.
+        Private Tkinter callback wired to the Entry's ``<Return>`` /
+        ``<FocusOut>`` events. Public :meth:`action_performed` is the
+        upstream-shaped entry point.
         """
         if self._syncing:
             return

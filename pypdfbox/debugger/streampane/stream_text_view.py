@@ -109,6 +109,50 @@ class StreamTextView(ttk.Frame):
         """The underlying ``tk.Text`` widget (exposed for tests)."""
         return self._text
 
+    # ---- listener-shaped public surface (upstream parity) ------------------
+
+    def mouse_moved(self, event: tk.Event[Any] | None = None) -> None:
+        """Handle a mouse-motion event over the text widget.
+
+        Mirrors upstream ``StreamTextView.mouseMoved(MouseEvent)`` from
+        the ``MouseMotionListener`` interface implementation. Upstream
+        consults the active ``ToolTipController`` and shows / hides the
+        Swing tooltip; the Tk-side ``_on_motion`` private callback wired
+        to ``<Motion>`` does the same work. An ``event=None`` call is a
+        no-op (matches upstream's null-event tolerance).
+        """
+        if event is None:
+            return
+        self._on_motion(event)
+
+    def mouse_dragged(self, event: tk.Event[Any] | None = None) -> None:  # noqa: ARG002
+        """No-op — kept for upstream API parity.
+
+        Mirrors upstream ``mouseDragged(MouseEvent)`` whose body is
+        explicitly empty (``// do nothing``).
+        """
+
+    def ancestor_added(self, event: Any | None = None) -> None:  # noqa: ARG002
+        """No-op — kept for upstream ``AncestorListener`` parity.
+
+        Mirrors upstream ``ancestorAdded(AncestorEvent)``. Upstream
+        toggles font / format menu enable-state when the view is shown;
+        the Tkinter port keeps that wiring host-driven.
+        """
+
+    def ancestor_removed(self, event: Any | None = None) -> None:  # noqa: ARG002
+        """No-op — kept for upstream ``AncestorListener`` parity.
+
+        Mirrors upstream ``ancestorRemoved(AncestorEvent)``.
+        """
+
+    def ancestor_moved(self, event: Any | None = None) -> None:  # noqa: ARG002
+        """No-op — kept for upstream ``AncestorListener`` parity.
+
+        Mirrors upstream ``ancestorMoved(AncestorEvent)`` whose body is
+        explicitly ``// do nothing``.
+        """
+
     # ---- tooltip handling --------------------------------------------------
 
     def _on_motion(self, event: tk.Event[Any]) -> None:

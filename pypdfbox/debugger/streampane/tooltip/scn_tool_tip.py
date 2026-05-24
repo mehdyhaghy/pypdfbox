@@ -34,14 +34,20 @@ class SCNToolTip(ColorToolTip):
             normalized = color_space_name[1:].strip()
         else:
             normalized = color_space_name.strip()
-        self._create_markup(resources, normalized, row_text)
+        self.create_mark_up(resources, normalized, row_text)
 
-    def _create_markup(
+    def create_mark_up(
         self,
         resources: PDResources | None,
         color_space_name: str,
         row_text: str,
     ) -> None:
+        """Build the tooltip markup for the special-color row.
+
+        Mirrors upstream private ``createMarkUp(PDResources, String,
+        String)`` (PDFBox 3.0 ``SCNToolTip``). Public on the Python
+        port for parity tooling.
+        """
         color_space = None
         if resources is not None:
             try:
@@ -71,3 +77,6 @@ class SCNToolTip(ColorToolTip):
             return
         r, g, b = rgb_values[0], rgb_values[1], rgb_values[2]
         self.set_tool_tip_text(self.get_markup(self.color_hex_value((r, g, b))))
+
+    # Back-compat private alias.
+    _create_markup = create_mark_up

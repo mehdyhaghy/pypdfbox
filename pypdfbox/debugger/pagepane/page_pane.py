@@ -550,6 +550,115 @@ class PagePane:
         self._set_status(self._label_text)
 
     # ------------------------------------------------------------------
+    # Listener-shaped public surface (upstream PagePane parity)
+    # ------------------------------------------------------------------
+    #
+    # Upstream PagePane implements ActionListener + AncestorListener +
+    # MouseMotionListener + MouseListener. Tk wires every event through
+    # named ``<Motion>`` / ``<Button-1>`` / ``<Leave>`` bindings to the
+    # underscore-prefixed callbacks above; the public methods below match
+    # the upstream method names so parity tooling and call-sites that
+    # prefer the upstream shape can invoke them directly.
+
+    def action_performed(self, event: Any | None = None) -> None:  # noqa: ARG002
+        """Re-render the page on a zoom / rotation / image-type / destination menu change.
+
+        Mirrors upstream ``PagePane.actionPerformed(ActionEvent)``.
+        Upstream consults the four menu singletons (``ZoomMenu`` /
+        ``RotationMenu`` / ``ImageTypeMenu`` / ``RenderDestinationMenu``)
+        plus ``ViewMenu`` overlay toggles and re-fires :meth:`start_rendering`
+        / :meth:`start_extracting`. The Tk port already re-resolves all of
+        these via ``_resolve_zoom_scale`` / ``_resolve_rotation`` /
+        ``_resolve_image_type`` / ``_resolve_render_destination`` inside
+        :meth:`_render_image`, so the canonical re-render call is sufficient.
+        """
+        self.start_rendering()
+
+    def ancestor_added(self, event: Any | None = None) -> None:  # noqa: ARG002
+        """Enable the page menus when the pane is attached to its host frame.
+
+        Mirrors upstream ``ancestorAdded(AncestorEvent)`` from the
+        ``AncestorListener`` interface implementation. Upstream wires
+        ``addMenuListeners(this)`` on each of the four menus and toggles
+        ``setEnableMenu(true)``. The Tk port keeps menu state host-driven
+        (the debugger frame's view menu owns the toggles), so the default
+        body here is a no-op — kept for upstream API parity.
+        """
+
+    def ancestor_removed(self, event: Any | None = None) -> None:  # noqa: ARG002
+        """Disable the page menus when the pane is detached.
+
+        Mirrors upstream ``ancestorRemoved(AncestorEvent)``.
+        """
+
+    def ancestor_moved(self, event: Any | None = None) -> None:  # noqa: ARG002
+        """No-op — kept for upstream ``AncestorListener`` parity.
+
+        Upstream's body is explicitly ``// do nothing``.
+        """
+
+    def mouse_clicked(self, event: tk.Event[Any] | None = None) -> None:
+        """Open the link target if the click landed over a URI rectangle.
+
+        Mirrors upstream ``mouseClicked(MouseEvent)`` from the
+        ``MouseListener`` interface implementation. The Tk port wires the
+        underlying logic via :meth:`_on_mouse_clicked` bound to
+        ``<Button-1>``; this public spelling lets parity tooling and
+        upstream-style call-sites invoke the same path.
+        """
+        if event is None:
+            return
+        self._on_mouse_clicked(event)
+
+    def mouse_pressed(self, event: tk.Event[Any] | None = None) -> None:  # noqa: ARG002
+        """No-op — kept for upstream ``MouseListener`` parity.
+
+        Upstream's body is empty (``// do nothing``).
+        """
+
+    def mouse_released(self, event: tk.Event[Any] | None = None) -> None:  # noqa: ARG002
+        """No-op — kept for upstream ``MouseListener`` parity.
+
+        Upstream's body is empty (``// do nothing``).
+        """
+
+    def mouse_entered(self, event: tk.Event[Any] | None = None) -> None:  # noqa: ARG002
+        """No-op — kept for upstream ``MouseListener`` parity.
+
+        Upstream's body is empty (``// do nothing``).
+        """
+
+    def mouse_exited(self, event: tk.Event[Any] | None = None) -> None:
+        """Restore the status label when the pointer leaves the page canvas.
+
+        Mirrors upstream ``mouseExited(MouseEvent)``. Tk dispatches to
+        :meth:`_on_mouse_exited` via the ``<Leave>`` binding; this
+        public spelling lets parity tooling invoke the same path.
+        """
+        if event is None:
+            return
+        self._on_mouse_exited(event)
+
+    def mouse_dragged(self, event: tk.Event[Any] | None = None) -> None:  # noqa: ARG002
+        """No-op — kept for upstream ``MouseMotionListener`` parity.
+
+        Upstream's body is empty (``// do nothing``).
+        """
+
+    def mouse_moved(self, event: tk.Event[Any] | None = None) -> None:
+        """Update the status / cursor as the pointer moves over the canvas.
+
+        Mirrors upstream ``mouseMoved(MouseEvent)`` from the
+        ``MouseMotionListener`` interface implementation. The Tk port
+        wires :meth:`_on_mouse_moved` via the ``<Motion>`` binding;
+        this public spelling lets parity tooling and call-sites that
+        prefer the upstream shape invoke the same path.
+        """
+        if event is None:
+            return
+        self._on_mouse_moved(event)
+
+    # ------------------------------------------------------------------
     # Status bar helpers
     # ------------------------------------------------------------------
 

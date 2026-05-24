@@ -54,7 +54,7 @@ class FlagBitsPaneView(ttk.Frame):
         self._tree: ttk.Treeview | None = None
 
         if flag_value is not None and table_row_data is not None:
-            self._create_view()
+            self.create_view()
 
     # ---- public accessors --------------------------------------------------
 
@@ -72,9 +72,14 @@ class FlagBitsPaneView(ttk.Frame):
         """The underlying ``ttk.Treeview`` (``None`` until populated)."""
         return self._tree
 
-    # ---- internals ---------------------------------------------------------
+    # ---- view assembly -----------------------------------------------------
 
-    def _create_view(self) -> None:
+    def create_view(self) -> None:
+        """Build the header / value labels and the flag-bits ``Treeview``.
+
+        Mirrors upstream private ``FlagBitsPaneView.createView()``. Public
+        on the Python port for parity tooling.
+        """
         # Mimic the Swing preferred-size 300x500 with a request hint.
         # configure() may fail in headless test environments — ignore.
         with contextlib.suppress(tk.TclError):
@@ -107,3 +112,6 @@ class FlagBitsPaneView(ttk.Frame):
         tree.pack(fill="both", expand=True, padx=4, pady=4)
 
         self._tree = tree
+
+    # Back-compat private alias.
+    _create_view = create_view

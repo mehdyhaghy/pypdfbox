@@ -93,6 +93,7 @@ EXPECTED_EXPORTS: dict[str, tuple[str, ...]] = {
         "ThumbnailHintHeader",
         "ThumbnailHintTable",
         "XrefEntry",
+        "XrefParser",
         "XrefTrailerObj",
         "XrefTrailerResolver",
         "XrefType",

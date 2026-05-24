@@ -2111,6 +2111,173 @@ class PDFDebugger:
         root.mainloop()
         return 0
 
+    # ------------------------------------------------------------------
+    # Listener-shaped public surface (upstream PDFDebugger parity)
+    # ------------------------------------------------------------------
+    #
+    # Upstream PDFDebugger is the JFrame mainline of the debugger; many
+    # of its public methods are Swing event handlers (``actionPerformed``
+    # variants, the ``TreeSelectionListener`` ``valueChanged`` body) plus
+    # a family of static ``isXxx`` predicates the tree-selection dispatch
+    # consults. The Tk port already implements all of the underlying
+    # logic via underscore-prefixed callbacks (``_open_menu_item_action_performed``
+    # etc.) and classmethod predicates (``_is_page`` etc.); the public
+    # methods below are thin delegates that match the upstream surface
+    # so parity tooling and upstream-style call-sites can invoke them
+    # directly.
+
+    def open_menu_item_action_performed(self, event: Any = None) -> None:  # noqa: ARG002
+        """Open-file menu action. Mirrors upstream ``openMenuItemActionPerformed``."""
+        self._open_menu_item_action_performed()
+
+    def save_as_menu_item_action_performed(self, event: Any = None) -> None:  # noqa: ARG002
+        """Save-as menu action. Mirrors upstream ``saveAsMenuItemActionPerformed``."""
+        self._save_as_menu_item_action_performed()
+
+    def print_menu_item_action_performed(self, event: Any = None) -> None:  # noqa: ARG002
+        """Print menu action. Mirrors upstream ``printMenuItemActionPerformed``."""
+        self._print_menu_item_action_performed()
+
+    def exit_menu_item_action_performed(self, event: Any = None) -> None:  # noqa: ARG002
+        """Exit menu action. Mirrors upstream ``exitMenuItemActionPerformed``."""
+        self._exit_menu_item_action_performed()
+
+    def j_tree1_value_changed(self, event: Any = None) -> None:  # noqa: ARG002
+        """Tree-selection listener. Mirrors upstream ``jTree1ValueChanged``.
+
+        Upstream's body delegates to the dispatch routine that fans out
+        per-node-kind handlers (``showPage`` / ``showStream`` / etc.).
+        The Tk port wires the same logic via :meth:`_on_tree_selection_changed`
+        bound to ``<<TreeviewSelect>>``; this public spelling delegates
+        through.
+        """
+        self._on_tree_selection_changed(None)  # type: ignore[arg-type]
+
+    def read_pd_furl(self, url_string: str, password: str | bytes = "") -> None:
+        """Load a PDF from a URL. Mirrors upstream ``readPDFurl(String, String)``.
+
+        Public delegate over the private :meth:`_read_pdf_url`. The
+        upstream spelling uses ``PDFurl`` (Pascal-cased token); the
+        snake_case mapping is ``read_pd_furl`` as the parity tool reports.
+        """
+        self._read_pdf_url(url_string, password)
+
+    def show_page(self, node: Any) -> None:
+        """Activate the page-preview pane. Mirrors upstream ``showPage``."""
+        self._show_page(node)
+
+    def show_color_pane(self, node: Any) -> None:
+        """Activate the color-space pane. Mirrors upstream ``showColorPane``."""
+        self._show_color_pane(node)
+
+    def show_flag_pane(self, parent_node: Any, node: Any) -> None:
+        """Activate the flag-bits pane. Mirrors upstream ``showFlagPane``."""
+        self._show_flag_pane(parent_node, node)
+
+    def show_stream(self, node: Any, iid: str, parent_iid: str) -> None:
+        """Activate the stream pane. Mirrors upstream ``showStream``."""
+        self._show_stream(node, iid, parent_iid)
+
+    def show_font(self, node: Any, iid: str) -> None:
+        """Activate the font-encoding pane. Mirrors upstream ``showFont``."""
+        self._show_font(node, iid)
+
+    def show_signature_pane(self, node: Any) -> None:
+        """Activate the signature pane. Mirrors upstream ``showSignaturePane``."""
+        self._show_signature_pane(node)
+
+    def show_string(self, node: Any) -> None:
+        """Activate the string-detail pane. Mirrors upstream ``showString``."""
+        self._show_string(node)
+
+    @classmethod
+    def is_page(cls, node: Any) -> bool:
+        """Return True iff ``node`` is a ``/Page`` dictionary.
+
+        Mirrors upstream static ``isPage(Object)``.
+        """
+        return cls._is_page(node)
+
+    @classmethod
+    def is_stream(cls, node: Any) -> bool:
+        """Return True iff ``node`` resolves to a ``COSStream``.
+
+        Mirrors upstream static ``isStream(Object)``.
+        """
+        return cls._is_stream(node)
+
+    @classmethod
+    def is_string(cls, node: Any) -> bool:
+        """Return True iff ``node`` resolves to a ``COSString``.
+
+        Mirrors upstream static ``isString(Object)``.
+        """
+        return cls._is_string(node)
+
+    @classmethod
+    def is_font(cls, node: Any) -> bool:
+        """Return True iff ``node`` is a non-CID Font dictionary.
+
+        Mirrors upstream static ``isFont(Object)``.
+        """
+        return cls._is_font(node)
+
+    @classmethod
+    def is_font_descriptor(cls, node: Any) -> bool:
+        """Return True iff ``node`` is a ``/FontDescriptor`` dictionary.
+
+        Mirrors upstream static ``isFontDescriptor(Object)``.
+        """
+        return cls._is_font_descriptor(node)
+
+    @classmethod
+    def is_annot(cls, node: Any) -> bool:
+        """Return True iff ``node`` is an ``/Annot`` dictionary.
+
+        Mirrors upstream static ``isAnnot(Object)``.
+        """
+        return cls._is_annot(node)
+
+    @classmethod
+    def is_encrypt(cls, node: Any) -> bool:
+        """Return True iff ``node`` is the ``/Encrypt`` map entry.
+
+        Mirrors upstream static ``isEncrypt(Object)``.
+        """
+        return cls._is_encrypt(node)
+
+    @classmethod
+    def is_signature(cls, node: Any, parent_node: Any) -> bool:
+        """Return True iff ``node`` is a ``/Sig`` dictionary inside an AcroForm.
+
+        Mirrors upstream static ``isSignature(Object, Object)``.
+        """
+        return cls._is_signature(node, parent_node)
+
+    @classmethod
+    def is_special_color_space(cls, node: Any) -> bool:
+        """Return True iff ``node`` names a Pattern / Indexed / Separation / DeviceN colour space.
+
+        Mirrors upstream static ``isSpecialColorSpace(Object)``.
+        """
+        return cls._is_special_colorspace(node)
+
+    @classmethod
+    def is_other_color_space(cls, node: Any) -> bool:
+        """Return True iff ``node`` names a CalGray / CalRGB / Lab / ICCBased colour space.
+
+        Mirrors upstream static ``isOtherColorSpace(Object)``.
+        """
+        return cls._is_other_colorspace(node)
+
+    @classmethod
+    def is_flag_node(cls, node: Any, parent_node: Any) -> bool:
+        """Return True iff ``node`` is a flag-typed map entry.
+
+        Mirrors upstream static ``isFlagNode(Object, Object)``.
+        """
+        return cls._is_flag_node(node, parent_node)
+
 
 # ----------------------------------------------------------------------
 # Module-level helpers

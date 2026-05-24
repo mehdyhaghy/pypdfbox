@@ -78,11 +78,18 @@ class CSArrayBased:
             # subclasses) per CLAUDE.md's exception mapping table.
             self._errmsg = str(ex)
 
-        self._init_ui(master)
+        self.init_ui(master)
 
-    # ---- private UI -------------------------------------------------------
+    # ---- UI ---------------------------------------------------------------
 
-    def _init_ui(self, master: tk.Misc | None) -> None:
+    def init_ui(self, master: tk.Misc | None) -> None:
+        """Build the inspector widgets.
+
+        Mirrors upstream private ``CSArrayBased.initUI()``. Public on the
+        Python port so headless callers / parity tooling can rebuild the
+        widget tree on demand. The upstream method takes no arguments;
+        Tkinter requires the parent widget here.
+        """
         panel = ttk.Frame(master)
         # Approximate upstream's ``setPreferredSize(new Dimension(300,
         # 500))``. ``configure(width=, height=)`` may fail in headless
@@ -127,6 +134,9 @@ class CSArrayBased:
                 text=f"sRGB: {self._color_space.is_srgb()}",
                 font=sub_font,
             ).pack(anchor="center", padx=4)
+
+    # Back-compat private alias.
+    _init_ui = init_ui
 
     # ---- public surface ---------------------------------------------------
 

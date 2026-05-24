@@ -152,6 +152,43 @@ class StreamImageView(ttk.Frame):
         """The most recently rendered ``PIL.Image.Image`` (or ``None``)."""
         return self._current_image
 
+    # ---- listener-shaped public surface (upstream parity) ------------------
+
+    def action_performed(self, event: Any | None = None) -> None:  # noqa: ARG002
+        """Re-render in response to a zoom / rotation menu selection.
+
+        Mirrors upstream ``StreamImageView.actionPerformed(ActionEvent)``
+        from the ``ActionListener`` interface implementation. Upstream
+        inspects the action command and dispatches to ``ZoomMenu`` /
+        ``RotationMenu`` singletons; the Tkinter port stores the zoom +
+        rotation as constructor / setter state and simply re-renders here.
+        """
+        self._render()
+
+    def ancestor_added(self, event: Any | None = None) -> None:  # noqa: ARG002
+        """Enable the zoom + rotation menus when this view is shown.
+
+        Mirrors upstream ``ancestorAdded(AncestorEvent)`` from the
+        ``AncestorListener`` interface implementation. The Tkinter port
+        keeps the menus host-driven; the no-op default preserves the
+        upstream API surface so call-sites can wire menu state changes
+        externally (e.g. via a ``<Map>`` binding) without touching this
+        class.
+        """
+
+    def ancestor_removed(self, event: Any | None = None) -> None:  # noqa: ARG002
+        """Disable the zoom + rotation menus when this view is hidden.
+
+        Mirrors upstream ``ancestorRemoved(AncestorEvent)``.
+        """
+
+    def ancestor_moved(self, event: Any | None = None) -> None:  # noqa: ARG002
+        """No-op — kept for upstream API parity.
+
+        Mirrors upstream ``ancestorMoved(AncestorEvent)`` whose body is
+        explicitly ``// do nothing``.
+        """
+
     # ---- internals ---------------------------------------------------------
 
     def _render(self) -> None:

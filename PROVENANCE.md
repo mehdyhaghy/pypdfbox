@@ -70,6 +70,7 @@ PDF-specific parsing — port territory.
 | `pypdfbox/pdfparser/base_parser.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/BaseParser.java` (tokenization plus literal-string parsing/recovery subset; includes PDFBOX-6093 `\r\n>` end-of-string leniency) |
 | `pypdfbox/pdfparser/cos_parser.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/COSParser.java` (direct-object / array / dict / indirect-ref + brute-force recovery + parsePDFHeader + parseXrefTable + parseXrefObjStream + parseObjectStream + direct-/Length stream body; indirect-/Length deferred to PDFParser) |
 | `pypdfbox/pdfparser/xref_trailer_resolver.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/XrefTrailerResolver.java` |
+| `pypdfbox/pdfparser/xref_parser.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/XrefParser.java` (parity façade — full implementation stays inlined on `COSParser`; this module exposes the upstream public surface so callers porting `new XrefParser(cosParser).parseXref(doc, off)` work unchanged) |
 | `pypdfbox/pdfparser/pdf_parser.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/PDFParser.java` + `PDFXRefStreamParser.java` + `PDFObjectStreamParser.java` (traditional xref + trailer + /Prev, PDF 1.5 xref streams, compressed object streams, lenient startxref recovery, direct-/Length and missing-/Length stream body recovery, encrypted xref-stream early decryption, linearization metadata detection) |
 | `pypdfbox/pdfparser/pdf_stream_parser.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/PDFStreamParser.java` |
 | `pypdfbox/pdfparser/endstream_filter_stream.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdfparser/EndstreamFilterStream.java` |
@@ -484,6 +485,7 @@ Tkinter/Ttk port of the upstream Swing-based debugger (PDF tree explorer / hex v
 | `pypdfbox/debugger/ui/pdf_tree_model.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/PDFTreeModel.java` |
 | `pypdfbox/debugger/ui/window_prefs.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/WindowPrefs.java` |
 | `pypdfbox/debugger/ui/debug_log.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/DebugLog.java` |
+| `pypdfbox/debugger/ui/debug_log_appender.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/DebugLogAppender.java` |
 | `pypdfbox/debugger/ui/high_resolution_image_icon.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/HighResolutionImageIcon.java` |
 | `pypdfbox/debugger/ui/image_util.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/ui/ImageUtil.java` |
 | `pypdfbox/debugger/treestatus/tree_status.py` | 3.0.x | `debugger/src/main/java/org/apache/pdfbox/debugger/treestatus/TreeStatus.java` |

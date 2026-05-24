@@ -251,6 +251,19 @@ class SearchPanel:
         else:
             self.re_focus()
 
+    def action_performed(self, event: Any | None = None) -> None:  # noqa: ARG002
+        """Toggle the search panel visibility from a menu / accelerator action.
+
+        Mirrors the two anonymous ``ActionListener.actionPerformed``
+        bodies upstream uses (one for the "find" menu accelerator, one
+        for the "close" button). Both ultimately route through
+        :meth:`_find_action` (open/refocus) or :meth:`_close_action`
+        (hide); we delegate to the open/refocus path since the canonical
+        menu accelerator is "Find" and the close button is wired
+        directly to :meth:`_close_action` in :meth:`init_ui`.
+        """
+        self._find_action()
+
 
 # Back-compat alias for the previously-private builder.
 SearchPanel._init_ui = SearchPanel.init_ui  # type: ignore[attr-defined]
