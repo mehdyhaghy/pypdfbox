@@ -149,3 +149,22 @@ class Patch:
     @staticmethod
     def overlaps(p0: tuple[float, float], p1: tuple[float, float]) -> bool:
         return abs(p0[0] - p1[0]) < 0.001 and abs(p0[1] - p1[1]) < 0.001
+
+    @staticmethod
+    def cloned_point2_d_array(
+        points: Sequence[tuple[float, float]],
+    ) -> tuple[tuple[float, float], ...]:
+        """Return a defensive deep copy of a ``Point2D[]`` analogue.
+
+        Mirrors upstream ``Patch.clonedPoint2DArray`` (package-private
+        static helper at ``Patch.java:233``). Each input element is
+        cloned into a fresh ``(x, y)`` tuple so callers can safely
+        mutate one collection without disturbing the other.
+
+        Because Python ``tuple[float, float]`` instances are immutable
+        the per-element clone is conceptually a no-op; we materialise a
+        new tuple anyway so the *outer* container is distinct (``is
+        not``) from the input, matching the upstream contract that the
+        returned array is a different object from the input.
+        """
+        return tuple((float(p[0]), float(p[1])) for p in points)

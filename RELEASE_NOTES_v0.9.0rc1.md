@@ -34,12 +34,16 @@ already know.
   tools, examples, benchmark). What remains before the 1.0 cut is
   consolidation work — divergence audits, follow-ups in
   `DEFERRED.md`, and polish — not new feature porting.
-- **Tests**: **42,994 passing** (full pytest run, latest wave),
-  94 documented skips, 0 failures.
-- **Line coverage**: **100.000% global**.
-- **Method parity**: 99.0% (8,725 / 8,817 mapped against upstream
-  3.0 HEAD; remaining 1% is debugger inner-helper surface that
-  doesn't translate one-to-one from Swing to Tk).
+- **Tests**: **44,400 passing** (full pytest with coverage,
+  wave 1390 canonical recipe — 4 deselects, 138 documented skips,
+  0 deterministic failures).
+- **Line coverage**: **99.273% global**
+  (124,369 / 125,280 statements; 2,093 excluded; 911 missing —
+  follow-up coverage-augmentation waves planned).
+- **Method parity**: 99.8% (8,752 / 8,766 mapped against upstream
+  3.0 HEAD; 1,110 / 1,110 classes matched, 0 Java-only; remaining
+  0.2% is debugger inner-helper surface that doesn't translate
+  one-to-one from Swing to Tk).
 - **Active divergences**: 5 — see
   [`CHANGES.md` → Active divergences](CHANGES.md#active-divergences-vs-upstream).
 
@@ -302,7 +306,7 @@ PDF corpora. Between `0.9.0rc1` and `0.9.0` final we expect to:
   underlying rasteriser difference allows).
 - Tighten writer output so a clean PDF/A round-trip is achievable
   on the common conformance levels without external remediation.
-- Drive method parity from 99.0% toward 100% on the remaining
+- Drive method parity from 99.8% toward 100% on the remaining
   debugger inner-helper surface.
 
 No public API breakage is planned between this RC and `0.9.0`.

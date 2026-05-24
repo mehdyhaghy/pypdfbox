@@ -333,6 +333,72 @@ class PDMatrix:
         f = s[7]
         return (x * a + y * c + e, x * b + y * d + f)
 
+    def transform_vector(self, vector: Any) -> Any:
+        """Transform a 2D vector by this matrix's rotation and scale,
+        returning a new vector of the same type.
+
+        Translation (e, f) is intentionally ignored — vectors describe
+        direction/displacement, not absolute position. Mirrors upstream
+        ``Matrix.transform(Vector)``.
+
+        Accepts any ``pypdfbox.util.vector.Vector``-shaped object that
+        exposes ``get_x()`` / ``get_y()`` (or a 2-tuple); the return
+        type matches the input type: ``Vector`` in → ``Vector`` out,
+        ``tuple`` in → ``tuple`` out.
+        """
+        from pypdfbox.util.vector import Vector
+
+        if isinstance(vector, tuple) and len(vector) == 2:
+            x, y = vector
+            nx, ny = self._transform_direction(float(x), float(y))
+            return (nx, ny)
+        x = float(vector.get_x())
+        y = float(vector.get_y())
+        nx, ny = self._transform_direction(x, y)
+        return Vector(nx, ny)
+
+    def _transform_direction(self, x: float, y: float) -> tuple[float, float]:
+        """Apply only the linear part (a/b/c/d) — no translation."""
+        s = self._single
+        return (x * s[0] + y * s[3], x * s[1] + y * s[4])
+
+    def transform(self, point_or_vector: Any) -> Any:
+        """Polymorphic dispatch mirroring upstream ``transform(Point2D)``
+        / ``transform(Vector)``.
+
+        * ``Vector`` input → returns a new ``Vector`` (translation
+          ignored, rotation + scale applied).
+        * ``(x, y)`` tuple → returns a transformed ``(x, y)`` tuple
+          (full affine, including translation).
+        * Point2D-shaped object with ``get_x()`` / ``get_y()`` /
+          ``set_location(x, y)`` → mutates the point in place and
+          returns ``None``, matching upstream's ``Point2D`` overload.
+        """
+        from pypdfbox.util.vector import Vector
+
+        if isinstance(point_or_vector, Vector):
+            return self.transform_vector(point_or_vector)
+        if isinstance(point_or_vector, tuple) and len(point_or_vector) == 2:
+            return self.transform_point(*point_or_vector)
+        # Point2D-shaped object: mutate in place via set_location.
+        obj = point_or_vector
+        x = float(obj.get_x())
+        y = float(obj.get_y())
+        nx, ny = self.transform_point(x, y)
+        obj.set_location(nx, ny)
+        return None
+
+    def create_affine_transform(self) -> tuple[float, float, float, float, float, float]:
+        """Return the matrix's six geometric components in the order
+        used by ``java.awt.geom.AffineTransform``.
+
+        Mirrors upstream ``Matrix.createAffineTransform`` — the six
+        floats are ``(sx, hy, hx, sy, tx, ty)`` i.e. the same order as
+        Python's ``(a, b, c, d, e, f)`` first-two-columns layout.
+        """
+        s = self._single
+        return (s[0], s[1], s[3], s[4], s[6], s[7])
+
     # ---------- predicates / convenience ----------
 
     def is_identity(self) -> bool:
