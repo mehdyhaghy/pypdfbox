@@ -36,11 +36,15 @@ class GlyphSubstitutionTable(TTFTable):
 
     Deviation from upstream — see ``CHANGES.md``:
 
-    * No ``GsubData`` projection. ``get_gsub_data`` / ``get_gsub_data(scriptTag)``
-      return ``None`` because we do not port the bespoke
-      ``org.apache.fontbox.ttf.model.*`` value classes; consumers that
-      need a structured view should walk the underlying fontTools
-      ``GSUB.table`` instead (exposed via :meth:`get_raw_table`).
+    * ``GsubData`` projection is a feature-tag-name-only view backed by
+      the bundled ``org.apache.fontbox.ttf.model.GsubData`` port
+      (``pypdfbox/fontbox/ttf/gsub/gsub_data.py``). ``get_gsub_data()``
+      and ``get_gsub_data(scriptTag)`` both return a populated
+      :class:`GsubData` whose ``feature_list`` exposes every script's
+      feature tags; the per-feature substitution dictionaries are kept
+      empty (callers that need the real run→substitute pairs should
+      walk the lookups via :meth:`get_substitution` /
+      :meth:`apply_feature`, which is the canonical upstream path too).
     * Lookup application supports lookup type 1 (single substitution)
       only — that matches upstream's ``applyFeature`` which also gates
       on ``lookupType == 1`` and warns/skips otherwise. Higher-order
@@ -668,13 +672,32 @@ class GlyphSubstitutionTable(TTFTable):
     # ------------------------------------------------------------------
 
     def _select_script_tag(self, tags: tuple[str, ...]) -> str | None:
-        """Pick a script tag from the candidate list. Mirrors
-        ``GlyphSubstitutionTable.selectScriptTag`` minus the
-        ``OpenTypeScript`` constants we haven't ported yet — for
-        ``DFLT`` / empty input we just fall back to the first available
-        script, which is what upstream eventually does too via its
-        ``lastUsedSupportedScript`` cache.
+        """Pick a script tag from the candidate list.
+
+        Mirrors ``GlyphSubstitutionTable.selectScriptTag`` (upstream
+        ``GlyphSubstitutionTable.java`` L715-745). Honours the two
+        ``OpenTypeScript`` sentinel cases:
+
+        * ``OpenTypeScript.INHERITED`` (``"Inherited"``) — passed to
+          single-tag calls as "I don't know what script this is, infer
+          from context". Returns the cached
+          ``lastUsedSupportedScript`` (or the first script in the table
+          if no cache, matching upstream's
+          ``scriptList.keySet().iterator().next()`` fallback).
+        * ``OpenTypeScript.TAG_DEFAULT`` (``"DFLT"``) when the table does
+          not actually carry a ``DFLT`` script — same fallback behaviour
+          as ``INHERITED``.
+
+        The empty-input branch is a pypdfbox extension: upstream throws
+        ``ArrayIndexOutOfBoundsException`` on empty input; we return
+        ``None`` (or the cached / first available script) so the call
+        site does not need an explicit empty-tuple guard.
         """
+        # Late import to keep the top-of-file lean and avoid bootstrap
+        # ordering issues when ``OpenTypeScript`` itself depends on this
+        # module's downstream consumers.
+        from .open_type_script import OpenTypeScript  # noqa: PLC0415
+
         if not tags:
             if self._last_used_supported_script is not None:
                 return self._last_used_supported_script
@@ -682,10 +705,18 @@ class GlyphSubstitutionTable(TTFTable):
 
         if len(tags) == 1:
             tag = tags[0]
-            # Roughly approximate upstream's ``Inherited`` /
-            # ``TAG_DEFAULT`` handling without depending on the as-yet-
-            # unported OpenTypeScript constants.
-            if tag in ("DFLT", "dflt") and tag not in self._script_tags:
+            # Mirrors upstream L720-732: INHERITED is always a "context"
+            # tag (we have no information so guess); TAG_DEFAULT only
+            # triggers the guess path when the table has no actual DFLT
+            # script (most fonts don't — DFLT is the catch-all).
+            # Lowercase ``"dflt"`` is accepted as a pypdfbox-side
+            # tolerance for files that use the alternate spelling.
+            is_inherited = tag == OpenTypeScript.INHERITED
+            is_default_missing = (
+                tag in (OpenTypeScript.TAG_DEFAULT, "dflt")
+                and tag not in self._script_tags
+            )
+            if is_inherited or is_default_missing:
                 if self._last_used_supported_script is not None:
                     return self._last_used_supported_script
                 if self._script_tags:

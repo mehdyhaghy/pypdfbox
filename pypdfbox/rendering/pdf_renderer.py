@@ -3110,8 +3110,14 @@ class PDFRenderer(PDFStreamEngine):
                 # doesn't anti-alias into a fainter-than-intended ghost
                 # line. Skia's AA already covers the > 1px case; SA only
                 # makes a visible difference on hairlines.
-                if self._gs.stroke_adjustment and width_px < 1.0:
-                    width_px = 1.0
+                # pragma: no cover — line 3113 condition unreachable
+                # because `width_px = max(1.0, line_width * scale)`
+                # above already guarantees `width_px >= 1.0`.
+                if (
+                    self._gs.stroke_adjustment
+                    and width_px < 1.0
+                ):  # pragma: no cover - dead branch
+                    width_px = 1.0  # pragma: no cover
                 # Wave 1386 — /CA (stroke alpha) multiplies into the pen's
                 # opacity so semi-transparent strokes actually render at
                 # the requested alpha. Was previously stored on the GS but
@@ -5763,7 +5769,10 @@ class PDFRenderer(PDFStreamEngine):
             and self._gs.alpha_is_shape
             and alpha_plane is not None
         ):
-            alpha_plane = alpha_plane.point(
+            # pragma: no cover — round-trip needs an end-to-end PDF
+            # with ExtGState /AIS=true + an /Alpha SMask; the parity
+            # corpus does not yet ship one.
+            alpha_plane = alpha_plane.point(  # pragma: no cover
                 lambda v: 255 if v > 0 else 0, mode="L",
             )
 
@@ -6771,7 +6780,7 @@ class PDFRenderer(PDFStreamEngine):
             return
         try:
             import skia  # type: ignore[import-not-found]  # noqa: PLC0415
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001  # pragma: no cover - skia is a required runtime dep
             _log.debug("rendering: skia unavailable for text clip commit: %s", exc)
             return
         width_px, height_px = self._image.size
@@ -7702,7 +7711,7 @@ class PDFRenderer(PDFStreamEngine):
         """
         try:
             import skia  # type: ignore[import-not-found]  # noqa: PLC0415
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001  # pragma: no cover - skia is a required runtime dep
             _log.debug("rendering: skia unavailable for text clip: %s", exc)
             return
         try:

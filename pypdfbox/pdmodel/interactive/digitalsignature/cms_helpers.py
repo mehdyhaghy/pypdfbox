@@ -220,7 +220,9 @@ def inject_timestamp_token(pkcs7_blob: bytes, tstoken: bytes) -> bytes:
 
     # ---- 3. SignerInfos SET → first SignerInfo SEQUENCE
     si_set_tag, si_set_len, si_set_content = _parse_der_tag(buf, signer_infos_offset)
-    if si_set_tag != 0x31:
+    # The discovery loop above only sets signer_infos_offset when tag == 0x31;
+    # this re-check is defensive belt-and-suspenders.
+    if si_set_tag != 0x31:  # pragma: no cover - unreachable per discovery invariant
         raise ValueError(
             f"PKCS#7 signerInfos: expected SET (0x31), got {si_set_tag:#04x}"
         )
