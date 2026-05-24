@@ -15,10 +15,29 @@ import sys
 import time
 from pathlib import Path
 
+from pypdfbox.cos import COSDocument
 from pypdfbox.loader import Loader
+from pypdfbox.pdmodel.pd_document import PDDocument
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
+from pypdfbox.rendering.image_type import ImageType
 from pypdfbox.rendering.pdf_renderer import PDFRenderer
 from pypdfbox.tools.imageio.image_io_util import ImageIOUtil
+
+
+@contextlib.contextmanager
+def _open_doc(infile, password):  # noqa: ANN001
+    """Open ``infile`` and yield a :class:`PDDocument`. See
+    :func:`pypdfbox.tools.extract_text._open_doc`."""
+    result = Loader.load_pdf(infile, password)
+    if isinstance(result, COSDocument):
+        pd = PDDocument(result)
+        try:
+            yield pd
+        finally:
+            pd.close()
+        return
+    with result as doc:
+        yield doc
 
 
 class PDFToImage:
@@ -59,7 +78,7 @@ class PDFToImage:
             self.dpi = 96
 
         try:
-            with Loader.load_pdf(self.infile, self.password) as document:
+            with _open_doc(self.infile, self.password) as document:
                 try:
                     form = document.get_document_catalog().get_acro_form()
                     if form is not None and getattr(form, "get_need_appearances", lambda: False)():
@@ -79,8 +98,20 @@ class PDFToImage:
                 renderer = PDFRenderer(document)
                 with contextlib.suppress(AttributeError):
                     renderer.set_subsampling_allowed(self.subsampling)
+                # Resolve string ``-color`` to the ``ImageType`` enum the
+                # renderer expects (upstream picocli auto-converts).
+                if isinstance(self.image_type, str):
+                    try:
+                        resolved_image_type = ImageType[self.image_type.upper()]
+                    except KeyError:
+                        sys.stderr.write(
+                            f"Error: Invalid color value '{self.image_type}'\n"
+                        )
+                        return 2
+                else:
+                    resolved_image_type = self.image_type
                 for i in range(self.start_page - 1, end_page):
-                    image = renderer.render_image_with_dpi(i, self.dpi, self.image_type)
+                    image = renderer.render_image_with_dpi(i, self.dpi, resolved_image_type)
                     filename = f"{self.output_prefix}-{i + 1}.{self.image_format}"
                     ok = ImageIOUtil.write_image(image, filename, self.dpi, self.quality)
                     success = success and ok

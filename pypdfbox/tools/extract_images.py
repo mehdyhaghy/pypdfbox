@@ -17,12 +17,30 @@ from pathlib import Path
 from typing import Any
 
 from pypdfbox.contentstream.pdf_graphics_stream_engine import PDFGraphicsStreamEngine
+from pypdfbox.cos import COSDocument
 from pypdfbox.cos.cos_name import COSName
 from pypdfbox.loader import Loader
 from pypdfbox.pdmodel.graphics.image.pd_image_x_object import PDImageXObject
+from pypdfbox.pdmodel.pd_document import PDDocument
 from pypdfbox.tools.imageio.image_io_util import ImageIOUtil
 
 JPEG = ["DCTDecode", "DCT"]
+
+
+@contextlib.contextmanager
+def _open_doc(infile, password):  # noqa: ANN001
+    """Open ``infile`` and yield a :class:`PDDocument`. See
+    :func:`pypdfbox.tools.extract_text._open_doc`."""
+    result = Loader.load_pdf(infile, password)
+    if isinstance(result, COSDocument):
+        pd = PDDocument(result)
+        try:
+            yield pd
+        finally:
+            pd.close()
+        return
+    with result as doc:
+        yield doc
 
 
 class ImageGraphicsEngine(PDFGraphicsStreamEngine):
@@ -180,7 +198,7 @@ class ExtractImages:
         if self.infile is None:
             raise OSError("infile is required")
         try:
-            with Loader.load_pdf(self.infile, self.password) as document:
+            with _open_doc(self.infile, self.password) as document:
                 ap = document.get_current_access_permission()
                 if not ap.can_extract_content():
                     sys.stderr.write("You do not have permission to extract images\n")

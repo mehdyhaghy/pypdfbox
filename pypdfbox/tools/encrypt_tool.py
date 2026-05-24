@@ -76,6 +76,37 @@ class Encrypt:
         parser.add_argument("-U", dest="userPassword", default=None)
         parser.add_argument("-certFile", dest="certFile", action="append", default=[])
         parser.add_argument("-keyLength", dest="keyLength", type=int, default=256)
+        # AccessPermission flags — upstream picocli renders boolean
+        # ``@Option`` as ``-canX=true|false`` with default true. We accept
+        # a ``true``/``false`` string so the CLI surface matches; the
+        # absence of the flag inherits the upstream default (true).
+        _bool = lambda s: str(s).lower() not in {"false", "0", "no"}  # noqa: E731
+        parser.add_argument(
+            "-canAssemble", dest="canAssemble", type=_bool, default=True,
+        )
+        parser.add_argument(
+            "-canExtractContent", dest="canExtractContent", type=_bool, default=True,
+        )
+        parser.add_argument(
+            "-canExtractForAccessibility",
+            dest="canExtractForAccessibility", type=_bool, default=True,
+        )
+        parser.add_argument(
+            "-canFillInForm", dest="canFillInForm", type=_bool, default=True,
+        )
+        parser.add_argument(
+            "-canModify", dest="canModify", type=_bool, default=True,
+        )
+        parser.add_argument(
+            "-canModifyAnnotations",
+            dest="canModifyAnnotations", type=_bool, default=True,
+        )
+        parser.add_argument(
+            "-canPrint", dest="canPrint", type=_bool, default=True,
+        )
+        parser.add_argument(
+            "-canPrintFaithful", dest="canPrintFaithful", type=_bool, default=True,
+        )
         parser.add_argument("-i", "--input", dest="infile", required=True)
         parser.add_argument("-o", "--output", dest="outfile", default=None)
         ns = parser.parse_args(args)
@@ -84,6 +115,14 @@ class Encrypt:
         runner.user_password = ns.userPassword
         runner.cert_files = [Path(p) for p in ns.certFile]
         runner.key_length = ns.keyLength
+        runner.can_assemble = ns.canAssemble
+        runner.can_extract = ns.canExtractContent
+        runner.can_extract_for_accessibility = ns.canExtractForAccessibility
+        runner.can_fill_in_form = ns.canFillInForm
+        runner.can_modify = ns.canModify
+        runner.can_modify_annotations = ns.canModifyAnnotations
+        runner.can_print = ns.canPrint
+        runner.can_print_faithful = ns.canPrintFaithful
         runner.infile = Path(ns.infile)
         runner.outfile = Path(ns.outfile) if ns.outfile else None
         return runner.call()

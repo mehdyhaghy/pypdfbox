@@ -7,10 +7,34 @@ Upstream Java reference:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import sys
 from pathlib import Path
 
+from pypdfbox.cos import COSDocument
 from pypdfbox.loader import Loader
+from pypdfbox.pdmodel.pd_document import PDDocument
+
+
+@contextlib.contextmanager
+def _open_doc(infile, password):  # noqa: ANN001
+    """Open ``infile`` and yield a :class:`PDDocument`.
+
+    See :func:`pypdfbox.tools.extract_text._open_doc` for the rationale —
+    a shared helper to bridge ``Loader.load_pdf`` (returns COSDocument)
+    and the test-shim pattern (returns a context manager yielding
+    PDDocument).
+    """
+    result = Loader.load_pdf(infile, password)
+    if isinstance(result, COSDocument):
+        pd = PDDocument(result)
+        try:
+            yield pd
+        finally:
+            pd.close()
+        return
+    with result as doc:
+        yield doc
 
 
 class ExtractXMP:
@@ -27,7 +51,7 @@ class ExtractXMP:
         if self.outfile is None:
             self.outfile = Path(self.infile).resolve().with_suffix(".xml")
         try:
-            with Loader.load_pdf(self.infile, self.password) as document:
+            with _open_doc(self.infile, self.password) as document:
                 catalog = document.get_document_catalog()
                 meta = None
                 if self.page == 0:

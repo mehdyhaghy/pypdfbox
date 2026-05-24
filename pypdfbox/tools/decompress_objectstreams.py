@@ -10,9 +10,28 @@ for hand-debugging files in a text editor.
 from __future__ import annotations
 
 import argparse
+import contextlib
 from pathlib import Path
 
+from pypdfbox.cos import COSDocument
 from pypdfbox.loader import Loader
+from pypdfbox.pdmodel.pd_document import PDDocument
+
+
+@contextlib.contextmanager
+def _open_doc(infile, password=None):  # noqa: ANN001
+    """Open ``infile`` and yield a :class:`PDDocument`. See
+    :func:`pypdfbox.tools.extract_text._open_doc`."""
+    result = Loader.load_pdf(infile, password)
+    if isinstance(result, COSDocument):
+        pd = PDDocument(result)
+        try:
+            yield pd
+        finally:
+            pd.close()
+        return
+    with result as doc:
+        yield doc
 
 
 class DecompressObjectstreams:
@@ -25,7 +44,7 @@ class DecompressObjectstreams:
         if self.infile is None:
             raise OSError("infile is required")
         try:
-            with Loader.load_pdf(self.infile) as doc:
+            with _open_doc(self.infile) as doc:
                 # overwrite inputfile if no outputfile was specified
                 outfile = self.outfile if self.outfile is not None else self.infile
                 # CompressParameters.NO_COMPRESSION → no-op object-stream behaviour.

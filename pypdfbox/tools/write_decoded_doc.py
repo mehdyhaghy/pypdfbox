@@ -11,10 +11,28 @@ import contextlib
 import sys
 from pathlib import Path
 
+from pypdfbox.cos import COSDocument
 from pypdfbox.cos.cos_name import COSName
 from pypdfbox.cos.cos_stream import COSStream
 from pypdfbox.loader import Loader
 from pypdfbox.pdmodel.common.pd_stream import PDStream
+from pypdfbox.pdmodel.pd_document import PDDocument
+
+
+@contextlib.contextmanager
+def _open_doc(infile, password):  # noqa: ANN001
+    """Open ``infile`` and yield a :class:`PDDocument`. See
+    :func:`pypdfbox.tools.extract_text._open_doc`."""
+    result = Loader.load_pdf(infile, password)
+    if isinstance(result, COSDocument):
+        pd = PDDocument(result)
+        try:
+            yield pd
+        finally:
+            pd.close()
+        return
+    with result as doc:
+        yield doc
 
 
 class WriteDecodedDoc:
@@ -32,7 +50,7 @@ class WriteDecodedDoc:
         skip_images: bool,
     ) -> None:
         """Mirror of ``WriteDecodedDoc.doIt`` (upstream WriteDecodedDoc.java:82)."""
-        with Loader.load_pdf(in_path, password) as doc:
+        with _open_doc(in_path, password) as doc:
             doc.set_all_security_to_be_removed(True)
             cos_doc = doc.get_document()
             try:

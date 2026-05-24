@@ -32,7 +32,65 @@ from pypdfbox.tools.text_to_pdf import TextToPDF
 from pypdfbox.tools.version_tool import Version
 from pypdfbox.tools.write_decoded_doc import WriteDecodedDoc
 
+
+def _help(args: list[str] | None = None) -> int:
+    """Mirror of upstream picocli ``CommandLine.HelpCommand``.
+
+    ``pdfbox help`` lists the known subcommands; ``pdfbox help <cmd>``
+    prints the help for that subcommand by re-invoking it with
+    ``--help``.
+    """
+    if not args:
+        sys.stdout.write(
+            "Usage: pdfbox [COMMAND] [OPTIONS]\n\nCommands:\n"
+        )
+        for name in sorted(_SUBCOMMANDS):
+            sys.stdout.write(f"  {name}\n")
+        sys.stdout.write("  help\n")
+        return 0
+    name = args[0]
+    cls = _SUBCOMMANDS.get(name)
+    if cls is None:
+        sys.stderr.write(f"Unknown command: {name}\n")
+        return 2
+    try:
+        return int(cls.main(["--help"]) or 0)
+    except SystemExit as exc:
+        return int(exc.code or 0)
+
+
+class _Help:
+    """Adapter so ``help`` slots into the ``cls.main(args)`` dispatch shape."""
+
+    @staticmethod
+    def main(args: list[str] | None = None) -> int:
+        return _help(args or [])
+
+
+def _debug_class():
+    """Lazy import of :class:`PDFDebugger` so headless / Tk-less environments
+    can still ``import pypdfbox.tools.pdf_box`` without paying the Tk cost.
+
+    Upstream registers ``debug`` only when ``GraphicsEnvironment.isHeadless()``
+    returns ``false``. pypdfbox keeps the subcommand always registered so
+    callers can invoke ``pdfbox debug …`` from the CLI; the import error
+    surfaces only when the command is actually executed.
+    """
+    from pypdfbox.debugger.pd_debugger import PDFDebugger  # noqa: PLC0415
+
+    return PDFDebugger
+
+
+class _Debug:
+    """Adapter that lazy-loads the debugger class on dispatch."""
+
+    @staticmethod
+    def main(args: list[str] | None = None) -> int:
+        return int(_debug_class().main(args) or 0)
+
+
 _SUBCOMMANDS = {
+    "debug": _Debug,
     "decrypt": Decrypt,
     "encrypt": Encrypt,
     "decode": WriteDecodedDoc,
@@ -51,6 +109,11 @@ _SUBCOMMANDS = {
     "fromimage": ImageToPDF,
     "fromtext": TextToPDF,
     "version": Version,
+    "help": _Help,
+    # Extras (no upstream counterpart but useful for parity with PDFBox 3.x);
+    # ``decompress`` corresponds to the (in 4.0) ``DecompressObjectstreams``
+    # helper that upstream PDFBox keeps as a standalone main without
+    # registering as a top-level subcommand.
     "decompress": DecompressObjectstreams,
 }
 
@@ -76,6 +139,16 @@ class PDFBox:
             sys.stderr.write(f"Unknown command: {name}\n")
             return 2
         return int(cls.main(rest) or 0)
+
+
+def _console_main() -> None:
+    """Console-script entry point for the ``pdfbox`` script.
+
+    pyproject.toml's ``[project.scripts]`` requires a zero-arg callable
+    that handles its own ``sys.exit``; :meth:`PDFBox.main` returns the
+    int exit code instead. This thin wrapper bridges the two.
+    """
+    sys.exit(PDFBox.main(sys.argv[1:]))
 
 
 if __name__ == "__main__":  # pragma: no cover — module-as-script entrypoint

@@ -20,12 +20,41 @@ import time
 from pathlib import Path
 from typing import IO, Any
 
+from pypdfbox.cos import COSDocument
 from pypdfbox.loader import Loader
+from pypdfbox.pdmodel.pd_document import PDDocument
 from pypdfbox.text.pdf_text_stripper import PDFTextStripper
 from pypdfbox.tools.pdf_text2_html import PDFText2HTML
 from pypdfbox.tools.pdf_text2_markdown import PDFText2Markdown
 
 STD_ENCODING = "UTF-8"
+
+
+@contextlib.contextmanager
+def _open_doc(infile, password):  # noqa: ANN001
+    """Open ``infile`` and yield a :class:`PDDocument`.
+
+    ``Loader.load_pdf`` returns a low-level :class:`COSDocument` (mirrors
+    upstream ``org.apache.pdfbox.Loader.loadPDF``). The class-port
+    callers want the high-level :class:`PDDocument` shape so they can
+    reach ``get_current_access_permission`` /
+    ``get_document_catalog`` /  ``get_pages`` without a manual wrap.
+
+    Tests in :mod:`tests.tools.test_tools_coverage_wave1314` monkeypatch
+    ``Loader`` on this module to a shim whose ``load_pdf`` is itself a
+    context manager yielding a :class:`PDDocument`. Detect both shapes
+    so production and the test shim both work.
+    """
+    result = Loader.load_pdf(infile, password)
+    if isinstance(result, COSDocument):
+        pd = PDDocument(result)
+        try:
+            yield pd
+        finally:
+            pd.close()
+        return
+    with result as doc:
+        yield doc
 
 
 def get_angle(text_position: Any) -> int:
@@ -132,7 +161,7 @@ class ExtractText:
         if self.to_console and self.encoding is not None:
             sys.stdout.write("The encoding parameter is ignored when writing to the console.\n")
         try:
-            with Loader.load_pdf(self.infile, self.password) as document:
+            with _open_doc(self.infile, self.password) as document:
                 start_time = self.start_processing(f"Loading PDF {self.infile}")
                 ap = document.get_current_access_permission()
                 if not ap.can_extract_content():

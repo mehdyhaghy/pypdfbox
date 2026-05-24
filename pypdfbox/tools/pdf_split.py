@@ -13,8 +13,26 @@ import argparse
 import contextlib
 from pathlib import Path
 
+from pypdfbox.cos import COSDocument
 from pypdfbox.loader import Loader
 from pypdfbox.multipdf.splitter import Splitter
+from pypdfbox.pdmodel.pd_document import PDDocument
+
+
+@contextlib.contextmanager
+def _open_doc(infile, password):  # noqa: ANN001
+    """Open ``infile`` and yield a :class:`PDDocument`. See
+    :func:`pypdfbox.tools.extract_text._open_doc`."""
+    result = Loader.load_pdf(infile, password)
+    if isinstance(result, COSDocument):
+        pd = PDDocument(result)
+        try:
+            yield pd
+        finally:
+            pd.close()
+        return
+    with result as doc:
+        yield doc
 
 
 class PDFSplit:
@@ -43,7 +61,7 @@ class PDFSplit:
             self.output_prefix = str(Path(self.infile).resolve().with_suffix(""))
         documents: list = []
         try:
-            with Loader.load_pdf(self.infile, self.password) as document:
+            with _open_doc(self.infile, self.password) as document:
                 start_end_page_set = False
                 if self.start_page != -1:
                     splitter.set_start_page(self.start_page)

@@ -87,6 +87,14 @@ class OverlayPDF:
         )
         parser.add_argument("-default", dest="default_overlay", default=None)
         parser.add_argument("-position", default="BACKGROUND")
+        # Upstream picocli ``-page`` is a Map<Integer,String> — accept the
+        # ``<page>=<file>`` syntax once per occurrence, mirroring the
+        # picocli rendering.
+        parser.add_argument(
+            "-page", dest="page", action="append", default=[],
+            metavar="N=FILE",
+            help="overlay file used for the given page number, may occur more than once",
+        )
         parser.add_argument("-i", "--input", dest="infile", required=True)
         parser.add_argument("-o", "--output", dest="outfile", required=True)
         ns = parser.parse_args(args)
@@ -101,6 +109,16 @@ class OverlayPDF:
         runner.position = Position.value_of(ns.position)
         runner.infile = Path(ns.infile)
         runner.outfile = Path(ns.outfile)
+        # Parse ``page`` map entries (one per ``-page N=file``).
+        page_map: dict[int, str] = {}
+        for entry in ns.page:
+            if "=" not in entry:
+                raise SystemExit(
+                    f"-page expects N=FILE format, got: {entry!r}"
+                )
+            num_str, _, file_path = entry.partition("=")
+            page_map[int(num_str)] = file_path
+        runner.specific_page_overlay_file = page_map
         return runner.call()
 
 

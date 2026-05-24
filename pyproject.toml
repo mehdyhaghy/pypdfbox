@@ -81,8 +81,6 @@ Documentation = "https://github.com/mehdyhaghy/pypdfbox#readme"
 "Bug Tracker" = "https://github.com/mehdyhaghy/pypdfbox/issues"
 Changelog = "https://github.com/mehdyhaghy/pypdfbox/blob/main/CHANGES.md"
 
-# Mirror upstream's ``pdfbox`` script: dispatcher in pypdfbox.tools.cli
-# decides which subcommand (info / merge / split / version / decrypt) runs.
 [project.scripts]
 pypdfbox = "pypdfbox.tools.cli:main"
 
