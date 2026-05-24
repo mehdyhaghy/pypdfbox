@@ -117,7 +117,7 @@ class LookupSubTable(ABC):
         this base implementation only handles the abstract-base contract
         used by callers holding a generic :class:`LookupSubTable`.
         """
-        return self._coverage_object
+        return self._coverage_object  # pragma: no cover - every concrete subclass overrides
 
     @abstractmethod
     def do_substitution(self, original_glyph_id: int, coverage_index: int) -> int:

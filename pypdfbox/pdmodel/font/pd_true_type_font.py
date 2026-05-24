@@ -607,13 +607,111 @@ class PDTrueTypeFont(PDSimpleFont):
         return mapping
 
     def _code_to_gid(self, code: int, ttf: TrueTypeFont) -> int:
-        """Resolve a one-byte character code to a TrueType glyph ID via
-        the font's ``/Encoding`` and the embedded ``cmap``.
+        """Resolve a one-byte character code to a TrueType glyph ID.
 
-        Symbolic / no-Encoding fonts: treat ``code`` as the cmap key
-        directly (matches the PDFBox behaviour for fonts without a
-        meaningful PostScript encoding)."""
-        encoding = self.get_encoding_typed()
+        Mirrors upstream ``PDTrueTypeFont.codeToGID``. Walks the
+        per-platform Win-Unicode (3,1), Win-Symbol (3,0), Mac-Roman
+        (1,0) cmap subtables in the order the upstream code uses,
+        with the non-symbolic branch routing through the font's
+        ``/Encoding`` glyph name and the symbolic branch consulting
+        the cmap directly. Returns 0 (``.notdef``) when nothing
+        resolves. Wave 1391: replaces a shortcut that consulted only
+        the Unicode subtable, so TTF subsets shipping only a (1,0)
+        Mac-Roman cmap (PDFBOX-3110 poems-beads) resolved every code
+        to ``.notdef`` and rendered as placeholder boxes.
+        """
+        self.extract_cmap_table()
+        no_platform_cmaps = (
+            self._cmap_win_unicode is None
+            and self._cmap_win_symbol is None
+            and self._cmap_mac_roman is None
+        )
+        if no_platform_cmaps:
+            return self._code_to_gid_via_unicode_subtable(code, ttf)
+        gid = 0
+        if not self.is_symbolic():
+            encoding = self.get_encoding_typed()
+            if encoding is None:
+                # Test stubs / fonts whose port-side ``get_encoding_typed``
+                # short-cut returned None for a missing ``/Encoding``
+                # entry: fall back to the historical direct-cmap lookup
+                # so we keep producing glyphs.
+                return self._code_to_gid_via_unicode_subtable(code, ttf)
+            name = encoding.get_name(code)
+            if name == ".notdef" or not name:
+                return 0
+            if self._cmap_win_unicode is not None:
+                from pypdfbox.fontbox.encoding.glyph_list import GlyphList  # noqa: PLC0415
+
+                unicode = GlyphList.DEFAULT.to_unicode(name)
+                if unicode:
+                    uni = ord(unicode[0])
+                    gid = self._cmap_win_unicode.get_glyph_id(uni)
+            if gid == 0 and self._cmap_mac_roman is not None:
+                from pypdfbox.pdmodel.font.encoding.mac_os_roman_encoding import (  # noqa: PLC0415
+                    MacOSRomanEncoding,
+                )
+
+                mac_code = MacOSRomanEncoding.INSTANCE.get_code(name)
+                if mac_code is not None:
+                    gid = self._cmap_mac_roman.get_glyph_id(mac_code)
+            if gid == 0:
+                try:
+                    gid = int(ttf.name_to_gid(name))
+                except Exception:  # noqa: BLE001
+                    gid = 0
+        else:
+            from pypdfbox.pdmodel.font.encoding.mac_roman_encoding import (  # noqa: PLC0415
+                MacRomanEncoding,
+            )
+            from pypdfbox.pdmodel.font.encoding.win_ansi_encoding import (  # noqa: PLC0415
+                WinAnsiEncoding,
+            )
+
+            encoding = self._encoding_typed if self._encoding_resolved else None
+            if self._cmap_win_unicode is not None:
+                if isinstance(encoding, (WinAnsiEncoding, MacRomanEncoding)):
+                    name = encoding.get_name(code)
+                    if name == ".notdef" or not name:
+                        return 0
+                    from pypdfbox.fontbox.encoding.glyph_list import GlyphList  # noqa: PLC0415
+
+                    unicode = GlyphList.DEFAULT.to_unicode(name)
+                    if unicode:
+                        uni = ord(unicode[0])
+                        gid = self._cmap_win_unicode.get_glyph_id(uni)
+                else:
+                    gid = self._cmap_win_unicode.get_glyph_id(code)
+            if gid == 0 and self._cmap_win_symbol is not None:
+                gid = self._cmap_win_symbol.get_glyph_id(code)
+                if 0 <= code <= 0xFF:
+                    if gid == 0:
+                        gid = self._cmap_win_symbol.get_glyph_id(
+                            code + self.START_RANGE_F000
+                        )
+                    if gid == 0:
+                        gid = self._cmap_win_symbol.get_glyph_id(
+                            code + self.START_RANGE_F100
+                        )
+                    if gid == 0:
+                        gid = self._cmap_win_symbol.get_glyph_id(
+                            code + self.START_RANGE_F200
+                        )
+            if gid == 0 and self._cmap_mac_roman is not None:
+                gid = self._cmap_mac_roman.get_glyph_id(code)
+        return gid
+
+    def _code_to_gid_via_unicode_subtable(
+        self, code: int, ttf: TrueTypeFont
+    ) -> int:
+        """Legacy ``code -> gid`` fallback when
+        :meth:`extract_cmap_table` could not populate any platform
+        view (stub TTFs without a fontTools ``_tt``)."""
+        encoding = (
+            self._encoding_typed
+            if self._encoding_resolved
+            else self.get_encoding_typed()
+        )
         cmap = self._get_unicode_cmap(ttf)
         if encoding is not None and cmap is not None:
             from pypdfbox.fontbox.encoding.glyph_list import GlyphList  # noqa: PLC0415
@@ -625,7 +723,6 @@ class PDTrueTypeFont(PDSimpleFont):
                     gid = cmap.get_glyph_id(ord(unicode[0]))
                     if gid != 0:
                         return gid
-        # Fallback: ask the cmap directly (symbolic fonts / no encoding).
         if cmap is not None:
             gid = cmap.get_glyph_id(code)
             if gid != 0:
@@ -684,19 +781,25 @@ class PDTrueTypeFont(PDSimpleFont):
         if cmap_table is None:
             self._cmap_initialized = True
             return
+        try:
+            glyph_order = (
+                list(tt_inner.getGlyphOrder()) if tt_inner is not None else None
+            )
+        except Exception:  # noqa: BLE001
+            glyph_order = None
         for sub in cmap_table.tables:
             platform_id = int(getattr(sub, "platformID", -1))
             encoding_id = int(getattr(sub, "platEncID", -1))
             if platform_id == CmapTable.PLATFORM_WINDOWS:
                 if encoding_id == CmapTable.ENCODING_WIN_UNICODE_BMP:
-                    self._cmap_win_unicode = _CmapPlatformView(sub)
+                    self._cmap_win_unicode = _CmapPlatformView(sub, glyph_order)
                 elif encoding_id == CmapTable.ENCODING_WIN_SYMBOL:
-                    self._cmap_win_symbol = _CmapPlatformView(sub)
+                    self._cmap_win_symbol = _CmapPlatformView(sub, glyph_order)
             elif (
                 platform_id == CmapTable.PLATFORM_MACINTOSH
                 and encoding_id == CmapTable.ENCODING_MAC_ROMAN
             ):
-                self._cmap_mac_roman = _CmapPlatformView(sub)
+                self._cmap_mac_roman = _CmapPlatformView(sub, glyph_order)
             elif (
                 platform_id == CmapTable.PLATFORM_UNICODE
                 and encoding_id
@@ -710,7 +813,7 @@ class PDTrueTypeFont(PDSimpleFont):
                 # entries promote to Win-Unicode when no explicit (3,1) is
                 # present. ``putIfAbsent`` semantics: don't clobber a real
                 # (3,1) subtable.
-                self._cmap_win_unicode = _CmapPlatformView(sub)
+                self._cmap_win_unicode = _CmapPlatformView(sub, glyph_order)
         self._cmap_initialized = True
 
     # ---------- encoding lookup from font program ----------
@@ -990,25 +1093,34 @@ class PDTrueTypeFont(PDSimpleFont):
 class _CmapPlatformView:
     """Thin ``code -> gid`` view over a fontTools cmap subtable.
 
-    Mirrors enough of :class:`CmapSubtable` for :meth:`extract_cmap_table`
-    callers to resolve glyphs through the (3,1) Win-Unicode, (3,0)
-    Win-Symbol and (1,0) Mac-Roman tables independently of the
-    priority-ordered Unicode subtable returned by
-    :meth:`TrueTypeFont.get_unicode_cmap_subtable`.
-
-    Only :meth:`get_glyph_id` is exposed because that is the single entry
-    upstream's ``codeToGID`` reaches for. Materialises ``code -> name``
-    once at construction so repeated lookups don't hit fontTools.
+    Exposes :meth:`get_glyph_id` (the single entry upstream's
+    ``codeToGID`` reaches for) and :meth:`get_name` (the underlying
+    fontTools mapping).
     """
 
-    __slots__ = ("_chars",)
+    __slots__ = ("_chars", "_code_to_gid")
 
-    def __init__(self, fonttools_subtable: Any) -> None:
+    def __init__(
+        self,
+        fonttools_subtable: Any,
+        glyph_order: list[str] | None = None,
+    ) -> None:
         self._chars: dict[int, str] = dict(fonttools_subtable.cmap)
+        self._code_to_gid: dict[int, int] = {}
+        if glyph_order is not None:
+            name_to_gid = {name: gid for gid, name in enumerate(glyph_order)}
+            for code, name in self._chars.items():
+                gid = name_to_gid.get(name)
+                if gid is not None:
+                    self._code_to_gid[code] = gid
 
     def get_name(self, code: int) -> str | None:
         """Glyph name for ``code`` (``None`` when unmapped)."""
         return self._chars.get(code)
+
+    def get_glyph_id(self, code: int) -> int:
+        """GID for ``code`` (``0`` when unmapped)."""
+        return self._code_to_gid.get(int(code), 0)
 
 
 def _scale_path(

@@ -5043,11 +5043,19 @@ class PDFRenderer(PDFStreamEngine):
             rect.get_lower_left_y() - tb_y * sy,
         )
         # Concatenate ``a`` with the appearance's own ``/Matrix`` — see
-        # PDFBox-3083: the combined transform is ``aa = a * matrix``
-        # (upstream's ``Matrix.concatenate(a, matrix)``). Our ``_matmul``
-        # convention applies the right argument first then the left, so
-        # ``_matmul(a, m_appear)`` yields the correct composition.
-        aa = _matmul(a_matrix, m_appear)
+        # PDFBox-3083: upstream uses ``Matrix.concatenate(a, matrix)``
+        # which is defined as ``matrix.multiply(a)`` and yields a
+        # composite that applies the appearance ``/Matrix`` *first*
+        # (mapping raw appearance content into the transformed-appearance
+        # coordinate system) and then ``a`` (mapping the transformed
+        # bbox onto the annotation rectangle). Our :func:`_matmul`
+        # returns "apply m1 first, then m2", so the upstream-faithful
+        # order is ``_matmul(m_appear, a_matrix)`` — the historical
+        # ``_matmul(a_matrix, m_appear)`` form silently broke rotated
+        # widgets (``/MK /R 90`` and ``/R 180``) because the translate
+        # leg ran *before* the rotate leg, pushing the painted region
+        # hundreds of points off the page (wave 1391).
+        aa = _matmul(m_appear, a_matrix)
         # Save GS + resources, push the transform, clip to bbox, then
         # walk the appearance stream's bytes.
         self._push_gs()
@@ -7231,9 +7239,22 @@ class PDFRenderer(PDFStreamEngine):
         """Draw glyph for ``code`` and return its advance width in 1/1000
         em (PDF units). Falls back to a placeholder rectangle when no
         glyph outline is available (Standard 14, Type 3, etc.)."""
-        # Compute the text-rendering CTM = text_matrix * full_ctm with the
-        # standard PDF text transformation (font size + horizontal scale +
-        # rise) baked into a 6-tuple.
+        # Compute the text-rendering matrix per PDF 32000-1 §9.4.4:
+        #   Trm = text_local * Tm * CTM
+        # then stack the device CTM (y-flip + DPI scale) on top so the
+        # result maps glyph-local em coordinates straight to device
+        # pixels.
+        #
+        # Wave 1391 bug fix: the previous version composed
+        #   (text_local * Tm * device_ctm), then prefixed gs.ctm on the
+        # left in a second matmul. That produces the wrong matrix
+        # whenever cm is non-identity AND non-pure-translation against
+        # the device_ctm y-flip — the page CTM ends up applied *after*
+        # the y-flip, which sends the glyph hundreds of pixels off the
+        # canvas (e.g. BidiSample / poems-beads: every text block was
+        # clipped out so the whole page rendered white). The correct
+        # order is text_local * Tm * full_ctm where full_ctm already
+        # folds gs.ctm * device_ctm.
         font_size = self._gs.text_font_size
         h_scale = self._gs.text_horizontal_scaling / 100.0
         rise = self._gs.text_rise
@@ -7243,12 +7264,7 @@ class PDFRenderer(PDFStreamEngine):
             0.0, rise,
         )
         glyph_to_user = _matmul(text_local, self._gs.text_matrix)
-        glyph_to_device = _matmul(glyph_to_user, self._device_ctm)
-        # Stack on the page CTM (gs.ctm).
-        glyph_to_device = _matmul(self._gs.ctm, glyph_to_device)
-        # Note: gs.ctm should sit *between* text_matrix and device_ctm,
-        # but our matmul convention already folds it via the order above
-        # for the typical "no-cm-after-Tm" case used in tests.
+        glyph_to_device = _matmul(glyph_to_user, self._full_ctm())
 
         # ----- TTF path -----
         if ttf is not None and glyph_set is not None:

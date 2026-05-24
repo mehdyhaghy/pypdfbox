@@ -217,27 +217,38 @@ class PDType1Font(PDSimpleFont):
         # 3. Standard 14 fallback via the bundled AFM.
         base_font = self.get_name()
         if base_font is not None and Standard14Fonts.contains_name(base_font):
-            # If the PDF supplied an /Encoding, honour it for code -> name;
-            # otherwise use the font's PostScript default encoding.
-            typed_encoding = self.get_encoding_typed()
-            if typed_encoding is not None:
-                glyph_name = typed_encoding.get_name(code)
-            else:
-                # No /Encoding -> default per PDF 32000-1 §9.6.2.4. Resolved
-                # internally by Standard14Fonts.get_average_widths which is
-                # cached; for a single-code lookup we go through the AFM
-                # directly via the standard default encoding.
-                from .encoding.standard_encoding import StandardEncoding
-                from .encoding.symbol_encoding import SymbolEncoding
-                from .encoding.zapf_dingbats_encoding import ZapfDingbatsEncoding
+            # Resolve code -> glyph name. Family default PostScript
+            # encoding (PDF 32000-1 §9.6.2.4) is the fall-through when
+            # /Encoding is absent OR is a base-less DictionaryEncoding
+            # whose /Differences didn't cover ``code`` (wave 1391 —
+            # without the fall-through, AcroForm widget appearance text
+            # on unembedded Helvetica with /Differences painted
+            # nothing).
+            from .encoding.dictionary_encoding import (  # noqa: PLC0415
+                DictionaryEncoding,
+            )
+            from .encoding.standard_encoding import StandardEncoding  # noqa: PLC0415
+            from .encoding.symbol_encoding import SymbolEncoding  # noqa: PLC0415
+            from .encoding.zapf_dingbats_encoding import (  # noqa: PLC0415
+                ZapfDingbatsEncoding,
+            )
 
-                canonical = Standard14Fonts.get_mapped_font_name(base_font)
-                if canonical == "Symbol":
-                    glyph_name = SymbolEncoding.INSTANCE.get_name(code)
-                elif canonical == "ZapfDingbats":
-                    glyph_name = ZapfDingbatsEncoding.INSTANCE.get_name(code)
-                else:
-                    glyph_name = StandardEncoding.INSTANCE.get_name(code)
+            canonical = Standard14Fonts.get_mapped_font_name(base_font)
+            if canonical == "Symbol":
+                default_encoding = SymbolEncoding.INSTANCE
+            elif canonical == "ZapfDingbats":
+                default_encoding = ZapfDingbatsEncoding.INSTANCE
+            else:
+                default_encoding = StandardEncoding.INSTANCE
+            typed_encoding = self.get_encoding_typed()
+            if typed_encoding is None:
+                glyph_name = default_encoding.get_name(code)
+            else:
+                glyph_name = typed_encoding.get_name(code)
+                if glyph_name == ".notdef" and isinstance(
+                    typed_encoding, DictionaryEncoding
+                ) and not typed_encoding.has_base_encoding():
+                    glyph_name = default_encoding.get_name(code)
             if glyph_name != ".notdef":
                 return Standard14Fonts.get_glyph_width(base_font, glyph_name)
 
@@ -362,28 +373,42 @@ class PDType1Font(PDSimpleFont):
         base_font = self.get_name()
         if base_font is None or not Standard14Fonts.contains_name(base_font):
             return []
-        encoding = self.get_encoding_typed()
-        if encoding is not None:
-            glyph_name = encoding.get_name(code)
-        else:
-            # Standard 14 PDF font dict with no /Encoding — fall back to
-            # the PostScript default encoding for the family (PDF
-            # 32000-1 §9.6.2.4). Symbol uses SymbolEncoding,
-            # ZapfDingbats uses ZapfDingbatsEncoding, everything else
-            # uses StandardEncoding.
-            from .encoding.standard_encoding import StandardEncoding  # noqa: PLC0415
-            from .encoding.symbol_encoding import SymbolEncoding  # noqa: PLC0415
-            from .encoding.zapf_dingbats_encoding import (  # noqa: PLC0415
-                ZapfDingbatsEncoding,
-            )
+        # Resolve code -> glyph name. Mirror the family default
+        # PostScript encoding (PDF 32000-1 §9.6.2.4) when (a) the font
+        # ships no /Encoding at all OR (b) /Encoding is a base-less
+        # :class:`DictionaryEncoding` (the upstream Type 3 mode that
+        # PDSimpleFont.get_encoding_typed historically built for every
+        # dictionary encoding — wave 1391) whose /Differences overlay
+        # didn't cover ``code``. Without (b) the AcroForm widget
+        # appearance text on an unembedded Helvetica with a
+        # /Differences encoding painted nothing.
+        from .encoding.dictionary_encoding import (  # noqa: PLC0415
+            DictionaryEncoding,
+        )
+        from .encoding.standard_encoding import (  # noqa: PLC0415
+            StandardEncoding,
+        )
+        from .encoding.symbol_encoding import SymbolEncoding  # noqa: PLC0415
+        from .encoding.zapf_dingbats_encoding import (  # noqa: PLC0415
+            ZapfDingbatsEncoding,
+        )
 
-            canonical = Standard14Fonts.get_mapped_font_name(base_font)
-            if canonical == "Symbol":
-                glyph_name = SymbolEncoding.INSTANCE.get_name(code)
-            elif canonical == "ZapfDingbats":
-                glyph_name = ZapfDingbatsEncoding.INSTANCE.get_name(code)
-            else:
-                glyph_name = StandardEncoding.INSTANCE.get_name(code)
+        canonical = Standard14Fonts.get_mapped_font_name(base_font)
+        if canonical == "Symbol":
+            default_encoding = SymbolEncoding.INSTANCE
+        elif canonical == "ZapfDingbats":
+            default_encoding = ZapfDingbatsEncoding.INSTANCE
+        else:
+            default_encoding = StandardEncoding.INSTANCE
+        encoding = self.get_encoding_typed()
+        if encoding is None:
+            glyph_name = default_encoding.get_name(code)
+        else:
+            glyph_name = encoding.get_name(code)
+            if glyph_name == ".notdef" and isinstance(
+                encoding, DictionaryEncoding
+            ) and not encoding.has_base_encoding():
+                glyph_name = default_encoding.get_name(code)
         if glyph_name == ".notdef":
             return []
         return Standard14Fonts.get_glyph_path(base_font, glyph_name)

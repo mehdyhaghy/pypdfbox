@@ -304,7 +304,7 @@ class BidiResolver:
         types: list[str],
         paragraph_level: int,
     ) -> None:
-        if not sequence:
+        if not sequence:  # pragma: no cover - _build_run_sequences never returns empty
             return
 
         # The "sos" / "eos" (start-of-sequence / end-of-sequence) types
@@ -425,7 +425,7 @@ class BidiResolver:
         levels: list[int],
         paragraph_level: int,
     ) -> None:
-        if not sequence:
+        if not sequence:  # pragma: no cover - _build_run_sequences never returns empty
             return
         run_level = levels[sequence[0]]
         boundary_level = max(paragraph_level, run_level)
@@ -520,7 +520,7 @@ class BidiResolver:
         paragraph_level: int,
     ) -> None:
         n = len(text)
-        if n == 0:
+        if n == 0:  # pragma: no cover - resolver short-circuits on empty input
             return
         # Use the *original* bidi class for whitespace detection (the
         # resolver may have rewritten WS → R/L during weak resolution
@@ -557,7 +557,7 @@ def _reorder_indices(levels: list[int]) -> list[int]:
     if n == 0:
         return []
     indices = list(range(n))
-    if not levels:
+    if not levels:  # pragma: no cover - dead code: `n == 0` already returned above
         return indices
     highest = max(levels)
     # Lowest odd level: smallest odd value <= highest.

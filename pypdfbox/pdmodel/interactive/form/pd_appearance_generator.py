@@ -464,11 +464,12 @@ def _parse_rv_color(raw: str) -> tuple[float, ...] | None:
     if hex_match is not None:
         digits = hex_match.group(1)
         if len(digits) == 3:
+            # ValueError unreachable: regex restricts to [0-9a-fA-F].
             try:
                 r = int(digits[0] * 2, 16)
                 g = int(digits[1] * 2, 16)
                 b = int(digits[2] * 2, 16)
-            except ValueError:
+            except ValueError:  # pragma: no cover - regex restricts to hex
                 return None
             return (r / 255.0, g / 255.0, b / 255.0)
         if len(digits) == 6:
@@ -476,17 +477,18 @@ def _parse_rv_color(raw: str) -> tuple[float, ...] | None:
                 r = int(digits[0:2], 16)
                 g = int(digits[2:4], 16)
                 b = int(digits[4:6], 16)
-            except ValueError:
+            except ValueError:  # pragma: no cover - regex restricts to hex
                 return None
             return (r / 255.0, g / 255.0, b / 255.0)
         return None
     rgb_match = _RV_RGB_RE.fullmatch(raw)
     if rgb_match is not None:
+        # ValueError unreachable: regex groups are ``\d+``.
         try:
             r = int(rgb_match.group(1))
             g = int(rgb_match.group(2))
             b = int(rgb_match.group(3))
-        except ValueError:
+        except ValueError:  # pragma: no cover - regex restricts to digits
             return None
         return (
             max(0.0, min(1.0, r / 255.0)),
@@ -496,11 +498,12 @@ def _parse_rv_color(raw: str) -> tuple[float, ...] | None:
     # Wave 1377: hsl(...) functional notation.
     hsl_match = _RV_HSL_RE.fullmatch(raw)
     if hsl_match is not None:
+        # ValueError unreachable: regex groups are ``-?\d+(\.\d+)?``.
         try:
             h = float(hsl_match.group(1))
             s = float(hsl_match.group(2)) / 100.0
             lightness = float(hsl_match.group(3)) / 100.0
-        except ValueError:
+        except ValueError:  # pragma: no cover - regex restricts to numeric
             return None
         return _hsl_to_rgb(h, s, lightness)
     # Wave 1377: W3C named colours (case-insensitive). Returns ``None``
@@ -1902,7 +1905,9 @@ class PDAppearanceGenerator:
 
         def _open_text_mode() -> None:
             nonlocal text_mode_open
-            if text_mode_open:
+            # Defensive: callers in this function always pair _close with
+            # a subsequent _open, so text_mode_open should be False here.
+            if text_mode_open:  # pragma: no cover - defensive: paired close/open
                 return
             cs.begin_text()
             cs.set_non_stroking_color(current_color)
@@ -1918,7 +1923,8 @@ class PDAppearanceGenerator:
 
         def _close_text_mode() -> None:
             nonlocal text_mode_open
-            if not text_mode_open:
+            # Defensive: callers only invoke _close after a paired _open.
+            if not text_mode_open:  # pragma: no cover - defensive: paired close/open
                 return
             cs.end_text()
             text_mode_open = False
@@ -1941,13 +1947,13 @@ class PDAppearanceGenerator:
                 line_start_x = 2.0
                 if text_mode_open:
                     cs.new_line()
-                else:
+                else:  # pragma: no cover - defensive: bg/underline branches re-open
                     # Path mode left us outside BT/ET. _open_text_mode
                     # will re-establish the text matrix at (pen_x, pen_y)
                     # on the next text-emitting run.
                     pass
                 continue
-            if not run.text:
+            if not run.text:  # pragma: no cover - _parse_rv_runs collapses empty runs
                 continue
             run_font = self._resolve_rich_text_font(
                 base_font, base_font_name, run,
@@ -1984,7 +1990,7 @@ class PDAppearanceGenerator:
                 _open_text_mode()
 
             # ---- text state ----
-            if not text_mode_open:
+            if not text_mode_open:  # pragma: no cover - bg/underline branches re-open
                 _open_text_mode()
             if font_cos is not current_font_cos or run_size != current_size:
                 cs.set_font(run_font, run_size)
@@ -2986,7 +2992,10 @@ class PDAppearanceGenerator:
             if next_size <= cls.MINIMUM_FONT_SIZE:
                 return cls.MINIMUM_FONT_SIZE
             size = next_size
-        return max(size, cls.MINIMUM_FONT_SIZE)
+        # Defensive: starting at AUTO_FONT_SIZE_MAX (12pt), 16 halvings
+        # reach 12 / 2**16 ≈ 0.0002pt — well below MINIMUM_FONT_SIZE — so
+        # the loop always returns via the ``next_size <=`` check above.
+        return max(size, cls.MINIMUM_FONT_SIZE)  # pragma: no cover - loop exits early
 
     @staticmethod
     def _resolve_widget_rotation(widget_cos: COSDictionary) -> int:
@@ -3005,7 +3014,10 @@ class PDAppearanceGenerator:
         if raw % 90 != 0:
             return 0
         normalised = raw % 360
-        if normalised < 0:
+        # Defensive: Python's ``%`` returns a non-negative remainder so
+        # ``normalised`` is always in [0, 360); guard kept for porters
+        # on languages with a truncated-remainder operator.
+        if normalised < 0:  # pragma: no cover - Python % is non-negative
             normalised += 360
         return normalised
 

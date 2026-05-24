@@ -188,7 +188,7 @@ def _lookup_locale_index(
     Match is normalised (diacritics stripped + casefold) on both sides.
     Returns ``(index_in_names, chars_consumed)`` or ``None`` if no entry matches.
     """
-    if position >= len(text):
+    if position >= len(text):  # pragma: no cover - parser never calls past EOS
         return None
     # Pre-normalise the input slice once per call.
     candidate_slice = text[position : position + 64]
@@ -295,7 +295,7 @@ def parse_with_locale(
     pos = 0
 
     for kind, value in tokens:
-        if pos > len(text):
+        if pos > len(text):  # pragma: no cover - defensive; sub-token consumers stop at pos == len
             return None
         if kind == "literal":
             # Match the literal, tolerating whitespace collapsing.
@@ -469,7 +469,7 @@ def parse_with_locale(
             tz_start = pos
             while pos < len(text) and not text[pos].isspace():
                 pos += 1
-            if pos == tz_start:
+            if pos == tz_start:  # pragma: no cover - whitespace was just skipped above
                 return None
         else:  # pragma: no cover - defensive; _PATTERN_TOKENS exhaustively listed
             return None
