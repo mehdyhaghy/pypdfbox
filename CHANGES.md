@@ -38,6 +38,151 @@ Divergences that remain live (will affect observable behaviour vs Java PDFBox):
 - **`PDFRenderer` pixel-exact parity not portable.** Upstream JUnit comparisons against stored TIFF/PNG references are *not* ported. Pypdfbox uses Pillow + a skia-backed `_aggdraw_compat` rasteriser; byte-equivalent raster output across the Java AWT and the Python pipeline is unachievable. Affected paths use structural parity (page count, MediaBox, Rotation, Contents shape, Resources keys, save-reload round-trip) anchored to the bundled reference PDFs. `pypdfbox/rendering/pdf_renderer.py`.
 - **Skia anti-aliasing vs upstream Java2D AA.** The `_aggdraw_compat` skia path may render edge pixels differently from upstream Java2D in low-resolution rasters. Recorded as a known limitation; full pixel parity is not in scope (see preceding bullet).
 
+## Wave 1401 — close residual partials in rendering, pdmodel/graphics, and contentstream/operator subtrees (~68 → 5+1, 0 pragmas)
+
+Wave 1400 left ~440 partial branches spread across the codebase. Wave 1401's
+"crafted-fixtures" agent (Agent B) targeted the harder cluster: branches that
+needed synthesized PDF bits or richer stub contexts that earlier waves could
+not tackle in bulk.
+
+Closed (rendering subtree, was 99% / now 100% line and branch coverage):
+
+- `rendering/soft_mask.py`: `_clamp_unit` upper / lower clamps (lines 32, 34)
+  via SoftMask construction with backdrop colour components outside [0, 1].
+- `rendering/_pen_bridge.py`: delegate without `move_to` / `line_to` (79->exit,
+  84->exit) by passing a bare object to `make_base_pen_bridge`.
+- `rendering/tiling_paint.py`: bbox-is-None branch (181->197) inside
+  `TilingPaint.get_image` by passing a stub pattern that returns None from
+  `get_b_box`.
+
+Closed (pdmodel/graphics, was 13 misses + 38 partials / now 0 misses + 4 partials):
+
+- shading mesh decoders (`PDShadingType6/7`): COS-not-COSStream early-return +
+  /Decode-missing branches via dictionary-backed shading constructor.
+- `PDMeshBasedShadingType.parse_patch_stream` EOFError-on-trailing-flag (256-257)
+  via byte-aligned single-patch stream (bits_per_flag=8).
+- `CoonsPatch.calc_level` + `TensorPatch.calc_level` bent-edge False branches
+  via 12/16-point bent control geometries.
+- `PDIndexed.create` no-cos base color space raise + 256-entry palette skip-clamp.
+- `PNGConverter.parse_png_chunks`: header-only, short-IHDR (length<13),
+  IEND short-circuit + unknown-chunk-type fall-through.
+- Optional-content: non-dict /Usage entries, non-COSArray /Order, prune-empty
+  guard, radio-button sibling-already-off (with decoy entry to force loop iter).
+- `BlendMode.get_saturation_rgb` (482->495) no-overflow scaler skip via
+  precomputed low-contrast src / mid-saturation dst inputs.
+- `PDExtendedGraphicsState._copy_soft_mask` no-CTM + non-numeric font-size.
+- `PDInlineImage.create_color_space` /I-indexed-with-base path.
+- `PDDeviceN.get_colorant_names` non-name entry skip + `set_attributes(None)`
+  short-array guard.
+- `SampledImageReader.get_raw_raster` CMYK 2-pixel inner-loop continuation.
+- CCITTFactory `extract_from_tiff` tag-262 / tag-324 / tag-325 count!=1 paths.
+- Shading-type1/2/3 `get_functions_array` null-entry skip branches via COSNull
+  in /Function arrays.
+- Shading-type2/3 `set_extend` single-arg-non-COSArray fall-through.
+- Shading-type4/5 colour-component decode loop continuation via DeviceRGB CS.
+
+Closed (contentstream/operator, was 1 + 15 / now 0 + 1):
+
+- All 13 marked-content / text-state / state-operator `hook is None` False
+  branches (`set_text_rise`, `set_text_rendering_mode`,
+  `set_horizontal_text_scaling`, `next_line`, `set_line_width`, `concatenate`,
+  `begin_marked_content`, `begin_marked_content_with_props`,
+  `begin_marked_content_sequence_with_properties`, `end_marked_content`,
+  `define_marked_content_point`, `define_marked_content_point_with_props`,
+  `marked_content_point`) via `_BareContext` stubs that lack the hook attribute
+  — `PDFStreamEngine` ships base no-op implementations of every hook, so the
+  False branch on `getattr(ctx, hook, None) is None` was previously unreachable.
+- `close_fill_even_odd_and_stroke_path` line 31 (`_log_invocation` fallback
+  when context is absent).
+
+Remaining residuals (defensive guards, all `# pragma`-free):
+
+- `pd_mesh_based_shading_type.py:267->270` — `elif next_flag == 3` False
+  branch on a multi-patch stream (requires synthetic 2+ patch fixture with
+  non-3 trailing flag; deferred).
+- `sampled_image_reader.py:330->313` — `elif mode == "CMYK"` False branch is
+  unreachable given the L/RGB/CMYK mode mapping at lines 299-307.
+- `pd_inline_image.py:277->279` — `if base is not None` False branch is
+  unreachable because `COSArray.get(i)` never returns Python `None`.
+- `pd_device_n.py:656->658` — cache-already-initialised second-call branch
+  needs fully wired DeviceN with /Attributes (deferred).
+- `operator/__init__.py:86->89` — double-checked locking inner-`is None`
+  False branch requires an actual thread race (deferred — single-threaded
+  pytest can't reliably reproduce it).
+
+Tests landed: 65 new (split across
+`tests/contentstream/operator/test_operator_hook_absent_branches_wave1401.py`,
+`tests/rendering/test_residual_branch_closure_wave1401.py`,
+`tests/pdmodel/graphics/test_residual_branch_closure_wave1401.py`).
+Pragmas added: 0.
+
+### Wave 1401 (continued) — scattered residuals across filter / pdmodel / debugger / fontbox (320 → 255, -65 partials)
+
+Follow-up sweep targeting the remaining-after-Agent-B partials: filter
+flush-not-callable arrows on every codec adapter, pd_font space-width
+fallback chain, pd_document encrypt / decrypt guards, structure node None
+entries, type 4 function tokenizer single-char inputs, debugger UI
+listener-without-callback paths.
+
+Closed (filter subtree, was 14 / now 0 partials across 7 codec adapters):
+
+- All `callable(flush)` False arrows on every filter's decode and encode
+  paths: `ascii_hex_decode`, `flate_decode`, `identity_filter`,
+  `run_length_decode`, `lzw_decode`, `ascii85_decode` — exercised with a
+  `_NoFlushWriter` sink that lacks the `flush` attribute entirely.
+
+Closed (pdmodel / fontbox / debugger residuals):
+
+- `pdmodel/font/pd_font.py` space-width fallback chain (262->273, 264->273,
+  267->273, 289->293) — four PDFont subclasses with stubbed cmap / widths
+  exercising each fallback rung.
+- `pdmodel/pd_document.py` (6 → 3): trailer-missing save-decrypt branch,
+  document_id absent on decrypt, ID-array head not a COSString, signature
+  rectangle widget-already-4-slot short-circuit + invalid-/Rect fall-through.
+- `pdmodel/documentinterchange/logicalstructure/pd_structure_node.py`
+  get_kids None-entry skip (139->137) + wrap_kid COSObject-resolves-to-
+  non-Dict (283->285).
+- `pdmodel/common/function/type4/parser.py` Tokenizer scan_whitespace +
+  scan_token has_more-False-on-entry (151->157, 176->182) via single-char
+  inputs.
+- `pdmodel/graphics/image/pd_inline_image.py` to_long_name non-COSName
+  pass-through (217->224) and indexed-with-None-base skip (277->279).
+- `pdmodel/graphics/shading/coons_patch.py` calc_level both-edges-curved
+  (42->55, 55->68) via 12-point bent control geometry.
+- `pdmodel/interactive/form/pd_non_terminal_field.py` factory-returns-None
+  child skip (63->55) + None-entry in /V array stringify (141->135).
+- `loader.py` bytes-blob + str-path + password-on-unencrypted entry points.
+- `pdfwriter/cos_writer.py` blank-document round-trip (1755->1754).
+- `fontbox/cff/cff_parser.py` read_dict_data with offset=None walks-to-end
+  (366->371 False side).
+- `fontbox/cff/cff_font.py` get_property unknown key.
+- `debugger/ui/log_dialog.py` set_visible(False) when toplevel is None
+  (93->exit) + show() idempotence skip-build (98->100).
+- `debugger/ui/menu_base.py` add_radio_group provided-variable + current=None
+  (180->183) and on_change=None handler short-circuit (184->exit).
+- `debugger/ui/textsearcher/searcher.py` update_navigation_buttons with
+  current_match outside the valid interval (214->216, 218->220).
+- `debugger/ui/textsearcher/search_panel.py` listener-without-callback
+  paths (128->exit, 132->exit) + reset()-when-counter-hidden (165->168).
+
+Tests landed: 47 new across 4 files:
+- `tests/test_wave1401_residual_branches.py` (24 tests, codec / pd_font
+  fallback / inline image / coons / type4 parser / loader / cos_writer).
+- `tests/test_wave1401_residual_branches_p2.py` (11 tests, pd_font extra
+  fallback rungs, structure node, cff_parser, pdfdebugger, action helpers).
+- `tests/test_wave1401_residual_branches_p3.py` (6 tests, debugger UI:
+  log_dialog, menu_base, searcher, cid_font_type2 smoke).
+- `tests/pdmodel/test_pd_document_branches_wave1401.py` (6 tests, pd_document
+  encrypt / decrypt / signature guard arrows).
+
+Pragmas added: 0. All branches closed via behavioural tests with synthetic
+COSDocument stubs / fake filter sinks / Tk fixture wiring. The remaining
+~255 partials cluster in the heavyweight debugger (`pd_debugger.py` 17,
+`page_pane.py` 10), font embedders (`pd_type1_font_embedder.py` 5,
+`pd_cid_font_type2_embedder.py` 5), TTF subsetter (8), and `true_type_font`
+(7) — each requires either substantial Tk widget context or large TTF
+fixture bytes; left for a focused subsequent wave.
+
 ## Wave 1400 — audit + remove wave-1397 `# pragma: no branch` markers on `rendering/pdf_renderer.py` (16 → 2)
 
 Wave 1397 (Agent A) closed `rendering/pdf_renderer.py` to 100% branch coverage but reached for `# pragma: no branch` on 16 conditionals. Wave 1399 sibling agents on adjacent files closed comparable work with only 2 pragmas total, exposing 1397's batch as over-pragmatised relative to project policy ("no-pragma by default"). Wave 1400 audits all 16, retains the 2 genuinely unreachable ones (with verified reason comments), and replaces the remaining 14 with behavioural tests in `tests/rendering/test_pdf_renderer_pragma_removal_wave1400.py`.
