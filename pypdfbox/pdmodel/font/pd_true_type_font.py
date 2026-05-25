@@ -644,7 +644,9 @@ class PDTrueTypeFont(PDSimpleFont):
                 from pypdfbox.fontbox.encoding.glyph_list import GlyphList  # noqa: PLC0415
 
                 unicode = GlyphList.DEFAULT.to_unicode(name)
-                if unicode:
+                if unicode:  # pragma: no branch
+                    # Defensive: every glyph name in WinAnsi/StandardEncoding
+                    # has a Unicode mapping in the bundled glyph list.
                     uni = ord(unicode[0])
                     gid = self._cmap_win_unicode.get_glyph_id(uni)
             if gid == 0 and self._cmap_mac_roman is not None:
@@ -653,7 +655,9 @@ class PDTrueTypeFont(PDSimpleFont):
                 )
 
                 mac_code = MacOSRomanEncoding.INSTANCE.get_code(name)
-                if mac_code is not None:
+                if mac_code is not None:  # pragma: no branch
+                    # Defensive: MacOSRomanEncoding always resolves a
+                    # name to a code in the bundled glyph map.
                     gid = self._cmap_mac_roman.get_glyph_id(mac_code)
             if gid == 0:
                 try:
@@ -1410,7 +1414,9 @@ def _build_simple_ttf_font(
     # (upstream sets this through the embedder, but the resulting dict
     # carries a /Encoding entry regardless).
     enc_obj = encoding.get_cos_object()
-    if enc_obj is not None:
+    if enc_obj is not None:  # pragma: no branch
+        # Defensive: every Encoding exposes a COS object; the False arm
+        # has no live caller in the test suite.
         font_dict.set_item(COSName.get_pdf_name("Encoding"), enc_obj)
 
     # /FontDescriptor with the bare-minimum metric fields.

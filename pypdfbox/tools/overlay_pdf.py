@@ -46,7 +46,9 @@ class OverlayPDF:
             overlayer.set_all_pages_overlay_file(str(Path(self.use_all_pages).resolve()))
         if self.default_overlay is not None:
             overlayer.set_default_overlay_file(str(Path(self.default_overlay).resolve()))
-        if self.infile is not None:
+        if self.infile is not None:  # pragma: no branch
+            # Defensive: the CLI surface always supplies infile (argparse
+            # marks it required); the False arm has no live caller.
             overlayer.set_input_file(str(Path(self.infile).resolve()))
         overlayer.set_adjust_rotation(self.adjust_rotation)
         try:

@@ -201,7 +201,10 @@ class PDOptionalContentMembershipDictionary(PDPropertyList):
                 elem = base.get_object(i)
                 if isinstance(elem, COSDictionary):
                     wrapped = PDPropertyList.create(elem)
-                    if wrapped is not None:
+                    if wrapped is not None:  # pragma: no branch
+                        # Defensive: PDPropertyList.create only returns
+                        # None when its argument is None (and we already
+                        # filtered to COSDictionary above).
                         result.append(wrapped)
             return result
         return []

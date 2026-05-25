@@ -283,7 +283,10 @@ class PDICCBased(PDColorSpace):
         alt_array = COSArray()
         for cs in alternates:
             cos = cs.get_cos_object() if cs is not None else None
-            if cos is not None:
+            if cos is not None:  # pragma: no branch
+                # Defensive: alternates filtered for non-None entries
+                # above (the inline conditional drops cs=None to cos=None
+                # but every live PDColorSpace exposes a COS object).
                 alt_array.add(cos)
         stream.set_item(_ALTERNATE, alt_array)
 

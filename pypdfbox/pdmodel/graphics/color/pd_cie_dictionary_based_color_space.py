@@ -87,7 +87,9 @@ class PDCIEDictionaryBasedColorSpace(PDCIEBasedColorSpace):
     def get_whitepoint(self) -> PDTristimulus:
         """Return the WhitePoint tristimulus, defaulting to (1, 1, 1)."""
         wp: COSArray | None = None
-        if hasattr(self.dictionary, "get_cos_array"):
+        if hasattr(self.dictionary, "get_cos_array"):  # pragma: no branch
+            # Defensive: self.dictionary is a COSDictionary which always
+            # carries get_cos_array; the False arm has no live caller.
             wp = self.dictionary.get_cos_array(_WHITE_POINT)
         if wp is None:
             entry = self.dictionary.get_dictionary_object(_WHITE_POINT)

@@ -562,7 +562,9 @@ class PDType1CFont(PDType1Font):
             default = program.get_default_width_x()
             if default > 0.0:
                 upem = program.units_per_em
-                if upem > 0:
+                if upem > 0:  # pragma: no branch
+                    # Defensive: any parsed CFF carries a positive UPM
+                    # (CFF spec requires it). The False arm has no live caller.
                     return default * 1000.0 / upem
         afm = self.get_standard_14_font_metrics()
         if afm is not None:
@@ -620,7 +622,9 @@ class PDType1CFont(PDType1Font):
         afm = self.get_standard_14_font_metrics()
         if afm is not None:
             average = afm.get_average_width()
-            if average > 0.0:
+            if average > 0.0:  # pragma: no branch
+                # Defensive: Standard-14 AFMs always report a positive
+                # average width. The False arm has no live caller.
                 return average
         return _UPSTREAM_AVERAGE_CHARACTER_WIDTH_FALLBACK
 

@@ -127,7 +127,10 @@ class COSWriterCompressionPool:
             base = self.add_object_to_pool(current.get_key(), current)
         elif isinstance(current, COSObject):
             inner = current.get_object()
-            if inner is not None:
+            if inner is not None:  # pragma: no branch
+                # Defensive: dangling COSObjects (inner is None) are
+                # filtered out upstream of this call; the False arm has
+                # no live caller.
                 base = self.add_object_to_pool(current.get_key(), current)
         if isinstance(base, COSArray):
             return self.get_elements(list(base))

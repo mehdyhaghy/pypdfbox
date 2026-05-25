@@ -830,7 +830,10 @@ class DomXmpParser:
         )
         for li in lis:
             instance = self._build_structured_from_li(li, element_cls, schema)
-            if instance is not None:
+            if instance is not None:  # pragma: no branch
+                # Defensive: _build_structured_from_li always returns a fresh
+                # element_cls instance — never None — so the False arm is
+                # unreachable from this call site.
                 array.add_property(instance)
         return array
 

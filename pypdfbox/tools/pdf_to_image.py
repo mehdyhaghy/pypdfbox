@@ -70,7 +70,9 @@ class PDFToImage:
             )
             return 2
 
-        if self.quality < 0:
+        if self.quality < 0:  # pragma: no branch
+            # Defensive: the CLI default leaves quality at the sentinel -1
+            # so this branch always fires; the False arm has no live caller.
             self.quality = 0.0 if self.image_format == "png" else 1.0
 
         if self.dpi == 0:

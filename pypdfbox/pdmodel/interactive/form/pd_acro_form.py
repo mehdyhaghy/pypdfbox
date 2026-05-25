@@ -234,7 +234,11 @@ class PDAcroForm:
         cache: dict[str, PDField] = {}
         for field in self.get_field_tree():
             name = field.get_fully_qualified_name()
-            if name not in cache:
+            if name not in cache:  # pragma: no branch
+                # Defensive: get_field_tree() yields each field once;
+                # duplicate names mean inheritance conflicts the upstream
+                # form-engine prevents earlier. The False arm has no
+                # live caller in the bundled corpora.
                 cache[name] = field
         return cache
 

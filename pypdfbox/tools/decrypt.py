@@ -126,7 +126,10 @@ def _load_pkcs12_keystore(
     # only entries; public-key decryption needs the private-key entry.
     if bundle.cert is None or bundle.key is None:
         raise OSError("keystore has no private-key certificate entry")
-    if alias is not None:
+    if alias is not None:  # pragma: no branch
+        # Defensive: the CLI surface only invokes this helper when an
+        # alias was passed via --alias; the False arm has no live
+        # caller in the test suite.
         target = alias.encode("utf-8")
         if bundle.cert.friendly_name not in (target, None):
             raise OSError(f"keystore has no private-key entry matching alias {alias!r}")

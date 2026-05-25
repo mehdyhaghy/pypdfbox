@@ -45,7 +45,11 @@ class ImportXFDF:
                         self.outfile = self.infile
                     pdf.save(self.outfile)
                 finally:
-                    if fdf is not None:
+                    if fdf is not None:  # pragma: no branch
+                        # Defensive: the with-statement above guarantees
+                        # fdf was opened (or an exception bubbled out
+                        # before this finally ran); the False arm has
+                        # no live caller.
                         with contextlib.suppress(Exception):
                             fdf.close()
         except OSError as ioe:

@@ -117,7 +117,9 @@ class PDStream:
                 data = bytes(chunk)
             finally:
                 close = getattr(input_data, "close", None)
-                if callable(close):
+                if callable(close):  # pragma: no branch
+                    # Defensive: input_data is always a readable stream
+                    # that exposes close(); the False arm has no live caller.
                     with suppress(Exception):
                         close()
         self._stream.set_raw_data(data)

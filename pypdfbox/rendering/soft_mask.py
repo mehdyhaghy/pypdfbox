@@ -114,7 +114,10 @@ class SoftPaintContext:
 
     def dispose(self) -> None:
         """Release wrapped paint-context resources."""
-        if self._context is not None and hasattr(self._context, "dispose"):
+        if self._context is not None and hasattr(self._context, "dispose"):  # pragma: no branch
+            # Defensive: the wrapped paint-context always exposes
+            # dispose() in the live rendering pipeline; the False arm
+            # has no live caller.
             self._context.dispose()
 
     def get_color_model(self) -> Any:

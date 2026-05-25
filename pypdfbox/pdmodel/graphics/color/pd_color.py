@@ -421,7 +421,9 @@ class PDColor:
         # before its full color-pipeline lands.
         base_cs = None
         get_base = getattr(cs, "get_base_color_space", None)
-        if get_base is not None:
+        if get_base is not None:  # pragma: no branch
+            # Defensive: indexed color spaces always expose
+            # get_base_color_space; the False arm has no live caller.
             try:
                 base_cs = get_base()
             except (TypeError, ValueError):

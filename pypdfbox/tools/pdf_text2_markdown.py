@@ -43,7 +43,10 @@ class FontState:
         if len(text) == len(text_positions):
             for i, char in enumerate(text):
                 self.push_char(buffer, char, text_positions[i])
-        elif text:
+        elif text:  # pragma: no branch
+            # Defensive: write_string is only invoked with a non-empty
+            # text payload by PDFTextStripper; the False arm has no
+            # live caller.
             if not text_positions:
                 return text
             self.push_char(buffer, text[0], text_positions[0])

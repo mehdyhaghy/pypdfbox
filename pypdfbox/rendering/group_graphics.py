@@ -189,7 +189,10 @@ class GroupGraphics:
         if draw is None:
             return
         pts = list(zip(x_points[:n_points], y_points[:n_points], strict=False))
-        if len(pts) >= 2:
+        if len(pts) >= 2:  # pragma: no branch
+            # Defensive: draw_polyline is always called with at least 2
+            # points (single-point polylines are degenerate); the False
+            # arm has no live caller in the rendering pipeline.
             draw.line(pts, fill=self._stroke_color())
 
     def draw_round_rect(

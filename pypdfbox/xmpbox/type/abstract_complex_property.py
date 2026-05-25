@@ -38,7 +38,10 @@ class AbstractComplexProperty(AbstractField):
         # ``ArrayProperty`` allows multiple ``rdf:li`` siblings.
         from pypdfbox.xmpbox.type.array_property import ArrayProperty
 
-        if not isinstance(self, ArrayProperty):
+        if not isinstance(self, ArrayProperty):  # pragma: no branch
+            # Defensive guard mirroring upstream: ArrayProperty overrides
+            # add_property entirely and never calls super(), so the False
+            # arm is unreachable from regular call sites.
             self._container.remove_properties_by_name(obj.get_property_name())
         self._container.add_property(obj)
 

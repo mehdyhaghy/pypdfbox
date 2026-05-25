@@ -587,7 +587,10 @@ class SecurityHandler(ABC):
                 new_value = self.decrypt(value, obj_num, gen_num)
                 if new_value is not value:
                     set_item = getattr(dictionary, "set_item", None)
-                    if callable(set_item):
+                    if callable(set_item):  # pragma: no branch
+                        # Defensive: dictionary is always a COSDictionary
+                        # in the live decrypt pipeline (set_item is part
+                        # of the COSDictionary contract).
                         set_item(key, new_value)
         return dictionary
 
@@ -676,7 +679,9 @@ class SecurityHandler(ABC):
         iv[: len(generated)] = generated
         if output is not None:
             write = getattr(output, "write", None)
-            if callable(write):
+            if callable(write):  # pragma: no branch
+                # Defensive: output is always a writable stream when
+                # supplied; the False arm has no live caller.
                 write(bytes(iv))
         return True
 

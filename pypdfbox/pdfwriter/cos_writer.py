@@ -1361,7 +1361,10 @@ class COSWriter(ICOSVisitor):
         # 7. Drain: copy source, then append increment.
         self._copy_source_to_output()
         increment = self._increment_buffer.getvalue()
-        if increment:
+        if increment:  # pragma: no branch
+            # Defensive: at this point the increment buffer carries the
+            # appended objects, the xref table, and the trailer — it is
+            # always non-empty in well-formed incremental saves.
             self._write_to_output(increment)
 
     def _seed_incremental_position(self, source_length: int) -> None:
@@ -1588,7 +1591,9 @@ class COSWriter(ICOSVisitor):
                 return
 
         self._objects_to_write.append(obj)
-        if actual is not None:
+        if actual is not None:  # pragma: no branch
+            # Defensive: the only call sites reach here with actual already
+            # resolved via get_object() — never None.
             self._actuals_added.add(id(actual))
 
     def _do_write_object(self, obj: COSBase) -> None:
@@ -1984,7 +1989,9 @@ class COSWriter(ICOSVisitor):
         # Add a separator so the first object body doesn't butt up against
         # the last index integer (parsers tolerate either, but a leading
         # whitespace makes the structure unambiguous and matches PDFBox).
-        if bodies:
+        if bodies:  # pragma: no branch
+            # Defensive: an object stream with zero bodies is never built
+            # — _pack_object_streams skips empty buckets earlier.
             index_blob += b"\n"
             first_offset += 1
         payload = index_blob + b"".join(bodies)
@@ -2151,7 +2158,9 @@ class COSWriter(ICOSVisitor):
                     xref_stream.set_item(tkey, value)
             # Ensure /ID stays direct (not promoted into a fresh indirect).
             id_arr = xref_stream.get_dictionary_object(COSName.get_pdf_name("ID"))
-            if isinstance(id_arr, COSArray):
+            if isinstance(id_arr, COSArray):  # pragma: no branch
+                # Defensive: /ID is always a direct array here — the
+                # branch above always seeds it from the trailer.
                 id_arr.set_direct(True)
 
         # Register the xref stream's key BEFORE emit so any internal

@@ -184,7 +184,9 @@ class PDSignatureLock:
             parts.append(f"fields={len(fields)}")
         if self.has_p():
             p = self.get_p()
-            if p is not None:
+            if p is not None:  # pragma: no branch
+                # has_p() True guarantees get_p() returns an int — the
+                # False arm is a defensive guard with no live caller.
                 label = self._P_LABELS.get(p, str(p))
                 parts.append(f"p={p} ({label})")
         body = ", ".join(parts) if parts else "<empty>"

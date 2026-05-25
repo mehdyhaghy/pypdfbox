@@ -449,7 +449,9 @@ class FileSystemFontProvider(FontProvider):
             ul_code_page_range1 = int(getattr(os2, "ulCodePageRange1", 0))
             ul_code_page_range2 = int(getattr(os2, "ulCodePageRange2", 0))
             panose_obj = getattr(os2, "panose", None)
-            if panose_obj is not None:
+            if panose_obj is not None:  # pragma: no branch
+                # Defensive: fontTools' OS/2 table always exposes a
+                # panose object; the False arm has no live caller.
                 panose = bytes(
                     int(getattr(panose_obj, attr, 0))
                     for attr in (

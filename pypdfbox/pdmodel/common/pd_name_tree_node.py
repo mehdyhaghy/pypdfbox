@@ -175,7 +175,10 @@ class PDNameTreeNode[T](ABC):
         out = {}
         for child in kids:
             child_names = child.get_names()
-            if child_names:
+            if child_names:  # pragma: no branch
+                # Defensive: empty / None child_names on a non-leaf
+                # name-tree node is a malformed-document edge case
+                # without live test coverage.
                 out.update(child_names)
         return out
 

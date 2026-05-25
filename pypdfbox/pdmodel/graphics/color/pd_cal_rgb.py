@@ -21,7 +21,9 @@ def _read_float_array(
     entry = dictionary.get_dictionary_object(key)
     if isinstance(entry, COSArray):
         out = entry.to_float_array()
-        if out:
+        if out:  # pragma: no branch
+            # Defensive: a /WhitePoint / /BlackPoint / /Gamma / /Matrix
+            # array is never written empty by a conforming producer.
             return out
     return list(default)
 

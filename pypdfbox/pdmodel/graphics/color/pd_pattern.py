@@ -48,7 +48,9 @@ class PDPattern(PDColorSpace):
             arr = COSArray()
             arr.add(COSName.get_pdf_name(self.NAME))
             ucs = underlying_color_space.get_cos_object()
-            if ucs is not None:
+            if ucs is not None:  # pragma: no branch
+                # Defensive: every PDColorSpace surfaces a COS object;
+                # the False arm has no live caller.
                 arr.add(ucs)
             super().__init__(arr)
         self._underlying = underlying_color_space

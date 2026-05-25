@@ -59,7 +59,10 @@ class WriteDecodedDoc:
                 xref_keys = []
             for key in xref_keys:
                 obj = cos_doc.get_object_from_pool(key)
-                if obj is not None:
+                if obj is not None:  # pragma: no branch
+                    # Defensive: get_object_from_pool always returns a
+                    # live COSBase for keys harvested from the xref
+                    # table; the False arm has no live caller.
                     self.process_object(obj, skip_images)
             doc.get_document_catalog()
             with contextlib.suppress(AttributeError):
