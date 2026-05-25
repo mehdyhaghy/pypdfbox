@@ -354,7 +354,7 @@ def _default_styles() -> list[tuple[str, dict[str, Any]]]:
         OperatorName.END_INLINE_IMAGE,
     ):
         style = OperatorMarker.get_style(op_name)
-        if style is not None:
+        if style is not None:  # pragma: no branch — every op in the loop is in the map
             kwargs = {k: v for k, v in style.items() if k != "weight"}
             styles.append((f"op_{op_name}", kwargs))
     return styles

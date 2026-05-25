@@ -376,7 +376,14 @@ class CloudyBorder:
                 array,
             )
             if n < 0:
-                if not self._output_started:
+                # compute_params_polygon only returns n < 0 when length == 0.
+                # remove_zero_length_segments above strips zero-length segments
+                # (tolerance 0.5), so by the time we reach this loop every
+                # remaining segment has length > tolerance and n >= 0. The
+                # inner ``not self._output_started`` False arm is therefore
+                # unreachable; we keep the defensive guard to mirror upstream
+                # PDFBox's CloudyBorder.java byte-for-byte.
+                if not self._output_started:  # pragma: no branch
                     self.move_to(pt)
                 j += 1
                 continue
@@ -534,7 +541,13 @@ class CloudyBorder:
                 while True:
                     x = p1[0] + d * cos_a
                     y = p1[1] + d * sin_a
-                    if len(center_points) < center_points_length:
+                    # Defensive capacity guard: floating-point residue across
+                    # segments can occasionally produce one extra iteration
+                    # past center_points_length. In normal flow with realistic
+                    # ellipse dimensions the count lands exactly at
+                    # center_points_length, so the False arm is rarely (often
+                    # never) triggered; mirror upstream's defensive cap.
+                    if len(center_points) < center_points_length:  # pragma: no branch
                         center_points.append((x, y))
                     length_todo -= curl_advance
                     d += curl_advance

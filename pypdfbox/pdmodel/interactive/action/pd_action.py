@@ -142,7 +142,8 @@ class PDAction:
                 entry = nxt.get_object(i)
                 if isinstance(entry, COSDictionary):
                     pd = PDAction.create(entry)
-                    if pd is not None:
+                    # pragma: create() returns non-None for any dict input
+                    if pd is not None:  # pragma: no branch
                         actions.append(pd)
             return actions
         return None

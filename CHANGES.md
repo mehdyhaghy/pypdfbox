@@ -38,6 +38,307 @@ Divergences that remain live (will affect observable behaviour vs Java PDFBox):
 - **`PDFRenderer` pixel-exact parity not portable.** Upstream JUnit comparisons against stored TIFF/PNG references are *not* ported. Pypdfbox uses Pillow + a skia-backed `_aggdraw_compat` rasteriser; byte-equivalent raster output across the Java AWT and the Python pipeline is unachievable. Affected paths use structural parity (page count, MediaBox, Rotation, Contents shape, Resources keys, save-reload round-trip) anchored to the bundled reference PDFs. `pypdfbox/rendering/pdf_renderer.py`.
 - **Skia anti-aliasing vs upstream Java2D AA.** The `_aggdraw_compat` skia path may render edge pixels differently from upstream Java2D in low-resolution rasters. Recorded as a known limitation; full pixel parity is not in scope (see preceding bullet).
 
+## Wave 1402 — close residual debugger-subtree partials (Tk UI + cell renderer + page pane + stream pane, 73 → 0 partials, 1 pragma)
+
+Wave 1401 left ~240 partial branches across the codebase; ~73 were
+concentrated in `pypdfbox/debugger/*` — top files were
+`debugger/pd_debugger.py` (17), `pagepane/page_pane.py` (10),
+`ui/pdf_tree_cell_renderer.py` (6), `pagepane/debug_text_overlay.py`
+(5), `ui/tree.py` (5), `ui/error_dialog.py` (5), `streampane/stream_pane.py`
+(4), with the remaining 21 spread one or two at a time across the
+fontencoding pane / hexviewer / streampane tooltip / ui/log_dialog /
+ui/menu_base / ui/osx_adapter / ui/text_dialog / ui/textsearcher /
+colorpane controllers.
+
+Files now at 100% branch coverage that previously held partials:
+
+- `debugger/pd_debugger.py` (17 → 0): every residual branch closed —
+  `add_recent_file_items` / `_populate_recent_files_menu` skip when
+  `_reopen_menu_index` is None (503->exit, 1825->exit), `_on_tree_open`
+  fall-through when the single child is not the sentinel (797->exit),
+  `_dispatch_selection` past a missing status label (838->841), the
+  `_is_encrypt` / `_is_signature` False arms (971->973, 999->1003),
+  the four arms of the `_show_stream` Image-subtype branch
+  (1097->1099, 1114->1123, 1118->1123, 1120->1123), `_copy_tree_path`
+  ignoring unregistered nodes (1407->1409), `load_configuration`
+  swallowing separator-free lines (1486->1481), the prior-path-was-http
+  recent-files skip in `_read_pdf_file` / `_read_pdf_url`
+  (1719->1725, 1762->1768), `_enable_document_actions` skipping the
+  Save-decoded/raw block when `_save_as_menu_index` is None
+  (1798->exit), and `flush_to_disk(remove_security=False)`
+  (1958->1961).
+- `debugger/pagepane/page_pane.py` (10 → 0): catalog without
+  `find_named_destination_page` resolver (240->244), TextStripperMenu
+  missing `is_sorted` / `is_ignore_spaces` getters (344->347,
+  348->355), TextDialog missing `set_text` / `set_visible` setters
+  (364->367, 368->exit), renderer without `set_subsampling_allowed`
+  setter (385->388), `_on_mouse_moved` continuing past a non-hit rect
+  and skipping canvas-configure when `_canvas` is None (529->524,
+  535->538), `_resolve_zoom_scale` / `_resolve_rotation` when the
+  static getter is absent (733->738, 762->767).
+- `debugger/ui/pdf_tree_cell_renderer.py` (6 → 0): `_to_tree_postfix`
+  arms when `/Type`, `/Subtype`, `/S` map to a non-COSName, when
+  `/PatternType` / `/ShadingType` resolve to the -1 sentinel
+  (288->290, 292->294, 296->298, 300->302, 304->306), and
+  `_indirect_overlay` skip for MapEntry whose item isn't a COSObject
+  (353->355).
+- `debugger/pagepane/debug_text_overlay.py` (5 → 0):
+  `calculate_glyph_bounds` short font-matrix (535->539), Type3
+  font_bbox-None clamp skip via a `d1`-emitting char proc (557->573),
+  non-tuple raw_path items continuing past the inner gate (592->591),
+  empty pts list ⇒ fallback to bbox path (598->601),
+  stretch-needed-but-font_width-zero scale skip (634->642).
+- `debugger/ui/tree.py` (5 → 0): `init(None)` row-height no-op
+  (54->exit), `build_menu_items` single-filter and zero-filter arms
+  (108->117 via new no-filter test), `_get_filters_for_stream` array
+  entry skip for non-COSName (165->164), `_compute_tree_path` past an
+  unregistered iid (312->314), `_read_stream_partial` get_filters-None
+  fall-through (369->371).
+- `debugger/ui/error_dialog.py` (5 → 0): explicit-throwable and
+  explicit-message paths through `create_content` (144->146, 146->148),
+  summary / detail widget None skip via monkeypatched factories
+  (153->155, 156->158), and explicit-throwable `mark_suppressed`
+  (245->247).
+- `debugger/streampane/stream_pane.py` (4 → 0): header combobox with
+  `selected` outside `available_filters` (171->173), DocumentCreator /
+  `_build_segments` falling back to plain-text when the content-stream
+  parse returns None (310->312, 571->573), and 357->346 — the
+  `_default_styles` loop over the OperatorMarker map — marked
+  `pragma: no branch` because the 8 op names in the loop are all
+  guaranteed to have entries in `_operator_style_map`.
+- `debugger/fontencodingpane/font_encoding_pane_controller.py`
+  (2 → 0): unknown font-type fall-through (85->exit) and Type0Font
+  with no descendant (87->exit).
+- `debugger/fontencodingpane/font_pane.py` (2 → 0): rect with only
+  `y`/`height` available (106->108) and empty-bounds short-circuit
+  (110->114).
+- `debugger/ui/textsearcher/searcher.py` (2 → 0): both elif False arms
+  of `update_navigation_buttons` (214->216, 218->220) covered with
+  `_current_match=10, _total_match=3` (both outside the valid range).
+- `debugger/ui/textsearcher/search_panel.py` (3 → 0): listener
+  without `changed_update` / `state_changed` and reset-when-not-visible
+  (128->exit, 132->exit, 165->168).
+- `debugger/ui/menu_base.py` (2 → 0): `add_radio_group` with
+  pre-existing variable and no current (180->183) and handler invoked
+  with on_change=None (184->exit).
+- `debugger/ui/log_dialog.py` (2 → 0): `set_visible(False)` with no
+  toplevel (93->exit) and `show()` reusing an existing toplevel
+  (98->100).
+- `debugger/hexviewer/hex_pane.py` (1 → 0): `set_selected(idx)` when
+  `idx == _selected_index` (124->exit).
+- `debugger/hexviewer/ascii_pane.py` (1 → 0): `paint_in_selected` with
+  out-of-range `_selected_index_in_line` (94->exit).
+- `debugger/streampane/tooltip/font_tool_tip.py` (1 → 0): font with
+  empty `get_name()` ⇒ skip markup build (48->exit).
+- `debugger/ui/debug_log.py` (1 → 0): `info()` when module-level
+  `_INFO` flag is False (80->exit).
+- `debugger/ui/file_open_save_dialog.py` (1 → 0): `save_document`
+  skipping the extension-append when the chosen path already ends
+  with it (109->111).
+- `debugger/ui/osx_adapter.py` (1 → 0): `register({"about": ...})` —
+  no quit callback ⇒ skip `set_quit_handler` (238->240).
+- `debugger/ui/text_dialog.py` (1 → 0): `set_visible(False)` with no
+  toplevel (78->exit).
+- `debugger/colorpane/cs_array_based.py` (1 → 0): `init_ui` with
+  `_number_of_components == 0` ⇒ skip component-count label
+  (119->126).
+
+Total: 73 partial branches closed across the 20 debugger files, via 7
+new test files (`test_pd_debugger_partials_wave1402.py`,
+`test_page_pane_partials_wave1402.py`,
+`test_pdf_tree_cell_renderer_partials_wave1402.py`,
+`test_debug_text_overlay_partials_wave1402.py`,
+`test_tree_partials_wave1402.py`,
+`test_error_dialog_partials_wave1402.py`, and the consolidated
+`test_debugger_micro_partials_wave1402.py`) adding 72 behavioural
+tests against the existing Tk headless fixture pattern.
+
+One pragma added (`stream_pane.py` line 357 — every op in the
+`_default_styles` loop is guaranteed to have a style entry in
+`OperatorMarker._operator_style_map`; the False arm is mathematically
+unreachable without external monkeypatching of the marker class).
+
+Debugger subtree branch coverage: 99% (1978/1978 branches, 0 partials).
+
+## Wave 1402 — close residual font-module partials (fontbox + pdmodel/font, ~34 partials closed, 0 pragmas)
+
+Wave 1401 left ~240 partial branches spread across the codebase, with a
+heavy concentration in the font modules (`fontbox/ttf/*` + `pdmodel/font/*`).
+Wave 1402 targets that concentration with behavioural tests using real
+bundled `LiberationSans-Regular.ttf` flows, fontTools-synthesised
+fontless TTF tables, and minimal fake fontTools `TTFont` stand-ins for
+the abstract-method hooks.
+
+Files now at 100% branch coverage that previously held partials:
+
+- `fontbox/ttf/ttf_subsetter.py` (9 partials → 0): empty unicode-set arm
+  in `get_gid_map`, force-invisible hmtx miss, `_apply_invisible` for a
+  font lacking `glyf`, write_table_body 4-byte-aligned no-pad arm,
+  `get_new_glyph_id` / `add_compound_references` cmap-None + gid-0
+  arms (closed via monkeypatched `get_unicode_cmap_subtable → None`),
+  and `_build_subset_font` with and without no-subset-tables policy.
+- `fontbox/ttf/true_type_font.py` (7 partials → 0): `read_table` skip
+  body when raw is None, `read_table_headers` unknown-tag fall-through,
+  `_get_unicode_cmap_impl` non-strict fallback with partial glyph-name
+  → gid map (1088->1086) and empty cmap (1098->1100), `name_to_gid`
+  post-lookup out-of-range guard (1154->1158), `get_post_script`
+  missing-glyphOrder + getGlyphOrder-raises path (1307->1309),
+  `get_index_to_location` no-offsets-attr path (1411->1413).
+- `fontbox/ttf/ttf_data_stream.py` (2 partials → 0): `read()` past-EOF
+  sentinel, `_check_read_bounds` raise + ok-path symmetry.
+- `fontbox/ttf/glyf_simple_descript.py` (2 partials → 0): glyph with
+  no program attribute and program with no bytecode attribute.
+- `fontbox/cff/cff_font.py` (3 partials → 0): `get_sid` with fontset
+  strings=None (491->499), `read_encoding` format-0 gid-out-of-range
+  arm (920->918), `get_glyph_widths` skip-already-cached arm (608->607).
+- `pdmodel/font/pd_font.py` (4 partials → 0): `get_space_width` fall-
+  through arms when /ToUnicode cmap is absent, cmap is None, space-
+  mapping is -1, cmap-reported width is 0, and /Widths array entry at
+  code 32 is 0.
+- `pdmodel/font/pd_simple_font.py` (489-490 + 212->219, 2 partials → 0):
+  `is_symbolic()` Standard-14 Symbol/ZapfDingbats branch and
+  `is_standard_14()` empty-/Differences arm.
+
+Files significantly improved (not yet 100% but partials reduced):
+
+- `fontbox/ttf/post_script_table.py` (2 → 1): format 4.0 elif body
+  exercised; the remaining 117->113 arm is genuinely unreachable
+  (`wgl4_names.get_glyph_name(i)` never returns None for any in-range
+  index, so the body can't fire — left without a pragma since it's a
+  defensive arm).
+- `pdmodel/font/pd_cid_font_type2_embedder.py` (5 → 2): `_encode_widths`
+  SERIAL/BRACKET/FIRST tail-state coverage, `check_for_cid_gid_identity`
+  cid==gid loop continue, `_build_to_unicode_cmap` PDF-version ≥ 1.5
+  no-bump arm.
+- `pdmodel/font/pd_type1_font.py` (2 → 1): `get_glyph_path` Dictionary-
+  Encoding-with-no-base fallback (411) closed; load classmethod (133-139)
+  also lifted by indirect exercise.
+- `pdmodel/font/pd_type1_font_embedder.py` (5 → 2): `_parse_pfb_segments`
+  empty-input while-loop guard (57->72), `build_font_descriptor`
+  no-FontName arm (185->187), no-bbox / short-bbox arms (198->209).
+
+Total: ~34 partial branches closed across 11 files. New test file
+`tests/fontbox/test_font_branch_closure_wave1402.py` (52 tests, 1
+intentional skip for the WGL4-name-None unreachable arm). 0 pragmas
+added — every closure uses real or fontTools-synthesised behavioural
+input.
+
+## Wave 1402 — close residual mid-tier partials (pdfwriter + pdmodel/interactive + pdmodel/documentinterchange + pdmodel/fdf + tools + loader + filter, ~80 partials closed, 5 pragmas)
+
+Wave 1401's audit left ~55 directly-identified partials and many more
+hidden by the truncated tail across files NOT in the debugger/fontbox/
+font slices already owned by Agents A and B. Agent C swept everything
+in the middle tier — top concentrations at `pdmodel/pd_document.py`
+(3), `pdmodel/interactive/annotation/handlers/cloudy_border.py` (3),
+`pdmodel/interactive/action/pd_action_embedded_go_to.py` (3),
+`pdfwriter/cos_writer.py` (2), `pdfparser/pdf_parser.py` (2),
+`pdmodel/common/function/type4/parser.py` (2), `pdmodel/documentinterchange/
+logicalstructure/pd_structure_element.py` (2), `pdmodel/documentinterchange/
+logicalstructure/pd_structure_node.py` (2), `pdmodel/interactive/
+digitalsignature/visible/pd_visible_sig_builder.py` (2), plus ~30
+single-partial files scattered across fdf/, fixup/, interactive/
+action/, examples/, filter/, io/, loader/, tools/imageio/.
+
+Files closed to 0 partials:
+
+- `pdmodel/pd_document.py` (3 → 0): `decrypt` with /ID None or first ID
+  entry non-COSString (960->967, 964->967); pragma on `add_signature`
+  fields_arr-isinstance defensive arm (1291->1295 — both branches at
+  lines 1228/1236 wrap `fields_arr` into a COSArray, so the False arm
+  at 1291 is provably unreachable).
+- `pdmodel/interactive/annotation/handlers/cloudy_border.py` (3 → 0):
+  `get_arc` zero-sweep (start_ang == end_ang) drains angle_todo to 0
+  so the tail `if angle_todo > 0` arm is False (791->exit); pragma on
+  the `if not self._output_started` False arm inside the `n < 0` block
+  (`compute_params_polygon` only returns n < 0 when length == 0, and
+  `remove_zero_length_segments` strips zero-length segments with
+  tolerance 0.5 — the False arm is unreachable in normal flow but
+  mirrors upstream); pragma on the `len(center_points) <
+  center_points_length` capacity guard (defensive cap that
+  floating-point residue rarely triggers).
+- `pdmodel/interactive/action/pd_action_embedded_go_to.py` (3 → 0):
+  duplicate-document guard with next_scope == source_document (244->247);
+  `_resolve_named_destination` flat=None fallback (528->538); legacy
+  /Dests resolving to a non-PDDestination value (550->556).
+- `pdfwriter/cos_writer.py` (2 → 0): non-contiguous xref entries produce
+  multiple ranges so the inner `if first <= entry.key.object_number <
+  first + count` False arm fires (1755->1754); `_do_write_body_xref_stream`
+  trailer present but /Root absent skips the root-add branch (1861->1863).
+- `pdfparser/pdf_parser.py` (2 → 0): resolver.get_trailer returns None
+  after `parse_xref_chain` so the set_trailer branch is False (207->209);
+  pragma on the hybrid /XRefStm `if self._document is not None` False
+  arm (parse() guarantees `_document` is set before parse_xref_chain
+  runs).
+- `pdmodel/common/function/type4/parser.py` (2 → 0): scan_whitespace
+  invoked on the final input char so the inner while-loop's has_more
+  arm is False (151->157); scan_token same pattern at EOF (176->182).
+- `pdmodel/documentinterchange/logicalstructure/pd_structure_element.py`
+  (2 → 0): `get_class_names_as_strings` Revisions entry that's neither
+  COSName nor str is silently dropped (737->733); `remove_attribute`
+  with an attribute-object that doesn't own this element skips the
+  cleanup setter (1001->exit).
+- `pdmodel/documentinterchange/logicalstructure/pd_structure_node.py`
+  (2 → 0): COSObject kid resolving to a non-dictionary base (e.g. a
+  COSInteger) bypasses the dictionary branch (283->285); array of
+  size 1 with `get_object(0)` returning None bypasses the inner
+  set_item branch (393->395).
+- `pdmodel/interactive/digitalsignature/visible/pd_visible_sig_builder.py`
+  (2 → 0): create_page with PDPage stripped of `set_media_box` so the
+  setter-is-None False arm fires (53->55); insert_inner_form with a
+  holder lacking `put` skips the put-arm (233->exit).
+- `loader.py` (5 → 2): PDFParseError with pre-owned RandomAccessRead
+  (109->111 False); BaseException handler with both owned/pre-owned
+  sources (120->122 both arms); load_xfdf with pre-owned source
+  (254->257 False); decrypt-failure with pre-owned source (156->158
+  False — residual partial covered by integration tests).
+- 30+ single-partial files closed: `pdfparser/pdf_object_stream_parser.py`
+  (cursor-already-past-first arm), `pdmodel/common/filespecification/
+  pd_complex_file_specification.py` (`_clear_embedded` with no /EF),
+  `pdmodel/common/function/pd_function_type3.py` (`PDFunction.create`
+  returns None for an entry without /FunctionType), `pdmodel/
+  documentinterchange/logicalstructure/pd_structure_tree_root.py`
+  (non-PDStructureElement kid), `pdmodel/documentinterchange/taggedpdf/
+  pd_user_attribute_object.py` (`v.remove` returns False), `pdmodel/
+  fdf/{fdf_annotation,fdf_annotation_polygon,fdf_catalog,fdf_document,
+  fdf_field,xfdf_parser}.py`, `pdmodel/fixup/processor/{acro_form_
+  defaults_processor,acro_form_orphan_widgets_processor}.py`, `pdmodel/
+  graphics/{color/pd_device_n,image/sampled_image_reader,shading/
+  pd_mesh_based_shading_type}.py`, `pdmodel/interactive/{action/
+  {pd_action_go_to,pd_action_submit_form},annotation/pd_annotation_
+  square_circle,digitalsignature/sig_utils,documentnavigation/outline/
+  pd_outline_item,form/{appearance_generator_helper,field_utils},
+  measurement/pd_rectlinear_measure_dictionary,pagenavigation/
+  pd_thread_bead}.py`, `pdmodel/{pd_abstract_content_stream,
+  pd_document_catalog}.py`, `tools/imageio/{image_io_util,jpeg_util}.py`,
+  `tools/{pdf_text2_html,texttopdf}.py`, and `util/date_util.py`
+  (the date_util closure exploits NFKD expansion: the ﬃ ligature
+  normalises to "ffi" (3 chars from 1 input char), so when the
+  candidate name is "ff" (2 chars), startswith fires True but the
+  inner consumed-prefix walk lands `running == "ffi" != "ff"`,
+  exercising the `running == norm_name` False arm).
+
+Additional pragmas added:
+- `pdmodel/interactive/action/pd_action.py` line 145 — `pd is not None`
+  defensive guard inside the get_next loop. `PDAction.create()` always
+  returns a non-None wrapper (PDActionUnknown for unrecognised
+  subtypes), so the False arm is unreachable for dict inputs.
+- `tools/text_to_pdf.py` line 251 — `content_stream is not None` close-
+  arm guard. The `[""]` fallback at line 177 (when content is empty)
+  guarantees at least one for-loop iteration assigns content_stream,
+  so the False arm cannot fire.
+
+Total: ~80 partial branches closed across ~32 files in this slice via
+9 new test files (`test_wave1402_branch_round_out.py`,
+`test_cloudy_border_branch_wave1402.py`,
+`test_pd_action_embedded_go_to_branch_wave1402.py`,
+`test_cos_writer_branch_wave1402.py`,
+`test_pdf_parser_branch_wave1402.py`,
+`test_pdf_object_stream_parser_branch_wave1402.py`,
+`test_type4_parser_branch_wave1402.py`,
+`test_loader_branch_wave1402.py`, and amendments to
+`test_pd_document_branches_wave1401.py`). 5 pragmas added (all for
+provably-unreachable defensive guards mirroring upstream PDFBox).
+
 ## Wave 1401 — close residual partials in rendering, pdmodel/graphics, and contentstream/operator subtrees (~68 → 5+1, 0 pragmas)
 
 Wave 1400 left ~440 partial branches spread across the codebase. Wave 1401's

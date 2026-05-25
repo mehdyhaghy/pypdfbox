@@ -80,6 +80,9 @@ def test_decrypt_with_no_document_id() -> None:
                 self.dict = COSDictionary()
                 self.dict.set_item(COSName.get_pdf_name("Filter"), COSName.get_pdf_name("Standard"))
 
+            def is_encrypted(self) -> bool:
+                return True
+
             def get_encryption_dictionary(self) -> COSDictionary:
                 return self.dict
 
@@ -121,6 +124,9 @@ def test_decrypt_with_non_string_first_id_entry() -> None:
                 # Put a COSName as the first element so isinstance check fails.
                 self.id_arr.add(COSName.get_pdf_name("not-a-string"))
                 self.id_arr.add(COSString(b"second"))
+
+            def is_encrypted(self) -> bool:
+                return True
 
             def get_encryption_dictionary(self) -> COSDictionary:
                 return self.dict

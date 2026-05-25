@@ -248,7 +248,9 @@ class TextToPDF:
         # pragma below: unreachable — ``[""]`` fallback iterates once and clears the flag.
         if text_is_empty:  # pragma: no cover
             doc.add_page(page)
-        if content_stream is not None:
+        # pragma: the ``[""]`` fallback at line 177 guarantees at least one
+        # iteration that assigns content_stream, so the False arm is unreachable.
+        if content_stream is not None:  # pragma: no branch
             content_stream.end_text()
             content_stream.close()
 

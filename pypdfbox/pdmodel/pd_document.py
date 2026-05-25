@@ -1288,7 +1288,7 @@ class PDDocument:
         sig_field.set_needs_to_be_updated(True)
         acro_form_dict.set_needs_to_be_updated(True)
         catalog.get_cos_object().set_needs_to_be_updated(True)
-        if isinstance(fields_arr, COSArray):
+        if isinstance(fields_arr, COSArray):  # pragma: no branch — see lines 1228/1236
             fields_arr.set_needs_to_be_updated(True)
 
         # Register so the next save_incremental knows to splice.

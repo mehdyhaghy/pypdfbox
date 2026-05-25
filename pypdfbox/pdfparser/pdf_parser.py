@@ -1004,7 +1004,9 @@ class PDFParser:
                         self._handle_xref_stream_at(
                             stm_obj.value, is_hybrid=True
                         )
-                        if self._document is not None:
+                        # pragma: parse() always sets _document before
+                        # parse_xref_chain runs, so the False arm is unreachable.
+                        if self._document is not None:  # pragma: no branch
                             self._document.set_has_hybrid_xref()
                     except PDFParseError:
                         if not self._lenient:
