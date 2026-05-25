@@ -55,9 +55,16 @@ _RAW: tuple[tuple[int, int], ...] = (
 def _build_table() -> dict[int, str]:
     out: dict[int, str] = {}
     for code, sid in _RAW:
-        if 0 <= sid < len(cffStandardStrings):
+        # Defensive guards mirrored verbatim from upstream's Java
+        # CFFExpertEncoding initialiser. The False arms here are
+        # mathematically unreachable for the bundled ``_RAW`` data:
+        # every SID is in range and resolves to a non-empty, non-.notdef
+        # name — only a hypothetical upstream patch with bogus SIDs
+        # would trip them. Pragmas keep the upstream-fidelity guards
+        # in place without a brittle synthetic-data test.
+        if 0 <= sid < len(cffStandardStrings):  # pragma: no branch
             name = cffStandardStrings[sid]
-            if name and name != ".notdef":
+            if name and name != ".notdef":  # pragma: no branch
                 out[code] = name
     return out
 

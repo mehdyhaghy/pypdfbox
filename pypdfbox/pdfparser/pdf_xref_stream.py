@@ -165,12 +165,14 @@ class PDFXRefStream:
             assert length is not None
             if first + length == num:
                 length += 1
-            elif first + length < num:
+            elif first + length < num:  # pragma: no branch
+                # No else: sorted unique set guarantees first+length <= num.
                 linked.append(first)
                 linked.append(length)
                 first = num
                 length = 1
-        if first is not None and length is not None:
+        if first is not None and length is not None:  # pragma: no branch
+            # obj_numbers always seeded with {0}; first is non-None at end.
             linked.append(first)
             linked.append(length)
         return linked

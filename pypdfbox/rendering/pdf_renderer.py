@@ -1272,7 +1272,7 @@ class PDFRenderer(PDFStreamEngine):
             # any pending strokes since the last replace; the local
             # ``draw`` from the start may already be stale.
             current = self._draw
-            if current is not None:  # pragma: no branch
+            if current is not None:
                 current.flush()
             self._draw = None
             self._image = None
@@ -2845,12 +2845,12 @@ class PDFRenderer(PDFStreamEngine):
             return
         self._current_subpath.append(("Z",))
         # current point goes back to the subpath's first moveto target.
-        # The first element is always an ('M', x, y) tuple because the
+        # The first element is normally an ('M', x, y) tuple because the
         # only code that creates a subpath is ``_start_subpath`` (see
         # ``_op_move_to`` and the ``re`` rectangle synthesis); the
         # defensive guard exists for malformed-corpus resilience.
         first = self._current_subpath[0]
-        if first[0] == "M":  # pragma: no branch
+        if first[0] == "M":
             self._current_point = (first[1], first[2])
 
     # ---- painting ----
@@ -3046,7 +3046,7 @@ class PDFRenderer(PDFStreamEngine):
             # ensure the layer's aggdraw buffer is committed so layer's
             # alpha channel reflects the strokes/fills.
             self_draw = self._draw
-            if self_draw is not None:  # pragma: no branch
+            if self_draw is not None:
                 self_draw.flush()
             # NB: ``self._draw`` may have been replaced mid-paint by the
             # even-odd PIL path — refetch the latest layer image.
@@ -3639,7 +3639,7 @@ class PDFRenderer(PDFStreamEngine):
         try:
             self._process_form_bytes(data)
             current = self._draw
-            if current is not None:  # pragma: no branch
+            if current is not None:
                 current.flush()
         finally:
             self._image = prev_image
@@ -4023,7 +4023,7 @@ class PDFRenderer(PDFStreamEngine):
         gradient = Image.frombytes(
             "RGB", (canvas_w, canvas_h), bytes(pixels)
         )
-        if self._draw is not None:  # pragma: no branch
+        if self._draw is not None:
             self._draw.flush()
         self._image.paste(gradient, (0, 0), region_mask)
         self._draw = aggdraw.Draw(self._image)
@@ -4188,7 +4188,7 @@ class PDFRenderer(PDFStreamEngine):
         gradient = Image.frombytes(
             "RGB", (canvas_w, canvas_h), bytes(pixels)
         )
-        if self._draw is not None:  # pragma: no branch
+        if self._draw is not None:
             self._draw.flush()
         self._image.paste(gradient, (0, 0), region_mask)
         self._draw = aggdraw.Draw(self._image)
@@ -4356,7 +4356,7 @@ class PDFRenderer(PDFStreamEngine):
         # Convert RGBA buffer to a PIL "RGBA" image, then alpha-blend onto
         # the page canvas through the region mask.
         patch_img = Image.frombytes("RGBA", (canvas_w, canvas_h), bytes(pixels))
-        if self._draw is not None:  # pragma: no branch
+        if self._draw is not None:
             self._draw.flush()
         # Multiply the patch image's alpha by the region mask so anything
         # outside the clip / path interior stays transparent.
@@ -5748,7 +5748,7 @@ class PDFRenderer(PDFStreamEngine):
         try:
             self._render_form_xobject(group_form)
             current = self._draw
-            if current is not None:  # pragma: no branch
+            if current is not None:
                 current.flush()
         except Exception as exc:  # noqa: BLE001
             _log.debug("rendering: soft-mask group render failed: %s", exc)
@@ -5950,7 +5950,7 @@ class PDFRenderer(PDFStreamEngine):
             self._transparency_group_depth -= 1
             # Commit any final group strokes, then composite back.
             current = self._draw
-            if current is not None:  # pragma: no branch
+            if current is not None:
                 current.flush()
             self._image = parent_image
             self._draw = parent_draw
@@ -6009,7 +6009,7 @@ class PDFRenderer(PDFStreamEngine):
             return
         # Flush any aggdraw work to the canvas first so we don't drop
         # buffered strokes as we replace pixels underneath them.
-        if self._draw is not None:  # pragma: no branch
+        if self._draw is not None:
             self._draw.flush()
         # In-place pixel copy keeps ``self._image`` identity stable.
         self._image.paste(self._knockout_snapshot, (0, 0))
@@ -6751,7 +6751,7 @@ class PDFRenderer(PDFStreamEngine):
             return
         # Flush the sub-canvas aggdraw so its alpha plane is fresh.
         current_draw = self._draw
-        if current_draw is not None:  # pragma: no branch
+        if current_draw is not None:
             current_draw.flush()
         # Apply the per-text-object alpha by scaling the sub-canvas's
         # alpha plane. The lite renderer doesn't distinguish fill vs
@@ -7337,7 +7337,7 @@ class PDFRenderer(PDFStreamEngine):
                     path = self._build_aggdraw_path_from_commands(
                         commands, scale=1.0 / type1_units_per_em
                     )
-                    if path is not None:  # pragma: no branch
+                    if path is not None:
                         self._fill_aggdraw_path(
                             path, glyph_to_device, self._gs.fill_rgb
                         )
@@ -7372,7 +7372,7 @@ class PDFRenderer(PDFStreamEngine):
                     upgraded = self._fallback_advance_units(
                         substitute, code, advance_units
                     )
-                    if upgraded > 0.0:  # pragma: no branch
+                    if upgraded > 0.0:
                         advance_units = upgraded
         # Once-per-font debug for Standard 14 references whose glyph
         # outlines we currently can't synthesise (no /FontFile and we
@@ -7380,7 +7380,7 @@ class PDFRenderer(PDFStreamEngine):
         self._maybe_warn_standard14(font)
         # Faint placeholder — a 1x1 unit-square outline scaled by the
         # text-local matrix. Skip when no draw context (defensive).
-        if self._draw is not None:  # pragma: no branch
+        if self._draw is not None:
             with contextlib.suppress(Exception):
                 self._draw_placeholder_box(glyph_to_device, advance_units)
         return advance_units

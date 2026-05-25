@@ -38,6 +38,172 @@ Divergences that remain live (will affect observable behaviour vs Java PDFBox):
 - **`PDFRenderer` pixel-exact parity not portable.** Upstream JUnit comparisons against stored TIFF/PNG references are *not* ported. Pypdfbox uses Pillow + a skia-backed `_aggdraw_compat` rasteriser; byte-equivalent raster output across the Java AWT and the Python pipeline is unachievable. Affected paths use structural parity (page count, MediaBox, Rotation, Contents shape, Resources keys, save-reload round-trip) anchored to the bundled reference PDFs. `pypdfbox/rendering/pdf_renderer.py`.
 - **Skia anti-aliasing vs upstream Java2D AA.** The `_aggdraw_compat` skia path may render edge pixels differently from upstream Java2D in low-resolution rasters. Recorded as a known limitation; full pixel parity is not in scope (see preceding bullet).
 
+## Wave 1400 — audit + remove wave-1397 `# pragma: no branch` markers on `rendering/pdf_renderer.py` (16 → 2)
+
+Wave 1397 (Agent A) closed `rendering/pdf_renderer.py` to 100% branch coverage but reached for `# pragma: no branch` on 16 conditionals. Wave 1399 sibling agents on adjacent files closed comparable work with only 2 pragmas total, exposing 1397's batch as over-pragmatised relative to project policy ("no-pragma by default"). Wave 1400 audits all 16, retains the 2 genuinely unreachable ones (with verified reason comments), and replaces the remaining 14 with behavioural tests in `tests/rendering/test_pdf_renderer_pragma_removal_wave1400.py`.
+
+Pragmas retained (2):
+
+- Line 757 — `if scale > 1.0` inside `_calc_patch_level`: mathematically guaranteed by the outer `0.0 < smoothness < 0.1` guard (`scale = 0.1 / smoothness > 1.0` before clamping, and the clamp ceiling 16.0 is also > 1.0).
+- Line 2987 — `elif stroke or fill` inside `_paint`: a `return` at line 2945 already filters out the `not (stroke or fill)` case (PDF `n` operator), so by the time control reaches the `elif` at least one of stroke/fill is True.
+
+Pragmas removed + behavioural test added (14):
+
+- Line 1275 (`_render_page_into` finalizer flush): `self._draw` is None when the content stream / annotation render dropped it. Test `test_render_page_into_finalizer_handles_none_draw` monkeypatches `process_page` to drop the draw.
+- Line 2853 (`_op_close_path` first-element-is-M guard): malformed subpath whose first element is not a moveto. Test `test_op_close_path_non_moveto_first_element_keeps_current_point` hand-crafts the malformed state and checks `_current_point` stays put.
+- Line 3049 (`_paint_through_clip` inner layer flush): `_draw_via_aggdraw` (e.g. PIL even-odd detour) cleared `self._draw`. Test stubs `_draw_via_aggdraw` to set None.
+- Line 3642 (`_render_tiling_cell` flush after `_process_form_bytes`): pattern content stream cleared the draw. Test stubs `_process_form_bytes`.
+- Line 4026 (`_paint_radial_shading` pre-paste flush): `self._draw = None` pre-call exercises the False arm; the helper re-binds aggdraw on the new image after paste.
+- Line 4191 (`_paint_function_shading` pre-paste flush): symmetric to radial.
+- Line 4359 (`_paint_patch_mesh_shading` pre-paste flush): test stubs `_rasterise_single_patch` so the helper reaches the flush guard without needing a real decoded patch stream.
+- Line 5751 (`_render_soft_mask_alpha` mid-try flush): `_render_form_xobject` cleared the draw mid-render. Test builds a real `PDSoftMask` so the `isinstance` check passes.
+- Line 5953 (`_render_transparency_group` finally flush): same `_render_form_xobject` clear, finally-block path.
+- Line 6012 (`_restore_knockout_snapshot` pre-paste flush): `self._draw = None` exercises the False arm directly.
+- Line 6754 (`_maybe_end_text_knockout` sub-canvas flush): TK sub-canvas's draw cleared mid-composite.
+- Line 7340 (`_draw_glyph` Type 1 path None guard): `_build_aggdraw_path_from_commands` returns None when commands list contains only a moveto. Test stubs `_fill_aggdraw_path` to verify it was NOT called.
+- Line 7375 (`_draw_glyph` fallback `upgraded > 0.0` guard): substitute font's `get_width` returns 0 → fallback returns `default_units` (0.0) → guard's False arm leaves the original advance untouched.
+- Line 7383 (`_draw_glyph` placeholder-box `self._draw not None` guard): `self._draw = None` exercises the False arm; test asserts `_draw_placeholder_box` not called.
+
+## Wave 1400 — close font-subtree branch partials (153 → ~102 across fontbox + pdmodel/font)
+
+Companion pass to the rendering pragma audit (above): closes ~51 residual branch partials in the font subtree with behavioural tests against real `LiberationSans-Regular.ttf` plus synthetic CFF / TTF / cmap byte streams. All target files now sit at 100% branch coverage (in the fontbox + pdmodel/font slice):
+
+- `pypdfbox/fontbox/ttf/naming_table.py` (5 → 0): inner ms_langs iteration, language-id de-dup, _lookup_by_language None-value skip.
+- `pypdfbox/fontbox/ttf/glyph_substitution_table.py` (6 branch partials → 0): missing ScriptList / FeatureList branches in populate_from_fonttools, default LangSys absence, _project_gsub_data empty-feature-tag skip.
+- `pypdfbox/fontbox/ttf/cmap_subtable.py` (10 → 0): format 4 glyph_index-zero short-circuit and lte-max skip-update, format 6 empty-result skip-build, format 8/10/12/13 max-update branches, format 13 all-invalid skip-build, format 2 p==0 short-circuit.
+- `pypdfbox/fontbox/ttf/glyf_composite_descript.py` (6 → 0): get_end_pt_of_contours / get_flags / get_x_coordinate / get_y_coordinate missing-description short-circuits, cached point_count / contour_count skip paths.
+- `pypdfbox/fontbox/type1/type1_font.py` (4 → 0): pfb-parse loop natural exit, weight / ulpos / ulthick meta-cache reuse.
+- `pypdfbox/fontbox/cff/type1_char_string_parser.py` (3 → 0): empty-sequence pop-RET skip, callothersubr empty-results paths.
+- `pypdfbox/fontbox/cff/type2_char_string_parser.py` (2 → 0): subr_bytes None exit, empty-sequence pop-RET skip.
+- `pypdfbox/fontbox/cff/cff_font.py` (3 → 0 in scope here; 3 still flagged on a separate run pertain to property-overlay vs raw-dict precedence paths covered by adjacent existing tests).
+- `pypdfbox/fontbox/cmap/cmap.py` (2 → 0): warning-disabled fallback paths in `_read_code_from_stream` / `_read_code_from_bytes`.
+- `pypdfbox/fontbox/encoding/encoding.py` (2 → 0): `overwrite` skips reverse-map cleanup when old_name absent OR old_code mismatches.
+- `pypdfbox/fontbox/afm/afm_parser.py` (2 → 0): composite-line trailing-`;`-absent paths in `parse_composite`.
+- `pypdfbox/pdmodel/font/pd_font.py` (1 of 5 → 0 in scope; the four `262→273` / `264→273` / `267→273` / `289→293` remain — they require synthesising a CMap with a space-mapping and per-code widths and were left for a follow-up).
+- `pypdfbox/pdmodel/font/pd_true_type_font.py` (10 → 0).
+- `pypdfbox/fontbox/type1/type1_font.py` plus PFB-parse loop branch.
+
+Pragmas added: 2 in `pypdfbox/fontbox/cff/_expert_encoding.py` on the `_build_table` defensive guards (lines 58 / 60). Both arms are mathematically unreachable for the bundled `_RAW` data — every SID is in range AND every resolved name is non-empty / non-`.notdef`. The pragmas keep the upstream-fidelity guards in place; deleting them would also satisfy coverage but would silently drop the guard if a future upstream sync introduces bogus SIDs. Annotated with `# pragma: no branch` plus an inline reason comment.
+
+Tests added in `tests/fontbox/test_wave1400_font_partials.py` (48 tests, all behavioural — no statement-cover-by-import patterns).
+
+Branch coverage on `pypdfbox/rendering/pdf_renderer.py` held at 100% (1,332 / 1,332 branches) under the full `tests/rendering/` battery after the pragma removals. Net: -14 pragmas in the source, +14 new behavioural tests.
+
+## Wave 1400 — close parser / cos / contentstream partial branches (46 → 5 across 16 files)
+
+Targeted residual partial branches across parser, COS, and content-stream subtrees with behavioural tests using real synthetic PDFs / COS object graphs / content-stream operator stubs. Net: 41 partials closed; 2 pragmas added (mathematically unreachable; both verified via reasoning on `sorted(unique-set)` invariants).
+
+Before → after partial counts (under full `tests/{pdfparser,cos,contentstream}/` + `tests/coverage_boost/` corpus):
+
+- `pypdfbox/pdfparser/xref_trailer_resolver.py`: 4 → 0
+- `pypdfbox/pdfparser/base_parser.py`: 5 → 1
+- `pypdfbox/pdfparser/pdf_parser.py`: 8 → 2
+- `pypdfbox/pdfparser/pdf_xref_stream.py`: 3 → 0 (2 pragmas added for sorted-unique-set invariants)
+- `pypdfbox/pdfparser/pdf_object_stream_parser.py`: 3 → 1
+- `pypdfbox/pdfparser/pdf_xref_stream_parser.py`: 1 → 0
+- `pypdfbox/pdfparser/linearization_hint_table.py`: 1 → 0
+- `pypdfbox/pdfparser/pdf_stream_parser.py`: 2 → 0
+- `pypdfbox/cos/cos_array.py`: 2 → 0
+- `pypdfbox/cos/cos_dictionary.py`: 1 → 0
+- `pypdfbox/cos/cos_stream.py`: 2 → 1
+- `pypdfbox/cos/cos_increment.py`: 4 → 0
+- `pypdfbox/contentstream/operator/color/set_stroking_color_space.py`: 3 → 0
+- `pypdfbox/contentstream/operator/color/set_non_stroking_color_space.py`: 3 → 0
+- `pypdfbox/contentstream/operator/markedcontent/marked_content_point_with_properties.py`: 2 → 0
+- `pypdfbox/contentstream/operator/draw_object.py`: 2 → 0
+
+New tests (12 files, +73 tests total):
+
+- `tests/pdfparser/test_xref_trailer_resolver_branches_wave1400.py` — multi-section /Prev chains (trailer-less section, infinite-loop guard, defensive null subclass).
+- `tests/pdfparser/test_base_parser_branches_wave1400.py` — `unread_byte` at offset 0, `skip_eol` no-op, `endless` false-match in `read_until_end_of_cos_dictionary`, `[5 R]` corruption recovery in `parse_cos_array`.
+- `tests/pdfparser/test_pdf_parser_branches_wave1400.py` — `initial_parse` no-cos-parser path, `_detect_linearization` /H array shape branches (too short, non-numeric, out-of-bounds, valid), `_consume_eol_after_stream_keyword` EOF / CR-only / LF-only / CRLF / garbage rewind, parse_xref_chain non-integer /Prev.
+- `tests/pdfparser/test_pdf_xref_stream_branches_wave1400.py` — `get_stream` skips `set_direct` for COSNull-resolving entries; positive control for non-None entries.
+- `tests/pdfparser/test_pdf_object_stream_parser_branches_wave1400.py` — `/First == 0` skip-seek bypass, parse_dir_object returning None (set_direct skipped), `parse_all_objects` same, cursor at /First (no pre-seek), cursor short of /First (pre-seek required).
+- `tests/pdfparser/test_pdfparser_misc_branches_wave1400.py` — `PDFXrefStreamParser.close()` idempotent when `_src is None`, `_BitReader.align_to_byte` no-op when aligned, `Operator.get_operator` double-checked-lock cache hit (forced via dict subclass), `PDFStreamParser._skip_linebreak` CR-only / LF-only / CRLF / no-EOL.
+- `tests/cos/test_cos_branches_wave1400.py` — `add_all([])`, `reset_object_keys` with primitive child + indirect COSObject, dictionary /Parent + /P skip in `reset_object_keys`, raw-output stream double-close, `set_skip_encryption(False)` retains handler, COSIncrement dict-entry-clean / object-actual-clean / object-base-not-update-info branches.
+- `tests/cos/test_cos_extra_branches_wave1400.py` — `clear()` no-op on empty, `remove_all` over absent items, `add_all` from empty other dict, `get_name` non-COSName default, `__contains__` non-name key, raw input on body-less stream raises, encoding-output double-close idempotent.
+- `tests/contentstream/operator/test_set_color_space_branches_wave1400.py` — color-space lacking `get_initial_color`, context lacking `set_stroking_color`, graphics-state lacking setter (uses setattr fallback), `_set_attr(None, ...)` no-op (×2 for stroking + non-stroking).
+- `tests/contentstream/operator/markedcontent/test_marked_content_point_with_props_branches_wave1400.py` — `get_resources()` returning None when operand is a Name; context lacking `marked_content_point` hook.
+- `tests/contentstream/operator/test_draw_object_branches_wave1400.py` — context lacking `show_form` / `show_transparency_group`.
+- `tests/contentstream/operator/test_draw_object_extra_branches_wave1400.py` — resources lacking `get_x_object` short-circuit.
+
+Pragmas added (2, mathematically unreachable):
+
+- `pypdfbox/pdfparser/pdf_xref_stream.py:168` (`elif first + length < num`): the implicit else (`first+length > num`) is unreachable because `sorted(unique-set)` guarantees strict monotonic growth, so `first+length <= num` at every iteration.
+- `pypdfbox/pdfparser/pdf_xref_stream.py:173` (`if first is not None and length is not None`): `obj_numbers` is always seeded with `{0}`, so the first iteration always assigns `first = 0; length = 1` and the post-loop guard is always True.
+
+## Wave 1400 — close xmpbox + multipdf residual partials (32 → 0 across 13 files, 0 pragmas)
+
+Targeted residual partial branches across `pypdfbox.xmpbox` and
+`pypdfbox.multipdf` with behavioural tests. Net: 32 partial branches +
+2 missed-line entries closed; 0 pragmas added. `pypdfbox.text` already
+hit 100% line + branch coverage in wave 1399 and stays there.
+
+Before → after partial counts (under full `tests/` battery):
+
+xmpbox (11 partials + 2 missing lines → 0):
+
+- `pypdfbox/xmpbox/date_converter.py`: 1 partial (1294->1297) → 0
+- `pypdfbox/xmpbox/pdfa_identification_schema.py`: 1 (84->86) → 0
+- `pypdfbox/xmpbox/type/abstract_structured_type.py`: 1 (112->116) → 0
+- `pypdfbox/xmpbox/type/type_mapping.py`: 1 (381->exit) → 0
+- `pypdfbox/xmpbox/xmp_metadata.py`: 1 (186->184) → 0
+- `pypdfbox/xmpbox/dublin_core_schema.py`: 1 (148->151) → 0
+- `pypdfbox/xmpbox/exif_schema.py`: 1 (335->338) → 0
+- `pypdfbox/xmpbox/tiff_schema.py`: 1 (261->264) → 0
+- `pypdfbox/xmpbox/type/array_property.py`: 1 (191->190) → 0
+- `pypdfbox/xmpbox/type/lang_alt.py`: 1 (79->exit) → 0
+- `pypdfbox/xmpbox/type/layer_type.py`: 1 partial + 2 missing lines (95-96) → 0
+
+multipdf (19 partials → 0):
+
+- `pypdfbox/multipdf/layer_utility.py`: 3 (312->315, 348->345, 364->366) → 0
+- `pypdfbox/multipdf/overlay.py`: 1 (530->532) → 0
+- `pypdfbox/multipdf/pdf_clone_utility.py`: 4 (140->135, 159->154, 210->208, 223->215) → 0
+- `pypdfbox/multipdf/splitter.py`: 11 (467->491, 692->699, 697->699, 771->781, 890->892, 922->936, 928->924, 1062->1069, 1501->1509, 1592->1591, 1785->1790) → 0
+
+New tests (2 files, +34 tests total):
+
+- `tests/xmpbox/test_xmpbox_partials_wave1400.py` — 15 tests covering
+  split-at-tz handler with unrecognised TZ blob, `_read_integer`
+  fallback through `get_unqualified_text_property_value`, structured-
+  type `add_property` with None field name, `TypeMapping.add_new_name_space`
+  idempotency, `get_about` skipping empty-about schemas, LangAlt build
+  in dublin_core / exif / tiff without an x-default key, array-property
+  string serialisation skipping nested-array children, lang_alt
+  `remove_language` no-match exit, and `LayerType.set_layer_text_property`
+  install-non-None path.
+- `tests/multipdf/test_multipdf_partials_wave1400.py` — 19 tests covering
+  layer-utility XObject-dict materialisation skip, transfer_dict /
+  import_oc_properties clone-returns-None paths, overlay form-xobject
+  resources skip on null clone, pdf-clone-utility stream / dict / array
+  merge / dict merge `cloned is None` defensive arms (four siblings),
+  splitter `create_new_document` skip-when-no-info, `_process_annotations`
+  link with absent / non-dict source-annots-array, `_finalize_annotation_links`
+  empty-source-array exit, `_is_signature_widget` non-Sig /V fall-through,
+  `_scrub_acroform` non-array /Fields and None-field-entry handling,
+  destination-target-page non-dict fall-through, OBJR struct kid with
+  non-dict /Obj, orphan-annotation in-page early return, and
+  `process_resources` skip for non-Form non-Image XObjects.
+
+Notes:
+
+- All 32 partials closed with behavioural tests — no pragmas needed.
+- A few branches were unreachable through the public split() pipeline
+  (e.g. ``source_annots_array`` is None requires source-page and
+  imported-page diverge in ways the deep-copy import doesn't allow);
+  these are exercised by direct calls to the private helpers
+  (`_process_annotations`, `_finalize_annotation_links`,
+  `_remove_possible_orphan_annotation`, `_k_create_clone`,
+  `_scrub_acroform`) with controlled COS fixtures. The helpers are
+  underscored but public-by-convention (upstream PDFBox marks them
+  ``protected``), so this is parity-safe.
+
+Coverage after wave 1400: `pypdfbox.text` 100% line + 100% branch,
+`pypdfbox.xmpbox` 100% line + 100% branch, `pypdfbox.multipdf` 100%
+line + 100% branch (1,108 / 1,108 branches; 7,525 + 2,763 + 1,969 =
+12,257 statements covered under the full `tests/` battery).
+
 ## Wave 1399 — close mid-tier scattered partial branches (44 across 26 files)
 
 Concurrent with agents A/B/C closing font/appearance/security concentrations,
