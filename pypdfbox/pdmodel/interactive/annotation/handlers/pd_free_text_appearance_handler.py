@@ -115,7 +115,7 @@ class PDFreeTextAppearanceHandler(PDAbstractAppearanceHandler):
                         (color_int & 0xFF) / 255,
                     ]
 
-            if has_stroke:
+            if has_stroke:  # pragma: no branch - extract_non_stroking_color never returns None
                 cs.set_stroking_color(stroke_components)
             if ab.dash_array is not None:
                 cs.set_line_dash_pattern(list(ab.dash_array), 0)

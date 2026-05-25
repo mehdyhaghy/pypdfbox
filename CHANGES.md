@@ -38,6 +38,305 @@ Divergences that remain live (will affect observable behaviour vs Java PDFBox):
 - **`PDFRenderer` pixel-exact parity not portable.** Upstream JUnit comparisons against stored TIFF/PNG references are *not* ported. Pypdfbox uses Pillow + a skia-backed `_aggdraw_compat` rasteriser; byte-equivalent raster output across the Java AWT and the Python pipeline is unachievable. Affected paths use structural parity (page count, MediaBox, Rotation, Contents shape, Resources keys, save-reload round-trip) anchored to the bundled reference PDFs. `pypdfbox/rendering/pdf_renderer.py`.
 - **Skia anti-aliasing vs upstream Java2D AA.** The `_aggdraw_compat` skia path may render edge pixels differently from upstream Java2D in low-resolution rasters. Recorded as a known limitation; full pixel parity is not in scope (see preceding bullet).
 
+## Wave 1399 — close mid-tier scattered partial branches (44 across 26 files)
+
+Concurrent with agents A/B/C closing font/appearance/security concentrations,
+agent D targets the next 26 mid-tier files outside their scope. 50 behavioural
+tests in `tests/coverage_boost/test_wave1399_branch_round_out.py` close 44
+partial branches across files that hover near 99% coverage with 1-9
+residual partial arms each. Zero `# pragma: no branch` markers added —
+the no-pragma policy was respected; un-closed branches either need
+fixtures (e.g. real CFF programs, multi-section xref documents) or
+exercise upstream defensive guards whose False arms are unreachable in
+Python with the project's existing harness.
+
+Notable closures by file:
+
+- `pdmodel/pd_document.py` (9 → 6): exercises `save()` with all-security-removal
+  flag set + null trailer (477->494), and `add_signature` with pre-set
+  `/Filter` + pre-existing `/Annots` array + `/Fields` containing mixed
+  entry shapes (1189->1191, 1231->1229, 1233->1229, 1273->1276).
+- `pdmodel/fdf/fdf_document.py` (4 → 1): catalog re-resolve with `None`
+  trailer (127->131), catalog re-resolve when trailer's `/Root` was
+  swapped (129->131), `save_xfdf` to a sink lacking `close()` (277->exit),
+  and `close()` with a source whose `close()` raises (297->exit).
+- `pdfparser/xref_trailer_resolver.py` (4 → 1): `next_xref_obj` when
+  `begin_section` is patched to leave `_current` as `None` (103->exit),
+  and `set_startxref` with a section whose `trailer` is `None`
+  (266->284, 291->299).
+- `pdmodel/graphics/optionalcontent/pd_optional_content_group.py` (3 → 1):
+  set_render_state when sub-dict already exists (230->233), plus
+  `_set_usage_state_entry(None)` with /Usage retained when sibling sub-dict
+  still populated (303->305).
+- `pdmodel/graphics/image/png_converter.py` (3 → 0): IHDR truncated to <13
+  bytes skips width/height/bpp population (305->327), plus PNG with unknown
+  ancillary chunk followed by IEND (325->327, 288->328).
+- `pdmodel/graphics/color/pd_device_n.py` (3 → 1): `/Names` array with
+  non-`COSName` entries skipped (359->358), `set_attributes(None)` on
+  short array (465->467).
+- `pdmodel/fdf/fdf_annotation_polyline.py` (3 → 0): `/LE` array with
+  non-`COSName` entries returns `LE_NONE` (129->131, 156->158); `/IC` array
+  with non-numeric entries returns `None` (183->185).
+- `pdmodel/fdf/fdf_annotation_line.py` (2 → 0): same `/LE` non-`COSName`
+  paths (130->132, 141->143).
+- `pdmodel/fdf/fdf_annotation_stamp.py` (2 → 0): `parse_dict_element` /
+  `parse_array_element` skip children whose computed `value` is `None`
+  (118->104, 139->128).
+- `pdmodel/fdf/fdf_dictionary.py` (2 → 0): `/Annots` array with non-dict
+  entries skipped (193->191); `write_xml` skips `<ids>` when entries
+  aren't `COSString` (385->388).
+- `pdmodel/fdf/fdf_annotation.py` (2 → 1): `rich_contents_to_string` with
+  an attribute whose `nodeValue` is `None` (454->456).
+- `pdmodel/common/function/type4/parser.py` (3 → 2): comment scan
+  reaches EOF without CR/LF/FF terminator (161->167).
+- `pdmodel/graphics/shading/pd_shading_type2.py` (2 → 1) and
+  `pd_shading_type3.py` (2 → 1): `set_extend(None, None)` removes
+  `/Extend`; single-arg with non-`COSArray` falls into the 2-element
+  build path (186->190, 188->191).
+- `pdmodel/graphics/state/pd_extended_graphics_state.py` (2 → 1): `/Font[1]`
+  is `COSName` → `get_font_size` returns `None` (672->674).
+- `pdmodel/interactive/annotation/pd_annotation_polyline.py` (2 → 0): `/LE`
+  with non-`COSName` entries (182->184, 199->201).
+- `pdmodel/font/pd_type1_font_embedder.py` (no change, 5 still partial):
+  PFA blob (no PFB marker) returns whole buffer as one segment (57->72).
+  Other arms need real fontTools-parsed Type1 programs.
+- `pdmodel/font/pd_cid_font_type0.py` (no change, 2 still partial):
+  `_coerce_bbox(None)` and short list → `None` (added behavioural test;
+  arms 458->462 / 614->616 need a real embedded CIDType0 font).
+- `pdmodel/font/pd_font.py` (5 → 4): `/Widths` entries that aren't
+  numbers are skipped (215->214); `get_space_width` with widths but
+  index out of range falls to the next stage (289->293).
+- `pdmodel/interactive/action/pd_action_embedded_go_to.py` (4 → 3):
+  `PDPageDestination` with empty backing array bypasses the integer-only
+  guard (95->105).
+- `pdmodel/interactive/annotation/handlers/cloudy_border.py` (4 → 3):
+  intensity-zero rectangle path with a stream stub lacking `add_rect`
+  (284->286).
+- `pdfparser/pdf_xref_stream.py` (3, no change yet): contiguous + gapped
+  `_get_index_entry` paths (168->160 / 168->169 exercised but the
+  baseline already covered them).
+- `pdmodel/fixup/processor/acro_form_orphan_widgets_processor.py`
+  (2 → 1): AcroForm without `get_field_tree` quietly returns
+  (77->exit).
+- `pdmodel/graphics/image/pd_inline_image.py` (no change, 2 still partial):
+  unknown abbreviated color-space name passes through unchanged
+  (217->224).
+- `tools/texttopdf.py` (2 → 1): font descriptor present but bbox `None`
+  → default 1000.0 (204->208).
+- `tools/text_to_pdf.py` (2 → 1): same path for the other tool entry
+  (49->51).
+- `tools/pdf_text2_html.py` (2 → 1): `FontState.push` with mismatched
+  empty text + non-empty positions returns "" (62->67); also `push("ABC", [])`
+  short-circuits.
+- `rendering/_pen_bridge.py` (2 → 0): bare delegate (no `move_to` / `line_to`)
+  silently no-ops (79->exit, 84->exit).
+- `pdfwriter/cos_standard_output_stream.py` (2 → 0): sink without
+  `flush` / `close` attrs is OK; `close()` is idempotent (188->exit,
+  201->exit).
+- `pdmodel/documentinterchange/logicalstructure/pd_structure_node.py`
+  (3, no change): `create_object` returns `None` for an unrecognised
+  COS type (283->285) — covered behaviourally but the surrounding arms
+  need richer kid graphs.
+- `tools/pdfdebugger.py` (3, no change): empty `COSArray` formats
+  to `[  ]` (938->941) — covered behaviourally; the other two arms are
+  CLI REPL paths that need `input()` interaction.
+
+Net tree-wide partial branch count delta in agent D's scope: -44.
+
+## Wave 1399 — close annotation appearance-handler partial branches (24 → 0 across 4 files, +13 bonus handler files at 100%)
+
+Targeted the four hottest appearance-handler files after wave 1398:
+
+* `pd_free_text_appearance_handler.py` (9 partials → 0)
+* `pd_circle_appearance_handler.py` (5 → 0)
+* `pd_square_appearance_handler.py` (5 → 0)
+* `pd_abstract_appearance_handler.py` (5 → 0)
+
+Bonus: also closed every partial branch in `pd_caret_`, `pd_file_attachment_`,
+`pd_ink_`, `pd_line_`, `pd_link_`, `pd_polygon_`, `pd_polyline_`,
+`pd_strikeout_`, `pd_text_`, `pd_underline_appearance_handler.py` (the
+last residual was 1 partial each — closed via behavioural tests on
+real path geometry, dash patterns, callout endings, /Border arrays,
+and synthetic `set_matrix`-less stream stubs).
+
+Single behavioural test file: `tests/pdmodel/interactive/annotation/handlers/test_appearance_handlers_branch_wave1399.py`
+(48 tests). All tests build a real annotation, configure /DA, /DS, /RC,
+/QuadPoints, /InkList, /Vertices, /BS, /BE, /IC, /Rotate as appropriate,
+invoke `generate_normal_appearance`, and assert against the resulting
+content-stream bytes or the round-tripped `/AP` dictionary state.
+
+**Two `# pragma: no branch` markers added** (the project budget). Both
+mark mathematically unreachable arms exposed by upstream's defensive
+guards:
+
+1. `pd_free_text_appearance_handler.py:118` — `if has_stroke:` False
+   arm. `extract_non_stroking_color` always returns a non-None list,
+   and line 103 (`text_components = list(stroke_components)`) would
+   raise `TypeError` before the guard could ever evaluate False.
+2. `pd_text_appearance_handler.py:143` — `if painter is not None:` False
+   arm. `_SUPPORTED_NAMES` and the dispatch dict carry the same 16 keys,
+   so once line 113's membership check passes, `dispatch.get(name)`
+   always returns a callable.
+
+## Wave 1399 — close font-cluster partial branches (39 → 0 across 4 files)
+
+After wave 1398 left the font cluster with the highest residual
+partial-branch density, wave 1399 closes every partial arm in four
+of the densest files via behavioural tests against real fontTools-
+parsed TTF subtables and stub `FontProvider` / descendant-font shims.
+Zero `# pragma: no branch` markers were added (the project-wide
+aggressive-no-pragma policy applies: only mathematically-unreachable
+arms qualify; none of the 39 arms closed here did). 30 new tests in
+`tests/pdmodel/font/test_font_branch_closure_wave1399.py` cover:
+
+- **`pypdfbox/pdmodel/font/pd_true_type_font.py`** (13 partials → 0):
+  `get_glyph_width` fall-through when ``code`` is outside the /Widths
+  span (325->328); `get_glyph_path` GID-fallback when the by-name
+  draw returns an empty path (411->413); symbolic `_code_to_gid`
+  arm where `_cmap_win_unicode` is absent and `_cmap_win_symbol`
+  resolves via the F000 retry (643->652); five
+  `_code_to_gid_via_unicode_subtable` arms (`encoding is None`,
+  ``name == ".notdef"``, custom encoding without a unicode mapping,
+  unicode-lookup-returns-zero falls to direct cmap, non-symbolic
+  skip of the F000/F100/F200 retries, plus the `cmap is None` early
+  exit — 724->730, 726->730, 728->730, 730->743, 735->743);
+  `extract_cmap_table` Windows-non-supported-encoding skip (800->794);
+  Mac-non-Roman skip (807->794); `_CmapPlatformView` glyph-name-not-
+  in-glyph-order skip (1118->1116); `_embed_subset_bytes` empty
+  /BaseFont and empty /FontName arms (1316->1330, 1331->exit).
+
+- **`pypdfbox/pdmodel/font/font_mapper_impl.py`** (11 partials → 0):
+  `get_open_type_font` fallback-name hit (346->348);
+  `get_cid_font` best-match-with-font (398->405),
+  best-match-with-None-font (398->405 False), and Noto
+  auto-download success (406->408); `_try_fetch_noto_cjk`
+  stem-match success (451->452), stem-match-font-is-None
+  fall-through (451->453), notosans-regular fallback success
+  + font-is-None fall-through (454->453, 456->453); `_find_font`
+  short-form-of-comma-name match (529->530) and
+  short-form-misses-falls-to-Regular (529->531); `_load_bundled_path`
+  stem-font-None (826->828), short-form-success (832 True),
+  short-form-None-falls-to-file-scan (837->839), file-scan-skips-None
+  (848->844).
+
+- **`pypdfbox/pdmodel/font/pd_type0_font.py`** (12 partials + 13
+  line misses → 0): `_apply_ligature_run` out-of-range gid
+  (565->596) and lig-glyph-unmapped subtable-loop continue
+  (592->567); `to_unicode` UCS2 fallback returning None
+  (704->709); `_unicode_from_embedded_cmap` non-Type2 descendant
+  (722-723), no-TTF (725-726), non-embedded descendant CID path
+  (734-737), zero-GID early return (740-741); `read_code`
+  single-byte fallback when no CMap (line 741); `get_path` no
+  descendant / non-callable descendant (852-853, 855-856) and
+  happy-path delegation; `get_normalized_path` no-descendant /
+  non-callable / happy-path (lines 869-874); `get_gsub_data` →
+  `_get_gsub_table` delegation (line 886); `get_cmap_lookup`
+  non-Type2 / no-TTF arms (lines 900, 903); `has_explicit_width`
+  no-descendant + non-callable + delegation (947-953);
+  `read_encoding` + `fetch_c_map_ucs2` exception suppression
+  (970-973, 986-987); `get_c_map` / `get_c_map_ucs2` aliases
+  (lines 997, 1004); `encode_glyph_id` BE-fallback when no
+  descendant / no encoder + delegation (lines 1123-1127);
+  `subset` empty /BaseFont arm (1475->1489); `load` /
+  `load_vertical` factories (lines 1570, 1592-1604);
+  `get_standard14_width` raises (lines 930-931).
+
+- **`pypdfbox/pdmodel/font/encoding/dictionary_encoding.py`** (3
+  partials + 5 line misses → 0): `apply_differences` no-/Differences
+  array short-circuit (125->exit); `set_base_encoding` with an
+  :class:`Encoding` whose name is None — /BaseEncoding gets removed
+  (line 224); `set_base_encoding` with a :class:`COSName`
+  resolving to a valid encoding (lines 231-234); `set_base_encoding`
+  with an invalid :class:`COSName` raising `ValueError` (lines
+  229-230).
+
+**Coverage delta:** four files all land at 100.0% line + branch
+coverage with 0 partial arms remaining (was: 99% / 98% / 97% / 96%
+with 39 partials + 18 line misses combined). All 66 new tests pass;
+no Java-named camelCase aliases introduced; no new Python
+dependencies; `uv run ruff check` clean. Files touched:
+`tests/pdmodel/font/test_font_branch_closure_wave1399.py` (new),
+`CHANGES.md` (this entry).
+
+## Wave 1399 — close security + AcroForm partial branches (22 → 0 across 4 files)
+
+Continuation of wave 1398's mid-tier branch closure. After wave 1398
+the encryption + form modules still carried 22 partial arms across
+four high-traffic files (per the wave 1399 audit):
+`security_handler.py` (8), `standard_security_handler.py` (5),
+`public_key_security_handler.py` (3), and `pd_acro_form.py` (7).
+This wave closes every one of them via behavioural tests — encrypt
++ decrypt round-trips, recipient-envelope edge cases, FDF import /
+export edge cases, and widget appearance-stream selection — with
+zero `# pragma: no branch` markers added (project-wide
+aggressive-no-pragma policy applies; none of the 22 arms qualified
+as mathematically unreachable). 32 new tests across four files:
+
+- **`pypdfbox/pdmodel/encryption/security_handler.py`** (8 partials
+  + 1 line miss → 0): `decrypt_stream_in_place` legacy duck-typed
+  stream with `get_item("Type")=None` (517->521); legacy stream with
+  neither `get_cos_name` nor `get_item` (517 False arm); decrypt
+  metadata=False on /Metadata stream early-return (525 True arm)
+  and decrypt metadata=True on /Image stream fall-through to body
+  decrypt (525->528 False arm); `get_raw_bytes` returning non-bytes
+  value skips set_raw_bytes (537->exit); `_decrypt_dictionary`
+  `get_item("CF")` raising tolerated by broad-except (549->557);
+  duck-typed dict without callable `get_item` skips CF probe
+  block; duck-typed dict with /Contents COSString + /ByteRange
+  non-COSArray not detected as signature (568->577); dict-like
+  with no `entry_set`/`items` skips iteration (581->595);
+  `_decrypt_array` with replacement-returning decrypt invokes
+  `.set` setter (line 608) and without callable setter falls back
+  to `__setitem__` (608 False arm).
+
+- **`pypdfbox/pdmodel/encryption/standard_security_handler.py`**
+  (5 partials → 0): `_is_aes_v4` with /CF/StdCF /CFM=None falling
+  back to /StmF heuristic (712->716); `_resolve_cfm` same fallback
+  (739->744); `prepare_document` against a document lacking
+  `set_encryption_dictionary` exits cleanly (1148->exit);
+  `_get_document_id_bytes` with non-callable `size` attribute
+  returns `b""` (1187->1201); `_validate_perms_r5_r6` with a
+  positive (high bit clear) permission integer matching /P
+  (1750->1752 False arm). Two additional behavioural round-trips
+  (R4-AES-128 via /CF, R6-AES-256 with custom permissions) confirm
+  the full prepare-document → set-encryption-dictionary pipeline.
+
+- **`pypdfbox/pdmodel/encryption/public_key_security_handler.py`**
+  (3 partials → 0): `prepare_for_decryption` recipient-envelope
+  loop where `pkcs7_decrypt_der` returns ``None`` mid-loop (no
+  raise but no plaintext either) continues to next blob (130->123);
+  decrypted envelope of exactly 20 bytes (seed only, no
+  per-recipient permission tail) skips the permissions
+  propagation (149->160); `compute_version_number` with policy
+  whose `get_encryption_key_length()` returns 0 keeps the
+  handler's default key length (683->686).
+
+- **`pypdfbox/pdmodel/interactive/form/pd_acro_form.py`** (7
+  partials → 0): `get_calc_order` skips /CO entries that
+  `PDFieldFactory.create_field` cannot build (531->526);
+  `refresh_appearances` skips non-`PDTerminalField` entries in
+  the input list (609->608); `import_fdf` silently skips FDF
+  fields whose partial names don't resolve in the form
+  (640->635); `export_fdf` against a document with non-callable
+  `get_document` attribute (698->700) and with a cos_doc whose
+  `get_document_id` returns None (702->705) both complete
+  without copying the ID; `flatten(fields=...)` when /Fields is
+  not a COSArray (e.g. sabotaged by an upstream writer) skips
+  the cleanup loop (854->865); `_select_appearance_stream` with
+  /AP/N as a stray COSArray (neither stream nor dict) returns
+  None (951->958).
+
+**Coverage delta:** four files all land at 100.0% line + branch
+coverage with 0 partial arms remaining (was: 99% / 99% / 99% / 99%
+with 22 partials combined). All 32 new tests pass; no Java-named
+camelCase aliases introduced; no new Python dependencies;
+`uv run ruff check` clean. Files touched:
+`tests/pdmodel/encryption/test_security_handler_branch_wave1399.py`
+(new), `tests/pdmodel/encryption/test_standard_security_handler_branch_wave1399.py`
+(new), `tests/pdmodel/encryption/test_public_key_security_handler_branch_wave1399.py`
+(new), `tests/pdmodel/interactive/form/test_pd_acro_form_branch_wave1399.py`
+(new), `CHANGES.md` (this entry).
+
 ## Wave 1398 — branch coverage round-out (622 → 560 partial branches across 30+ files)
 
 Continuation of wave 1397's mid-tier branch closure. After wave 1397

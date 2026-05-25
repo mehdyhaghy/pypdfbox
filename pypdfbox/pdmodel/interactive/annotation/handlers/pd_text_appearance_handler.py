@@ -140,7 +140,7 @@ class PDTextAppearanceHandler(PDAbstractAppearanceHandler):
                 PDAnnotationText.NAME_KEY: self._draw_key,
             }
             painter = dispatch.get(name)
-            if painter is not None:
+            if painter is not None:  # pragma: no branch - _SUPPORTED_NAMES mirrors dispatch keys
                 painter(annotation, cs)
 
     # ------------------------------------------------------------------
