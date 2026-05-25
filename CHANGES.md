@@ -38,6 +38,315 @@ Divergences that remain live (will affect observable behaviour vs Java PDFBox):
 - **`PDFRenderer` pixel-exact parity not portable.** Upstream JUnit comparisons against stored TIFF/PNG references are *not* ported. Pypdfbox uses Pillow + a skia-backed `_aggdraw_compat` rasteriser; byte-equivalent raster output across the Java AWT and the Python pipeline is unachievable. Affected paths use structural parity (page count, MediaBox, Rotation, Contents shape, Resources keys, save-reload round-trip) anchored to the bundled reference PDFs. `pypdfbox/rendering/pdf_renderer.py`.
 - **Skia anti-aliasing vs upstream Java2D AA.** The `_aggdraw_compat` skia path may render edge pixels differently from upstream Java2D in low-resolution rasters. Recorded as a known limitation; full pixel parity is not in scope (see preceding bullet).
 
+## Wave 1397 (cont.) — mid-tier branch closure across 19 files (~75 partial branches → 16)
+
+Parallel to the three state-machine wave-1397 closures (pdf_renderer,
+pd_appearance_generator + type1_parser, pdf_merger_utility + cos_parser),
+this round targets the next concentration of mid-tier files with 2-13
+remaining partial branches. Result: global partial-branch count dropped
+from 638 → 621, with most targeted files reaching 100% branch coverage.
+
+- **`pypdfbox/rendering/page_drawer.py`** — 10 → 0 partial branches.
+  Tests in `tests/rendering/test_page_drawer_branches_wave1397.py`
+  exercise every `callable(helper)` False arm by stubbing
+  `_paste_image` / `_paint_shading` / `_render_annotation` /
+  `_render_glyph` / `_draw_glyph_path` / `_paint_tiling_pattern` /
+  `_render_form_xobject` to `None`, plus the idempotency guards on
+  `set_rendering_hints` / `begin_text_clip` / `end_text_clip` and
+  `show_transparency_group_on_graphics` with a non-PIL graphics arg.
+- **`pypdfbox/text/pdf_text_stripper.py`** — 7 → 0 partial branches.
+  Tests in `tests/text/test_pdf_text_stripper_branches_wave1397.py`
+  cover Tf with a non-COSName name / non-COSNumber size,
+  `_decode_show_text` with a non-PDSimpleFont active font (latin-1
+  fallback), `normalize_word` with a 2-char arabic-presentation-form
+  string (had_change-already-True branch), `normalize_add` with a
+  None text-position item, `handle_line_separation` with
+  `is_paragraph_separation` returning False, and
+  `begin_marked_content_sequence` with properties=None.
+- **`pypdfbox/xmpbox/dom_xmp_parser.py`** — 9 → 1 partial branches.
+  Tests in `tests/xmpbox/test_dom_xmp_parser_branches_wave1397.py`
+  exercise `get_namespace_table` skipping schemas with empty
+  PREFERRED_PREFIX, the `parse_describe_element` /
+  `parse_description_root` / `parse_description_root_attr` /
+  `parse_children_as_properties` non-None-accumulator branches,
+  and `_build_structured_from_li` with unknown attribute-form attrs,
+  single non-rdf:Description children, and Description wrappers
+  carrying unknown attrs. Residual `833->831` is the defensive
+  `if instance is not None` after a method that never returns None.
+- **`pypdfbox/tools/pdfdebugger.py`** — 7 → 3 partial branches.
+  Tests in `tests/tools/test_pdfdebugger_branches_wave1397.py` cover
+  `_format_node` with an empty stream-preview sample, `_stream_preview`
+  with a decoded-path-empty / raw-fallback dispatch, and `_print_summary`
+  text-mode with /Pages absent everywhere.
+- **`pypdfbox/pdmodel/pd_document.py`** — 13 → 9 partial branches.
+  Tests in `tests/pdmodel/test_pd_document_branches_wave1397.py` cover
+  the security-handler `get_current_access_permission` probe falling
+  through when the handler lacks the method, the
+  `assign_acro_form_default_resource` skip when new /DR carries
+  XObject but the old /DR doesn't, the `_import_page_acroform_fixup`
+  non-COSDictionary /Fields entry skip, and the second-call
+  `_import_field_counter` reuse path.
+- **`pypdfbox/fontbox/cmap/cmap_parser.py`** — 12 → 2 partial branches.
+  Tests in `tests/fontbox/cmap/test_cmap_parser_branches_wave1397.py`
+  exercise the type-mismatched-next-token False arms for /WMode,
+  /CMapName, /CMapVersion, /CMapType, /Registry, /Ordering,
+  /Supplement, and the dict-form /CIDSystemInfo with each of the
+  three inner-field keys missing.
+- **`pypdfbox/xmpbox/xmp_paged_text_schema.py`** — 4 → 0 partial
+  branches. Tests in `tests/xmpbox/test_xmp_paged_text_branches_wave1397.py`
+  exercise `_coerce_boolean` with non-string raw, and
+  `get_max_page_size_property` dict-form with each of w/h/unit missing.
+- **`pypdfbox/tools/listbookmarks.py`** — 4 → 0 partial branches.
+  Tests in `tests/tools/test_listbookmarks_branches_wave1397.py`
+  cover `_resolve_page_number` with retrieve_page_number=-1,
+  with a destination that's neither PDPageDestination nor
+  PDNamedDestination, and `_describe_item` paths where the GoTo
+  action's destination resolves to None or is absent entirely.
+- **`pypdfbox/pdmodel/pd_page_content_stream.py`** — 4 → 0 partial
+  branches. Tests in `tests/pdmodel/test_pd_page_content_stream_branches_wave1397.py`
+  pre-populate /Resources/ColorSpace and /Resources/Properties with
+  unrelated entries so the resource-key lookup loops walk every
+  entry without matching, forcing the `_resources.add` allocate path.
+- **`pypdfbox/xmpbox/xml/xmp_serializer.py`** — 3 → 0 partial branches.
+  Tests in `tests/xmpbox/xml/test_xmp_serializer_branches_wave1397.py`
+  cover `serialize_schema` with a schema lacking prefix+namespace
+  (skip xmlns attribute), and `serialize_fields` with bare-field
+  array entries / top-level entries (neither simple nor complex).
+- **`pypdfbox/xmpbox/xmp_basic_job_ticket_schema.py`** — 3 → 0 partial
+  branches. Tests in `tests/xmpbox/test_xmp_basic_job_ticket_branches_wave1397.py`
+  cover `get_jobs` / `get_jobs_property` skipping non-dict entries,
+  and `_dict_to_typed_job` with only Name+URL (ID absent).
+- **`pypdfbox/xmpbox/xmp_schema.py`** — 3 → 0 partial branches.
+  Tests in `tests/xmpbox/test_xmp_schema_branches_wave1397.py` cover
+  a subclass with no NAMESPACE/PREFIX (skip _namespaces registration),
+  `set_unqualified_language_property_value(None)` on absent property,
+  and `internal_add_bag_value` reusing an existing list.
+- **`pypdfbox/text/pdf_marked_content_extractor.py`** — 3 → 0 partial
+  branches. Tests in `tests/text/test_pdf_marked_content_extractor_branches_wave1397.py`
+  cover `begin_marked_content_sequence` with a None top-of-stack,
+  `_dispatch_marked` with an unknown operator, and
+  `_resolve_bdc_properties` with a COSName resolving to None.
+- **`pypdfbox/tools/extract_images.py`** — 3 → 0 partial branches.
+  Tests in `tests/tools/test_extract_images_branches_wave1397.py`
+  cover `show_glyph` with a render-mode reporting neither fill nor
+  stroke, and `process_color` with a non-tiling abstract pattern.
+- **`pypdfbox/xmpbox/xmp_rights_management_schema.py`** — 2 → 0,
+  **`pypdfbox/xmpbox/xmp_media_management_schema.py`** — 2 → 0,
+  **`pypdfbox/xmpbox/xml/namespace_finder.py`** — 2 → 0,
+  **`pypdfbox/xmpbox/type/oecf_type.py`** — 2 → 0,
+  **`pypdfbox/xmpbox/type/layer_type.py`** — 2 → 0,
+  **`pypdfbox/xmpbox/type/cfa_pattern_type.py`** — 2 → 0,
+  **`pypdfbox/xmpbox/exif_schema.py`** — 2 → 1,
+  **`pypdfbox/pdmodel/pd_document_name_dictionary.py`** — 2 → 0.
+  Tests in `tests/xmpbox/test_xmp_rm_mm_exif_branches_wave1397.py`,
+  `tests/xmpbox/test_namespace_finder_branches_wave1397.py`,
+  `tests/xmpbox/type/test_oecf_layer_cfa_branches_wave1397.py`, and
+  `tests/pdmodel/test_pd_document_name_dictionary_branches_wave1397.py`
+  cover their respective False-branch arrows (non-string owner items,
+  UsageTerms without x-default, second add reuses existing list, no
+  xmlns attrs, non-typed children in OECF / Layer / CFAPattern, value
+  lacking set_property_name, catalog /Dests as non-dictionary).
+- **`pypdfbox/pdmodel/interactive/digitalsignature/visible/pd_visible_sig_builder.py`** —
+  5 → 2 partial branches. Tests in
+  `tests/pdmodel/interactive/digitalsignature/visible/test_pd_visible_sig_builder_branches_wave1397.py`
+  cover the `inject_proc_set_array` resources-without-setter loop,
+  `create_visual_signature` with a template lacking `get_document`,
+  and `close_template` with a template lacking `close`.
+- **Branch-coverage delta across these 19 files**: ~75 partial arrows →
+  16. Tests added: 86 (in 19 new test files). No `# pragma: no cover`
+  additions, no new dependencies, no production-API changes, no
+  camelCase aliases.
+
+## Wave 1397 (cont.) — branch coverage closure on `rendering/pdf_renderer.py` (45 → 0 partial branches)
+
+Third state-machine file in this wave: the 3,929-statement renderer
+that already sits at 100% line coverage but leaves 45 partial
+branches from the wave-1392 push. Targeted fixtures + direct unit
+exercises close every reachable arrow; truly-defensive guards get
+`# pragma: no branch` with a one-line reason.
+
+- **`pypdfbox/rendering/pdf_renderer.py`** —
+  45 → 0 partial branches. New test file
+  `tests/rendering/test_pdf_renderer_wave1397_coverage.py`
+  (41 tests, ~960 LOC) drives the reachable branches: CS-resolution
+  initial-colour returns None for stroke + fill paths (SCN / scn with
+  unconvertible components), overprint helper with stroke_rgb=(0,0,0)
+  and both ops active, TJ array entries that are neither COSString
+  nor COSNumber (COSName + COSNull), unknown command tag in aggdraw
+  glyph path builders + path mask builders, function-shading cache
+  hit, soft-mask /TR=/Identity returning None from the lookup
+  builder, /Filter array containing a non-COSName entry, radial
+  gradient pixels where the discriminant goes negative + where every
+  candidate root yields a negative radius, Type 0 font with TTF
+  descendant whose FontDescriptor / FontFile2 are missing, Type 1C
+  font whose CFF program returns None, generic image XObject decoder
+  with `cs is None` and `cs.to_rgb_image` returning a non-Image,
+  Form XObject with an empty /Matrix list (skip CTM concat), `_op_do`
+  dispatch with a non-Image-non-Form XObject, render_page_to_graphics
+  with an explicit `destination` kwarg, Type 3 string rendering with
+  encoding.get_name returning None, paste_image with clip-mask + no
+  alpha channel, _paint_through_clip with no-stroke-no-fill, pattern
+  fill where PDShadingPattern.get_shading returns None. Eleven
+  defensive `if current is not None: current.flush()` guards (post-
+  `_process_form_bytes` flush, soft-mask group teardown flush,
+  knockout-snapshot restore flush, function/radial/patch-mesh
+  gradient pre-paste flushes, transparency-group composite flush,
+  text-knockout sub-canvas composite flush, Type 1 placeholder skip
+  guard, Type 1 path-builder skip-when-None guard) and three
+  mathematically-unreachable guards (`scale > 1.0` after `0 < SM <
+  0.1`; subpath first-segment tag `== "M"`; paint elif `stroke or
+  fill` after early-return at line 2930) marked
+  `# pragma: no branch` with a one-line reason explaining why the
+  False side cannot fire in practice. No new dependencies, no
+  camelCase aliases.
+
+## Wave 1397 (cont.) — branch coverage closure on `pd_appearance_generator` + `type1_parser` (45 → 1 partial branches)
+
+Same wave, second pair of state-machine files identified by the
+remaining branch-gap audit: 23 partial branches on the AcroForm
+appearance generator + 22 on the Type 1 PFA/PFB parser. Targeted
+fixtures + small parser snippets close every reachable arrow.
+
+- **`pypdfbox/pdmodel/interactive/form/pd_appearance_generator.py`** —
+  23 → 0 partial branches. New test file
+  `tests/pdmodel/interactive/form/test_pd_appearance_generator_wave1397.py`
+  (25 tests) covers: `_parse_rv_style` empty-key/value chunk skip;
+  `_parse_rv_runs` invalid color / font-size / background-color /
+  background shorthand False arms; `<br/>` without tail text early
+  return; `set_appearance_value` with a stub that is neither
+  `PDTextField` nor `_ValueField` (Protocol fallback); `_on_state_name_for_widget`
+  with /AP /N as a non-dict and as a /Off-only subdict; the
+  interior-rect clip-path False arms on the combo (`_regenerate_choice_widget`),
+  list-box, single-line text and rich-text widget paths (widgets
+  with width ≤ 2pt skip the W/n emission); `_infer_font_family` when
+  `base_font.get_name` exists but isn't callable; multi-line
+  `_emit_multiline_text` with `value=""` (`_wrap_lines` returns `['']`
+  so `if line:` False arm fires); `_emit_comb_text` with `color=None`;
+  `_resolve_default_appearance` when the getter attribute exists but
+  isn't callable; `_lookup_font_in_widget_appearance` with non-stream
+  subdict entries and with a stream whose /Resources /Font doesn't
+  carry the queried key; `_lookup_font_in_widget_page` with non-callable
+  `get_page`; `_register_font_alias` when the alias is absent from
+  /Font; and `_calculate_matrix` with a non-canonical rotation (e.g.
+  45°). One genuinely-unreachable defensive arm in `_emit_rich_text_runs`
+  (`if text_mode_open:` final close — the bg/underline branches always
+  re-open before the loop end) is marked `# pragma: no branch` with
+  rationale.
+- **`pypdfbox/fontbox/type1/type1_parser.py`** — 22 → 1 partial branches
+  (the last one is a Python 3.14 coverage-tracker quirk on
+  `while True: ... if X: continue` arcs; the True arm IS exercised but
+  not recorded — marked `# pragma: no branch` with rationale and a
+  pointer to the still-passing behavioural test). New test file
+  `tests/fontbox/type1/test_type1_parser_wave1397.py` (29 tests)
+  covers: `Type1Lexer.read_token` EOF (prev-token-update bypass);
+  `read_regular` mid-buffer delimiter break vs EOF-exit; `_read_hex_string`
+  EOF before closing `>`; `_read_bareword` RD with non-INTEGER prev
+  token (literal name → plain RD bareword), and RD at EOF (delimiter
+  byte skip bypassed); `_parse_ascii` FontInfo with non-`_FONT_INFO_KEYS`
+  literal value, FontInfo key with bareword non-true/false/def value,
+  top-level def-without-value; `_read_proc` / `_read_array` CHARSTRING
+  token fall-through; binary parse paths: `lenIV` with non-int value,
+  scalar key with array body (`val is None` skip), END_ARRAY at depth=0
+  (defensive), `_read_numeric_array_value` opener-search skipping
+  readonly/noaccess prefix, trailing non-numeric tokens, trailing-drain
+  through `readonly noaccess def`; `_drain_value` END_ARRAY at depth=0;
+  `_read_subrs` trailing-token loop continuing through readonly;
+  `_read_charstrings` preamble all-4-iterations exhaustion; the
+  upstream-parity `parse_ascii` for-loop completing via length
+  exhaustion (no `currentdict`/`end` early break); and the upstream
+  `read_subrs` index-out-of-range no-op write. One defensive
+  `if name_tok is None: return` after `peek != None` is now marked
+  `# pragma: no cover` (genuinely unreachable since `peek_token()`
+  immediately followed by `next_token()` returns the same token).
+- **Branch-coverage delta on the two files**: 23 + 22 = 45 partial
+  arrows → 1. Tests added: 54 (25 appearance + 29 type 1). Two
+  `# pragma: no cover` / `# pragma: no branch` annotations added with
+  explanatory comments. No new dependencies, no production-API changes,
+  no camelCase aliases.
+
+## Wave 1397 — branch coverage closure on `pdf_merger_utility` + `cos_parser` (66 → 0 partial branches)
+
+After wave 1396 left two state-machine files holding most of the
+remaining branch gaps, this wave closed every reachable `--cov-branch`
+arrow on the cross-document merger and the COSParser hybrid-xref /
+recovery surface. Result: 100% branch coverage on both files (was 41
+partial on `pdf_merger_utility.py` and 26 partial on `cos_parser.py`).
+
+- **`pypdfbox/multipdf/pdf_merger_utility.py`** — 41 → 0 partial
+  branches. New test file `tests/multipdf/test_pdf_merger_branches_wave1397.py`
+  (77 tests) covers: `_hash_cos` over every COS leaf type (incl.
+  empty-body COSStream → branch 93→103, cycle abort, COSObject
+  dereference, float fractional vs integer paths); `_merge_threads`
+  cloner-None / dest-array existing / cloned-not-array branches;
+  `_merge_names` cloner-None false paths + /IDTree strip warning;
+  `_merge_metadata` / `_merge_oc_properties` / `_merge_output_intents`
+  cloner-None tails; `_merge_acro_form` empty-source short-circuit +
+  install-skipped-when-cloner-returns-None; legacy AcroForm
+  duplicate-suffix counter (partial-name-None false branch);
+  `_merge_role_map` cloner-None / duplicate-key warning / dest-wins;
+  `_merge_id_tree` non-dict-values filtered during wrap +
+  duplicate-key warning; `get_number_tree_as_map` /
+  `get_id_tree_as_map` None-tree / empty-locals / wrapped-leaf /
+  kids-iterable branches; `_update_struct_parent_entries` non-dict
+  annot skip + negative-sentinel skip; `_update_page_references_*`
+  None values / unknown shapes / orphan-clone-returns-None;
+  `merge_viewer_preferences` short-circuit when getter / setter
+  missing or src returns None; `merge_language` no-write when dest
+  already set / src returns None; `_merge_page_labels` bad-shape
+  recovery (non-numeric index + rollback). End-to-end paths driven via
+  real `PDDocument.append_document` exercise the catalog-merge tail's
+  four cloner-None False arms (PageMode / PageLayout / Lang /
+  ViewerPreferences) via a monkey-patched `PDFCloneUtility`, plus the
+  page-tree walker's non-dict /Annots entry branches and the
+  bootstrap-struct-tree pages loop. `merge_documents` / 
+  `optimized_merge_documents` with owned file-path source vs.
+  pre-opened `PDDocument` source covers both arms of the `if owns:`
+  finally-close logic in both legacy and optimize-resources paths.
+  Two genuinely-unreachable defensive arms (`isinstance(value,
+  type(value))` tautology in `_hash_cos`, `if dest_pt is not None`
+  after `set_parent_tree(COSDictionary())` two lines up) are marked
+  `# pragma: no branch` with parity rationale.
+- **`pypdfbox/pdfparser/cos_parser.py`** — 26 → 0 partial branches.
+  New test file `tests/pdfparser/test_cos_parser_branches_wave1397.py`
+  (81 tests) covers: `parse_pdf_header` scan-window-full natural exit
+  vs. EOF break; `read_until_end_stream` with `out=None`; `check_pages`
+  trailer-was-rebuild path + invalid `/Pages` shape after rebuild;
+  `check_pages_dictionary` with empty kids / unknown-type kid /
+  /Type /Page leaf / /Type /Pages recursion / bare-dict filtering /
+  resolves-to-None pruning / non-dict payload; `prepare_decryption`
+  unbound / no-encryption / handler-already-attached / handler-absent
+  fall-through; `retrieve_trailer` existing / lenient-rebuild /
+  strict-raises; `dereference_cos_object` with payload missing
+  `set_direct` + `set_key` (the optional-setter probes), with None
+  payload, and with both setters present; `bf_search_for_xref`
+  no-candidates / natural-loop-exit / multi-candidate distance
+  comparison (target near first vs. second xref-stream object);
+  `rebuild_trailer` empty / single-object / two-objects with descending
+  numbers (max_obj False arm) / two-objects both advertising /Encrypt
+  or /ID (per-iter False arms); `parse_trailer` strict-mode
+  digit-loop-skipped / lenient digit-line skip / no-EOL after keyword /
+  no-keyword bail / lookalike-keyword bail; `parse_xref_obj_stream`
+  no-stream-body + s-lookalike (`startxref`) keyword-mismatch;
+  `parse_xref` full walk / unbound-document set_start_xref skip /
+  lenient-recovery; `find_object_key` skip-spaces advances / offset
+  preceded by digit / lenient gen-upgrade / strict object-number
+  mismatch; `validate_xref_offsets` None / empty-dict /
+  negative-offset-skip / corrected-replacement-already-valid;
+  `check_xref_offsets` unbound / empty-recovered fallthrough;
+  `_consume_eol_after_stream_keyword` for CRLF / lone-CR / lone-LF /
+  garbage-byte / EOF; `_peek_two_bytes` EOF cases; plus existing
+  surface like `get_brute_force_parser`, `create_random_access_read_view`,
+  `parse_object_stream_object`, `parse_cos_stream`, `get_encryption`,
+  `get_access_permission`, `validate_stream_length`, `has_pdf_header`.
+  One genuinely-unreachable defensive arm (`if self.position < offset:`
+  after `seek(offset - 1)` on `RandomAccessReadBuffer`, which always
+  honours seek) is marked `# pragma: no branch` with parity rationale.
+- **Branch-coverage delta on the two files**: 41 + 26 = 67 partial
+  arrows → 0. Tests added: 158 (77 merger + 81 parser). No new
+  dependencies, no production-API changes, no camelCase aliases. Two
+  `# pragma: no branch` annotations added with explanatory comments
+  pointing to the upstream code they mirror.
+
 ## Wave 1396 (cont.) — branch coverage push: 992 → 865 partial branches (-127, 12.8% reduction)
 
 Targeted branch coverage closures across 20 modules. The line-coverage

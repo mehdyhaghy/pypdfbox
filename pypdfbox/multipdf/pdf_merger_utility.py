@@ -59,7 +59,11 @@ def _hash_cos(
         # Stable text form — ints round-trip exactly; floats use a
         # fixed-precision repr so 1.0 vs 1.000 both hash the same.
         hasher.update(b"\x02")
-        if isinstance(value, type(value)):
+        # ``isinstance(value, type(value))`` is a tautology kept as a 1:1
+        # parity anchor with upstream's ``case COSNumber`` switch arm in
+        # the Java ICOSVisitor; the False side is therefore unreachable
+        # by construction.
+        if isinstance(value, type(value)):  # pragma: no branch
             n = value.int_value() if hasattr(value, "int_value") else 0
             f = value.float_value() if hasattr(value, "float_value") else 0.0
             if float(n) == f:
@@ -1470,7 +1474,12 @@ class PDFMergerUtility:
             dest_struct_tree.set_parent_tree(COSDictionary())
             dest_catalog.set_struct_tree_root(dest_struct_tree)
             dest_pt = dest_struct_tree.get_parent_tree()
-            if dest_pt is not None:
+            # ``set_parent_tree(COSDictionary())`` two lines up guarantees
+            # ``get_parent_tree()`` round-trips a non-None wrapper; the
+            # None arm is a defensive guard kept for parity with the
+            # upstream ``if (dpt != null)`` check (Java line ~870) and is
+            # unreachable by construction here.
+            if dest_pt is not None:  # pragma: no branch
                 dest_pt.get_cos_object().set_item(_NUMS, COSArray())
             for page in dest_catalog.get_pages():
                 page.get_cos_object().remove_item(_STRUCT_PARENTS)

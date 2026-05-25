@@ -2239,7 +2239,13 @@ class COSParser(BaseParser):
             self.skip_spaces()
             if self.position == offset:
                 self._src.seek(offset - 1)
-                if self.position < offset:
+                # ``seek(offset - 1)`` always lands at offset - 1 for the
+                # in-memory / mmap-backed RandomAccessRead implementations
+                # shipped with pypdfbox, so the False arm of the nested
+                # check is unreachable here; the guard mirrors upstream's
+                # defensive ``if (source.getPosition() < offset)`` (Java
+                # line 1311) and stays for parity.
+                if self.position < offset:  # pragma: no branch
                     peek = self.peek()
                     if peek == RandomAccessRead.EOF or not self.is_digit(peek):
                         self._src.read()

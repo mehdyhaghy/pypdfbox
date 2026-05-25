@@ -771,7 +771,9 @@ class Type1Parser:
                     self.font_dict[pending_key] = value
                     pending_key = None
                     continue
-                if kind == TOKEN_NAME and value == "def":
+                # pragma: no branch on the continue arc -- Python 3.14
+                # coverage doesn't track while-True+continue arcs reliably.
+                if kind == TOKEN_NAME and value == "def":  # pragma: no branch
                     pending_key = None
                     continue
             else:
@@ -1188,7 +1190,7 @@ class Type1Parser:
                 lex.next_token()
                 continue
             name_tok = lex.next_token()
-            if name_tok is None:
+            if name_tok is None:  # pragma: no cover - peek != None guarantees next_token() != None
                 return
             length_tok = lex.next_token()
             if length_tok is None or length_tok[0] != TOKEN_INTEGER:

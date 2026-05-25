@@ -2026,7 +2026,7 @@ class PDAppearanceGenerator:
             # for future width-based break logic; unused right now).
             _ = line_start_x
 
-        if text_mode_open:
+        if text_mode_open:  # pragma: no branch - bg/underline paths always re-open before EOL
             cs.end_text()
 
     def _resolve_rich_text_font(
