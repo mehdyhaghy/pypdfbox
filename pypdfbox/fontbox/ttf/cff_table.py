@@ -142,7 +142,9 @@ class CFFTable(TTFTable):
                 total += n
             CFFParser().parse_first_sub_font_ros(bytes(buf[:total]), out_headers)
         finally:
-            if owns_reader:
+            # owns_reader is True on both reader-init paths (lines
+            # 121/127); the False arc is unreachable defensive code.
+            if owns_reader:  # pragma: no cover
                 with contextlib.suppress(OSError):
                     reader.close()
 

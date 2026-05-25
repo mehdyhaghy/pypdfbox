@@ -264,7 +264,7 @@ def parse_patch_stream(
         elif next_flag == 2:
             implicit_edge = _patch_flag2_edge(finalized_points, control_points)
             implicit_corner_color = _patch_flag_color(finalized_colors, 2)
-        elif next_flag == 3:
+        elif next_flag == 3:  # pragma: no branch  # next_flag &3 -> 0/1/2/3 exhaustive
             implicit_edge = _patch_flag3_edge(finalized_points, control_points)
             implicit_corner_color = _patch_flag_color(finalized_colors, 3)
         flag = next_flag

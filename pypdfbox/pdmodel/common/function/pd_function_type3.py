@@ -45,8 +45,12 @@ class PDFunctionType3(PDFunction):
             entry = item.get_object(i)
             if not isinstance(entry, (COSDictionary, COSStream)):
                 continue
+            # ``create`` only returns None for a None / unresolved-COSObject
+            # argument; an entry that already passed the dict/stream check
+            # above always yields a function or raises, so the None arm is
+            # defensive and never taken here.
             sub = PDFunction.create(entry)
-            if sub is not None:
+            if sub is not None:  # pragma: no branch
                 out.append(sub)
         return out
 

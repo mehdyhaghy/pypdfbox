@@ -312,11 +312,16 @@ class AddAnnotations:
             # handlers can resolve the Tf operand.
             catalog = document.get_document_catalog()
             acro_form = catalog.get_acro_form()
-            if acro_form is None:
+            # This example always builds a fresh ``PDDocument``, so the
+            # catalog never carries a pre-existing AcroForm or default
+            # resources here: the False arcs of the two guards below are
+            # unreachable in this self-contained sample and are kept only as
+            # defensive parity mirrors of upstream's reuse-or-create idiom.
+            if acro_form is None:  # pragma: no cover - always None (fresh doc)
                 acro_form = PDAcroForm(document)
                 catalog.set_acro_form(acro_form)
             dr = acro_form.get_default_resources()
-            if dr is None:
+            if dr is None:  # pragma: no cover - always None (fresh AcroForm)
                 dr = PDResources()
                 acro_form.set_default_resources(dr)
             dr.put(

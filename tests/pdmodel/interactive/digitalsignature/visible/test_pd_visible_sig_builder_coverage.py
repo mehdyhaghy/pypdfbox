@@ -2,14 +2,14 @@
 
 The builder's many ``try: ... except Exception:`` arms are designed to
 degrade gracefully when an upstream pdmodel constructor isn't yet
-wired. Several modules referenced in the ``try`` bodies (notably
-``pypdfbox.pdmodel.common.pd_rectangle``) don't exist in the package
-tree — the real ``PDRectangle`` lives at ``pypdfbox.pdmodel.pd_rectangle``.
-This test inserts a tiny aliasing shim module into ``sys.modules`` so
-the ``try`` bodies execute end-to-end and the upstream rectangle math
-is actually exercised (covers the missing lines in ``create_page``,
-``create_template``, ``create_signature_rectangle``, and
-``create_formatter_rectangle``).
+wired. ``create_page`` / ``create_signature_rectangle`` /
+``create_formatter_rectangle`` import ``PDRectangle`` from
+``pypdfbox.pdmodel.pd_rectangle`` (wave 1403 corrected these from the
+non-existent ``pypdfbox.pdmodel.common.pd_rectangle`` path, which had
+silently routed every call into the ``except`` stub). The
+``common_pd_rectangle_shim`` fixture below is retained as a harmless
+safety net for the legacy import path; the corrected imports succeed
+with or without it.
 
 The ``create_signature`` path uses real ``add_page`` plumbing on the
 template; ``set_signature_image`` is a parity stub so we only assert it
@@ -76,16 +76,14 @@ def test_create_page_builds_pd_page_with_media_box(
     assert "456.0" in text or "456" in text
 
 
-def test_create_page_swallows_exception_when_shim_missing() -> None:
-    """Without the shim, the import fails inside ``create_page`` and the
-    structure is set to ``None`` via the except arm."""
+def test_create_page_builds_real_page_without_shim() -> None:
+    """With the wave-1403 import fix, ``create_page`` resolves
+    ``PDRectangle`` from the real module and builds a page even without
+    the legacy-path shim — it no longer falls into the ``except`` stub."""
     builder = PDVisibleSigBuilder()
     designer = PDVisibleSignDesigner()
     builder.create_page(designer)
-    # Either the shim picked up earlier in the session (page is not None)
-    # or the import truly failed (page is None). Both branches are valid;
-    # the test just asserts no exception escapes.
-    builder.get_structure().get_page()
+    assert builder.get_structure().get_page() is not None
 
 
 # ---------------------------------------------------------------------------

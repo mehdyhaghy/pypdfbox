@@ -219,6 +219,12 @@ class DCTFilter(DCTDecode):
                     app14 = iis.read(payload_size)
                     if len(app14) >= self._POS_TRANSFORM + 1:
                         return app14[self._POS_TRANSFORM]
+                # Restore the cursor past the matched marker before rescanning,
+                # mirroring the three guards above. Without this, a malformed
+                # APP14 with seg_len < _POS_TRANSFORM + 1 leaves the cursor at
+                # the start of the matched "Adobe" bytes and the scan re-matches
+                # forever (infinite loop on crafted input).
+                iis.seek(after_adobe_pos)
             else:
                 a = 0
         return 0

@@ -327,7 +327,7 @@ class SampledImageReader:
                     pixels[px, py] = comps[0]
                 elif mode == "RGB":
                     pixels[px, py] = (comps[0], comps[1], comps[2])
-                elif mode == "CMYK":
+                elif mode == "CMYK":  # pragma: no branch  # mode exhaustively L/RGB/CMYK
                     pixels[px, py] = (comps[0], comps[1], comps[2], comps[3])
             reader.read_bits(padding_bits)
         return out

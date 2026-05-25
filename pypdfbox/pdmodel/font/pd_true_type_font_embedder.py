@@ -107,7 +107,8 @@ class PDTrueTypeFontEmbedder(TrueTypeEmbedder):
         widths: list[int] = [0] * (last_char - first_char + 1)
         cmap = self._get_unicode_cmap()
         for code, name in code_to_name.items():
-            if first_char <= code <= last_char:
+            if first_char <= code <= last_char:  # pragma: no branch  # first/last == min/max(keys)
+
                 gid = 0
                 if glyph_list is not None:
                     uni = glyph_list.to_unicode(name)

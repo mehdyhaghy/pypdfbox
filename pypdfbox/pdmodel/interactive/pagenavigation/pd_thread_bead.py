@@ -275,7 +275,11 @@ class PDThreadBead:
         seen: set[int] = set()
         current: PDThreadBead | None = self
         start_id = id(self._bead)
-        while current is not None:
+        # ``current`` starts as ``self`` and is only ever reassigned to a
+        # non-None next bead (the None case returns one statement earlier),
+        # so the condition is always True on entry and never falls through
+        # to the generator's natural completion.
+        while current is not None:  # pragma: no branch
             cur_id = id(current._bead)
             if cur_id in seen:
                 return

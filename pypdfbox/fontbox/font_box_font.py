@@ -127,8 +127,11 @@ class FontBoxFont(Protocol):
 # subclasses that *do* want the strict spelling are free to add it;
 # the module-level :func:`get_font_b_box` helper below dispatches to
 # whichever spelling is present.
+# A runtime_checkable Protocol always carries ``__protocol_attrs__``;
+# the ``None`` arc is an import-time guard against a future CPython
+# rename and is therefore unreachable in practice.
 _attrs = getattr(FontBoxFont, "__protocol_attrs__", None)
-if _attrs is not None:
+if _attrs is not None:  # pragma: no cover
     _attrs.discard("get_font_b_box")
 del _attrs
 

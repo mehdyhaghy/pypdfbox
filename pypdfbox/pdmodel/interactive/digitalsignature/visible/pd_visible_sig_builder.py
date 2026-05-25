@@ -39,8 +39,8 @@ class PDVisibleSigBuilder(PDFTemplateBuilder):
 
     def create_page(self, properties: PDVisibleSignDesigner) -> None:
         try:
-            from pypdfbox.pdmodel.common.pd_rectangle import PDRectangle
             from pypdfbox.pdmodel.pd_page import PDPage
+            from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
             page = PDPage()
             rect = PDRectangle(
@@ -135,7 +135,7 @@ class PDVisibleSigBuilder(PDFTemplateBuilder):
         self, signature_field: Any, properties: PDVisibleSignDesigner
     ) -> None:
         try:
-            from pypdfbox.pdmodel.common.pd_rectangle import PDRectangle
+            from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
             rect = PDRectangle()
             rect.set_upper_right_x(properties.get_x_axis() + (properties.get_width() or 0.0))
@@ -174,7 +174,7 @@ class PDVisibleSigBuilder(PDFTemplateBuilder):
 
     def create_formatter_rectangle(self, params: list[int]) -> None:
         try:
-            from pypdfbox.pdmodel.common.pd_rectangle import PDRectangle
+            from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
             rect = PDRectangle()
             rect.set_lower_left_x(min(params[0], params[2]))

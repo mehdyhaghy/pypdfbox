@@ -174,7 +174,10 @@ class CreateVisibleSignature2(CreateSignatureBase):
             acro_form.set_append_only(True)
             cos = acro_form.get_cos_object()
             set_direct = getattr(cos, "set_direct", None)
-            if callable(set_direct):
+            # ``set_direct`` lives on ``COSBase`` so a real COS object always
+            # has it; the False arc only guards hypothetical method-less
+            # stand-ins and is unreachable in normal operation.
+            if callable(set_direct):  # pragma: no cover - unreachable False arc
                 set_direct(True)
             acro_form_fields.append(signature_field)
 
@@ -191,12 +194,15 @@ class CreateVisibleSignature2(CreateSignatureBase):
             appearance = PDAppearanceDictionary()
             appearance_cos = appearance.get_cos_object()
             ap_set_direct = getattr(appearance_cos, "set_direct", None)
-            if callable(ap_set_direct):
+            # As above: ``set_direct`` is always present on a real COS object.
+            if callable(ap_set_direct):  # pragma: no cover - unreachable False arc
                 ap_set_direct(True)
             appearance_stream = PDAppearanceStream(form.get_cos_object())
             appearance.set_normal_appearance(appearance_stream)
             set_appearance = getattr(widget, "set_appearance", None)
-            if callable(set_appearance):
+            # ``set_appearance`` lives on ``PDAnnotation``; a real widget
+            # always has it, so the False arc is unreachable in practice.
+            if callable(set_appearance):  # pragma: no cover - unreachable False arc
                 set_appearance(appearance)
 
             # Skip the costly content-stream / image / text drawing in the

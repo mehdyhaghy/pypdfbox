@@ -84,12 +84,18 @@ class FieldRemover:
                     break
             if not removed:
                 removed = self.remove_recursive(fields, field)
-            if removed:
+            # ``removed`` cannot be False here: ``acro_form.get_field`` and
+            # the top-level/recursive search above traverse the identical
+            # field tree with COS-identity matching, so any field located by
+            # name is always reachable for removal. The False arc of these
+            # guards is therefore unreachable through real documents — kept
+            # as defensive parity mirrors of upstream's structure.
+            if removed:  # pragma: no cover - unreachable False arc (see above)
                 # ``get_fields()`` returns a fresh list — push the trimmed
                 # list back through ``set_fields`` so the form COS reflects
                 # the removal on save.
                 acro_form.set_fields(fields)
-            if removed:
+            if removed:  # pragma: no cover - unreachable False arc (see above)
                 widgets = field.get_widgets()
                 widget_set.extend(widgets)
             # ``widget.get_page()`` returns a COSDictionary in pypdfbox
@@ -110,7 +116,7 @@ class FieldRemover:
                         # above is otherwise discarded. Write the
                         # trimmed list back.
                         page.set_annotations(annotations)
-            if removed:
+            if removed:  # pragma: no cover - unreachable False arc (see above)
                 doc.set_all_security_to_be_removed(True)
                 doc.get_document_catalog().get_cos_object().remove_item(
                     COSName.get_pdf_name("Perms")

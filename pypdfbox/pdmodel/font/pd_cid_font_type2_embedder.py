@@ -595,7 +595,7 @@ def _encode_widths(widths: list[int], scaling: float) -> COSArray:
                 inner.add(COSInteger(int(last_value)))
                 outer.add(inner)
                 outer.add(COSInteger(int(cid)))
-        elif state is _State.SERIAL:  # noqa: SIM102 - upstream branch structure
+        elif state is _State.SERIAL:  # noqa: SIM102 - upstream branch structure  # pragma: no branch  # exhaustive 3-state enum; the elif-false arc is unreachable
             if cid != last_cid + 1 or value != last_value:
                 outer.add(COSInteger(int(last_cid)))
                 outer.add(COSInteger(int(last_value)))
@@ -611,7 +611,7 @@ def _encode_widths(widths: list[int], scaling: float) -> COSArray:
     elif state is _State.BRACKET:
         inner.add(COSInteger(int(last_value)))
         outer.add(inner)
-    elif state is _State.SERIAL:
+    elif state is _State.SERIAL:  # pragma: no branch  # exhaustive 3-state enum
         outer.add(COSInteger(int(last_cid)))
         outer.add(COSInteger(int(last_value)))
     return outer

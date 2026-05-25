@@ -148,7 +148,10 @@ class Tokenizer:
 
     def scan_whitespace(self) -> None:
         self._buffer.append(self.current_char())
-        while self.has_more():
+        # Entered only from tokenize() while has_more() holds and the index
+        # has not advanced, so the guard is always True on entry; the loop
+        # leaves via the else-break, never via has_more() going False here.
+        while self.has_more():  # pragma: no branch
             ch = self.next_char()
             if ch in (_NUL, _TAB, _SPACE):
                 self._buffer.append(ch)
@@ -173,7 +176,10 @@ class Tokenizer:
             self._handler.token("".join(self._buffer))
             self.next_char()
             return
-        while self.has_more():
+        # As in scan_whitespace: entered with the index unmoved since the
+        # tokenize() guard, so has_more() is always True on entry; the loop
+        # leaves via the break, never via has_more() going False here.
+        while self.has_more():  # pragma: no branch
             ch = self.next_char()
             if ch in (_NUL, _TAB, _SPACE, _CR, _LF, _FF, _EOT, "{", "}"):
                 break

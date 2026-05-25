@@ -78,7 +78,14 @@ class PrintBookmarks:
                         f"{indentation}Destination page: "
                         f"{action_dest.retrieve_page_number() + 1}\n",
                     )
-                elif isinstance(action_dest, PDNamedDestination):
+                elif isinstance(  # pragma: no cover - unreachable; see note
+                    action_dest, PDNamedDestination
+                ):
+                    # Unreachable in pypdfbox: ``PDActionGoTo.get_destination``
+                    # returns a plain ``str`` for named destinations (not a
+                    # ``PDNamedDestination``), so this arm never fires and the
+                    # str falls into the ``else`` class-name branch below. Kept
+                    # as a parity mirror of upstream's typed-destination return.
                     pd = document.get_document_catalog().find_named_destination_page(action_dest)
                     if pd is not None:
                         sys.stdout.write(

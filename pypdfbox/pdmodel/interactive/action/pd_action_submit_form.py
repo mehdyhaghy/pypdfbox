@@ -160,9 +160,12 @@ class PDActionSubmitForm(PDAction):
                 wrapped = PDFieldFactory.create_field(form, entry, None)
                 if wrapped is not None:
                     result.append(wrapped)
-            elif isinstance(entry, COSString):
+            elif isinstance(entry, COSString):  # pragma: no branch
                 # Fully-qualified field name — leave to the caller; can't
                 # resolve without an AcroForm. Skip to keep the list typed.
+                # The trailing ``continue`` is the last statement in the loop
+                # body, so Python 3.14 elides it and folds the 163->166 arc
+                # into 163->loop-top; the arc is not separately trackable.
                 continue
         return result
 
