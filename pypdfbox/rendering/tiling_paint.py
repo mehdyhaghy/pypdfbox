@@ -167,31 +167,39 @@ class TilingPaint:
         # (matches a uncolored / unevaluated tile and lets the wrapping
         # paint code remain correct for the common case).
         if drawer is not None and hasattr(drawer, "draw_tiling_pattern"):
+            draw = ImageDraw.Draw(image)
+            # We pass the Draw context as the ``graphics`` arg so a
+            # real implementation can paint into it. The matrix
+            # mirrors upstream's ``newPatternMatrix`` (scale-only +
+            # bbox-relative translate).
+            from pypdfbox.util.matrix import Matrix
+
+            px = abs(self._pattern_matrix.get_scaling_factor_x())
+            py = abs(self._pattern_matrix.get_scaling_factor_y())
+            new_pm = Matrix.get_scale_instance(px, py)
+            bbox = pattern.get_b_box() if hasattr(pattern, "get_b_box") else None
+            if bbox is not None and hasattr(new_pm, "translate"):
+                import contextlib
+
+                with contextlib.suppress(AttributeError, TypeError):
+                    new_pm.translate(-bbox.get_lower_left_x(), -bbox.get_lower_left_y())
+            # Upstream signature is ``(graphics, pattern, colorSpace,
+            # color, matrix)``; our port currently accepts ``(pattern,
+            # color, color_space)`` (page_drawer.py:249). Call the
+            # public-port shape — the stub is a no-op anyway.
+            # Upstream (PDFBOX-5660, svn r1934553) wraps the
+            # ``drawer.drawTilingPattern`` call in try/finally so the
+            # AWT ``Graphics2D`` is disposed even on exception. The
+            # Python ``ImageDraw.Draw`` analogue holds no OS resources
+            # — release is symbolic — but we mirror the structure so
+            # parity stays intact and future drawer changes that *do*
+            # acquire resources inherit the correct cleanup ordering.
             try:
-                draw = ImageDraw.Draw(image)
-                # We pass the Draw context as the ``graphics`` arg so a
-                # real implementation can paint into it. The matrix
-                # mirrors upstream's ``newPatternMatrix`` (scale-only +
-                # bbox-relative translate).
-                from pypdfbox.util.matrix import Matrix
-
-                px = abs(self._pattern_matrix.get_scaling_factor_x())
-                py = abs(self._pattern_matrix.get_scaling_factor_y())
-                new_pm = Matrix.get_scale_instance(px, py)
-                bbox = pattern.get_b_box() if hasattr(pattern, "get_b_box") else None
-                if bbox is not None and hasattr(new_pm, "translate"):
-                    import contextlib
-
-                    with contextlib.suppress(AttributeError, TypeError):
-                        new_pm.translate(-bbox.get_lower_left_x(), -bbox.get_lower_left_y())
-                # Upstream signature is ``(graphics, pattern, colorSpace,
-                # color, matrix)``; our port currently accepts ``(pattern,
-                # color, color_space)`` (page_drawer.py:249). Call the
-                # public-port shape — the stub is a no-op anyway.
                 drawer.draw_tiling_pattern(pattern, color, color_space)
-                del draw, new_pm
             except (AttributeError, TypeError, ValueError) as exc:
                 _LOG.debug("draw_tiling_pattern stub did not render: %s", exc)
+            finally:
+                del draw, new_pm
 
         return image
 

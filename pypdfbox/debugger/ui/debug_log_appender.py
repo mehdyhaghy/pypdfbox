@@ -81,6 +81,10 @@ class DebugLogAppender(logging.Handler):
         self._buffer: deque[str] = deque(maxlen=self._max_records)
         self.setFormatter(_make_formatter())
         self._attached_logger: logging.Logger | None = None
+        # Upstream ``AbstractAppender`` has an ``ignoreExceptions`` slot that
+        # toggles whether write errors propagate. Default True matches
+        # upstream and stdlib :meth:`logging.Handler.handleError` behaviour.
+        self._ignore_exceptions: bool = True
 
     # --- buffer accessors --------------------------------------------------
 
@@ -112,6 +116,58 @@ class DebugLogAppender(logging.Handler):
         # held by the caller in ``Handler.handle``, so no extra synchronisation
         # is required.
         self._buffer.append(formatted)
+
+    def append(self, record: logging.LogRecord) -> None:
+        """Upstream ``append(LogEvent)`` parity wrapper.
+
+        Java's :class:`org.apache.logging.log4j.core.appender.AbstractAppender`
+        defines ``append(LogEvent)`` as the per-event callback; the stdlib
+        :class:`logging.Handler` equivalent is :meth:`emit`. This method is a
+        thin forwarder so the upstream surface is reachable while
+        :meth:`emit` remains the canonical hook used by the Python logging
+        framework.
+        """
+        self.emit(record)
+
+    # --- upstream factory mirror ------------------------------------------
+
+    @classmethod
+    def create_appender(
+        cls,
+        name: str = "DebugLogAppender",
+        filter: object | None = None,  # noqa: A002 — upstream parameter name
+        layout: logging.Formatter | None = None,
+        ignore_exceptions: bool = True,
+        *,
+        max_records: int = DEFAULT_MAX_RECORDS,
+        level: int = logging.INFO,
+    ) -> DebugLogAppender:
+        """Upstream ``createAppender(name, filter, layout, ignoreExceptions)``
+        static-factory parity mirror.
+
+        Java's ``@PluginFactory`` produces a configured ``DebugLogAppender``
+        through this factory entry point. Python doesn't need the factory
+        indirection (the constructor is the factory), but we expose this
+        classmethod so the upstream surface is reachable through the parity
+        matcher and so ported callers that say
+        ``DebugLogAppender.create_appender(name, ...)`` get a configured
+        instance back.
+
+        ``filter`` mirrors upstream's ``Filter`` slot; the stdlib equivalent
+        is :meth:`logging.Handler.addFilter`. When provided, it is attached
+        to the new appender via that hook. ``layout`` accepts a
+        :class:`logging.Formatter`; when ``None`` the upstream PatternLayout
+        mirror is used. ``ignore_exceptions`` mirrors the upstream flag —
+        when ``False``, formatting / write errors propagate instead of being
+        swallowed by :meth:`logging.Handler.handleError`.
+        """
+        appender = cls(name=name, max_records=max_records, level=level)
+        if layout is not None:
+            appender.setFormatter(layout)
+        if filter is not None and hasattr(filter, "filter"):
+            appender.addFilter(filter)
+        appender._ignore_exceptions = bool(ignore_exceptions)
+        return appender
 
     # --- lifecycle ---------------------------------------------------------
 
@@ -167,6 +223,25 @@ class DebugLogAppender(logging.Handler):
         with self.lock if self.lock is not None else _NullLock():
             for r in records:
                 self._buffer.append(r)
+
+    # --- upstream-class static initialiser parity mirror -------------------
+
+    @staticmethod
+    def setup_custom_logger(
+        *,
+        name: str = "DebugLogAppender",
+        level: int = logging.INFO,
+        max_records: int = DEFAULT_MAX_RECORDS,
+    ) -> DebugLogAppender:
+        """Class-level mirror of upstream ``setupCustomLogger``.
+
+        Forwards to the module-level :func:`setup_custom_logger` helper so
+        callers reach the same wiring through either the class
+        (``DebugLogAppender.setup_custom_logger()``, matching upstream's
+        ``DebugLogAppender.setupCustomLogger()``) or the module
+        (``setup_custom_logger()``).
+        """
+        return setup_custom_logger(name=name, level=level, max_records=max_records)
 
 
 class _NullLock:

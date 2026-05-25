@@ -104,3 +104,77 @@ class XrefParser:
         # Upstream's parseXref takes the document fresh — match that.
         self._parser._document = document  # noqa: SLF001 — façade boundary
         return self._parser.parse_xref(start_x_ref_offset)
+
+    # ------------------------------------------------------------------
+    # Upstream private-helper parity surface.
+    #
+    # PDFBox 3.0.x's ``XrefParser`` declares ten ``private`` helpers
+    # (``parseTrailer``, ``parseXrefObjStream``, ``checkXRefOffset``,
+    # ``calculateXRefFixedOffset``, ``checkXRefStreamOffset``,
+    # ``validateXrefOffsets``, ``checkXrefOffsets``, ``findObjectKey``,
+    # ``parseStartXref``, ``parseXrefTable``). pypdfbox keeps the
+    # implementations inlined on :class:`COSParser`; the methods below
+    # are thin façade delegators so the upstream surface is reachable
+    # through ``XrefParser`` exactly as it is in Java. No behavioural
+    # change — each forwards to the existing COSParser inlined version.
+    # ------------------------------------------------------------------
+
+    def parse_trailer(self) -> bool:
+        """Mirror of upstream ``parseTrailer()``. Delegates to
+        :meth:`COSParser.parse_trailer`."""
+        return self._parser.parse_trailer()
+
+    def parse_xref_obj_stream(
+        self, obj_byte_offset: int, is_standalone: bool
+    ) -> int:
+        """Mirror of upstream ``parseXrefObjStream(long, boolean)``. Delegates
+        to :meth:`COSParser.parse_xref_obj_stream`."""
+        return self._parser.parse_xref_obj_stream(obj_byte_offset, is_standalone)
+
+    def check_x_ref_offset(self, start_x_ref_offset: int) -> int:
+        """Mirror of upstream ``checkXRefOffset(long)``. Delegates to
+        :meth:`COSParser.check_x_ref_offset`."""
+        return self._parser.check_x_ref_offset(start_x_ref_offset)
+
+    def calculate_x_ref_fixed_offset(self, object_offset: int) -> int:
+        """Mirror of upstream ``calculateXRefFixedOffset(long)``. Delegates
+        to :meth:`COSParser.calculate_x_ref_fixed_offset`."""
+        return self._parser.calculate_x_ref_fixed_offset(object_offset)
+
+    def check_x_ref_stream_offset(self, start_x_ref_offset: int) -> bool:
+        """Mirror of upstream ``checkXRefStreamOffset(long)``. Delegates to
+        :meth:`COSParser.check_x_ref_stream_offset`."""
+        return self._parser.check_x_ref_stream_offset(start_x_ref_offset)
+
+    def validate_xref_offsets(
+        self, xref_offset: dict[COSObjectKey, int] | None
+    ) -> bool:
+        """Mirror of upstream ``validateXrefOffsets(Map<COSObjectKey, Long>)``.
+        Delegates to :meth:`COSParser.validate_xref_offsets`."""
+        return self._parser.validate_xref_offsets(xref_offset)
+
+    def check_xref_offsets(self) -> None:
+        """Mirror of upstream ``checkXrefOffsets()``. Delegates to
+        :meth:`COSParser.check_xref_offsets`."""
+        self._parser.check_xref_offsets()
+
+    def find_object_key(
+        self,
+        object_key: COSObjectKey,
+        offset: int,
+        xref_offset: dict[COSObjectKey, int],
+    ) -> COSObjectKey | None:
+        """Mirror of upstream
+        ``findObjectKey(COSObjectKey, long, Map<COSObjectKey, Long>)``.
+        Delegates to :meth:`COSParser.find_object_key`."""
+        return self._parser.find_object_key(object_key, offset, xref_offset)
+
+    def parse_start_xref(self) -> int:
+        """Mirror of upstream ``parseStartXref()``. Delegates to
+        :meth:`COSParser.parse_start_xref`."""
+        return self._parser.parse_start_xref()
+
+    def parse_xref_table(self, start_byte_offset: int) -> bool:
+        """Mirror of upstream ``parseXrefTable(long)``. Delegates to
+        :meth:`COSParser.parse_xref_table`."""
+        return self._parser.parse_xref_table(start_byte_offset)

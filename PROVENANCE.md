@@ -13,6 +13,7 @@ This file tracks every source file in `pypdfbox/` that is **ported from Apache P
 
 - Apache PDFBox **3.0.x latest stable** at time of port. Designed to align with PDFBox 4.0 changes (Preflight removed; see `CLAUDE.md` § PDFBox 4.0 Alignment Notes).
 - Upstream repository: https://github.com/apache/pdfbox
+- **Last upstream sync (trunk):** `a71c5679d69bc3fd3ab15e248b69441ee91dca6c` (wave 1396). Previous sync point: `6b9b255eb471b384bac3d2d55c4e47f24fac6dac` (wave 1390).
 
 ## Ported files
 

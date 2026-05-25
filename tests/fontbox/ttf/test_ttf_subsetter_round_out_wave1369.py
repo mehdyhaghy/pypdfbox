@@ -49,6 +49,29 @@ def liberation_sans() -> object:
     font.close()
 
 
+@pytest.fixture
+def fresh_liberation_sans() -> object:
+    """Open a *function-scoped* Liberation Sans TTF.
+
+    The deterministic-bytes assertion below compares two independent
+    ``to_bytes()`` outputs, and ``to_bytes()`` reuses the source font's
+    underlying ``fontTools.ttLib.TTFont`` instance via
+    :meth:`TrueTypeFont._read_all_bytes` (which itself reads the
+    immutable raw byte stream, but the shared font object also caches
+    a lazily-populated ``_tt`` reader that earlier tests in this module
+    — and across the suite — touch through ``get_gid_map`` /
+    ``add_compound_references`` / ``get_new_glyph_id``). Forcing a
+    fresh ``TrueTypeFont`` for this single test removes every plausible
+    cross-test state-leak vector through the shared ``_tt`` cache and
+    keeps the assertion bisection-friendly: the only state that can
+    affect the output now is the codepoints registered inside the
+    test body.
+    """
+    font = TTFParser().parse(os.fspath(_FIXTURE_TTF))
+    yield font
+    font.close()
+
+
 # ---------- registration set semantics ------------------------------------
 
 
@@ -135,11 +158,24 @@ def test_get_gid_map_translates_subset_widths_consistently(
 # ---------- determinism --------------------------------------------------
 
 
-def test_to_bytes_is_deterministic_for_same_input(liberation_sans: object) -> None:
+def test_to_bytes_is_deterministic_for_same_input(
+    fresh_liberation_sans: object,
+) -> None:
     """``recalc_timestamp = False`` makes the subset output reproducible
-    across calls."""
-    sub_a = TTFSubsetter(liberation_sans)  # type: ignore[arg-type]
-    sub_b = TTFSubsetter(liberation_sans)  # type: ignore[arg-type]
+    across calls.
+
+    Uses the function-scoped :func:`fresh_liberation_sans` fixture
+    instead of the module-scoped ``liberation_sans`` so cross-test
+    interactions (other tests in this module + the wider suite mutating
+    the shared ``TrueTypeFont._tt`` fontTools cache through
+    composite-expansion accessors) cannot influence the comparison.
+    Two ``TTFSubsetter`` instances built from the *same* source font
+    with the *same* registered codepoints must always produce identical
+    bytes — and now we guarantee the source font is in its pristine,
+    just-parsed state.
+    """
+    sub_a = TTFSubsetter(fresh_liberation_sans)  # type: ignore[arg-type]
+    sub_b = TTFSubsetter(fresh_liberation_sans)  # type: ignore[arg-type]
     for cp in "ABC":
         sub_a.add(ord(cp))
         sub_b.add(ord(cp))
