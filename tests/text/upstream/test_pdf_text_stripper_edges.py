@@ -52,9 +52,8 @@ def test_defaults_match_upstream() -> None:
     assert s.get_page_start() == ""
     assert s.get_page_end() == "\n"
     assert s.get_paragraph_start() == ""
-    # See comment in ``pdf_text_stripper.py``: pypdfbox keeps
-    # ``"\n"`` here vs upstream's ``""``.
-    assert s.get_paragraph_end() == "\n"
+    # Matches upstream PDFBox's empty ``paragraphEnd`` default.
+    assert s.get_paragraph_end() == ""
     assert s.get_article_start() == ""
     assert s.get_article_end() == ""
     assert s.get_sort_by_position() is False

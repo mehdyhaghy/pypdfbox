@@ -87,7 +87,9 @@ def test_default_configuration() -> None:
     assert s.get_word_separator() == " "
     assert s.get_line_separator() == "\n"
     assert s.get_paragraph_start() == ""
-    assert s.get_paragraph_end() == "\n"
+    # Matches upstream PDFBox's empty ``paragraphEnd`` default — the line
+    # terminator is emitted separately via ``line_separator``.
+    assert s.get_paragraph_end() == ""
     assert s.get_page_start() == ""
     assert s.get_page_end() == "\n"
     assert s.get_should_separate_by_beads() is True

@@ -149,12 +149,15 @@ class PDFTextStripper:
         # axis (transposing the role of the two coordinates).
         self._flip_axes: bool = False
         self._paragraph_start: str = ""
-        # Note: pypdfbox keeps the existing ``"\n"`` default for
-        # ``paragraph_end`` for backward compatibility with the lite
-        # extractor. Upstream PDFBox defaults this to ``""`` and emits
-        # the line terminator separately; we collapse the two until the
-        # stripper grows real paragraph detection.
-        self._paragraph_end: str = "\n"
+        # Upstream PDFBox defaults ``paragraphEnd`` to ``""`` and emits the
+        # line terminator separately (``writeLineSeparator``). The lite
+        # stripper previously defaulted this to ``"\n"``, which doubled the
+        # newline at every detected paragraph break (``write_paragraph_end``
+        # + ``write_line_separator`` both fired ``"\n"``), inserting a
+        # spurious blank line that the Java oracle never emits. Match
+        # upstream's empty default so a paragraph break collapses to the
+        # single ``line_separator`` newline.
+        self._paragraph_end: str = ""
         self._page_start: str = ""
         self._page_end: str = "\n"
         self._word_separator: str = " "

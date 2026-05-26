@@ -71,6 +71,44 @@ def _matmul(m1: _Matrix, m2: _Matrix) -> _Matrix:
     )
 
 
+def _normalise_rotation(rotation: int | None) -> int:
+    """Clamp a page ``/Rotate`` value to one of ``{0, 90, 180, 270}``.
+
+    Mirrors upstream's tolerance for out-of-range / negative multiples of
+    90 (``PDPage.getRotation`` already normalises, but a hostile or
+    hand-built page may still carry an odd value — fall back to 0)."""
+    try:
+        r = int(rotation or 0) % 360
+    except (TypeError, ValueError):
+        return 0
+    if r < 0:
+        r += 360
+    return r if r in (0, 90, 180, 270) else 0
+
+
+def _page_rotation_matrix(rotation: int, width_pt: float, height_pt: float) -> _Matrix:
+    """PDF-space transform that applies a page ``/Rotate`` clockwise and
+    re-anchors the rotated content into the positive quadrant of the
+    (possibly swapped) rotated media box.
+
+    Operates on mediabox-relative user coordinates ``(x, y)`` with
+    ``x∈[0, width_pt]``, ``y∈[0, height_pt]`` (y-up). The 6-tuple is in
+    the same ``[x y 1]·M`` PDF convention as the rest of the renderer's
+    matrices (``x' = a·x + c·y + e``, ``y' = b·x + d·y + f``)."""
+    w = float(width_pt)
+    h = float(height_pt)
+    if rotation == 90:
+        # (x, y) -> (y, w - x); extents become (h, w)
+        return (0.0, -1.0, 1.0, 0.0, 0.0, w)
+    if rotation == 180:
+        # (x, y) -> (w - x, h - y); extents unchanged (w, h)
+        return (-1.0, 0.0, 0.0, -1.0, w, h)
+    if rotation == 270:
+        # (x, y) -> (h - y, x); extents become (h, w)
+        return (0.0, 1.0, -1.0, 0.0, h, 0.0)
+    return _IDENTITY
+
+
 def _to_pil_affine(m: _Matrix) -> tuple[float, float, float, float, float, float]:
     """Convert a PDF CTM ``(a, b, c, d, e, f)`` to PIL/aggdraw's
     ``(a, b, c, d, e, f)`` row-vector form where ``x' = a*x + b*y + c``,
@@ -1074,8 +1112,23 @@ class PDFRenderer(PDFStreamEngine):
         scale = float(dpi) / 72.0
         width_pt = media_box.get_width()
         height_pt = media_box.get_height()
-        width_px = max(1, int(round(width_pt * scale)))
-        height_px = max(1, int(round(height_pt * scale)))
+        # Page rotation (/Rotate) is applied during rasterisation: a 90° or
+        # 270° rotation swaps the rendered image's width and height (mirrors
+        # upstream PDFRenderer.renderImage which sizes the BufferedImage from
+        # the *rotated* page dimensions). The rotation itself is composed
+        # into the device CTM in ``_render_page_into``.
+        # Upstream PDFRenderer truncates the scaled point dimensions to the
+        # next-lower integer (Java ``(int)`` cast == floor for the positive
+        # values produced here), NOT round-half-up. e.g. a 841.89 pt page at
+        # 72 DPI renders 841 px, not 842. ``int()`` on a positive float
+        # truncates toward zero, matching that.
+        rotation = _normalise_rotation(page.get_rotation())
+        if rotation in (90, 270):
+            width_px = max(1, int(height_pt * scale))
+            height_px = max(1, int(width_pt * scale))
+        else:
+            width_px = max(1, int(width_pt * scale))
+            height_px = max(1, int(height_pt * scale))
 
         # aggdraw can only rasterise onto an RGB canvas, so we always
         # render into RGB and convert at teardown when the caller asked
@@ -1206,15 +1259,26 @@ class PDFRenderer(PDFStreamEngine):
         #   device = [scale 0; 0 -scale] * [1 0; 0 1; -mb.x -mb.y] +
         #            [0 height_px]
         # Implemented as a single PDF-style 6-tuple.
+        #
+        # Page rotation (/Rotate) is folded in here: we first map user
+        # space into a "rotated media box" frame (origin still lower-left,
+        # extents possibly swapped for 90/270), then apply the standard
+        # scale + y-flip into pixel space. Mirrors upstream PageDrawer.transform
+        # which prepends the rotate/translate onto the device transform.
         mb_x = page_size.get_lower_left_x()
         mb_y = page_size.get_lower_left_y()
-        self._device_ctm = (
-            scale,
-            0.0,
-            0.0,
-            -scale,
-            -mb_x * scale,
-            mb_y * scale + height_px,
+        width_pt = page_size.get_width()
+        height_pt = page_size.get_height()
+        rotation = _normalise_rotation(self._get_render_rotation(page))
+        # rotate_into_box: translate mediabox to origin, rotate clockwise by
+        # ``rotation`` (PDF /Rotate is clockwise), then translate so content
+        # lands back in the positive quadrant of the rotated frame.
+        rotate_into_box = _page_rotation_matrix(rotation, width_pt, height_pt)
+        translate_origin: _Matrix = (1.0, 0.0, 0.0, 1.0, -mb_x, -mb_y)
+        # flip_scale: rotated-frame (points, y-up) -> pixels (y-down).
+        flip_scale: _Matrix = (scale, 0.0, 0.0, -scale, 0.0, float(height_px))
+        self._device_ctm = _matmul(
+            _matmul(translate_origin, rotate_into_box), flip_scale
         )
 
         # Fresh graphics-state stack with one identity entry.
@@ -1276,6 +1340,17 @@ class PDFRenderer(PDFStreamEngine):
                 current.flush()
             self._draw = None
             self._image = None
+
+    def _get_render_rotation(self, page: PDPage) -> int:
+        """Page ``/Rotate`` value used to drive rasterisation, defensively
+        defaulting to 0 if the accessor is missing or raises."""
+        getter = getattr(page, "get_rotation", None)
+        if not callable(getter):
+            return 0
+        try:
+            return _normalise_rotation(getter())
+        except Exception:  # noqa: BLE001 — hostile/odd page, fall back to 0
+            return 0
 
     def _get_page_for_render(self, page_index: int) -> PDPage:
         if page_index < 0 or page_index >= self._document.get_number_of_pages():

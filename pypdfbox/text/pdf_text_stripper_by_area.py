@@ -209,7 +209,16 @@ class PDFTextStripperByArea(PDFTextStripper):
             # the parser walk used.
             for name in self._regions:
                 bin_positions = self._region_character_list.get(name, [])
-                self._region_text[name] = self._format_positions(bin_positions)
+                formatted = self._format_positions(bin_positions)
+                # Upstream's region writer runs the standard ``writePage``
+                # loop, which terminates the final line of a non-empty
+                # region with ``getLineSeparator()`` (the Java oracle's
+                # ``getTextForRegion`` therefore always ends in ``"\n"``).
+                # ``_format_positions`` only writes separators *between*
+                # lines, so append the trailing separator here to match.
+                if formatted:
+                    formatted += self.get_line_separator()
+                self._region_text[name] = formatted
         finally:
             self._active_page = None
             self._active_cmap = None

@@ -1301,9 +1301,19 @@ class PDFParser:
 
     def populate_document(self) -> None:
         """Walk the consolidated xref and attach a loader to every
-        in-use COSObject in the document pool."""
+        in-use COSObject in the document pool.
+
+        Also mirrors what Apache PDFBox does after consolidating the xref:
+        copy the resolved byte-offset map into ``COSDocument`` so
+        ``getXrefTable()`` reflects the parsed object set. Upstream
+        ``COSParser`` calls ``document.addXRefTable(...)``; pypdfbox builds
+        the same ``COSObjectKey -> offset`` map here following the upstream
+        offset convention — a positive value is the absolute file offset of
+        the object definition; a negative value encodes object-stream
+        membership as ``-objstm_object_number``."""
         assert self._document is not None
         xref = self._resolver.get_xref_table()
+        offset_table: dict[COSObjectKey, int] = {}
         for key, entry in xref.items():
             if entry.compressed_index == -1:
                 # Free entry — skip; PDFBox does not register a placeholder
@@ -1311,6 +1321,15 @@ class PDFParser:
                 continue
             cos_obj = self._document.get_object_from_pool(key)
             cos_obj.set_loader(self._make_loader(entry))
+            if entry.type is XrefType.COMPRESSED:
+                # Compressed object: ``entry.offset`` holds the owning ObjStm
+                # object number. Record it as ``-objstm_object_number`` to
+                # match the COSDocument/PDFBox convention.
+                offset_table[key] = -entry.offset
+            else:
+                offset_table[key] = entry.offset
+        if offset_table:
+            self._document.add_xref_table(offset_table)
 
     def _make_loader(self, entry: XrefEntry):  # type: ignore[no-untyped-def]
         """Build a lazy loader callback for a single xref entry."""

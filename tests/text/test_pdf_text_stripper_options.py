@@ -86,12 +86,13 @@ def test_default_paragraph_start_is_empty() -> None:
     assert s.get_paragraph_start() == ""
 
 
-def test_default_paragraph_end_is_newline() -> None:
-    # See pypdfbox/text/pdf_text_stripper.py: the lite stripper keeps
-    # ``"\n"`` here (vs upstream ``""``) so the existing extraction
-    # contract stays stable until real paragraph detection lands.
+def test_default_paragraph_end_is_empty() -> None:
+    # Matches upstream PDFBox's empty ``paragraphEnd`` default. The lite
+    # stripper previously defaulted to ``"\n"``, which doubled the newline
+    # at every paragraph break (paragraph_end + line_separator both fired
+    # "\n"), inserting a blank line the Java oracle never emits.
     s = PDFTextStripper()
-    assert s.get_paragraph_end() == "\n"
+    assert s.get_paragraph_end() == ""
 
 
 def test_default_page_start_is_empty() -> None:

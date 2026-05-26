@@ -2227,6 +2227,27 @@ class COSWriter(ICOSVisitor):
         # Full saves clear /Prev so we don't claim an incremental chain.
         trailer.remove_item(COSName.PREV)  # type: ignore[attr-defined]
 
+        # A ``trailer`` keyword block follows a *traditional* ``xref`` table.
+        # When the source document used a cross-reference stream, its trailer
+        # COSDictionary IS that XRef stream's dictionary and still carries the
+        # stream-only keys (/Type /XRef, /W, /Index, /Filter, /Length,
+        # /DecodeParms). Those keys are illegal in a classic trailer (PDF
+        # 32000-1 §7.5.5 lists the permitted trailer entries; §7.5.8 confines
+        # /Type=/XRef, /W, /Index, /Filter, /Length, /DecodeParms to the xref
+        # *stream* dictionary). Emitting them in a ``trailer`` block produces a
+        # structurally malformed file — qpdf still recovers via the table but
+        # strict readers may choke. PDFBox never hits this because its classic
+        # path rebuilds a clean trailer; we strip them here to match.
+        for stale in (
+            COSName.TYPE,
+            COSName.W,
+            COSName.INDEX,
+            COSName.FILTER,
+            COSName.LENGTH,
+            COSName.get_pdf_name("DecodeParms"),
+        ):
+            trailer.remove_item(stale)  # type: ignore[attr-defined]
+
         # Hybrid layout (§7.5.8.4): announce the parallel xref stream's
         # offset via /XRefStm so modern readers can use it; legacy readers
         # ignore the key and fall back to the traditional table at

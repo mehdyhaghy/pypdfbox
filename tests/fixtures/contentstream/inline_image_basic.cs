@@ -1,0 +1,11 @@
+q
+1 0 0 1 50 700 cm
+BT /F1 12 Tf (Hello) Tj ET
+100 0 0 100 0 0 cm
+BI /W 4 /H 4 /BPC 8 /CS /G /F /AHx ID
+FF00FF0000FF00FFAABBCCDD11223344>
+EI
+Q
+0.5 0.25 1 RG
+10.5 20 m 30 40 l S
+[(Kern) -250 (test)] TJ
