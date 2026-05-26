@@ -285,14 +285,33 @@ class PDSimpleFont(PDFont):
                 built_in=built_in,
             )
         else:
-            # No /Encoding entry. pypdfbox's established contract is to return
-            # None here (the built-in font-program encoding is surfaced lazily
-            # by per-subclass helpers, not by get_encoding_typed). Upstream
-            # PDFBox instead resolves the built-in via readEncodingFromFont
-            # (e.g. a non-embedded Standard-14 ZapfDingbats yields an
-            # AFM-derived Type1Encoding); that divergence is documented in
-            # CHANGES.md.
-            self._encoding_typed = None
+            # No /Encoding entry. A non-embedded Standard 14 font carries no
+            # /Encoding in its dict but still has a well-defined built-in
+            # encoding (StandardEncoding for the Latin text fonts, the
+            # font-specific Symbol / ZapfDingbats encodings for those two).
+            # Upstream PDFBox's PDSimpleFont.readEncoding resolves it via
+            # readEncodingFromFont(), and PDType1Font.getStandard14Width reads
+            # the per-glyph AFM advance through that encoding — so without it
+            # every code resolves to ``.notdef`` and getWidth/getStringWidth
+            # collapse to the 250-unit substitute width. Mirror upstream for
+            # this case so the AFM metric path returns the real widths.
+            #
+            # For every other no-/Encoding font (bare PDType1Font with no
+            # /BaseFont, embedded programs, non-Standard-14 base names)
+            # pypdfbox's established contract of returning None is preserved —
+            # those fonts surface the built-in via per-subclass helpers, not
+            # through get_encoding_typed. See CHANGES.md.
+            # Use the base ``PDFont.is_standard14`` (name + not-embedded only)
+            # rather than the PDSimpleFont override — the override calls
+            # ``get_encoding_typed`` (the /Differences carve-out) and would
+            # recurse back into this method before ``_encoding_resolved`` is
+            # set. The base check is sufficient here: we are already in the
+            # no-/Encoding branch, so there is no /Differences overlay to
+            # disqualify the font.
+            if PDFont.is_standard14(self) and not self.is_embedded():
+                self._encoding_typed = self.read_encoding_from_font()
+            else:
+                self._encoding_typed = None
         self._encoding_resolved = True
         return self._encoding_typed
 

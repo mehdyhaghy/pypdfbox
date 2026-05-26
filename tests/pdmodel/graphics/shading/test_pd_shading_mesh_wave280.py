@@ -148,8 +148,12 @@ def test_decode_helpers_ignore_malformed_decode_shapes(cls):
 
 
 @pytest.mark.parametrize("cls", MESH_TYPES)
-def test_mesh_decode_docstring_marks_stream_decode_deferred(cls):
+def test_mesh_decode_docstring_describes_stream_decode(cls):
+    # Wave 1431: Type 4/5 mesh-stream decoding is implemented (it was a
+    # deferred stub before). collect_triangles now decodes the bit-packed
+    # mesh into per-vertex points + colours, and the docstring says so.
     doc = cls.__doc__ or ""
 
-    assert "Mesh-data decoding" in doc
-    assert "deferred" in doc
+    assert "per-vertex points + colours" in doc
+    # collect_triangles must be the subclass's own decoder, not the base stub.
+    assert "collect_triangles" in cls.__dict__

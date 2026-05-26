@@ -20,8 +20,8 @@ class PDShadingType4(PDShading):
     ``PDShadingType4`` lite surface.
 
     Type 4 shadings are stream-based: the encoded triangle mesh lives in
-    the stream body. Mesh-data decoding is deferred until the rendering
-    cluster lands.
+    the stream body. :meth:`collect_triangles` decodes that bit-packed
+    mesh into per-vertex points + colours for the renderer.
     """
 
     def __init__(self, dictionary_or_stream: COSDictionary | None = None) -> None:
@@ -169,11 +169,16 @@ class PDShadingType4(PDShading):
         is treated as end-of-stream. Bits-per-flag must be 2, 4, or 8 per
         the spec, but upstream only masks the low two bits.
 
-        The pypdfbox renderer is Pillow-based, so this lite-surface stub
-        validates the prerequisite ``/Decode`` entries and returns an empty
-        list — full mesh decoding is deferred until the rendering cluster
-        lands. Returning an empty list is the same fallback upstream uses
-        for missing/degenerate input."""
+        Returns a list of ``((p0, p1, p2), (c0, c1, c2))`` tuples, where
+        each ``p`` is a decoded ``(x, y)`` point in shading space and each
+        ``c`` is a list of decoded colour components (the renderer applies
+        the CTM, the optional ``/Function``, and the colour-space mapping).
+        ``xform`` / ``matrix`` are accepted for upstream-signature parity
+        but the geometric transform is the renderer's responsibility.
+
+        Returns an empty list when the backing object is not a stream or
+        ``/Decode`` is missing/degenerate, matching upstream's fallback."""
+        _ = (xform, matrix)
         # Backing object must be a stream — upstream returns
         # Collections.emptyList() when the dictionary isn't a COSStream
         # (line 99).
@@ -186,15 +191,86 @@ class PDShadingType4(PDShading):
         if range_x[0] == range_x[1] or range_y[0] == range_y[1]:
             return []
         n = self.get_number_of_color_components()
+        if n <= 0:
+            return []
+        col_range: list[tuple[float, float]] = []
         for i in range(n):
-            if self.get_decode_for_parameter(2 + i) is None:
+            rng = self.get_decode_for_parameter(2 + i)
+            if rng is None:
                 # Upstream raises IOException("Range missing in shading
                 # /Decode entry") at line 115; we mirror that contract by
                 # raising OSError per the project's IOException -> OSError
                 # convention.
                 raise OSError("Range missing in shading /Decode entry")
-        # Mesh decoding deferred to rendering cluster.
-        return []
+            col_range.append(rng)
+
+        bits_per_coord = self.get_bits_per_coordinate()
+        bits_per_comp = self.get_bits_per_component()
+        bits_per_flag = self.get_bits_per_flag()
+        if bits_per_coord <= 0 or bits_per_comp <= 0 or bits_per_flag <= 0:
+            return []
+
+        from .pd_mesh_based_shading_type import _interpolate, _PatchBitReader
+
+        with self._dict.create_input_stream() as src:
+            stream_bytes = src.read()
+        if not stream_bytes:
+            return []
+
+        max_src_coord = (1 << bits_per_coord) - 1
+        max_src_color = (1 << bits_per_comp) - 1
+        reader = _PatchBitReader(stream_bytes)
+
+        def read_vertex() -> tuple[int, tuple[float, float], list[float]]:
+            flag = reader.read_bits(bits_per_flag) & 3
+            sx = reader.read_bits(bits_per_coord)
+            sy = reader.read_bits(bits_per_coord)
+            px = _interpolate(sx, max_src_coord, range_x[0], range_x[1])
+            py = _interpolate(sy, max_src_coord, range_y[0], range_y[1])
+            comps: list[float] = []
+            for k in range(n):
+                c = reader.read_bits(bits_per_comp)
+                comps.append(
+                    _interpolate(c, max_src_color, col_range[k][0], col_range[k][1])
+                )
+            return flag, (px, py), comps
+
+        triangles: list[Any] = []
+        # The three vertices of the triangle currently being assembled.
+        va = vb = vc = None
+        try:
+            while True:
+                flag, point, color = read_vertex()
+                if flag == 0:
+                    # Start of a new free triangle: read two more flag-0
+                    # vertices to complete it (per spec the following two
+                    # vertices also carry flag 0).
+                    va = (point, color)
+                    f1, p1, c1 = read_vertex()
+                    f2, p2, c2 = read_vertex()
+                    vb = (p1, c1)
+                    vc = (p2, c2)
+                    triangles.append(
+                        ((va[0], vb[0], vc[0]), (va[1], vb[1], vc[1]))
+                    )
+                elif flag == 1 and va is not None:
+                    # vb, vc, new — share the last edge (vb, vc).
+                    va, vb, vc = vb, vc, (point, color)
+                    triangles.append(
+                        ((va[0], vb[0], vc[0]), (va[1], vb[1], vc[1]))
+                    )
+                elif flag == 2 and va is not None:
+                    # va, vc, new — share the (va, vc) edge.
+                    vb, vc = vc, (point, color)
+                    triangles.append(
+                        ((va[0], vb[0], vc[0]), (va[1], vb[1], vc[1]))
+                    )
+                else:
+                    # Unknown topology / no prior triangle to extend — stop.
+                    break
+        except EOFError:
+            pass
+        return triangles
 
 
 __all__ = ["PDShadingType4"]

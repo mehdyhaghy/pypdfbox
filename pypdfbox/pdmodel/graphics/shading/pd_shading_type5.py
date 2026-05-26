@@ -19,8 +19,8 @@ class PDShadingType5(PDShading):
     """Lattice-form Gouraud-shaded triangle mesh shading. Mirrors PDFBox
     ``PDShadingType5`` lite surface.
 
-    Mesh-data decoding (lattice grid → triangles) is deferred until the
-    rendering cluster lands.
+    :meth:`collect_triangles` decodes the lattice grid (``/VerticesPerRow``
+    columns, row-major) into per-vertex points + colours for the renderer.
     """
 
     def __init__(self, dictionary_or_stream: COSDictionary | None = None) -> None:
@@ -160,11 +160,18 @@ class PDShadingType5(PDShading):
         adjacent rows produces ``2 * (verticesPerRow - 1)`` triangles
         connecting the lattice cells.
 
-        The pypdfbox renderer is Pillow-based, so this lite-surface stub
-        validates the prerequisite ``/Decode`` and ``/VerticesPerRow``
-        entries and returns an empty list — full mesh decoding is deferred
-        until the rendering cluster lands. Returning an empty list is the
-        same fallback upstream uses for missing/degenerate input."""
+        Returns a list of ``((p0, p1, p2), (c0, c1, c2))`` tuples — the same
+        shape as :meth:`PDShadingType4.collect_triangles` — where each ``p``
+        is a decoded ``(x, y)`` point in shading space and each ``c`` is a
+        list of decoded colour components. The renderer applies the CTM, the
+        optional ``/Function``, and the colour-space mapping. ``xform`` /
+        ``matrix`` are accepted for upstream-signature parity but the
+        geometric transform is the renderer's responsibility.
+
+        Returns an empty list when the backing object is not a stream, the
+        ``/Decode`` array is missing/degenerate, or ``/VerticesPerRow`` is
+        below 2 — matching upstream's fallback for degenerate input."""
+        _ = (xform, matrix)
         # Backing object must be a stream — upstream returns
         # Collections.emptyList() when the dictionary isn't a COSStream.
         if not isinstance(self._dict, COSStream):
@@ -175,18 +182,78 @@ class PDShadingType5(PDShading):
             return []
         if range_x[0] == range_x[1] or range_y[0] == range_y[1]:
             return []
-        if self.get_vertices_per_row() < 2:
+        verts_per_row = self.get_vertices_per_row()
+        if verts_per_row < 2:
             return []
         n = self.get_number_of_color_components()
+        if n <= 0:
+            return []
+        col_range: list[tuple[float, float]] = []
         for i in range(n):
-            if self.get_decode_for_parameter(2 + i) is None:
+            rng = self.get_decode_for_parameter(2 + i)
+            if rng is None:
                 # Upstream raises IOException("Range missing in shading
                 # /Decode entry") at line 110; we mirror that contract by
                 # raising OSError per the project's IOException -> OSError
                 # convention.
                 raise OSError("Range missing in shading /Decode entry")
-        # Mesh decoding deferred to rendering cluster.
-        return []
+            col_range.append(rng)
+
+        bits_per_coord = self.get_bits_per_coordinate()
+        bits_per_comp = self.get_bits_per_component()
+        if bits_per_coord <= 0 or bits_per_comp <= 0:
+            return []
+
+        from .pd_mesh_based_shading_type import _interpolate, _PatchBitReader
+
+        with self._dict.create_input_stream() as src:
+            stream_bytes = src.read()
+        if not stream_bytes:
+            return []
+
+        max_src_coord = (1 << bits_per_coord) - 1
+        max_src_color = (1 << bits_per_comp) - 1
+        reader = _PatchBitReader(stream_bytes)
+
+        def read_vertex() -> tuple[tuple[float, float], list[float]]:
+            sx = reader.read_bits(bits_per_coord)
+            sy = reader.read_bits(bits_per_coord)
+            px = _interpolate(sx, max_src_coord, range_x[0], range_x[1])
+            py = _interpolate(sy, max_src_coord, range_y[0], range_y[1])
+            comps: list[float] = []
+            for k in range(n):
+                c = reader.read_bits(bits_per_comp)
+                comps.append(
+                    _interpolate(c, max_src_color, col_range[k][0], col_range[k][1])
+                )
+            return (px, py), comps
+
+        # Read all vertices row-major into a list of rows, then stitch each
+        # 2x2 lattice cell into two triangles (PDF 32000-1 §8.7.4.5.6).
+        rows: list[list[tuple[tuple[float, float], list[float]]]] = []
+        try:
+            while True:
+                row = [read_vertex() for _ in range(verts_per_row)]
+                rows.append(row)
+        except EOFError:
+            pass
+        # A partial trailing row (truncated stream) is discarded by the loop
+        # above raising mid-read; only complete rows reach ``rows``.
+
+        triangles: list[Any] = []
+        for i in range(len(rows) - 1):
+            for j in range(verts_per_row - 1):
+                v1 = rows[i][j]
+                v2 = rows[i][j + 1]
+                v3 = rows[i + 1][j]
+                v4 = rows[i + 1][j + 1]
+                triangles.append(
+                    ((v1[0], v2[0], v3[0]), (v1[1], v2[1], v3[1]))
+                )
+                triangles.append(
+                    ((v2[0], v4[0], v3[0]), (v2[1], v4[1], v3[1]))
+                )
+        return triangles
 
     def create_shaded_triangle_list(
         self,

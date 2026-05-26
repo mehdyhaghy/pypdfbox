@@ -799,6 +799,41 @@ def _calc_patch_level(
     return (n_u, n_v)
 
 
+def _patch_colour_subdivision_floor(
+    colors: list[list[float]] | tuple[tuple[float, ...], ...],
+) -> int:
+    """Return a per-axis cell-count floor driven by how much the 4 corner
+    colours of a patch vary.
+
+    ``_calc_patch_level`` only measures geometry, so a straight-edged patch
+    with a strong colour gradient subdivides coarsely (e.g. 2 cells) and the
+    Gouraud-shaded cells visibly band. This floor maps the largest per-
+    component corner-colour spread (in [0, 1]) onto a minimum number of
+    cells so each cell's colour step stays small, approximating PDFBox's
+    per-pixel colour blend. The result is capped at ``2 ** _PATCH_MAX_LEVEL``
+    (= 16) — the same cap ``_calc_patch_level`` uses — so the floor never
+    forces more cells than the renderer's hard ceiling allows.
+
+    Returns ``1`` (no extra subdivision) when the 4 corners are uniform.
+    """
+    if not colors:
+        return 1
+    max_spread = 0.0
+    n_comp = min(len(c) for c in colors)
+    for k in range(n_comp):
+        vals = [float(c[k]) for c in colors]
+        spread = max(vals) - min(vals)
+        if spread > max_spread:
+            max_spread = spread
+    if max_spread <= 0.0:
+        return 1
+    # ~16 luminance steps per full-range gradient keeps the per-cell colour
+    # step below the differential-render tolerance; clamp to the geometry
+    # ceiling so this never out-subdivides _calc_patch_level's hard cap.
+    floor = int(round(max_spread * (2 ** _PATCH_MAX_LEVEL)))
+    return max(1, min(floor, 2 ** _PATCH_MAX_LEVEL))
+
+
 def _is_on_same_side(
     point: tuple[float, float],
     e1_a: tuple[float, float],
@@ -4048,6 +4083,14 @@ class PDFRenderer(PDFStreamEngine):
         if isinstance(shading, PDShadingType1):
             self._paint_function_shading(shading, region_mask=region_mask)
             return
+        if isinstance(shading, (PDShadingType4, PDShadingType5)):
+            # Free-form (type 4) / lattice (type 5) Gouraud triangle mesh.
+            handled = self._paint_triangle_mesh_shading(
+                shading, region_mask=region_mask
+            )
+            if handled:
+                return
+            # Decode failure / empty mesh — fall through to the f(0) fallback.
         if isinstance(shading, (PDShadingType6, PDShadingType7)):
             # Wave 1375 — Coons (type 6) / tensor (type 7) patch mesh
             # rasterisation via N×N parametric subdivision.
@@ -4063,12 +4106,14 @@ class PDFRenderer(PDFStreamEngine):
             shading,
             (PDShadingType4, PDShadingType5, PDShadingType6, PDShadingType7),
         ):
-            # Free-form / lattice Gouraud (types 4/5) still fall back to a
-            # uniform fill at f(0); a future wave will port their
-            # triangulator. Patch meshes only land here when ``parse_patches``
-            # returned an empty list (no /Decode etc.).
+            # Mesh shadings only land here when their decoder returned an
+            # empty mesh (missing /Decode, degenerate ranges, empty stream):
+            # types 4/5 via an empty ``collect_triangles`` and types 6/7 via
+            # an empty ``parse_patches``. Fall back to a uniform fill at f(0)
+            # so the region is not left blank.
             _log.debug(
-                "rendering: mesh shading type %s deferred; falling back to f(0)",
+                "rendering: mesh shading type %s produced no geometry; "
+                "falling back to f(0)",
                 type(shading).__name__,
             )
             rgb = self._evaluate_shading_rgb(shading, 0.0)
@@ -4563,6 +4608,152 @@ class PDFRenderer(PDFStreamEngine):
         padded = list(out) + [0.0, 0.0, 0.0]
         return _rgb_bytes(float(padded[0]), float(padded[1]), float(padded[2]))
 
+    # ---- Type 4 / Type 5 (free-form / lattice Gouraud triangle mesh) ----
+
+    def _paint_triangle_mesh_shading(
+        self,
+        shading: Any,
+        *,
+        region_mask: Image.Image,
+    ) -> bool:
+        """Rasterise a Type 4 (free-form) or Type 5 (lattice) Gouraud
+        triangle-mesh shading.
+
+        ``shading.collect_triangles()`` decodes the bit-packed mesh into a
+        list of ``((p0, p1, p2), (c0, c1, c2))`` tuples in shading space.
+        Each vertex's colour vector is routed through the shading's optional
+        ``/Function`` and its colour space, then the triangle is drawn with
+        true per-vertex Gouraud interpolation via skia's ``drawVertices``
+        (PDF 32000-1 §8.7.4.5.5-6). The shading's matrix is folded into the
+        page CTM exactly as the patch-mesh path does.
+
+        Returns ``True`` when the mesh decoded and was painted (even as an
+        empty mesh — the caller should not fall through to the uniform-f(0)
+        fallback). Returns ``False`` only when ``collect_triangles`` raised
+        or produced nothing, so the caller can still draw the legacy
+        solid-colour fallback.
+        """
+        if self._image is None:
+            return False
+        try:
+            triangles = shading.collect_triangles()
+        except Exception as exc:  # noqa: BLE001
+            _log.debug(
+                "rendering: triangle-mesh collect_triangles failed: %s", exc
+            )
+            return False
+        if not triangles:
+            return False
+
+        canvas_w, canvas_h = self._image.size
+        import skia  # noqa: PLC0415
+
+        # Resolve the colour space + optional /Function once.
+        cs_obj = None
+        try:
+            cs_obj = shading.get_color_space()
+        except Exception:  # noqa: BLE001
+            cs_obj = None
+        cs_name = cs_obj.name if isinstance(cs_obj, COSName) else None
+        fn = None
+        try:
+            raw_fn = shading.get_function()
+        except Exception:  # noqa: BLE001
+            raw_fn = None
+        if raw_fn is not None:
+            if hasattr(raw_fn, "eval"):
+                fn = raw_fn
+            else:
+                try:
+                    from pypdfbox.pdmodel.common.function import (  # noqa: PLC0415
+                        PDFunction,
+                    )
+                    fn = PDFunction.create(raw_fn)
+                except Exception:  # noqa: BLE001
+                    fn = None
+
+        # Page CTM (PDF a, b, c, d, e, f) mapping shading/user space to
+        # device space. drawVertices works in this transformed space.
+        a, b, c_, d, e, f = self._full_ctm()
+
+        def to_device(pt: tuple[float, float]) -> tuple[float, float]:
+            x, y = float(pt[0]), float(pt[1])
+            return (a * x + c_ * y + e, b * x + d * y + f)
+
+        color_cache: dict[tuple[float, ...], int] = {}
+
+        def vertex_color(comps: list[float]) -> int:
+            key = tuple(round(v, 6) for v in comps)
+            cached = color_cache.get(key)
+            if cached is not None:
+                return cached
+            interp = list(comps)
+            if fn is not None and interp:
+                try:
+                    out = fn.eval([float(interp[0])])
+                    if out:
+                        interp = [float(v) for v in out]
+                except Exception:  # noqa: BLE001
+                    pass
+            r, g, bl = self._function_output_to_rgb(interp, cs_name)
+            argb = skia.ColorSetARGB(255, r, g, bl)
+            color_cache[key] = argb
+            return argb
+
+        row_bytes = canvas_w * 4
+        pixels = bytearray(canvas_w * canvas_h * 4)
+        info = skia.ImageInfo.Make(
+            canvas_w, canvas_h,
+            skia.kRGBA_8888_ColorType,
+            skia.kUnpremul_AlphaType,
+        )
+        surface = skia.Surface.MakeRasterDirect(info, pixels, row_bytes)
+        if surface is None:  # pragma: no cover - skia always succeeds
+            return False
+        canvas = surface.getCanvas()
+
+        # /Background (painted everywhere first; mesh overpaints covered
+        # triangles, gaps keep the background colour).
+        bg_rgba = self._patch_background_rgba(shading)
+        if bg_rgba is not None:
+            canvas.clear(skia.ColorSetARGB(*bg_rgba))
+
+        paint = skia.Paint(AntiAlias=True)
+        for (p0, p1, p2), (c0, c1, c2) in triangles:
+            positions = [
+                skia.Point(*to_device(p0)),
+                skia.Point(*to_device(p1)),
+                skia.Point(*to_device(p2)),
+            ]
+            colors = [
+                vertex_color(c0),
+                vertex_color(c1),
+                vertex_color(c2),
+            ]
+            verts = skia.Vertices.MakeCopy(
+                skia.Vertices.VertexMode.kTriangles_VertexMode,
+                positions,
+                None,
+                colors,
+            )
+            # kDst keeps the interpolated per-vertex colours and ignores the
+            # paint colour, giving pure Gouraud shading across the triangle.
+            canvas.drawVertices(verts, paint, skia.BlendMode.kDst)
+
+        mesh_img = Image.frombytes("RGBA", (canvas_w, canvas_h), bytes(pixels))
+        if self._draw is not None:
+            self._draw.flush()
+        r, g, b_, alpha = mesh_img.split()
+        masked_a = ImageChops.multiply(alpha, region_mask)
+        mesh_img = Image.merge("RGBA", (r, g, b_, masked_a))
+        if self._image.mode == "RGBA":
+            self._image.alpha_composite(mesh_img)
+        else:
+            self._image.paste(mesh_img, (0, 0), masked_a)
+        self._draw = aggdraw.Draw(self._image)
+        self._draw.setantialias(True)
+        return True
+
     # ---- Type 6 / Type 7 (Coons / tensor patch mesh) ----
 
     # Maximum subdivision count per patch parametric axis. Wave 1377 ports
@@ -4695,8 +4886,19 @@ class PDFRenderer(PDFStreamEngine):
         for patch in patches:
             patch_points = [tuple(p) for p in patch.points]
             n_u, n_v = _calc_patch_level(patch_points, full_ctm, smoothness)
-            n_u = min(n_u, cap)
-            n_v = min(n_v, cap)
+            # ``_calc_patch_level`` measures *geometry* only (it mirrors
+            # upstream's ``calcLevel`` which subdivides a straight-edged
+            # patch coarsely because the AWT renderer interpolates colour
+            # per-pixel). pypdfbox approximates the patch colour with a
+            # Gouraud-shaded cell grid, so a straight-edged patch carrying
+            # a strong colour gradient (e.g. n_u = n_v = 2) would band.
+            # Raise a colour-driven floor so each cell's per-vertex colour
+            # step stays small, matching PDFBox's smooth blend.
+            colour_floor = _patch_colour_subdivision_floor(
+                getattr(patch, "colors", None) or []
+            )
+            n_u = min(max(n_u, colour_floor), cap)
+            n_v = min(max(n_v, colour_floor), cap)
             self._rasterise_single_patch(
                 canvas, skia, patch, control_points, n_u, n_v, fn, cs_name,
                 anti_alias=anti_alias,
@@ -4778,7 +4980,11 @@ class PDFRenderer(PDFStreamEngine):
                     colors, u, v, fn, cs_name,
                 )
 
-        # Push 2 triangles per cell.
+        # Push 2 triangles per cell with true per-vertex Gouraud colour
+        # interpolation (matching PDFBox's per-pixel patch colour blend).
+        # A flat per-triangle average would visibly band when the adaptive
+        # subdivision picks a low N for a near-flat patch (straight
+        # boundaries ⇒ n_u = n_v = 2), so we interpolate inside each cell.
         for j in range(n_v):
             for i in range(n_u):
                 p00 = grid_xy[j][i]
@@ -4789,13 +4995,13 @@ class PDFRenderer(PDFStreamEngine):
                 c10 = grid_rgba[j][i + 1]
                 c01 = grid_rgba[j + 1][i]
                 c11 = grid_rgba[j + 1][i + 1]
-                # Triangle 1: p00 / p10 / p11 — colour = avg of corners
-                self._fill_skia_triangle(
+                # Triangle 1: p00 / p10 / p11
+                self._fill_skia_gouraud_triangle(
                     canvas, skia_mod, p00, p10, p11, c00, c10, c11,
                     anti_alias=anti_alias,
                 )
                 # Triangle 2: p00 / p11 / p01
-                self._fill_skia_triangle(
+                self._fill_skia_gouraud_triangle(
                     canvas, skia_mod, p00, p11, p01, c00, c11, c01,
                     anti_alias=anti_alias,
                 )
@@ -4835,6 +5041,48 @@ class PDFRenderer(PDFStreamEngine):
             AntiAlias=anti_alias,
         )
         canvas.drawPath(path, paint)
+
+    @staticmethod
+    def _fill_skia_gouraud_triangle(
+        canvas: Any,
+        skia_mod: Any,
+        p0: tuple[float, float],
+        p1: tuple[float, float],
+        p2: tuple[float, float],
+        c0: tuple[int, int, int, int],
+        c1: tuple[int, int, int, int],
+        c2: tuple[int, int, int, int],
+        *,
+        anti_alias: bool,
+    ) -> None:
+        """Draw a single triangle with true per-vertex (Gouraud) colour
+        interpolation via skia's ``drawVertices``.
+
+        ``kDst`` keeps the interpolated per-vertex colours and ignores the
+        paint colour. Used by the patch-mesh rasteriser so colour blends
+        smoothly across each subdivision cell instead of banding into flat
+        per-triangle averages (which is visible when the adaptive
+        subdivision picks a low cell count for a near-flat patch)."""
+        if c0[3] <= 0 and c1[3] <= 0 and c2[3] <= 0:
+            return
+        positions = [
+            skia_mod.Point(p0[0], p0[1]),
+            skia_mod.Point(p1[0], p1[1]),
+            skia_mod.Point(p2[0], p2[1]),
+        ]
+        colors = [
+            skia_mod.ColorSetARGB(c0[3], c0[0], c0[1], c0[2]),
+            skia_mod.ColorSetARGB(c1[3], c1[0], c1[1], c1[2]),
+            skia_mod.ColorSetARGB(c2[3], c2[0], c2[1], c2[2]),
+        ]
+        verts = skia_mod.Vertices.MakeCopy(
+            skia_mod.Vertices.VertexMode.kTriangles_VertexMode,
+            positions,
+            None,
+            colors,
+        )
+        paint = skia_mod.Paint(AntiAlias=anti_alias)
+        canvas.drawVertices(verts, paint, skia_mod.BlendMode.kDst)
 
     @staticmethod
     def _coons_patch_eval(

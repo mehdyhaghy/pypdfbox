@@ -188,15 +188,22 @@ def test_get_bounding_box_cached() -> None:
 # ---------- read_encoding_from_font (Standard 14 family-default) ----------
 
 
-def test_read_encoding_from_font_standard_14_returns_standard_encoding() -> None:
-    """Non-embedded Standard 14 (non-Symbol/Dingbats) → StandardEncoding.
-    Mirrors upstream ``PDType1Font.readEncodingFromFont`` first branch."""
-    from pypdfbox.pdmodel.font.encoding.standard_encoding import StandardEncoding
+def test_read_encoding_from_font_standard_14_returns_win_ansi_encoding() -> None:
+    """Non-embedded Standard 14 (non-Symbol/Dingbats) → WinAnsiEncoding.
+
+    Verified against the live PDFBox 3.0.7 oracle (Std14MetricsProbe):
+    ``new PDType1Font(FontName.HELVETICA).getEncoding()`` is
+    ``WinAnsiEncoding``, not StandardEncoding — Acrobat treats the
+    unembedded Latin core fonts as WinAnsi, so code 39 -> ``quotesingle``
+    (191) and code 96 -> ``grave`` (333). Using StandardEncoding mapped
+    those to ``quoteright`` (222) / ``quoteleft`` (222) and broke the AFM
+    per-glyph advance for every disagreeing code."""
+    from pypdfbox.pdmodel.font.encoding.win_ansi_encoding import WinAnsiEncoding
 
     font = PDType1Font()
     font.get_cos_object().set_name(_BASE_FONT, "Helvetica")
     enc = font.read_encoding_from_font()
-    assert enc is StandardEncoding.INSTANCE
+    assert enc is WinAnsiEncoding.INSTANCE
 
 
 def test_read_encoding_from_font_symbol_returns_symbol_encoding() -> None:

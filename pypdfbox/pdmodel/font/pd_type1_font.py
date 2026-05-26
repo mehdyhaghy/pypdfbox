@@ -943,10 +943,22 @@ class PDType1Font(PDSimpleFont):
         """
         from .encoding.standard_encoding import StandardEncoding
         from .encoding.symbol_encoding import SymbolEncoding
+        from .encoding.win_ansi_encoding import WinAnsiEncoding
         from .encoding.zapf_dingbats_encoding import ZapfDingbatsEncoding
 
-        # Non-embedded Standard 14: pick the family-default encoding
-        # which is what the bundled AFM carries.
+        # Non-embedded Standard 14: pick the family-default encoding.
+        # The two FontSpecific fonts (Symbol / ZapfDingbats) use their own
+        # built-in encodings; the twelve Latin text fonts default to
+        # WinAnsiEncoding. This mirrors upstream PDFBox, whose standard-14
+        # PDType1Font constructor assigns ``WinAnsiEncoding.INSTANCE`` for the
+        # non-symbolic fonts even though the bundled Adobe AFM declares
+        # ``EncodingScheme AdobeStandardEncoding`` — Acrobat treats the
+        # unembedded core fonts as WinAnsi by default, so code 39 maps to
+        # ``quotesingle`` (191) rather than ``quoteright`` (222), code 96 to
+        # ``grave`` (333), code 128 to ``Euro`` (556), code 160 to
+        # ``nbspace`` -> ``space`` (278), etc. Using StandardEncoding here
+        # produced the wrong per-glyph AFM advance for every code that the
+        # two encodings disagree on.
         afm = self.get_standard_14_font_metrics()
         if not self.is_embedded() and afm is not None:
             base = self.get_name() or ""
@@ -955,7 +967,7 @@ class PDType1Font(PDSimpleFont):
                 return SymbolEncoding.INSTANCE
             if canonical == "ZapfDingbats":
                 return ZapfDingbatsEncoding.INSTANCE
-            return StandardEncoding.INSTANCE
+            return WinAnsiEncoding.INSTANCE
 
         # Embedded program: surface its built-in encoding when present.
         program = self._get_type1_font()

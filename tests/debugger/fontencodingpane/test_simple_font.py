@@ -58,10 +58,10 @@ def test_simple_font_handles_font_without_encoding(tk_root):
     font_dict.set_name(COSName.get_pdf_name("Subtype"), "Type1")
     font_dict.set_name(COSName.get_pdf_name("BaseFont"), "Helvetica")
     font = PDType1Font(font_dict)
-    # ``PDSimpleFont`` synthesises a default StandardEncoding for
-    # Standard-14 / non-symbolic fonts even when /Encoding is absent,
-    # so the encoding-name string still shows up — we just verify it
-    # constructs and produces some glyph rows.
+    # ``PDSimpleFont`` synthesises a default encoding (WinAnsiEncoding for
+    # the Latin Standard-14 fonts) even when /Encoding is absent, so the
+    # encoding-name string still shows up — we just verify it constructs
+    # and produces some glyph rows.
     pane = SimpleFont(font, tk_root)
     assert pane.total_available_glyphs > 0
 

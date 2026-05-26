@@ -87,13 +87,14 @@ def test_read_encoding_dictionary_with_differences() -> None:
 
 
 def test_read_encoding_missing_falls_back_to_read_encoding_from_font() -> None:
-    """No ``/Encoding`` entry → the embedded program's encoding (Type 1
-    falls back to ``StandardEncoding`` for non-embedded Standard 14)."""
+    """No ``/Encoding`` entry → the program/AFM default encoding (Type 1
+    falls back to ``WinAnsiEncoding`` for a non-embedded Standard 14 Latin
+    font — the Acrobat default, verified against the live PDFBox oracle)."""
     font = PDType1Font()
     font.get_cos_object().set_name(COSName.get_pdf_name("BaseFont"), "Helvetica")
     font.read_encoding()
     typed = font.get_encoding_typed()
-    assert isinstance(typed, StandardEncoding)
+    assert isinstance(typed, WinAnsiEncoding)
 
 
 # ---------- assign_glyph_list (PDSimpleFont.java:470) ----------

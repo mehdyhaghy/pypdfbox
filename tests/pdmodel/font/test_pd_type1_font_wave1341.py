@@ -124,8 +124,11 @@ def test_get_glyph_path_returns_empty_for_notdef_code() -> None:
     ``[]`` without going to the AFM (line 362)."""
     font = PDType1Font()
     font.get_cos_object().set_name(_BASE_FONT, "Helvetica")
-    # Code 0xFF is unmapped under StandardEncoding (resolves to .notdef).
-    path = font.get_glyph_path(0xFF)
+    # A non-embedded Standard-14 Helvetica defaults to WinAnsiEncoding (the
+    # Acrobat default, verified against the live PDFBox oracle), under which
+    # control codes 0x00-0x1F are ``.notdef``. Code 0x01 therefore resolves
+    # to ``.notdef`` and the helper returns ``[]``.
+    path = font.get_glyph_path(0x01)
     assert path == []
 
 
@@ -151,13 +154,18 @@ def test_get_glyph_path_handles_zapf_dingbats_family() -> None:
 # ---------- get_height: AFM hit with no /Encoding ------------------------
 
 
-def test_get_height_returns_zero_when_no_encoding_present() -> None:
-    """A Standard-14 font with an AFM but no ``/Encoding`` returns 0.0
-    (line 524) — upstream's defensive return when the glyph name can't
-    be resolved."""
+def test_get_height_returns_afm_height_via_default_encoding() -> None:
+    """A Standard-14 font with an AFM resolves the glyph name through its
+    default (WinAnsi) encoding and returns the AFM character height.
+
+    Verified against the live PDFBox oracle: Helvetica ``getHeight(0x41)``
+    (code 'A') is 718.0, and a ``.notdef`` code (a control code under
+    WinAnsi) yields 0.0 because the AFM returns 0 for unknown names."""
     font = PDType1Font()
     font.get_cos_object().set_name(_BASE_FONT, "Helvetica")
-    assert font.get_height(0x41) == 0.0
+    assert font.get_height(0x41) == 718.0
+    # Control codes are .notdef under WinAnsi; the AFM returns 0 for them.
+    assert font.get_height(0x01) == 0.0
 
 
 # ---------- generate_bounding_box from embedded program ------------------
