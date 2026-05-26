@@ -13,7 +13,7 @@ import org.apache.pdfbox.pdmodel.encryption.PublicKeyRecipient;
  * (certificate) security handler.
  *
  * Usage:
- *   java -cp <pdfbox-app.jar>:<build> PubKeyEncryptProbe \
+ *   java -cp <pdfbox-app.jar>:<build> PublicKeyEncryptProbe \
  *        in.pdf out.pdf certDer.der <keyLengthBits> <preferAES:true|false>
  *
  * Loads the plaintext input, builds a PublicKeyProtectionPolicy with one
@@ -30,7 +30,7 @@ import org.apache.pdfbox.pdmodel.encryption.PublicKeyRecipient;
  *   128, false -> RC4-128 (V=2, R=3)
  *   40,  false -> RC4-40  (V=1, R=2)
  */
-public final class PubKeyEncryptProbe {
+public final class PublicKeyEncryptProbe {
     public static void main(String[] args) throws Exception {
         File in = new File(args[0]);
         File out = new File(args[1]);

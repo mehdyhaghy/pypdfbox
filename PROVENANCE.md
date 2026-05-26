@@ -701,6 +701,9 @@ Upstream baseline branch: `apache/pdfbox` `3.0` (most files at `pdfbox/src/test/
 | `tests/filter/upstream/test_predictor_class.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/filter/PredictorTest.java` (wave 1363 agent B; ports both upstream tests — `testGetBitSeq` and `testCalcSetBitSeq` — pinning the package-private bit-window helpers used by the sub-byte `BitsPerComponent` predictor path) |
 | `tests/filter/upstream/test_filters_extended.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/filter/TestFilters.java` (wave 1363 agent B; remaining slice — `testFilters` deterministic 10-seed random round-trip across every roundtrip-safe registered filter + `testPDFBOX1977` LZW regression against the bundled 19 321-byte upstream fixture) |
 | `tests/fixtures/filter/PDFBOX-1977.bin` | 3.0.x | `pdfbox/src/test/resources/org/apache/pdfbox/filter/PDFBOX-1977.bin` (wave 1363 agent B; byte-identical 19 321-byte LZW regression blob) |
+| `tests/fixtures/filter/ccittg3.ccitt` | 3.0.x | `pdfbox/src/test/resources/org/apache/pdfbox/pdmodel/graphics/image/ccittg3.tif` (wave 1429; raw CCITT G3 strip bytes extracted from the TIFF, offset 8, 6322 bytes — feeds the decode-parity oracle) |
+| `tests/fixtures/filter/ccittg4.ccitt` | 3.0.x | `pdfbox/src/test/resources/org/apache/pdfbox/pdmodel/graphics/image/ccittg4.tif` (wave 1429; raw CCITT G4 strip bytes, 3857 bytes) |
+| `tests/fixtures/filter/ccittg4multi.ccitt` | 3.0.x | `pdfbox/src/test/resources/org/apache/pdfbox/pdmodel/graphics/image/ccittg4multi.tif` (wave 1429; raw CCITT G4 multi-strip bytes, 221 bytes) |
 
 ### `tests/pdfwriter/upstream/`
 

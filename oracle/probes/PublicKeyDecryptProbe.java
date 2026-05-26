@@ -11,7 +11,7 @@ import org.apache.pdfbox.text.PDFTextStripper;
  * decrypted by recovering its content.
  *
  * Usage:
- *   java -cp <pdfbox-app.jar>:<build> PubKeyDecryptProbe \
+ *   java -cp <pdfbox-app.jar>:<build> PublicKeyDecryptProbe \
  *        in.pdf keystore.p12 <keystorePassword> <alias>
  *
  * Loads the encrypted input through
@@ -27,7 +27,7 @@ import org.apache.pdfbox.text.PDFTextStripper;
  * correct key lets a parity test compare the recovered page count + text
  * against pypdfbox's public-key encryption round-trip.
  */
-public final class PubKeyDecryptProbe {
+public final class PublicKeyDecryptProbe {
     public static void main(String[] args) throws Exception {
         PrintStream out = new PrintStream(System.out, true, "UTF-8");
         File in = new File(args[0]);

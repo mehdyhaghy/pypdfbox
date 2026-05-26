@@ -10,11 +10,11 @@ encrypt side and a PKCS#12 keystore feeds PDFBox's
 
 Two Java probes drive the oracle:
 
-* ``PubKeyEncryptProbe`` — load a plaintext PDF, build a
+* ``PublicKeyEncryptProbe`` — load a plaintext PDF, build a
   ``PublicKeyProtectionPolicy`` with one ``PublicKeyRecipient`` (the shared cert
   + default all-allowed ``AccessPermission``), select the algorithm via
   ``(keyLengthBits, preferAES)``, and save the encrypted result.
-* ``PubKeyDecryptProbe`` — open a public-key-encrypted PDF through
+* ``PublicKeyDecryptProbe`` — open a public-key-encrypted PDF through
   ``Loader.loadPDF(File, keystorePassword, keystoreInputStream, alias)`` (PDFBox
   reads the InputStream as a PKCS#12 KeyStore) and print ``PAGES:<n>`` then the
   ``PDFTextStripper`` text. A keystore whose cert matches no recipient makes
@@ -245,7 +245,7 @@ def _java_pubkey_encrypt(
     src: Path, out: Path, cert_der: Path, key_length: int
 ) -> None:
     run_probe(
-        "PubKeyEncryptProbe",
+        "PublicKeyEncryptProbe",
         str(src),
         str(out),
         str(cert_der),
@@ -256,7 +256,7 @@ def _java_pubkey_encrypt(
 
 def _java_pubkey_decrypt(path: Path, p12: Path) -> tuple[int, str]:
     raw = run_probe_text(
-        "PubKeyDecryptProbe", str(path), str(p12), _P12_PASSWORD, _ALIAS
+        "PublicKeyDecryptProbe", str(path), str(p12), _P12_PASSWORD, _ALIAS
     )
     first, _, rest = raw.partition("\n")
     assert first.startswith("PAGES:"), f"probe framing broke: {first!r}"
@@ -265,7 +265,7 @@ def _java_pubkey_decrypt(path: Path, p12: Path) -> tuple[int, str]:
 
 def _java_pubkey_decrypt_fails(path: Path, p12: Path) -> bool:
     try:
-        run_probe("PubKeyDecryptProbe", str(path), str(p12), _P12_PASSWORD, _ALIAS)
+        run_probe("PublicKeyDecryptProbe", str(path), str(p12), _P12_PASSWORD, _ALIAS)
     except subprocess.CalledProcessError:
         return True
     return False

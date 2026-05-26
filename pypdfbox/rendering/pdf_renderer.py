@@ -3626,23 +3626,41 @@ class PDFRenderer(PDFStreamEngine):
                 "rendering: tiling pattern missing /BBox or /XStep/YStep"
             )
             return
-        # Render one cell. We want the cell as it appears under the page's
-        # current CTM scaled by the device CTM, so the tile pixel
-        # dimensions match the on-page dimensions (i.e. one device pixel per
-        # device pixel).
-        full_ctm = self._full_ctm()
-        # Tile bounding-box dimensions in user space.
+        # Render one cell. The pattern's ``/Matrix`` maps pattern space to
+        # the page's *default* (initial) user space — NOT the CTM in force
+        # at the ``scn``/fill call (PDF 32000-1 §8.7.3.1, upstream
+        # ``Matrix.concatenate(getInitialMatrix(), pattern.getMatrix())``).
+        # In this renderer the device CTM already maps page default space to
+        # device pixels (the gs CTM stack starts at identity for a top-level
+        # page), so the full pattern-space -> device-pixel transform is
+        # ``patternMatrix * deviceCtm``. We deliberately do *not* fold in
+        # ``self._gs.ctm`` here — that would re-apply the user-space CTM the
+        # pattern matrix is defined to ignore.
+        try:
+            pattern_matrix = tuple(pattern.get_matrix())
+            if len(pattern_matrix) != 6:
+                pattern_matrix = _IDENTITY
+        except Exception:  # noqa: BLE001
+            pattern_matrix = _IDENTITY
+        pattern_device_ctm = _matmul(pattern_matrix, self._device_ctm)  # type: ignore[arg-type]
+        # Tile bounding-box dimensions in pattern space.
         bbox_w = bbox.get_width()
         bbox_h = bbox.get_height()
         if bbox_w <= 0.0 or bbox_h <= 0.0:
             return
-        # Scale factor from user space to device pixels (same metric used
-        # for stroke-width up-conversion).
-        scale = self._approx_scale(full_ctm)
+        # Per-axis scale from pattern space to device pixels. ``/Matrix`` may
+        # scale the two axes independently, so derive each from the column
+        # norms of the combined transform rather than a single ``det**0.5``
+        # (which would smear an anisotropic scale). For the axis-aligned
+        # scale/translate matrices this covers, these are the absolute
+        # per-axis scale factors.
+        a, b, c, d, _e, _f = pattern_device_ctm
+        sx = (a * a + b * b) ** 0.5 or 1.0
+        sy = (c * c + d * d) ** 0.5 or 1.0
         # Tile size in device pixels — at least 1 px to avoid zero-size
         # PIL images.
-        tile_w_px = max(1, int(round(x_step * scale)))
-        tile_h_px = max(1, int(round(y_step * scale)))
+        tile_w_px = max(1, int(round(x_step * sx)))
+        tile_h_px = max(1, int(round(y_step * sy)))
         # BBox-sized cell region in device pixels (PDF 32000-1 §8.7.3.3:
         # the cell paints into a /BBox sub-region of the (XStep, YStep)
         # lattice; when /XStep or /YStep is larger than /BBox the gap
@@ -3651,8 +3669,8 @@ class PDFRenderer(PDFStreamEngine):
         # (XStep, YStep) and successive tiles paint over each other so
         # rendering the cell at min(bbox, step) keeps the visible result
         # correct without leaking past the next tile origin).
-        bbox_w_px = max(1, min(tile_w_px, int(round(bbox.get_width() * scale))))
-        bbox_h_px = max(1, min(tile_h_px, int(round(bbox.get_height() * scale))))
+        bbox_w_px = max(1, min(tile_w_px, int(round(bbox_w * sx))))
+        bbox_h_px = max(1, min(tile_h_px, int(round(bbox_h * sy))))
 
         # PaintType=2 uncolored tiling: seed the recursive _GState with
         # the tint colour so any cell op that consults the active fill /
@@ -3688,8 +3706,24 @@ class PDFRenderer(PDFStreamEngine):
         self._draw.flush()
         canvas_w, canvas_h = self._image.size
         tiled = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
-        for ty in range(0, canvas_h, tile_h_px):
-            for tx in range(0, canvas_w, tile_w_px):
+        # Lattice phase: the tile lattice is anchored at the device-space
+        # position of the pattern-space cell origin, not the canvas (0, 0)
+        # corner. For a pattern with a translating ``/Matrix`` (or a /BBox
+        # whose lower-left is offset) this shifts every tile so the lattice
+        # registers exactly where PDFBox places it. The tile image's top-left
+        # corner maps to pattern-space point ``(bbox_x, bbox_y + y_step)``
+        # (top edge of the cell in y-up space, which is the smallest device-y
+        # of the tile after the y-flip). We compute that device pixel and
+        # reduce it modulo the tile size so the paste loop still tiles the
+        # whole canvas while honouring the phase.
+        anchor_x, anchor_y = _transform_point(
+            (bbox.get_lower_left_x(), bbox.get_lower_left_y() + y_step),
+            pattern_device_ctm,
+        )
+        phase_x = int(round(anchor_x)) % tile_w_px
+        phase_y = int(round(anchor_y)) % tile_h_px
+        for ty in range(phase_y - tile_h_px, canvas_h, tile_h_px):
+            for tx in range(phase_x - tile_w_px, canvas_w, tile_w_px):
                 tiled.paste(tile, (tx, ty))
         # Combine the tiled alpha with ``region_mask`` so only the path
         # interior receives pattern pixels and only the cell-painted
