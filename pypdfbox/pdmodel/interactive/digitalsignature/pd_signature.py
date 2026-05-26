@@ -48,22 +48,74 @@ def _read_der_length(buf: bytes, offset: int) -> tuple[int, int]:
     return length, 1 + n
 
 
+def _scan_ber_body_len(buf: bytes, body_offset: int) -> int:
+    """Return the body length of an indefinite-length (BER) value whose
+    contents begin at ``body_offset``, excluding the matching
+    end-of-contents (``0x00 0x00``) octets.
+
+    Scans nested TLVs (each of which may itself be indefinite-length)
+    until the matching EOC is reached. Raises :class:`ValueError` on a
+    structural error / overrun.
+    """
+    n = len(buf)
+    cursor = body_offset
+    while cursor < n:
+        if buf[cursor] == 0x00:
+            if cursor + 1 < n and buf[cursor + 1] == 0x00:
+                return cursor - body_offset
+            raise ValueError("BER: lone 0x00 where EOC expected")
+        _t, _hdr, b_off, b_len = _read_der_tlv(buf, cursor)
+        # Advance to the child's sibling, skipping its own EOC octets when
+        # the child is itself indefinite-length.
+        cursor = _tlv_sibling_start(buf, cursor, b_off, b_len)
+    raise ValueError("BER: unterminated indefinite-length value")
+
+
 def _read_der_tlv(buf: bytes, offset: int) -> tuple[int, int, int, int]:
     """Read a TLV at ``offset``. Returns ``(tag, header_len, body_offset, body_len)``.
 
     ``header_len`` is the byte count of tag + length encoding;
     ``body_offset`` = ``offset + header_len``; ``body_len`` is the
-    payload length. Total TLV length is ``header_len + body_len``.
+    payload length (excluding any end-of-contents octets for the BER
+    indefinite-length form). Total DER TLV length is
+    ``header_len + body_len``; for an indefinite-length value add two
+    more bytes for the trailing EOC.
+
+    BER indefinite-length form (length byte ``0x80``) is accepted as well
+    as DER definite-length: Apache PDFBox's default signer (BouncyCastle
+    ``CMSSignedDataGenerator``) emits the detached ``SignedData`` with
+    indefinite-length form, so the SignerInfo walk must tolerate it to
+    verify Java-signed documents.
     """
     if offset >= len(buf):
         raise ValueError("DER TLV: unexpected EOF")
     tag = buf[offset]
+    if offset + 1 < len(buf) and buf[offset + 1] == 0x80:
+        # BER indefinite length: compute body span by scanning to the EOC.
+        header_len = 2
+        body_offset = offset + header_len
+        length = _scan_ber_body_len(buf, body_offset)
+        return tag, header_len, body_offset, length
     length, n_bytes = _read_der_length(buf, offset + 1)
     header_len = 1 + n_bytes
     body_offset = offset + header_len
     if body_offset + length > len(buf):
         raise ValueError("DER TLV: body overruns buffer")
     return tag, header_len, body_offset, length
+
+
+def _tlv_sibling_start(buf: bytes, offset: int, body_offset: int, body_len: int) -> int:
+    """Return the offset of the TLV immediately following the TLV at
+    ``offset`` whose body spans ``[body_offset, body_offset + body_len)``.
+
+    For DER definite-length values this is just ``body_offset + body_len``;
+    for a BER indefinite-length value (length byte ``0x80``) the two
+    end-of-contents octets sit after the body and must be skipped.
+    """
+    end = body_offset + body_len
+    if buf[offset + 1 : offset + 2] == b"\x80":
+        end += 2
+    return end
 
 
 def _walk_signer_info(pkcs7_der: bytes) -> dict[str, bytes] | None:
@@ -95,7 +147,7 @@ def _walk_signer_info(pkcs7_der: bytes) -> dict[str, bytes] | None:
         if oid_tag != 0x06:
             return None
         # content [0] EXPLICIT
-        cursor = oid_body + oid_len
+        cursor = _tlv_sibling_start(pkcs7_der, body, oid_body, oid_len)
         c_tag, _, c_body, c_len = _read_der_tlv(pkcs7_der, cursor)
         if c_tag != 0xA0:
             return None
@@ -109,23 +161,23 @@ def _walk_signer_info(pkcs7_der: bytes) -> dict[str, bytes] | None:
         v_tag, _, v_body, v_len = _read_der_tlv(pkcs7_der, cursor)
         if v_tag != 0x02:
             return None
-        cursor = v_body + v_len
+        cursor = _tlv_sibling_start(pkcs7_der, cursor, v_body, v_len)
         # digestAlgorithms SET OF AlgorithmIdentifier
         da_tag, _, da_body, da_len = _read_der_tlv(pkcs7_der, cursor)
         if da_tag != 0x31:
             return None
-        cursor = da_body + da_len
+        cursor = _tlv_sibling_start(pkcs7_der, cursor, da_body, da_len)
         # encapContentInfo SEQUENCE
         eci_tag, _, eci_body, eci_len = _read_der_tlv(pkcs7_der, cursor)
         if eci_tag != 0x30:
             return None
-        cursor = eci_body + eci_len
+        cursor = _tlv_sibling_start(pkcs7_der, cursor, eci_body, eci_len)
         # OPTIONAL: certificates [0] IMPLICIT, crls [1] IMPLICIT
         while cursor < sd_end:
             peek_tag = pkcs7_der[cursor]
             if peek_tag in (0xA0, 0xA1):
                 _, _, opt_body, opt_len = _read_der_tlv(pkcs7_der, cursor)
-                cursor = opt_body + opt_len
+                cursor = _tlv_sibling_start(pkcs7_der, cursor, opt_body, opt_len)
                 continue
             if peek_tag == 0x31:
                 break  # signerInfos SET
@@ -144,12 +196,14 @@ def _walk_signer_info(pkcs7_der: bytes) -> dict[str, bytes] | None:
         sv_tag, _, sv_body, sv_len = _read_der_tlv(pkcs7_der, cursor)
         if sv_tag != 0x02:
             return None
-        cursor = sv_body + sv_len
+        cursor = _tlv_sibling_start(pkcs7_der, cursor, sv_body, sv_len)
         # sid: SignerIdentifier — IssuerAndSerialNumber (SEQUENCE 0x30) or
         # subjectKeyIdentifier (tagged [0] IMPLICIT, 0x80). Skip its TLV.
+        sid_off = cursor
         _sid_tag, _, sid_body, sid_len = _read_der_tlv(pkcs7_der, cursor)
-        cursor = sid_body + sid_len
+        cursor = _tlv_sibling_start(pkcs7_der, sid_off, sid_body, sid_len)
         # digestAlgorithm AlgorithmIdentifier ::= SEQUENCE { OID, params }
+        diga_off = cursor
         diga_tag, _, diga_body, diga_len = _read_der_tlv(pkcs7_der, cursor)
         if diga_tag != 0x30:
             return None
@@ -159,20 +213,26 @@ def _walk_signer_info(pkcs7_der: bytes) -> dict[str, bytes] | None:
         if diga_oid_tag != 0x06:
             return None
         digest_algo_oid = pkcs7_der[diga_oid_body : diga_oid_body + diga_oid_len]
-        cursor = diga_body + diga_len
+        cursor = _tlv_sibling_start(pkcs7_der, diga_off, diga_body, diga_len)
         # OPTIONAL: signedAttrs [0] IMPLICIT SET OF Attribute
         signed_attrs_set: bytes | None = None
         if cursor < first_end and pkcs7_der[cursor] == 0xA0:
+            sa_off = cursor
             sa_tag, _, sa_body, sa_len = _read_der_tlv(pkcs7_der, cursor)
             # Re-encode as ``SET OF`` (0x31) per RFC 5652 §5.4: signature
             # is computed over the SET-tagged DER, not the IMPLICIT tag.
             # We rebuild the length encoding ourselves to mirror DER's
             # short/long-form rules — copying the original header would
-            # only work for short-form lengths.
+            # only work for short-form lengths. Indefinite-length signedAttrs
+            # are not re-encoded here (BouncyCastle emits definite-length
+            # signedAttrs even inside an indefinite SignedData); a stray EOC
+            # would make the signature math fail safely (returns is_valid
+            # False with a diagnostic) rather than silently pass.
             payload = pkcs7_der[sa_body : sa_body + sa_len]
             signed_attrs_set = b"\x31" + _encode_der_length(sa_len) + payload
-            cursor = sa_body + sa_len
+            cursor = _tlv_sibling_start(pkcs7_der, sa_off, sa_body, sa_len)
         # signatureAlgorithm
+        siga_off = cursor
         siga_tag, _, siga_body, siga_len = _read_der_tlv(pkcs7_der, cursor)
         if siga_tag != 0x30:
             return None
@@ -182,7 +242,7 @@ def _walk_signer_info(pkcs7_der: bytes) -> dict[str, bytes] | None:
         if siga_oid_tag != 0x06:
             return None
         signature_algo_oid = pkcs7_der[siga_oid_body : siga_oid_body + siga_oid_len]
-        cursor = siga_body + siga_len
+        cursor = _tlv_sibling_start(pkcs7_der, siga_off, siga_body, siga_len)
         # signature OCTET STRING
         sig_tag, _, sig_body, sig_len = _read_der_tlv(pkcs7_der, cursor)
         if sig_tag != 0x04:
@@ -912,8 +972,19 @@ class PDSignature:
 
         trimmed = strip_signature_padding(contents)
 
+        # PyCA ``cryptography`` emits a ``UserWarning`` when a PKCS#7 blob is
+        # BER- rather than DER-encoded, then parses it anyway. Apache PDFBox's
+        # default signer (BouncyCastle ``CMSSignedDataGenerator``) produces a
+        # BER indefinite-length detached SignedData, so this warning fires on
+        # every Java-signed document. Suppress it locally: a caller running
+        # under ``-W error`` (e.g. a strict test suite) must not have a valid
+        # Java-signed signature spuriously fail verification.
+        import warnings
+
         try:
-            certs = pkcs7.load_der_pkcs7_certificates(trimmed)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", UserWarning)
+                certs = pkcs7.load_der_pkcs7_certificates(trimmed)
         except Exception as exc:  # noqa: BLE001 — surface any parse failure
             result.errors.append(f"failed to parse PKCS#7 /Contents: {exc}")
             return result

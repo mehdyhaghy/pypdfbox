@@ -473,28 +473,87 @@ def _read_der_length(buf: bytes, offset: int) -> tuple[int, int]:
     return length, 1 + n
 
 
+def _ber_tlv_end(buf: bytes, offset: int) -> int | None:
+    """Return the byte offset just past the TLV starting at ``offset``.
+
+    Handles both DER definite-length and BER indefinite-length (``0x80``)
+    encodings. For an indefinite-length constructed value the contents are
+    scanned recursively until the matching end-of-contents octets
+    (``0x00 0x00``) are reached; the returned offset is just past those
+    EOC bytes. Returns ``None`` on a structural error or buffer overrun
+    (callers fall back to ``rstrip``).
+
+    BouncyCastle's ``CMSSignedDataGenerator`` emits the detached
+    ``SignedData`` blob with indefinite-length form by default — a valid
+    BER (not DER) encoding that a plain DER length read cannot bound, and
+    that ``rstrip(b"\\x00")`` corrupts because the EOC octets and the
+    placeholder padding both look like trailing zeros (ISO 32000-1
+    §12.8.1 only mandates the bytes be a valid ``SignedData``, not strict
+    DER — see CHANGES.md).
+    """
+    n = len(buf)
+    if offset >= n:
+        return None
+    # Tag may be multi-byte (high tag number form, low 5 bits all set).
+    if (buf[offset] & 0x1F) == 0x1F:
+        offset += 1
+        while offset < n and (buf[offset] & 0x80):
+            offset += 1
+        offset += 1  # final tag byte (high bit clear)
+        if offset > n:
+            return None
+    else:
+        offset += 1
+    if offset >= n:
+        return None
+    length_byte = buf[offset]
+    if length_byte != 0x80:
+        # Definite length (short or long form).
+        try:
+            length, n_len = _read_der_length(buf, offset)
+        except ValueError:
+            return None
+        end = offset + n_len + length
+        return end if end <= n else None
+    # Indefinite length: scan contents until matching EOC (0x00 0x00).
+    cursor = offset + 1
+    while cursor < n:
+        if buf[cursor] == 0x00:
+            # An EOC is 0x00 0x00; a single trailing 0x00 (padding) ends scan.
+            if cursor + 1 < n and buf[cursor + 1] == 0x00:
+                return cursor + 2
+            return None
+        nested_end = _ber_tlv_end(buf, cursor)
+        if nested_end is None or nested_end <= cursor:
+            return None
+        cursor = nested_end
+    return None
+
+
 def strip_signature_padding(contents: bytes) -> bytes:
-    """Return the PKCS#7 DER blob from a signature ``/Contents`` value,
+    """Return the PKCS#7 blob from a signature ``/Contents`` value,
     dropping the trailing zero padding the writer adds to fill the
     fixed-width placeholder.
 
     A signature ``/Contents`` is a fixed-width hex string (ISO 32000-1
-    §12.8.1); the actual DER blob is followed by ``\\x00`` padding. The
+    §12.8.1); the actual blob is followed by ``\\x00`` padding. The
     padding cannot be removed with ``rstrip(b"\\x00")`` because a DER value
     may legitimately end in ``0x00`` bytes — rstrip then truncates the blob
     and breaks parsing (intermittently, depending on the blob's final byte).
-    Instead read the outer ``SEQUENCE``'s own DER length and slice exactly
-    that many bytes, which is what conforming readers do. Falls back to
-    ``rstrip`` only when the data isn't a DER ``SEQUENCE`` (tag ``0x30``) or
-    its length can't be decoded.
+    Instead read the outer ``SEQUENCE``'s own length and slice exactly that
+    many bytes, which is what conforming readers do.
+
+    Both DER definite-length and BER indefinite-length encodings are
+    handled: BouncyCastle (and therefore Apache PDFBox's default signer)
+    emits the detached ``SignedData`` with indefinite-length form, whose
+    end-of-contents ``0x00 0x00`` octets are otherwise indistinguishable
+    from the placeholder padding under ``rstrip``. Falls back to ``rstrip``
+    only when the data isn't a ``SEQUENCE`` (tag ``0x30``) or its length
+    can't be decoded.
     """
     if contents[:1] == b"\x30":
-        try:
-            length, n_len = _read_der_length(contents, 1)
-        except ValueError:
-            return contents.rstrip(b"\x00")
-        total = 1 + n_len + length
-        if total <= len(contents):
+        total = _ber_tlv_end(contents, 0)
+        if total is not None and total <= len(contents):
             return contents[:total]
     return contents.rstrip(b"\x00")
 

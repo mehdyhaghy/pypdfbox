@@ -1,0 +1,137 @@
+%PDF-1.4
+%цдья
+1 0 obj
+<<
+/Type /Catalog
+/Pages 2 0 R
+/Version /1.4
+/PageLabels 3 0 R
+>>
+endobj
+4 0 obj
+<<
+/Title (Synthetic Page Labels Fixture)
+/Author (pypdfbox)
+>>
+endobj
+2 0 obj
+<<
+/Type /Pages
+/Kids [5 0 R 6 0 R 7 0 R 8 0 R 9 0 R 10 0 R 11 0 R 12 0 R 13 0 R]
+/Count 9
+>>
+endobj
+3 0 obj
+<<
+/Nums [0 14 0 R 3 15 0 R 6 16 0 R]
+>>
+endobj
+5 0 obj
+<<
+/Type /Page
+/MediaBox [0 0 612 792]
+/Parent 2 0 R
+>>
+endobj
+6 0 obj
+<<
+/Type /Page
+/MediaBox [0 0 612 792]
+/Parent 2 0 R
+>>
+endobj
+7 0 obj
+<<
+/Type /Page
+/MediaBox [0 0 612 792]
+/Parent 2 0 R
+>>
+endobj
+8 0 obj
+<<
+/Type /Page
+/MediaBox [0 0 612 792]
+/Parent 2 0 R
+>>
+endobj
+9 0 obj
+<<
+/Type /Page
+/MediaBox [0 0 612 792]
+/Parent 2 0 R
+>>
+endobj
+10 0 obj
+<<
+/Type /Page
+/MediaBox [0 0 612 792]
+/Parent 2 0 R
+>>
+endobj
+11 0 obj
+<<
+/Type /Page
+/MediaBox [0 0 612 792]
+/Parent 2 0 R
+>>
+endobj
+12 0 obj
+<<
+/Type /Page
+/MediaBox [0 0 612 792]
+/Parent 2 0 R
+>>
+endobj
+13 0 obj
+<<
+/Type /Page
+/MediaBox [0 0 612 792]
+/Parent 2 0 R
+>>
+endobj
+14 0 obj
+<<
+/S /r
+>>
+endobj
+15 0 obj
+<<
+/S /D
+/P (A-)
+/St 1
+>>
+endobj
+16 0 obj
+<<
+/S /A
+>>
+endobj
+xref
+0 17
+0000000000 65535 f
+0000000015 00000 n
+0000000175 00000 n
+0000000284 00000 n
+0000000096 00000 n
+0000000340 00000 n
+0000000411 00000 n
+0000000482 00000 n
+0000000553 00000 n
+0000000624 00000 n
+0000000695 00000 n
+0000000767 00000 n
+0000000839 00000 n
+0000000911 00000 n
+0000000983 00000 n
+0000001011 00000 n
+0000001053 00000 n
+trailer
+<<
+/Root 1 0 R
+/Info 4 0 R
+/ID [<5C9A58A9F173DD90FDCBDEE1B68F7A99> <5C9A58A9F173DD90FDCBDEE1B68F7A99>]
+/Size 17
+>>
+startxref
+1081
+%%EOF
