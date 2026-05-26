@@ -5,53 +5,62 @@ from typing import TYPE_CHECKING, Any
 
 from pypdfbox.jbig2.io.sub_input_stream import SubInputStream
 from pypdfbox.jbig2.segment_data import SegmentData
-from pypdfbox.jbig2.segments.end_of_stripe import EndOfStripe
-from pypdfbox.jbig2.segments.page_information import PageInformation
-from pypdfbox.jbig2.segments.profiles import Profiles
 
 if TYPE_CHECKING:
     from pypdfbox.jbig2.io.image_input_stream import ImageInputStream
 
 # Organisation type constants. Upstream these live on JBIG2Document
-# (``JBIG2Document.RANDOM`` / ``JBIG2Document.SEQUENTIAL``); JBIG2Document is
-# ported in a later wave, so the values are mirrored here so the header parser
-# can stand alone. RANDOM = 0, SEQUENTIAL = 1.
+# (``JBIG2Document.RANDOM`` / ``JBIG2Document.SEQUENTIAL``). The values are
+# mirrored here so the header parser can stand alone. RANDOM = 0, SEQUENTIAL = 1.
 RANDOM = 0
 SEQUENTIAL = 1
 
-# Segment type -> SegmentData subclass dispatch (7.3). Upstream maps every
-# concrete type. Only the segment classes ported so far are mapped to real
-# classes (48 PageInformation, 50 EndOfStripe, 52 Profiles). The remaining
-# region/dictionary/table types are stubbed: the value is the type number, and
-# get_segment_data() raises NotImplementedError until those classes are ported.
-#
-# TODO(later waves): replace the stubbed entries below with the real ported
-# classes as they land — 0 SymbolDictionary; 4/6/7 TextRegion;
-# 16 PatternDictionary; 20/22/23 HalftoneRegion; 36/38/39 GenericRegion;
-# 40/42/43 GenericRefinementRegion; 53 Table.
-_NOT_YET_PORTED = {
-    0: "SymbolDictionary",
-    4: "TextRegion",
-    6: "TextRegion",
-    7: "TextRegion",
-    16: "PatternDictionary",
-    20: "HalftoneRegion",
-    22: "HalftoneRegion",
-    23: "HalftoneRegion",
-    36: "GenericRegion",
-    38: "GenericRegion",
-    39: "GenericRegion",
-    40: "GenericRefinementRegion",
-    42: "GenericRefinementRegion",
-    43: "GenericRefinementRegion",
-    53: "Table",
-}
 
-SEGMENT_TYPE_MAP: dict[int, type[SegmentData]] = {
-    48: PageInformation,
-    50: EndOfStripe,
-    52: Profiles,
-}
+def _build_segment_type_map() -> dict[int, type[SegmentData]]:
+    """Build the segment-type -> SegmentData subclass dispatch (7.3).
+
+    The concrete segment classes are imported lazily so that importing
+    :mod:`segment_header` does not eagerly pull in the heavy region/dictionary
+    decoders (and to avoid any import cycles). Mirrors the static
+    ``SEGMENT_TYPE_MAP`` block in upstream ``SegmentHeader``.
+    """
+    from pypdfbox.jbig2.segments.end_of_stripe import EndOfStripe
+    from pypdfbox.jbig2.segments.generic_refinement_region import (
+        GenericRefinementRegion,
+    )
+    from pypdfbox.jbig2.segments.generic_region import GenericRegion
+    from pypdfbox.jbig2.segments.halftone_region import HalftoneRegion
+    from pypdfbox.jbig2.segments.page_information import PageInformation
+    from pypdfbox.jbig2.segments.pattern_dictionary import PatternDictionary
+    from pypdfbox.jbig2.segments.profiles import Profiles
+    from pypdfbox.jbig2.segments.symbol_dictionary import SymbolDictionary
+    from pypdfbox.jbig2.segments.table import Table
+    from pypdfbox.jbig2.segments.text_region import TextRegion
+
+    return {
+        0: SymbolDictionary,
+        4: TextRegion,
+        6: TextRegion,
+        7: TextRegion,
+        16: PatternDictionary,
+        20: HalftoneRegion,
+        22: HalftoneRegion,
+        23: HalftoneRegion,
+        36: GenericRegion,
+        38: GenericRegion,
+        39: GenericRegion,
+        40: GenericRefinementRegion,
+        42: GenericRefinementRegion,
+        43: GenericRefinementRegion,
+        48: PageInformation,
+        50: EndOfStripe,
+        52: Profiles,
+        53: Table,
+    }
+
+
+# Lazily-populated dispatch cache. Populated on first ``get_segment_data()``.
+SEGMENT_TYPE_MAP: dict[int, type[SegmentData]] = {}
 
 
 class SegmentHeader:
@@ -297,15 +306,10 @@ class SegmentHeader:
             segment_data_part = self._segment_data()
 
         if segment_data_part is None:
+            if not SEGMENT_TYPE_MAP:
+                SEGMENT_TYPE_MAP.update(_build_segment_type_map())
             segment_class = SEGMENT_TYPE_MAP.get(self.segment_type)
             if segment_class is None:
-                # The remaining region/dictionary/table types are not yet
-                # ported. Surface a clear error rather than silently failing.
-                if self.segment_type in _NOT_YET_PORTED:
-                    raise NotImplementedError(
-                        f"segment type {self.segment_type} "
-                        f"({_NOT_YET_PORTED[self.segment_type]}) not yet ported"
-                    )
                 raise ValueError(f"No segment class for type {self.segment_type}")
             try:
                 segment_data_part = segment_class()

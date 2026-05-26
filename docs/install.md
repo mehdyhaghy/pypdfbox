@@ -50,13 +50,12 @@ That installs the runtime dependencies (all permissively licensed):
 
 No GPL, LGPL, AGPL, MPL, EPL, CDDL, SSPL, or BUSL dependencies.
 
-JBIG2 decoding (`/JBIG2Decode`) is currently **unsupported**. The
-only readily available decoder bundles a GPL-licensed native library,
-which the permissive-license policy excludes, so pypdfbox ships no
-JBIG2 decoder: the filter is registered for name recognition only and
-`JBIG2Decode.decode` raises a clear "unsupported" error. A pure-Python
-Apache-2.0 port (of `apache/pdfbox-jbig2`) is planned to restore
-support.
+JBIG2 decoding (`/JBIG2Decode`) is supported by a **first-party
+pure-Python decoder** in `pypdfbox/jbig2/`, ported from the Apache-2.0
+`apache/pdfbox-jbig2` project (the decoder upstream PDFBox uses). It
+adds no dependency and no native code — the GPL `jbig2-parser` it
+replaced was removed under the permissive-license policy. The port is
+differential-tested bit-exact against the bundled Java JBIG2 plugin.
 
 A fresh install pulls roughly 90–110 MB of wheels (mostly Skia
 binaries and imagecodecs's native blobs). Steady-state disk

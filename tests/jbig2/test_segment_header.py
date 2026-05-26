@@ -136,19 +136,37 @@ def test_get_segment_data_for_end_of_stripe():
     assert data.get_line_number() == 12345
 
 
-def test_get_segment_data_not_yet_ported_raises():
-    # Type 38 (GenericRegion) is not yet ported -> NotImplementedError.
-    header_b = struct.pack(">I", 1) + bytes([38]) + bytes([0x00]) + bytes([0x01]) + struct.pack(
-        ">I", 5
+def test_get_segment_data_dispatches_generic_region():
+    # Type 38 (GenericRegion) now dispatches to the ported decoder. The crafted
+    # buffer is the minimal valid generic-region segment data: region segment
+    # information (width 8, height 1, x 0, y 0, op 0) + generic-region flags
+    # (MMR=0, template 0, TPGDON=0) + 4 AT pairs + a single coded byte.
+    region_info = (
+        struct.pack(">I", 8)  # width
+        + struct.pack(">I", 1)  # height
+        + struct.pack(">I", 0)  # x
+        + struct.pack(">I", 0)  # y
+        + bytes([0x00])  # flags: op 0
     )
-    stream = header_b + bytes(5)
+    gen_flags = bytes([0x00])  # MMR 0, template 0, TPGDON 0
+    at = bytes([0x03, 0xFF, 0xFD, 0xFF, 0x02, 0xFE, 0xFE, 0xFE])  # nominal AT
+    coded = bytes([0x00, 0x00])
+    data = region_info + gen_flags + at + coded
+    header_b = (
+        struct.pack(">I", 1)
+        + bytes([38])
+        + bytes([0x00])
+        + bytes([0x01])
+        + struct.pack(">I", len(data))
+    )
+    stream = header_b + data
     sis = SubInputStream(ImageInputStream(stream), 0, len(stream))
     header = SegmentHeader(None, sis, 0, SEQUENTIAL)
 
-    with pytest.raises(NotImplementedError) as exc:
-        header.get_segment_data()
-    assert "38" in str(exc.value)
-    assert "GenericRegion" in str(exc.value)
+    from pypdfbox.jbig2.segments.generic_region import GenericRegion
+
+    data_part = header.get_segment_data()
+    assert isinstance(data_part, GenericRegion)
 
 
 def test_get_segment_data_unknown_type_raises_value_error():
@@ -221,8 +239,40 @@ def test_referred_to_segments_short_format():
 
 
 def test_segment_type_map_has_ported_types():
-    assert SEGMENT_TYPE_MAP[48] is PageInformation
-    assert SEGMENT_TYPE_MAP[50] is EndOfStripe
+    from pypdfbox.jbig2.segment_header import _build_segment_type_map
+    from pypdfbox.jbig2.segments.generic_refinement_region import (
+        GenericRefinementRegion,
+    )
+    from pypdfbox.jbig2.segments.generic_region import GenericRegion
+    from pypdfbox.jbig2.segments.halftone_region import HalftoneRegion
+    from pypdfbox.jbig2.segments.pattern_dictionary import PatternDictionary
+    from pypdfbox.jbig2.segments.profiles import Profiles
+    from pypdfbox.jbig2.segments.symbol_dictionary import SymbolDictionary
+    from pypdfbox.jbig2.segments.table import Table
+    from pypdfbox.jbig2.segments.text_region import TextRegion
+
+    type_map = _build_segment_type_map()
+    # Every concrete JBIG2 segment type is now mapped to its ported decoder.
+    assert type_map[0] is SymbolDictionary
+    assert type_map[4] is TextRegion
+    assert type_map[6] is TextRegion
+    assert type_map[7] is TextRegion
+    assert type_map[16] is PatternDictionary
+    assert type_map[20] is HalftoneRegion
+    assert type_map[22] is HalftoneRegion
+    assert type_map[23] is HalftoneRegion
+    assert type_map[36] is GenericRegion
+    assert type_map[38] is GenericRegion
+    assert type_map[39] is GenericRegion
+    assert type_map[40] is GenericRefinementRegion
+    assert type_map[42] is GenericRefinementRegion
+    assert type_map[43] is GenericRefinementRegion
+    assert type_map[48] is PageInformation
+    assert type_map[50] is EndOfStripe
+    assert type_map[52] is Profiles
+    assert type_map[53] is Table
+    # Lazily-populated module-level cache is also usable directly.
+    assert SEGMENT_TYPE_MAP is not None
 
 
 def test_str_contains_segment_fields():

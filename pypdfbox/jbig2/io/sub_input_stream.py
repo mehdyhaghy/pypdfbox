@@ -114,6 +114,21 @@ class SubInputStream(ImageInputStream):
     def length(self) -> int:
         return self._length
 
+    def skip_bytes(self, n: int) -> int:
+        """Advance up to ``n`` bytes within the window; return the count skipped.
+
+        Mirrors ``ImageInputStreamImpl.skipBytes(int)``: it clears any pending
+        bit offset and advances the position, bounded by the window length. The
+        base class implementation reads its own ``_data`` buffer, which this
+        wrapped view does not own, so it is overridden here.
+        """
+        self._check_closed()
+        self.bit_offset = 0
+        available = self._length - self.stream_pos
+        skipped = max(0, min(n, available))
+        self.stream_pos += skipped
+        return skipped
+
     def skip_bits(self) -> None:
         """
         Skip the remaining bits in the current byte.

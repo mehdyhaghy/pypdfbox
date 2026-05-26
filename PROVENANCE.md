@@ -109,7 +109,7 @@ PDF stream filters per ISO 32000-1 §7.4. Per PRD §3.7, filters that wrap stdli
 | `pypdfbox/filter/lzw_decode.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/LZWFilter.java` | full port — PDF-flavored LZW (9-12 bit, MSB-first, EarlyChange handling). Predictor (PNG/TIFF) lives in shared `_predictor.py` |
 | `pypdfbox/filter/ccitt_fax_decode.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/CCITTFaxFilter.java` | API surface; T.4 / T.6 decoding delegated to libtiff via Pillow (synthetic TIFF wrapper around the encoded strip). Group 4 encode support delegates to libtiff via Pillow. |
 | `pypdfbox/filter/jpx_decode.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/JPXFilter.java` | API surface; JPEG 2000 decoding delegated to OpenJPEG via Pillow. Decode-only (no encoder use case yet). |
-| `pypdfbox/filter/jbig2_decode.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/JBIG2Filter.java` | API surface only — intentionally-unsupported-filter stub. `decode` raises a clear "unsupported" `OSError`; the filter stays registered in `FilterFactory` for `/JBIG2Decode` name recognition only. Previously wrapped the `jbig2-parser` library, removed wave 1420 because its compiled `.so` statically links the GPL-3.0 Rust `jbig2dec` crate (forbidden by CLAUDE.md §4). JBIG2 decoding to be restored by porting the Apache-2.0 `apache/pdfbox-jbig2`. Decode-only (no encoder use case). |
+| `pypdfbox/filter/jbig2_decode.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/JBIG2Filter.java` | `decode` wires to the first-party pure-Python `pypdfbox/jbig2/` decoder (wave 1426) — reads `/JBIG2Globals` from `/DecodeParms`, decodes via `JBIG2Document.get_page(1).get_bitmap()`, and inverts to the DeviceGray 1-bpp convention (sample 0 = black) matching upstream `JBIG2Filter`/`Bitmaps.buildRaster`. The GPL `jbig2-parser` it previously wrapped was removed wave 1420 (its `.so` links GPL-3.0 `jbig2dec`). Decode-only. |
 | `pypdfbox/filter/missing_image_reader_exception.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/MissingImageReaderException.java` (extends `OSError` per CLAUDE.md `IOException` mapping) |
 | `pypdfbox/filter/identity_filter.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/IdentityFilter.java` | full port — pass-through `decode`/`encode` via `io_utils.copy`. Not registered in `FilterFactory` (upstream class is package-private; reached only through `CryptFilter`). |
 
@@ -157,6 +157,12 @@ Replaces the GPL `jbig2-parser` dependency removed in wave 1420. Ported from the
 | `pypdfbox/jbig2/segments/halftone_region.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/segments/HalftoneRegion.java` (renderPattern/blit follow refactored upstream — see CHANGES Wave 1424) |
 | `pypdfbox/jbig2/segments/symbol_dictionary.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/segments/SymbolDictionary.java` (aggregate-via-TextRegion path completed wave 1425) |
 | `pypdfbox/jbig2/segments/text_region.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/segments/TextRegion.java` |
+| `pypdfbox/jbig2/jbig2_document.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/JBIG2Document.java` |
+| `pypdfbox/jbig2/jbig2_page.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/JBIG2Page.java` |
+| `pypdfbox/jbig2/segments/table.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/segments/Table.java` |
+| `tests/jbig2/fixtures/006.jb2` | apache/pdfbox-jbig2 | `src/test/resources/images/006.jb2` |
+| `tests/jbig2/fixtures/21.jb2` | apache/pdfbox-jbig2 | `src/test/resources/org/apache/pdfbox/jbig2/github/21.jb2` |
+| `tests/jbig2/fixtures/21.glob` | apache/pdfbox-jbig2 | `src/test/resources/org/apache/pdfbox/jbig2/github/21.glob` |
 | `pypdfbox/jbig2/image/bitmaps.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/image/Bitmaps.java` (partial — `extract`/`combine_bytes`/`blit` primitives; full page-assembly + scaling in a later wave) |
 | `tests/jbig2/fixtures/003.jb2` | apache/pdfbox-jbig2 | `src/test/resources/images/003.jb2` |
 | `tests/jbig2/fixtures/005.jb2` | apache/pdfbox-jbig2 | `src/test/resources/images/005.jb2` |

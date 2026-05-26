@@ -57,9 +57,10 @@ Native wheels are published for CPython 3.14 on macOS (x86_64 +
 arm64), Linux (x86_64 + aarch64), and Windows (x86_64). Source
 installs require a working C / Rust toolchain for the transitive deps
 (`cryptography`, `Pillow`, `skia-python`, `imagecodecs`, `numpy`).
-JBIG2 decoding (`/JBIG2Decode`) is currently unsupported — the only
-available decoder is GPL-licensed, which the permissive-license policy
-excludes; an Apache-2.0 port is planned. See
+JBIG2 decoding (`/JBIG2Decode`) is supported by a first-party
+pure-Python decoder (ported from the Apache-2.0 `apache/pdfbox-jbig2`),
+which replaced the GPL-licensed `jbig2-parser` under the
+permissive-license policy — no dependency, no native code. See
 [`docs/install.md`](docs/install.md) for platform-specific
 troubleshooting.
 

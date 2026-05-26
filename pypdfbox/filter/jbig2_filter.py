@@ -10,24 +10,22 @@ PDFBox Java sources can write::
 
 and resolve the symbol without re-deriving it.
 
-License posture — why JBIG2 decoding is unsupported
----------------------------------------------------
+License posture — JBIG2 decoding is supported (first-party port)
+----------------------------------------------------------------
 
-JBIG2 (ITU-T T.88) decoding is **intentionally unsupported** in
-pypdfbox. The only available JBIG2 decoder is ``jbig2-parser``, whose
-compiled extension statically links the Rust ``jbig2dec`` crate — a
-binding to Artifex's AGPL ``jbig2dec`` C library. GPL-3.0/AGPL are on
-the project's hard-forbidden license list (CLAUDE.md "Licensing &
-attribution"), so no JBIG2 decoder is bundled. ``imagecodecs`` is also
-ruled out for the same reason: the only JBIG2 codec it can be built
-against is the AGPL ``jbig2dec`` (the runtime wheel exposes no JBIG2
-names and ships no ``LICENSE-jbig2dec`` entry, but the route stays off
-by design so a future rebuild adding ``jbig2dec`` cannot pull AGPL code
-into the decode path).
+JBIG2 (ITU-T T.88) decoding **is supported** in pypdfbox via the
+first-party pure-Python JBIG2 decoder in :mod:`pypdfbox.jbig2` — a
+direct port of the Apache-2.0 ``apache/pdfbox-jbig2`` plugin. There is
+no GPL/AGPL code and no native extension involved (the GPL-licensed
+``jbig2-parser`` → ``jbig2dec`` route was removed in wave 1420, and the
+permissive Apache-2.0 plugin was ported in its place), so the decoder
+sits comfortably inside the project's permissive-only license policy
+(CLAUDE.md "Licensing & attribution").
 
-Consequently :meth:`JBIG2Decode.decode` (inherited here) raises
-``OSError``; the filter remains registered only so ``/JBIG2Decode`` is
-recognised as a known filter name.
+:meth:`JBIG2Decode.decode` (inherited here) decodes the embedded JBIG2
+codestream — handling the ``/JBIG2Globals`` shared-dictionary stream —
+into a bilevel raster the image pipeline consumes. As upstream,
+:meth:`encode` remains unimplemented (PDFBox ships no JBIG2 encoder).
 """
 
 from __future__ import annotations

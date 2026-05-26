@@ -20,14 +20,15 @@ def test_jpx_mode_helper_reports_one_bit_and_fallback_modes() -> None:
     assert _mode_components_and_bpc("P", ("P",)) == (1, 8)
 
 
-def test_jbig2_decode_raises_unsupported_regardless_of_decode_parms() -> None:
-    # JBIG2 decoding is intentionally unsupported (only decoder is
-    # GPL-3.0/AGPL — forbidden by the permissive-only policy, CLAUDE.md
-    # §4), so decode() raises before inspecting any /DecodeParms.
+def test_jbig2_decode_garbage_raises_oserror_with_decode_parms_array() -> None:
+    # JBIG2 decoding is now supported via the first-party pure-Python
+    # decoder; a /DecodeParms array (filter at index 1, no usable
+    # /JBIG2Globals entry) is resolved fine, but garbage codestream
+    # bytes surface a decode failure as OSError.
     stream_dict = COSDictionary()
     stream_dict.set_item("DecodeParms", COSArray())
 
-    with pytest.raises(OSError, match="intentionally unsupported"):
+    with pytest.raises(OSError):
         JBIG2Decode().decode(io.BytesIO(b"jbig2 bytes"), io.BytesIO(), stream_dict, 1)
 
 
