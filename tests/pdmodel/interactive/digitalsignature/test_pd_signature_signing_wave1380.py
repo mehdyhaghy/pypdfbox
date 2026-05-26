@@ -44,6 +44,7 @@ from pypdfbox.pdmodel.interactive.digitalsignature import (
     PDSignatureLock,
     Pkcs7Signature,
     TimestampedPkcs7Signature,
+    strip_signature_padding,
 )
 
 # ---------- shared helpers ----------
@@ -344,7 +345,7 @@ def test_end_to_end_sign_and_verify(tmp_path: Path) -> None:
         loaded_sig = PDSignature(sig_dict)
         contents = loaded_sig.get_contents()
         assert contents is not None
-        trimmed = contents.rstrip(b"\x00")
+        trimmed = strip_signature_padding(contents)
         certs = pkcs7.load_der_pkcs7_certificates(trimmed)
         # Cert subject must match.
         assert any(c.subject == cert.subject for c in certs)

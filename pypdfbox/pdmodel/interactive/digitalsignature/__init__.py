@@ -24,6 +24,7 @@ from .sig_utils import (
     get_last_relevant_signature,
     get_mdp_permission,
     set_mdp_permission,
+    strip_signature_padding,
 )
 from .signature_interface import SignatureInterface
 from .signature_options import DEFAULT_SIGNATURE_SIZE, SignatureOptions
@@ -60,4 +61,5 @@ __all__ = [
     "get_last_relevant_signature",
     "get_mdp_permission",
     "set_mdp_permission",
+    "strip_signature_padding",
 ]

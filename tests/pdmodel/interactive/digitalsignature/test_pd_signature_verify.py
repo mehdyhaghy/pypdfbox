@@ -36,6 +36,7 @@ from pypdfbox.pdmodel.interactive.digitalsignature import (
     PDSignature,
     Pkcs7Signature,
     compute_byte_range,
+    strip_signature_padding,
 )
 
 # ---------- in-process cert + signed-document fixtures ----------
@@ -147,8 +148,8 @@ def test_verify_tampering_inside_contents_placeholder_still_passes() -> None:
     """Flipping a byte that lies inside the /Contents <...> window but
     NOT inside the signature blob — i.e. inside the NUL padding tail —
     leaves the digest intact (range is excised) AND leaves the PKCS#7
-    parser happy (it ``rstrip(b"\\x00")``s the placeholder), so verify
-    must still pass."""
+    parser happy (it slices the blob by its DER length, ignoring the
+    placeholder padding), so verify must still pass."""
     cert, key = _make_self_signed_cert()
     document, byte_range, _prefix_len, splice_open, splice_close = (
         _build_signed_document(cert, key)
@@ -156,7 +157,7 @@ def test_verify_tampering_inside_contents_placeholder_still_passes() -> None:
     splice = bytearray(document[splice_open + 1 : splice_close])
 
     # Find the first NUL-pad byte at the end of the real PKCS#7 blob.
-    pkcs7_end = len(splice.rstrip(b"\x00"))
+    pkcs7_end = len(strip_signature_padding(bytes(splice)))
     assert pkcs7_end < len(splice), (
         "test fixture must leave NUL padding inside the placeholder; "
         f"got pkcs7_end={pkcs7_end} placeholder_len={len(splice)}"

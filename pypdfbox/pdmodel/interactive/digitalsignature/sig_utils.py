@@ -473,6 +473,32 @@ def _read_der_length(buf: bytes, offset: int) -> tuple[int, int]:
     return length, 1 + n
 
 
+def strip_signature_padding(contents: bytes) -> bytes:
+    """Return the PKCS#7 DER blob from a signature ``/Contents`` value,
+    dropping the trailing zero padding the writer adds to fill the
+    fixed-width placeholder.
+
+    A signature ``/Contents`` is a fixed-width hex string (ISO 32000-1
+    §12.8.1); the actual DER blob is followed by ``\\x00`` padding. The
+    padding cannot be removed with ``rstrip(b"\\x00")`` because a DER value
+    may legitimately end in ``0x00`` bytes — rstrip then truncates the blob
+    and breaks parsing (intermittently, depending on the blob's final byte).
+    Instead read the outer ``SEQUENCE``'s own DER length and slice exactly
+    that many bytes, which is what conforming readers do. Falls back to
+    ``rstrip`` only when the data isn't a DER ``SEQUENCE`` (tag ``0x30``) or
+    its length can't be decoded.
+    """
+    if contents[:1] == b"\x30":
+        try:
+            length, n_len = _read_der_length(contents, 1)
+        except ValueError:
+            return contents.rstrip(b"\x00")
+        total = 1 + n_len + length
+        if total <= len(contents):
+            return contents[:total]
+    return contents.rstrip(b"\x00")
+
+
 def extract_pkcs7_message_digest(pkcs7_der: bytes) -> bytes | None:
     """Locate and return the ``messageDigest`` signed-attribute value from a
     DER-encoded PKCS#7 / CMS SignedData blob.

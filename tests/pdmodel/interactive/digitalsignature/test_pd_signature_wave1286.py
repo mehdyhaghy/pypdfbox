@@ -27,6 +27,7 @@ from pypdfbox.pdmodel.interactive.digitalsignature import (
     PDSignature,
     Pkcs7Signature,
     compute_byte_range,
+    strip_signature_padding,
 )
 from pypdfbox.pdmodel.interactive.digitalsignature.pd_signature import (
     _DIGEST_OID_HEX_TO_HASH,
@@ -224,7 +225,7 @@ def test_verify_tampered_signature_blob_fails_signature_math() -> None:
     tampered_splice = bytearray(splice)
     # The pkcs#7 blob ends well before the placeholder fills up; flip
     # a byte ~256 bytes from the end of the real blob.
-    pkcs7_end = len(tampered_splice.rstrip(b"\x00"))
+    pkcs7_end = len(strip_signature_padding(bytes(tampered_splice)))
     tampered_splice[pkcs7_end - 16] ^= 0xFF
 
     sig = PDSignature()

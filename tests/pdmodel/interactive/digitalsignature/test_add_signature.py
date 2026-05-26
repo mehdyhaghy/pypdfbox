@@ -23,6 +23,7 @@ from pypdfbox.pdmodel.interactive.digitalsignature import (
     PDSignature,
     Pkcs7Signature,
     SignatureInterface,
+    strip_signature_padding,
 )
 from pypdfbox.pdmodel.pd_document import ExternalSigningSupport
 
@@ -99,7 +100,7 @@ def test_pkcs7_signature_round_trip(tmp_path: Path) -> None:
         contents = loaded_sig.get_contents()
         assert contents is not None and len(contents) > 0
         # Trim trailing zero padding then ensure parses as PKCS#7 DER.
-        trimmed = contents.rstrip(b"\x00")
+        trimmed = strip_signature_padding(contents)
         certs = pkcs7.load_der_pkcs7_certificates(trimmed)
         assert len(certs) >= 1
         assert certs[0].subject == cert.subject
@@ -164,7 +165,7 @@ def test_external_signing_round_trip(tmp_path: Path) -> None:
         loaded = PDSignature(sig_dict)
         contents = loaded.get_contents()
         assert contents is not None
-        trimmed = contents.rstrip(b"\x00")
+        trimmed = strip_signature_padding(contents)
         certs = pkcs7.load_der_pkcs7_certificates(trimmed)
         assert len(certs) >= 1
 
@@ -331,7 +332,7 @@ def test_pdsignature_verify_extracts_certificate_after_sign(tmp_path: Path) -> N
         # bytes for the verify call.
         contents = loaded.get_contents()
         assert contents is not None
-        trimmed = contents.rstrip(b"\x00")
+        trimmed = strip_signature_padding(contents)
         loaded.set_contents(trimmed)
 
         result = loaded.verify(data)

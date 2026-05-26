@@ -902,11 +902,15 @@ class PDSignature:
             )
             return result
 
-        # Strip trailing NUL padding — PDF writers commonly zero-pad the
-        # /Contents hex string up to the placeholder width, leaving the
-        # actual DER blob followed by ``\x00`` bytes. ``cryptography``
-        # otherwise emits a "ParseError: ExtraData" BER warning.
-        trimmed = contents.rstrip(b"\x00")
+        # Strip the placeholder padding — PDF writers zero-pad the /Contents
+        # hex string up to the placeholder width, leaving the actual DER blob
+        # followed by ``\x00`` bytes. We slice by the DER SEQUENCE length
+        # rather than ``rstrip(b"\x00")`` because a DER blob may legitimately
+        # end in ``0x00`` (rstrip would truncate it and break parsing — an
+        # intermittent failure that depends on the blob's final byte).
+        from .sig_utils import strip_signature_padding
+
+        trimmed = strip_signature_padding(contents)
 
         try:
             certs = pkcs7.load_der_pkcs7_certificates(trimmed)
