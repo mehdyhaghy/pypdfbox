@@ -9,9 +9,9 @@ export flags). Parsing is described in 7.4.2.1.1 - 7.4.1.1.5; the decoding
 procedure is described in 6.5.
 
 The text-region aggregate path (§6.5.8.2 step 2, more than one aggregation
-instance) delegates to ``TextRegion``, which is not ported yet. That single
-branch raises a clear :class:`NotImplementedError`; the direct arithmetic path,
-the single-instance refinement path, and the full Huffman path all work.
+instance) delegates to ``TextRegion`` (one-strip text region, Table 17). The
+direct arithmetic path, the single-instance refinement path, the aggregate path
+and the full Huffman path all work.
 
 Java ``int`` masking: the exported-symbol counts (``amountOfExportSymbolss`` /
 ``amountOfNewSymbols``) are read as 32 unsigned bits and stored as Python ints;
@@ -519,13 +519,60 @@ class SymbolDictionary(Dictionary):
         height_class_height: int,
         amount_of_refinement_aggregation_instances: int,
     ) -> None:
-        # The text-region aggregate path (§6.5.8.2 step 2) needs TextRegion,
-        # which is not ported yet (next wave). The direct arithmetic path, the
-        # single-instance refinement path, and the full Huffman path all work
-        # without it.
-        raise NotImplementedError(
-            "symbol-dictionary aggregate decoding needs TextRegion — wave 1425"
+        # 6.5.8.2 2) - decode the aggregate symbol via a one-strip TextRegion.
+        from pypdfbox.jbig2.segments.text_region import TextRegion
+
+        if self.text_region is None:
+            self.text_region = TextRegion(self.sub_input_stream, None)
+
+            self.text_region.set_contexts(
+                self.cx,  # default context
+                CX(512, 1),  # IADT
+                CX(512, 1),  # IAFS
+                CX(512, 1),  # IADS
+                CX(512, 1),  # IAIT
+                self.cx_iaid,  # IAID
+                CX(512, 1),  # IARDW
+                CX(512, 1),  # IARDH
+                CX(512, 1),  # IARDX
+                CX(512, 1),  # IARDY
+            )
+
+        # 6.5.8.2.4 Concatenating the array used as parameter later.
+        self._set_symbols_array()
+
+        # 6.5.8.2 2) Parameters set according to Table 17, page 36
+        self.text_region.set_parameters(
+            self.arithmetic_decoder,
+            self.i_decoder,
+            self.is_huffman_encoded,
+            True,
+            symbol_width,
+            height_class_height,
+            amount_of_refinement_aggregation_instances,
+            1,
+            self.amount_of_imported_symbols + self.amount_of_decoded_symbols,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            self.sdr_template,
+            self.sdr_at_x,
+            self.sdr_at_y,
+            self.sb_symbols,
+            self.sb_sym_code_len,
         )
+
+        self._add_symbol(self.text_region)
 
     def _decode_refined_symbol(
         self, symbol_width: int, height_class_height: int

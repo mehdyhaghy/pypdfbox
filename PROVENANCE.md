@@ -155,7 +155,8 @@ Replaces the GPL `jbig2-parser` dependency removed in wave 1420. Ported from the
 | `pypdfbox/jbig2/dictionary.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/Dictionary.java` |
 | `pypdfbox/jbig2/segments/pattern_dictionary.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/segments/PatternDictionary.java` |
 | `pypdfbox/jbig2/segments/halftone_region.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/segments/HalftoneRegion.java` (renderPattern/blit follow refactored upstream — see CHANGES Wave 1424) |
-| `pypdfbox/jbig2/segments/symbol_dictionary.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/segments/SymbolDictionary.java` (aggregate-via-TextRegion path stubbed until wave 1425) |
+| `pypdfbox/jbig2/segments/symbol_dictionary.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/segments/SymbolDictionary.java` (aggregate-via-TextRegion path completed wave 1425) |
+| `pypdfbox/jbig2/segments/text_region.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/segments/TextRegion.java` |
 | `pypdfbox/jbig2/image/bitmaps.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/image/Bitmaps.java` (partial — `extract`/`combine_bytes`/`blit` primitives; full page-assembly + scaling in a later wave) |
 | `tests/jbig2/fixtures/003.jb2` | apache/pdfbox-jbig2 | `src/test/resources/images/003.jb2` |
 | `tests/jbig2/fixtures/005.jb2` | apache/pdfbox-jbig2 | `src/test/resources/images/005.jb2` |
