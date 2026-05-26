@@ -149,6 +149,9 @@ Replaces the GPL `jbig2-parser` dependency removed in wave 1420. Ported from the
 | `pypdfbox/jbig2/segments/page_information.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/segments/PageInformation.java` |
 | `pypdfbox/jbig2/segments/end_of_stripe.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/segments/EndOfStripe.java` |
 | `pypdfbox/jbig2/segments/profiles.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/segments/Profiles.java` |
+| `pypdfbox/jbig2/segments/generic_region.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/segments/GenericRegion.java` |
+| `pypdfbox/jbig2/segments/generic_refinement_region.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/segments/GenericRefinementRegion.java` (refactored upstream — see CHANGES Wave 1423 for the 3 documented divergences vs bundled 3.0.7) |
+| `pypdfbox/jbig2/decoder/generic_refinement_region_decoding_procedure.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/decoder/GenericRefinementRegionDecodingProcedure.java` |
 
 ### `pypdfbox/contentstream/`
 
