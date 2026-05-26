@@ -160,12 +160,16 @@ def test_flatten_widget_without_appearance_is_skipped_no_error() -> None:
 
     form.flatten()  # must not raise.
 
-    # The widget is *not* removed from /Annots when skipped — matches
-    # upstream's "appearance-bearing only" flatten contract.
+    # The widget IS removed from /Annots even though it had no drawable
+    # appearance — matches upstream PDFBox, whose flatten removes every mapped
+    # widget regardless of whether an /AP /N was rendered (verified against the
+    # live oracle in tests/.../oracle/test_flatten_oracle.py). A leftover
+    # interactive widget after flatten would be a bug.
     annots = page.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Annots"))
     assert isinstance(annots, COSArray)
-    assert annots.size() == 1
-    # No XObject was registered.
+    assert annots.size() == 0
+    # No XObject was registered (nothing was drawn for the appearance-less
+    # widget).
     res = page.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Resources"))
     if isinstance(res, COSDictionary):
         xo = res.get_dictionary_object(COSName.get_pdf_name("XObject"))

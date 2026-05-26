@@ -85,14 +85,50 @@ class Pen:
     """``aggdraw.Pen(color, width=1.0, opacity=255)`` stand-in.
 
     Stored as plain attributes; consumed by :class:`Draw` when stroking.
+
+    Beyond aggdraw's colour + width surface, the skia shim accepts the
+    optional PDF stroke-style attributes so the renderer can plumb the
+    ``J`` / ``j`` / ``M`` / ``d`` graphics-state through to skia's
+    ``Paint`` (cap / join / miter) and ``DashPathEffect`` (dash):
+
+    * ``line_cap``   — 0 butt, 1 round, 2 projecting-square (PDF §8.4.3.3)
+    * ``line_join``  — 0 miter, 1 round, 2 bevel (PDF §8.4.3.4)
+    * ``miter_limit``— positive ratio (PDF §8.4.3.5)
+    * ``dash``       — ``(intervals_tuple, phase)`` in the same coordinate
+      space as the path, or ``None`` for a solid line (PDF §8.4.3.6)
+
+    aggdraw never carried any of these, so they default to spec defaults
+    (butt / miter / 10.0 / solid) and are pure additive extensions.
     """
 
-    __slots__ = ("color", "opacity", "width")
+    __slots__ = (
+        "color",
+        "dash",
+        "line_cap",
+        "line_join",
+        "miter_limit",
+        "opacity",
+        "width",
+    )
 
-    def __init__(self, color: Any, width: float = 1.0, opacity: int = 255) -> None:
+    def __init__(
+        self,
+        color: Any,
+        width: float = 1.0,
+        opacity: int = 255,
+        *,
+        line_cap: int = 0,
+        line_join: int = 0,
+        miter_limit: float = 10.0,
+        dash: tuple[tuple[float, ...], float] | None = None,
+    ) -> None:
         self.color: int = _normalize_color(color, opacity)
         self.width: float = float(width)
         self.opacity: int = int(opacity)
+        self.line_cap: int = int(line_cap)
+        self.line_join: int = int(line_join)
+        self.miter_limit: float = float(miter_limit)
+        self.dash: tuple[tuple[float, ...], float] | None = dash
 
 
 class Brush:
@@ -370,6 +406,18 @@ class Draw:
             AntiAlias=self._antialias,
         )
 
+    # PDF cap / join code → skia enum. PDF 32000-1 §8.4.3.3 / §8.4.3.4.
+    _CAP = {
+        0: skia.Paint.Cap.kButt_Cap,
+        1: skia.Paint.Cap.kRound_Cap,
+        2: skia.Paint.Cap.kSquare_Cap,
+    }
+    _JOIN = {
+        0: skia.Paint.Join.kMiter_Join,
+        1: skia.Paint.Join.kRound_Join,
+        2: skia.Paint.Join.kBevel_Join,
+    }
+
     def _make_stroke_paint(self, color: int, width: float) -> skia.Paint:
         return skia.Paint(
             Color=color,
@@ -377,6 +425,42 @@ class Draw:
             Style=skia.Paint.kStroke_Style,
             AntiAlias=self._antialias,
         )
+
+    def _make_stroke_paint_from_pen(self, pen: Pen) -> skia.Paint:
+        """Build a stroke :class:`skia.Paint` honouring the pen's PDF
+        line-style attributes (cap / join / miter / dash).
+
+        Cap and join map straight onto skia's ``StrokeCap`` / ``StrokeJoin``;
+        the miter limit onto ``StrokeMiter``. A dash pattern is realised via
+        ``skia.DashPathEffect`` — skia requires an even-length intervals
+        array, so an odd-length PDF dash array is duplicated (``[a] -> [a,
+        a]``) to mean "a on, a off", matching the PDF rule that a single-
+        element array applies the same length to gaps. Degenerate dash
+        arrays (sum <= 0) are skipped so the line stays solid rather than
+        vanishing.
+        """
+        paint = skia.Paint(
+            Color=pen.color,
+            StrokeWidth=pen.width,
+            Style=skia.Paint.kStroke_Style,
+            AntiAlias=self._antialias,
+        )
+        paint.setStrokeCap(self._CAP.get(pen.line_cap, skia.Paint.Cap.kButt_Cap))
+        paint.setStrokeJoin(
+            self._JOIN.get(pen.line_join, skia.Paint.Join.kMiter_Join)
+        )
+        if pen.miter_limit > 0.0:
+            paint.setStrokeMiter(pen.miter_limit)
+        if pen.dash is not None:
+            intervals, phase = pen.dash
+            ivals = [float(v) for v in intervals]
+            if len(ivals) % 2 == 1:
+                ivals = ivals + ivals
+            if ivals and sum(ivals) > 0.0:
+                effect = skia.DashPathEffect.Make(ivals, float(phase))
+                if effect is not None:
+                    paint.setPathEffect(effect)
+        return paint
 
     def path(
         self,
@@ -409,9 +493,7 @@ class Draw:
             canvas.drawPath(sk_path, self._make_fill_paint(brush.color))
             self._dirty = True
         if pen is not None:
-            canvas.drawPath(
-                sk_path, self._make_stroke_paint(pen.color, pen.width),
-            )
+            canvas.drawPath(sk_path, self._make_stroke_paint_from_pen(pen))
             self._dirty = True
 
     # The remaining methods below are NOT exercised by the renderer at

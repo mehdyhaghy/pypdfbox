@@ -20,6 +20,13 @@ class _Descendant:
         self.calls.append(cid)
         return cid + 700.0
 
+    def get_vertical_displacement_vector_y(self, code: int) -> float:
+        # Upstream PDCIDFont.getVerticalDisplacementVectorY takes the raw
+        # *code* and resolves code->CID itself, so the parent passes the
+        # code through unchanged (no pre-resolution).
+        self.calls.append(code)
+        return code + 600.0
+
     def get_position_vector(self, cid: int) -> tuple[float, float]:
         self.calls.append(cid)
         return (cid + 10.0, cid + 20.0)
@@ -67,11 +74,16 @@ def test_displacement_uses_horizontal_width_or_vertical_height_wave458(
     monkeypatch.setattr(font, "code_to_cid", lambda code: code + 10)
     monkeypatch.setattr(font, "is_vertical", lambda: False)
 
+    # Horizontal: width(code_to_cid(2)=12) / 1000 = 512/1000.
     assert font.get_displacement(2) == (0.512, 0.0)
 
     monkeypatch.setattr(font, "is_vertical", lambda: True)
 
-    assert font.get_displacement(2) == (0.0, 0.712)
+    # Vertical: descendant.get_vertical_displacement_vector_y(code=2) is passed
+    # the raw code (upstream resolves code->CID internally), so 2+600=602 ->
+    # 0.602 — mirrors upstream PDType0Font.getDisplacement using
+    # getVerticalDisplacementVectorY (NOT the glyph-extent get_height).
+    assert font.get_displacement(2) == (0.0, 0.602)
 
 
 def test_position_vector_scales_and_negates_descendant_vector_wave458(

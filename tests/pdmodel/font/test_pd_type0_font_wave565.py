@@ -19,6 +19,12 @@ class _MetricDescendant:
         self.calls.append(("height", cid))
         return -880.0
 
+    def get_vertical_displacement_vector_y(self, code: int) -> float:
+        # Upstream getVerticalDisplacementVectorY takes the raw *code* and
+        # resolves code->CID itself; the parent passes the code through.
+        self.calls.append(("vdvy", code))
+        return -880.0
+
     def get_position_vector(self, cid: int) -> tuple[float, float]:
         self.calls.append(("vector", cid))
         return (120.0, -340.0)
@@ -45,13 +51,16 @@ def test_wave565_metric_accessors_delegate_after_cid_resolution(
     assert font.get_glyph_width(2) == 640.0
     assert font.get_height(2) == -880.0
     assert font.get_average_font_width() == 512.0
+    # Vertical displacement now comes from get_vertical_displacement_vector_y
+    # (the /W2 w1y metric with /DW2 fallback), passed the raw code 2 — not
+    # get_height(cid). -880/1000 = -0.88.
     assert font.get_displacement(2) == (0.0, -0.88)
     assert font.get_position_vector(2) == (-0.12, 0.34)
     assert descendant.calls == [
         ("glyph", 42),
         ("width", 42),
         ("height", 42),
-        ("height", 42),
+        ("vdvy", 2),
         ("vector", 42),
     ]
 

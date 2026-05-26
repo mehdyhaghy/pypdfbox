@@ -910,15 +910,38 @@ class PDAcroForm:
         return out
 
     def _flatten_widget(self, widget: COSDictionary) -> None:
-        """Render a single widget's normal appearance into its host page."""
+        """Flatten a single widget into its host page.
+
+        The widget's normal appearance (when present and usable) is rendered
+        into the page content stream; *regardless* of whether a usable
+        appearance exists, the widget is then removed from the host page's
+        ``/Annots`` array. This mirrors upstream PDFBox ``flatten``: the
+        page-widget map drives removal, so every flattened widget disappears
+        from ``/Annots`` even if it carried no drawable ``/AP /N`` (e.g. a
+        text field whose value was never set). Skipping removal for
+        appearance-less widgets would leave dangling interactive annotations
+        behind after a flatten — the bug this ordering fixes."""
+        page = self._resolve_widget_page(widget)
+        if page is None:
+            # No host page → nothing to remove from and nowhere to render.
+            return
+        self._render_widget_appearance(page, widget)
+        self._remove_widget_from_page(page, widget)
+
+    def _render_widget_appearance(
+        self, page: COSDictionary, widget: COSDictionary
+    ) -> None:
+        """Append the widget's normal appearance to ``page``'s content.
+
+        A no-op when the widget lacks a usable ``/AP /N`` stream, a valid
+        ``/Rect``, or a resolvable Form-XObject ``/BBox`` — those widgets are
+        still removed from ``/Annots`` by the caller, they simply contribute
+        no drawn content."""
         appearance_stream = self._select_appearance_stream(widget)
         if appearance_stream is None:
             return
         rect = widget.get_dictionary_object(_RECT)
         if not isinstance(rect, COSArray) or rect.size() < 4:
-            return
-        page = self._resolve_widget_page(widget)
-        if page is None:
             return
         rect_values = self._read_rect(rect)
         if rect_values is None:
@@ -930,7 +953,6 @@ class PDAcroForm:
         cm = self._compute_ctm(rect_values, bbox_values, matrix_values)
         name = self._add_xobject_to_page(page, appearance_stream)
         self._append_do_to_page(page, cm, name)
-        self._remove_widget_from_page(page, widget)
 
     @staticmethod
     def _select_appearance_stream(widget: COSDictionary) -> COSStream | None:

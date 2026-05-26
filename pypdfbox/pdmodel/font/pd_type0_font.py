@@ -1078,18 +1078,28 @@ class PDType0Font(PDFont):
     def get_displacement(self, code: int) -> tuple[float, float]:
         """Glyph displacement vector ``(dx, dy)`` for ``code`` in em.
 
-        Mirrors upstream ``PDType0Font.getDisplacement``: when the font is
-        vertical, ``dx`` is zero and ``dy`` comes from the descendant's
-        ``/W2`` y-component scaled by ``1/1000``. Otherwise falls through
-        to the horizontal default ``(width/1000, 0)``.
+        Mirrors upstream ``PDType0Font.getDisplacement`` exactly: when the
+        font is vertical, ``dx`` is zero and ``dy`` is the descendant's
+        *vertical displacement vector y* (the ``w1y`` component of ``/W2``,
+        falling back to the displacement-vector-y of ``/DW2`` — default
+        ``-1000`` — for CIDs not covered by ``/W2``) scaled by ``1/1000``.
+        Otherwise falls through to the horizontal default ``(width/1000, 0)``.
+
+        Note: the vertical advance is the ``/W2`` ``w1y`` metric via
+        :meth:`PDCIDFont.get_vertical_displacement_vector_y`, *not* the
+        glyph's ``get_height`` (glyph extent). Upstream's
+        ``getVerticalDisplacementVectorY`` resolves ``code -> CID`` itself,
+        so we pass the raw ``code`` through.
         """
         descendant = self.get_descendant_font()
         if descendant is None:
             return (self.get_glyph_width(code) / 1000.0, 0.0)
-        cid = self.code_to_cid(code)
         if self.is_vertical():
-            return (0.0, descendant.get_height(cid) / 1000.0)
-        return (descendant.get_glyph_width(cid) / 1000.0, 0.0)
+            return (
+                0.0,
+                descendant.get_vertical_displacement_vector_y(code) / 1000.0,
+            )
+        return (descendant.get_glyph_width(self.code_to_cid(code)) / 1000.0, 0.0)
 
     def get_position_vector(self, code: int) -> tuple[float, float]:
         """Position vector ``(v_x, v_y)`` for ``code`` in em (units of

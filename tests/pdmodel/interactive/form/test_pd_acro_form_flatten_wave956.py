@@ -25,9 +25,13 @@ def test_wave956_flatten_skipped_widget_keeps_existing_empty_xobject_dict() -> N
 
         form.flatten()
 
+        # The appearance-less widget is removed from /Annots (upstream parity:
+        # flatten removes every mapped widget regardless of /AP /N), but the
+        # pre-existing empty /XObject dict is left untouched because nothing
+        # was drawn for it.
         annots = page.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Annots"))
         assert isinstance(annots, COSArray)
-        assert annots.size() == 1
+        assert annots.size() == 0
         assert xobjects.size() == 0
     finally:
         doc.close()

@@ -2345,6 +2345,54 @@ class PDFRenderer(PDFStreamEngine):
             return
         self._gs.line_width = max(0.0, _to_float(operands[0]))
 
+    def _op_line_cap(self, _op: Any, operands: list[COSBase]) -> None:
+        # J — line cap style (PDF 32000-1 §8.4.3.3): 0 butt, 1 round,
+        # 2 projecting-square. Out-of-range values are ignored (keep the
+        # current cap) to match upstream's defensive parsing.
+        if not operands:
+            return
+        cap = int(_to_float(operands[0]))
+        if cap in (0, 1, 2):
+            self._gs.line_cap = cap
+
+    def _op_line_join(self, _op: Any, operands: list[COSBase]) -> None:
+        # j — line join style (PDF 32000-1 §8.4.3.4): 0 miter, 1 round,
+        # 2 bevel.
+        if not operands:
+            return
+        join = int(_to_float(operands[0]))
+        if join in (0, 1, 2):
+            self._gs.line_join = join
+
+    def _op_miter_limit(self, _op: Any, operands: list[COSBase]) -> None:
+        # M — miter limit (PDF 32000-1 §8.4.3.5). Only positive values are
+        # meaningful; non-positive operands are ignored.
+        if not operands:
+            return
+        miter = _to_float(operands[0])
+        if miter > 0.0:
+            self._gs.miter_limit = miter
+
+    def _op_set_dash(self, _op: Any, operands: list[COSBase]) -> None:
+        # d — line dash pattern (PDF 32000-1 §8.4.3.6): operands are a
+        # dash array followed by a phase. An empty array (or one whose
+        # entries are all zero) means a solid line — stored as ``None`` to
+        # match the spec default and the ExtGState ``/D`` handler.
+        if len(operands) < 2:
+            return
+        array_obj = operands[0]
+        if not isinstance(array_obj, COSArray):
+            return
+        try:
+            arr = tuple(max(0.0, _to_float(x)) for x in array_obj)
+            phase = _to_float(operands[1])
+        except (TypeError, ValueError):
+            return
+        if not arr or all(d == 0.0 for d in arr):
+            self._gs.dash_pattern = None
+        else:
+            self._gs.dash_pattern = (arr, phase)
+
     # ---- ExtGState (gs operator — PDF spec §8.4.5 / §11.3.5) ----
 
     def _op_set_graphics_state_parameters(
@@ -3248,10 +3296,24 @@ class PDFRenderer(PDFStreamEngine):
                 stroke_opacity = int(
                     round(255.0 * max(0.0, min(1.0, self._gs.stroke_alpha)))
                 )
+                # Wave 1428 — plumb the line cap (``J``), join (``j``),
+                # miter limit (``M``) and dash pattern (``d``) from the GS
+                # through to the skia stroke paint. These were previously
+                # tracked on the GS but never consumed at stroke time, so
+                # every stroke rendered solid with butt caps / miter joins
+                # regardless of the content stream. The dash intervals stay
+                # in user space: the canvas CTM set above scales both the
+                # path geometry and the DashPathEffect uniformly, keeping
+                # the dash rhythm proportional to the stroked geometry.
+                dash = self._gs.dash_pattern
                 pen = aggdraw.Pen(
                     self._apply_transfer_to_rgb_bytes(self._gs.stroke_rgb),
                     width=width_px,
                     opacity=stroke_opacity,
+                    line_cap=self._gs.line_cap,
+                    line_join=self._gs.line_join,
+                    miter_limit=self._gs.miter_limit,
+                    dash=dash,
                 )
             if fill:
                 # Wave 1386 — /ca (non-stroke alpha) multiplies into the
@@ -7914,11 +7976,9 @@ class PDFRenderer(PDFStreamEngine):
         page_scale``) — which simplifies to using only the
         page-to-device scale for the pen width.
 
-        The aggdraw shim's pen surface tops out at colour + width;
-        line-cap / line-join / miter-limit / dash-pattern are carried on
-        the GS for parity-test bookkeeping but the shim doesn't apply
-        them at stroke time. Downstream tooling can still read them via
-        the public PDExtendedGraphicsState getters.
+        Wave 1428: the skia shim's pen now honours line-cap / line-join /
+        miter-limit / dash, so stroked glyphs (Tr modes 1/2/5/6) pick up
+        the active GS stroke style too.
         """
         ctm_scale = self._approx_scale(ctm)
         page_scale = self._approx_scale(self._full_ctm())
@@ -7937,7 +7997,13 @@ class PDFRenderer(PDFStreamEngine):
             round(255.0 * max(0.0, min(1.0, self._gs.stroke_alpha)))
         )
         return aggdraw.Pen(
-            self._gs.stroke_rgb, width=width_px, opacity=stroke_opacity,
+            self._gs.stroke_rgb,
+            width=width_px,
+            opacity=stroke_opacity,
+            line_cap=self._gs.line_cap,
+            line_join=self._gs.line_join,
+            miter_limit=self._gs.miter_limit,
+            dash=self._gs.dash_pattern,
         )
 
     def _build_glyph_brush(
@@ -8488,6 +8554,10 @@ _DISPATCH: dict[str, Any] = {
     "Q": PDFRenderer._op_restore,
     "cm": PDFRenderer._op_concat_matrix,
     "w": PDFRenderer._op_line_width,
+    "J": PDFRenderer._op_line_cap,
+    "j": PDFRenderer._op_line_join,
+    "M": PDFRenderer._op_miter_limit,
+    "d": PDFRenderer._op_set_dash,
     "gs": PDFRenderer._op_set_graphics_state_parameters,
     # colour
     "RG": PDFRenderer._op_set_stroke_rgb,
