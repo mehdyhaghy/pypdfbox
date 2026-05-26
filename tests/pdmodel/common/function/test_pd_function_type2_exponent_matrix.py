@@ -184,18 +184,21 @@ def test_negative_input_with_integer_n_returns_real_value() -> None:
     assert math.isclose(out, -0.125, rel_tol=1e-9, abs_tol=1e-9)
 
 
-# ---------- /Domain clipping happens before exponent ----------
+# ---------- input is NOT clipped to /Domain (upstream parity) ----------
 
 
-def test_input_clipped_to_domain_before_exponent() -> None:
-    """An input outside /Domain is clipped first; the exponent then sees
-    the clipped value (so x=5 with /Domain=[0, 0.5] effectively becomes
-    0.5, regardless of /N)."""
+def test_input_not_clipped_to_domain_before_exponent() -> None:
+    """An input outside /Domain is NOT clipped before the exponent.
+
+    Apache PDFBox 3.0.7 ``PDFunctionType2.eval`` raises ``input[0]`` to /N
+    without first clamping to /Domain (verified via the ShadingFuncProbe
+    oracle). So x=5 with /Domain=[0, 0.5] and /N=2 yields 5**2 = 25, not
+    0.5**2 = 0.25."""
     fn = _make(c0=[0.0], c1=[1.0], n=2.0, domain=[0.0, 0.5])
-    # x=5 -> clipped to 0.5 -> 0.5**2 = 0.25
-    assert math.isclose(fn.eval([5.0])[0], 0.25, rel_tol=1e-9, abs_tol=1e-9)
-    # x=-1 -> clipped to 0.0 -> 0.0**2 = 0.0
-    assert math.isclose(fn.eval([-1.0])[0], 0.0, rel_tol=1e-9, abs_tol=1e-9)
+    # x=5 -> 5**2 = 25 (no domain clip, no /Range to clamp).
+    assert math.isclose(fn.eval([5.0])[0], 25.0, rel_tol=1e-9, abs_tol=1e-9)
+    # x=-1, /N=2 -> (-1)**2 = 1.0 (no domain clip).
+    assert math.isclose(fn.eval([-1.0])[0], 1.0, rel_tol=1e-9, abs_tol=1e-9)
 
 
 # ---------- /Range clipping at output ----------

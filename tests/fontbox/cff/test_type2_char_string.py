@@ -210,14 +210,29 @@ def test_get_type2_char_string_width_matches_cff_font_width(cff_font: CFFFont) -
     assert cs.get_width() == cff_font.get_width(name)
 
 
-def test_get_type2_char_string_out_of_range_returns_empty_wrapper(
+def test_get_type2_char_string_out_of_range_falls_back_to_notdef(
     cff_font: CFFFont,
 ) -> None:
-    """Out-of-range GIDs must not raise; they return an empty wrapper
-    whose path is ``[]`` — see CHANGES.md (deviation from upstream
-    which throws IOException)."""
+    """Out-of-range GIDs must not raise; mirroring upstream
+    ``CFFFont.getType2CharString`` they fall back to the ``.notdef``
+    glyph (GID 0) — same width and path as GID 0, not an empty wrapper
+    (verified against the live PDFBox oracle, wave 1414)."""
     n = cff_font.get_num_char_strings()
+    notdef = cff_font.get_type2_char_string(0)
     cs = cff_font.get_type2_char_string(n + 999)
+    assert isinstance(cs, Type2CharString)
+    assert cs.get_width() == notdef.get_width()
+    assert cs.get_path() == notdef.get_path()
+
+
+def test_get_type2_char_string_negative_returns_empty_wrapper(
+    cff_font: CFFFont,
+) -> None:
+    """A *negative* GID has no upstream fallback (upstream throws
+    ``ArrayIndexOutOfBoundsException``); pypdfbox stays non-raising and
+    returns an empty wrapper whose path is ``[]`` — the one documented
+    ergonomic divergence (see CHANGES.md)."""
+    cs = cff_font.get_type2_char_string(-1)
     assert isinstance(cs, Type2CharString)
     assert cs.get_path() == []
 

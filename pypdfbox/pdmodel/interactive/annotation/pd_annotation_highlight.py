@@ -50,15 +50,21 @@ class PDAnnotationHighlight(PDAnnotationTextMarkup):
     def construct_appearances(self, document: PDDocument | None = None) -> None:
         """Generate highlight annotation appearances.
 
-        A custom handler, when configured, is invoked exactly as upstream does.
-        The built-in ``PDHighlightAppearanceHandler`` is not ported yet, so
-        the default path remains a no-op like the base annotation
-        implementation.
+        A custom handler, when configured, is invoked exactly as upstream
+        does; otherwise the built-in :class:`PDHighlightAppearanceHandler`
+        generates the ``/AP`` streams.
         """
         if self._custom_appearance_handler is not None:
             self._custom_appearance_handler.generate_appearance_streams()
             return None
-        return super().construct_appearances(document)
+        from .handlers.pd_highlight_appearance_handler import (
+            PDHighlightAppearanceHandler,
+        )
+
+        PDHighlightAppearanceHandler(
+            self, document
+        ).generate_appearance_streams()
+        return None
 
 
 __all__ = ["PDAnnotationHighlight"]

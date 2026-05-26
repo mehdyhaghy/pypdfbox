@@ -206,22 +206,22 @@ def _make_type2_with_clip(
 @pytest.mark.parametrize(
     ("domain", "input_x", "expected_y"),
     [
-        # /Domain = [0, 1]; clip ±inf into [0, 1]
-        ([0.0, 1.0], math.inf, 1.0),
-        ([0.0, 1.0], -math.inf, 0.0),
+        # /Domain = [0, 1]; ±inf flow through unclamped (no /Range here)
+        ([0.0, 1.0], math.inf, math.inf),
+        ([0.0, 1.0], -math.inf, -math.inf),
         ([0.0, 1.0], 0.5, 0.5),
         # Normal /Domain [0, 1], in-range
         ([0.0, 1.0], 0.0, 0.0),
         ([0.0, 1.0], 1.0, 1.0),
-        ([0.0, 1.0], -0.1, 0.0),
-        ([0.0, 1.0], 1.1, 1.0),
-        # Non-trivial /Domain
-        ([-2.0, 2.0], -3.0, -2.0),  # clipped to -2 -> y = -2
-        ([-2.0, 2.0], 3.0, 2.0),  # clipped to 2 -> y = 2
+        ([0.0, 1.0], -0.1, -0.1),  # NOT clipped
+        ([0.0, 1.0], 1.1, 1.1),  # NOT clipped
+        # Non-trivial /Domain — input still not clipped
+        ([-2.0, 2.0], -3.0, -3.0),
+        ([-2.0, 2.0], 3.0, 3.0),
         ([-2.0, 2.0], 0.0, 0.0),
-        # Inverted /Domain — clipped via normalised pair
-        ([1.0, 0.0], -1.0, 0.0),
-        ([1.0, 0.0], 5.0, 1.0),
+        # Inverted /Domain — input still not clipped
+        ([1.0, 0.0], -1.0, -1.0),
+        ([1.0, 0.0], 5.0, 5.0),
     ],
     ids=[
         "inf-up", "inf-dn", "in-range-mid",
@@ -230,16 +230,25 @@ def _make_type2_with_clip(
         "inverted-domain-below", "inverted-domain-above",
     ],
 )
-def test_domain_clipping_at_eval(
+def test_type2_eval_does_not_clip_input_to_domain(
     domain: list[float], input_x: float, expected_y: float
 ) -> None:
-    """``clip_input`` clamps each input to its /Domain pair before the
-    subclass eval runs. Inverted pairs ``[hi, lo]`` normalise first."""
+    """Type 2 eval does NOT clip its input to /Domain.
+
+    Apache PDFBox 3.0.7 ``PDFunctionType2.eval`` reads ``input[0]`` directly
+    (PDFunctionType2.java:90-104) — confirmed against the ShadingFuncProbe
+    oracle. With C0=0, C1=1, N=1 the function is the identity, so the output
+    equals the (unclamped) input. /Domain governs how *consumers* (e.g.
+    shadings) sample the function, not how eval treats out-of-range inputs.
+    """
     fn = _make_type2_with_clip(domain=domain)
     out = fn.eval([input_x])[0]
-    assert math.isclose(out, expected_y, rel_tol=1e-9, abs_tol=1e-9), (
-        f"/Domain={domain} input={input_x}: got {out} want {expected_y}"
-    )
+    if math.isinf(expected_y):
+        assert out == expected_y
+    else:
+        assert math.isclose(out, expected_y, rel_tol=1e-9, abs_tol=1e-9), (
+            f"/Domain={domain} input={input_x}: got {out} want {expected_y}"
+        )
 
 
 # ---------- /Range clipping ----------

@@ -258,14 +258,21 @@ class PDAnnotationSquare(PDAnnotationSquareCircle):
         """Generate square annotation appearances.
 
         A custom handler, when configured, is invoked exactly as upstream
-        does. The built-in ``PDSquareAppearanceHandler`` is not ported
-        yet, so the default path remains a no-op like the base annotation
-        implementation.
+        does; otherwise the built-in :class:`PDSquareAppearanceHandler`
+        generates the ``/AP`` streams (``PDAnnotationSquare.java`` lines
+        68-80).
         """
         if self._custom_appearance_handler is not None:
             self._custom_appearance_handler.generate_appearance_streams()
             return None
-        return super().construct_appearances(document)
+        from .handlers.pd_square_appearance_handler import (
+            PDSquareAppearanceHandler,
+        )
+
+        PDSquareAppearanceHandler(
+            self, document
+        ).generate_appearance_streams()
+        return None
 
 
 class PDAnnotationCircle(PDAnnotationSquareCircle):
@@ -311,14 +318,21 @@ class PDAnnotationCircle(PDAnnotationSquareCircle):
         """Generate circle annotation appearances.
 
         A custom handler, when configured, is invoked exactly as upstream
-        does. The built-in ``PDCircleAppearanceHandler`` is not ported
-        yet, so the default path remains a no-op like the base annotation
-        implementation.
+        does; otherwise the built-in :class:`PDCircleAppearanceHandler`
+        generates the ``/AP`` streams (``PDAnnotationCircle.java`` lines
+        67-79).
         """
         if self._custom_appearance_handler is not None:
             self._custom_appearance_handler.generate_appearance_streams()
             return None
-        return super().construct_appearances(document)
+        from .handlers.pd_circle_appearance_handler import (
+            PDCircleAppearanceHandler,
+        )
+
+        PDCircleAppearanceHandler(
+            self, document
+        ).generate_appearance_streams()
+        return None
 
 
 __all__ = [

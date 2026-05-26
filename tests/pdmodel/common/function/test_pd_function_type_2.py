@@ -248,17 +248,25 @@ def test_wave323_eval_fractional_exponent_negative_input_returns_nan() -> None:
 # --------------------------------------------------------------------------
 
 
-def test_eval_clips_input_to_domain() -> None:
-    """Input above /Domain max gets clamped before exponent applies."""
+def test_eval_does_not_clip_input_to_domain() -> None:
+    """Type 2 eval uses ``input[0]`` directly, WITHOUT clipping to /Domain.
+
+    Verified against Apache PDFBox 3.0.7 (PDFunctionType2.java:90-104, which
+    raises ``input[0]`` to /N with no domain clip) via the ShadingFuncProbe
+    oracle. An input above /Domain max is therefore *not* clamped — it flows
+    straight into the exponent.
+    """
     fn = _make([0.0], [1.0], 1.0, domain=[0.0, 0.5])
-    # Input 5.0 clamps to 0.5 → result = 0 + 0.5*(1-0) = 0.5
-    assert fn.eval([5.0]) == pytest.approx([0.5])
+    # Input 5.0 -> result = 0 + 5**1*(1-0) = 5.0 (no domain clip, no /Range).
+    assert fn.eval([5.0]) == pytest.approx([5.0])
 
 
-def test_eval_clips_input_below_domain() -> None:
+def test_eval_does_not_clip_input_below_domain() -> None:
+    """Input below /Domain min is likewise passed through unclamped
+    (upstream parity — see :func:`test_eval_does_not_clip_input_to_domain`)."""
     fn = _make([0.0], [1.0], 1.0, domain=[0.2, 1.0])
-    # Input -1.0 clamps to 0.2 → result = 0 + 0.2*(1-0) = 0.2
-    assert fn.eval([-1.0]) == pytest.approx([0.2])
+    # Input -1.0 -> result = 0 + (-1)**1*(1-0) = -1.0 (no domain clip).
+    assert fn.eval([-1.0]) == pytest.approx([-1.0])
 
 
 def test_eval_clips_output_to_range() -> None:

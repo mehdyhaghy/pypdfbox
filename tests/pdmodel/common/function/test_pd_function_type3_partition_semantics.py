@@ -152,10 +152,11 @@ def test_encode_maps_partition_left_endpoint_to_encode_min() -> None:
         # sub0 encode: (0, 1) -- identity; sub1 encode: (2, 5)
         encode=[0.0, 1.0, 2.0, 5.0],
     )
-    # sub1 left endpoint x=0.5 -> mapped to enc_min = 2 -> child(2) = 2 (clipped by Type 2 domain).
-    # But Type 2 default domain is [0, 1], so input 2 clips to 1 -> child returns 1.
-    # So this test demonstrates Type 2 clipping below the stitch level too.
-    assert math.isclose(fn.eval([0.5])[0], 1.0, rel_tol=1e-9, abs_tol=1e-9)
+    # sub1 left endpoint x=0.5 -> mapped to enc_min = 2 -> child(2).
+    # Type 2 eval does NOT clip its input to /Domain (upstream parity,
+    # PDFunctionType2.java; verified via the ShadingFuncProbe oracle, which
+    # returns 2.0 for this exact stitch), so child(2) = 0 + 2**1*(1-0) = 2.0.
+    assert math.isclose(fn.eval([0.5])[0], 2.0, rel_tol=1e-9, abs_tol=1e-9)
 
 
 def test_encode_maps_partition_linearly_between_endpoints() -> None:

@@ -259,14 +259,19 @@ class PDAnnotationPolyline(PDAnnotationMarkup):
         Mirrors upstream ``constructAppearances()`` /
         ``constructAppearances(PDDocument)``
         (``PDAnnotationPolyline.java`` lines 188-205): a custom handler,
-        when configured, is invoked exactly as upstream does. The built-in
-        ``PDPolylineAppearanceHandler`` is not ported yet, so the default
-        path falls through to the base no-op.
+        when configured, is invoked exactly as upstream does; otherwise
+        the built-in :class:`PDPolylineAppearanceHandler` generates the
+        ``/AP`` streams.
         """
         if self._custom_appearance_handler is not None:
             self._custom_appearance_handler.generate_appearance_streams()
             return None
-        return super().construct_appearances(document)
+        from .handlers.pd_polyline_appearance_handler import (
+            PDPolylineAppearanceHandler,
+        )
+
+        PDPolylineAppearanceHandler(self, document).generate_appearance_streams()
+        return None
 
 
 __all__ = ["PDAnnotationPolyline"]

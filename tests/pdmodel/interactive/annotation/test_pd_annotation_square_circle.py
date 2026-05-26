@@ -358,26 +358,29 @@ def test_circle_custom_handler_invoked() -> None:
     assert handler.calls == 1
 
 
-def test_square_clear_handler_restores_noop() -> None:
+def test_square_clear_handler_restores_default() -> None:
+    # Clearing the custom handler restores the built-in default-handler
+    # path (upstream PDAnnotationSquare.constructAppearances), which
+    # generates an /AP appearance — not a no-op.
     ann = PDAnnotationSquare()
+    ann.set_rectangle(PDRectangle(50, 50, 150, 150))
     handler = _RecordingAppearanceHandler()
     ann.set_custom_appearance_handler(handler)  # type: ignore[arg-type]
     ann.set_custom_appearance_handler(None)
-    before_keys = set(ann.get_cos_object().key_set())
     ann.construct_appearances()
     assert handler.calls == 0
-    assert set(ann.get_cos_object().key_set()) == before_keys
+    assert ann.get_normal_appearance_stream() is not None
 
 
-def test_circle_clear_handler_restores_noop() -> None:
+def test_circle_clear_handler_restores_default() -> None:
     ann = PDAnnotationCircle()
+    ann.set_rectangle(PDRectangle(50, 50, 150, 150))
     handler = _RecordingAppearanceHandler()
     ann.set_custom_appearance_handler(handler)  # type: ignore[arg-type]
     ann.set_custom_appearance_handler(None)
-    before_keys = set(ann.get_cos_object().key_set())
     ann.construct_appearances()
     assert handler.calls == 0
-    assert set(ann.get_cos_object().key_set()) == before_keys
+    assert ann.get_normal_appearance_stream() is not None
 
 
 def test_square_and_circle_handlers_are_independent() -> None:
@@ -395,17 +398,20 @@ def test_square_and_circle_handlers_are_independent() -> None:
     assert h_cr.calls == 2
 
 
-def test_construct_appearances_default_path_is_noop_square() -> None:
+def test_construct_appearances_default_path_generates_appearance_square() -> None:
+    # Upstream PDAnnotationSquare.constructAppearances(PDDocument) wires the
+    # built-in PDSquareAppearanceHandler when no custom handler is set, which
+    # populates /AP /N.
     ann = PDAnnotationSquare()
-    before_keys = set(ann.get_cos_object().key_set())
+    ann.set_rectangle(PDRectangle(50, 50, 150, 150))
+    ann.set_color([0, 0, 0])
     ann.construct_appearances()
-    ann.construct_appearances(None)
-    assert set(ann.get_cos_object().key_set()) == before_keys
+    assert ann.get_normal_appearance_stream() is not None
 
 
-def test_construct_appearances_default_path_is_noop_circle() -> None:
+def test_construct_appearances_default_path_generates_appearance_circle() -> None:
     ann = PDAnnotationCircle()
-    before_keys = set(ann.get_cos_object().key_set())
+    ann.set_rectangle(PDRectangle(50, 50, 150, 150))
+    ann.set_color([0, 0, 0])
     ann.construct_appearances()
-    ann.construct_appearances(None)
-    assert set(ann.get_cos_object().key_set()) == before_keys
+    assert ann.get_normal_appearance_stream() is not None

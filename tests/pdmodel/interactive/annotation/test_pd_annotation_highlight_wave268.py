@@ -116,10 +116,11 @@ def test_custom_appearance_handler_called_with_document_argument_wave268() -> No
     assert handler.normal == 1
 
 
-def test_construct_appearances_default_path_is_noop_wave268() -> None:
-    """Without a custom handler the dictionary is left untouched (the
-    default ``PDHighlightAppearanceHandler`` is not ported yet, so the
-    default path falls through to the base no-op)."""
+def test_construct_appearances_default_path_empty_writes_nothing_wave268() -> None:
+    """With the default handler wired (wave 1414) an EMPTY highlight (no /C,
+    no /QuadPoints) still produces no /AP: ``PDHighlightAppearanceHandler``
+    early-returns when the quad points or colour are absent, matching
+    upstream."""
     ann = PDAnnotationHighlight()
     before_keys = set(ann.get_cos_object().key_set())
 
@@ -129,7 +130,9 @@ def test_construct_appearances_default_path_is_noop_wave268() -> None:
     assert set(ann.get_cos_object().key_set()) == before_keys
 
 
-def test_clear_custom_appearance_handler_restores_noop_path_wave268() -> None:
+def test_clear_custom_appearance_handler_restores_default_path_wave268() -> None:
+    # Clearing the custom handler restores the built-in default-handler
+    # path; for an empty highlight that path early-returns (no /AP written).
     ann = PDAnnotationHighlight()
     handler = _RecordingAppearanceHandler()
     ann.set_custom_appearance_handler(handler)  # type: ignore[arg-type]
@@ -140,3 +143,4 @@ def test_clear_custom_appearance_handler_restores_noop_path_wave268() -> None:
     assert handler.normal == 0
     assert handler.rollover == 0
     assert handler.down == 0
+    assert ann.get_normal_appearance_stream() is None

@@ -350,14 +350,18 @@ class PDAnnotationLine(PDAnnotationMarkup):
         Mirrors upstream ``constructAppearances()`` and
         ``constructAppearances(PDDocument)`` (``PDAnnotationLine.java``
         lines 422-438). A custom handler, when configured, is invoked
-        exactly as upstream does. The built-in ``PDLineAppearanceHandler``
-        is not ported yet, so the default path remains a no-op like the
-        base annotation implementation.
+        exactly as upstream does; otherwise the built-in
+        :class:`PDLineAppearanceHandler` generates the ``/AP`` streams.
         """
         if self._custom_appearance_handler is not None:
             self._custom_appearance_handler.generate_appearance_streams()
             return None
-        return super().construct_appearances(document)
+        from .handlers.pd_line_appearance_handler import (
+            PDLineAppearanceHandler,
+        )
+
+        PDLineAppearanceHandler(self, document).generate_appearance_streams()
+        return None
 
 
 __all__ = ["PDAnnotationLine"]

@@ -729,8 +729,17 @@ class CFFFont:
 
         Returns a :class:`Type2CharString` whose ``get_path`` /
         ``get_width`` methods delegate to fontTools, never an exception
-        for an out-of-range GID — instead an empty-program wrapper is
-        returned so callers can probe ``get_path() == []``.
+        for an out-of-range GID.
+
+        Bound handling mirrors upstream ``CFFFont.getType2CharString``
+        (decompiled): when ``gid >= numCharStrings`` upstream falls back
+        to the ``.notdef`` glyph (GID 0) — ``bytes = charStrings[0]`` —
+        so the returned charstring carries ``.notdef``'s width and path,
+        not zero. We do the same. A *negative* GID has no upstream
+        fallback (upstream throws ``ArrayIndexOutOfBoundsException``); to
+        stay non-raising we return an empty wrapper there (the one
+        documented ergonomic divergence — callers can probe
+        ``get_path() == []``).
         """
         # Defer the import: type2_char_string.py imports from this
         # module's package, but the class itself doesn't depend on
@@ -738,10 +747,9 @@ class CFFFont:
         from .type2_char_string import Type2CharString  # noqa: PLC0415
 
         charset = self.get_charset()
-        if not charset or cid_or_gid < 0 or cid_or_gid >= len(charset):
-            # Out-of-range: return an empty wrapper. Upstream throws
-            # IOException; we deliberately diverge for ergonomics —
-            # callers can detect via ``get_path() == []``.
+        if not charset or cid_or_gid < 0:
+            # No charset, or a negative GID upstream would reject: return
+            # an empty wrapper (non-raising ergonomic divergence).
             return Type2CharString(
                 font=self,
                 font_name=self.get_name(),
@@ -752,7 +760,12 @@ class CFFFont:
                 nominal_width_x=int(self.get_nominal_width_x()),
             )
 
-        glyph_name = charset[cid_or_gid]
+        # Out-of-range GID: fall back to the .notdef glyph (GID 0), matching
+        # upstream's ``bytes = charStrings[0]`` fallback. The wrapper keeps
+        # the requested GID for caller introspection but resolves the name /
+        # charstring from .notdef so width and path match upstream.
+        resolved_gid = cid_or_gid if cid_or_gid < len(charset) else 0
+        glyph_name = charset[resolved_gid]
         cs_map = self._charstrings_dict()
         try:
             cs = cs_map[glyph_name]

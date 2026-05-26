@@ -279,14 +279,19 @@ class PDAnnotationPolygon(PDAnnotationMarkup):
         Mirrors upstream ``constructAppearances()`` /
         ``constructAppearances(PDDocument)``
         (``PDAnnotationPolygon.java`` lines 167-181): a custom handler,
-        when configured, is invoked exactly as upstream does. The built-in
-        ``PDPolygonAppearanceHandler`` is not ported yet, so the default
-        path falls through to the base no-op.
+        when configured, is invoked exactly as upstream does; otherwise
+        the built-in :class:`PDPolygonAppearanceHandler` generates the
+        ``/AP`` streams.
         """
         if self._custom_appearance_handler is not None:
             self._custom_appearance_handler.generate_appearance_streams()
             return None
-        return super().construct_appearances(document)
+        from .handlers.pd_polygon_appearance_handler import (
+            PDPolygonAppearanceHandler,
+        )
+
+        PDPolygonAppearanceHandler(self, document).generate_appearance_streams()
+        return None
 
 
 __all__ = ["PDAnnotationPolygon"]

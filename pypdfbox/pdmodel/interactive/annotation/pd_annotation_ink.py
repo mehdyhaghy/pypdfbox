@@ -172,14 +172,18 @@ class PDAnnotationInk(PDAnnotationMarkup):
         Mirrors upstream ``constructAppearances()`` and
         ``constructAppearances(PDDocument)`` (``PDAnnotationInk.java``
         lines 122-138). A custom handler, when configured, is invoked
-        exactly as upstream does. The built-in ``PDInkAppearanceHandler``
-        is not ported yet, so the default path remains a no-op like the
-        base annotation implementation.
+        exactly as upstream does; otherwise the built-in
+        :class:`PDInkAppearanceHandler` generates the ``/AP`` streams.
         """
         if self._custom_appearance_handler is not None:
             self._custom_appearance_handler.generate_appearance_streams()
             return None
-        return super().construct_appearances(document)
+        from .handlers.pd_ink_appearance_handler import (
+            PDInkAppearanceHandler,
+        )
+
+        PDInkAppearanceHandler(self, document).generate_appearance_streams()
+        return None
 
 
 __all__ = ["PDAnnotationInk"]

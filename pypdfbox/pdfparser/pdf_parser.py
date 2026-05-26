@@ -1487,7 +1487,15 @@ class PDFParser:
     def _read_stream_body(self, stream: COSStream) -> None:
         """Per ISO 32000-1 §7.3.8.1: ``stream`` keyword is followed by EOL
         (CRLF or LF — bare CR is non-conformant). Then exactly /Length
-        bytes. Then ``endstream`` (typically preceded by EOL)."""
+        bytes. Then ``endstream`` (typically preceded by EOL).
+
+        Mirrors upstream ``COSParser.parseCOSStream`` (Java line 904): the
+        declared ``/Length`` is only trusted when ``validateStreamLength``
+        confirms it actually lands on an ``endstream`` keyword. A present
+        but *wrong* ``/Length`` (too short / too long / zero) — common in
+        real-world files — is recovered by scanning to the next
+        ``endstream`` and the recovered length is written back onto the
+        stream dictionary, exactly as upstream does."""
         self._consume_eol_after_stream_keyword()
         # /Length may be an indirect reference whose resolution recurses
         # into ``_load_indirect_object_at`` and moves the shared cursor.
@@ -1499,9 +1507,17 @@ class PDFParser:
             if not self._lenient or "missing or malformed /Length" not in str(exc):
                 raise
             self._src.seek(body_start)
-            stream.set_raw_data(self._read_until_endstream())
+            self._recover_stream_body(stream, None)
             return
+        # In lenient mode, a declared /Length is only trusted when it
+        # actually points at an ``endstream`` keyword. Otherwise upstream
+        # falls back to the endstream scan and rewrites /Length with the
+        # recovered value (PDFBOX validateStreamLength workaround).
         self._src.seek(body_start)
+        if self._lenient and not self._validate_stream_length(body_start, length):
+            self._src.seek(body_start)
+            self._recover_stream_body(stream, length)
+            return
         body = bytearray(length)
         n = self._src.read_into(body)
         if n != length:
@@ -1518,6 +1534,31 @@ class PDFParser:
             raise PDFParseError(
                 f"expected 'endstream', got {kw!r}", position=self._base.position
             )
+
+    def _validate_stream_length(self, body_start: int, length: int) -> bool:
+        """Return ``True`` when ``length`` bytes from ``body_start`` lands on
+        an ``endstream`` keyword. Mirrors upstream
+        ``COSParser.validateStreamLength(long)`` — delegates to the shared
+        :class:`COSParser` implementation (same underlying source), restoring
+        the cursor to ``body_start`` afterwards."""
+        if self._cos_parser is None:  # pragma: no cover - parser always bound here
+            return True
+        self._src.seek(body_start)
+        try:
+            return self._cos_parser.validate_stream_length(length)
+        finally:
+            self._src.seek(body_start)
+
+    def _recover_stream_body(self, stream: COSStream, declared: int | None) -> None:
+        """Recover a stream body by scanning to the next ``endstream`` and,
+        when the recovered length differs from the ``declared`` value (or
+        none was declared), write the recovered length back onto the stream
+        dictionary. Mirrors the upstream readUntilEndStream fallback in
+        ``parseCOSStream``. The source must be positioned at the body start."""
+        body = self._read_until_endstream()
+        stream.set_raw_data(body)
+        if declared is None or declared != len(body):
+            stream.set_item(COSName.LENGTH, COSInteger.get(len(body)))
 
     def _read_until_endstream(self) -> bytes:
         """Lenient stream recovery for missing or malformed ``/Length``.

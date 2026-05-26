@@ -163,12 +163,18 @@ class PDFunctionType2(PDFunction):
         Type 2 always takes a single input; only ``input[0]`` is used.
         Output is clipped to ``/Range`` when present.
 
+        Upstream parity: PDFBox ``PDFunctionType2.eval`` raises
+        ``x = input[0]`` to ``/N`` **without** first clipping the input to
+        ``/Domain`` (PDFunctionType2.java:90-104). Earlier this port called
+        ``clip_input`` here, which diverged for inputs outside ``/Domain``
+        (e.g. domain ``[0.2, 0.8]`` with input ``0`` yielded ``0.2**N``
+        instead of ``0**N``). We now read ``input[0]`` directly to match.
+
         Output dimension is ``min(len(/C0), len(/C1))`` to match upstream
         PDFBox ``PDFunctionType2.eval`` (``new float[Math.min(c0.size(),
         c1.size())]``).
         """
-        clipped = self.clip_input(input)
-        x = clipped[0] if clipped else 0.0
+        x = input[0] if input else 0.0
         c0 = self.get_c0()
         c1 = self.get_c1()
         n = self.get_n()

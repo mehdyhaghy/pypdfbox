@@ -108,7 +108,10 @@ def test_construct_appearances_with_document_arg_invokes_handler_wave1273() -> N
     assert handler.normal == 1
 
 
-def test_construct_appearances_without_handler_is_noop_wave1273() -> None:
+def test_construct_appearances_without_handler_empty_line_writes_nothing_wave1273() -> None:
+    # With the default handler wired (wave 1414) an EMPTY line (no /Rect,
+    # no /L) still produces no /AP: PDLineAppearanceHandler early-returns
+    # when the rectangle or line array is absent, matching upstream.
     annotation = PDAnnotationLine()
     before_keys = set(annotation.get_cos_object().key_set())
 
@@ -118,7 +121,9 @@ def test_construct_appearances_without_handler_is_noop_wave1273() -> None:
     assert set(annotation.get_cos_object().key_set()) == before_keys
 
 
-def test_clear_custom_appearance_handler_restores_noop_path_wave1273() -> None:
+def test_clear_custom_appearance_handler_restores_default_path_wave1273() -> None:
+    # Clearing the custom handler restores the built-in default-handler
+    # path; for an empty line that path early-returns (no /AP written).
     annotation = PDAnnotationLine()
     handler = _RecordingAppearanceHandler()
     annotation.set_custom_appearance_handler(handler)  # type: ignore[arg-type]
@@ -127,6 +132,7 @@ def test_clear_custom_appearance_handler_restores_noop_path_wave1273() -> None:
     assert handler.normal == 0
     assert handler.rollover == 0
     assert handler.down == 0
+    assert annotation.get_normal_appearance_stream() is None
 
 
 def test_handler_replacement_uses_latest_wave1273() -> None:
