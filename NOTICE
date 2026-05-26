@@ -121,8 +121,69 @@ DejaVu Fonts (DejaVu Sans)
 
 Runtime dependencies (declared, not bundled — installed by pip from PyPI):
 
+  Each is redistributed by PyPI under its own license; the licenses are
+  reproduced with their respective distributions. pypdfbox does not bundle
+  these packages, but cites them here for completeness. All are permissive
+  (Apache-2.0 / MIT / BSD-family), per the project's permissive-only policy
+  (PRD §4).
+
+  cryptography (Python: cryptography)
+  Copyright (c) The Python Cryptographic Authority and individual
+  contributors <cryptography-dev@python.org>.
+  Dual-licensed under the Apache License, Version 2.0 OR the BSD
+  3-Clause License.
+  https://github.com/pyca/cryptography
+
+  Used by `pypdfbox/pdmodel/encryption/` for the StandardSecurityHandler
+  (RC4 40/128-bit, AES-128/256 CBC; revisions r2-r6) and PKCS#7 signature
+  handling (PDSignature /Contents). Pulls in cffi (MIT, © Armin Rigo /
+  Maciej Fijalkowski) and pycparser (BSD 3-Clause, © Eli Bendersky)
+  transitively.
+
+  Pillow (Python: PIL)
+  Copyright (c) 2010 Jeffrey A. Clark and contributors; original PIL
+  Copyright (c) 1997-2011 Secret Labs AB and Fredrik Lundh.
+  Licensed under the MIT-CMU (HPND) License.
+  https://python-pillow.github.io
+
+  Used for ICC color transforms via ImageCms (Little CMS 2-backed) and a
+  few image-handling paths.
+
+  fontTools (Python: fontTools)
+  Copyright (c) Just van Rossum and contributors.
+  Licensed under the MIT License.
+  https://github.com/fonttools/fonttools
+
+  Used by `pypdfbox/fontbox/` to parse TrueType / CFF / OpenType / Type1
+  font programs.
+
+  skia-python (Python: skia)
+  Copyright (c) Kota Yamaguchi and contributors (wraps Google Skia,
+  BSD 3-Clause).
+  Licensed under the BSD 3-Clause License.
+  https://github.com/kyamagu/skia-python
+
+  Used by `pypdfbox/rendering/` for canvas + path drawing, anti-aliasing,
+  ICC color spaces, and PNG/JPEG/WebP raster I/O.
+
+  imagecodecs (Python: imagecodecs)
+  Copyright (c) 2008-2026 Christoph Gohlke and contributors.
+  Licensed under the BSD 3-Clause License.
+  https://www.cgohlke.com
+
+  Used by `pypdfbox/filter/` for TIFF, CCITT Group 3/4 fax, and
+  JPEG 2000 codec support.
+
+  NumPy (Python: numpy)
+  Copyright (c) 2005-2025 NumPy Developers.
+  Licensed under the BSD 3-Clause License (with bundled components under
+  0BSD, MIT, Zlib, and CC0-1.0 — all permissive).
+  https://numpy.org
+
+  Used for pixel math and CMYK conversion in the rendering pipeline.
+
   jbig2-parser (Python: jbig2_parser)
-  Copyright (c) 2024 MichailTal
+  Copyright (c) 2024 MichailTal / Nils Koehler.
   Licensed under the MIT License.
   https://github.com/MichailTal/jbig2_parser
 
