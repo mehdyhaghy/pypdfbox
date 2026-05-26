@@ -113,6 +113,26 @@ PDF stream filters per ISO 32000-1 §7.4. Per PRD §3.7, filters that wrap stdli
 | `pypdfbox/filter/missing_image_reader_exception.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/MissingImageReaderException.java` (extends `OSError` per CLAUDE.md `IOException` mapping) |
 | `pypdfbox/filter/identity_filter.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/filter/IdentityFilter.java` | full port — pass-through `decode`/`encode` via `io_utils.copy`. Not registered in `FilterFactory` (upstream class is package-private; reached only through `CryptFilter`). |
 
+### `pypdfbox/jbig2/` — permissive JBIG2 decoder (ported from `apache/pdfbox-jbig2`, Apache-2.0)
+
+Replaces the GPL `jbig2-parser` dependency removed in wave 1420. Ported from the Apache-2.0, pure-Java `apache/pdfbox-jbig2` project (upstream paths are `src/main/java/org/apache/pdfbox/jbig2/...`); the JBIG2 plugin is also bundled in the pinned `pdfbox-app-3.0.7.jar`, so the port is differential-tested against it via `oracle/probes/`. Wave 1421 = foundation layer.
+
+| pypdfbox path | upstream version | upstream Java path |
+|---|---|---|
+| `pypdfbox/jbig2/err/jbig2_exception.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/err/JBIG2Exception.java` |
+| `pypdfbox/jbig2/err/integer_max_value_exception.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/err/IntegerMaxValueException.java` |
+| `pypdfbox/jbig2/err/invalid_header_value_exception.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/err/InvalidHeaderValueException.java` |
+| `pypdfbox/jbig2/io/image_input_stream.py` | apache/pdfbox-jbig2 | (ports the `javax.imageio.stream.ImageInputStream`/`ImageInputStreamImpl` bit-reader surface that `SubInputStream` extends and the decoders consume) |
+| `pypdfbox/jbig2/io/input_stream_factory.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/io/InputStreamFactory.java` |
+| `pypdfbox/jbig2/io/default_input_stream_factory.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/io/DefaultInputStreamFactory.java` |
+| `pypdfbox/jbig2/io/sub_input_stream.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/io/SubInputStream.java` |
+| `pypdfbox/jbig2/bitmap.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/Bitmap.java` |
+| `pypdfbox/jbig2/util/combination_operator.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/util/CombinationOperator.java` |
+| `pypdfbox/jbig2/jbig2_globals.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/JBIG2Globals.java` |
+| `pypdfbox/jbig2/decoder/arithmetic/cx.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/decoder/arithmetic/CX.java` |
+| `pypdfbox/jbig2/decoder/arithmetic/arithmetic_decoder.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/decoder/arithmetic/ArithmeticDecoder.java` |
+| `pypdfbox/jbig2/decoder/arithmetic/arithmetic_integer_decoder.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/decoder/arithmetic/ArithmeticIntegerDecoder.java` |
+
 ### `pypdfbox/contentstream/`
 
 Cluster #1 (Operator + OperatorName + PDContentStream).
