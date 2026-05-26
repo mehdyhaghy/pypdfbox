@@ -10,9 +10,27 @@ nodes so callers that introspect a DOM keep working.
 
 from __future__ import annotations
 
+import re
 from typing import BinaryIO
 from xml.dom import minidom
 from xml.dom.minidom import Document, Element
+
+_DOCTYPE_RE = re.compile(rb"<!DOCTYPE", re.IGNORECASE)
+
+
+def contains_doctype(data: bytes | bytearray | memoryview) -> bool:
+    """Return ``True`` if a ``<!DOCTYPE`` declaration appears anywhere in
+    ``data``.
+
+    A DOCTYPE is the entry point for DTD-based attacks — XML internal-entity
+    expansion ("billion laughs") and external-entity resolution (XXE). XMP
+    (ISO 16684) and XFDF do not use DTDs, so any DOCTYPE in those payloads is
+    rejected. The whole buffer is scanned (not just a fixed-size prefix):
+    a fixed window can be bypassed by padding the prolog with a large leading
+    comment so the DOCTYPE lands past the window. Stdlib-only; complements
+    :mod:`defusedxml` when it is installed.
+    """
+    return _DOCTYPE_RE.search(bytes(data)) is not None
 
 
 def _read_all(stream: BinaryIO | bytes | bytearray) -> bytes:
@@ -38,9 +56,11 @@ class XMLUtil:
         """
         try:
             data = _read_all(stream)
-            # Guard against the most common XXE vector: an external DOCTYPE.
-            head = data[:2048].lstrip().lower()
-            if b"<!doctype" in head:
+            # Reject any DTD: it is the entry point for XXE and entity-expansion
+            # ("billion laughs") DoS. Scans the whole buffer, not a fixed prefix
+            # (a large leading comment can otherwise push the DOCTYPE past the
+            # window). See ``contains_doctype``.
+            if contains_doctype(data):
                 raise OSError("DOCTYPE declarations are not allowed")
             try:
                 from defusedxml.minidom import parseString as _safe_parse

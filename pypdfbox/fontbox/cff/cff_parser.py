@@ -116,46 +116,59 @@ class CFFParser:
         from fontTools.cffLib import CFFFontSet  # type: ignore[import-untyped]  # noqa: PLC0415
 
         fontset = CFFFontSet()
-        fontset.decompile(io.BytesIO(cff_payload), otFont=None)
+        # fontTools validates the CFF binary with bare ``assert`` statements
+        # (e.g. ``assert offSize <= 4``) and can raise struct/index/key errors
+        # on malformed data. Adapt all of that to the parser's own error type:
+        # a raw ``AssertionError`` would surprise callers catching ``OSError``,
+        # and — worse — ``python -O`` strips ``assert`` entirely, removing the
+        # validation. Mirrors upstream ``CFFParser``, which throws
+        # ``IOException`` on a malformed CFF. Our own intentional ``OSError``
+        # raises below (missing name index, synthetic fonts) pass through.
+        try:
+            fontset.decompile(io.BytesIO(cff_payload), otFont=None)
 
-        if not fontset.fontNames:
-            msg = "Name index missing in CFF font"
-            raise OSError(msg)
-
-        fonts: list[CFFFont] = []
-        for name in fontset.fontNames:
-            top = fontset[name]
-            # Synthetic-base fonts are unsupported (upstream raises in
-            # ``parseFont``, ``CFFParser.java`` lines 557-561). fontTools
-            # surfaces the operator on the raw Top DICT.
-            raw = getattr(top, "rawDict", {})
-            if "SyntheticBase" in raw:
-                msg = "Synthetic Fonts are not supported"
+            if not fontset.fontNames:
+                msg = "Name index missing in CFF font"
                 raise OSError(msg)
 
-            # Pick the upstream subtype: ROS present → CIDKeyed, else
-            # name-keyed Type 1 (mirrors ``CFFParser.parseFont``,
-            # ``CFFParser.java`` lines 564-574).
-            base = CFFFont.from_bytes(cff_payload)
-            # ``from_bytes`` always picks the first font in the set.
-            # When the set has multiple fonts (rare for /FontFile3) we
-            # re-point ``_top`` to the named one to preserve upstream's
-            # one-CFFFont-per-NameINDEX-entry contract.
-            base._top = top
-            font: CFFFont
-            if base.is_cid_font():
-                font = CFFCIDFont.from_cff_font(base)
-            else:
-                font = CFFType1Font.from_cff_font(base)
-            font.set_name(name)
-            font.set_data(cff_payload)
-            # GSubrs are shared across the whole FontSet — pull them
-            # from the parsed Top DICT and propagate (mirrors
-            # ``font.setGlobalSubrIndex(globalSubrIndex)``,
-            # ``CFFParser.java`` line 215).
-            font.set_global_subr_index(font.get_global_subr_index())
-            self._debug_font_name = name
-            fonts.append(font)
+            fonts: list[CFFFont] = []
+            for name in fontset.fontNames:
+                top = fontset[name]
+                # Synthetic-base fonts are unsupported (upstream raises in
+                # ``parseFont``, ``CFFParser.java`` lines 557-561). fontTools
+                # surfaces the operator on the raw Top DICT.
+                raw = getattr(top, "rawDict", {})
+                if "SyntheticBase" in raw:
+                    msg = "Synthetic Fonts are not supported"
+                    raise OSError(msg)
+
+                # Pick the upstream subtype: ROS present → CIDKeyed, else
+                # name-keyed Type 1 (mirrors ``CFFParser.parseFont``,
+                # ``CFFParser.java`` lines 564-574).
+                base = CFFFont.from_bytes(cff_payload)
+                # ``from_bytes`` always picks the first font in the set.
+                # When the set has multiple fonts (rare for /FontFile3) we
+                # re-point ``_top`` to the named one to preserve upstream's
+                # one-CFFFont-per-NameINDEX-entry contract.
+                base._top = top
+                font: CFFFont
+                if base.is_cid_font():
+                    font = CFFCIDFont.from_cff_font(base)
+                else:
+                    font = CFFType1Font.from_cff_font(base)
+                font.set_name(name)
+                font.set_data(cff_payload)
+                # GSubrs are shared across the whole FontSet — pull them
+                # from the parsed Top DICT and propagate (mirrors
+                # ``font.setGlobalSubrIndex(globalSubrIndex)``,
+                # ``CFFParser.java`` line 215).
+                font.set_global_subr_index(font.get_global_subr_index())
+                self._debug_font_name = name
+                fonts.append(font)
+        except OSError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - adapt fontTools failure modes
+            raise OSError(f"Invalid CFF font data: {exc}") from exc
 
         return fonts
 

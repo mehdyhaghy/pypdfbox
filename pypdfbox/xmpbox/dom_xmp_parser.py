@@ -6,6 +6,8 @@ from io import BytesIO
 from typing import IO, cast
 from xml.etree import ElementTree as ET
 
+from pypdfbox.util.xml_util import contains_doctype
+
 from .adobe_pdf_schema import AdobePDFSchema
 from .dublin_core_schema import DublinCoreSchema
 from .exif_schema import ExifSchema
@@ -276,6 +278,16 @@ class DomXmpParser:
             self._extract_packet(raw)
         )
         namespace_prefixes = self._collect_namespace_prefixes(body)
+
+        # An XMP packet must not carry a DTD (ISO 16684-1 §7.3.2). Reject any
+        # DOCTYPE before handing the bytes to ElementTree's expat parser, which
+        # would otherwise expand internal entities ("billion laughs" DoS) /
+        # resolve external entities (XXE) on untrusted metadata.
+        if contains_doctype(body):
+            raise XmpParsingException(
+                XmpParsingException.ErrorType.FORMAT,
+                "XMP packet must not contain a DOCTYPE declaration",
+            )
 
         try:
             # ``fromstring`` accepts bytes; the XML declaration's encoding is
