@@ -109,15 +109,17 @@ def test_wave1349_get_image_subsampling_floor_clamps_to_at_least_one_pixel() -> 
 
 
 def test_wave1349_get_image_returns_none_when_to_pil_image_returns_none() -> None:
-    # 16-bit-per-component rasters fall through ``to_pil_image`` →
-    # ``None``; ``get_image`` must propagate the None even when region /
-    # subsampling are provided (the line-639 short-circuit).
+    # Multi-component 16-bit rasters (16-bit DeviceRGB) remain
+    # rendering-cluster work and fall through ``to_pil_image`` → ``None``;
+    # ``get_image`` must propagate the None even when region / subsampling
+    # are provided (the short-circuit guard). (16-bit *DeviceGray* now
+    # decodes — only multi-component 16-bit stays unsupported.)
     params = COSDictionary()
     params.set_int("W", 2)
     params.set_int("H", 2)
     params.set_int("BPC", 16)
-    params.set_item("CS", COSName.get_pdf_name("G"))
-    img = PDInlineImage(params, b"\x00" * 8, None)
+    params.set_item("CS", COSName.get_pdf_name("RGB"))
+    img = PDInlineImage(params, b"\x00" * 24, None)
 
     assert img.get_image(region=(0, 0, 1, 1)) is None
 
@@ -126,25 +128,19 @@ def test_wave1349_get_image_returns_none_when_to_pil_image_returns_none() -> Non
 
 
 def test_wave1349_get_stencil_image_returns_underlying_mask_when_stencil() -> None:
-    # Stencil masks are 1-bpc by spec but ``to_pil_image`` short-circuits
-    # for non-8bpc rasters and returns None — we want a passing
-    # ``is_stencil()`` check while still getting a real PIL image back.
-    # Setting /BPC 8 on a stencil is technically out-of-spec; the
-    # constructor doesn't reject it, and the parity-test surface here
-    # only cares that the post-guard branch returns whatever
-    # ``to_pil_image`` produced (rendering-cluster work would refine
-    # the 1-bpc path later — see CHANGES).
+    # Stencil masks are 1-bpc by spec. ``to_pil_image`` now decodes the
+    # 1-bit DeviceGray raster (matching PDFBox's ``getImage()`` on a
+    # stencil, which returns the bilevel raster rather than null), so
+    # ``get_stencil_image`` enters its post-guard branch and returns the
+    # underlying mask as a real PIL image.
     params = _device_gray_params(2, 2, stencil=True)
     img = PDInlineImage(params, b"\x00\xff\xff\x00", None)
 
-    # ``get_bits_per_component`` for a stencil is hardcoded to 1, so
-    # ``to_pil_image`` falls into the bpc != 8 fall-through and returns
-    # None. ``get_stencil_image`` must then propagate that None — but
-    # critically it has to enter the post-guard branch first (line 665).
     paint_marker = object()
     result = img.get_stencil_image(paint_marker)
 
-    assert result is None  # to_pil_image fall-through
+    assert result is not None
+    assert result.size == (2, 2)
 
 
 def test_wave1349_get_stencil_image_raises_when_not_a_stencil() -> None:

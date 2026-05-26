@@ -52,15 +52,21 @@ class PDAnnotationStrikeout(PDAnnotationTextMarkup):
     def construct_appearances(self, document: PDDocument | None = None) -> None:
         """Generate strikeout annotation appearances.
 
-        A custom handler, when configured, is invoked exactly as upstream does.
-        The built-in ``PDStrikeoutAppearanceHandler`` is not ported yet, so
-        the default path remains a no-op like the base annotation
-        implementation.
+        Mirrors upstream ``constructAppearances()`` and
+        ``constructAppearances(PDDocument)`` (``PDAnnotationStrikeout.java``
+        lines 66-82). A custom handler, when configured, is invoked exactly
+        as upstream does; otherwise the built-in
+        :class:`PDStrikeoutAppearanceHandler` generates the ``/AP`` streams.
         """
         if self._custom_appearance_handler is not None:
             self._custom_appearance_handler.generate_appearance_streams()
             return None
-        return super().construct_appearances(document)
+        from .handlers.pd_strikeout_appearance_handler import (
+            PDStrikeoutAppearanceHandler,
+        )
+
+        PDStrikeoutAppearanceHandler(self, document).generate_appearance_streams()
+        return None
 
 
 __all__ = ["PDAnnotationStrikeout"]

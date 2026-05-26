@@ -748,8 +748,11 @@ def test_protected_set_subtype_writes_subtype_name() -> None:
 
 def test_construct_appearances_no_arg_is_noop() -> None:
     """Upstream's no-arg ``constructAppearances()`` (Java line 877) is a
-    no-op on the base class — overrides happen in subclasses."""
-    ann = PDAnnotationText()
+    no-op on the base class — overrides happen in subclasses. Exercised via
+    ``PDAnnotationUnknown`` which has no built-in appearance handler (unlike
+    ``PDAnnotationText``, which wires ``PDTextAppearanceHandler`` and so does
+    generate an ``/AP`` — see the appearance-generation oracle tests)."""
+    ann = PDAnnotationUnknown(COSDictionary())
     # Calling the no-arg overload must not raise nor mutate the dict.
     ann.construct_appearances()
     assert ann.get_appearance_dictionary() is None
@@ -759,7 +762,7 @@ def test_construct_appearances_with_document_is_noop() -> None:
     """Upstream's ``constructAppearances(PDDocument)`` (Java line 867) is
     a no-op on the base class. We accept ``None`` as the document, which
     matches the contract for the no-arg case."""
-    ann = PDAnnotationText()
+    ann = PDAnnotationUnknown(COSDictionary())
     ann.construct_appearances(None)
     assert ann.get_appearance_dictionary() is None
 

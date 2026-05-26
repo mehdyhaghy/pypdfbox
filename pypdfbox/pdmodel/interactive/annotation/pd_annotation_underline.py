@@ -50,15 +50,21 @@ class PDAnnotationUnderline(PDAnnotationTextMarkup):
     def construct_appearances(self, document: PDDocument | None = None) -> None:
         """Generate underline annotation appearances.
 
-        A custom handler, when configured, is invoked exactly as upstream does.
-        The built-in ``PDUnderlineAppearanceHandler`` is not ported yet, so
-        the default path remains a no-op like the base annotation
-        implementation.
+        Mirrors upstream ``constructAppearances()`` and
+        ``constructAppearances(PDDocument)`` (``PDAnnotationUnderline.java``
+        lines 66-82). A custom handler, when configured, is invoked exactly
+        as upstream does; otherwise the built-in
+        :class:`PDUnderlineAppearanceHandler` generates the ``/AP`` streams.
         """
         if self._custom_appearance_handler is not None:
             self._custom_appearance_handler.generate_appearance_streams()
             return None
-        return super().construct_appearances(document)
+        from .handlers.pd_underline_appearance_handler import (
+            PDUnderlineAppearanceHandler,
+        )
+
+        PDUnderlineAppearanceHandler(self, document).generate_appearance_streams()
+        return None
 
 
 __all__ = ["PDAnnotationUnderline"]

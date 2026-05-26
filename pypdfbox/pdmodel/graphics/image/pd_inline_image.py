@@ -561,56 +561,24 @@ class PDInlineImage:
     # ---------- PIL helper (mirrors PDImageXObject.to_pil_image) ----------
 
     def to_pil_image(self) -> Image.Image | None:
-        """Best-effort conversion to a PIL image — same scope as
-        :meth:`PDImageXObject.to_pil_image`: DCT/JPX payloads via Pillow
-        and raw 8-bit DeviceGray/DeviceRGB rasters. Stencil masks,
-        Indexed expansion, decode arrays and non-8bpc samples are
-        rendering-cluster work and return ``None`` here.
+        """Best-effort conversion to a PIL image — shares the full raster
+        decode core with :meth:`PDImageXObject.to_pil_image` via
+        :func:`pypdfbox.pdmodel.graphics.image.pd_image_x_object.decode_pdimage_to_pil`.
+
+        Supports DCT/JPX payloads via Pillow and raw DeviceRGB, DeviceGray
+        (1/2/4/8/16 bpc), DeviceCMYK, Indexed (1/2/4/8 bpc), ``Separation``
+        and ``DeviceN`` rasters — covering the abbreviated inline filters
+        (``AHx`` / ``A85`` / ``Fl`` / ``RL`` / ``CCF`` / ``DCT``) and
+        abbreviated colour spaces (``G`` / ``RGB`` / ``CMYK`` / ``I``).
+        Stencil masks, multi-component 16-bit samples and other non-device
+        colour models remain rendering-cluster work and return ``None``.
         """
-        width = self.get_width()
-        height = self.get_height()
-        if width <= 0 or height <= 0:
-            return None
+        from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (  # noqa: PLC0415
+            decode_pdimage_to_pil,
+        )
 
-        filters = self.get_filters()
-        if _DCT_DECODE in filters or _DCT_DECODE_ABBREVIATION in filters:
-            with self.create_input_stream(
-                stop_filters=[_DCT_DECODE, _DCT_DECODE_ABBREVIATION]
-            ) as src:
-                return Image.open(io.BytesIO(src.read())).convert("RGB")
-        if "JPXDecode" in filters or "JPX" in filters:
-            with self.create_input_stream(stop_filters=["JPXDecode", "JPX"]) as src:
-                return Image.open(io.BytesIO(src.read())).convert("RGB")
-
-        bpc = self.get_bits_per_component()
-        if bpc not in (8, -1):
-            return None
-
-        try:
-            color_space = self.get_color_space()
-        except OSError:
-            color_space = None
-        color_space_name = color_space.get_name() if color_space is not None else None
-        data = self._decoded_data
-        rgb_len = width * height * 3
-        gray_len = width * height
-        if color_space_name == "DeviceRGB" or (
-            color_space_name is None and len(data) >= rgb_len
-        ):
-            if len(data) < rgb_len:
-                return None
-            return Image.frombytes("RGB", (width, height), data[:rgb_len])
-        if color_space_name == "DeviceGray":
-            if len(data) < gray_len:
-                return None
-            return Image.frombytes("L", (width, height), data[:gray_len]).convert("RGB")
-        if color_space_name in ("Separation", "DeviceN") and color_space is not None:
-            from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (  # noqa: PLC0415
-                _decode_devicen_to_rgb,
-            )
-
-            return _decode_devicen_to_rgb(color_space, data, width, height)
-        return None
+        filter_names = set(self.get_filters())
+        return decode_pdimage_to_pil(self, filter_names)
 
     # ---------- rendering surface (mirrors upstream getImage / stencil /
     # raw raster — Java lines 353, 359, 365, 371, 377) ----------

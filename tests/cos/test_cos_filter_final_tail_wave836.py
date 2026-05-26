@@ -17,7 +17,10 @@ def test_wave836_cos_float_preserves_exponent_negative_and_plain_format() -> Non
 
     value = COSFloat(-1e100)
     assert value.float_value() == pytest.approx(-3.4028234663852886e38)
-    assert value.format_string() == "-340282346638528860000000000000000000000"
+    # PDFBox Float.toString(-Float.MAX_VALUE) → "-340282350000…"; the earlier
+    # "-…46638528860…" expectation was float64 representation noise unified away
+    # in wave 1415/1416 (verified live vs PDFBox in the COS write oracle).
+    assert value.format_string() == "-340282350000000000000000000000000000000"
 
 
 def test_wave836_cos_float_duplicate_internal_negative_is_rejected() -> None:

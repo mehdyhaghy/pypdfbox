@@ -12,6 +12,84 @@ _FLOAT_MAX = 3.4028234663852886e38  # Float.MAX_VALUE
 _FLOAT_MIN_NORMAL = 1.1754943508222875e-38  # Float.MIN_NORMAL (2**-126)
 
 
+def _shortest_float32_decimal(value: float) -> str:
+    """Shortest decimal ``%g`` string that round-trips to the same IEEE-754
+    single-precision value as ``value`` — the Python equivalent of Java's
+    ``Float.toString`` digit-selection step.
+
+    ``value`` is a non-negative Python ``float`` (double) already holding a
+    float32-representable magnitude (``COSFloat`` coerces on construction). We
+    search upward in significant-digit precision and stop at the first that
+    round-trips through ``float32`` exactly, which yields the minimal digit
+    string. Candidates whose ``float64`` value overflows the single-precision
+    range (only possible right at ``Float.MAX_VALUE``) cannot equal a finite
+    target, so they are skipped rather than allowed to raise."""
+    target = struct.unpack("f", struct.pack("f", value))[0]
+    for precision in range(1, 18):
+        candidate = f"{target:.{precision}g}"
+        try:
+            round_tripped = struct.unpack("f", struct.pack("f", float(candidate)))[0]
+        except OverflowError:
+            # ``candidate`` rounded above Float.MAX_VALUE as a double — it can
+            # never equal a finite float32 target, so try more digits.
+            continue
+        if round_tripped == target:
+            return candidate
+    return repr(target)
+
+
+def format_float32(value: float) -> str:
+    """Canonical PDF real-number serialization, byte-for-byte matching Apache
+    PDFBox ``COSFloat.formatString`` (PDFBox 3.0.7) for finite values.
+
+    Upstream (PDFBox 3.0.7)::
+
+        String s = String.valueOf(value);            // Float.toString(value)
+        valueAsString = s.indexOf('E') < 0
+            ? s
+            : new BigDecimal(s).stripTrailingZeros().toPlainString();
+
+    The ``Float.toString`` contract uses exponent notation only when the
+    magnitude is ``< 1e-3`` or ``>= 1e7``; inside that window the decimal form
+    always carries at least one fractional digit (whole numbers keep a trailing
+    ``.0``). Outside it, PDFBox strips trailing zeros via ``BigDecimal``. Both
+    branches are reproduced here so a freshly-constructed ``COSFloat``
+    serialises identically to upstream regardless of whether the self-write
+    (``write_pdf``) path or ``COSWriter`` drives it.
+
+    This is the single source of truth: ``COSFloat.format_string`` and the
+    writer's ``COSWriter.format_float`` both delegate here, so there is exactly
+    one float-formatting implementation in the codebase.
+
+    Note: for the smallest subnormals (e.g. ``Float.MIN_VALUE`` = ``1.4e-45``)
+    Java's legacy ``FloatingDecimal`` can emit a *non-minimal* digit string
+    (``1.4E-45`` where ``1E-45`` also round-trips); we emit the truly-shortest
+    round-tripping form, which is a valid PDF number but may differ in
+    non-significant trailing digits. See CHANGES.md."""
+    # NaN cannot be encoded as a PDF number, but match Java's ``Float.toString``
+    # token ("NaN") rather than emitting "nan"/"NaN.0"; the writer raises on
+    # NaN before it ever reaches a serialised PDF.
+    if math.isnan(value):
+        return "NaN"
+    # ±0.0 — preserve the sign bit (Float.toString yields "0.0" / "-0.0").
+    if value == 0.0:
+        return "-0.0" if struct.pack("f", value)[3] & 0x80 else "0.0"
+    negative = value < 0
+    magnitude = -value if negative else value
+    digits = _shortest_float32_decimal(magnitude)
+    decimal_value = Decimal(digits)
+    if magnitude < 1e-3 or magnitude >= 1e7:
+        # Exponent branch: BigDecimal.stripTrailingZeros().toPlainString().
+        text = format(decimal_value.normalize(), "f")
+    else:
+        # Decimal branch: Float.toString keeps it verbatim, always with a
+        # fractional part (e.g. "1000000.0", "100.0").
+        text = format(decimal_value, "f")
+        if "." not in text:
+            text += ".0"
+    return ("-" + text) if negative else text
+
+
 def _to_float32(value: float) -> float:
     """Round to IEEE-754 single precision and clamp out-of-range magnitudes
     to ``±MAX_VALUE``. Used by the direct-float constructor and ``set_value``;
@@ -155,16 +233,13 @@ class COSFloat(COSNumber):
     def format_string(self) -> str:
         """Textual form used by ``write_pdf`` — mirrors PDFBox's private
         ``formatString``. If the original parsed text is available, that
-        wins (preserves round-trip). Otherwise we use Python's ``str(float)``,
-        falling back to ``Decimal.normalize``-style plain notation when the
-        result contains an exponent (PDFBox uses ``BigDecimal.toPlainString``).
+        wins (preserves round-trip). Otherwise delegate to the shared
+        :func:`format_float32` (the same float32 shortest-digit logic the
+        writer uses), so the self-write byte stream matches ``COSWriter``.
         """
         if self._original is not None:
             return self._original
-        s = repr(self._value) if isinstance(self._value, float) else str(self._value)
-        if "e" not in s and "E" not in s:
-            return s
-        return format(Decimal(s).normalize(), "f")
+        return format_float32(self._value)
 
     def write_pdf(self, output: IO[bytes]) -> None:
         """Write the formatted real-number literal to *output* as ISO-8859-1.

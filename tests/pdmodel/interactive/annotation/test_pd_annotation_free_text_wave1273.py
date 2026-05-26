@@ -18,6 +18,7 @@ from pypdfbox.pdmodel.interactive.annotation.pd_annotation_free_text import (
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_markup import (
     PDAnnotationMarkup,
 )
+from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
 
 @dataclass
@@ -108,25 +109,35 @@ def test_construct_appearances_with_document_arg_invokes_handler_wave1273() -> N
     assert handler.normal == 1
 
 
-def test_construct_appearances_without_handler_is_noop_wave1273() -> None:
+def test_construct_appearances_without_handler_invokes_default_wave1273() -> None:
+    # Upstream's ``constructAppearances(PDDocument)`` instantiates the built-in
+    # ``PDFreeTextAppearanceHandler`` when no custom handler is set (it is NOT
+    # a no-op — that was a wave-1414-class wiring bug, fixed). With a /Rect set
+    # the default handler generates an /AP /N appearance stream.
     annotation = PDAnnotationFreeText()
-    before_keys = set(annotation.get_cos_object().key_set())
+    annotation.set_rectangle(PDRectangle.from_xywh(50, 350, 200, 100))
+    annotation.set_contents("hello")
 
-    assert annotation.construct_appearances() is None
-    assert annotation.construct_appearances(None) is None
-
-    assert set(annotation.get_cos_object().key_set()) == before_keys
+    assert annotation.construct_appearances() is None  # returns None like upstream
+    assert annotation.get_normal_appearance_stream() is not None
 
 
-def test_clear_custom_appearance_handler_restores_noop_path_wave1273() -> None:
+def test_clear_custom_appearance_handler_uses_default_path_wave1273() -> None:
+    # Clearing a custom handler reverts to the default (built-in) handler path,
+    # NOT a no-op: the recording handler is never invoked again, but the
+    # built-in handler now generates the /AP.
     annotation = PDAnnotationFreeText()
+    annotation.set_rectangle(PDRectangle.from_xywh(50, 350, 200, 100))
     handler = _RecordingAppearanceHandler()
     annotation.set_custom_appearance_handler(handler)  # type: ignore[arg-type]
     annotation.set_custom_appearance_handler(None)
     annotation.construct_appearances()
+    # The cleared recording handler must not be touched.
     assert handler.normal == 0
     assert handler.rollover == 0
     assert handler.down == 0
+    # ...but the built-in default handler ran and produced an appearance.
+    assert annotation.get_normal_appearance_stream() is not None
 
 
 def test_handler_replacement_uses_latest_wave1273() -> None:

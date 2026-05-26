@@ -50,15 +50,23 @@ class PDAnnotationSquiggly(PDAnnotationTextMarkup):
     def construct_appearances(self, document: PDDocument | None = None) -> None:
         """Generate squiggly annotation appearances.
 
-        A custom handler, when configured, is invoked exactly as upstream does.
-        The built-in ``PDSquigglyAppearanceHandler`` is not ported yet, so
-        the default path remains a no-op like the base annotation
-        implementation.
+        Mirrors upstream ``constructAppearances()`` and
+        ``constructAppearances(PDDocument)`` (``PDAnnotationSquiggly.java``
+        lines 66-82). A custom handler, when configured, is invoked exactly
+        as upstream does; otherwise the built-in
+        :class:`PDSquigglyAppearanceHandler` generates the ``/AP`` streams.
+        The lite handler draws the zig-zag directly rather than via a tiling
+        pattern (documented divergence — see ``CHANGES.md``).
         """
         if self._custom_appearance_handler is not None:
             self._custom_appearance_handler.generate_appearance_streams()
             return None
-        return super().construct_appearances(document)
+        from .handlers.pd_squiggly_appearance_handler import (
+            PDSquigglyAppearanceHandler,
+        )
+
+        PDSquigglyAppearanceHandler(self, document).generate_appearance_streams()
+        return None
 
 
 __all__ = ["PDAnnotationSquiggly"]

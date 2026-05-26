@@ -153,14 +153,19 @@ class PDAnnotationText(PDAnnotationMarkup):
         Mirrors upstream ``constructAppearances()`` and
         ``constructAppearances(PDDocument)`` (PDAnnotationText.java lines
         233-251). A custom handler, when configured, is invoked exactly as
-        upstream does. The built-in ``PDTextAppearanceHandler`` is not ported
-        yet, so the default path remains a no-op like the base annotation
-        implementation.
+        upstream does; otherwise the built-in
+        :class:`PDTextAppearanceHandler` generates the ``/AP`` streams
+        (a stamp icon selected by ``/Name``).
         """
         if self._custom_appearance_handler is not None:
             self._custom_appearance_handler.generate_appearance_streams()
             return None
-        return super().construct_appearances(document)
+        from .handlers.pd_text_appearance_handler import (
+            PDTextAppearanceHandler,
+        )
+
+        PDTextAppearanceHandler(self, document).generate_appearance_streams()
+        return None
 
 
 __all__ = ["PDAnnotationText"]

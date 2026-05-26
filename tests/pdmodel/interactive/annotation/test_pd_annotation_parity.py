@@ -26,6 +26,7 @@ from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_group import 
 from pypdfbox.pdmodel.interactive.annotation import (
     PDAnnotation,
     PDAnnotationText,
+    PDAnnotationUnknown,
 )
 
 # ---------- /Subtype public setter ----------
@@ -207,7 +208,11 @@ def test_appearance_state_clear() -> None:
 
 
 def test_construct_appearances_base_noop_preserves_dictionary() -> None:
-    ann = PDAnnotationText()
+    # PDAnnotationUnknown has no built-in appearance handler, so its
+    # inherited base ``construct_appearances`` is a genuine no-op. (Handled
+    # subtypes like PDAnnotationText now wire their default handler and so
+    # *do* add an /AP — see the appearance-generation oracle tests.)
+    ann = PDAnnotationUnknown(COSDictionary())
     raw = ann.get_cos_object()
     before = list(raw.entry_set())
 

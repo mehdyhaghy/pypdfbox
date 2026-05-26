@@ -230,14 +230,18 @@ class PDAnnotationCaret(PDAnnotationMarkup):
         Mirrors upstream ``constructAppearances()`` and
         ``constructAppearances(PDDocument)`` (``PDAnnotationCaret.java``
         lines 109-125). A custom handler, when configured, is invoked
-        exactly as upstream does. The built-in ``PDCaretAppearanceHandler``
-        is not ported yet, so the default path remains a no-op like the
-        base annotation implementation.
+        exactly as upstream does; otherwise the built-in
+        :class:`PDCaretAppearanceHandler` generates the ``/AP`` streams.
         """
         if self._custom_appearance_handler is not None:
             self._custom_appearance_handler.generate_appearance_streams()
             return None
-        return super().construct_appearances(document)
+        from .handlers.pd_caret_appearance_handler import (
+            PDCaretAppearanceHandler,
+        )
+
+        PDCaretAppearanceHandler(self, document).generate_appearance_streams()
+        return None
 
 
 __all__ = ["PDAnnotationCaret"]

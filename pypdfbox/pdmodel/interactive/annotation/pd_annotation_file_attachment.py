@@ -69,15 +69,25 @@ class PDAnnotationFileAttachment(PDAnnotationMarkup):
     def construct_appearances(self, document: PDDocument | None = None) -> None:
         """Generate file-attachment annotation appearances.
 
-        A custom handler, when configured, is invoked exactly as upstream does.
-        The built-in ``PDFileAttachmentAppearanceHandler`` is not ported yet,
-        so the default path remains a no-op like the base annotation
-        implementation.
+        Mirrors upstream ``constructAppearances()`` and
+        ``constructAppearances(PDDocument)`` (``PDAnnotationFileAttachment``
+        ``.java`` lines 130-146). A custom handler, when configured, is
+        invoked exactly as upstream does; otherwise the built-in
+        :class:`PDFileAttachmentAppearanceHandler` generates the ``/AP``
+        streams (a stylized icon selected by ``/Name`` — documented
+        divergence from upstream's filled glyph, see ``CHANGES.md``).
         """
         if self._custom_appearance_handler is not None:
             self._custom_appearance_handler.generate_appearance_streams()
             return None
-        return super().construct_appearances(document)
+        from .handlers.pd_file_attachment_appearance_handler import (
+            PDFileAttachmentAppearanceHandler,
+        )
+
+        PDFileAttachmentAppearanceHandler(
+            self, document
+        ).generate_appearance_streams()
+        return None
 
     # ---------- /FS (file specification) ----------
 

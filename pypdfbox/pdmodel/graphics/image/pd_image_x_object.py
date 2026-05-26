@@ -21,6 +21,8 @@ if TYPE_CHECKING:
     from pypdfbox.pdmodel.graphics.pd_property_list import PDPropertyList
     from pypdfbox.pdmodel.pd_document import PDDocument
 
+    from .pd_image import PDImage
+
 _IMAGE: COSName = COSName.get_pdf_name("Image")
 _WIDTH: COSName = COSName.get_pdf_name("Width")
 _HEIGHT: COSName = COSName.get_pdf_name("Height")
@@ -966,94 +968,130 @@ class PDImageXObject(PDXObject):
             return None
 
         filter_names = {item.name for item in cos.get_filter_list()}
-        if "DCTDecode" in filter_names or "DCT" in filter_names:
-            with self.create_input_stream(stop_filters=["DCTDecode", "DCT"]) as src:
-                return Image.open(io.BytesIO(src.read())).convert("RGB")
-        if "JPXDecode" in filter_names or "JPX" in filter_names:
-            with self.create_input_stream(stop_filters=["JPXDecode", "JPX"]) as src:
-                return Image.open(io.BytesIO(src.read())).convert("RGB")
+        return decode_pdimage_to_pil(self, filter_names)
 
-        bpc = self.get_bits_per_component()
-        color_space = self.get_color_space()
-        color_space_name = color_space.get_name() if color_space is not None else None
-        sub_byte = bpc in (1, 2, 4)
-        if bpc not in (8, -1) and not (
-            (sub_byte and color_space_name in ("DeviceGray", "Indexed"))
-            or (bpc == 16 and color_space_name == "DeviceGray")
-        ):
-            return None
-        with self.create_input_stream() as src:
-            data = src.read()
-        rgb_len = width * height * 3
-        gray_len = width * height
-        pixel_count = width * height
-        decode = self.get_decode()
-        if color_space_name == "DeviceRGB" or (
-            color_space_name is None and len(data) >= rgb_len
-        ):
-            if len(data) < rgb_len:
-                return None
-            decoded = _apply_decode_to_8bit_samples(
-                data[:rgb_len], pixel_count, 3, decode
-            )
-            if decoded is None:
-                return None
-            return Image.frombytes("RGB", (width, height), decoded)
-        if color_space_name == "DeviceGray":
-            if sub_byte:
-                samples = _unpack_sub_byte_samples(data, width, height, bpc)
-                if samples is None:
-                    return None
-            elif bpc == 16:
-                samples = _unpack_16bit_samples(data, width, height)
-                if samples is None:
-                    return None
-            else:
-                if len(data) < gray_len:
-                    return None
-                samples = data[:gray_len]
-            decoded = _apply_decode_to_8bit_samples(
-                samples,
-                pixel_count,
-                1,
-                decode,
-                bpc=bpc if sub_byte or bpc == 16 else 8,
-            )
-            if decoded is None:
-                return None
-            return Image.frombytes("L", (width, height), decoded).convert("RGB")
-        if color_space_name == "DeviceCMYK" and color_space is not None:
-            cmyk_len = width * height * 4
-            if len(data) < cmyk_len:
-                return None
-            decoded = _apply_decode_to_8bit_samples(
-                data[:cmyk_len], pixel_count, 4, decode
-            )
-            if decoded is None:
-                return None
-            return color_space.to_rgb_image(decoded, width, height)
-        if color_space_name == "Indexed" and color_space is not None:
-            if sub_byte:
-                samples = _unpack_sub_byte_samples(data, width, height, bpc)
-                if samples is None:
-                    return None
-                decoded = _apply_decode_to_indexed_samples(
-                    samples, pixel_count, decode, bpc=bpc
-                )
-            else:
-                if len(data) < pixel_count:
-                    return None
-                decoded = _apply_decode_to_indexed_samples(
-                    data[:pixel_count], pixel_count, decode, bpc=8
-                )
-            if decoded is None:
-                return None
-            return color_space.to_rgb_image(decoded, width, height)
-        if color_space_name in ("Separation", "DeviceN") and color_space is not None:
-            return _decode_devicen_to_rgb(
-                color_space, data, width, height
-            )
+
+def decode_pdimage_to_pil(
+    pd_image: PDImage, filter_names: set[str]
+) -> Image.Image | None:
+    """Decode any :class:`PDImage` (XObject *or* inline image) to a PIL image.
+
+    Shared raster-decode core for :meth:`PDImageXObject.to_pil_image` and
+    :meth:`PDInlineImage.to_pil_image`. Operates purely through the
+    :class:`PDImage` accessor surface (``get_width`` / ``get_height`` /
+    ``get_bits_per_component`` / ``get_color_space`` / ``get_decode`` /
+    ``create_input_stream``) so both image shapes share one decode path —
+    inline images previously had a stripped-down decoder that returned
+    ``None`` for Indexed, DeviceCMYK, sub-byte and 16-bit rasters.
+
+    ``filter_names`` is the resolved set of filter names (long *and* short
+    forms) so DCT/JPX payloads can be handed straight to Pillow.
+
+    Supports DCT/JPX payloads via Pillow and raw DeviceRGB, DeviceGray
+    (1/2/4/8/16 bpc), DeviceCMYK, Indexed (1/2/4/8 bpc), ``Separation`` and
+    ``DeviceN`` rasters. Masks, multi-component 16-bit samples and other
+    non-device colour models remain rendering-cluster work and return
+    ``None``.
+    """
+    width = pd_image.get_width()
+    height = pd_image.get_height()
+    if width <= 0 or height <= 0:
         return None
+
+    if "DCTDecode" in filter_names or "DCT" in filter_names:
+        with pd_image.create_input_stream(stop_filters=["DCTDecode", "DCT"]) as src:
+            return Image.open(io.BytesIO(src.read())).convert("RGB")
+    if "JPXDecode" in filter_names or "JPX" in filter_names:
+        with pd_image.create_input_stream(stop_filters=["JPXDecode", "JPX"]) as src:
+            return Image.open(io.BytesIO(src.read())).convert("RGB")
+
+    bpc = pd_image.get_bits_per_component()
+    # PDImageXObject.get_color_space returns None when absent; PDInlineImage
+    # raises OSError for a missing/unsupported /CS. Treat both as "unknown"
+    # so the colour-space-less raster falls through to the byte-length
+    # heuristic below rather than propagating the error.
+    try:
+        color_space = pd_image.get_color_space()
+    except OSError:
+        color_space = None
+    color_space_name = color_space.get_name() if color_space is not None else None
+    sub_byte = bpc in (1, 2, 4)
+    if bpc not in (8, -1) and not (
+        (sub_byte and color_space_name in ("DeviceGray", "Indexed"))
+        or (bpc == 16 and color_space_name == "DeviceGray")
+    ):
+        return None
+    with pd_image.create_input_stream() as src:
+        data = src.read()
+    rgb_len = width * height * 3
+    gray_len = width * height
+    pixel_count = width * height
+    # ``get_decode`` returns ``list[float]`` on PDImageXObject but a raw
+    # ``COSArray`` on PDInlineImage — normalise to a float list so the
+    # decode-array math below is uniform across both image shapes.
+    decode = pd_image.get_decode()
+    if isinstance(decode, COSArray):
+        decode = _numeric_array_to_floats(decode)
+    if color_space_name == "DeviceRGB" or (
+        color_space_name is None and len(data) >= rgb_len
+    ):
+        if len(data) < rgb_len:
+            return None
+        decoded = _apply_decode_to_8bit_samples(data[:rgb_len], pixel_count, 3, decode)
+        if decoded is None:
+            return None
+        return Image.frombytes("RGB", (width, height), decoded)
+    if color_space_name == "DeviceGray":
+        if sub_byte:
+            samples = _unpack_sub_byte_samples(data, width, height, bpc)
+            if samples is None:
+                return None
+        elif bpc == 16:
+            samples = _unpack_16bit_samples(data, width, height)
+            if samples is None:
+                return None
+        else:
+            if len(data) < gray_len:
+                return None
+            samples = data[:gray_len]
+        decoded = _apply_decode_to_8bit_samples(
+            samples,
+            pixel_count,
+            1,
+            decode,
+            bpc=bpc if sub_byte or bpc == 16 else 8,
+        )
+        if decoded is None:
+            return None
+        return Image.frombytes("L", (width, height), decoded).convert("RGB")
+    if color_space_name == "DeviceCMYK" and color_space is not None:
+        cmyk_len = width * height * 4
+        if len(data) < cmyk_len:
+            return None
+        decoded = _apply_decode_to_8bit_samples(data[:cmyk_len], pixel_count, 4, decode)
+        if decoded is None:
+            return None
+        return color_space.to_rgb_image(decoded, width, height)
+    if color_space_name == "Indexed" and color_space is not None:
+        if sub_byte:
+            samples = _unpack_sub_byte_samples(data, width, height, bpc)
+            if samples is None:
+                return None
+            decoded = _apply_decode_to_indexed_samples(
+                samples, pixel_count, decode, bpc=bpc
+            )
+        else:
+            if len(data) < pixel_count:
+                return None
+            decoded = _apply_decode_to_indexed_samples(
+                data[:pixel_count], pixel_count, decode, bpc=8
+            )
+        if decoded is None:
+            return None
+        return color_space.to_rgb_image(decoded, width, height)
+    if color_space_name in ("Separation", "DeviceN") and color_space is not None:
+        return _decode_devicen_to_rgb(color_space, data, width, height)
+    return None
 
 
 def _apply_decode_to_8bit_samples(

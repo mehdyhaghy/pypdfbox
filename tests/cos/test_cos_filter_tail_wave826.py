@@ -16,7 +16,11 @@ def test_wave826_cos_float_set_value_clears_original_and_clamps() -> None:
 
     assert value.get_original_form() is None
     assert value.float_value() == pytest.approx(3.4028234663852886e38)
-    assert value.format_string() == "340282346638528860000000000000000000000"
+    # PDFBox Float.toString(Float.MAX_VALUE) is "3.4028235E38" → plain-string
+    # "340282350000…"; the earlier "…46638528860…" expectation was the float64
+    # representation noise wave 1415/1416 unified away (verified live vs PDFBox
+    # in tests/cos/oracle/test_cos_write_oracle.py).
+    assert value.format_string() == "340282350000000000000000000000000000000"
 
 
 def test_wave826_cos_float_write_pdf_preserves_original_repaired_literal() -> None:

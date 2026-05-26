@@ -148,34 +148,38 @@ def test_inline_image_get_raw_raster_returns_decoded_bytes() -> None:
     assert img.get_raw_raster() == img.get_data()
 
 
-def test_inline_image_get_image_returns_none_for_stencil() -> None:
-    """Stencil rasters are rendering-cluster work — ``get_image`` returns
-    ``None`` rather than raising. Mirrors upstream ``PDInlineImage#getImage()``
-    (Java line 353) when ``SampledImageReader`` is unable to produce a
-    raster (for our subset that means stencil + 1-bit data)."""
+def test_inline_image_get_image_decodes_stencil_bilevel() -> None:
+    """``get_image`` decodes a 1-bit stencil's bilevel raster, mirroring
+    upstream ``PDInlineImage#getImage()`` (Java line 353): PDFBox's
+    ``getImage()`` on a stencil returns the decoded 1-bit DeviceGray
+    raster (verified live via the InlineImgProbe oracle — an all-1s
+    stencil decodes to an all-white raster), not null."""
     dict_ = COSDictionary()
     dict_.set_boolean(COSName.get_pdf_name("IM"), True)
     dict_.set_int(COSName.get_pdf_name("W"), 8)
     dict_.set_int(COSName.get_pdf_name("H"), 1)
     dict_.set_int(COSName.get_pdf_name("BPC"), 1)
     img = PDInlineImage(dict_, b"\xff", None)
-    # Stencil rasters are rendering-cluster work; pypdfbox's PIL fallback
-    # bails out (returns None) rather than producing an unfaithful raster.
-    assert img.get_image() is None
+    out = img.get_image()
+    assert out is not None
+    assert out.size == (8, 1)
+    # /CS defaults to gray for a stencil; all-1 bits with default decode
+    # map to white (255) — matching PDFBox's stencil getImage() output.
+    assert list(out.convert("L").getdata()) == [255] * 8
 
 
-def test_inline_image_get_raw_image_returns_none_when_not_decodable() -> None:
-    """``get_raw_image`` mirrors :meth:`get_image` for the cases where
-    PIL cannot decode the raster (stencil / non-8bpc / unsupported CS).
-    Upstream returns the raw-CS image; pypdfbox's library-first path
-    returns ``None`` until the rendering cluster lands."""
+def test_inline_image_get_raw_image_decodes_stencil_bilevel() -> None:
+    """``get_raw_image`` mirrors :meth:`get_image` and now decodes the
+    1-bit stencil raster (matching PDFBox's non-null ``getImage()``)."""
     dict_ = COSDictionary()
     dict_.set_boolean(COSName.get_pdf_name("IM"), True)
     dict_.set_int(COSName.get_pdf_name("W"), 8)
     dict_.set_int(COSName.get_pdf_name("H"), 1)
     dict_.set_int(COSName.get_pdf_name("BPC"), 1)
     img = PDInlineImage(dict_, b"\xff", None)
-    assert img.get_raw_image() is None
+    out = img.get_raw_image()
+    assert out is not None
+    assert out.size == (8, 1)
 
 
 def test_inline_image_to_long_name_expands_short_devices() -> None:
