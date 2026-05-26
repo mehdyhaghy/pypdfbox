@@ -34,9 +34,21 @@ import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _ORACLE = _REPO_ROOT / "oracle"
-_JAR = _ORACLE / "jars" / "pdfbox-app-3.0.7.jar"
+_JARS_DIR = _ORACLE / "jars"
+_JAR = _JARS_DIR / "pdfbox-app-3.0.7.jar"
 _PROBES = _ORACLE / "probes"
 _BUILD = _ORACLE / "build"
+
+
+def _classpath() -> str:
+    """Classpath of every jar in oracle/jars/ plus the probe build dir.
+
+    The app jar (pdfbox + fontbox) and the separate xmpbox jar both live in
+    oracle/jars/; globbing keeps a probe's classpath complete no matter which
+    PDFBox artifact it imports.
+    """
+    jars = sorted(str(p) for p in _JARS_DIR.glob("*.jar"))
+    return os.pathsep.join([*jars, str(_BUILD)])
 
 
 def oracle_available() -> bool:
@@ -63,7 +75,7 @@ def _ensure_compiled(probe: str) -> None:
     if not cls.is_file() or cls.stat().st_mtime < src.stat().st_mtime:
         _BUILD.mkdir(parents=True, exist_ok=True)
         subprocess.run(
-            ["javac", "-cp", str(_JAR), "-d", str(_BUILD), str(src)],
+            ["javac", "-cp", _classpath(), "-d", str(_BUILD), str(src)],
             check=True,
             capture_output=True,
         )
@@ -72,9 +84,8 @@ def _ensure_compiled(probe: str) -> None:
 def run_probe(probe: str, *args: str) -> bytes:
     """Compile (if needed) and run a probe; return its raw stdout bytes."""
     _ensure_compiled(probe)
-    classpath = f"{_JAR}{os.pathsep}{_BUILD}"
     result = subprocess.run(
-        ["java", "-cp", classpath, probe, *args],
+        ["java", "-cp", _classpath(), probe, *args],
         check=True,
         capture_output=True,
     )

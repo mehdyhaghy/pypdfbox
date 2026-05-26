@@ -11,8 +11,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName
@@ -56,14 +54,27 @@ def test_build_font_descriptor_from_metrics_skips_family_when_empty() -> None:
 # ---------- 126->129 : falsy base font name skips /BaseFont ----------
 
 
-class _FakeGlyph:
-    def __init__(self, width: float = 0.0) -> None:
-        self.width = width
+class _NamelessType1:
+    """A parsed-program stand-in exposing the pypdfbox ``Type1Font``
+    accessor surface but with an empty ``/FontName``."""
 
+    def get_font_name(self) -> str:
+        return ""
 
-class _FakeGlyphSet:
-    def __getitem__(self, name: str) -> _FakeGlyph:
-        raise KeyError(name)
+    def get_family_name(self) -> str | None:
+        return None
+
+    def get_font_b_box(self) -> tuple[float, float, float, float] | None:
+        return (0, 0, 1, 1)
+
+    def get_italic_angle(self) -> float:
+        return 0.0
+
+    def get_encoding(self) -> dict[int, str]:
+        return {}
+
+    def get_width(self, name: str) -> float:
+        return 0.0
 
 
 def _synthetic_pfb() -> bytes:
@@ -81,22 +92,17 @@ def _synthetic_pfb() -> bytes:
 def test_constructor_skips_base_font_when_type1_name_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A parsed Type 1 font whose dict carries no ``/FontName`` makes
+    """A parsed Type 1 program with an empty ``/FontName`` makes
     ``_get_type1_name`` return ``None`` — the ``if base_font:`` guard is
     false (126 -> 129): no ``/BaseFont`` is written, but the descriptor
     and widths are still populated."""
+    import pypdfbox.fontbox.type1.type1_font as t1mod
 
-    class _Stub:
-        def __init__(self, _stream: Any) -> None:
-            # No "FontName" key -> _get_type1_name returns None (falsy).
-            self.font = {"FontBBox": [0, 0, 1, 1]}
-
-        def getGlyphSet(self) -> _FakeGlyphSet:  # noqa: N802 - upstream API
-            return _FakeGlyphSet()
-
-    import fontTools.t1Lib as t1mod
-
-    monkeypatch.setattr(t1mod, "T1Font", _Stub)
+    monkeypatch.setattr(
+        t1mod.Type1Font,
+        "from_bytes",
+        classmethod(lambda cls, data: _NamelessType1()),  # noqa: ARG005
+    )
 
     doc = PDDocument()
     try:

@@ -35,8 +35,10 @@ def test_round_trip_line_metrics_match_spec_defaults() -> None:
     # inherited from the current graphics state. The wrapper signals
     # absence with ``None`` rather than a default.
     assert gs.get_line_width() is None
-    assert gs.get_line_cap_style() is None
-    assert gs.get_line_join_style() is None
+    # getLineCapStyle()/getLineJoinStyle() are primitive int upstream with a
+    # -1 absent-sentinel (live-oracle confirmed), not None.
+    assert gs.get_line_cap_style() == -1
+    assert gs.get_line_join_style() == -1
     assert gs.get_miter_limit() is None
     gs.set_line_width(1.5)
     gs.set_line_cap_style(2)
@@ -63,8 +65,10 @@ def test_alpha_constants_and_alpha_source_flag() -> None:
 
 def test_overprint_controls_with_fallback() -> None:
     gs = PDExtendedGraphicsState()
-    # Default OPM per spec is 0.
-    assert gs.get_overprint_mode() == 0
+    # getOverprintMode() is a boxed Integer upstream → None when /OPM is
+    # absent (live-oracle confirmed); the spec default 0 is applied by
+    # consumers, not the accessor.
+    assert gs.get_overprint_mode() is None
     gs.set_overprint_mode(1)
     assert gs.get_overprint_mode() == 1
     # /op falls back to /OP per upstream behaviour and the PDF spec.
@@ -84,8 +88,11 @@ def test_text_knockout_default_is_true_per_spec() -> None:
 
 def test_smoothness_and_flatness_tolerances() -> None:
     gs = PDExtendedGraphicsState()
-    assert gs.get_smoothness_tolerance() == 0.0
-    assert gs.get_flatness_tolerance() == 1.0
+    # getSmoothnessTolerance()/getFlatnessTolerance() are boxed Float
+    # upstream → None when /SM /FL are absent (live-oracle confirmed); the
+    # spec defaults (0 / 1) are applied by consumers, not the accessor.
+    assert gs.get_smoothness_tolerance() is None
+    assert gs.get_flatness_tolerance() is None
     gs.set_smoothness_tolerance(0.05)
     gs.set_flatness_tolerance(2.0)
     assert gs.get_smoothness_tolerance() == pytest.approx(0.05)
@@ -94,7 +101,9 @@ def test_smoothness_and_flatness_tolerances() -> None:
 
 def test_blend_mode_round_trip() -> None:
     gs = PDExtendedGraphicsState()
-    assert gs.get_blend_mode() is None
+    # getBlendMode() resolves an absent /BM to BlendMode.NORMAL via
+    # BlendMode.getInstance (live-oracle confirmed), never None.
+    assert gs.get_blend_mode() is BlendMode.NORMAL
     gs.set_blend_mode(BlendMode.MULTIPLY)
     assert gs.get_blend_mode() is BlendMode.MULTIPLY
 

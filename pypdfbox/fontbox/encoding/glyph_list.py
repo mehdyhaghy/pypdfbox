@@ -9,10 +9,14 @@ from typing import IO
 
 logger = logging.getLogger(__name__)
 
-# Matches "uniXXXX" (4 hex digits) and "uXXXX"/"uXXXXX"/"uXXXXXX" (4-6 hex
-# digits) — the synthesized Unicode glyph-name patterns recognized by
-# upstream :class:`org.apache.fontbox.encoding.GlyphList`.
-_UNI_NAME_RE = re.compile(r"^(?:uni[0-9A-Fa-f]{4}|u[0-9A-Fa-f]{4,6})$")
+# Matches the two synthesized Unicode glyph-name patterns recognized by
+# upstream ``GlyphList.toUnicode`` — ``uniXXXX`` (name length exactly 7,
+# i.e. exactly one 4-hex-digit code point) and ``uXXXX`` (name length
+# exactly 5, i.e. one 4-hex-digit code point). Upstream gates strictly on
+# ``length() == 7`` / ``length() == 5``; it does NOT synthesize longer ``u``
+# forms (``uXXXXX`` / ``uXXXXXX``) nor multi-code-point ``uni`` runs, so
+# names like ``u1F600`` resolve to ``null`` upstream and must here too.
+_UNI_NAME_RE = re.compile(r"^(?:uni[0-9A-Fa-f]{4}|u[0-9A-Fa-f]{4})$")
 
 # Adobe Glyph List (AGL) — 4281 entries derived from upstream
 # `pdfbox/src/main/resources/org/apache/pdfbox/resources/glyphlist/glyphlist.txt`.
@@ -4676,7 +4680,7 @@ class GlyphList:
 
         Honors the upstream extensions:
         - ``foo.suffix`` falls back to ``foo``.
-        - ``uniXXXX`` and ``uXXXX``/``uXXXXX``/``uXXXXXX`` names are
+        - ``uniXXXX`` (name length 7) and ``uXXXX`` (name length 5) names are
           synthesized from the hex code point.
         """
         if name is None:
@@ -4686,12 +4690,22 @@ class GlyphList:
         if unicode is not None:
             return unicode
 
+        # Cache read under the lock only. The derivation itself is computed
+        # *outside* the lock: ``_derive`` recurses back into ``to_unicode``
+        # for ``foo.suffix`` names (stripping the suffix), and the
+        # non-reentrant ``Lock`` would deadlock if the lookup of the
+        # suffix-stripped base also took the derive path (e.g. ``g123.alt``
+        # whose base ``g123`` is unknown). Upstream uses a lock-free
+        # ``ConcurrentHashMap`` and recurses freely; mirror that.
         with self._cache_lock:
-            unicode = self._uni_cache.get(name)
-            if unicode is None:
-                unicode = self._derive(name)
-                if unicode is not None:
-                    self._uni_cache[name] = unicode
+            cached = self._uni_cache.get(name)
+        if cached is not None:
+            return cached
+
+        unicode = self._derive(name)
+        if unicode is not None:
+            with self._cache_lock:
+                self._uni_cache[name] = unicode
         return unicode
 
     def name_to_code_points(self, name: str | None) -> str | None:
@@ -4846,9 +4860,14 @@ class GlyphList:
         if dot > 0:
             return self.to_unicode(name[:dot])
 
+        # Upstream ``GlyphList.toUnicode`` gates on exact name length: a
+        # ``uni`` name must be exactly 7 chars (one 4-hex code point) and a
+        # ``u`` name exactly 5 chars (one 4-hex code point). Longer ``u``
+        # forms (``uXXXXX`` / ``uXXXXXX``) and multi-code-point ``uni`` runs
+        # are NOT synthesized — they fall through to ``None``.
         if len(name) == 7 and name.startswith("uni"):
             start = 3
-        elif 5 <= len(name) <= 7 and name.startswith("u"):
+        elif len(name) == 5 and name.startswith("u"):
             start = 1
         else:
             return None

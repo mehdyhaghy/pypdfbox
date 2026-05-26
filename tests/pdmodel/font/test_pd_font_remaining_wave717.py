@@ -128,7 +128,15 @@ def test_type1c_average_width_uses_cff_default_width_when_scaled() -> None:
     assert font.get_average_font_width() == 500.0
 
 
-def test_simple_font_standard14_false_for_dictionary_encoding_without_base() -> None:
+def test_simple_font_standard14_with_dictionary_encoding_no_base() -> None:
+    # A non-symbolic Helvetica with a /Differences-only encoding (no
+    # /BaseEncoding) resolves its base to StandardEncoding, matching upstream
+    # PDFBox (verified against the PDFBox 3.0.7 oracle: base == StandardEncoding,
+    # isStandard14() == true). Because the single difference [65 /A] merely
+    # restates StandardEncoding's own mapping for code 65, the overlay is
+    # trivial and the font remains a Standard-14 font. (Wave 1417: previously
+    # get_encoding_typed lost the symbolic flag and left base == None, which
+    # disqualified the font — a divergence from upstream now fixed.)
     encoding = COSDictionary()
     encoding.set_item(
         _DIFFERENCES,
@@ -139,7 +147,19 @@ def test_simple_font_standard14_false_for_dictionary_encoding_without_base() -> 
     raw.set_item(_ENCODING, encoding)
     font = PDSimpleFont(raw)
 
-    assert font.is_standard_14() is False
+    assert font.is_standard_14() is True
+
+    # A non-trivial difference (remapping a code to a glyph other than the
+    # base encoding's) still disqualifies the font, per PDFBOX-2372.
+    encoding2 = COSDictionary()
+    encoding2.set_item(
+        _DIFFERENCES,
+        COSArray([COSInteger.get(65), COSName.get_pdf_name("bullet")]),
+    )
+    raw2 = COSDictionary()
+    raw2.set_name(_BASE_FONT, "Helvetica")
+    raw2.set_item(_ENCODING, encoding2)
+    assert PDSimpleFont(raw2).is_standard_14() is False
 
 
 def test_simple_font_encode_skips_unmapped_names_and_falls_back_to_question() -> None:

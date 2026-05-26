@@ -259,8 +259,39 @@ class PDSimpleFont(PDFont):
         if isinstance(raw, COSName):
             self._encoding_typed = Encoding.get_instance(raw)
         elif isinstance(raw, COSDictionary):
-            self._encoding_typed = DictionaryEncoding(font_encoding=raw)
+            # Mirror upstream PDSimpleFont.readEncoding for the dictionary
+            # branch: a /Differences encoding without a (valid) /BaseEncoding
+            # must still resolve a base — StandardEncoding for non-symbolic
+            # fonts, the font program's built-in for symbolic fonts. Passing
+            # only ``font_encoding=`` selects DictionaryEncoding's Type-3
+            # form (base == None), which is wrong for Type1/TrueType simple
+            # fonts and left every non-overridden code as ".notdef".
+            symbolic = self.get_symbolic_flag()
+            base_encoding_raw = raw.get_dictionary_object(_BASE_ENCODING)
+            base_encoding = (
+                base_encoding_raw if isinstance(base_encoding_raw, COSName) else None
+            )
+            has_valid_base = (
+                base_encoding is not None
+                and Encoding.get_instance(base_encoding) is not None
+            )
+            built_in: Encoding | None = None
+            if not has_valid_base and symbolic is True:
+                built_in = self.read_encoding_from_font()
+            is_non_symbolic = not bool(symbolic) if symbolic is not None else True
+            self._encoding_typed = DictionaryEncoding(
+                font_encoding=raw,
+                is_non_symbolic=is_non_symbolic,
+                built_in=built_in,
+            )
         else:
+            # No /Encoding entry. pypdfbox's established contract is to return
+            # None here (the built-in font-program encoding is surfaced lazily
+            # by per-subclass helpers, not by get_encoding_typed). Upstream
+            # PDFBox instead resolves the built-in via readEncodingFromFont
+            # (e.g. a non-embedded Standard-14 ZapfDingbats yields an
+            # AFM-derived Type1Encoding); that divergence is documented in
+            # CHANGES.md.
             self._encoding_typed = None
         self._encoding_resolved = True
         return self._encoding_typed

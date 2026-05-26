@@ -442,22 +442,24 @@ class PDExtendedGraphicsState:
 
     # ---------- LC ----------
 
-    def get_line_cap_style(self) -> int | None:
-        base = self._dict.get_dictionary_object(_LC)
-        if isinstance(base, COSNumber):
-            return base.int_value()
-        return None
+    def get_line_cap_style(self) -> int:
+        # Upstream ``getLineCapStyle()`` returns a primitive ``int`` via
+        # ``getCOSObject().getInt(COSName.LC, -1)`` — so the *absent* (or
+        # malformed) value is the sentinel ``-1``, not ``None``. The live
+        # PDFBox 3.0.7 oracle (ExtGStateProbe) confirms ``-1`` for an
+        # ExtGState with no ``/LC`` entry.
+        return self._dict.get_int(_LC, -1)
 
     def set_line_cap_style(self, style: int) -> None:
         self._dict.set_int(_LC, int(style))
 
     # ---------- LJ ----------
 
-    def get_line_join_style(self) -> int | None:
-        base = self._dict.get_dictionary_object(_LJ)
-        if isinstance(base, COSNumber):
-            return base.int_value()
-        return None
+    def get_line_join_style(self) -> int:
+        # Upstream ``getLineJoinStyle()`` → ``getInt(COSName.LJ, -1)``; the
+        # absent / malformed sentinel is ``-1`` (oracle-confirmed), not
+        # ``None``.
+        return self._dict.get_int(_LJ, -1)
 
     def set_line_join_style(self, style: int) -> None:
         self._dict.set_int(_LJ, int(style))
@@ -557,8 +559,16 @@ class PDExtendedGraphicsState:
 
     # ---------- BM (blend mode) ----------
 
-    def get_blend_mode(self) -> BlendMode | None:
-        return BlendMode.from_cos(self._dict.get_dictionary_object(_BM))
+    def get_blend_mode(self) -> BlendMode:
+        # Upstream ``getBlendMode()`` returns
+        # ``BlendMode.getInstance(getCOSObject().getDictionaryObject(BM))``,
+        # which *never* returns null: an absent ``/BM`` (or an unrecognised
+        # name) resolves to ``BlendMode.NORMAL``. The live PDFBox 3.0.7
+        # oracle confirms an ExtGState with no ``/BM`` yields ``Normal``,
+        # not ``None``. (The earlier ``from_cos``-based form returned
+        # ``None`` for an absent entry — that was a divergence; the spec
+        # treats a missing blend mode as ``Normal``.)
+        return BlendMode.get_instance(self._dict.get_dictionary_object(_BM))
 
     def set_blend_mode(self, bm: BlendMode | COSName | str | None) -> None:
         if bm is None:
@@ -598,11 +608,16 @@ class PDExtendedGraphicsState:
 
     # ---------- OPM (overprint mode) ----------
 
-    def get_overprint_mode(self) -> int:
+    def get_overprint_mode(self) -> int | None:
+        # Upstream ``getOverprintMode()`` returns a boxed ``Integer`` and
+        # yields ``null`` when ``/OPM`` is absent (oracle-confirmed: an
+        # ExtGState with no ``/OPM`` prints ``null``, not ``0``). The spec
+        # default of 0 is applied by ``copyIntoGraphicsState`` /
+        # consumers, not by the accessor itself.
         base = self._dict.get_dictionary_object(_OPM)
         if isinstance(base, COSNumber):
             return base.int_value()
-        return 0
+        return None
 
     def set_overprint_mode(self, om: int | None) -> None:
         if om is None:
@@ -630,18 +645,25 @@ class PDExtendedGraphicsState:
 
     # ---------- SM (smoothness tolerance) ----------
 
-    def get_smoothness(self) -> float:
-        v = self._get_float_item(_SM)
-        return v if v is not None else 0.0
+    def get_smoothness(self) -> float | None:
+        # Upstream ``getSmoothnessTolerance()`` returns a boxed ``Float``
+        # and yields ``null`` when ``/SM`` is absent (oracle-confirmed —
+        # an ExtGState with no ``/SM`` prints ``null``, not ``0``). The
+        # spec default of 0 is supplied by ``copyIntoGraphicsState`` /
+        # rendering consumers, not by the accessor.
+        return self._get_float_item(_SM)
 
     def set_smoothness(self, s: float | None) -> None:
         self._set_float_item(_SM, s)
 
     # ---------- FL (flatness tolerance) ----------
 
-    def get_flatness(self) -> float:
-        v = self._get_float_item(_FL)
-        return v if v is not None else 1.0
+    def get_flatness(self) -> float | None:
+        # Upstream ``getFlatnessTolerance()`` returns a boxed ``Float`` and
+        # yields ``null`` when ``/FL`` is absent (oracle-confirmed — prints
+        # ``null``, not ``1``). The spec default of 1 is applied by
+        # ``copyIntoGraphicsState`` / consumers, not by the accessor.
+        return self._get_float_item(_FL)
 
     def set_flatness(self, f: float | None) -> None:
         self._set_float_item(_FL, f)
@@ -725,15 +747,23 @@ class PDExtendedGraphicsState:
     def set_non_stroking_overprint_control(self, op: bool) -> None:
         self.set_non_stroking_overprint(op)
 
-    def get_flatness_tolerance(self) -> float:
-        """Mirror upstream ``getFlatnessTolerance()`` (alias of ``get_flatness``)."""
+    def get_flatness_tolerance(self) -> float | None:
+        """Mirror upstream ``getFlatnessTolerance()`` (alias of ``get_flatness``).
+
+        Returns ``None`` when ``/FL`` is absent (matches upstream's boxed
+        ``Float`` / live oracle), not the spec default of ``1.0``.
+        """
         return self.get_flatness()
 
     def set_flatness_tolerance(self, f: float | None) -> None:
         self.set_flatness(f)
 
-    def get_smoothness_tolerance(self) -> float:
-        """Mirror upstream ``getSmoothnessTolerance()`` (alias of ``get_smoothness``)."""
+    def get_smoothness_tolerance(self) -> float | None:
+        """Mirror upstream ``getSmoothnessTolerance()`` (alias of ``get_smoothness``).
+
+        Returns ``None`` when ``/SM`` is absent (matches upstream's boxed
+        ``Float`` / live oracle), not the spec default of ``0.0``.
+        """
         return self.get_smoothness()
 
     def set_smoothness_tolerance(self, s: float | None) -> None:

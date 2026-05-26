@@ -1088,13 +1088,22 @@ def test_build_font_descriptor_no_bbox_skips_rectangle() -> None:
     )
 
     class _Type1:
-        font = {
-            "FontName": "Anonymous",
-            "FamilyName": "Anon",
-            # No FontBBox
-            "Encoding": "FontSpecific",
-            "FontInfo": {"ItalicAngle": -10.0},
-        }
+        # Type1Font accessor surface (wave 1417: build_font_descriptor reads
+        # via get_* accessors, not the raw fontTools .font dict).
+        def get_font_name(self) -> str:
+            return "Anonymous"
+
+        def get_family_name(self) -> str:
+            return "Anon"
+
+        def get_font_b_box(self):  # no bbox → skip the rectangle build
+            return None
+
+        def get_encoding(self):  # built-in / FontSpecific → symbolic
+            return {}
+
+        def get_italic_angle(self) -> float:
+            return -10.0
 
     fd = PDType1FontEmbedder.build_font_descriptor(_Type1())
     assert fd.get_font_name() == "Anonymous"
@@ -1110,11 +1119,14 @@ def test_build_font_descriptor_short_bbox_skips_rectangle() -> None:
     )
 
     class _Type1:
-        font = {
-            "FontName": "Anon",
-            "FontBBox": [0, 0],  # len 2 — falls through
-            "Encoding": "StandardEncoding",
-        }
+        def get_font_name(self) -> str:
+            return "Anon"
+
+        def get_font_b_box(self):  # len 2 < 4 → falls through, no rectangle
+            return [0, 0]
+
+        def get_encoding(self):
+            return {65: "A"}
 
     fd = PDType1FontEmbedder.build_font_descriptor(_Type1())
     assert fd.get_font_name() == "Anon"
@@ -1129,7 +1141,11 @@ def test_build_font_descriptor_no_family_name_skips_branch() -> None:
     )
 
     class _Type1:
-        font = {"FontName": "Anon"}  # no FamilyName
+        def get_font_name(self) -> str:
+            return "Anon"
+
+        def get_family_name(self):  # None → skip the FontFamily add branch
+            return None
 
     fd = PDType1FontEmbedder.build_font_descriptor(_Type1())
     assert fd.get_font_name() == "Anon"

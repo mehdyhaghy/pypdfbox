@@ -10,8 +10,6 @@ We can't easily round-trip a real PFB without a fixture, so we cover:
 
 from __future__ import annotations
 
-from typing import Any
-
 from pypdfbox.pdmodel.font.pd_type1_font_embedder import (
     PDType1FontEmbedder,
     _parse_pfb_segments,
@@ -99,27 +97,30 @@ def test_build_font_descriptor_from_metrics_marks_symbolic_when_specific() -> No
     assert fd.is_symbolic() is True
 
 
-def test_type1_encoding_adapter_for_list() -> None:
+def test_type1_encoding_adapter_forwards_code_map() -> None:
+    # The adapter now forwards pypdfbox Type1Font.get_encoding() (already a
+    # resolved code -> glyph-name map).
     class _T1:
-        def __init__(self) -> None:
-            self.font = {"Encoding": ["one", "two", "three"]}
+        def get_encoding(self) -> dict[int, str]:
+            return {0: "one", 1: "two", 2: "three"}
 
     adapter = _Type1EncodingAdapter(_T1())  # type: ignore[arg-type]
     assert adapter.get_code_to_name_map() == {0: "one", 1: "two", 2: "three"}
 
 
-def test_type1_encoding_adapter_for_named_encoding() -> None:
+def test_type1_encoding_adapter_for_empty_map() -> None:
+    # An empty map (FontSpecific / built-in encoding) -> empty.
     class _T1:
-        def __init__(self) -> None:
-            self.font = {"Encoding": "StandardEncoding"}
+        def get_encoding(self) -> dict[int, str]:
+            return {}
 
     adapter = _Type1EncodingAdapter(_T1())  # type: ignore[arg-type]
     assert adapter.get_code_to_name_map() == {}
 
 
-def test_type1_encoding_adapter_with_no_font_dict() -> None:
+def test_type1_encoding_adapter_with_no_accessor() -> None:
     class _T1:
-        font: Any = None
+        pass
 
     adapter = _Type1EncodingAdapter(_T1())  # type: ignore[arg-type]
     assert adapter.get_code_to_name_map() == {}

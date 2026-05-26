@@ -94,14 +94,34 @@ class PDType1FontEmbedder:
             pfb_bytes = bytes(pfb_stream)
         else:
             pfb_bytes = pfb_stream.read()
+        # De-segment the PFB container once (markers stripped). The
+        # concatenated cleartext+eexec+footer bytes are valid raw Type 1
+        # font data — both for the /FontFile stream below and for parsing.
+        concatenated, lengths = _parse_pfb_segments(pfb_bytes)
+        # Library-first: parse via pypdfbox's own :class:`Type1Font`,
+        # which wraps fontTools' ``T1Font`` correctly (via ``__new__`` +
+        # ``.data``/``.encoding``) instead of fontTools' ``T1Font(path)``
+        # constructor — the latter only accepts a file PATH and raises
+        # ``TypeError`` on a buffer. ``from_bytes`` routes through
+        # fontTools' full PostScript interpreter so per-glyph widths and
+        # outlines are available (``create_with_pfb`` uses the in-house
+        # header-only parser, which can't render glyphs → width 0).
+        from pypdfbox.fontbox.type1.type1_font import Type1Font  # noqa: PLC0415
+
+        # fontTools raises its own ``T1Error`` (a bare ``Exception``) on a
+        # malformed PostScript program, alongside the structural errors;
+        # treat any parse failure as "no embedded program" so a damaged
+        # /FontFile degrades to a name-less descriptor rather than crashing
+        # the embed.
         try:
-            from fontTools.t1Lib import T1Font
-        except ImportError as ex:
-            raise OSError("fontTools is required for Type 1 embedding") from ex
-        t1_buffer = io.BytesIO(pfb_bytes)
+            from fontTools.t1Lib import T1Error  # noqa: PLC0415
+        except ImportError:  # pragma: no cover - fontTools always present
+            T1Error = ()  # type: ignore[assignment, misc]
+
+        type1: Any
         try:
-            type1 = T1Font(t1_buffer)
-        except OSError:
+            type1 = Type1Font.from_bytes(concatenated)
+        except (OSError, ValueError, AssertionError, TypeError, IndexError, T1Error):
             type1 = None
         self._type1: Any = type1
         if encoding is None and type1 is not None:
@@ -115,8 +135,21 @@ class PDType1FontEmbedder:
         # Font descriptor
         fd = self.build_font_descriptor(type1) if type1 is not None else PDFontDescriptor()
         # Font file stream — write the concatenated PFB minus markers.
-        concatenated, lengths = _parse_pfb_segments(pfb_bytes)
-        font_stream = PDStream(document, io.BytesIO(concatenated), COSName.FLATE_DECODE)
+        # Mirrors upstream ``new PDStream(doc, in, COSName.FLATE_DECODE)``
+        # which *encodes* the bytes through the filter. pypdfbox's
+        # ``PDStream(doc, data, filter)`` overload stores the bytes
+        # verbatim and only records ``/Filter`` (it assumes pre-encoded
+        # input), so handing it raw bytes would produce a stream tagged
+        # FlateDecode whose body is actually uncompressed — unreadable on
+        # round-trip. Write through ``create_output_stream(FLATE_DECODE)``
+        # so the body is genuinely compressed and ``/Length1..3`` describe
+        # the *decoded* segment sizes (per PDF 32000-1 §9.9).
+        font_stream = PDStream(document)
+        out = font_stream.create_output_stream(COSName.FLATE_DECODE)
+        try:
+            out.write(concatenated)
+        finally:
+            out.close()
         for i, length in enumerate(lengths):
             font_stream.get_cos_object().set_int(f"Length{i + 1}", int(length))
         fd.set_font_file(font_stream)
@@ -184,17 +217,14 @@ class PDType1FontEmbedder:
         name = PDType1FontEmbedder._get_type1_name(type1)
         if name:
             fd.set_font_name(name)
-        family = type1.font.get("FamilyName") if isinstance(type1.font, dict) else None
+        family = PDType1FontEmbedder._safe_call(type1, "get_family_name")
         if family:
             from pypdfbox.cos import COSString
 
             fd.get_cos_object().set_item(
                 COSName.get_pdf_name("FontFamily"), COSString(str(family))
             )
-        font_info = (
-            type1.font.get("FontInfo", {}) if isinstance(type1.font, dict) else {}
-        )
-        bbox = type1.font.get("FontBBox") if isinstance(type1.font, dict) else None
+        bbox = PDType1FontEmbedder._safe_call(type1, "get_font_b_box")
         if bbox is not None and len(bbox) >= 4:
             from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
@@ -206,15 +236,15 @@ class PDType1FontEmbedder:
             fd.set_font_bounding_box(rect)
             fd.set_ascent(float(bbox[3]))
             fd.set_descent(float(bbox[1]))
-        encoding_obj = type1.font.get("Encoding") if isinstance(type1.font, dict) else None
-        is_symbolic = encoding_obj is None or (
-            isinstance(encoding_obj, str) and encoding_obj == "FontSpecific"
-        )
+        # Symbolic when the font's /Encoding is FontSpecific (built-in) —
+        # i.e. not a recoverable standard code->name table. Type1Font
+        # resolves a named/array Encoding to a code map and empties it for
+        # the FontSpecific/built-in case.
+        encoding_map = PDType1FontEmbedder._safe_call(type1, "get_encoding")
+        is_symbolic = not encoding_map
         fd.set_symbolic(is_symbolic)
         fd.set_non_symbolic(not is_symbolic)
-        italic_angle = (
-            font_info.get("ItalicAngle", 0) if isinstance(font_info, dict) else 0
-        )
+        italic_angle = PDType1FontEmbedder._safe_call(type1, "get_italic_angle") or 0
         fd.set_italic_angle(float(italic_angle))
         fd.set_stem_v(0.0)
         return fd
@@ -307,46 +337,59 @@ class PDType1FontEmbedder:
     # ---------- helpers ----------
 
     @staticmethod
+    def _safe_call(type1: Any, accessor: str) -> Any:
+        """Call ``type1.<accessor>()`` returning ``None`` on any failure.
+
+        The parsed font is a pypdfbox :class:`Type1Font`; its accessors
+        can raise on damaged programs, so every read is guarded.
+        """
+        try:
+            return getattr(type1, accessor)()
+        except (AttributeError, TypeError, ValueError, AssertionError, KeyError):
+            return None
+
+    @staticmethod
     def _get_type1_name(type1: Any) -> str | None:
-        if isinstance(type1.font, dict):
-            return type1.font.get("FontName")
-        return None
+        # pypdfbox Type1Font.get_font_name() returns the /FontName.
+        name = PDType1FontEmbedder._safe_call(type1, "get_font_name")
+        return str(name) if name else None
 
     @staticmethod
     def _get_type1_width(type1: Any, name: str) -> float:
-        # fontTools T1Font exposes a CharStrings map; widths come from
-        # the parsed Private dict + CharStrings. Use the public
-        # ``getGlyphSet()[name].width`` accessor when available.
+        # pypdfbox Type1Font.get_width(name) forces a no-op glyph draw to
+        # populate the fontTools advance, so this returns the real width
+        # (the previous getGlyphSet()[name].width read was always None
+        # pre-draw and silently produced 0 for every glyph).
         try:
-            glyph_set = type1.getGlyphSet()
-            glyph = glyph_set[name]
-            return float(getattr(glyph, "width", 0) or 0)
-        except (AttributeError, KeyError):
+            return float(type1.get_width(name))
+        except (AttributeError, KeyError, TypeError, ValueError):
             return 0.0
 
 
 class _Type1EncodingAdapter:
-    """Adapts a fontTools T1Font's encoding to the FontBox encoding shape.
+    """Adapts a pypdfbox :class:`Type1Font` encoding to the FontBox shape.
 
-    fontTools exposes the Type 1 Encoding as either an array of glyph
-    names or the literal string ``"StandardEncoding"``. The
-    :class:`Type1Encoding.from_font_box` factory expects an object with
-    ``get_code_to_name_map() -> dict[int, str]``.
+    :class:`Type1Encoding.from_font_box` expects an object exposing
+    ``get_code_to_name_map() -> dict[int, str]``. ``Type1Font.get_encoding``
+    already returns a resolved ``code -> glyph name`` map (named encodings
+    such as ``StandardEncoding`` folded to the Adobe table, ``.notdef``
+    slots dropped), so we forward it directly.
     """
 
     def __init__(self, type1: Any) -> None:
         self._type1 = type1
 
     def get_code_to_name_map(self) -> dict[int, str]:
-        encoding = (
-            self._type1.font.get("Encoding")
-            if isinstance(self._type1.font, dict)
-            else None
-        )
-        if isinstance(encoding, (list, tuple)):
-            return {i: name for i, name in enumerate(encoding) if isinstance(name, str)}
-        # ``StandardEncoding`` etc — return empty; caller falls back to
-        # the bundled StandardEncoding singleton via Type1Encoding().
+        try:
+            mapping = self._type1.get_encoding()
+        except (AttributeError, TypeError, ValueError, AssertionError, KeyError):
+            return {}
+        if isinstance(mapping, dict):
+            return {
+                int(code): str(name)
+                for code, name in mapping.items()
+                if isinstance(name, str)
+            }
         return {}
 
 

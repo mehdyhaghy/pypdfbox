@@ -37,14 +37,18 @@ def test_round_trip_line_width() -> None:
 
 def test_round_trip_line_cap_style() -> None:
     gs = PDExtendedGraphicsState()
-    assert gs.get_line_cap_style() is None
+    # Upstream getLineCapStyle() returns the primitive-int sentinel -1 when
+    # /LC is absent (oracle-confirmed), not None.
+    assert gs.get_line_cap_style() == -1
     gs.set_line_cap_style(1)
     assert gs.get_line_cap_style() == 1
 
 
 def test_round_trip_line_join_style() -> None:
     gs = PDExtendedGraphicsState()
-    assert gs.get_line_join_style() is None
+    # Upstream getLineJoinStyle() returns -1 when /LJ is absent
+    # (oracle-confirmed), not None.
+    assert gs.get_line_join_style() == -1
     gs.set_line_join_style(2)
     assert gs.get_line_join_style() == 2
 
@@ -82,7 +86,9 @@ def test_round_trip_rendering_intent() -> None:
 
 def test_round_trip_blend_mode_cosname() -> None:
     gs = PDExtendedGraphicsState()
-    assert gs.get_blend_mode() is None
+    # Upstream getBlendMode() resolves an absent /BM to BlendMode.NORMAL
+    # (via BlendMode.getInstance), never None (oracle-confirmed).
+    assert gs.get_blend_mode() is BlendMode.NORMAL
     multiply = COSName.get_pdf_name("Multiply")
     gs.set_blend_mode(multiply)
     bm = gs.get_blend_mode()
@@ -110,7 +116,9 @@ def test_round_trip_blend_mode_typed_wrapper() -> None:
     assert bm is BlendMode.SOFT_LIGHT
     assert gs.get_cos_object().get_item("BM") == COSName.get_pdf_name("SoftLight")
     gs.set_blend_mode(None)
-    assert gs.get_blend_mode() is None
+    # After removing /BM, getBlendMode() falls back to NORMAL (upstream
+    # getInstance contract), and the COS entry is gone.
+    assert gs.get_blend_mode() is BlendMode.NORMAL
     assert gs.get_cos_object().get_item("BM") is None
 
 
@@ -169,13 +177,16 @@ def test_set_line_width_none_removes_entry() -> None:
     assert gs.get_cos_object().get_item("LW") is None
 
 
-def test_overprint_mode_default_is_zero() -> None:
+def test_overprint_mode_absent_is_none() -> None:
     gs = PDExtendedGraphicsState()
-    assert gs.get_overprint_mode() == 0
+    # Upstream getOverprintMode() returns a boxed Integer → None when /OPM
+    # is absent (oracle-confirmed). The spec default 0 is applied by
+    # consumers (copyIntoGraphicsState / renderer), not the accessor.
+    assert gs.get_overprint_mode() is None
     gs.set_overprint_mode(1)
     assert gs.get_overprint_mode() == 1
     gs.set_overprint_mode(None)
-    assert gs.get_overprint_mode() == 0
+    assert gs.get_overprint_mode() is None
     assert gs.get_cos_object().get_item("OPM") is None
 
 
@@ -197,8 +208,11 @@ def test_non_stroking_overprint_falls_back_to_stroking() -> None:
 
 def test_smoothness_and_flatness_defaults_and_round_trip() -> None:
     gs = PDExtendedGraphicsState()
-    assert gs.get_smoothness() == 0.0
-    assert gs.get_flatness() == 1.0
+    # Upstream getSmoothnessTolerance()/getFlatnessTolerance() return a
+    # boxed Float → None when /SM /FL are absent (oracle-confirmed). The
+    # spec defaults (0 / 1) are applied by consumers, not the accessor.
+    assert gs.get_smoothness() is None
+    assert gs.get_flatness() is None
     gs.set_smoothness(0.25)
     gs.set_flatness(2.0)
     assert gs.get_smoothness() == 0.25
@@ -436,17 +450,19 @@ def test_non_stroking_overprint_control_alias_falls_back_to_stroking() -> None:
 
 def test_flatness_tolerance_alias_round_trip() -> None:
     gs = PDExtendedGraphicsState()
-    assert gs.get_flatness_tolerance() == 1.0
+    # Absent /FL → None (boxed Float upstream), not the spec default 1.0.
+    assert gs.get_flatness_tolerance() is None
     gs.set_flatness_tolerance(2.5)
     assert gs.get_flatness_tolerance() == 2.5
     assert gs.get_flatness() == 2.5
     gs.set_flatness_tolerance(None)
-    assert gs.get_flatness_tolerance() == 1.0
+    assert gs.get_flatness_tolerance() is None
 
 
 def test_smoothness_tolerance_alias_round_trip() -> None:
     gs = PDExtendedGraphicsState()
-    assert gs.get_smoothness_tolerance() == 0.0
+    # Absent /SM → None (boxed Float upstream), not the spec default 0.0.
+    assert gs.get_smoothness_tolerance() is None
     gs.set_smoothness_tolerance(0.125)
     assert gs.get_smoothness_tolerance() == 0.125
     assert gs.get_smoothness() == 0.125

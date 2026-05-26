@@ -93,7 +93,10 @@ def test_glyph_list_is_unicode_lookup_classifier() -> None:
     # is_unicode_lookup is a static classifier — it does not require the
     # name to be present in the table.
     assert GlyphList.is_unicode_lookup("uni0041") is True
-    assert GlyphList.is_unicode_lookup("u00041") is True
+    assert GlyphList.is_unicode_lookup("u0041") is True  # length 5 (u + 4 hex)
+    # Upstream synthesizes only length-5 ``u`` names; ``u00041`` (length 6)
+    # is NOT a recognized synthesis name. Oracle-verified (wave 1417).
+    assert GlyphList.is_unicode_lookup("u00041") is False  # 5 hex digits
     assert GlyphList.is_unicode_lookup("u041") is False  # 3 hex digits
     assert GlyphList.is_unicode_lookup("A") is False
     assert GlyphList.is_unicode_lookup(None) is False

@@ -74,9 +74,12 @@ def test_is_unicode_lookup_uni_form() -> None:
 
 
 def test_is_unicode_lookup_short_u_form() -> None:
+    # Upstream synthesizes only the exact-length forms: ``uXXXX`` (length 5)
+    # and ``uniXXXX`` (length 7). Longer ``u`` forms are not recognized.
+    # Verified against the live PDFBox 3.0.7 oracle (wave 1417).
     assert GlyphList.is_unicode_lookup("u00A1") is True
-    assert GlyphList.is_unicode_lookup("u1F600") is True
-    assert GlyphList.is_unicode_lookup("u01F600") is True
+    assert GlyphList.is_unicode_lookup("u1F600") is False
+    assert GlyphList.is_unicode_lookup("u01F600") is False
 
 
 def test_is_unicode_lookup_rejects_non_pattern() -> None:
