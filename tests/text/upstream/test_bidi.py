@@ -117,13 +117,13 @@ def doc_and_stripper():
 
 @pytest.mark.skip(
     reason=(
-        "Wave 1387: UAX #9 BiDi reordering now lands logical-order Arabic/"
-        "Hebrew at every word boundary (see "
-        "tests/text/test_bidi_wave1387.py for direct coverage), but the "
-        "lite stripper's line-break heuristic does not split this bundled "
-        "fixture's tightly-packed text positions across the expected one-"
-        "line-per-case layout, so the line-by-line byte comparator still "
-        "rejects. Line-break threshold tuning is tracked separately."
+        "Wave 1409: CTM-aware emission fixed the line layout (the former "
+        "line-break gap), so ``test_not_sorted`` now passes. In sorted mode "
+        "a single residual remains: the geometric re-sort interleaves the "
+        "mirrored Arabic run of one mixed-direction case ('«إختبار ذاتي»') "
+        "one codepoint off from upstream's visual order. That is a "
+        "sort-vs-BiDi-reorder interaction, not a layout gap; tracked "
+        "separately."
     )
 )
 def test_sorted(doc_and_stripper) -> None:
@@ -131,12 +131,6 @@ def test_sorted(doc_and_stripper) -> None:
     _do_test_file(_FIXTURES / _NAME_OF_PDF, True, stripper, document)
 
 
-@pytest.mark.skip(
-    reason=(
-        "Wave 1387: see ``test_sorted`` — BiDi is closed, line-break "
-        "detection on the bundled fixture is the residual gap."
-    )
-)
 def test_not_sorted(doc_and_stripper) -> None:
     document, stripper = doc_and_stripper
     _do_test_file(_FIXTURES / _NAME_OF_PDF, False, stripper, document)

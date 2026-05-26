@@ -317,13 +317,14 @@ def test_get_value_as_string_joins_multi_select() -> None:
     lb.set_options(["a", "b", "c"])
     lb.set_multi_select(True)
     lb.set_value(["a", "c"])
-    assert lb.get_value_as_string() == "a,c"
+    # PDChoice.getValueAsString == Arrays.toString(getValue().toArray()).
+    assert lb.get_value_as_string() == "[a, c]"
 
 
 def test_get_value_as_string_empty_when_no_value() -> None:
     form = PDAcroForm()
     lb = PDListBox(form)
-    assert lb.get_value_as_string() == ""
+    assert lb.get_value_as_string() == "[]"
 
 
 # ---------- Wave 247: /Opt as COSString (FieldUtils.getPairableItems parity) ----------

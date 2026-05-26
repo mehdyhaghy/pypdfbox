@@ -4,6 +4,7 @@ from pypdfbox.cos import COSArray, COSFloat, COSInteger, COSName, COSStream, COS
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.text import PDFTextStripper, TextPosition
 from pypdfbox.text.pdf_text_stripper import _six_numbers, _two_numbers
+from pypdfbox.util.matrix import Matrix
 
 
 def _make_page_with_stream(doc: PDDocument, content: bytes | None) -> PDPage:
@@ -145,6 +146,9 @@ def test_wave550_tj_array_ignores_non_text_and_non_number_entries() -> None:
     state.tm_b = 0.0
     state.tm_c = 0.0
     state.tm_d = 1.0
+    # The emitter composes the text matrix with the CTM; an identity CTM
+    # leaves device-space positions equal to the text-space cursor.
+    state.ctm = Matrix()
     positions: list[TextPosition] = []
 
     stripper._emit_tj_array(  # noqa: SLF001

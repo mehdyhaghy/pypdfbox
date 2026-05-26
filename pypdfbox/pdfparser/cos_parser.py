@@ -141,7 +141,11 @@ class COSParser(BaseParser):
         if b == 0x3C:  # '<' — could be '<<' (dict) or '<' (hex string)
             second = self._peek_two_bytes()[1]
             if second == 0x3C:
-                return self.parse_cos_dictionary()
+                # Inline dictionaries are direct objects (upstream
+                # COSParser.parseDirObject -> parseCOSDictionary(true), Java
+                # line 1072). The top-level indirect-object body is reset to
+                # not-direct by the loader (see PDFParser._load_*).
+                return self.parse_cos_dictionary(is_direct=True)
             return self._read_cos_hex_string()
         if b == 0x28:  # '('
             return self._read_cos_literal_string()
@@ -183,13 +187,21 @@ class COSParser(BaseParser):
 
     # ---------- dictionaries ----------
 
-    def parse_cos_dictionary(self) -> COSDictionary:
-        """Parse a ``<< ... >>`` dictionary."""
+    def parse_cos_dictionary(self, is_direct: bool = False) -> COSDictionary:
+        """Parse a ``<< ... >>`` dictionary.
+
+        ``is_direct`` mirrors upstream ``COSParser.parseCOSDictionary(boolean)``
+        (Java line 881): the dictionary is flagged direct when it is parsed as
+        an inline value (``parseDirObject`` passes ``true``) and not when it is
+        the top-level body of an indirect object (the loader resets the flag).
+        Each name/value entry is flagged direct as well, matching
+        ``parseCOSDictionaryNameValuePair`` (Java line 963)."""
         start = self.position
         self.read_expected(b"<<")
         self._enter_recursion("dictionary", start)
         try:
             d = COSDictionary()
+            d.set_direct(is_direct)
             while True:
                 self.skip_whitespace()
                 nxt = self.peek_byte()
@@ -205,6 +217,20 @@ class COSParser(BaseParser):
                     )
                 key = COSName.get_pdf_name(self.read_name_bytes())
                 value = self.parse_direct_object()
+                # Label this item as direct so the writer emits it inline
+                # rather than promoting it to a free-standing indirect object
+                # (upstream parseCOSDictionaryNameValuePair, Java line 963).
+                #
+                # Restricted to COSDictionary / COSArray: those are the only
+                # types whose ``is_direct`` the COSWriter consults (see
+                # COSWriter._write_dictionary / _write_array). Scalars
+                # (COSName / COSInteger / COSBoolean / COSNull / COSString) are
+                # written inline regardless, and several are interned global
+                # singletons in this port — mutating their ``_direct`` flag
+                # here would leak across documents. COSObject placeholders are
+                # indirect references and stay as-is.
+                if isinstance(value, (COSArray, COSDictionary)):
+                    value.set_direct(True)
                 d.set_item(key, value)
         finally:
             self._leave_recursion()
@@ -337,6 +363,13 @@ class COSParser(BaseParser):
                 f"expected 'obj' after object header, got {kw!r}", position=start
             )
         body = self.parse_direct_object()
+        # Top-level indirect-object body must not be flagged direct (it is the
+        # indirect object). parse_direct_object marks inline dicts direct;
+        # reset it here, matching upstream parseFileObject (Java line 634).
+        # Restricted to dict/array — scalar bodies are interned singletons.
+        if isinstance(body, (COSArray, COSDictionary)):
+            body.set_direct(False)
+            body.set_key(COSObjectKey(object_number, generation_number))
         self.skip_whitespace()
         # Distinguish ``endobj`` from ``stream`` keyword.
         peeked = self.peek_byte()
@@ -630,6 +663,13 @@ class COSParser(BaseParser):
                 parsed = body_parser.parse_direct_object()
             finally:
                 body_view.close()
+            # A packed object is an indirect object — reset the direct flag set
+            # by parse_direct_object on inline dicts (upstream
+            # PDFObjectStreamParser, Java line 102/160: setDirect(false)).
+            # Restricted to dict/array — scalar bodies are interned singletons.
+            if isinstance(parsed, (COSArray, COSDictionary)):
+                parsed.set_direct(False)
+                parsed.set_key(COSObjectKey(stored_obj_num, 0))
             results.append(parsed)
             holder = self._document.get_object_from_pool(
                 COSObjectKey(stored_obj_num, 0)

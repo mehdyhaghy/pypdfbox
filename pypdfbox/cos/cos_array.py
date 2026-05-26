@@ -38,6 +38,15 @@ class COSArray(COSBase):
 
     def __init__(self, items: Iterable[COSBase] | None = None) -> None:
         super().__init__()
+        # Upstream COSArray defaults ``direct = true`` in every constructor
+        # (org.apache.pdfbox.cos.COSArray, Java lines 53/67/75): arrays are
+        # written inline unless something explicitly demotes them. The parser
+        # resets the top-level body of an indirect array object to not-direct
+        # (mirroring COSParser.parseFileObject's setDirect(false)); nested
+        # arrays — including arrays-inside-arrays such as a CIDFont /W table —
+        # therefore stay inline and are not promoted to free-standing indirect
+        # objects on save.
+        self.set_direct(True)
         self._items: list[COSBase] = list(items) if items is not None else []
         self._update_state = COSUpdateState(self)
 

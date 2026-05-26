@@ -1393,7 +1393,18 @@ class PDFParser:
         body_view = RandomAccessReadBuffer(decoded[first + target_byte_offset:])
         body_parser = COSParser(body_view, document=self._document)
         try:
-            return body_parser.parse_direct_object()
+            obj_body = body_parser.parse_direct_object()
+            # A compressed object's body is the indirect object itself — reset
+            # the direct flag (set by parse_direct_object on inline dicts) so
+            # the writer keeps it as a keyed object. Mirrors upstream
+            # PDFObjectStreamParser (Java line 102/160: setDirect(false)).
+            # Restricted to dict/array — scalar bodies are interned singletons.
+            if isinstance(obj_body, (COSDictionary, COSArray)):
+                obj_body.set_direct(False)
+                obj_body.set_key(
+                    COSObjectKey(obj.object_number, obj.generation_number)
+                )
+            return obj_body
         finally:
             body_view.close()
 
@@ -1418,6 +1429,19 @@ class PDFParser:
             pass
         assert self._cos_parser is not None
         body = self._cos_parser.parse_direct_object()
+        # The top-level body of an indirect object is itself the indirect
+        # object — it must NOT be flagged direct, otherwise the writer would
+        # try to inline it instead of emitting it as a keyed object. Upstream
+        # COSParser.parseFileObject resets this (Java line 634:
+        # parsedObject.setDirect(false)) after parseDirObject marks inline
+        # dicts direct. Mirror that here, but only for COSDictionary / COSArray:
+        # those are the only types whose direct flag the writer consults, and
+        # scalar bodies (COSInteger / COSBoolean / COSNull / COSName) are
+        # interned singletons in this port — touching their flag/key would leak
+        # across documents.
+        if isinstance(body, (COSDictionary, COSArray)):
+            body.set_direct(False)
+            body.set_key(COSObjectKey(obj.object_number, obj.generation_number))
         self._base.skip_whitespace()
         # Distinguish 'endobj' from 'stream'.
         peek = self._base.peek_byte()

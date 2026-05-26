@@ -10,6 +10,7 @@ from pypdfbox.cos import COSArray, COSDictionary, COSName, COSNumber, COSStream,
 from pypdfbox.fontbox.cmap import CMap, CMapParser
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser.pdf_stream_parser import Operator, PDFStreamParser
+from pypdfbox.util.matrix import Matrix
 
 from .bidi import BidiResolver, get_paragraph_direction
 from .bidi import _reorder_indices as _bidi_reorder_indices
@@ -717,10 +718,12 @@ class PDFTextStripper:
         positions: list[TextPosition] = []
         operands: list[COSBase] = []
 
-        # Text-state machine — flat, no nested graphics-state stack.
-        # ``q``/``Q`` graphics-state stacking would matter for CTM-aware
-        # extraction; lite mode ignores the CTM entirely and tracks the
-        # text matrix flat. See CHANGES.md.
+        # Text-state machine. Tracks the text matrix plus the page CTM via
+        # a graphics-state stack (``q`` / ``Q`` / ``cm``); the emitter
+        # composes textMatrix × CTM to recover device-space glyph origins
+        # and the effective font size, so producers that position lines
+        # with a per-line ``cm`` and fold the point size into ``Tm`` lay
+        # out correctly. See CHANGES.md.
         state = _TextState()
 
         with RandomAccessReadBuffer(body) as src:
@@ -783,17 +786,21 @@ class PDFTextStripper:
         elif op == "Td":
             tx, ty = _two_numbers(operands)
             # Translate the line matrix by (tx, ty), then reset the text
-            # matrix to the new line origin (PDF 1.7 §9.4.2).
-            state.line_x += tx
-            state.line_y += ty
+            # matrix to the new line origin (PDF 1.7 §9.4.2). ``(tx, ty)``
+            # is a text-space delta, so it is carried through the
+            # text-matrix scale/shear before moving the translation-space
+            # line origin (otherwise a ``Tm`` that folds the point size
+            # into its scale would under-translate every ``Td``).
+            state.line_x += tx * state.tm_a + ty * state.tm_c
+            state.line_y += tx * state.tm_b + ty * state.tm_d
             state.text_x = state.line_x
             state.text_y = state.line_y
         elif op == "TD":
             tx, ty = _two_numbers(operands)
             # ``TD`` = ``-ty TL`` then ``tx ty Td``.
             state.leading = -ty
-            state.line_x += tx
-            state.line_y += ty
+            state.line_x += tx * state.tm_a + ty * state.tm_c
+            state.line_y += tx * state.tm_b + ty * state.tm_d
             state.text_x = state.line_x
             state.text_y = state.line_y
         elif op == "Tm":
@@ -816,7 +823,10 @@ class PDFTextStripper:
                 state.text_y = f
         elif op == "T*":
             # Move to start of next line — equivalent to ``0 -leading Td``.
-            state.line_y -= state.leading
+            # The ``(0, -leading)`` text-space delta is carried through the
+            # text-matrix scale/shear before moving the line origin.
+            state.line_x += -state.leading * state.tm_c
+            state.line_y += -state.leading * state.tm_d
             state.text_x = state.line_x
             state.text_y = state.line_y
         elif op == "Tj":
@@ -827,7 +837,8 @@ class PDFTextStripper:
                 self._emit_tj_array(operands[0], state, positions)
         elif op == "'":
             # Move to next line then show string.
-            state.line_y -= state.leading
+            state.line_x += -state.leading * state.tm_c
+            state.line_y += -state.leading * state.tm_d
             state.text_x = state.line_x
             state.text_y = state.line_y
             if operands and isinstance(operands[0], COSString):
@@ -842,7 +853,8 @@ class PDFTextStripper:
             ):
                 state.word_spacing = operands[0].float_value()
                 state.char_spacing = operands[1].float_value()
-                state.line_y -= state.leading
+                state.line_x += -state.leading * state.tm_c
+                state.line_y += -state.leading * state.tm_d
                 state.text_x = state.line_x
                 state.text_y = state.line_y
                 self._emit(operands[2], state, positions)
@@ -852,11 +864,50 @@ class PDFTextStripper:
         elif op == "Tw":
             if operands and isinstance(operands[0], COSNumber):
                 state.word_spacing = operands[0].float_value()
-        # Other operators (graphics state, paths, colour, marked content,
-        # etc.) are intentionally ignored — they have no effect on the
-        # lite text stream.
+        elif op == "q":
+            # Save graphics state — push a copy of the current CTM so a
+            # later ``Q`` restores it (PDF 1.7 §8.4.2). Text state itself
+            # is not part of the graphics-state stack, so only the CTM is
+            # tracked here.
+            state.gs_stack.append(state.ctm.clone())
+        elif op == "Q":
+            # Restore graphics state — pop the saved CTM. Defensive: a
+            # malformed stream with an unbalanced ``Q`` leaves the CTM
+            # unchanged rather than raising.
+            if state.gs_stack:
+                state.ctm = state.gs_stack.pop()
+        elif op == "cm":
+            # Concatenate the operand matrix onto the CTM (PDF 1.7 §8.3.4).
+            # Upstream applies ``newCTM = operandMatrix × CTM``; with the
+            # row-vector convention used by :class:`Matrix` this is
+            # ``operandMatrix.multiply(ctm)``.
+            values = _six_numbers(operands)
+            if values is not None:
+                a, b, c, d, e, f = values
+                state.ctm = Matrix(a, b, c, d, e, f).multiply(state.ctm)
+        # Other operators (paths, colour, marked content, etc.) are
+        # intentionally ignored — they have no effect on the lite text
+        # stream.
 
     # ---------- emission ----------
+
+    @staticmethod
+    def _text_rendering_matrix(state: _TextState) -> Matrix:
+        """Compose the run's text matrix with the CTM.
+
+        Mirrors upstream ``PDFStreamEngine.showText``'s
+        ``textMatrix.multiply(ctm)`` (the font-size parameter matrix is
+        applied separately to ``font_size`` rather than folded in here).
+        The result's translation is the glyph origin in device space and
+        its scaling factors give the effective glyph size — so producers
+        that fold the point size into ``Tm`` (``14 0 0 14 … Tm`` with a
+        ``1 Tf``) and position each line via a per-line ``cm`` are placed
+        and scaled correctly instead of collapsing onto one baseline.
+        """
+        text_matrix = Matrix(
+            state.tm_a, state.tm_b, state.tm_c, state.tm_d, state.text_x, state.text_y
+        )
+        return text_matrix.multiply(state.ctm)
 
     def _emit(
         self,
@@ -875,6 +926,19 @@ class PDFTextStripper:
         width_of_space = self._compute_width_of_space(
             font, state.font_size, fallback=per_char
         )
+        # Resolve the device-space origin and effective glyph size from
+        # the full text-rendering matrix. ``font_size`` (the ``Tf``
+        # operand) is scaled by the matrix's Y scaling so the line-break
+        # and word-gap heuristics operate on the rendered glyph size, and
+        # the run width (computed in text space) is scaled by the X
+        # scaling so it lands in the same device-space units as the
+        # origin.
+        trm = self._text_rendering_matrix(state)
+        device_x = trm.get_translate_x()
+        device_y = trm.get_translate_y()
+        y_scale = trm.get_scaling_factor_y()
+        x_scale = trm.get_scaling_factor_x()
+        effective_font_size = state.font_size * y_scale
         if self._ignore_content_stream_space_glyphs:
             self._emit_ignoring_space_glyphs(
                 text,
@@ -891,14 +955,14 @@ class PDFTextStripper:
         positions.append(
             TextPosition(
                 text=text,
-                x=state.text_x,
-                y=state.text_y,
-                font_size=state.font_size,
+                x=device_x,
+                y=device_y,
+                font_size=effective_font_size,
                 font_name=state.font_name,
                 font=font,
                 resolved_font_name=resolved_font_name,
-                width=run_width,
-                width_of_space=width_of_space,
+                width=run_width * x_scale,
+                width_of_space=width_of_space * x_scale,
                 char_spacing=state.char_spacing,
                 word_spacing=state.word_spacing,
                 text_matrix=[
@@ -917,7 +981,18 @@ class PDFTextStripper:
         # ``_compute_avg_advance``); otherwise fall back to the legacy
         # 0.5-em-per-char monospace estimate so unknown fonts still
         # produce monotonic advances for the word-gap heuristic.
-        state.text_x += run_width
+        #
+        # ``run_width`` is the advance in *text space* (em-units × the
+        # ``Tf`` operand). The text cursor (``text_x`` / ``text_y``) lives
+        # in the text matrix's translation slots, so the advance must be
+        # carried through the text-matrix scale/shear — i.e.
+        # ``translate(run_width, 0) × Tm`` — which moves the cursor by
+        # ``(run_width·a, run_width·b)``. Without this, producers that
+        # fold the point size into ``Tm`` (``14 0 0 14 … Tm`` with a
+        # ``1 Tf``) would advance 14× too slowly and every glyph would
+        # collapse onto its neighbour.
+        state.text_x += run_width * state.tm_a
+        state.text_y += run_width * state.tm_b
 
     def _emit_ignoring_space_glyphs(
         self,
@@ -929,27 +1004,51 @@ class PDFTextStripper:
         per_char: float,
         width_of_space: float,
     ) -> None:
-        """Emit non-space chunks while preserving the original text advance."""
+        """Emit non-space chunks while preserving the original text advance.
+
+        Each chunk's text-space origin is run through the text-rendering
+        matrix (textMatrix × CTM) so device-space positions and the
+        effective glyph size match the main :meth:`_emit` path.
+        """
+        ctm = state.ctm
+        tm_scale = Matrix(state.tm_a, state.tm_b, state.tm_c, state.tm_d, 0.0, 0.0)
+        trm_scale = tm_scale.multiply(ctm)
+        y_scale = trm_scale.get_scaling_factor_y()
+        x_scale = trm_scale.get_scaling_factor_x()
+        effective_font_size = state.font_size * y_scale
+        # ``cursor_x`` tracks the text matrix's translation slot (slot e),
+        # so the per-character text-space advance is carried through the
+        # horizontal text-matrix scale (``tm_a``) — matching the main
+        # show-text path.
+        advance = per_char * state.tm_a
         cursor_x = state.text_x
         chunk_start_x = cursor_x
         chunk: list[str] = []
+
+        def _device_origin(text_x: float) -> tuple[float, float]:
+            tm = Matrix(
+                state.tm_a, state.tm_b, state.tm_c, state.tm_d, text_x, state.text_y
+            )
+            trm = tm.multiply(ctm)
+            return trm.get_translate_x(), trm.get_translate_y()
 
         def flush_chunk() -> None:
             nonlocal chunk_start_x
             if not chunk:
                 return
             chunk_text = "".join(chunk)
+            device_x, device_y = _device_origin(chunk_start_x)
             positions.append(
                 TextPosition(
                     text=chunk_text,
-                    x=chunk_start_x,
-                    y=state.text_y,
-                    font_size=state.font_size,
+                    x=device_x,
+                    y=device_y,
+                    font_size=effective_font_size,
                     font_name=state.font_name,
                     font=font,
                     resolved_font_name=resolved_font_name,
-                    width=len(chunk_text) * per_char,
-                    width_of_space=width_of_space,
+                    width=len(chunk_text) * per_char * x_scale,
+                    width_of_space=width_of_space * x_scale,
                     char_spacing=state.char_spacing,
                     word_spacing=state.word_spacing,
                     text_matrix=[
@@ -972,7 +1071,7 @@ class PDFTextStripper:
                 if not chunk:
                     chunk_start_x = cursor_x
                 chunk.append(char)
-            cursor_x += per_char
+            cursor_x += advance
         flush_chunk()
         state.text_x = cursor_x
 
@@ -987,10 +1086,13 @@ class PDFTextStripper:
                 self._emit(entry, state, positions)
             elif isinstance(entry, COSNumber):
                 # ``TJ`` numeric adjustments are in thousandths of an em,
-                # subtracted (negative = move forward). Lite mode only
-                # uses this to nudge the text-x cursor so the word-gap
-                # heuristic can detect spacing inserted via ``TJ``.
-                state.text_x -= entry.float_value() * state.font_size / 1000.0
+                # subtracted (negative = move forward). The adjustment is
+                # in text space, so (like the show-text advance) it must
+                # be carried through the text-matrix scale/shear before it
+                # moves the translation-space cursor.
+                adj = entry.float_value() * state.font_size / 1000.0
+                state.text_x -= adj * state.tm_a
+                state.text_y -= adj * state.tm_b
 
     # ---------- /ToUnicode CMap helpers ----------
 
@@ -1314,6 +1416,16 @@ class PDFTextStripper:
     ) -> bool:
         """True when ``pos`` is far enough past ``prev``'s right edge to
         warrant a word separator."""
+        # When an explicit space glyph already borders the boundary
+        # (the previous run ends in whitespace, or this run begins with
+        # whitespace), a producer has already encoded the word break in
+        # the content stream. Emitting a gap-based separator on top of it
+        # would double the space — Java's stripper collapses to a single
+        # separator here.
+        if prev.text and prev.text[-1].isspace():
+            return False
+        if pos.text and pos.text[0].isspace():
+            return False
         if prev.width > 0.0:
             prev_right = prev.x + prev.width if not self._flip_axes else prev.y + prev.width
         else:
@@ -1437,19 +1549,38 @@ class PDFTextStripper:
     ) -> list[TextPosition]:
         """Drop ``TextPosition`` entries that overlap an earlier entry
         with the same text — the duplicate-glyph fake-bold case.
-        Linear scan against a small ring of recent positions; the
-        threshold is a quarter of the font size in user-space units."""
+
+        A fake-bold duplicate is the *same* glyph painted a second time at
+        (essentially) the *same* origin — the stroke offset is a tiny
+        fraction of a point. A genuine adjacent glyph, by contrast,
+        advances by roughly its own width. The tolerance is therefore a
+        small fraction of the run's own width (with a tiny absolute floor
+        so the exact-overlap fake-bold case at width 0 still matches),
+        not a quarter of the font size: at proportional sizes a flat
+        ``0.25 × font_size`` window is wider than a narrow glyph's advance
+        and would drop legitimate consecutive characters once positions
+        are packed in true device space (CTM-aware emission)."""
         result: list[TextPosition] = []
         for pos in positions:
             duplicate = False
-            tol = max(pos.font_size, 0.1) * 0.25
+            # x tolerance: a fake-bold offset is a small fraction of the
+            # glyph width, so cap well below a full glyph advance. When
+            # the run carries no width metric (synthetic positions / fonts
+            # without ``/Widths``) fall back to a font-size fraction so
+            # near-coincident same-text runs are still recognised.
+            if pos.width > 0.0:
+                x_tol = max(pos.width * 0.3, 0.05)
+                y_tol = max(pos.font_size, 0.1) * 0.05
+            else:
+                x_tol = max(pos.font_size, 0.1) * 0.25
+                y_tol = max(pos.font_size, 0.1) * 0.25
             # Only check the trailing window — duplicates from fake
             # bold are always emitted right after their original.
             for prior in result[-4:]:
                 if (
                     prior.text == pos.text
-                    and abs(prior.x - pos.x) <= tol
-                    and abs(prior.y - pos.y) <= tol
+                    and abs(prior.x - pos.x) <= x_tol
+                    and abs(prior.y - pos.y) <= y_tol
                 ):
                     duplicate = True
                     break
@@ -2189,6 +2320,8 @@ class _TextState:
         "tm_b",
         "tm_c",
         "tm_d",
+        "ctm",
+        "gs_stack",
     )
 
     def __init__(self) -> None:
@@ -2209,6 +2342,15 @@ class _TextState:
         self.tm_b: float = 0.0
         self.tm_c: float = 0.0
         self.tm_d: float = 1.0
+        # Current transformation matrix (CTM). The ``cm`` operator
+        # concatenates onto it; ``q`` / ``Q`` push / pop it. Tracking the
+        # CTM lets the emitter compute the full text-rendering matrix
+        # (textMatrix × CTM) the way upstream ``PDFStreamEngine.showText``
+        # does, so producers that fold the point size into ``Tm`` and
+        # position each line via a per-line ``cm`` are scaled and placed
+        # correctly instead of collapsing to a single baseline at size 1.
+        self.ctm: Matrix = Matrix()
+        self.gs_stack: list[Matrix] = []
 
 
 def _two_numbers(operands: list[COSBase]) -> tuple[float, float]:

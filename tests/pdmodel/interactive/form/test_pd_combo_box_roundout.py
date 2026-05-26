@@ -143,11 +143,11 @@ def test_combo_box_default_value_reads_array_shape_from_existing_dict() -> None:
 
 
 def test_combo_box_get_value_as_string_empty_on_fresh_field() -> None:
-    """Fresh combo box has no /V — comma-joined view of an empty list is ``""``."""
+    """Fresh combo box has no /V — Arrays.toString of an empty list is ``"[]"``."""
     form = PDAcroForm()
     cb = PDComboBox(form)
     assert cb.get_value() == []
-    assert cb.get_value_as_string() == ""
+    assert cb.get_value_as_string() == "[]"
 
 
 def test_combo_box_get_value_reads_existing_v_string() -> None:
@@ -161,7 +161,7 @@ def test_combo_box_get_value_reads_existing_v_string() -> None:
     form = PDAcroForm()
     cb = PDComboBox(form, field=field)
     assert cb.get_value() == ["Cherry"]
-    assert cb.get_value_as_string() == "Cherry"
+    assert cb.get_value_as_string() == "[Cherry]"
 
 
 def test_combo_box_set_value_none_removes_v_and_indices() -> None:

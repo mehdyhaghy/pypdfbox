@@ -1269,8 +1269,16 @@ class StandardSecurityHandler(SecurityHandler):
         padded_owner = cls._pad_password(owner_password)
         digest = hashlib.md5(padded_owner, usedforsecurity=False).digest()
         if revision >= 3:
+            # Algorithm 3 step (b): each of the 50 MD5 rounds re-hashes only
+            # the first ``key_len_bytes`` of the previous digest (see the
+            # matching note in ``_compute_encryption_key_via_owner_password``).
+            # Hashing the full digest produces a wrong /O for sub-128-bit
+            # keys, which then can't be owner-decrypted by us OR by Apache
+            # PDFBox.
             for _ in range(50):
-                digest = hashlib.md5(digest, usedforsecurity=False).digest()
+                digest = hashlib.md5(
+                    digest[:key_len_bytes], usedforsecurity=False
+                ).digest()
         rc4_key = digest[:key_len_bytes]
 
         padded_user = cls._pad_password(user_password)
@@ -1377,8 +1385,17 @@ class StandardSecurityHandler(SecurityHandler):
         padded_owner = cls._pad_password(password)
         digest = hashlib.md5(padded_owner, usedforsecurity=False).digest()
         if revision >= 3:
+            # PDF 32000-1 §7.6.4.4.2 Algorithm 3 step (b): each of the 50
+            # MD5 rounds re-hashes only the FIRST ``key_len_bytes`` of the
+            # previous digest, not the full 16-byte output. Hashing the full
+            # digest only happens to match for 128-bit keys (key_len_bytes ==
+            # 16 == digest length); at 40-bit (key_len_bytes == 5) it diverges
+            # and the recovered owner key is wrong, so a valid owner password
+            # was rejected on RC4-40 / V=1 R=3 Length=40 documents.
             for _ in range(50):
-                digest = hashlib.md5(digest, usedforsecurity=False).digest()
+                digest = hashlib.md5(
+                    digest[:key_len_bytes], usedforsecurity=False
+                ).digest()
         rc4_key = digest[:key_len_bytes]
 
         if revision == 2:

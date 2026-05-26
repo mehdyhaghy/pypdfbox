@@ -128,7 +128,9 @@ def test_combo_box_single_value_round_trip() -> None:
     combo = PDComboBox(form)
     combo.set_value("Apple")
     assert combo.get_value() == ["Apple"]
-    assert combo.get_value_as_string() == "Apple"
+    # PDChoice.getValueAsString == Arrays.toString(getValue().toArray()),
+    # so a single value renders bracketed (verified against the live oracle).
+    assert combo.get_value_as_string() == "[Apple]"
 
 
 def test_list_box_multi_value_round_trip() -> None:
@@ -137,7 +139,8 @@ def test_list_box_multi_value_round_trip() -> None:
     lb.set_multi_select(True)
     lb.set_value(["A", "B"])
     assert lb.get_value() == ["A", "B"]
-    assert lb.get_value_as_string() == "A,B"
+    # Arrays.toString joins with ", " inside brackets.
+    assert lb.get_value_as_string() == "[A, B]"
     raw = lb.get_cos_object().get_dictionary_object(_V)
     assert isinstance(raw, COSArray)
     assert raw.size() == 2
@@ -210,7 +213,8 @@ def test_choice_clear_value() -> None:
     combo.set_value("x")
     combo.set_value(None)
     assert combo.get_value() == []
-    assert combo.get_value_as_string() == ""
+    # Empty selection -> Arrays.toString of an empty array == "[]".
+    assert combo.get_value_as_string() == "[]"
 
 
 # ---------- Signature field ----------

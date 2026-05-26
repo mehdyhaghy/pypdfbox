@@ -187,38 +187,32 @@ def test_full_save_valid_and_structurally_equivalent_to_pdfbox(
     assert reload_keys == py_cat_keys
 
     # (4) Object count (trailer /Size) is a positive, self-consistent number
-    #     on both sides. /Size is writer-independent (unlike a raw ``N G obj``
-    #     opener count, which PDFBox's object-stream packing collapses).
+    #     on both sides, and now tracks PDFBox's count closely. /Size is
+    #     writer-independent (unlike a raw ``N G obj`` opener count, which
+    #     PDFBox's object-stream packing collapses).
     #
-    #     KNOWN DIVERGENCE (cross-module — parser, NOT writer): pypdfbox's
-    #     /Size runs several times larger than PDFBox's on the same input
-    #     because pypdfbox's parser does not call ``set_direct(True)`` on
-    #     dictionaries/arrays parsed as *inline* values. PDFBox's
-    #     ``BaseParser.parseCOSDictionary`` / ``parseCOSDictionaryNameValuePair``
-    #     do (verified against the 3.0.7 bytecode), so those objects stay
-    #     inline on a re-save. With ``is_direct`` defaulting to False, the
-    #     pypdfbox writer — whose ``writeArray`` / ``writeDictionary``
-    #     ``isDirect()`` branch is byte-for-byte identical to upstream —
-    #     promotes every such inline dict/array to a free-standing indirect
-    #     object, inflating /Size (e.g. 347 vs 56 on ``unencrypted.pdf``).
-    #     The resulting file is still structurally valid and reloads to the
-    #     same page count + catalog (asserted above); only the object count
-    #     diverges. Fixing this belongs in ``pypdfbox/pdfparser`` — when the
-    #     parser sets is_direct on inline values, swap the bound below for a
-    #     tight ``py_size <= java_size * 2`` parity assertion.
+    #     CLOSED (wave 1409): pypdfbox's parser now flags dictionaries/arrays
+    #     parsed as *inline* values direct, mirroring PDFBox's
+    #     ``COSParser.parseCOSDictionary(true)`` /
+    #     ``parseCOSDictionaryNameValuePair`` (``value.setDirect(true)``) plus
+    #     the upstream ``COSArray`` default of ``direct = true``. The top-level
+    #     body of an indirect object is reset to not-direct, matching
+    #     ``COSParser.parseFileObject``'s ``setDirect(false)``. As a result the
+    #     writer keeps inline dicts/arrays inline instead of promoting each to a
+    #     free-standing indirect object, so /Size no longer inflates ~6x (e.g.
+    #     unencrypted.pdf: 53 vs PDFBox's 56, was 347). pypdfbox lands a couple
+    #     of objects *below* PDFBox because PDFBox keeps a small fixed number of
+    #     bookkeeping objects (xref/object-stream machinery) indirect.
     java_size = _declared_size(java_bytes)
     py_size = _declared_size(py_bytes)
     assert py_size is not None and py_size > 0
     assert java_size is not None and java_size > 0
-    # Sanity ceiling: catches dropped objects (py_size collapsing toward 0) or
-    # a runaway numbering bug (orders-of-magnitude beyond the known inflation).
-    assert py_size >= java_size, (
-        f"pypdfbox /Size ({py_size}) is below PDFBox's ({java_size}) — "
-        "objects were dropped on save"
-    )
-    assert py_size <= java_size * 12, (
-        f"pypdfbox /Size ({py_size}) exceeds PDFBox's ({java_size}) by more "
-        "than the known inline-promotion factor — investigate numbering"
+    # Tight two-sided parity: pypdfbox's object count must be within a small
+    # band of PDFBox's. The lower bound (>= half) catches dropped objects; the
+    # upper bound (<= 2x) catches a regression of the inline-promotion fix.
+    assert java_size * 0.5 <= py_size <= java_size * 2, (
+        f"pypdfbox /Size ({py_size}) is not within 0.5x..2x of PDFBox's "
+        f"({java_size}) — inline-direct parity regressed or objects dropped"
     )
 
     # (5) Each writer emits a *valid* xref strategy — exactly one consistent

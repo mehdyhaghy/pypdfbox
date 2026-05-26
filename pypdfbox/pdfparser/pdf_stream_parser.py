@@ -254,7 +254,10 @@ class PDFStreamParser(COSParser):
             second = self._peek_two_bytes()[1]
             if second == 0x3C:
                 try:
-                    return self.parse_cos_dictionary()
+                    # Inline content-stream dicts are direct objects
+                    # (upstream PDFStreamParser, Java line 131:
+                    # parseCOSDictionary(true)).
+                    return self.parse_cos_dictionary(is_direct=True)
                 except PDFParseError:
                     self.close()
                     return None

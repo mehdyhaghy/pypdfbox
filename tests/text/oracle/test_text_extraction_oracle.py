@@ -5,12 +5,13 @@ against the pinned pdfbox-app-3.0.7 jar) on a fixture and compares its
 stdout against pypdfbox's :class:`PDFTextStripper` /
 :class:`PDFTextStripperByArea` on the same input. Java PDFBox is the
 reference for text extraction — where pypdfbox diverged, the production
-code was fixed (see ``CHANGES.md`` / ``HISTORY.md``); the few remaining
-divergences are rooted outside ``pypdfbox/text/`` (the lite extractor's
-flat text-state machine does not apply the page CTM / ``cm`` operator,
-so producers that fold the point size into ``Tm`` and position each line
-with ``cm`` are mis-scaled) and are ``xfail``-ed with a precise reason
-rather than weakened.
+code was fixed (see ``CHANGES.md`` / ``HISTORY.md``). Wave 1409 made the
+lite extractor CTM-aware (``q`` / ``Q`` / ``cm`` graphics-state stack +
+text-rendering-matrix composition), so producers that fold the point size
+into ``Tm`` and position each line with ``cm`` now lay out correctly. The
+few remaining divergences are deferred layout features (multi-column table
+reading order; article-thread bead stitching + per-glyph width clipping)
+and are ``xfail``-ed with a precise reason rather than weakened.
 
 These tests are decorated ``@requires_oracle`` so they skip cleanly on
 machines without Java + the jar; they are a developer-machine parity
@@ -129,32 +130,25 @@ def test_text_area_empty_region_is_empty() -> None:
         doc.close()
 
 
-# ---- Documented cross-module divergences (xfail with a precise reason) ----
+# ---- CTM-aware extraction (wave 1409) ----
 #
-# The lite text stripper's ``_extract_positions`` runs a flat text-state
-# machine that intentionally ignores the page CTM / ``cm`` operator and
-# reports the bare ``Tf`` operand as the glyph size (see the comment block
-# at ``pdf_text_stripper.py::_extract_positions``). Producers that fold the
-# real point size into the ``Tm`` scale (``14 0 0 14 … Tm`` with ``1 Tf``)
-# AND position each line with a per-line ``cm`` translation therefore land
-# every glyph at the same (collapsed) Y with size 1.0, defeating the
-# line-break heuristic. Fixing this needs a graphics-state/CTM stack, which
-# lives in the content-stream engine (owned elsewhere), not in
-# ``pypdfbox/text/``. We xfail these rather than weaken the comparison so
-# the parity gap stays visible and flips to a pass once the engine grows
-# CTM tracking.
+# The lite text stripper now tracks the page CTM via a graphics-state
+# stack (``q`` / ``Q`` / ``cm``) and composes it with the text matrix to
+# recover the device-space glyph origin and the *effective* font size
+# (``Tf`` operand scaled by the text-rendering matrix), mirroring upstream
+# ``PDFStreamEngine.showText`` / ``TextPosition``. Producers that fold the
+# point size into ``Tm`` (``14 0 0 14 … Tm`` with a ``1 Tf``) and position
+# each line with a per-line ``cm`` translation — which previously collapsed
+# every glyph onto one baseline at size 1.0 — now lay out correctly. See
+# ``pdf_text_stripper.py::_text_rendering_matrix``.
 
 
 @requires_oracle
-@pytest.mark.xfail(
-    reason="lite text-state machine ignores the per-line `cm` (CTM) operator; "
-    "BidiSample.pdf positions every line via `cm` with a `1 Tf` / Tm-scaled "
-    "size, so all glyphs collapse to one line. Root cause is in the content-"
-    "stream engine (CTM/graphics-state stack), outside pypdfbox/text/. "
-    "BiDi reordering itself is ported (wave 1387).",
-    strict=True,
-)
 def test_bidi_sample_line_layout_matches_pdfbox() -> None:
+    """BidiSample.pdf positions every line via a per-line ``cm`` with a
+    ``1 Tf`` / Tm-scaled size. With CTM-aware emission the line layout,
+    effective sizes, and BiDi reordering (ported wave 1387) all match
+    Java byte-for-byte."""
     fixture = _FIXTURES / "text" / "BidiSample.pdf"
     java = run_probe_text("TextExtractProbe", str(fixture))
     py = _py_text(fixture)
@@ -163,12 +157,14 @@ def test_bidi_sample_line_layout_matches_pdfbox() -> None:
 
 @requires_oracle
 @pytest.mark.xfail(
-    reason="lite text-state machine reports the `Tf` operand (1.0) as the glyph "
-    "size and ignores the Tm scale, so the word-gap / space-width heuristic "
-    "operates on the wrong baseline for eu-001.pdf (real size folded into "
-    "`13.98 … Tm`). Effective-size scaling is entangled with the size-1.0 "
-    "line-break calibration and is tracked as a content-stream-engine "
-    "follow-up, not a pypdfbox/text/ fix.",
+    reason="CTM-aware emission (wave 1409) fixes the size/baseline so the body "
+    "extracts in the right order; the residual divergence is multi-column "
+    "table reading order — eu-001.pdf is a wide threshold table whose value "
+    "cells sit on a slightly different baseline than their row label (Y-delta "
+    "< glyph height), and Java groups label+values onto one logical line via "
+    "its vertical-span `overlap` test. The lite stripper's flat 0.5·fontSize "
+    "line-break splits them. Column/overlap reading-order is a deferred "
+    "layout feature (PDFTextStripper docstring), not the CTM root cause.",
     strict=True,
 )
 def test_eu001_word_spacing_matches_pdfbox() -> None:
@@ -180,10 +176,14 @@ def test_eu001_word_spacing_matches_pdfbox() -> None:
 
 @requires_oracle
 @pytest.mark.xfail(
-    reason="PDFBOX-3110-poems-beads.pdf uses the same per-line `cm` producer "
-    "pattern as BidiSample plus article-thread (/B beads) ordering; the lite "
-    "extractor's bead/CTM handling does not reproduce Java's reading order. "
-    "Root cause spans the content-stream engine, outside pypdfbox/text/.",
+    reason="CTM-aware emission (wave 1409) fixes the per-line `cm` size/baseline "
+    "(same producer pattern as BidiSample), but PDFBOX-3110-poems-beads.pdf "
+    "additionally relies on article-thread (/B bead) reading order: Java "
+    "stitches the two bead columns so a column's last line continues onto the "
+    "next column's first line, and clips glyphs to bead rectangles using true "
+    "per-glyph widths. The lite extractor's bead bucketing + average-advance "
+    "width estimate do not reproduce that stitch/clip. Article-thread reading "
+    "order and per-glyph metrics are deferred features, not the CTM root cause.",
     strict=True,
 )
 def test_poems_beads_order_matches_pdfbox() -> None:

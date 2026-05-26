@@ -422,11 +422,18 @@ class PDChoice(PDVariableText):
         self.set_selected_options_indices(None)
 
     def get_value_as_string(self) -> str:
-        """Comma-joined view of ``get_value`` — mirrors PDFBox
-        ``PDChoice.getValueAsString``.
+        """``Arrays.toString`` view of ``get_value`` — mirrors PDFBox
+        ``PDChoice.getValueAsString``, which returns
+        ``Arrays.toString(getValue().toArray())``.
+
+        Java's ``Arrays.toString`` brackets the list and joins with
+        ``", "``, so an empty selection renders as ``"[]"``, a single
+        value as ``"[Opt01]"`` and multiple as ``"[a, b]"``. The earlier
+        comma-joined form (``",".join(values)``) diverged from upstream —
+        confirmed against the live PDFBox oracle (wave 1409).
         """
         values = self.get_value()
-        return ",".join(values)
+        return "[" + ", ".join(values) + "]"
 
     def get_default_value(self) -> list[str]:
         item = self.get_inheritable_attribute(_DV)

@@ -990,7 +990,28 @@ class PDDocument:
         # we want to keep its raw bytes deferred to the lazy hook).
         from pypdfbox.cos import COSArray as _COSArray  # noqa: PLC0415
         from pypdfbox.cos import COSDictionary as _COSDictionary  # noqa: PLC0415
+        from pypdfbox.cos import COSObjectKey as _COSObjectKey  # noqa: PLC0415
         from pypdfbox.cos import COSString as _COSString  # noqa: PLC0415
+
+        # Object-stream membership guard (PDF 32000-1 §7.6.2): strings and
+        # streams stored *inside* a /Type /ObjStm container are never
+        # individually encrypted — only the ObjStm container itself is, and
+        # decrypting the container yields the contained objects already in
+        # cleartext. The parser records membership in the COSDocument's xref
+        # table as a NEGATIVE offset (``-objstm_object_number`` per the
+        # PDFBox convention). We collect those member keys up front so both
+        # decryption passes can skip them; applying a per-object cipher to a
+        # member would double-decrypt it into garbage (observed as
+        # ``FlateDecode: invalid block type`` when its container's body was
+        # subsequently read). Mirrors upstream
+        # ``COSParser#parseObjectDynamically`` (Java line 677), which only
+        # decrypts objects loaded from a direct file offset and leaves
+        # ObjStm-resident objects untouched.
+        objstm_member_keys: set[_COSObjectKey] = {
+            key
+            for key, offset in self._document.get_xref_table().items()
+            if offset is not None and offset < 0
+        }
 
         # Pre-seed the handler's already-decrypted set with every stream
         # identity so pass 2's dict walk doesn't re-enter the stream body
@@ -1005,12 +1026,27 @@ class PDDocument:
         objects_seen = getattr(handler, "_objects_seen", None)
         if callable(objects_seen):
             seen_ids = objects_seen()
+
+        def _object_key(cos_obj: Any) -> _COSObjectKey:
+            return _COSObjectKey(
+                cos_obj.get_object_number(), cos_obj.get_generation_number()
+            )
+
+        # Pass 1 must attach handlers to every ObjStm *container* before any
+        # ObjStm *member* is materialised. Forcing a member's parse
+        # (``get_object()``) lazily reads its container's body through
+        # ``create_input_stream`` — if the container has no handler yet, that
+        # read decodes ciphertext as plaintext and the filter chain blows up.
+        # Members carry a negative xref offset, so iterate them last (and
+        # never attach a handler to them — they're plaintext after the
+        # container decrypts). Non-member streams (containers, xref streams,
+        # content streams written at a direct offset) are handled first.
         for cos_obj in self._document.get_objects():
-            # Avoid forcing a parse on objects that aren't yet loaded —
-            # the lazy loader will see the security handler attached at
-            # the COSStream level once it materialises. ``get_object()``
-            # only triggers parsing for stream-bearing entries because the
-            # stream body itself is encrypted, so we still call through.
+            if _object_key(cos_obj) in objstm_member_keys:
+                continue
+            # ``get_object()`` only triggers a parse for stream-bearing
+            # entries; their body is encrypted so we materialise to attach
+            # the lazy decrypt hook.
             actual = cos_obj.get_object()
             if isinstance(actual, _COSStream):
                 actual.set_security_handler(
@@ -1020,6 +1056,17 @@ class PDDocument:
                 )
                 if seen_ids is not None:
                     seen_ids.add(id(actual))
+
+        # Now safe to materialise members — every container has a handler —
+        # but members are NOT individually encrypted, so we only mark them as
+        # already-seen (so pass 2 skips their body) without attaching a
+        # per-object cipher.
+        for cos_obj in self._document.get_objects():
+            if _object_key(cos_obj) not in objstm_member_keys:
+                continue
+            actual = cos_obj.get_object()
+            if isinstance(actual, _COSStream) and seen_ids is not None:
+                seen_ids.add(id(actual))
 
         # Pass 2: PDFBOX-4453 — decrypt every COSString/COSArray slot
         # reachable from each indirect dictionary, using the indirect's
@@ -1034,6 +1081,11 @@ class PDDocument:
         if callable(decrypt_dict) and callable(decrypt_dispatch):
             encrypt_dict = self._document.get_encryption_dictionary()
             for cos_obj in self._document.get_objects():
+                # ObjStm members are plaintext once their container has been
+                # decrypted (see the membership guard above) — never run a
+                # per-object string/array decrypt over them.
+                if _object_key(cos_obj) in objstm_member_keys:
+                    continue
                 actual = cos_obj.get_object()
                 # The /Encrypt dictionary itself was never encrypted —
                 # its contents (e.g. /U, /O, /OE, /UE byte strings) are
