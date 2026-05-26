@@ -829,9 +829,15 @@ class PDFParser:
     # ---------- step 1: header ----------
 
     def parse_header(self) -> float:
-        """Validate the ``%PDF-x.y`` magic and return the version as a
-        float. Tolerates up to 1024 bytes of leading garbage (some
-        producers prepend MIME envelopes / shebangs / etc.)."""
+        """Validate the ``%PDF-x.y`` (or ``%FDF-x.y``) magic and return the
+        version as a float. Tolerates up to 1024 bytes of leading garbage
+        (some producers prepend MIME envelopes / shebangs / etc.).
+
+        FDF (Forms Data Format) files share PDF's object/xref/trailer wire
+        structure but begin with ``%FDF-`` instead of ``%PDF-``. Accepting
+        both markers here lets the same xref-walking machinery parse an FDF
+        — matching upstream PDFBox, whose generic ``COSParser.parseHeader``
+        is parametrised over the marker string for exactly this reason."""
         scan_window = 1024
         self._src.seek(0)
         head = bytearray()
@@ -841,10 +847,15 @@ class PDFParser:
                 break
             head.append(b)
         idx = bytes(head).find(b"%PDF-")
+        marker_len = len(b"%PDF-")
         if idx < 0:
-            raise PDFParseError("missing %PDF- header (not a PDF file)")
-        # Position the cursor just past "%PDF-" for version parsing.
-        self._src.seek(idx + len(b"%PDF-"))
+            # FDF files carry an %FDF- header; the rest of the structure is
+            # identical, so fall through to the same version parse.
+            idx = bytes(head).find(b"%FDF-")
+            if idx < 0:
+                raise PDFParseError("missing %PDF- header (not a PDF file)")
+        # Position the cursor just past the 5-byte marker for version parsing.
+        self._src.seek(idx + marker_len)
         version_bytes = bytearray()
         while True:
             b = self._src.read()

@@ -3049,15 +3049,30 @@ class PDFRenderer(PDFStreamEngine):
         active_soft_mask = (
             self._gs.soft_mask if self._transparency_group_depth == 0 else None
         )
-        if clip_mask is not None or active_soft_mask is not None:
-            # Draw onto a fresh transparent layer, then composite via clip
-            # and/or soft mask.
+        # Wave 1419 — a non-Normal /BM blend mode (PDF 32000-1 §11.3.5) set
+        # via the ``gs`` operator must combine each direct fill/stroke with
+        # the backdrop through the chosen separable/non-separable blend
+        # formula instead of painting opaquely. Mirrors upstream PageDrawer,
+        # where ``getGraphics().setComposite(BlendComposite.getInstance(...))``
+        # wraps every fill/stroke. Route through ``_paint_through_clip``
+        # (which already draws onto a transparent layer) so the layer can be
+        # blended against the canvas; this also covers the clip / soft-mask
+        # combinations uniformly.
+        active_blend_mode = self._gs.blend_mode
+        if (
+            clip_mask is not None
+            or active_soft_mask is not None
+            or active_blend_mode is not None
+        ):
+            # Draw onto a fresh transparent layer, then composite via clip,
+            # soft mask, and/or blend mode.
             self._paint_through_clip(
                 stroke=stroke,
                 fill=fill,
                 even_odd=even_odd,
                 clip_mask=clip_mask,
                 soft_mask=active_soft_mask,
+                blend_mode=active_blend_mode,
             )
         elif stroke or fill:  # pragma: no branch
             # The elif's False side is unreachable here: the early-return
@@ -3082,6 +3097,7 @@ class PDFRenderer(PDFStreamEngine):
         even_odd: bool,
         clip_mask: Image.Image | None,
         soft_mask: Any | None = None,
+        blend_mode: Any | None = None,
     ) -> None:
         """Composite the painted result through ``clip_mask`` / ``soft_mask``.
 
@@ -3094,6 +3110,13 @@ class PDFRenderer(PDFStreamEngine):
         and multiplies the rendered soft-mask alpha plane into the layer
         alpha. Mirrors upstream's ``applySoftMaskToPaint`` (PageDrawer.java
         line 606) which wraps the paint inside a ``SoftMask`` AWT paint.
+
+        Wave 1419 — accepts an active non-Normal ``/BM`` ``blend_mode``
+        (PDF 32000-1 §11.3.5). When set, the painted layer's RGB is
+        combined with the backdrop through :meth:`_blend` (rather than a
+        plain alpha-over paste) and the blended result is committed through
+        the same combined clip/soft-mask alpha, so the blend only affects
+        the painted-and-clipped region.
         """
         assert self._image is not None
         assert self._draw is not None
@@ -3148,9 +3171,20 @@ class PDFRenderer(PDFStreamEngine):
                 mask_alpha = None
             if mask_alpha is not None:
                 combined = ImageChops.multiply(combined, mask_alpha)
-        # Composite the layer's RGB onto the base image using the combined mask.
-        rgb = layer.convert("RGB")
-        prev_image.paste(rgb, (0, 0), combined)
+        if blend_mode is not None:
+            # Blend the painted layer's RGB against the current backdrop,
+            # then commit the blended pixels through the combined clip /
+            # soft-mask alpha so only the painted region is affected.
+            backdrop = prev_image.convert("RGBA")
+            source = layer.copy()
+            source.putalpha(combined)
+            blended = PDFRenderer._blend(source, backdrop, blend_mode)
+            prev_image.paste(blended.convert("RGB"), (0, 0), combined)
+        else:
+            # Composite the layer's RGB onto the base image using the
+            # combined mask.
+            rgb = layer.convert("RGB")
+            prev_image.paste(rgb, (0, 0), combined)
         # Re-attach aggdraw to the (mutated) base image.
         self._draw = aggdraw.Draw(prev_image)
         self._draw.setantialias(True)

@@ -198,9 +198,17 @@ class COSWriter(ICOSVisitor):
         object_stream: bool = False,
         hybrid_xref: bool = False,
         allow_signing_placeholders: bool = False,
+        fdf: bool = False,
     ) -> None:
         self._output = output
         self._incremental_update = incremental
+        # When True, emit an ``%FDF-x.y`` header instead of ``%PDF-x.y``.
+        # Mirrors upstream COSWriter, whose ``doWriteHeader`` switches the
+        # header marker based on whether an ``fdfDocument`` was passed to
+        # ``write(FDFDocument)``. FDFParser rejects a ``%PDF-`` header
+        # ("Error: Header doesn't contain versioninfo"), so an FDF saved
+        # with the PDF marker cannot be reloaded by PDFBox.
+        self._fdf: bool = fdf
         self._incremental_input = incremental_input
         # When True, skip the safety guard that normally rejects re-saving a
         # source-side signature with a ``[0 0 0 0]`` ByteRange placeholder.
@@ -1527,7 +1535,8 @@ class COSWriter(ICOSVisitor):
             version_text = self._pdf_version
         else:
             version_text = self._format_version(doc.get_version())
-        out.write(f"%PDF-{version_text}".encode("iso-8859-1"))
+        marker = "FDF" if self._fdf else "PDF"
+        out.write(f"%{marker}-{version_text}".encode("iso-8859-1"))
         out.write_eol()
         out.write(COMMENT)
         out.write(GARBAGE)

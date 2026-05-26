@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from pypdfbox.pdmodel.pd_rectangle import PDRectangle  # noqa: F401
     from pypdfbox.pdmodel.pd_resources import PDResources
 
+    from .encoding.encoding import Encoding
     from .pd_type3_char_proc import PDType3CharProc
 
 _CHAR_PROCS: COSName = COSName.get_pdf_name("CharProcs")
@@ -481,6 +482,47 @@ class PDType3Font(PDSimpleFont):
 
     # ---------- /Encoding parsing helpers ----------
 
+    def get_encoding_typed(self) -> Encoding | None:
+        """Resolve ``/Encoding`` to a typed :class:`Encoding` for Type 3.
+
+        Mirrors upstream ``PDType3Font.readEncoding()`` — which is distinct
+        from ``PDSimpleFont.readEncoding()``:
+
+        - ``/Encoding`` a ``COSName`` → the named predefined encoding.
+        - ``/Encoding`` a ``COSDictionary`` → ``new DictionaryEncoding(dict)``,
+          i.e. the *no-base* form: the resolved encoding maps **only** the
+          codes listed in ``/Differences``; every other code is
+          ``.notdef``.
+
+        This is the key Type 3 divergence from the other simple fonts:
+        Type 3 fonts have no built-in font-program encoding and PDFBox does
+        **not** seed a StandardEncoding (non-symbolic) or font-program
+        (symbolic) base for them. The inherited
+        :meth:`PDSimpleFont.get_encoding_typed` does seed such a base, which
+        would wrongly map unlisted codes (e.g. code 65 → 'A'); overriding
+        here restores upstream parity.
+        """
+        if self._encoding_resolved:
+            return self._encoding_typed
+        raw = self.get_encoding()
+        if isinstance(raw, COSName):
+            from .encoding.encoding import Encoding  # noqa: PLC0415
+
+            self._encoding_typed = Encoding.get_instance(raw)
+        elif isinstance(raw, COSDictionary):
+            from .encoding.dictionary_encoding import (
+                DictionaryEncoding,  # noqa: PLC0415
+            )
+
+            # No-base form (font_encoding only): base == None, so codes
+            # absent from /Differences resolve to ".notdef" — matches
+            # upstream ``new DictionaryEncoding(COSDictionary)``.
+            self._encoding_typed = DictionaryEncoding(font_encoding=raw)
+        else:
+            self._encoding_typed = None
+        self._encoding_resolved = True
+        return self._encoding_typed
+
     def read_encoding(self) -> None:
         """Eagerly resolve ``/Encoding`` and the Adobe glyph list.
 
@@ -490,9 +532,9 @@ class PDType3Font(PDSimpleFont):
         this method preserves the upstream surface (parity testing relies
         on it). Calling it primes the cache.
         """
-        # Touching the typed encoding triggers PDSimpleFont's resolver,
-        # which mirrors upstream readEncoding's COSName / COSDictionary
-        # branching plus the Adobe glyph list wiring.
+        # Touching the typed encoding triggers our Type 3 resolver, which
+        # mirrors readEncoding's COSName / COSDictionary branching plus the
+        # Adobe glyph list wiring.
         self.get_encoding_typed()
         self.get_glyph_list()
 

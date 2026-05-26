@@ -52,7 +52,9 @@ def test_save_to_bytesio() -> None:
     fdf.save(buf)
     fdf.close()
     data = buf.getvalue()
-    assert data.startswith(b"%PDF-")  # FDF shares the PDF wire header
+    # FDF shares the PDF wire structure but uses the %FDF- header marker
+    # (PDFBox's FDFParser requires it; a %PDF- header fails to reload).
+    assert data.startswith(b"%FDF-")
     assert b"%%EOF" in data
 
 

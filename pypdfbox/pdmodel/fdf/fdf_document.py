@@ -99,11 +99,17 @@ class FDFDocument:
     @classmethod
     def load(cls, source: FDFSource) -> FDFDocument:
         """Parse an FDF file from a path, bytes, stream, or
-        :class:`RandomAccessRead`. Forwards to ``Loader.load_pdf`` because
-        FDF shares the same lexical structure as PDF.
+        :class:`RandomAccessRead`.
 
-        Mirrors ``FDFDocument.load(...)`` upstream (which exposes the
-        same set of overloads).
+        FDF shares PDF's object/xref/trailer wire structure but begins with
+        an ``%FDF-x.y`` header, not ``%PDF-``. ``Loader.load_pdf`` drives the
+        full xref-walking parser, whose header check accepts either marker
+        (see ``PDFParser.parse_header``), so a real FDF file — including one
+        pypdfbox itself just saved with its ``%FDF-`` header — parses
+        correctly. (Routing through the bare ``%PDF-``-only header check
+        previously rejected every genuine FDF.)
+
+        Mirrors ``Loader.loadFDF(...)`` upstream.
         """
         from pypdfbox.loader import Loader
 
@@ -185,7 +191,11 @@ class FDFDocument:
         else:
             sink = target
         try:
-            with COSWriter(sink) as writer:
+            # ``fdf=True`` makes the writer emit an ``%FDF-x.y`` header
+            # instead of ``%PDF-``. PDFBox's FDFParser requires the FDF
+            # marker; a PDF-marked FDF fails to reload ("Header doesn't
+            # contain versioninfo"). Mirrors upstream COSWriter.write(FDFDocument).
+            with COSWriter(sink, fdf=True) as writer:
                 # FDF's wire format is identical to PDF — feed the raw
                 # COSDocument so the writer doesn't try to walk a
                 # PDDocument-shaped structure that doesn't exist here.
