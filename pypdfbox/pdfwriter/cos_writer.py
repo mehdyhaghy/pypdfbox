@@ -4,8 +4,10 @@ import hashlib
 import io
 import logging
 import secrets
+import struct
 import time
 from collections import deque
+from decimal import Decimal
 from typing import Any, BinaryIO
 
 from pypdfbox.cos import (
@@ -81,6 +83,59 @@ def _is_printable_name_byte(b: int) -> bool:
         or b in (0x2B, 0x2D, 0x5F, 0x40, 0x2A, 0x24, 0x3B, 0x2E)
         # + - _ @ * $ ; .
     )
+
+
+def _shortest_float32_decimal(value: float) -> str:
+    """Shortest decimal ``%g`` string that round-trips to the same IEEE-754
+    single-precision value as ``value`` — the Python equivalent of Java's
+    ``Float.toString`` digit-selection step.
+
+    ``value`` is a Python ``float`` (double) already holding a float32-
+    representable number (``COSFloat`` coerces on construction). We search
+    upward in significant-digit precision and stop at the first that
+    round-trips through ``float32`` exactly — this yields the same minimal
+    digit string the Ryū / Float.toString algorithm produces."""
+    target = struct.unpack("f", struct.pack("f", value))[0]
+    for precision in range(1, 18):
+        candidate = f"{target:.{precision}g}"
+        if struct.unpack("f", struct.pack("f", float(candidate)))[0] == target:
+            return candidate
+    return repr(target)
+
+
+def _java_float_format(value: float) -> str:
+    """Replicate Apache PDFBox ``COSFloat.formatString`` byte-for-byte.
+
+    Upstream (PDFBox 3.0.7)::
+
+        String s = String.valueOf(value);            // Float.toString(value)
+        valueAsString = s.indexOf('E') < 0
+            ? s
+            : new BigDecimal(s).stripTrailingZeros().toPlainString();
+
+    The ``Float.toString`` contract uses exponent notation only when the
+    magnitude is ``< 1e-3`` or ``>= 1e7``; inside that window the decimal
+    form always carries at least one fractional digit (so whole numbers keep
+    a trailing ``.0``). Outside it, PDFBox strips trailing zeros via
+    ``BigDecimal``. We reproduce both branches exactly so a freshly
+    constructed ``COSFloat`` serialises identically to upstream."""
+    # ±0.0 — preserve the sign bit (Float.toString yields "0.0" / "-0.0").
+    if value == 0.0:
+        return "-0.0" if struct.pack("f", value)[3] & 0x80 else "0.0"
+    negative = value < 0
+    magnitude = -value if negative else value
+    digits = _shortest_float32_decimal(magnitude)
+    decimal_value = Decimal(digits)
+    if magnitude < 1e-3 or magnitude >= 1e7:
+        # Exponent branch: BigDecimal.stripTrailingZeros().toPlainString().
+        text = format(decimal_value.normalize(), "f")
+    else:
+        # Decimal branch: Float.toString keeps it verbatim, always with a
+        # fractional part (e.g. "1000000.0", "100.0").
+        text = format(decimal_value, "f")
+        if "." not in text:
+            text += ".0"
+    return ("-" + text) if negative else text
 
 
 def _format_xref_offset(offset: int) -> bytes:
@@ -2533,22 +2588,21 @@ class COSWriter(ICOSVisitor):
 
     @staticmethod
     def format_float(value: float) -> bytes:
-        """Format a float for PDF output. Mirrors upstream's
-        ``COSFloat.formatString`` — avoid scientific notation, strip
-        trailing zeros that arise from ``BigDecimal`` round-trip."""
+        """Format a float for PDF output, byte-for-byte matching upstream
+        ``COSFloat.formatString`` (PDFBox 3.0.7).
+
+        PDFBox stores the value as an IEEE-754 ``float`` and serialises it
+        via ``Float.toString`` (shortest round-tripping single-precision
+        decimal), keeping that string verbatim unless it carries an
+        exponent — in which case it expands to plain notation with trailing
+        zeros stripped. We reproduce both branches in
+        :func:`_java_float_format`. The classic divergence this fixes:
+        ``%g``-on-the-double exposed float32 representation noise (e.g.
+        ``0.1`` → ``0.1000000015``); the float32 shortest-digit search
+        recovers PDFBox's ``0.1``."""
         if value != value:  # NaN guard — PDFs cannot encode NaN.
             raise ValueError("cannot serialize NaN as a PDF number")
-        # Use ``repr``-like form when the magnitude doesn't push into
-        # exponential territory; else strip trailing zeros via the same
-        # logic PDFBox applies.
-        text = format(value, ".10g")
-        if "e" in text or "E" in text:
-            # Fall back to a non-scientific representation. ``f`` would pad
-            # with zeros, but stripping mimics ``BigDecimal.stripTrailingZeros``.
-            text = format(value, ".15f").rstrip("0").rstrip(".")
-            if not text or text == "-":
-                text = "0"
-        return text.encode("iso-8859-1")
+        return _java_float_format(value).encode("iso-8859-1")
 
     @staticmethod
     def format_float_value(obj: COSFloat) -> bytes:

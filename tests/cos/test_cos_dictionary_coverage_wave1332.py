@@ -55,10 +55,12 @@ def test_parse_pdf_date_unparseable_returns_none() -> None:
     assert _parse_pdf_date("not-a-date") is None
 
 
-def test_parse_pdf_date_leap_second_clamped() -> None:
-    parsed = _parse_pdf_date("D:20240630235960Z")
-    assert parsed is not None
-    assert parsed.second == 59
+def test_parse_pdf_date_leap_second_rejected() -> None:
+    # Wave 1415: matched to live PDFBox 3.0.7 ``DateConverter.toCalendar``,
+    # which parses with ``GregorianCalendar.setLenient(false)`` and returns
+    # null for second 60 (a misencoded leap second). We no longer clamp 60→59;
+    # an out-of-range second now fails the parse → None.
+    assert _parse_pdf_date("D:20240630235960Z") is None
 
 
 def test_parse_pdf_date_bad_calendar_components_returns_none() -> None:

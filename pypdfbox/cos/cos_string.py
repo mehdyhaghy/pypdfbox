@@ -65,15 +65,32 @@ class COSString(COSBase):
         self._bytes = bytes(value)
 
     def get_string(self) -> str:
-        """Decode using the same fallback PDFBox uses for text strings:
-        UTF-16BE if the BOM is present, UTF-8 if the UTF-8 BOM is present
-        (PDF 2.0 §7.9.2.2), else PDFDocEncoding (PDF 32000-1 §D.3)."""
+        """Decode using the same fallback PDFBox uses for text strings.
+
+        Matches upstream ``COSString.getString()``:
+
+        * UTF-16BE when the ``FE FF`` BOM is present;
+        * UTF-16LE when the ``FF FE`` BOM is present;
+        * PDFDocEncoding (PDF 32000-1 §D.3) otherwise.
+
+        The UTF-16 branches use **lenient** decoding (malformed / truncated
+        input becomes U+FFFD), mirroring Java's ``new String(byte[], offset,
+        length, StandardCharsets.UTF_16BE)`` which substitutes the
+        replacement character rather than throwing — e.g. an odd trailing
+        byte after the BOM decodes to ``…\\uFFFD`` instead of raising.
+
+        We additionally strip a UTF-8 BOM (``EF BB BF``) and decode the rest
+        as UTF-8. This is a deliberate forward-port of PDF 2.0 §7.9.2.2 /
+        PDFBox 4.0 behaviour; the pinned upstream baseline (PDFBox 3.0.7) has
+        no UTF-8-BOM branch and would decode those bytes as PDFDocEncoding.
+        Recorded as an active divergence in CHANGES.md.
+        """
         if self._bytes.startswith(b"\xfe\xff"):
-            return self._bytes[2:].decode("utf-16-be")
+            return self._bytes[2:].decode("utf-16-be", errors="replace")
         if self._bytes.startswith(b"\xff\xfe"):
-            return self._bytes[2:].decode("utf-16-le")
+            return self._bytes[2:].decode("utf-16-le", errors="replace")
         if self._bytes.startswith(b"\xef\xbb\xbf"):
-            return self._bytes[3:].decode("utf-8")
+            return self._bytes[3:].decode("utf-8", errors="replace")
         from pypdfbox.pdmodel.common.pdfdoc_encoding import decode_bytes
 
         return decode_bytes(self._bytes)

@@ -82,18 +82,34 @@ def _parse_pdf_date(value: str) -> _dt.datetime | None:
     hour = int(m.group("hour") or 0)
     minute = int(m.group("minute") or 0)
     second = int(m.group("second") or 0)
-    if second == 60:
-        # Python's ``datetime`` does not represent leap seconds; clamp.
-        second = 59
+    # Upstream ``DateConverter.toCalendar`` parses with
+    # ``GregorianCalendar.setLenient(false)``, so an out-of-range field
+    # (e.g. second 60 from a misencoded leap second, or hour 24) makes the
+    # whole parse fail and the method returns ``null``. We mirror that: the
+    # ``datetime(...)`` constructor below raises ``ValueError`` for any
+    # out-of-range field, which we map to ``None`` — including second == 60
+    # (Python's ``datetime`` has no leap-second slot). Do NOT clamp.
     sign = m.group("offsign")
     if sign is None or sign == "Z":
         tz: _dt.tzinfo = _dt.UTC
     else:
         off_hour = int(m.group("offhour") or 0)
         off_minute = int(m.group("offminute") or 0)
-        delta = _dt.timedelta(hours=off_hour, minutes=off_minute)
+        # Upstream builds the zone via ``SimpleTimeZone`` from a raw
+        # millisecond offset and lets ``Calendar.ZONE_OFFSET`` reduce it into
+        # ``(-24h, +24h)``. An out-of-range designation like ``+24'00'`` or
+        # ``+99'00'`` therefore does NOT fail the parse — it wraps modulo
+        # 24 hours (truncating toward zero, Java ``%`` semantics) rather than
+        # raising. Python's ``timezone`` rejects ``|offset| >= 24h``, so we
+        # apply the same reduction before constructing it.
+        total_minutes = off_hour * 60 + off_minute
         if sign == "-":
-            delta = -delta
+            total_minutes = -total_minutes
+        # Java integer ``%`` truncates toward zero (``math.fmod`` for ints):
+        # -5940 % 1440 == -180, +5940 % 1440 == +180, matching PDFBox's
+        # GMT-zone reduction (e.g. -99'00' → -03:00, +99'00' → +03:00).
+        reduced = total_minutes - 1440 * int(total_minutes / 1440)
+        delta = _dt.timedelta(minutes=reduced)
         tz = _dt.timezone(delta)
     try:
         return _dt.datetime(year, month, day, hour, minute, second, tzinfo=tz)

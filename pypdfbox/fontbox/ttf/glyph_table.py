@@ -39,6 +39,13 @@ class GlyphTable(TTFTable):
         # memory bounded for huge fonts; we do the same.
         self._glyphs: list[GlyphData | None] | None = None
         self._cached: int = 0
+        # ``hmtx`` view, used to fetch each glyph's left-side bearing. Upstream
+        # ``GlyphTable.getGlyphData`` threads ``hmtx.getLeftSideBearing(gid)``
+        # into ``GlyphData.initData``, which makes the simple-glyph x-coordinate
+        # accumulator start at the LSB instead of the glyf-stored xMin — i.e. an
+        # x-shift of ``(leftSideBearing - xMin)`` baked into the outline. See
+        # :class:`GlyphData` for the application.
+        self._hmtx: Any | None = None
 
     # ---- upstream constants (public for callers that mirror Java) ----
     MAX_CACHE_SIZE: int = 5000
@@ -58,6 +65,12 @@ class GlyphTable(TTFTable):
         self._glyph_order = list(ttf._tt.getGlyphOrder())  # noqa: SLF001
         self._num_glyphs = ttf.get_number_of_glyphs()
         self._units_per_em = ttf.get_units_per_em()
+        # Cache the hmtx view so ``get_glyph`` can thread the per-gid LSB into
+        # each :class:`GlyphData`, mirroring upstream ``getGlyphData``.
+        try:
+            self._hmtx = ttf.get_horizontal_metrics()
+        except Exception:  # noqa: BLE001 - hmtx is optional/defensive
+            self._hmtx = None
         if self._num_glyphs < self.MAX_CACHE_SIZE:
             self._glyphs = [None] * self._num_glyphs
         else:
@@ -82,10 +95,21 @@ class GlyphTable(TTFTable):
         if self._glyf_table is None:
             return None
         glyph_name = self._glyph_order[gid]
+        # Upstream ``getGlyphData`` passes ``hmtx.getLeftSideBearing(gid)`` to
+        # ``GlyphData.initData``; the simple-glyph descript then accumulates x
+        # from the LSB rather than the glyf-stored xMin. We thread the same LSB
+        # so :class:`GlyphData` can reproduce the x-shift.
+        left_side_bearing: int | None = None
+        if self._hmtx is not None:
+            try:
+                left_side_bearing = self._hmtx.get_left_side_bearing(gid)
+            except Exception:  # noqa: BLE001 - defensive, mirror "no shift"
+                left_side_bearing = None
         glyph = GlyphData(
             glyf_table=self._glyf_table,
             glyph_name=glyph_name,
             units_per_em=self._units_per_em,
+            left_side_bearing=left_side_bearing,
         )
         if (
             self._glyphs is not None

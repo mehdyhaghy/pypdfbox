@@ -22,9 +22,15 @@ class GlyphDescription:
     parser hierarchy.
     """
 
-    def __init__(self, glyf_table: Any | None, glyph: Any | None) -> None:
+    def __init__(
+        self, glyf_table: Any | None, glyph: Any | None, x_shift: int = 0
+    ) -> None:
         self._glyf_table = glyf_table
         self._glyph = glyph
+        # x-translation applied to every x-coordinate so this description
+        # reports upstream-aligned (LSB-based) coordinates. See
+        # :meth:`GlyphData._x_shift`. Zero for composites / missing metrics.
+        self._x_shift = int(x_shift)
         # Lazy-decoded coordinate arrays; populated on first query.
         self._coords: Any | None = None
         self._end_pts: list[int] | None = None
@@ -76,7 +82,7 @@ class GlyphDescription:
     def get_x_coordinate(self, i: int) -> int:
         self._ensure_decoded()
         assert self._coords is not None
-        return int(self._coords[i][0])
+        return int(self._coords[i][0]) + self._x_shift
 
     def get_y_coordinate(self, i: int) -> int:
         self._ensure_decoded()
@@ -274,6 +280,7 @@ class GlyphData:
         glyf_table: Any | None = None,
         glyph_name: str | None = None,
         units_per_em: int = 1000,
+        left_side_bearing: int | None = None,
     ) -> None:
         # Lazy fontTools resolution: we hold the parent ``glyf`` table
         # plus the glyph's name (fontTools keys glyphs by name, not GID),
@@ -281,6 +288,14 @@ class GlyphData:
         self._glyf_table = glyf_table
         self._glyph_name = glyph_name
         self._units_per_em = int(units_per_em)
+        # Left-side bearing (hmtx). Upstream's ``GlyfSimpleDescript`` starts the
+        # x-coordinate accumulator at the LSB instead of the glyf-stored xMin,
+        # which is equivalent to shifting every simple-glyph x-coordinate by
+        # ``(leftSideBearing - xMin)``. fontTools decodes the spec-correct
+        # (xMin-aligned) coordinates, so we re-apply that shift on the path.
+        # ``None`` means "no hmtx available" -> no shift (matches upstream
+        # behaviour when the metric is missing).
+        self._left_side_bearing = left_side_bearing
         self._x_min: int = 0
         self._y_min: int = 0
         self._x_max: int = 0
@@ -353,6 +368,29 @@ class GlyphData:
         self._ensure_initialised()
         return self._y_max
 
+    def _x_shift(self) -> int:
+        """The simple-glyph x-shift ``(leftSideBearing - xMin)``.
+
+        Upstream ``GlyfSimpleDescript`` accumulates x starting at the LSB rather
+        than the glyf-stored xMin (``GlyphTable.getGlyphData`` ->
+        ``GlyphData.initData`` -> ``GlyfSimpleDescript(.., x0=leftSideBearing)``),
+        which is equivalent to translating the whole simple outline by this
+        amount in x. fontTools decodes xMin-aligned coordinates, so this shift
+        recovers upstream's positioning.
+
+        Returns 0 when there is no LSB metric, the glyph is empty, or the glyph
+        is composite — upstream applies the LSB x0 only in the *simple*
+        descript; the composite descript places its components by their own
+        (recursively LSB-shifted) coordinates plus the component offsets.
+        """
+        if self._left_side_bearing is None or self._empty:
+            return 0
+        self._ensure_initialised()
+        if self._number_of_contours < 0:
+            # Composite glyph — no top-level LSB shift (see docstring).
+            return 0
+        return int(self._left_side_bearing) - int(self._x_min)
+
     def get_description(self) -> GlyphDescription:
         """Return a :class:`GlyphDescription` view of this glyph.
 
@@ -360,11 +398,15 @@ class GlyphData:
         no-outline glyphs this is a description backed by a zero-point
         fontTools Glyph (matching upstream's ``initEmptyData`` path
         which constructs an empty ``GlyfSimpleDescript``).
+
+        The returned description carries the simple-glyph x-shift (see
+        :meth:`_x_shift`) so ``get_x_coordinate`` reports upstream-aligned
+        coordinates.
         """
         if self._empty or self._glyf_table is None or self._glyph_name is None:
             return GlyphDescription(None, None)
         glyph = self._glyf_table[self._glyph_name]
-        return GlyphDescription(self._glyf_table, glyph)
+        return GlyphDescription(self._glyf_table, glyph, x_shift=self._x_shift())
 
     def get_path(self) -> RecordingPen:
         """Return a recorded outline of this glyph.
@@ -476,7 +518,28 @@ class _GlyphRenderer:
         # ``Glyph.draw`` needs the full ``glyf`` table so it can resolve
         # composite component references back to their base glyphs.
         glyph.draw(pen, gd._glyf_table)
+        # Re-apply upstream's simple-glyph x-shift (LSB-based positioning) so
+        # this path matches ``GlyphData.get_description()`` / upstream
+        # ``getPath()``. See :meth:`GlyphData._x_shift`.
+        shift = gd._x_shift()
+        if shift:
+            pen.value = [
+                (op, _shift_args(op, args, shift)) for op, args in pen.value
+            ]
         return pen
+
+
+def _shift_args(op: str, args: Any, shift: int) -> Any:
+    """Translate the x-component of every point in a RecordingPen arg tuple.
+
+    ``closePath`` / ``endPath`` carry no points (empty args). Points may be
+    ``None`` (fontTools' all-off-curve TrueType marker), which we leave intact.
+    """
+    if not args:
+        return args
+    return tuple(
+        None if pt is None else (pt[0] + shift, pt[1]) for pt in args
+    )
 
 
 __all__ = ["BoundingBox", "GlyfDescript", "GlyphData", "GlyphDescription"]

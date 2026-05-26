@@ -46,23 +46,16 @@ def test_fill_gaps_adds_null_entry_when_no_free_numbers() -> None:
     assert writer.get_xref_entries() == [COSWriterXRefEntry.get_null_entry()]
 
 
-def test_format_float_defensive_empty_scientific_fallback(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import pypdfbox.pdfwriter.cos_writer as cos_writer_module
-
-    calls: list[str] = []
-
-    def fake_format(value: float, spec: str) -> str:
-        calls.append(spec)
-        if spec == ".10g":
-            return "1e-20"
-        return "-"
-
-    monkeypatch.setattr(cos_writer_module, "format", fake_format, raising=False)
-
-    assert COSWriter.format_float(1.0) == b"0"
-    assert calls == [".10g", ".15f"]
+def test_format_float_expands_scientific_to_plain_notation() -> None:
+    # format_float mirrors PDFBox COSFloat.formatString: a value whose
+    # Float.toString carries an exponent is expanded to plain notation via
+    # BigDecimal.stripTrailingZeros().toPlainString() — never scientific,
+    # never an empty/"-" fallback. 1e-20 round-trips to a long plain string.
+    assert COSWriter.format_float(1e-20) == b"0.00000000000000000001"
+    # Whole numbers in the [1e-3, 1e7) window keep Float.toString's trailing
+    # ".0"; outside it (>= 1e7) the exponent branch strips it.
+    assert COSWriter.format_float(1.0) == b"1.0"
+    assert COSWriter.format_float(1e7) == b"10000000"
 
 
 def test_content_stream_inline_image_without_parameters_uses_empty_dict() -> None:

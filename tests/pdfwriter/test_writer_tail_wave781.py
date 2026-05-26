@@ -48,19 +48,12 @@ def test_wave781_fill_gaps_without_free_numbers_adds_null_entry() -> None:
     assert writer.get_xref_entries() == [COSWriterXRefEntry.get_null_entry()]
 
 
-def test_wave781_float_formatter_empty_fallback_returns_zero(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    import pypdfbox.pdfwriter.cos_writer as cos_writer_module
-
-    def fake_format(value: float, spec: str) -> str:
-        if spec == ".10g":
-            return "1e-20"
-        return "-"
-
-    monkeypatch.setattr(cos_writer_module, "format", fake_format, raising=False)
-
-    assert COSWriter.format_float(1.0) == b"0"
+def test_wave781_float_formatter_signed_zero_round_trips() -> None:
+    # PDFBox's COSFloat.formatString preserves Float.toString's signed zero:
+    # +0.0 -> "0.0", -0.0 -> "-0.0". (The float32-shortest-digit path has no
+    # empty/"-" fallback to guard against.)
+    assert COSWriter.format_float(0.0) == b"0.0"
+    assert COSWriter.format_float(-0.0) == b"-0.0"
 
 
 def test_wave781_xref_entry_non_entry_rich_comparisons_return_notimplemented() -> None:

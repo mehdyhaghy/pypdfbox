@@ -343,4 +343,7 @@ def test_wave395_float_formatter_rejects_nan_and_expands_tiny_scientific() -> No
     with pytest.raises(ValueError, match="NaN"):
         COSWriter.format_float(float("nan"))
 
-    assert COSWriter.format_float(1e-20) == b"0"
+    # PDFBox's COSFloat.formatString expands a tiny scientific value to plain
+    # notation (BigDecimal.toPlainString) rather than collapsing it to "0":
+    # 1e-20 is well within float32 range, so it round-trips to a long decimal.
+    assert COSWriter.format_float(1e-20) == b"0.00000000000000000001"
