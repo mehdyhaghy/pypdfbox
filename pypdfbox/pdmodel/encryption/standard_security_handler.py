@@ -40,6 +40,7 @@ except ImportError:  # pragma: no cover
     from cryptography.hazmat.primitives.ciphers.algorithms import ARC4 as _ARC4
 
 from .access_permission import AccessPermission
+from .decryption_material import DecryptionMaterial
 from .security_handler import SecurityHandler
 
 if TYPE_CHECKING:
@@ -80,7 +81,7 @@ class PDInvalidPasswordException(OSError):
         super().__init__(message)
 
 
-class StandardDecryptionMaterial:
+class StandardDecryptionMaterial(DecryptionMaterial):
     """Holds the user-supplied password for the standard security handler."""
 
     def __init__(self, password: str | bytes | None = None) -> None:

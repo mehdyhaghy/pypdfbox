@@ -6,12 +6,13 @@ from pypdfbox.cos import COSArray, COSBase, COSName
 
 from .pd_color import PDColor
 from .pd_color_space import PDColorSpace
+from .pd_special_color_space import PDSpecialColorSpace
 
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.common.function import PDFunction
 
 
-class PDSeparation(PDColorSpace):
+class PDSeparation(PDSpecialColorSpace):
     """A Separation color space. Mirrors PDFBox
     ``org.apache.pdfbox.pdmodel.graphics.color.PDSeparation``.
 

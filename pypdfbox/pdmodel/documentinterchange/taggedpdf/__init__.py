@@ -11,6 +11,7 @@ from .pd_standard_attribute_object import PDStandardAttributeObject
 from .pd_table_attribute_object import PDTableAttributeObject
 from .pd_user_attribute_object import PDUserAttributeObject
 from .pd_user_property import PDUserProperty
+from .standard_structure_types import StandardStructureTypes
 
 # ``PDArtifactMarkedContent`` is exposed lazily via ``__getattr__`` to break a
 # concurrent-edit-induced import cycle with the upstream-mirror re-export at
@@ -44,4 +45,5 @@ __all__ = [
     "PDTableAttributeObject",
     "PDUserAttributeObject",
     "PDUserProperty",
+    "StandardStructureTypes",
 ]

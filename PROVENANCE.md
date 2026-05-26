@@ -311,6 +311,7 @@ Cluster #7 foundations (file specifications, generic name tree, optional content
 | `pypdfbox/pdmodel/graphics/state/rendering_mode.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/state/RenderingMode.java` |
 | `pypdfbox/pdmodel/graphics/color/pd_pattern.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDPattern.java` |
 | `pypdfbox/pdmodel/graphics/color/pd_indexed.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDIndexed.java` (lite — lookup table raw filtered bytes) |
+| `pypdfbox/pdmodel/graphics/color/pd_special_color_space.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDSpecialColorSpace.java` |
 | `pypdfbox/pdmodel/graphics/color/pd_separation.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDSeparation.java` |
 | `pypdfbox/pdmodel/graphics/color/pd_device_n.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDDeviceN.java` |
 | `pypdfbox/pdmodel/graphics/color/pd_icc_based.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/color/PDICCBased.java` (lite — ICC profile parsing deferred) |
@@ -358,6 +359,7 @@ Cluster #7 foundations (file specifications, generic name tree, optional content
 | `pypdfbox/pdmodel/graphics/shading/pd_shading_type6.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/PDShadingType6.java` (Coons patch) |
 | `pypdfbox/pdmodel/graphics/shading/pd_shading_type7.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/graphics/shading/PDShadingType7.java` (tensor-product patch) |
 | `pypdfbox/pdmodel/documentinterchange/taggedpdf/pd_standard_attribute_object.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDStandardAttributeObject.java` (lite) |
+| `pypdfbox/pdmodel/documentinterchange/taggedpdf/standard_structure_types.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/StandardStructureTypes.java` |
 | `pypdfbox/pdmodel/documentinterchange/taggedpdf/pd_layout_attribute_object.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDLayoutAttributeObject.java` (full §14.8.5.4 surface — Wave 41 round-out) |
 | `pypdfbox/pdmodel/documentinterchange/taggedpdf/pd_list_attribute_object.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDListAttributeObject.java` (lite) |
 | `pypdfbox/pdmodel/documentinterchange/taggedpdf/pd_print_field_attribute_object.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/documentinterchange/taggedpdf/PDPrintFieldAttributeObject.java` |
@@ -453,6 +455,9 @@ primitive-compatible while schema APIs expose the ported `AbstractField`,
 | `pypdfbox/xmpbox/pdfa_extension_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/PDFAExtensionSchema.java` (lite surface — `pdfaExtension:schemas` Bag dict accessors + raw element passthrough; nested `pdfaProperty` / `pdfaType` struct hierarchy deferred) |
 | `pypdfbox/xmpbox/xmp_rights_management_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/XMPRightsManagementSchema.java` (typed `Certificate` / `Marked` / `Owner` / `UsageTerms` / `WebStatement` accessors) |
 | `pypdfbox/xmpbox/xmp_media_management_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/XMPMediaManagementSchema.java` (typed simple properties plus ResourceRef/ResourceEvent/Version-backed `DerivedFrom`, `RenditionOf`, `ManagedFrom`, `History`, `Versions`, `Manifest`, and `Ingredients`) |
+| `pypdfbox/xmpbox/schema/xmp_page_text_schema.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/schema/XMPPageTextSchema.java` |
+| `pypdfbox/xmpbox/xmp_constants.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/XmpConstants.java` |
+| `pypdfbox/xmpbox/xml/xmp_serialization_exception.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/xml/XmpSerializationException.java` |
 | `pypdfbox/xmpbox/dom_xmp_parser.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/xml/DomXmpParser.java` (+ `XmpParsingException.java`; read path only, ElementTree-backed) |
 | `pypdfbox/xmpbox/date_converter.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/DateConverter.java` (returns `datetime.datetime` instead of `Calendar`; naive ISO 8601 strings are anchored to UTC matching upstream's `fromISO8601` fallback; year-0 input rejected — Python `datetime` does not support year 0, deviates from upstream `0000-01-01` → `0001-01-01`) |
 
@@ -672,6 +677,7 @@ Upstream baseline branch: `apache/pdfbox` `3.0` (most files at `pdfbox/src/test/
 | pypdfbox test path | upstream Java test path |
 |---|---|
 | `tests/xmpbox/upstream/test_dom_xmp_parser.py` | `xmpbox/src/test/java/org/apache/xmpbox/xml/DomXmpParserTest.java` (`testPDFBox5976` + `testPDFBox5649` ported; rest skipped — need rich type system / strict mode / additional schemas) |
+| `tests/xmpbox/upstream/test_xmp_serialization_exception.py` | `xmpbox/src/test/java/org/apache/xmpbox/XMPMetaDataTest.java` (`testTransformerException*` subset ported; previously skipped) |
 | `tests/xmpbox/xml/upstream/test_dom_xmp_parser_round_out_wave1370.py` | `xmpbox/src/test/java/org/apache/xmpbox/xml/DomXmpParserTest.java` (additional ports of `testParseFailure`, `testBadRdfNameSpace`, `testNamespaceInRoot`, `parseInitialXpacket` / `parseEndPacket` round-trips; `testNoSchema`, `testTextInsteadOfArray`, `testBadInner` skipped — need richer type-system error semantics) |
 
 ### `tests/pdmodel/upstream/` (cluster #2 additions)
@@ -838,6 +844,7 @@ Upstream PDFBox 3.0 ships **no** test classes for `Operator`, `OperatorName`, or
 | `pypdfbox/pdmodel/encryption/public_key_security_handler.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/encryption/PublicKeySecurityHandler.java` (decrypt + encrypt paths; encrypt path uses cryptography PKCS7EnvelopeBuilder, deferrals tracked in CHANGES.md) |
 | `pypdfbox/pdmodel/encryption/public_key_protection_policy.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/encryption/PublicKeyProtectionPolicy.java` |
 | `pypdfbox/pdmodel/encryption/public_key_recipient.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/encryption/PublicKeyRecipient.java` |
+| `pypdfbox/pdmodel/encryption/decryption_material.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/encryption/DecryptionMaterial.java` |
 | `pypdfbox/pdmodel/encryption/public_key_decryption_material.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/encryption/PublicKeyDecryptionMaterial.java` |
 | `pypdfbox/pdmodel/interactive/digitalsignature/signature_validation_result.py` | 3.0.x | original (PDFBox uses Java exceptions; we return a structured dataclass) |
 | `pypdfbox/pdmodel/interactive/annotation/pd_ink_list.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/handlers/PDInkAppearanceHandler.java` (geometry helper extracted) |
@@ -863,6 +870,7 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | pypdfbox path | upstream PDFBox version | upstream Java path | derivation scope |
 |---|---|---|---|
 | `pypdfbox/fontbox/type1/type1_font.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/type1/Type1Font.java` | API surface only — parsing delegated to `fontTools.t1Lib.T1Font` |
+| `pypdfbox/fontbox/type1/damaged_font_exception.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/type1/DamagedFontException.java` | subclasses `OSError` (upstream extends `IOException`) |
 | `pypdfbox/fontbox/cff/cff_font.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/cff/CFFFont.java` | API surface only — parsing delegated to `fontTools.cffLib.CFFFontSet`; widths via `fontTools.misc.psCharStrings.T2WidthExtractor` |
 | `pypdfbox/pdmodel/font/pd_type1_font.py` (`get_glyph_width` extension + `get_glyph_path` + `set_font_program` + `_get_type1_font`) | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDType1Font.java` (`getWidthFromFont`, `getPath` analogues) |
 | `pypdfbox/pdmodel/font/pd_type1c_font.py` (`get_glyph_width` / `get_glyph_path` / `set_font_program` / `_get_cff_font` overrides) | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/font/PDType1CFont.java` (graduated from marker subclass to working CFF wrapper) |
@@ -986,6 +994,8 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `pypdfbox/fontbox/cmap/resources/Identity-V` | 3.0.x | `fontbox/src/main/resources/org/apache/fontbox/cmap/Identity-V` |
 | `pypdfbox/fontbox/ttf/ttf_subsetter.py` | 3.0.x | `fontbox/src/main/java/org/apache/fontbox/ttf/TTFSubsetter.java` (API surface only — subset logic delegated to `fontTools.subset.Subsetter`) |
 | `pypdfbox/xmpbox/type/abstract_field.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/AbstractField.java` + `xmpbox/src/main/java/org/apache/xmpbox/type/Attribute.java` |
+| `pypdfbox/xmpbox/type/device_settings_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/DeviceSettingsType.java` |
+| `pypdfbox/xmpbox/type/flash_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/FlashType.java` |
 | `pypdfbox/xmpbox/type/abstract_simple_property.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/AbstractSimpleProperty.java` |
 | `pypdfbox/xmpbox/type/text_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/TextType.java` |
 | `pypdfbox/xmpbox/type/integer_type.py` | 3.0.x | `xmpbox/src/main/java/org/apache/xmpbox/type/IntegerType.java` |
@@ -2209,6 +2219,12 @@ Backfill of upstream Java paths for source files added in earlier waves (mostly 
 | `pypdfbox/pdmodel/fdf/fdf_annotation_caret.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FdfAnnotationCaret.java` |
 | `pypdfbox/pdmodel/fdf/fdf_annotation_ink.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FdfAnnotationInk.java` |
 | `pypdfbox/pdmodel/fdf/fdf_annotation_polygon.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FdfAnnotationPolygon.java` |
+| `pypdfbox/pdmodel/fdf/fdf_annotation_highlight.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FDFAnnotationHighlight.java` |
+| `pypdfbox/pdmodel/fdf/fdf_annotation_squiggly.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FDFAnnotationSquiggly.java` |
+| `pypdfbox/pdmodel/fdf/fdf_annotation_strike_out.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FDFAnnotationStrikeOut.java` |
+| `pypdfbox/pdmodel/fdf/fdf_annotation_underline.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FDFAnnotationUnderline.java` |
+| `pypdfbox/pdmodel/fdf/fdf_annotation_sound.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FDFAnnotationSound.java` |
+| `pypdfbox/pdmodel/fdf/fdf_annotation_link.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FDFAnnotationLink.java` |
 | `pypdfbox/pdmodel/fdf/fdf_annotation_polyline.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FdfAnnotationPolyline.java` |
 | `pypdfbox/pdmodel/fdf/fdf_annotation_stamp.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FdfAnnotationStamp.java` |
 | `pypdfbox/pdmodel/fdf/fdf_annotation_text_markup.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FdfAnnotationTextMarkup.java` |

@@ -1,0 +1,25 @@
+from __future__ import annotations
+
+from pypdfbox.cos import COSDictionary, COSName
+
+from .fdf_annotation_text_markup import FDFAnnotationTextMarkup
+
+_SUBTYPE: COSName = COSName.get_pdf_name("Subtype")
+
+
+class FDFAnnotationUnderline(FDFAnnotationTextMarkup):
+    """FDF Underline annotation — ``/Subtype /Underline``.
+
+    Mirrors ``org.apache.pdfbox.pdmodel.fdf.FDFAnnotationUnderline``. Extends
+    :class:`FDFAnnotationTextMarkup`, which carries the ``/QuadPoints`` helper.
+    """
+
+    SUBTYPE: str = "Underline"
+
+    def __init__(self, annot: COSDictionary | None = None) -> None:
+        super().__init__(annot)
+        if annot is None or annot.get_dictionary_object(_SUBTYPE) is None:
+            self.set_subtype(self.SUBTYPE)
+
+
+__all__ = ["FDFAnnotationUnderline"]

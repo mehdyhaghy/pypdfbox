@@ -608,10 +608,30 @@ class FDFAnnotation:
             from .fdf_annotation_caret import FDFAnnotationCaret
 
             return FDFAnnotationCaret(annot)
-        if name in ("Highlight", "Underline", "StrikeOut", "Squiggly"):
-            from .fdf_annotation_text_markup import FDFAnnotationTextMarkup
+        if name == "Highlight":
+            from .fdf_annotation_highlight import FDFAnnotationHighlight
 
-            return FDFAnnotationTextMarkup(annot)
+            return FDFAnnotationHighlight(annot)
+        if name == "Underline":
+            from .fdf_annotation_underline import FDFAnnotationUnderline
+
+            return FDFAnnotationUnderline(annot)
+        if name == "StrikeOut":
+            from .fdf_annotation_strike_out import FDFAnnotationStrikeOut
+
+            return FDFAnnotationStrikeOut(annot)
+        if name == "Squiggly":
+            from .fdf_annotation_squiggly import FDFAnnotationSquiggly
+
+            return FDFAnnotationSquiggly(annot)
+        if name == "Link":
+            from .fdf_annotation_link import FDFAnnotationLink
+
+            return FDFAnnotationLink(annot)
+        if name == "Sound":
+            from .fdf_annotation_sound import FDFAnnotationSound
+
+            return FDFAnnotationSound(annot)
         return cls(annot)
 
 

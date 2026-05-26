@@ -16,6 +16,8 @@ from typing import TYPE_CHECKING
 from cryptography.hazmat.primitives import serialization
 from cryptography.x509 import Certificate, load_der_x509_certificate, load_pem_x509_certificate
 
+from .decryption_material import DecryptionMaterial
+
 if TYPE_CHECKING:
     from cryptography.hazmat.primitives.asymmetric.types import PrivateKeyTypes
 
@@ -23,7 +25,7 @@ if TYPE_CHECKING:
     CertificateLike = Certificate | bytes | bytearray
 
 
-class PublicKeyDecryptionMaterial:
+class PublicKeyDecryptionMaterial(DecryptionMaterial):
     """Lite port — holds a recipient certificate + matching private key.
 
     ``private_key`` may be supplied as a ready ``cryptography`` private-key

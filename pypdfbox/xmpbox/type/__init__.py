@@ -29,7 +29,9 @@ from .choice_type import ChoiceType
 from .colorant_type import ColorantType
 from .complex_property_container import ComplexPropertyContainer
 from .date_type import DateType
+from .device_settings_type import DeviceSettingsType
 from .dimensions_type import DimensionsType
+from .flash_type import FlashType
 from .font_type import FontType
 from .gps_coordinate_type import GPSCoordinateType
 from .guid_type import GUIDType
@@ -76,7 +78,9 @@ __all__ = [
     "ColorantType",
     "ComplexPropertyContainer",
     "DateType",
+    "DeviceSettingsType",
     "DimensionsType",
+    "FlashType",
     "FontType",
     "GPSCoordinateType",
     "GUIDType",

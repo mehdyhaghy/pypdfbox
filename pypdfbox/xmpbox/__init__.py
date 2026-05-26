@@ -24,6 +24,7 @@ from .pdfa_identification_schema import (
 )
 from .pdfua_identification_schema import PDFUAIdentificationSchema
 from .photoshop_schema import PhotoshopSchema
+from .schema.xmp_page_text_schema import XMPPageTextSchema
 from .tiff_schema import TiffSchema
 from .type import (
     AbstractField,
@@ -63,8 +64,10 @@ from .type import (
     VersionType,
     XPathType,
 )
+from .xml.xmp_serialization_exception import XmpSerializationException
 from .xmp_basic_job_ticket_schema import JobType, XMPBasicJobTicketSchema
 from .xmp_basic_schema import XMPBasicSchema
+from .xmp_constants import XmpConstants
 from .xmp_media_management_schema import XMPMediaManagementSchema
 from .xmp_metadata import XMPMetadata
 from .xmp_paged_text_schema import XMPageTextSchema
@@ -123,9 +126,12 @@ __all__ = [
     "XMPBasicSchema",
     "XMPMediaManagementSchema",
     "XMPMetadata",
+    "XMPPageTextSchema",
     "XMPRightsManagementSchema",
     "XMPSchema",
     "XMPageTextSchema",
     "XPathType",
+    "XmpConstants",
     "XmpParsingException",
+    "XmpSerializationException",
 ]

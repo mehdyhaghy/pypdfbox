@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .access_permission import AccessPermission
+from .decryption_material import DecryptionMaterial
 from .message_digests import MessageDigests
 from .pd_crypt_filter_dictionary import PDCryptFilterDictionary
 from .pd_encryption import PDEncryption
@@ -28,6 +29,7 @@ from .standard_security_handler import (
 
 __all__ = [
     "AccessPermission",
+    "DecryptionMaterial",
     "MessageDigests",
     "PDCryptFilterDictionary",
     "PDEncryption",

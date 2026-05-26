@@ -15,9 +15,10 @@ from pypdfbox.cos import (
 from .pd_color import PDColor
 from .pd_color_space import PDColorSpace
 from .pd_device_rgb import PDDeviceRGB
+from .pd_special_color_space import PDSpecialColorSpace
 
 
-class PDIndexed(PDColorSpace):
+class PDIndexed(PDSpecialColorSpace):
     """An Indexed color space. Mirrors PDFBox
     ``org.apache.pdfbox.pdmodel.graphics.color.PDIndexed``.
 

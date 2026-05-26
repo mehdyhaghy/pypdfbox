@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .damaged_font_exception import DamagedFontException
 from .token import Kind, Token
 from .type1_char_string_reader import Type1CharStringReader
 from .type1_font import Type1Font
@@ -8,6 +9,7 @@ from .type1_mapping import Type1Mapping
 from .type1_parser import Type1Lexer, Type1Parser
 
 __all__ = [
+    "DamagedFontException",
     "Kind",
     "Token",
     "Type1CharStringReader",

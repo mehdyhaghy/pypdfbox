@@ -19,6 +19,7 @@ from .pd_lab import PDLab
 from .pd_output_intent import PDOutputIntent
 from .pd_pattern import PDPattern
 from .pd_separation import PDSeparation
+from .pd_special_color_space import PDSpecialColorSpace
 from .pd_tristimulus import PDTristimulus
 
 __all__ = [
@@ -41,5 +42,6 @@ __all__ = [
     "PDOutputIntent",
     "PDPattern",
     "PDSeparation",
+    "PDSpecialColorSpace",
     "PDTristimulus",
 ]

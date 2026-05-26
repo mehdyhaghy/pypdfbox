@@ -6,13 +6,14 @@ from pypdfbox.cos import COSArray, COSBase, COSName
 
 from .pd_color import PDColor
 from .pd_color_space import PDColorSpace
+from .pd_special_color_space import PDSpecialColorSpace
 
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.graphics.pattern import PDAbstractPattern
     from pypdfbox.pdmodel.pd_resources import PDResources
 
 
-class PDPattern(PDColorSpace):
+class PDPattern(PDSpecialColorSpace):
     """A Pattern color space. Mirrors PDFBox
     ``org.apache.pdfbox.pdmodel.graphics.color.PDPattern``.
 
