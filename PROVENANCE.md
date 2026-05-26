@@ -704,6 +704,8 @@ Upstream baseline branch: `apache/pdfbox` `3.0` (most files at `pdfbox/src/test/
 | `tests/fixtures/filter/ccittg3.ccitt` | 3.0.x | `pdfbox/src/test/resources/org/apache/pdfbox/pdmodel/graphics/image/ccittg3.tif` (wave 1429; raw CCITT G3 strip bytes extracted from the TIFF, offset 8, 6322 bytes — feeds the decode-parity oracle) |
 | `tests/fixtures/filter/ccittg4.ccitt` | 3.0.x | `pdfbox/src/test/resources/org/apache/pdfbox/pdmodel/graphics/image/ccittg4.tif` (wave 1429; raw CCITT G4 strip bytes, 3857 bytes) |
 | `tests/fixtures/filter/ccittg4multi.ccitt` | 3.0.x | `pdfbox/src/test/resources/org/apache/pdfbox/pdmodel/graphics/image/ccittg4multi.tif` (wave 1429; raw CCITT G4 multi-strip bytes, 221 bytes) |
+| `tests/fixtures/pdmodel/font/PDFBOX-3062-005717-p1.pdf` | 3.0.x | `pdfbox/src/test/resources/input/PDFBOX-3062-005717-p1.pdf` (wave 1430; byte-identical Type0/CFF `/FontFile3 /CIDFontType0C` subset fixture for the CFF subset oracle) |
+| `tests/fixtures/pdmodel/font/PDFBOX-3044-010197-p5-ligatures.pdf` | 3.0.x | `pdfbox/src/test/resources/input/PDFBOX-3044-010197-p5-ligatures.pdf` (wave 1430; byte-identical simple-Type1 `/FontFile3 /Type1C` subset fixture for the CFF subset oracle) |
 
 ### `tests/pdfwriter/upstream/`
 

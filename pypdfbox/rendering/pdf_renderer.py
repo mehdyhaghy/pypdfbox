@@ -992,6 +992,18 @@ class PDFRenderer(PDFStreamEngine):
         # (not images); upstream's cap has the same scope.
         self._form_x_object_depth: int = 0
         self._form_x_object_depth_limit: int = 50
+        # ---- optional-content (OCG/OCMD) render-time visibility ----
+        # Mirrors upstream ``PageDrawer``: ``beginMarkedContentSequence``
+        # resolves a ``BDC /OC`` reference to its OCG/OCMD and, when the
+        # group's default-config state is OFF (or an OCMD visibility
+        # expression evaluates to hidden), increments ``nestHiddenOCG``.
+        # Every drawing operator first consults ``isContentRendered()``
+        # (here :meth:`_is_content_rendered`) and paints nothing while the
+        # counter is non-zero. ``_marked_content_oc_stack`` records, per
+        # BMC/BDC frame, whether *that* frame opened a hidden OCG so the
+        # matching EMC decrements only for frames that incremented.
+        self._nest_hidden_ocg: int = 0
+        self._marked_content_oc_stack: list[bool] = []
         # ---- annotation filter (mirrors upstream ``AnnotationFilter``) ----
         # Upstream's default filter accepts every annotation
         # (``annotation -> true``); we model the filter as a plain
@@ -1252,6 +1264,11 @@ class PDFRenderer(PDFStreamEngine):
         self._draw.setantialias(True)
         self._scale = scale
         self._page_height_px = float(height_px)
+        # Reset optional-content marked-content nesting at page entry so a
+        # prior render (or an unbalanced BDC/EMC stream) cannot leak a
+        # stuck "hidden" state into this page.
+        self._nest_hidden_ocg = 0
+        self._marked_content_oc_stack = []
 
         # Device CTM: PDF y-axis points up with origin at lower-left, PIL
         # y-axis points down with origin at top-left. Combine the y-flip
@@ -1483,6 +1500,120 @@ class PDFRenderer(PDFStreamEngine):
         if oc_properties is None:
             return True
         return bool(oc_properties.is_group_enabled(group))
+
+    # ------------------------------------------------------------------
+    # optional-content render-time visibility (mirror upstream PageDrawer)
+    # ------------------------------------------------------------------
+
+    def _is_content_rendered(self) -> bool:
+        """``True`` while the current marked-content nesting is visible.
+
+        Mirrors upstream ``PageDrawer.isContentRendered()`` —
+        ``nestHiddenOCG == 0``. Drawing operators paint nothing while a
+        hidden OCG/OCMD frame is open. ``getattr`` default keeps bare
+        renderers (constructed via ``__new__`` for unit tests, bypassing
+        ``__init__``) drawing normally."""
+        return getattr(self, "_nest_hidden_ocg", 0) == 0
+
+    def _ocg_state_resolver(self, group: Any) -> bool:
+        """Map a :class:`PDOptionalContentGroup` to its current ON/OFF
+        state for OCMD visibility-expression / policy evaluation."""
+        return self.is_group_enabled(group)
+
+    def _property_list_is_hidden(self, prop: Any) -> bool:
+        """``True`` when a ``/OC`` typed property list is currently hidden.
+
+        Mirrors upstream ``PageDrawer.isHiddenOCG`` /
+        ``PDOptionalContentMembershipDictionary`` evaluation:
+
+        - an :class:`PDOptionalContentGroup` is hidden when its default-config
+          state is OFF (``not is_group_enabled``);
+        - an OCMD is hidden when its ``/VE`` expression (or ``/P`` + ``/OCGs``
+          policy fallback) evaluates to *not visible* against the current
+          OCG states.
+
+        Any other (or absent) property list is never hidden."""
+        if prop is None:
+            return False
+        # Lazily import the concrete property-list types so the rendering
+        # cluster does not eagerly pull in the optional-content pdmodel.
+        from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_group import (  # noqa: PLC0415
+            PDOptionalContentGroup,
+        )
+        from pypdfbox.pdmodel.graphics.optionalcontent.pd_optional_content_membership_dictionary import (  # noqa: PLC0415, E501
+            PDOptionalContentMembershipDictionary,
+        )
+
+        try:
+            if isinstance(prop, PDOptionalContentGroup):
+                return not self.is_group_enabled(prop)
+            if isinstance(prop, PDOptionalContentMembershipDictionary):
+                return not prop.is_visible_with(self._ocg_state_resolver)
+        except Exception:  # noqa: BLE001
+            # Malformed OC dictionary — fail open (visible), matching
+            # upstream which only hides content it can positively resolve.
+            return False
+        return False
+
+    def _resolve_oc_property(self, properties: Any) -> Any:
+        """Resolve a ``BDC`` operand into a typed ``/OC`` property list.
+
+        The ``BDC`` operand is either an inline ``COSDictionary`` or a
+        ``COSName`` that indexes the page's ``/Properties`` resource
+        subdictionary. Returns a :class:`PDPropertyList` subclass (OCG /
+        OCMD) or ``None`` when the operand is not an optional-content
+        reference."""
+        from pypdfbox.pdmodel.graphics.pd_property_list import (  # noqa: PLC0415
+            PDPropertyList,
+        )
+
+        prop_dict: COSDictionary | None = None
+        if isinstance(properties, COSDictionary):
+            prop_dict = properties
+        elif isinstance(properties, COSName):
+            resources = self._resources
+            if resources is not None:
+                try:
+                    resolved = resources.get_properties(properties)
+                except Exception:  # noqa: BLE001
+                    resolved = None
+                if resolved is not None:
+                    # get_properties already returns a typed PDPropertyList.
+                    return resolved
+            return None
+        if prop_dict is None:
+            return None
+        try:
+            return PDPropertyList.create(prop_dict)
+        except Exception:  # noqa: BLE001
+            return None
+
+    def _push_marked_content(
+        self, tag: Any, properties: COSDictionary | None
+    ) -> None:
+        """``BMC`` / ``BDC`` hook — open a marked-content frame.
+
+        When the tag is ``/OC`` the operand is resolved to its OCG/OCMD; a
+        hidden group increments :attr:`_nest_hidden_ocg` so subsequent
+        drawing operators are suppressed until the matching ``EMC``.
+        Mirrors upstream ``PageDrawer.beginMarkedContentSequence``."""
+        opened_hidden = False
+        tag_name = tag.name if isinstance(tag, COSName) else tag
+        if tag_name == "OC" and properties is not None:
+            prop = self._resolve_oc_property(properties)
+            if self._property_list_is_hidden(prop):
+                self._nest_hidden_ocg += 1
+                opened_hidden = True
+        self._marked_content_oc_stack.append(opened_hidden)
+
+    def _pop_marked_content(self) -> None:
+        """``EMC`` hook — close the most recent marked-content frame and,
+        if it had opened a hidden OCG, decrement the hidden-nesting count.
+        Mirrors upstream ``PageDrawer.endMarkedContentSequence``."""
+        if not self._marked_content_oc_stack:
+            return
+        if self._marked_content_oc_stack.pop() and self._nest_hidden_ocg > 0:
+            self._nest_hidden_ocg -= 1
 
     # ------------------------------------------------------------------
     # rendering-pipeline hooks (mirror upstream private/protected methods)
@@ -2323,6 +2454,10 @@ class PDFRenderer(PDFStreamEngine):
             return
         if self._draw is None or self._image is None:
             return
+        # Optional-content gate: a shading fill inside a hidden OCG/OCMD
+        # marked-content frame paints nothing.
+        if not self._is_content_rendered():
+            return
         name: COSName = operands[0]
         resources = self._resources
         if resources is None:
@@ -3050,6 +3185,15 @@ class PDFRenderer(PDFStreamEngine):
             self._apply_pending_clip(default_even_odd=even_odd)
             return
         if self._draw is None or self._image is None:
+            return
+        # Optional-content gate: while a hidden OCG/OCMD marked-content
+        # frame is open the fill/stroke paints nothing, but the pending
+        # clip + path state must still be reset so the W/W* sequence and
+        # the following operators stay consistent (mirrors upstream
+        # PageDrawer's per-method ``isContentRendered()`` guard).
+        if not self._is_content_rendered():
+            self._apply_pending_clip(default_even_odd=even_odd)
+            self._reset_path()
             return
 
         # Wave 1386 — honour ExtGState overprint flags. Apply the
@@ -5019,12 +5163,45 @@ class PDFRenderer(PDFStreamEngine):
             new_clip = ImageChops.multiply(existing, new_clip)
         self._gs.clip_mask = new_clip
 
+    # ---- marked content (optional-content visibility) ----
+
+    def _op_begin_marked_content(self, _op: Any, operands: list[COSBase]) -> None:
+        """``BMC`` — a marked-content sequence with only a tag (no
+        property list). Never carries optional content, but it still opens
+        a frame so the matching ``EMC`` balances. Mirrors upstream
+        ``BeginMarkedContentSequence``."""
+        tag = operands[0] if operands else None
+        self._push_marked_content(tag, None)
+
+    def _op_begin_marked_content_with_props(
+        self, _op: Any, operands: list[COSBase]
+    ) -> None:
+        """``BDC`` — tag + property list. When the tag is ``/OC`` the
+        property list selects the optional-content group/membership whose
+        default visibility gates this sequence. Mirrors upstream
+        ``BeginMarkedContentSequenceWithProperties``."""
+        tag = operands[0] if operands else None
+        props = operands[1] if len(operands) > 1 else None
+        # The operand is either an inline dictionary or a /Properties name.
+        if isinstance(props, (COSDictionary, COSName)):
+            self._push_marked_content(tag, props)
+        else:
+            self._push_marked_content(tag, None)
+
+    def _op_end_marked_content(self, _op: Any, _operands: list[COSBase]) -> None:
+        """``EMC`` — close the most recent marked-content frame."""
+        self._pop_marked_content()
+
     # ---- XObject (image + form) + inline image ----
 
     def _op_do(self, _op: Any, operands: list[COSBase]) -> None:
         if not operands or not isinstance(operands[0], COSName):
             return
         if self._draw is None or self._image is None:
+            return
+        # Optional-content gate (1): a ``Do`` nested inside a hidden
+        # OCG/OCMD marked-content frame paints nothing at all.
+        if not self._is_content_rendered():
             return
         name: COSName = operands[0]
         resources = self._resources
@@ -5037,6 +5214,19 @@ class PDFRenderer(PDFStreamEngine):
             return
         if xobject is None:
             return
+
+        # Optional-content gate (2): the XObject's own ``/OC`` entry
+        # (PDF 32000-1 §8.11.3.3). Mirrors upstream PageDrawer.showForm /
+        # drawImage which skip an XObject whose /OC group/membership is
+        # hidden in the active config, regardless of marked content.
+        oc_getter = getattr(xobject, "get_oc", None)
+        if callable(oc_getter):
+            try:
+                oc = oc_getter()
+            except Exception:  # noqa: BLE001
+                oc = None
+            if oc is not None and self._property_list_is_hidden(oc):
+                return
 
         # Local imports keep the cluster boundary (graphics → form/image)
         # explicit and avoid an import cycle.
@@ -6679,6 +6869,10 @@ class PDFRenderer(PDFStreamEngine):
     def _op_inline_image(self, op: Any, _operands: list[COSBase]) -> None:
         if self._draw is None or self._image is None:
             return
+        # Optional-content gate: an inline image inside a hidden OCG/OCMD
+        # marked-content frame paints nothing.
+        if not self._is_content_rendered():
+            return
         params = op.get_image_parameters()
         data = op.get_image_data()
         if params is None or data is None:
@@ -7627,6 +7821,12 @@ class PDFRenderer(PDFStreamEngine):
         glyph_to_user = _matmul(text_local, self._gs.text_matrix)
         glyph_to_device = _matmul(glyph_to_user, self._full_ctm())
 
+        # Optional-content gate: a glyph inside a hidden OCG/OCMD frame
+        # still advances the text matrix (so following glyphs land in the
+        # right place) but paints nothing. Mirrors upstream PageDrawer
+        # which suppresses ``showGlyph`` drawing while content is hidden.
+        draw_enabled = self._is_content_rendered()
+
         # ----- TTF path -----
         if ttf is not None and glyph_set is not None:
             try:
@@ -7645,7 +7845,7 @@ class PDFRenderer(PDFStreamEngine):
                     advance_units = ttf.get_advance_width(gid) * (
                         1000.0 / ttf.get_units_per_em()
                     )
-                if pen.has_segments and self._draw is not None:
+                if pen.has_segments and self._draw is not None and draw_enabled:
                     self._fill_aggdraw_path(
                         pen.path,
                         glyph_to_device,
@@ -7670,7 +7870,7 @@ class PDFRenderer(PDFStreamEngine):
                 )
                 commands = []
             advance_units = self._font_width_units(font, code)
-            if commands and self._draw is not None:
+            if commands and self._draw is not None and draw_enabled:
                 try:
                     path = self._build_aggdraw_path_from_commands(
                         commands, scale=1.0 / type1_units_per_em
@@ -7717,8 +7917,9 @@ class PDFRenderer(PDFStreamEngine):
         # don't yet bundle Liberation TTFs as substitution targets).
         self._maybe_warn_standard14(font)
         # Faint placeholder — a 1x1 unit-square outline scaled by the
-        # text-local matrix. Skip when no draw context (defensive).
-        if self._draw is not None:
+        # text-local matrix. Skip when no draw context (defensive) or when
+        # the glyph sits inside a hidden optional-content frame.
+        if self._draw is not None and draw_enabled:
             with contextlib.suppress(Exception):
                 self._draw_placeholder_box(glyph_to_device, advance_units)
         return advance_units
@@ -8636,6 +8837,10 @@ _DISPATCH: dict[str, Any] = {
     # clip
     "W": PDFRenderer._op_clip_non_zero,
     "W*": PDFRenderer._op_clip_even_odd,
+    # marked content (optional-content visibility)
+    "BMC": PDFRenderer._op_begin_marked_content,
+    "BDC": PDFRenderer._op_begin_marked_content_with_props,
+    "EMC": PDFRenderer._op_end_marked_content,
     # XObject + inline image
     "Do": PDFRenderer._op_do,
     "BI": PDFRenderer._op_inline_image,

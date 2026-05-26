@@ -1000,7 +1000,9 @@ def decode_pdimage_to_pil(
 
     if "DCTDecode" in filter_names or "DCT" in filter_names:
         with pd_image.create_input_stream(stop_filters=["DCTDecode", "DCT"]) as src:
-            return Image.open(io.BytesIO(src.read())).convert("RGB")
+            jpeg = Image.open(io.BytesIO(src.read()))
+            jpeg.load()
+        return _dct_jpeg_to_rgb(pd_image, jpeg, width, height)
     if "JPXDecode" in filter_names or "JPX" in filter_names:
         with pd_image.create_input_stream(stop_filters=["JPXDecode", "JPX"]) as src:
             return Image.open(io.BytesIO(src.read())).convert("RGB")
@@ -1092,6 +1094,56 @@ def decode_pdimage_to_pil(
     if color_space_name in ("Separation", "DeviceN") and color_space is not None:
         return _decode_devicen_to_rgb(color_space, data, width, height)
     return None
+
+
+def _dct_jpeg_to_rgb(
+    pd_image: PDImage, jpeg: Image.Image, width: int, height: int
+) -> Image.Image | None:
+    """Colour-transform a decoded ``/DCTDecode`` JPEG into an sRGB image.
+
+    Mirrors how PDFBox finishes a JPEG decode: the libjpeg raster is handed
+    to the *PDF* colour pipeline (the resolved ``/ColorSpace`` transform),
+    not the codec's own built-in RGB conversion.
+
+    For grayscale and YCbCr-RGB JPEGs the two paths coincide, so we keep the
+    fast ``Image.convert("RGB")`` route. For a **CMYK / YCCK JPEG carrying
+    the Adobe APP14 transform marker** they must not: that is the classic
+    inverted-CMYK trap. Adobe stores CMYK in JPEG inverted (255 = ink-off),
+    but Pillow's JPEG reader already re-inverts on load (``tobytes()`` hands
+    back conventional ``0 = ink-off`` samples), so the PDF ``/Decode
+    [1 0 1 0 1 0 1 0]`` array that ``JPEGFactory`` attaches has *already*
+    been accounted for by the codec — re-applying it would double-invert.
+    The remaining divergence from Pillow's ``convert("RGB")`` is only the
+    CMYK->RGB transform itself: Pillow runs LittleCMS with a bundled profile
+    we do not control, while every other DeviceCMYK raster in pypdfbox goes
+    through :meth:`PDDeviceCMYK.to_rgb_image` (a deterministic subtractive
+    transform, by design — see that class's docstring). Routing the JPEG's
+    CMYK samples through the same ``/DeviceCMYK`` space keeps the JPEG path
+    consistent with the raw-CMYK path and platform/Pillow-version stable.
+
+    The residual luminance gap against Java PDFBox on CMYK JPEGs is the
+    known subtractive-vs-``CGATS001Compat-v2-micro.icc`` colour-cluster
+    divergence, not a polarity error (polarity matches exactly).
+    """
+    if jpeg.mode != "CMYK":
+        return jpeg.convert("RGB")
+
+    try:
+        color_space = pd_image.get_color_space()
+    except OSError:
+        color_space = None
+    # A non-CMYK PDF colour space over a CMYK codestream is exotic; defer to
+    # Pillow rather than guess.
+    if color_space is None or color_space.get_name() != "DeviceCMYK":
+        return jpeg.convert("RGB")
+
+    samples = jpeg.tobytes()  # interleaved C,M,Y,K bytes, codec (un-inverted) order
+    pixel_count = width * height
+    cmyk_len = pixel_count * 4
+    if len(samples) < cmyk_len:
+        return jpeg.convert("RGB")
+
+    return color_space.to_rgb_image(samples[:cmyk_len], width, height)
 
 
 def _apply_decode_to_8bit_samples(

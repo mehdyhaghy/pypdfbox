@@ -242,21 +242,44 @@ class PDCIDFontType0(PDCIDFont):
 
     def _cff_program_width(self, cid: int) -> float | None:
         """Width contributed by the embedded CFF program for ``cid``.
-        Returns ``None`` when there is no program, the CID is unmapped,
-        or the program reports a zero advance. Width is normalized to
-        1/1000 em (the PDF width unit) regardless of the program's
-        native units-per-em.
+        Returns ``None`` when there is no program or it reports a zero
+        advance. Width is normalized to 1/1000 em (the PDF width unit)
+        regardless of the program's native units-per-em.
+
+        Mirrors upstream ``PDCIDFontType0.getWidthFromFont`` /
+        ``getGlyphWidth``, which take the width straight from the CID's
+        Type 2 charstring (``cidFont.getType2CharString(cid).getWidth()``)
+        with no ``hasGlyph`` gate: an unmapped CID (and CID 0, ``.notdef``)
+        resolves to GID 0's charstring whose advance is the Private DICT
+        ``defaultWidthX`` — so the embedded-program width for ``.notdef``
+        is a real value (e.g. 250), not 0. A CID-keyed
+        :class:`CFFCIDFont` resolves the CID→GID→charstring chain inside
+        ``get_width`` directly; a name-keyed CFF (the rare simple-CFF
+        descendant) keeps the glyph-name lookup.
         """
         program = self.get_cff_font()
         if program is None:
             return None
-        name = self._cff_glyph_name(cid)
-        if not program.has_glyph(name):
-            return None
         units_per_em = program.units_per_em
         if units_per_em <= 0:
             return None
-        advance = program.get_width(name)
+        if getattr(program, "is_cid_font", lambda: False)():
+            # CID-keyed: hand the CID straight to the program. Its
+            # ``get_width`` does the CID→GID→charstring resolution, with an
+            # unmapped CID (and CID 0, ``.notdef``) routed to GID 0 whose
+            # advance is the Private DICT ``defaultWidthX`` — so the
+            # embedded-program width for ``.notdef`` is a real value
+            # (e.g. 250), not 0. Mirrors upstream
+            # ``PDCIDFontType0.getWidthFromFont`` /
+            # ``cidFont.getType2CharString(cid).getWidth()`` (no hasGlyph gate).
+            advance = program.get_width(cid)
+        else:
+            # Name-keyed CFF descendant (rare): look the glyph up by name,
+            # returning ``None`` when the program has no such glyph.
+            name = self._cff_glyph_name(cid)
+            if not program.has_glyph(name):
+                return None
+            advance = program.get_width(name)
         if advance <= 0.0:
             return None
         return advance * 1000.0 / units_per_em

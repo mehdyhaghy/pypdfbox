@@ -696,8 +696,13 @@ class PageDrawer(PDFGraphicsStreamEngine):
 
     def is_content_rendered(self, marked_content_stack: list[Any] | None = None) -> bool:
         """Whether the current marked-content stack passes optional-content
-        visibility rules.
+        visibility rules. Mirrors upstream ``PageDrawer.isContentRendered``
+        — delegates to the renderer's hidden-OCG nesting counter so the
+        BDC ``/OC`` visibility gate is honoured during rendering.
         """
+        helper = getattr(self._renderer, "_is_content_rendered", None)
+        if callable(helper):
+            return bool(helper())
         return True
 
     def is_hidden_ocg(self, ocg: Any) -> bool:
@@ -710,12 +715,28 @@ class PageDrawer(PDFGraphicsStreamEngine):
             return False
 
     def is_hidden_ocmd(self, ocmd: Any) -> bool:
-        """``True`` if an Optional Content Membership Dictionary is hidden."""
+        """``True`` if an Optional Content Membership Dictionary is hidden.
+
+        Delegates to the renderer's property-list visibility resolver,
+        which evaluates the OCMD's ``/VE`` expression (or ``/P`` + ``/OCGs``
+        policy fallback) against the current OCG states. Mirrors upstream
+        ``PageDrawer.isHiddenOCG`` for the OCMD branch.
+        """
+        if ocmd is None:
+            return False
+        helper = getattr(self._renderer, "_property_list_is_hidden", None)
+        if callable(helper):
+            return bool(helper(ocmd))
         return False
 
     def is_hidden_visibility_expression(self, expr: Any) -> bool:
-        """Dispatch on a Visibility Expression (And/Or/Not)."""
-        return False
+        """Dispatch on a Visibility Expression (And/Or/Not).
+
+        Delegated to the OCMD evaluator on the renderer when ``expr`` is a
+        membership dictionary; a bare /VE array has no standalone hidden
+        state outside an OCMD, so a non-OCMD argument is never hidden.
+        """
+        return self.is_hidden_ocmd(expr)
 
     def is_hidden_and_visibility_expression(self, operands: list[Any]) -> bool:
         """And-combinator for visibility expressions."""

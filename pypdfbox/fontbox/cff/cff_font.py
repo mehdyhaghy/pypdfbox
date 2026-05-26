@@ -696,6 +696,39 @@ class CFFFont:
         self._widths[name] = width
         return width
 
+    def get_encoding_map(self) -> dict[int, str]:
+        """Return the font's built-in encoding as ``{code: glyph_name}``.
+
+        Mirrors what upstream surfaces through ``CFFType1Font.getEncoding``
+        / ``CFFEncoding`` (and that ``PDType1CFont.readEncodingFromFont``
+        wraps with ``Type1Encoding.fromFontBox``): the embedded CFF
+        program's own ``Encoding`` table, mapping a 1-byte character code
+        to the PostScript glyph name. ``.notdef`` (and codes the font
+        leaves unencoded) are omitted so callers fall back to a default
+        encoding for those — matching upstream, where an unencoded code
+        carries no built-in name.
+
+        fontTools exposes the decompiled encoding on the Top DICT as a
+        256-entry list of glyph names (or the literal string
+        ``"StandardEncoding"`` / ``"ExpertEncoding"`` when the font uses a
+        predefined encoding, in which case there is no *custom* built-in
+        map to return — an empty dict signals "use the default"). CID-keyed
+        CFF fonts have no Encoding (they are addressed by CID, not code),
+        so this returns an empty dict for them.
+        """
+        if self._top is None:
+            return {}
+        encoding = getattr(self._top, "Encoding", None)
+        if not isinstance(encoding, list):
+            # Predefined ("StandardEncoding"/"ExpertEncoding") or absent —
+            # no custom built-in map to surface.
+            return {}
+        result: dict[int, str] = {}
+        for code, name in enumerate(encoding):
+            if name and name != ".notdef":
+                result[code] = name
+        return result
+
     def get_path(self, name: str) -> list[tuple[Any, ...]]:
         """Glyph outline for ``name`` as a list of draw commands in
         font units. Returns ``[]`` when the glyph is missing."""

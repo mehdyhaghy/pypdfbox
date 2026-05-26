@@ -20,8 +20,20 @@ class _SyntheticCIDCFF(CFFCIDFont):
     def has_glyph(self, name: str) -> bool:
         return name in self.get_charset()
 
-    def get_width(self, name: str) -> float:
-        return {".notdef": 0.0, "cid00007": 700.0, "cid00009": 900.0}[name]
+    def get_width(self, selector: int | str) -> float:
+        # Mirror the real ``CFFCIDFont.get_width(selector)`` contract:
+        # accept a CID int (resolved CID -> charset glyph name) as well as
+        # a bare glyph name. ``PDCIDFontType0._cff_program_width`` hands a
+        # CID straight to a CID-keyed program (CID 0/unmapped -> .notdef).
+        if isinstance(selector, int):
+            selector = self._cff_name_for_cid(selector)
+        return {".notdef": 0.0, "cid00007": 700.0, "cid00009": 900.0}.get(
+            selector, 0.0
+        )
+
+    @staticmethod
+    def _cff_name_for_cid(cid: int) -> str:
+        return ".notdef" if cid == 0 else f"cid{cid:05d}"
 
     def get_type2_char_string(self, gid: int) -> tuple[str, int]:
         return ("gid", gid)

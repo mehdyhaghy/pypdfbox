@@ -509,6 +509,36 @@ class PDType1CFont(PDType1Font):
             width += program.get_width(name)
         return width
 
+    def _code_to_font_glyph_name(self, code: int) -> str | None:
+        """Resolve ``code`` to a glyph name the way upstream
+        ``PDType1CFont.codeToName`` does — through the encoding upstream's
+        ``getEncoding()`` *always* returns non-null.
+
+        Upstream's ``getEncoding()`` (populated by ``readEncoding()`` in
+        the ``PDSimpleFont`` constructor) falls back to
+        ``readEncodingFromFont()`` — the embedded CFF program's built-in
+        encoding, or ``StandardEncoding`` — whenever the font dictionary
+        carries no ``/Encoding`` entry. pypdfbox's lazy
+        :meth:`get_encoding_typed` keeps the established "return ``None``
+        when ``/Encoding`` is absent" contract (see CHANGES.md), so the
+        CFF/Type1C metric + glyph helpers must apply that built-in
+        fall-through themselves (mirroring the fall-through
+        :class:`PDType1Font` already applies in ``get_glyph_width`` /
+        ``get_glyph_path``). Returns ``None`` only for ``.notdef`` /
+        genuinely unmapped codes.
+        """
+        encoding = self.get_encoding_typed()
+        if encoding is None:
+            # No dictionary /Encoding — upstream resolves the built-in
+            # (CFF program encoding / StandardEncoding) instead.
+            encoding = self.read_encoding_from_font()
+        if encoding is None:
+            return None
+        name = encoding.get_name(code)
+        if name and name != ".notdef":
+            return name
+        return None
+
     def get_width_from_font(self, code: int) -> float:
         """Return the embedded CFF program's advance for ``code`` in
         1/1000 em — bypassing the ``/Widths`` array.
@@ -523,15 +553,23 @@ class PDType1CFont(PDType1Font):
         program = self._get_cff_font()
         if program is None:
             return 0.0
-        name = self._code_to_glyph_name(code)
-        if name is None or not program.has_glyph(name):
-            return 0.0
+        name = self._code_to_font_glyph_name(code)
+        if name is None:
+            name = ".notdef"
+        # Mirror upstream ``getNameInFont`` + ``CFFType1Font.nameToGID``:
+        # for an *embedded* program a glyph name absent from the subset
+        # charset resolves to GID 0 (``.notdef``) — its advance is the
+        # CFF ``defaultWidthX``, not 0. pypdfbox previously short-circuited
+        # to 0.0 here, so subset fonts reported 0 for any addressed-but-
+        # absent code; PDFBox returns the ``.notdef`` width instead.
+        if not program.has_glyph(name):
+            name = ".notdef"
+            if not program.has_glyph(name):
+                return 0.0
         units_per_em = program.units_per_em
         if units_per_em <= 0:
             units_per_em = _CFF_DEFAULT_UNITS_PER_EM
         advance = program.get_width(name)
-        if advance <= 0.0:
-            return 0.0
         return advance * 1000.0 / units_per_em
 
     def get_average_font_width(self) -> float:
