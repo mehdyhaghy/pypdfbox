@@ -148,15 +148,19 @@ class PDTextField(PDVariableText):
         )
 
     def set_value(
-        self, value: str | None, regenerate_appearance: bool = False
+        self, value: str | None, regenerate_appearance: bool | None = None
     ) -> None:
         """Set the field's ``/V`` value.
 
-        When ``regenerate_appearance=True``, also rebuilds each widget's
-        ``/AP /N`` normal appearance via :class:`PDAppearanceGenerator`.
-        The default (``False``) preserves the historical lite-port behaviour
-        of writing the value alone — the existing object graph is untouched
-        for callers that flatten or re-render externally.
+        Mirrors upstream ``PDTextField.setValue`` → ``applyChange()``: after
+        writing ``/V`` the widget ``/AP /N`` normal appearances are
+        regenerated via :class:`PDAppearanceGenerator`, **unless** the
+        AcroForm carries ``/NeedAppearances true`` (in which case viewers
+        build the appearance, so upstream skips it). ``regenerate_appearance``
+        defaults to ``None`` = follow this upstream gate; pass ``True`` /
+        ``False`` to force regeneration on or off (the latter preserves the
+        older lite-port "write the value alone" behaviour for callers that
+        flatten or re-render externally).
         """
         value = _require_text_or_none(value, "set_value")
         if value is None:
@@ -172,7 +176,7 @@ class PDTextField(PDVariableText):
             if "\0" in value:
                 raise ValueError("Field value contains NUL")
             self._field.set_string(_V, value)
-        if regenerate_appearance:
+        if self._should_regenerate_appearance(regenerate_appearance):
             from .pd_appearance_generator import PDAppearanceGenerator
 
             PDAppearanceGenerator().generate(self)

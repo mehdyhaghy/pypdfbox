@@ -79,19 +79,48 @@ class PDCIDFontType2(PDCIDFont):
     def cid_to_gid(self, cid: int) -> int:
         """Map a CID to a TrueType glyph ID.
 
-        ``/CIDToGIDMap`` stream values are big-endian unsigned shorts,
-        one per CID. Missing or ``/Identity`` maps use the CID as the GID.
-        CIDs outside an explicit stream map resolve to GID 0, matching the
-        embedded-font path in PDFBox ``PDCIDFontType2.codeToGID``.
+        Mirrors the *embedded* branch of upstream ``PDCIDFontType2.codeToGID``
+        (the ``isEmbedded`` path, since every CIDFontType2 we resolve a GID
+        for carries an embedded program — the non-embedded substitute-font
+        path is a separate code path handled by the renderer):
+
+        1. When ``/CIDToGIDMap`` is a stream, its big-endian ``uint16`` values
+           map CID → GID; an out-of-range CID resolves to GID 0.
+        2. When the embedded program is an OpenType font with PostScript
+           (CFF) outlines, the CID *is* the GID (Identity ordering) and is
+           returned unbounded.
+        3. Otherwise (plain TrueType, ``/Identity`` map or absent) the CID is
+           the GID **only while it addresses a real glyph** — a CID at or
+           beyond the program's glyph count resolves to GID 0, matching
+           upstream's ``cid < ttf.getNumberOfGlyphs() ? cid : 0`` guard.
         """
         if cid < 0:
             return 0
         mapping = self._get_cid_to_gid_map_values()
-        if mapping is None:
+        if mapping is not None:
+            return mapping[cid] if cid < len(mapping) else 0
+        # No explicit stream map → /Identity (or absent). Upstream still
+        # bounds the CID against the embedded program before treating it as
+        # a GID; an OTF-with-CFF descendant is the one exception (CID == GID
+        # for its charset, returned unbounded).
+        otf = self.get_open_type_font()
+        if otf is not None:
+            try:
+                if otf.is_post_script():
+                    return int(cid)
+            except Exception:  # noqa: BLE001 — defensive: malformed CFF table
+                pass
+        ttf = self.get_true_type_font()
+        if ttf is None:
+            # No parseable program to bound against — fall back to the raw
+            # CID (the substitute-font / non-embedded path resolves the GID
+            # elsewhere; here we have nothing better than the identity value).
             return int(cid)
-        if cid < len(mapping):
-            return mapping[cid]
-        return 0
+        try:
+            num_glyphs = ttf.get_number_of_glyphs()
+        except Exception:  # noqa: BLE001 — defensive: malformed maxp table
+            return int(cid)
+        return int(cid) if cid < num_glyphs else 0
 
     def code_to_gid(self, code: int) -> int:
         """Return the GID for ``code``.

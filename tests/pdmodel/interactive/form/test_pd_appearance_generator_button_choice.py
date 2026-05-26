@@ -355,9 +355,23 @@ def test_list_box_set_value_no_regenerate_skips_ap() -> None:
     cos = lb.get_cos_object()
     cos.set_item(_RECT, _rect(0, 0, 120, 20))
     cos.set_string(_DA, "/Helv 10 Tf 0 g")
-    lb.set_value("one")
+    # Explicit force-off — the legacy "write the value alone" path.
+    lb.set_value("one", regenerate_appearance=False)
     widget_cos = lb.get_widgets()[0].get_cos_object()
     assert widget_cos.get_dictionary_object(_AP) is None
+
+
+def test_list_box_set_value_default_regenerates_ap() -> None:
+    """Mirrors upstream ``PDListBox.setValue`` → ``applyChange()``: the
+    default (no override, no ``/NeedAppearances``) rebuilds ``/AP /N``."""
+    form = PDAcroForm()
+    lb = PDListBox(form)
+    cos = lb.get_cos_object()
+    cos.set_item(_RECT, _rect(0, 0, 120, 20))
+    cos.set_string(_DA, "/Helv 10 Tf 0 g")
+    lb.set_value("one")
+    widget_cos = lb.get_widgets()[0].get_cos_object()
+    assert isinstance(widget_cos.get_dictionary_object(_AP), COSDictionary)
 
 
 def test_list_box_construct_appearances_creates_ap() -> None:

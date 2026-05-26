@@ -198,8 +198,31 @@ def test_generate_handles_missing_da_with_helvetica_fallback() -> None:
 
 def test_set_value_regenerate_appearance_false_does_not_create_ap() -> None:
     tf = _build_text_field()
-    # Strip any /AP that might already be on the widget; default path
-    # should keep it that way.
+    # Strip any /AP that might already be on the widget; an explicit
+    # ``regenerate_appearance=False`` (the legacy force-off path) should
+    # keep it that way.
+    tf.get_cos_object().remove_item(_AP)
+    tf.set_value("changed", regenerate_appearance=False)
+    assert tf.get_cos_object().get_dictionary_object(_AP) is None
+
+
+def test_set_value_default_regenerates_appearance_like_upstream() -> None:
+    """Mirrors upstream ``PDTextField.setValue`` → ``applyChange()``: with
+    no ``/NeedAppearances`` flag and no explicit ``regenerate_appearance``
+    override, setting the value rebuilds the widget's ``/AP /N``."""
+    tf = _build_text_field()
+    tf.get_cos_object().remove_item(_AP)
+    tf.set_value("changed")
+    ap = tf.get_widgets()[0].get_cos_object().get_dictionary_object(_AP)
+    assert isinstance(ap, COSDictionary)
+    assert isinstance(ap.get_dictionary_object(_N), COSStream)
+
+
+def test_set_value_default_skips_regen_when_need_appearances() -> None:
+    """When the AcroForm carries ``/NeedAppearances true`` the upstream
+    ``applyChange()`` gate skips appearance regeneration (viewers build it)."""
+    tf = _build_text_field()
+    tf.get_acro_form().set_need_appearances(True)
     tf.get_cos_object().remove_item(_AP)
     tf.set_value("changed")
     assert tf.get_cos_object().get_dictionary_object(_AP) is None

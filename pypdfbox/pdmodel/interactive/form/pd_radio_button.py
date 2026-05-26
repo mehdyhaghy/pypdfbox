@@ -96,12 +96,18 @@ class PDRadioButton(PDButton):
     ) -> None:
         """Set the field's ``/V`` value.
 
-        When ``regenerate_appearance=True``, also rebuilds each widget's
-        ``/AP /N`` two-state on/off appearance subdictionary via
-        :class:`PDAppearanceGenerator` (radio kids draw a filled circle
-        on the on-state) and syncs ``/AS`` per widget. The default
-        (``False``) preserves the historical lite-port behaviour of
-        writing the value alone.
+        The base :meth:`PDButton.set_value` already performs the
+        value-visible appearance step for radio groups — it syncs each
+        widget's ``/AS`` to the matching existing ``/AP /N`` on-state (or
+        ``/Off``), which is what upstream ``PDRadioButton.setValue`` does
+        (real radio widgets ship their on/off streams; setting the value
+        only flips ``/AS``). ``regenerate_appearance`` therefore defaults to
+        ``False``: pass ``True`` only to additionally *redraw* the on/off
+        appearance streams (filled circle on the on-state) via
+        :class:`PDAppearanceGenerator`. Redrawing is opt-in because it
+        rebuilds the ``/AP /N`` subdictionary from scratch and would discard
+        producer-chosen state keys (e.g. the numeric ``/Opt``-indexed keys in
+        PDFBOX-3656).
         """
         super().set_value(value)
         if regenerate_appearance:

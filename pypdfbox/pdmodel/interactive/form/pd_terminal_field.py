@@ -255,6 +255,22 @@ class PDTerminalField(PDField):
 
     # ---------- appearance ----------
 
+    def _should_regenerate_appearance(
+        self, regenerate_appearance: bool | None
+    ) -> bool:
+        """Resolve a typed field's ``set_value(regenerate_appearance=...)``
+        flag against the upstream ``applyChange()`` gate.
+
+        - ``True`` / ``False`` — explicit caller override, honoured verbatim.
+        - ``None`` — follow upstream: regenerate **unless** the AcroForm
+          carries ``/NeedAppearances true`` (when set, viewers build the
+          appearance themselves and upstream's ``applyChange()`` skips
+          ``constructAppearances()``).
+        """
+        if regenerate_appearance is not None:
+            return regenerate_appearance
+        return not self._acro_form.is_need_appearances()
+
     def apply_change(self) -> None:
         """No-op on the lite surface.
 

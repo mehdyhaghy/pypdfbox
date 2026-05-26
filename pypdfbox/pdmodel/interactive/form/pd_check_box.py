@@ -93,11 +93,18 @@ class PDCheckBox(PDButton):
     ) -> None:
         """Set the field's ``/V`` value.
 
-        When ``regenerate_appearance=True``, also rebuilds each widget's
-        ``/AP /N`` two-state on/off appearance subdictionary via
-        :class:`PDAppearanceGenerator` and syncs ``/AS`` to either the
-        on-state name or ``/Off``. The default (``False``) preserves the
-        historical lite-port behaviour of writing the value alone.
+        The base :meth:`PDButton.set_value` already performs the
+        value-visible appearance step for buttons — it syncs each widget's
+        ``/AS`` to the matching existing ``/AP /N`` on-state (or ``/Off``),
+        which is exactly what upstream ``PDCheckBox.setValue`` does (real
+        check-box widgets ship their on/off appearance streams; setting the
+        value only flips ``/AS``). ``regenerate_appearance`` therefore
+        defaults to ``False``: pass ``True`` only to additionally *redraw*
+        the on/off appearance streams (ZapfDingbats glyph / empty) via
+        :class:`PDAppearanceGenerator`. Redrawing is opt-in because it
+        rebuilds the ``/AP /N`` subdictionary from scratch and would discard
+        producer-chosen state keys (e.g. the numeric ``/Opt``-indexed keys
+        in PDFBOX-3656).
         """
         super().set_value(value)
         if regenerate_appearance:

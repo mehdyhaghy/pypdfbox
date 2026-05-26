@@ -72,18 +72,21 @@ class PDListBox(PDChoice):
     def set_value(
         self,
         value: list[str] | str | None,
-        regenerate_appearance: bool = False,
+        regenerate_appearance: bool | None = None,
     ) -> None:
         """Set the field's ``/V`` value.
 
-        When ``regenerate_appearance=True``, also rebuilds each widget's
-        ``/AP /N`` flat-text appearance via :class:`PDAppearanceGenerator`
-        — for list boxes the selected values are rendered one per line.
-        The default (``False``) preserves the historical lite-port
-        behaviour of writing the value alone.
+        Mirrors upstream ``PDListBox.setValue`` → ``applyChange()``: after
+        writing ``/V`` each widget's ``/AP /N`` flat-text appearance (the
+        selected values rendered one per line) is rebuilt via
+        :class:`PDAppearanceGenerator`, **unless** the AcroForm carries
+        ``/NeedAppearances true``. ``regenerate_appearance`` defaults to
+        ``None`` = follow that upstream gate; ``True`` / ``False`` force
+        regeneration on / off (the latter is the legacy lite-port "write the
+        value alone" path).
         """
         super().set_value(value)
-        if regenerate_appearance:
+        if self._should_regenerate_appearance(regenerate_appearance):
             from .pd_appearance_generator import PDAppearanceGenerator
 
             PDAppearanceGenerator().generate(self)

@@ -185,7 +185,10 @@ def test_resolve_font_picks_page_resources_when_widget_ap_missing() -> None:
     tf = PDTextField(form)
     tf.get_cos_object().set_item(_RECT, _rect(0, 0, 200, 20))
     tf.get_cos_object().set_string(_DA, "/PageFont 12 Tf 0 g")
-    tf.set_value("page-level")
+    # ``regenerate_appearance=False`` so the value-set does not eagerly build
+    # an /AP /N (which would seed tier-2 widget /AP /N /Resources before the
+    # page back-pointer below is wired); this test drives ``generate`` itself.
+    tf.set_value("page-level", regenerate_appearance=False)
 
     # Build a synthetic page dict with /Resources/Font/PageFont.
     page_cos = COSDictionary()
