@@ -153,10 +153,13 @@ Apache 2.0 / BSD / MIT / HPND):
 - `Pillow>=12.2.0`
 - `fontTools>=4`
 - `aggdraw>=1.3`
-- `jbig2-parser`
 - `skia-python`
 - `imagecodecs`
 - `numpy`
+
+JBIG2 decoding (`/JBIG2Decode`) is currently unsupported: the only
+available decoder is GPL-licensed and excluded by the
+permissive-license policy. An Apache-2.0 port is planned.
 
 The `pypdfbox[cjk]` extra is the opt-in consent gate for the CJK
 font auto-downloader; it carries no Python deps of its own.

@@ -203,12 +203,6 @@ wheels = [
 ]
 
 [[package]]
-name = "jbig2-parser"
-version = "0.1.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/b9/26/b0a4b9a6a2ea227417f5d36e550b35ddb2c211272a5dfabaf6418ae99f3f/jbig2_parser-0.1.1.tar.gz", hash = "sha256:aa1b308ecd1ae8eb54c6c3ce572d6cba3a966c6aa6e79b5c1460468ba201623b", size = 63051, upload-time = "2025-01-27T17:10:21.646Z" }
-
-[[package]]
 name = "librt"
 version = "0.9.0"
 source = { registry = "https://pypi.org/simple" }
@@ -404,7 +398,6 @@ dependencies = [
     { name = "cryptography" },
     { name = "fonttools" },
     { name = "imagecodecs" },
-    { name = "jbig2-parser" },
     { name = "numpy" },
     { name = "pillow" },
     { name = "skia-python" },
@@ -423,7 +416,6 @@ requires-dist = [
     { name = "cryptography", specifier = ">=42" },
     { name = "fonttools", specifier = ">=4" },
     { name = "imagecodecs", specifier = ">=2026" },
-    { name = "jbig2-parser" },
     { name = "numpy", specifier = ">=2" },
     { name = "pillow", specifier = ">=12.2.0" },
     { name = "skia-python", specifier = ">=144" },

@@ -2,37 +2,32 @@
 
 Mirrors ``org.apache.pdfbox.filter.JBIG2Filter``. The Java upstream
 class **is** the registered JBIG2 filter implementation; in the Python
-port the heavy lifting already lives in :class:`JBIG2Decode` (which
-wraps the existing ``jbig2-parser`` runtime dependency — library-first
-per project guidelines). This module provides a thin subclass under the
-upstream class name so a direct port from PDFBox Java sources can write::
+port the contract lives in :class:`JBIG2Decode`. This module provides a
+thin subclass under the upstream class name so a direct port from
+PDFBox Java sources can write::
 
     from pypdfbox.filter.jbig2_filter import JBIG2Filter
 
 and resolve the symbol without re-deriving it.
 
-License posture — why not ``imagecodecs`` for JBIG2
+License posture — why JBIG2 decoding is unsupported
 ---------------------------------------------------
 
-The sibling DCT (JPEG) and JPX (JPEG 2000) filters route their primary
-decode through ``imagecodecs`` because its bundled libraries
-(libjpeg-turbo and OpenJPEG) are permissively licensed (BSD-style).
-JBIG2 is intentionally different: the only JBIG2 decoder ``imagecodecs``
-can be built against is ``jbig2dec`` from Artifex, which is **AGPL-3.0**
-— incompatible with this project's permissive-only license posture
-(see CLAUDE.md "Licensing & attribution" — forbidden list includes
-AGPL). We confirmed the ``imagecodecs`` wheel shipped at runtime has no
-``jbig2`` decoder exposed at the module level (``dir(imagecodecs)``
-returns no JBIG2 names) and no ``LICENSE-jbig2dec`` entry under
-``imagecodecs/licenses/``, so the AGPL codec is not present — but we
-still keep this route off by design so a future ``imagecodecs`` rebuild
-that adds ``jbig2dec`` cannot accidentally pull AGPL code into the
-pypdfbox decode path.
+JBIG2 (ITU-T T.88) decoding is **intentionally unsupported** in
+pypdfbox. The only available JBIG2 decoder is ``jbig2-parser``, whose
+compiled extension statically links the Rust ``jbig2dec`` crate — a
+binding to Artifex's AGPL ``jbig2dec`` C library. GPL-3.0/AGPL are on
+the project's hard-forbidden license list (CLAUDE.md "Licensing &
+attribution"), so no JBIG2 decoder is bundled. ``imagecodecs`` is also
+ruled out for the same reason: the only JBIG2 codec it can be built
+against is the AGPL ``jbig2dec`` (the runtime wheel exposes no JBIG2
+names and ships no ``LICENSE-jbig2dec`` entry, but the route stays off
+by design so a future rebuild adding ``jbig2dec`` cannot pull AGPL code
+into the decode path).
 
-The ``jbig2-parser`` library we already depend on is pure Python (slow
-for complex multi-region JBIG2 docs but adequate for the JBIG2 streams
-PDFs ship in practice) and is permissively licensed, so it remains the
-sole JBIG2 path here.
+Consequently :meth:`JBIG2Decode.decode` (inherited here) raises
+``OSError``; the filter remains registered only so ``/JBIG2Decode`` is
+recognised as a known filter name.
 """
 
 from __future__ import annotations
@@ -67,9 +62,10 @@ class JBIG2Filter(JBIG2Decode):
 
         Mirrors upstream's private ``logLevigoDonated()``. In Java this
         fires when the discovered JBIG2 ImageIO plugin class name
-        contains ``levigo``; in pypdfbox we route JBIG2 decoding through
-        the ``jbig2-parser`` library so the Levigo plugin isn't involved
-        — but the method exists for parity with the Java API surface.
+        contains ``levigo``; in pypdfbox JBIG2 decoding is unsupported
+        (no permissively-licensed decoder exists) so the Levigo plugin
+        isn't involved — but the method exists for parity with the Java
+        API surface.
         """
         if cls._levigo_logged:
             return

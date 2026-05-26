@@ -61,7 +61,6 @@ dependencies = [
     "skia-python>=144",   # BSD-3-Clause — canvas + path drawing + AA + ICC color spaces; PNG/JPEG/WebP I/O (replaces aggdraw)
     "imagecodecs>=2026",  # BSD-3-Clause — TIFF + CCITT (RLE/T.4/T.6) + JPEG2K + long tail of codecs
     "numpy>=2",           # BSD-3 AND 0BSD AND MIT AND Zlib AND CC0-1.0 (all permissive; bundled-code mix) — pixel math + CMYK conversion
-    "jbig2-parser",       # MIT — JBIG2 image decoder (Rust-backed, used by /JBIG2Decode filter)
 ]
 
 # Marker extra for opt-in CJK font auto-download (see pypdfbox/fontbox/cjk_loader.py).

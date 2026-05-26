@@ -47,10 +47,16 @@ That installs the runtime dependencies (all permissively licensed):
 - [`numpy`](https://pypi.org/project/numpy/) (BSD-3 / 0BSD / MIT /
   Zlib / CC0-1.0, all permissive) — pixel math and CMYK
   conversion in the renderer.
-- [`jbig2-parser`](https://pypi.org/project/jbig2-parser/) (MIT) —
-  Rust-backed JBIG2 decoder for `/JBIG2Decode` filters.
 
 No GPL, LGPL, AGPL, MPL, EPL, CDDL, SSPL, or BUSL dependencies.
+
+JBIG2 decoding (`/JBIG2Decode`) is currently **unsupported**. The
+only readily available decoder bundles a GPL-licensed native library,
+which the permissive-license policy excludes, so pypdfbox ships no
+JBIG2 decoder: the filter is registered for name recognition only and
+`JBIG2Decode.decode` raises a clear "unsupported" error. A pure-Python
+Apache-2.0 port (of `apache/pdfbox-jbig2`) is planned to restore
+support.
 
 A fresh install pulls roughly 90–110 MB of wheels (mostly Skia
 binaries and imagecodecs's native blobs). Steady-state disk
@@ -181,11 +187,6 @@ are involved — they bundle a long list of native codec libraries
 
 Universally available. No source-install concerns.
 
-### `jbig2-parser`
-
-Rust-backed. Wheels available for the standard platforms; source
-install needs a Rust toolchain.
-
 ## Troubleshooting
 
 **`cryptography` fails to install on an Apple Silicon Mac.** Update
@@ -219,7 +220,7 @@ own code hits this, treat past-EOD bytes as undefined.
 If the trouble is something else, please open an issue at
 <https://github.com/mehdyhaghy/pypdfbox/issues> with the full
 traceback, the OS, the Python version, and the output of
-`pip freeze | grep -E '(pypdfbox|cryptography|Pillow|skia|imagecodecs|numpy|jbig2|fontTools)'`.
+`pip freeze | grep -E '(pypdfbox|cryptography|Pillow|skia|imagecodecs|numpy|fontTools)'`.
 
 ## Next steps
 
