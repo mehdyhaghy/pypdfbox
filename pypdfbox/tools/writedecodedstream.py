@@ -24,7 +24,7 @@ from pathlib import Path
 
 from pypdfbox.cos import COSName, COSStream
 from pypdfbox.pdmodel import PDDocument
-from pypdfbox.pdmodel.encryption import PDInvalidPasswordException
+from pypdfbox.pdmodel.encryption import InvalidPasswordException
 
 # /DecodeParms must be cleared alongside /Filter — leaving it on a now-
 # unfiltered stream is technically legal (a non-conformant reader may just
@@ -156,7 +156,7 @@ def run(args: argparse.Namespace) -> int:
 
     try:
         write_decoded(src, out, password=password, skip_images=skip_images)
-    except PDInvalidPasswordException as exc:
+    except InvalidPasswordException as exc:
         print(f"writedecodedstream: {exc}", flush=True)
         return 1
     except OSError:

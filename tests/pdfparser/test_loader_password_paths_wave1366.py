@@ -6,7 +6,7 @@ Covers the boundary between the Loader's auto-decrypt path and the manual
 
 * Loading an encrypted document with NO password — returns an encrypted
   COSDocument; caller drives decrypt themselves.
-* Loading with the wrong password — raises ``PDInvalidPasswordException``.
+* Loading with the wrong password — raises ``InvalidPasswordException``.
 * Loading with empty string vs ``None`` password.
 * Lenient (force) parsing toggle defaults to lenient.
 * ``PDDocument.load`` two-arg vs three-arg parity.
@@ -31,7 +31,7 @@ from pypdfbox.pdmodel.encryption.standard_protection_policy import (
     StandardProtectionPolicy,
 )
 from pypdfbox.pdmodel.encryption.standard_security_handler import (
-    PDInvalidPasswordException,
+    InvalidPasswordException,
     StandardSecurityHandler,
 )
 
@@ -152,9 +152,9 @@ def test_load_encrypted_with_correct_password_auto_decrypts() -> None:
 
 
 def test_load_encrypted_with_wrong_password_raises() -> None:
-    """Wrong password surfaces as ``PDInvalidPasswordException``."""
+    """Wrong password surfaces as ``InvalidPasswordException``."""
     pdf, _ = _build_encrypted_pdf("right")
-    with pytest.raises(PDInvalidPasswordException):
+    with pytest.raises(InvalidPasswordException):
         Loader.load_pdf(pdf, "wrong")
 
 
@@ -162,7 +162,7 @@ def test_load_encrypted_with_blank_password_when_protected() -> None:
     """A document protected with a non-empty password rejects the empty
     string — same error as ``wrong-password``."""
     pdf, _ = _build_encrypted_pdf("nonblank")
-    with pytest.raises(PDInvalidPasswordException):
+    with pytest.raises(InvalidPasswordException):
         Loader.load_pdf(pdf, "")
 
 
@@ -172,7 +172,7 @@ def test_pddocument_load_password_retry_after_failure() -> None:
     (i.e. the failed attempt didn't permanently brick the input bytes)."""
     payload = b"retry path"
     pdf, key = _build_encrypted_pdf("good", payload)
-    with pytest.raises(PDInvalidPasswordException):
+    with pytest.raises(InvalidPasswordException):
         PDDocument.load(pdf, password="bad")
     cos = Loader.load_pdf(pdf, "good")
     try:

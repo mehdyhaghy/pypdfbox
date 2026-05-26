@@ -11,7 +11,7 @@ from pypdfbox.pdmodel.encryption.standard_protection_policy import (
     StandardProtectionPolicy,
 )
 from pypdfbox.pdmodel.encryption.standard_security_handler import (
-    PDInvalidPasswordException,
+    InvalidPasswordException,
     StandardDecryptionMaterial,
     StandardSecurityHandler,
 )
@@ -62,7 +62,7 @@ def test_wave465_prepare_for_decryption_requires_r6_key_entries() -> None:
     encryption.set_oe(b"k" * 32)
     # /UE and /Perms are intentionally absent.
 
-    with pytest.raises(PDInvalidPasswordException):
+    with pytest.raises(InvalidPasswordException):
         StandardSecurityHandler().prepare_for_decryption(
             encryption, b"", StandardDecryptionMaterial("user")
         )

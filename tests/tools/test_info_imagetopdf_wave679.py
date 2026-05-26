@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from pypdfbox.pdmodel.encryption import PDInvalidPasswordException
+from pypdfbox.pdmodel.encryption import InvalidPasswordException
 from pypdfbox.tools import imagetopdf, info
 
 
@@ -94,7 +94,7 @@ def test_info_run_returns_one_for_invalid_password(
     def raise_bad_password(path: Path, *, password: str = "") -> object:
         assert path == src
         assert password == "secret"
-        raise PDInvalidPasswordException("bad password")
+        raise InvalidPasswordException("bad password")
 
     monkeypatch.setattr(info.PDDocument, "load", raise_bad_password)
     args = argparse.Namespace(

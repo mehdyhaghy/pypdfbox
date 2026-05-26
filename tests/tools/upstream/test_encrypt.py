@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 from pypdfbox.pdmodel import PDDocument
-from pypdfbox.pdmodel.encryption import PDInvalidPasswordException
+from pypdfbox.pdmodel.encryption import InvalidPasswordException
 from pypdfbox.tools import cli
 
 
@@ -46,7 +46,7 @@ def test_encrypt_saved_pdf_requires_password(
     assert rc == 0
 
     # Loading with the wrong password fails ...
-    with pytest.raises(PDInvalidPasswordException):
+    with pytest.raises(InvalidPasswordException):
         PDDocument.load(enc, password="bogus").close()
 
     # ... and succeeds with the user password.

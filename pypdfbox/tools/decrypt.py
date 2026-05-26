@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pypdfbox.pdmodel import PDDocument
-from pypdfbox.pdmodel.encryption import PDInvalidPasswordException
+from pypdfbox.pdmodel.encryption import InvalidPasswordException
 
 if TYPE_CHECKING:  # pragma: no cover - annotations only
     from pypdfbox.pdmodel.encryption import PublicKeyDecryptionMaterial
@@ -83,7 +83,7 @@ def decrypt_pdf(
     ``output_path`` without ``/Encrypt``.
 
     Mirrors the body of upstream ``org.apache.pdfbox.tools.Decrypt#call``.
-    Raises :class:`PDInvalidPasswordException` if the password is wrong.
+    Raises :class:`InvalidPasswordException` if the password is wrong.
     """
     doc = PDDocument.load(input_path, password=password)
     try:
@@ -198,7 +198,7 @@ def run(args: argparse.Namespace) -> int:
                     flush=True,
                 )
                 return 1
-    except PDInvalidPasswordException as exc:
+    except InvalidPasswordException as exc:
         print(f"decrypt: {exc}", flush=True)
         return 1
     except OSError as exc:
@@ -221,7 +221,7 @@ def run(args: argparse.Namespace) -> int:
         try:
             try:
                 decrypt_pdf(src, tmp_path, password=password)
-            except PDInvalidPasswordException as exc:
+            except InvalidPasswordException as exc:
                 print(f"decrypt: {exc}", flush=True)
                 return 1
             except OSError as exc:
@@ -238,7 +238,7 @@ def run(args: argparse.Namespace) -> int:
 
     try:
         decrypt_pdf(src, out, password=password)
-    except PDInvalidPasswordException as exc:
+    except InvalidPasswordException as exc:
         print(f"decrypt: {exc}", flush=True)
         return 1
     except OSError as exc:

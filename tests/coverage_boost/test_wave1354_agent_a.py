@@ -48,7 +48,7 @@ from pypdfbox.examples.pdmodel.show_text_with_positioning import (
 from pypdfbox.examples.pdmodel.superimpose_page import SuperimposePage
 from pypdfbox.examples.signature.validation_time_stamp import ValidationTimeStamp
 from pypdfbox.pdmodel import PDDocument, PDPage
-from pypdfbox.pdmodel.encryption import PDInvalidPasswordException
+from pypdfbox.pdmodel.encryption import InvalidPasswordException
 from pypdfbox.pdmodel.encryption.access_permission import AccessPermission
 from pypdfbox.pdmodel.encryption.standard_protection_policy import (
     StandardProtectionPolicy,
@@ -326,7 +326,7 @@ def test_validation_time_stamp_sign_time_stamp_appends_token() -> None:
 
 # ---------------------------------------------------------------------------
 # decrypt.run — keystore OSError branch (lines 161-165) and in-place
-# PDInvalidPasswordException branch (lines 222-223)
+# InvalidPasswordException branch (lines 222-223)
 # ---------------------------------------------------------------------------
 
 
@@ -355,7 +355,7 @@ def test_decrypt_run_in_place_invalid_password_branch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """In-place decrypt (no ``-o``) where ``decrypt_pdf`` raises
-    PDInvalidPasswordException after the probe succeeded — drives
+    InvalidPasswordException after the probe succeeded — drives
     lines 222-223 (the non-``-o`` mirror of the existing wave 362 test)."""
     src = tmp_path / "enc.pdf"
     # Use empty user password so the probe load succeeds and is_encrypted()
@@ -363,7 +363,7 @@ def test_decrypt_run_in_place_invalid_password_branch(
     _make_encrypted_pdf(src)
 
     def _fail(*_args: object, **_kwargs: object) -> None:
-        raise PDInvalidPasswordException("late password failure")
+        raise InvalidPasswordException("late password failure")
 
     monkeypatch.setattr(decrypt_mod, "decrypt_pdf", _fail)
 

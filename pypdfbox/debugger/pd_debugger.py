@@ -2370,7 +2370,7 @@ class DocumentOpener:
     Upstream the abstract :meth:`open` is implemented by an anonymous
     subclass per input type (file / URL / stream); :meth:`parse` drives
     the password-retry loop, popping a Swing ``JPasswordField`` dialog on
-    each :class:`PDInvalidPasswordException`. Here :meth:`open` is left
+    each :class:`InvalidPasswordException`. Here :meth:`open` is left
     abstract for the same reason and :meth:`parse` either asks for a
     password via :func:`tkinter.simpledialog.askstring` (when a ``master``
     is supplied) or via the standard library :func:`getpass.getpass` so
@@ -2407,19 +2407,19 @@ class DocumentOpener:
 
     def parse(self) -> PDDocument:
         """Call :meth:`open`, retrying with a new password on each
-        :class:`PDInvalidPasswordException` until one succeeds or the
+        :class:`InvalidPasswordException` until one succeeds or the
         user cancels (which re-raises the original exception).
         """
         # Local import: encryption pulls a large module subtree; loading
         # it eagerly would bloat unrelated debugger workflows.
         from pypdfbox.pdmodel.encryption import (  # noqa: PLC0415
-            PDInvalidPasswordException,
+            InvalidPasswordException,
         )
 
         while True:
             try:
                 return self.open()
-            except PDInvalidPasswordException:
+            except InvalidPasswordException:
                 new_password = self._prompt_password()
                 if new_password is None:
                     raise

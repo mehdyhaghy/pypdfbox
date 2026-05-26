@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from pypdfbox.pdmodel import PDDocument, PDPage
-from pypdfbox.pdmodel.encryption import PDInvalidPasswordException
+from pypdfbox.pdmodel.encryption import InvalidPasswordException
 from pypdfbox.pdmodel.interactive.action.pd_action_uri import PDActionURI
 from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_destination import (
     PDDestination,
@@ -101,7 +101,7 @@ def test_run_returns_one_for_invalid_password(
     def raise_bad_password(path: Path, *, password: str = "") -> PDDocument:
         assert path == src
         assert password == "secret"
-        raise PDInvalidPasswordException("bad password")
+        raise InvalidPasswordException("bad password")
 
     monkeypatch.setattr(listbookmarks.PDDocument, "load", raise_bad_password)
     args = argparse.Namespace(input=str(src), password="secret", format="tree")

@@ -16,7 +16,7 @@ work adds:
 * an encrypted document with the staged password produces a security
   handler attached to the parser so any downstream xref-stream body can
   be deciphered;
-* a wrong password raises ``PDInvalidPasswordException`` at handler
+* a wrong password raises ``InvalidPasswordException`` at handler
   bootstrap (i.e. before any xref-stream entries are touched);
 * unencrypted documents (xref-stream or traditional table) still parse
   cleanly when no password is staged — the eager path is opt-in.
@@ -35,7 +35,7 @@ from pypdfbox.pdfparser import PDFParser
 pytest.importorskip("pypdfbox.pdmodel.encryption.standard_security_handler")
 
 from pypdfbox.pdmodel.encryption.standard_security_handler import (  # noqa: E402
-    PDInvalidPasswordException,
+    InvalidPasswordException,
 )
 
 # Re-use the synthetic encrypted-document helper from the encryption
@@ -105,7 +105,7 @@ def test_eager_wrong_password_raises_pd_invalid_password_exception() -> None:
     pdf, _ = _build_encrypted_document("correct", b"x")
     parser = PDFParser(RandomAccessReadBuffer(pdf))
     parser.set_password("wrong")
-    with pytest.raises(PDInvalidPasswordException):
+    with pytest.raises(InvalidPasswordException):
         parser.parse()
 
 

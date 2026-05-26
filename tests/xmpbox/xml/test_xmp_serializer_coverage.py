@@ -16,10 +16,13 @@ from __future__ import annotations
 import io
 from xml.dom.minidom import Document, parseString
 
+import pytest
+
 from pypdfbox.xmpbox.type.abstract_field import Attribute
 from pypdfbox.xmpbox.type.abstract_structured_type import AbstractStructuredType
 from pypdfbox.xmpbox.type.array_property import ArrayProperty, Cardinality
 from pypdfbox.xmpbox.type.text_type import TextType
+from pypdfbox.xmpbox.xml.xmp_serialization_exception import XmpSerializationException
 from pypdfbox.xmpbox.xml.xmp_serializer import XmpSerializer
 from pypdfbox.xmpbox.xmp_metadata import XMPMetadata
 from pypdfbox.xmpbox.xmp_schema import XMPSchema
@@ -442,3 +445,40 @@ def test_serialize_schema_declares_namespace_on_description() -> None:
     blob = out.getvalue()
     assert _DEMO_NS.encode("utf-8") in blob
     assert b'xmlns:demo=' in blob
+
+
+# ---------------------------------------------------------------------
+# Error contract — a write/transform failure surfaces as
+# ``XmpSerializationException`` (mirrors upstream ``XmpSerializer``,
+# whose ``save`` declares ``throws TransformerException``). Wave 1407
+# wired this to the ported exception (was a bare OSError before).
+# ---------------------------------------------------------------------
+
+
+class _FailingSink:
+    """Output stream whose ``write`` always raises an I/O error — stands
+    in for upstream's ``StreamResult`` blowing up inside ``transform``.
+    """
+
+    def write(self, _data: bytes) -> int:
+        raise OSError("disk full")
+
+
+def test_serialize_wraps_write_failure_in_xmp_serialization_exception() -> None:
+    metadata = XMPMetadata.create_xmp_metadata()
+    schema = _FieldSchema(metadata)
+    metadata.add_schema(schema)
+    with pytest.raises(XmpSerializationException) as info:
+        XmpSerializer().serialize(metadata, _FailingSink(), with_xpacket=False)
+    # The original cause is chained for diagnostics.
+    assert isinstance(info.value.__cause__, OSError)
+
+
+def test_save_wraps_write_failure_in_xmp_serialization_exception() -> None:
+    doc = Document()
+    root = doc.createElement("root")
+    doc.appendChild(root)
+    with pytest.raises(XmpSerializationException) as info:
+        XmpSerializer().save(doc, _FailingSink(), encoding="UTF-8")
+    assert isinstance(info.value.__cause__, OSError)
+    assert str(info.value.__cause__) == "disk full"

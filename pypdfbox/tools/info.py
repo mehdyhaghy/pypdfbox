@@ -29,7 +29,7 @@ import json
 from pathlib import Path
 
 from pypdfbox.pdmodel import PDDocument
-from pypdfbox.pdmodel.encryption import PDInvalidPasswordException
+from pypdfbox.pdmodel.encryption import InvalidPasswordException
 
 
 def build_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
@@ -189,7 +189,7 @@ def run(args: argparse.Namespace) -> int:
         return 4
     try:
         doc = PDDocument.load(src, password=getattr(args, "password", "") or "")
-    except PDInvalidPasswordException as exc:
+    except InvalidPasswordException as exc:
         print(f"info: {exc}", flush=True)
         return 1
     try:

@@ -933,7 +933,7 @@ class PDDocument:
         ``COSStream`` in the object pool so subsequent reads decrypt
         on-the-fly. Mirrors upstream's load-time decryption pipeline.
 
-        Raises :class:`PDInvalidPasswordException` when the password is
+        Raises :class:`InvalidPasswordException` when the password is
         rejected (or when no password was supplied for an owner/user
         password-protected document). Quietly returns when the document
         is not encrypted."""

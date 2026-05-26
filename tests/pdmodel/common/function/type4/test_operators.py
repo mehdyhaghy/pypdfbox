@@ -65,6 +65,33 @@ def test_ifelse_dispatches_proc() -> None:
     assert ctx.get_stack() == [2]
 
 
+def test_true_false_resolve_to_dedicated_classes() -> None:
+    """``true`` / ``false`` must resolve to the dedicated
+    :class:`TrueFunc` / :class:`FalseFunc` operator classes (upstream
+    ``BitwiseOperators.True`` / ``.False``, renamed because ``True`` /
+    ``False`` are Python keywords) — not the internal legacy fallback
+    adapter. Guards the registry's class-name map, which previously
+    pointed at the non-existent names ``"True"`` / ``"False"`` and
+    silently degraded to ``_LegacyOperatorAdapter``."""
+    from pypdfbox.pdmodel.common.function.type4.bitwise_operators import (
+        FalseFunc,
+        TrueFunc,
+    )
+
+    ops = Operators()
+    assert isinstance(ops.get_operator("true"), TrueFunc)
+    assert isinstance(ops.get_operator("false"), FalseFunc)
+
+
+def test_true_false_push_booleans() -> None:
+    """End-to-end: the resolved operators push the right values."""
+    ctx = ExecutionContext(Operators())
+    ops = Operators()
+    ops.get_operator("true").execute(ctx)
+    ops.get_operator("false").execute(ctx)
+    assert ctx.get_stack() == [True, False]
+
+
 def test_each_operator_is_independent_instance() -> None:
     """The registry stores one instance per name; the same name across
     two ``Operators`` instances need not be the same Python object."""

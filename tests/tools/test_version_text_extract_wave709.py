@@ -187,7 +187,7 @@ def test_extracttext_run_returns_one_when_password_is_invalid(
     src.write_bytes(b"%PDF-1.4\n")
 
     def _load(*args: object, **kwargs: object) -> object:
-        raise extracttext.PDInvalidPasswordException("bad password")
+        raise extracttext.InvalidPasswordException("bad password")
 
     monkeypatch.setattr(extracttext.PDDocument, "load", _load)
 

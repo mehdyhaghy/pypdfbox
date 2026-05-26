@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import IO
 
 from pypdfbox.pdmodel import PDDocument
-from pypdfbox.pdmodel.encryption import PDInvalidPasswordException
+from pypdfbox.pdmodel.encryption import InvalidPasswordException
 from pypdfbox.pdmodel.interactive.action.pd_action_go_to import PDActionGoTo
 from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_named_destination import (
     PDNamedDestination,
@@ -235,7 +235,7 @@ def run(args: argparse.Namespace) -> int:
 
     try:
         doc = PDDocument.load(src, password=args.password or "")
-    except PDInvalidPasswordException as exc:
+    except InvalidPasswordException as exc:
         print(f"listbookmarks: {exc}", flush=True)
         return 1
 

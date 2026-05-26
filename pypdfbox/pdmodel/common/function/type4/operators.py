@@ -134,8 +134,13 @@ _CLASS_NAMES_BY_OP: dict[str, str] = {
     "floor": "Floor", "idiv": "IDiv", "ln": "Ln", "log": "Log",
     "mod": "Mod", "mul": "Mul", "neg": "Neg", "round": "Round",
     "sin": "Sin", "sqrt": "Sqrt", "sub": "Sub", "truncate": "Truncate",
-    "and": "And", "bitshift": "Bitshift", "false": "False", "not": "Not",
-    "or": "Or", "true": "True", "xor": "Xor",
+    # ``true`` / ``false`` map to ``TrueFunc`` / ``FalseFunc``: upstream
+    # names the nested classes ``True`` / ``False``, but those are
+    # reserved keywords in Python, so the ported classes carry the
+    # ``Func`` suffix. The PostScript operator names stay ``"true"`` /
+    # ``"false"``.
+    "and": "And", "bitshift": "Bitshift", "false": "FalseFunc", "not": "Not",
+    "or": "Or", "true": "TrueFunc", "xor": "Xor",
     "eq": "Eq", "ge": "Ge", "gt": "Gt", "le": "Le", "lt": "Lt", "ne": "Ne",
     "if": "If", "ifelse": "IfElse",
     "copy": "Copy", "dup": "Dup", "exch": "Exch", "index": "Index",

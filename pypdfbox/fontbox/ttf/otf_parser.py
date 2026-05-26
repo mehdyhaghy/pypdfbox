@@ -3,7 +3,9 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, BinaryIO
 
+from .cff_table import CFFTable
 from .open_type_font import OpenTypeFont
+from .otl_table import OTLTable
 from .true_type_font import TrueTypeFont
 from .ttf_data_stream import TTFDataStream
 from .ttf_parser import _TAG_OPEN_TYPE_CFF, _TAG_TRUE_TYPE, TTFParser
@@ -85,17 +87,23 @@ class OTFParser(TTFParser):
         Mirrors ``TTFTable readTable(String)`` (OTFParser.java L66-L82).
         The upstream switch returns ``OTLTable`` for the OpenType Layout
         tags (``BASE``, ``GDEF``, ``GPOS``, ``GSUB``, ``JSTF``) and
-        ``CFFTable`` for ``CFF ``. We do not (yet) ship dedicated
-        ``OTLTable`` / ``CFFTable`` subclasses — fontTools handles the
-        per-table decode for us — so the placeholders fall back to the
-        generic :class:`TTFTable` with the tag prefilled. Behaviour
-        observable to PDFBox-shaped callers (``getTag()`` returns the
-        right tag string) is preserved.
+        ``CFFTable`` for ``CFF ``. fontTools handles the per-table decode
+        for us, but the placeholders carry the correct type and tag so
+        callers that key off the table map (``has_table``, presence
+        checks) and PDFBox-shaped callers (``get_tag()`` returns the
+        right tag string) behave identically. Note upstream deliberately
+        routes ``GSUB`` to ``OTLTable`` too (the ``readTable`` switch is a
+        stub); the real GSUB projection comes from
+        :meth:`TrueTypeFont.get_gsub`, which reads fontTools directly.
         """
-        if tag in _OTF_OTL_TAGS or tag == _OTF_CFF_TAG:
-            table = TTFTable()
+        if tag in _OTF_OTL_TAGS:
+            table = OTLTable()
             table._tag = tag  # noqa: SLF001 — mirrors upstream constructor
             return table
+        if tag == _OTF_CFF_TAG:
+            cff = CFFTable()
+            cff._tag = tag  # noqa: SLF001 — mirrors upstream constructor
+            return cff
         return super().read_table(tag)
 
     def allow_cff(self) -> bool:

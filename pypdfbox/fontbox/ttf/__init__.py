@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .cff_table import CFFTable
 from .cmap_lookup import CmapLookup
 from .cmap_subtable import CmapSubtable
 from .digital_signature_table import DigitalSignatureTable
@@ -24,6 +25,7 @@ from .naming_table import NamingTable
 from .open_type_font import OpenTypeFont
 from .os2_windows_metrics_table import OS2WindowsMetricsTable
 from .otf_parser import OTFParser
+from .otl_table import OTLTable
 from .post_script_table import PostScriptTable
 from .true_type_font import TrueTypeFont
 from .ttf_data_stream import (
@@ -39,6 +41,7 @@ from .vertical_metrics_table import VerticalMetricsTable
 
 __all__ = [
     "BoundingBox",
+    "CFFTable",
     "CmapLookup",
     "CmapSubtable",
     "DigitalSignatureTable",
@@ -64,6 +67,7 @@ __all__ = [
     "NamingTable",
     "OS2WindowsMetricsTable",
     "OTFParser",
+    "OTLTable",
     "OpenTypeFont",
     "PostScriptTable",
     "RandomAccessReadDataStream",

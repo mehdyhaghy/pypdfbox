@@ -985,8 +985,8 @@ def test_document_opener_prompt_password_with_master(
 def test_document_opener_parse_retries_on_invalid_password(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """After a single ``PDInvalidPasswordException``, ``parse`` retries with new pwd."""
-    from pypdfbox.pdmodel.encryption import PDInvalidPasswordException
+    """After a single ``InvalidPasswordException``, ``parse`` retries with new pwd."""
+    from pypdfbox.pdmodel.encryption import InvalidPasswordException
 
     opener = DocumentOpener(password="")
     counter = {"n": 0}
@@ -994,7 +994,7 @@ def test_document_opener_parse_retries_on_invalid_password(
     def _open() -> Any:
         counter["n"] += 1
         if counter["n"] == 1:
-            raise PDInvalidPasswordException("wrong")
+            raise InvalidPasswordException("wrong")
         return "ok"
 
     opener.open = _open  # type: ignore[assignment,method-assign]
@@ -1007,16 +1007,16 @@ def test_document_opener_parse_retries_on_invalid_password(
 def test_document_opener_parse_propagates_when_user_cancels(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from pypdfbox.pdmodel.encryption import PDInvalidPasswordException
+    from pypdfbox.pdmodel.encryption import InvalidPasswordException
 
     opener = DocumentOpener(password="")
 
     def _open() -> Any:
-        raise PDInvalidPasswordException("nope")
+        raise InvalidPasswordException("nope")
 
     opener.open = _open  # type: ignore[assignment,method-assign]
     monkeypatch.setattr(opener, "_prompt_password", lambda: None)  # noqa: SLF001
-    with pytest.raises(PDInvalidPasswordException):
+    with pytest.raises(InvalidPasswordException):
         opener.parse()
 
 

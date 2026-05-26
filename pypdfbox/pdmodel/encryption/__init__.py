@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .access_permission import AccessPermission
 from .decryption_material import DecryptionMaterial
+from .invalid_password_exception import InvalidPasswordException
 from .message_digests import MessageDigests
 from .pd_crypt_filter_dictionary import PDCryptFilterDictionary
 from .pd_encryption import PDEncryption
@@ -22,7 +23,6 @@ from .security_provider import (
 )
 from .standard_protection_policy import StandardProtectionPolicy
 from .standard_security_handler import (
-    PDInvalidPasswordException,
     StandardDecryptionMaterial,
     StandardSecurityHandler,
 )
@@ -30,10 +30,10 @@ from .standard_security_handler import (
 __all__ = [
     "AccessPermission",
     "DecryptionMaterial",
+    "InvalidPasswordException",
     "MessageDigests",
     "PDCryptFilterDictionary",
     "PDEncryption",
-    "PDInvalidPasswordException",
     "ProtectionPolicy",
     "PublicKeyDecryptionMaterial",
     "PublicKeyProtectionPolicy",

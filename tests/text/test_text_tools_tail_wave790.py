@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pytest
 
 from pypdfbox.cos import COSArray, COSInteger, COSString
-from pypdfbox.pdmodel.encryption import PDInvalidPasswordException
+from pypdfbox.pdmodel.encryption import InvalidPasswordException
 from pypdfbox.text import FilteredTextStripper, TextPosition
 from pypdfbox.text.pdf_text_stripper import PDFTextStripper, _TextState
 from pypdfbox.tools import decrypt, encrypt
@@ -129,7 +129,7 @@ def test_wave790_decrypt_in_place_invalid_password_during_save_branch(
         return _Probe()
 
     def _decrypt_pdf(*args: object, **kwargs: object) -> None:
-        raise PDInvalidPasswordException("password failed after probe")
+        raise InvalidPasswordException("password failed after probe")
 
     monkeypatch.setattr(decrypt.PDDocument, "load", _load)
     monkeypatch.setattr(decrypt, "decrypt_pdf", _decrypt_pdf)

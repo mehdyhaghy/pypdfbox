@@ -1796,9 +1796,9 @@ def test_document_opener_parse_returns_open_result() -> None:
 def test_document_opener_parse_retries_after_password_prompt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """``parse()`` re-asks for a password on each PDInvalidPasswordException."""
+    """``parse()`` re-asks for a password on each InvalidPasswordException."""
     from pypdfbox.debugger.pd_debugger import DocumentOpener
-    from pypdfbox.pdmodel.encryption import PDInvalidPasswordException
+    from pypdfbox.pdmodel.encryption import InvalidPasswordException
 
     doc = PDDocument()
     try:
@@ -1808,7 +1808,7 @@ def test_document_opener_parse_retries_after_password_prompt(
             def open(self):  # type: ignore[override]
                 attempts.append(self.password)
                 if len(attempts) < 3:
-                    raise PDInvalidPasswordException()
+                    raise InvalidPasswordException()
                 return doc
 
         # Simulate the user typing two wrong passwords before the right
@@ -1836,11 +1836,11 @@ def test_document_opener_parse_propagates_on_cancel(
 ) -> None:
     """A ``None`` from the prompt cancels the loop and re-raises."""
     from pypdfbox.debugger.pd_debugger import DocumentOpener
-    from pypdfbox.pdmodel.encryption import PDInvalidPasswordException
+    from pypdfbox.pdmodel.encryption import InvalidPasswordException
 
     class _AlwaysFailsOpener(DocumentOpener):
         def open(self):  # type: ignore[override]
-            raise PDInvalidPasswordException()
+            raise InvalidPasswordException()
 
     monkeypatch.setattr(
         DocumentOpener,
@@ -1848,5 +1848,5 @@ def test_document_opener_parse_propagates_on_cancel(
         lambda self: None,
     )
     opener = _AlwaysFailsOpener(password="")
-    with pytest.raises(PDInvalidPasswordException):
+    with pytest.raises(InvalidPasswordException):
         opener.parse()

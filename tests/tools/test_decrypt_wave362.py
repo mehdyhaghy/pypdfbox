@@ -14,7 +14,7 @@ from cryptography.x509.oid import NameOID
 from pypdfbox import Loader
 from pypdfbox.cos import COSStream
 from pypdfbox.pdmodel import PDDocument, PDPage
-from pypdfbox.pdmodel.encryption import PDInvalidPasswordException
+from pypdfbox.pdmodel.encryption import InvalidPasswordException
 from pypdfbox.pdmodel.encryption.access_permission import AccessPermission
 from pypdfbox.pdmodel.encryption.standard_protection_policy import (
     StandardProtectionPolicy,
@@ -190,7 +190,7 @@ def test_wave362_non_in_place_helper_password_error_after_probe(
     out = tmp_path / "out.pdf"
 
     def fail_decrypt_pdf(*_args: object, **_kwargs: object) -> None:
-        raise PDInvalidPasswordException("late password failure")
+        raise InvalidPasswordException("late password failure")
 
     monkeypatch.setattr(decrypt, "decrypt_pdf", fail_decrypt_pdf)
 

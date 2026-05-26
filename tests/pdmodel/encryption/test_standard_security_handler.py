@@ -14,7 +14,7 @@ from pypdfbox.pdmodel.encryption.access_permission import AccessPermission
 from pypdfbox.pdmodel.encryption.pd_encryption import PDEncryption
 from pypdfbox.pdmodel.encryption.security_handler import SecurityHandler
 from pypdfbox.pdmodel.encryption.standard_security_handler import (
-    PDInvalidPasswordException,
+    InvalidPasswordException,
     StandardDecryptionMaterial,
     StandardSecurityHandler,
 )
@@ -195,7 +195,7 @@ def test_prepare_for_decryption_wrong_password_raises() -> None:
     _handler, encryption = _build_handler_r3_rc4_128("user", "owner", document_id)
 
     decoder = StandardSecurityHandler()
-    with pytest.raises(PDInvalidPasswordException):
+    with pytest.raises(InvalidPasswordException):
         decoder.prepare_for_decryption(
             encryption, document_id, StandardDecryptionMaterial("nope")
         )

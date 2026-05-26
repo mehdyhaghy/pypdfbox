@@ -59,7 +59,7 @@ from pypdfbox.pdmodel.encryption.standard_protection_policy import (  # noqa: E4
     StandardProtectionPolicy,
 )
 from pypdfbox.pdmodel.encryption.standard_security_handler import (  # noqa: E402
-    PDInvalidPasswordException,
+    InvalidPasswordException,
     StandardSecurityHandler,
 )
 
@@ -325,7 +325,7 @@ def test_wrong_password_rejected_each_revision(
     )
     pd.close()
 
-    with pytest.raises(PDInvalidPasswordException):
+    with pytest.raises(InvalidPasswordException):
         Loader.load_pdf(saved, "definitely-not-correct")
 
 
@@ -505,7 +505,7 @@ def test_r5_wrong_password_rejected() -> None:
     )
 
     reader = StandardSecurityHandler()
-    with pytest.raises(PDInvalidPasswordException):
+    with pytest.raises(InvalidPasswordException):
         reader.prepare_for_decryption(
             enc, b"\x00" * 16, StandardDecryptionMaterial(b"wrong-pw")
         )

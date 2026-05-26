@@ -10,7 +10,7 @@ from pypdfbox.pdmodel.encryption.standard_protection_policy import (
 )
 from pypdfbox.pdmodel.encryption.standard_security_handler import (
     DEFAULT_PERMISSIONS,
-    PDInvalidPasswordException,
+    InvalidPasswordException,
     StandardDecryptionMaterial,
     StandardSecurityHandler,
 )
@@ -73,7 +73,7 @@ def test_wave538_prepare_for_decryption_requires_password_entries() -> None:
     encryption.set_length(256)
     encryption.set_p(DEFAULT_PERMISSIONS)
 
-    with pytest.raises(PDInvalidPasswordException):
+    with pytest.raises(InvalidPasswordException):
         StandardSecurityHandler().prepare_for_decryption(
             encryption,
             b"",

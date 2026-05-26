@@ -10,7 +10,7 @@ covered by ``tests/pdmodel/encryption/test_pd_encryption.py`` and the
 * ``PDDocument.decrypt`` propagates a ``StandardSecurityHandler`` to every
   ``COSStream`` in the pool, after which ``create_input_stream`` recovers
   the plaintext;
-* a wrong password raises :class:`PDInvalidPasswordException`;
+* a wrong password raises :class:`InvalidPasswordException`;
 * ``set_all_security_to_be_removed`` strips ``/Encrypt`` from the saved
   document so it round-trips unencrypted.
 """
@@ -43,7 +43,7 @@ from pypdfbox.pdmodel.encryption.standard_protection_policy import (  # noqa: E4
     StandardProtectionPolicy,
 )
 from pypdfbox.pdmodel.encryption.standard_security_handler import (  # noqa: E402
-    PDInvalidPasswordException,
+    InvalidPasswordException,
     StandardSecurityHandler,
 )
 
@@ -199,7 +199,7 @@ def test_decrypt_via_pddocument_round_trip() -> None:
 
 def test_decrypt_with_wrong_password_raises() -> None:
     pdf, _ = _build_encrypted_document("correct", b"x")
-    with pytest.raises(PDInvalidPasswordException):
+    with pytest.raises(InvalidPasswordException):
         Loader.load_pdf(pdf, "WRONG")
 
 

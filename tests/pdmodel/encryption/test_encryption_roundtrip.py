@@ -31,7 +31,7 @@ from pypdfbox.pdmodel.encryption.standard_protection_policy import (  # noqa: E4
     StandardProtectionPolicy,
 )
 from pypdfbox.pdmodel.encryption.standard_security_handler import (  # noqa: E402
-    PDInvalidPasswordException,
+    InvalidPasswordException,
 )
 
 # ---------------------------------------------------------------- helpers
@@ -175,7 +175,7 @@ def test_wrong_password_rejected_on_round_trip() -> None:
     saved = _save_to_bytes(pd)
     pd.close()
 
-    with pytest.raises(PDInvalidPasswordException):
+    with pytest.raises(InvalidPasswordException):
         Loader.load_pdf(saved, "nope")
 
 

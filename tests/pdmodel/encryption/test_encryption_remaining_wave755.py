@@ -13,7 +13,7 @@ from pypdfbox.pdmodel.encryption.security_provider import (
 )
 from pypdfbox.pdmodel.encryption.standard_security_handler import (
     DEFAULT_PERMISSIONS,
-    PDInvalidPasswordException,
+    InvalidPasswordException,
     StandardDecryptionMaterial,
     StandardSecurityHandler,
 )
@@ -52,7 +52,7 @@ def test_standard_prepare_for_decryption_rejects_invalid_r6_key_material() -> No
     encryption.set_ue(b"k" * 32)
     encryption.set_perms(b"p" * 16)
 
-    with pytest.raises(PDInvalidPasswordException):
+    with pytest.raises(InvalidPasswordException):
         StandardSecurityHandler().prepare_for_decryption(
             encryption,
             b"",
@@ -68,7 +68,7 @@ def test_standard_prepare_for_decryption_requires_legacy_o_and_u_entries() -> No
     encryption.set_length(128)
     encryption.set_p(DEFAULT_PERMISSIONS)
 
-    with pytest.raises(PDInvalidPasswordException):
+    with pytest.raises(InvalidPasswordException):
         StandardSecurityHandler().prepare_for_decryption(
             encryption,
             b"doc-id",

@@ -41,6 +41,7 @@ except ImportError:  # pragma: no cover
 
 from .access_permission import AccessPermission
 from .decryption_material import DecryptionMaterial
+from .invalid_password_exception import InvalidPasswordException
 from .security_handler import SecurityHandler
 
 if TYPE_CHECKING:
@@ -69,16 +70,6 @@ _PASSWORD_PADDING = bytes(
 
 # Default permissions: allow everything (low 32 bits set; high bits cleared).
 DEFAULT_PERMISSIONS = -3904  # mirrors PDFBox's PDFBOX_PERMISSIONS_DEFAULT
-
-
-class PDInvalidPasswordException(OSError):
-    """Raised when neither owner nor user password validates."""
-
-    def __init__(
-        self,
-        message: str = "Cannot decrypt PDF, the password is incorrect",
-    ) -> None:
-        super().__init__(message)
 
 
 class StandardDecryptionMaterial(DecryptionMaterial):
@@ -917,12 +908,12 @@ class StandardSecurityHandler(SecurityHandler):
             ue = encryption.get_ue()
             perms = encryption.get_perms()
             if o is None or u is None or oe is None or ue is None or perms is None:
-                raise PDInvalidPasswordException()
+                raise InvalidPasswordException()
             key = self._compute_encryption_key_r5_r6(
                 password, o, u, oe, ue, perms, revision
             )
             if key is None:
-                raise PDInvalidPasswordException()
+                raise InvalidPasswordException()
             owner_password = self._is_owner_password_r5_r6(password, o, u, revision)
             self.set_encryption_key(key)
             # Algorithm 13 — verify /Perms. Upstream merely warns on mismatch
@@ -947,7 +938,7 @@ class StandardSecurityHandler(SecurityHandler):
 
         # Revisions 2-4: try owner password first, then user password.
         if o is None or u is None:
-            raise PDInvalidPasswordException()
+            raise InvalidPasswordException()
         key_len_bytes = key_length_bits // 8
         owner_key = self._compute_encryption_key_via_owner_password(
             password,
@@ -987,7 +978,7 @@ class StandardSecurityHandler(SecurityHandler):
             self.set_current_access_permission(ap)
             return
 
-        raise PDInvalidPasswordException()
+        raise InvalidPasswordException()
 
     # ----------------------------------------------------------- write path
 
@@ -2197,7 +2188,7 @@ StandardSecurityHandler.PROTECTION_POLICY_CLASS = _StandardProtectionPolicy
 
 __all__ = [
     "DEFAULT_PERMISSIONS",
-    "PDInvalidPasswordException",
+    "InvalidPasswordException",
     "StandardDecryptionMaterial",
     "StandardSecurityHandler",
 ]

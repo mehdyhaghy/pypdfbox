@@ -9,7 +9,7 @@ import pytest
 
 from pypdfbox.cos import COSArray
 from pypdfbox.filter._predictor import _unpng
-from pypdfbox.pdmodel.encryption import PDInvalidPasswordException
+from pypdfbox.pdmodel.encryption import InvalidPasswordException
 from pypdfbox.text.filtered_text_stripper import FilteredTextStripper
 from pypdfbox.text.pdf_text_stripper import _TextState
 from pypdfbox.text.text_position import TextPosition
@@ -136,7 +136,7 @@ def test_wave800_decrypt_in_place_invalid_password_from_save_path_returns_one(
             return _Permission()
 
     def _raise_invalid_password(*args: object, **kwargs: object) -> None:
-        raise PDInvalidPasswordException("still locked")
+        raise InvalidPasswordException("still locked")
 
     monkeypatch.setattr(decrypt.PDDocument, "load", lambda *a, **k: _Probe())
     monkeypatch.setattr(decrypt, "decrypt_pdf", _raise_invalid_password)

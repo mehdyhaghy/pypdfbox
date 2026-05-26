@@ -25,6 +25,7 @@ from pypdfbox.xmpbox.type.date_type import DateType
 from pypdfbox.xmpbox.type.integer_type import IntegerType
 from pypdfbox.xmpbox.type.lang_alt import LangAlt
 from pypdfbox.xmpbox.type.text_type import TextType
+from pypdfbox.xmpbox.xml.xmp_serialization_exception import XmpSerializationException
 from pypdfbox.xmpbox.xmp_metadata import (
     DEFAULT_RDF_PREFIX,
     DESCRIPTION_NAME,
@@ -301,8 +302,19 @@ class XmpSerializer:
 
     def _save(self, doc: Document, output: BinaryIO) -> None:
         encoding = "UTF-8"
-        data = doc.toxml(encoding=encoding)
-        output.write(data)
+        # Upstream ``XmpSerializer.save`` declares ``throws TransformerException``
+        # and the serializer surfaces any transform/write failure as an
+        # ``XmpSerializationException``. The Python analogue of the
+        # ``transformer.transform(source, result)`` step is rendering the DOM
+        # and writing it to the stream; wrap that so I/O or rendering failures
+        # become ``XmpSerializationException`` instead of a raw OSError/ValueError.
+        try:
+            data = doc.toxml(encoding=encoding)
+            output.write(data)
+        except (OSError, ValueError, TypeError) as exc:
+            raise XmpSerializationException(
+                "Failed to serialize the XMP metadata", exc
+            ) from exc
 
     # --- Upstream parity surface --------------------------------------
     # These map upstream's protected/private helpers onto public methods
@@ -332,9 +344,20 @@ class XmpSerializer:
             return []
 
     def save(self, doc: Document, output: BinaryIO, encoding: str = "UTF-8") -> None:
-        """Mirror of ``XmpSerializer.save`` (Java line 308)."""
-        data = doc.toxml(encoding=encoding)
-        output.write(data)
+        """Mirror of ``XmpSerializer.save`` (Java line 308).
+
+        Upstream declares ``throws TransformerException``; any failure while
+        rendering the DOM or writing it to the stream is reported as an
+        :class:`XmpSerializationException` (matching the serializer's
+        documented error contract).
+        """
+        try:
+            data = doc.toxml(encoding=encoding)
+            output.write(data)
+        except (OSError, ValueError, TypeError) as exc:
+            raise XmpSerializationException(
+                "Failed to serialize the XMP metadata", exc
+            ) from exc
 
 
 __all__ = ["XmpSerializer"]

@@ -6,7 +6,7 @@ import pytest
 
 from pypdfbox.pdmodel.encryption.pd_encryption import PDEncryption
 from pypdfbox.pdmodel.encryption.standard_security_handler import (
-    PDInvalidPasswordException,
+    InvalidPasswordException,
     StandardDecryptionMaterial,
     StandardSecurityHandler,
 )
@@ -81,7 +81,7 @@ def test_prepare_for_decryption_revision6_missing_key_fields_raises() -> None:
     encryption.set_o(b"\x00" * 48)
     encryption.set_u(b"\x00" * 48)
 
-    with pytest.raises(PDInvalidPasswordException):
+    with pytest.raises(InvalidPasswordException):
         StandardSecurityHandler().prepare_for_decryption(
             encryption,
             b"",
