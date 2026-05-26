@@ -248,25 +248,50 @@ class PDType1FontEmbedder:
         fd.set_non_symbolic(not is_symbolic)
         fd.set_symbolic(is_symbolic)
         try:
-            bbox = metrics.get_font_bbox()
+            bbox = metrics.get_font_b_box()
+            # AfmMetrics.get_font_b_box returns a FontBox ``BoundingBox`` object
+            # (mirroring FontMetrics.getFontBBox()), not a 4-element sequence.
+            # Normalise via its accessors, falling back to subscripting for a
+            # plain list/tuple shape.
+            if hasattr(bbox, "get_lower_left_x"):
+                coords = (
+                    bbox.get_lower_left_x(),
+                    bbox.get_lower_left_y(),
+                    bbox.get_upper_right_x(),
+                    bbox.get_upper_right_y(),
+                )
+            else:
+                coords = (bbox[0], bbox[1], bbox[2], bbox[3])
             rect = PDRectangle()
-            rect.set_lower_left_x(float(bbox[0]))
-            rect.set_lower_left_y(float(bbox[1]))
-            rect.set_upper_right_x(float(bbox[2]))
-            rect.set_upper_right_y(float(bbox[3]))
+            rect.set_lower_left_x(float(coords[0]))
+            rect.set_lower_left_y(float(coords[1]))
+            rect.set_upper_right_x(float(coords[2]))
+            rect.set_upper_right_y(float(coords[3]))
             fd.set_font_bounding_box(rect)
         except (AttributeError, TypeError, IndexError):
             pass
-        for accessor, setter in (
-            ("get_italic_angle", "set_italic_angle"),
-            ("get_ascender", "set_ascent"),
-            ("get_descender", "set_descent"),
-            ("get_cap_height", "set_cap_height"),
-            ("get_x_height", "set_x_height"),
-            ("get_average_character_width", "set_average_width"),
+        # Ascender / descender / cap-height / x-height live on the underlying
+        # FontBox ``FontMetrics`` object (mirroring upstream
+        # buildFontDescriptor(FontMetrics)); the AfmMetrics wrapper only
+        # surfaces them through get_font_metrics_object(). ItalicAngle and the
+        # average width are exposed directly on the wrapper.
+        font_metrics = None
+        try:
+            font_metrics = metrics.get_font_metrics_object()
+        except AttributeError:
+            font_metrics = None
+        for source, accessor, setter in (
+            (metrics, "get_italic_angle", "set_italic_angle"),
+            (font_metrics, "get_ascender", "set_ascent"),
+            (font_metrics, "get_descender", "set_descent"),
+            (font_metrics, "get_cap_height", "set_cap_height"),
+            (font_metrics, "get_x_height", "set_x_height"),
+            (metrics, "get_average_width", "set_average_width"),
         ):
+            if source is None:
+                continue
             try:
-                value = getattr(metrics, accessor)()
+                value = getattr(source, accessor)()
                 getattr(fd, setter)(float(value))
             except (AttributeError, TypeError, ValueError):
                 continue

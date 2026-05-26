@@ -22,7 +22,14 @@ _REPLACEMENT_CHARACTER: Final[str] = "�"
 
 
 def _build_tables() -> tuple[list[str], dict[str, int]]:
-    code_to_uni: list[str] = ["�"] * 256
+    # Upstream's CODE_TO_UNI is an ``int[]`` whose unset slots default to 0,
+    # and ``toString`` casts each slot to ``(char)``. So any code that is
+    # neither given an ISO-8859-1 identity below nor an explicit deviation
+    # decodes to U+0000 (NUL) — not U+FFFD. The only such slot in practice
+    # is 0xAD (SOFT HYPHEN), which PDFDocEncoding leaves undefined; matching
+    # upstream's NUL default here keeps decode parity byte-for-byte
+    # (PDFBOX named-destination strings carrying a raw 0xAD differ otherwise).
+    code_to_uni: list[str] = ["\u0000"] * 256
     uni_to_code: dict[str, int] = {}
 
     def _set(code: int, unicode_char: str) -> None:
@@ -111,8 +118,10 @@ def decode_bytes(data: bytes | bytearray | memoryview) -> str:
     Mirrors upstream ``toString(byte[])``. Bytes whose code is outside the
     256-entry table (cannot happen for ``bytes`` whose values are in
     ``0..255``, but the upstream loop guards against signed-byte oddities)
-    map to ``"?"``; entries marked "undefined" in the spec map to
-    ``U+FFFD`` REPLACEMENT CHARACTER.
+    map to ``"?"``; the two codes explicitly flagged "undefined" in the
+    table (``0x7F``, ``0x9F``) map to ``U+FFFD`` REPLACEMENT CHARACTER, while
+    any slot with no table entry at all (only ``0xAD``) maps to ``U+0000`` —
+    matching upstream's ``int[]`` default-of-0 / ``(char)`` cast.
     """
     out: list[str] = []
     for b in data:

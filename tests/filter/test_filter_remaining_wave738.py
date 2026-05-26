@@ -24,9 +24,12 @@ def _pack_lzw_codes(codes: list[tuple[int, int]]) -> bytes:
     return out.getvalue()
 
 
-def test_ascii85_decoder_wraps_stdlib_overflow_as_oserror() -> None:
-    with pytest.raises(OSError, match="decode failed"):
-        _decode_ascii85(b"uuuuu~>")
+def test_ascii85_decoder_masks_group_overflow_like_pdfbox() -> None:
+    # A 5-digit group of b'u' (0x75, the max digit) overflows 32 bits.
+    # PDFBox does NOT reject it — it masks the accumulator to 32 bits and
+    # emits the four low bytes. Verified against the live oracle (wave 1412):
+    # b"uuuuu~>" decodes to 0x08780ec4.
+    assert _decode_ascii85(b"uuuuu~>") == bytes.fromhex("08780ec4")
 
 
 def test_lzw_decode_params_array_out_of_range_falls_back_to_empty_dict() -> None:

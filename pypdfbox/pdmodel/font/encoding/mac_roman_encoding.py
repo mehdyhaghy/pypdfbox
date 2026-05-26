@@ -18,6 +18,12 @@ class MacRomanEncoding(Encoding):
         super().__init__()
         for code, name in _TABLE:
             self.add(code, name)
+        # PDFBOX-1611: upstream MacRomanEncoding overrides code 0312 (202) to
+        # "nbspace" on top of the standard MacRoman table. The base fontbox
+        # table maps 202 to "space"-class glyphs only implicitly; this explicit
+        # entry makes code 202 resolve to U+00A0 via the glyph list (matters
+        # for text extraction / to_unicode of MacRoman-encoded simple fonts).
+        self.add(0o312, "nbspace")
 
     def get_cos_object(self) -> COSBase | None:
         # Upstream returns COSName.MAC_ROMAN_ENCODING directly.

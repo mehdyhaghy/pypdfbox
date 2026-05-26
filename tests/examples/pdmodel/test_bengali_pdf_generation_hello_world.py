@@ -340,12 +340,19 @@ def test_main_helvetica_fallback_uses_skipped_placeholder(
     assert out.read_bytes()[:4] == b"%PDF"
 
 
-def test_get_re_aligned_text_helvetica_raises_attribute_error() -> None:
-    # Helvetica fallback has no /FontDescriptor → get_font_descriptor()
-    # returns None and the height re-align raises AttributeError, which
-    # main() catches and falls back to a single-line-per-page layout.
+def test_get_re_aligned_text_helvetica_uses_synthesized_descriptor() -> None:
+    # Standard-14 Helvetica now carries a synthesized /FontDescriptor built
+    # from the AFM (wave 1412 fix, matching PDFBox), so get_font_descriptor()
+    # returns a descriptor with a real /FontBBox and the height re-align reads
+    # it and splits normally instead of raising AttributeError.
     font = make_standard14_type1_font(FontName.HELVETICA)
-    with pytest.raises((AttributeError, TypeError)):
-        BengaliPdfGenerationHelloWorld.get_re_aligned_text_based_on_page_height(
-            ["x"], font, 100.0,
-        )
+    descriptor = font.get_font_descriptor()
+    assert descriptor is not None
+    assert descriptor.get_font_bounding_box().get_height() > 0
+    pages = BengaliPdfGenerationHelloWorld.get_re_aligned_text_based_on_page_height(
+        ["x", "y", "z"], font, 100.0,
+    )
+    assert pages
+    assert all(isinstance(page, list) for page in pages)
+    # All input lines preserved across the page split.
+    assert [line for page in pages for line in page] == ["x", "y", "z"]

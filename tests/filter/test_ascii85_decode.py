@@ -84,8 +84,9 @@ def test_partial_trailing_group_three_bytes() -> None:
 
 
 def test_decode_ignores_embedded_whitespace() -> None:
-    # Sprinkle space, tab, newline, carriage return, NUL into a valid stream.
-    encoded = b"9j\nq\to \r ~>"
+    # PDFBox's ASCII85InputStream skips only LF, CR and SPACE (verified
+    # against the live oracle, wave 1412) — NOT TAB / NUL / FF.
+    encoded = b"9j\nq\ro \r ~>"
     assert _decode(encoded) == b"Man"
 
 
@@ -119,15 +120,24 @@ def test_decode_without_eod_marker() -> None:
     assert _decode(b"9jqo") == b"Man"
 
 
-def test_decode_invalid_char_raises() -> None:
-    with pytest.raises(OSError):
-        _decode(b"9jqo|~>")  # '|' is 0x7C, above 'u' (0x75).
+def test_decode_rejects_byte_outside_pdfbox_range() -> None:
+    # PDFBox's range check is ``c - '!'`` in 0..93, i.e. b'!'..b'~'. A byte
+    # at or above 0x7f (here DEL, 0x7f) is rejected. Verified vs the oracle.
+    with pytest.raises(OSError, match="Invalid data"):
+        _decode(b"9jqo\x7f~>")
 
 
-def test_decode_z_mid_group_raises() -> None:
-    # 'z' is only valid at the start of a 5-char group.
-    with pytest.raises(OSError):
-        _decode(b"9jz~>")
+def test_decode_accepts_byte_up_to_tilde() -> None:
+    # '|' (0x7C) is within PDFBox's accepted b'!'..b'~' digit range, so it
+    # is NOT rejected; it is treated as an ordinary base-85 digit and the
+    # per-group overflow is masked. Verified against the live oracle.
+    assert _decode(b"9jqo|~>") == bytes.fromhex("4d616e3e")
+
+
+def test_decode_z_mid_group_is_ordinary_digit() -> None:
+    # 'z' is the 4-zero shortcut only at a group boundary; mid-group it is
+    # an ordinary digit. Verified against the live oracle (wave 1412).
+    assert _decode(b"9jz~>") == bytes.fromhex("4d62")
 
 
 def test_factory_resolves_long_and_short_names() -> None:

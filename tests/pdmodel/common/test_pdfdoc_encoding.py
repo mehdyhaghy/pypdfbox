@@ -114,14 +114,21 @@ def test_undefined_codes_map_to_replacement_character() -> None:
 
 
 def test_holes_decode_to_replacement_character() -> None:
-    # Codes inside the undefined holes (0x80..0xA0 except deviations,
-    # plus 0xAD soft hyphen) decode to U+FFFD.
+    # Codes inside the 0x80..0xA0 block that are explicitly flagged
+    # "undefined" in table D.2 (only 0x9F here) decode to U+FFFD.
     for i in range(0x80, 0xA1):
         if i in {code for code, _ in _DEVIATIONS}:
             continue
         # All others are undefined holes.
         assert decode_bytes(bytes([i])) == "�"
-    assert decode_bytes(bytes([0xAD])) == "�"
+
+
+def test_soft_hyphen_0xad_decodes_to_nul() -> None:
+    # 0xAD (SOFT HYPHEN) is left entirely unmapped by PDFDocEncoding — it is
+    # never assigned, so upstream's int[] CODE_TO_UNI slot stays 0 and
+    # toString casts it to (char) 0 = U+0000. Verified live against PDFBox
+    # 3.0.7 (oracle ActionProbe, fixture PDFBOX-5840). NOT U+FFFD.
+    assert decode_bytes(bytes([0xAD])) == "\u0000"
 
 
 def test_contains_char_for_representable_chars() -> None:
@@ -208,9 +215,13 @@ def test_class_set_rejects_invalid_input() -> None:
 
 
 def test_round_trip_every_pdfdocencoding_byte() -> None:
-    # Every byte that decodes to something other than U+FFFD must
-    # round-trip back to itself through encode_bytes.
+    # Every byte that decodes to a defined character must round-trip back to
+    # itself through encode_bytes. The undefined slots don't: 0x7F / 0x9F
+    # decode to U+FFFD (unmappable -> 0), and 0xAD is unmapped and decodes to
+    # U+0000 which encodes back to 0x00 (the NUL identity), not 0xAD.
     for i in range(256):
+        if i == 0xAD:
+            continue
         decoded = decode_bytes(bytes([i]))
         if decoded == "�":
             # Undefined codes don't round-trip — encoding U+FFFD goes to

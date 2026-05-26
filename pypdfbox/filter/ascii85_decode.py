@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-import binascii
 from typing import BinaryIO, Final
 
 from pypdfbox.cos import COSDictionary
@@ -20,18 +19,42 @@ from .filter_factory import FilterFactory
 # The encoded stream is terminated by b'~>'. Whitespace inside the stream is
 # ignored on decode.
 #
-# The Python stdlib (``base64.a85encode`` / ``base64.a85decode``) implements
-# this exact base-85 numerical scheme — including the b'z' shortcut on encode
-# and whitespace skipping plus b'<~' / b'~>' framing on decode — so this
-# filter is a thin adapter per PRD §3.7. The PDF-specific bits we own are:
-#   * no leading b'<~' on encode (PDFBox / PDF spec uses only the b'~>' tail);
-#   * trim trailing newline that ``a85encode`` does not append (it doesn't);
-#   * surface invalid input as ``OSError`` for parser-friendly handling;
-#   * reject a b'z' that appears mid-group (stdlib already enforces this in
-#     strict mode but we double-check for a clearer error message).
+# ENCODE delegates to the Python stdlib (``base64.a85encode``) which implements
+# the exact base-85 numerical scheme — including the b'z' shortcut — so the
+# encoder is a thin adapter per PRD §3.7. The PDF-specific bits we own are
+# stripping the leading b'<~' Adobe marker (PDF uses only the b'~>' tail).
+#
+# Decode reproduces the accumulator of upstream's
+# ``org.apache.pdfbox.filter.ASCII85InputStream`` exactly, verified
+# byte-for-byte against the live PDFBox oracle (wave 1412). The relevant
+# upstream rules (PDFBox 3.0.7) that the stdlib strict decoder could NOT
+# match — and that an earlier value-based port got wrong — are:
+#
+#   * Whitespace ignored on decode is ONLY LF (0x0a), CR (0x0d) and SPACE
+#     (0x20). PDFBox does NOT skip NUL / TAB / FF / VT; those bytes are
+#     digits and fall under the range check below.
+#   * A digit byte ``c`` contributes ``c - '!'`` to the base-85 accumulator.
+#     PDFBox raises ("Invalid data in Ascii85 stream") iff ``c - '!'`` is
+#     ``< 0 or > 93`` — i.e. it accepts the whole range b'!'(0x21)..b'~'
+#     (0x7e), wider than the b'!'..b'u' the encoder ever emits, and lets the
+#     32-bit wrap mask any per-group overflow.
+#   * The b'z' 4-zero shortcut fires ONLY at a group boundary. Mid-group a
+#     b'z' is an ordinary digit (0x7a - 0x21 = 89).
+#   * A trailing partial group of ``n`` digits is padded with b'u' and yields
+#     ``n - 1`` bytes; a lone single digit (n == 1) yields nothing and is
+#     dropped silently.
+#
+# (PDFBox decoding a stream that lacks the b'~>' marker can read past EOF and
+# duplicate output — a harness artifact, not a real-PDF case; real PDF
+# ASCII85 streams always carry the b'~>' terminator, so we honour it strictly.)
 
 _EOD: Final[bytes] = b"~>"
-_WHITESPACE: Final[frozenset[int]] = frozenset(b"\x00\t\n\x0c\r ")
+# Upstream ASCII85InputStream skips only LF, CR and SPACE — NOT NUL/TAB/FF/VT.
+_WHITESPACE: Final[frozenset[int]] = frozenset(b"\n\r ")
+_Z: Final[int] = 0x7A  # b'z' — 4-zero-byte shortcut at a group boundary
+_DIGIT_OFFSET: Final[int] = 0x21  # b'!' — base-85 digit zero
+_DIGIT_MAX: Final[int] = 93  # c - '!' must be in 0..93 (b'!'..b'~'); else invalid
+_U32_MASK: Final[int] = 0xFFFFFFFF
 
 
 class ASCII85Decode(Filter):
@@ -80,35 +103,53 @@ class ASCII85Decode(Filter):
 
     @staticmethod
     def _decode_bytes(data: bytes) -> bytes:
-        # Strip everything after (and including) the EOD marker, if present.
+        # Strip everything from the EOD marker onward, if present.
         eod = data.find(_EOD)
         if eod >= 0:
             data = data[:eod]
-        # Drop whitespace; we need to validate range and detect a misplaced
-        # b'z' ourselves before handing what's left to the stdlib decoder.
-        cleaned = bytearray()
-        col = 0  # position within the current 5-char group
+
+        out = bytearray()
+        group: list[int] = []  # base-85 digits buffered for the current group
+
+        def flush_full() -> None:
+            value = 0
+            for digit in group:
+                value = value * 85 + (digit - _DIGIT_OFFSET)
+            value &= _U32_MASK
+            out.extend(
+                ((value >> 24) & 0xFF, (value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF)
+            )
+            group.clear()
+
         for byte in data:
             if byte in _WHITESPACE:
                 continue
-            if byte == 0x7A:  # b'z'
-                if col != 0:
-                    raise OSError("ASCII85: 'z' shortcut found mid-group")
-                cleaned.append(byte)
-                # b'z' is a complete 4-byte group on its own; col stays 0.
+            if byte == _Z and not group:
+                # b'z' shortcut: four zero bytes — but only at a group
+                # boundary. Mid-group it is an ordinary digit (see below).
+                out.extend(b"\x00\x00\x00\x00")
                 continue
-            if byte < 0x21 or byte > 0x75:  # outside b'!'..b'u'
-                raise OSError(f"ASCII85: byte {byte!r} out of range '!'..'u'")
-            cleaned.append(byte)
-            col = (col + 1) % 5
-        if not cleaned:
-            return b""
-        if col == 1:
-            raise OSError("ASCII85: final partial group has only one digit")
-        try:
-            return base64.a85decode(bytes(cleaned), adobe=False)
-        except (ValueError, binascii.Error) as exc:
-            raise OSError(f"ASCII85: decode failed: {exc}") from exc
+            # Upstream's range check: (byte - '!') must be in 0..93. Bytes
+            # below b'!' (and not whitespace) or above b'~' are rejected.
+            if byte - _DIGIT_OFFSET < 0 or byte - _DIGIT_OFFSET > _DIGIT_MAX:
+                raise OSError("Invalid data in Ascii85 stream")
+            group.append(byte)
+            if len(group) == 5:
+                flush_full()
+
+        # Trailing partial group of n digits yields n-1 output bytes. A lone
+        # single digit (n == 1) yields nothing and is silently dropped.
+        n = len(group)
+        if n >= 2:
+            padded = group + [ord("u")] * (5 - n)
+            value = 0
+            for digit in padded:
+                value = value * 85 + (digit - _DIGIT_OFFSET)
+            value &= _U32_MASK
+            for shift in (24, 16, 8, 0)[: n - 1]:
+                out.append((value >> shift) & 0xFF)
+
+        return bytes(out)
 
 
 FilterFactory.register("ASCII85Decode", ASCII85Decode())

@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import io
 
-import pytest
-
 from pypdfbox.cos import COSDictionary
 from pypdfbox.filter import ASCIIHexDecode, FilterFactory
 
@@ -81,22 +79,31 @@ class TestDecodeOddDigit:
         # "ABC>" → after pad: "ABC0" → bytes 0xAB, 0xC0.
         assert _decode(b"ABC>") == b"\xab\xc0"
 
-    def test_odd_trailing_digit_with_whitespace(self) -> None:
-        # Whitespace shouldn't change the parity of digit count.
-        assert _decode(b"A B C>") == b"\xab\xc0"
-
     def test_single_digit_padded(self) -> None:
         assert _decode(b"F>") == b"\xf0"
 
 
-class TestDecodeErrors:
-    def test_non_hex_digit_raises_oserror(self) -> None:
-        with pytest.raises(OSError):
-            _decode(b"4Z>")
+class TestDecodeWhitespaceMidPair:
+    # PDFBox's ASCIIHexFilter skips whitespace only before the FIRST nibble
+    # of each byte pair — never between the two nibbles. Whitespace that
+    # splits a pair is treated as an invalid hex char (REVERSE_HEX = -1).
+    # Verified against the live oracle (wave 1412).
+    def test_whitespace_between_nibbles_is_not_skipped(self) -> None:
+        # "A B C>": A,sp -> 10*16 + (-1) = 159 = 0x9f; B,sp -> 0xaf; C,> -> 0xc0.
+        assert _decode(b"A B C>") == b"\x9f\xaf\xc0"
 
-    def test_non_hex_pair_raises_oserror(self) -> None:
-        with pytest.raises(OSError):
-            _decode(b"GG>")
+
+class TestDecodeInvalidChars:
+    # PDFBox does NOT raise on a non-hex character: it logs an error and
+    # feeds REVERSE_HEX's -1 into the byte arithmetic (low 8 bits kept).
+    # Verified against the live oracle (wave 1412).
+    def test_non_hex_low_nibble_uses_minus_one(self) -> None:
+        # "4Z>": 4*16 + REVERSE_HEX['Z'](-1) = 63 = 0x3f.
+        assert _decode(b"4Z>") == b"\x3f"
+
+    def test_non_hex_pair_uses_minus_one_both_nibbles(self) -> None:
+        # "GG>": (-1)*16 + (-1) = -17, low 8 bits = 0xef.
+        assert _decode(b"GG>") == b"\xef"
 
 
 class TestDecodeResult:

@@ -4,15 +4,16 @@ ISO 32000-1 §7.4.3 corner cases:
 
 * A 4-zero group is abbreviated as the single ASCII byte ``z``.
 * The end-of-data marker is the literal two bytes ``~>``.
-* Whitespace inside the encoded body (``\\x00 \\t \\n \\f \\r space``) is
-  ignored during decode.
-* Partial groups: 1 trailing digit is invalid; 2/3/4 trailing digits map
-  to 1/2/3 raw bytes with the missing low base-85 digits padded.
+* Whitespace ignored during decode is ONLY LF, CR and SPACE — PDFBox's
+  ASCII85InputStream does NOT skip NUL / TAB / FF / VT (wave 1412 oracle).
+* Partial groups: a lone trailing digit yields no byte (dropped); 2/3/4
+  trailing digits map to 1/2/3 raw bytes with the missing low base-85
+  digits padded with ``u``.
 
 Tests exercise the decoder's tolerance for whitespace at various
-positions, the ``z`` shortcut mid-stream, and the strictness around a
-misplaced ``z`` (must be group-aligned — a ``z`` in column 1..4 of a
-5-character group is illegal per spec).
+positions and the ``z`` shortcut. A ``z`` mid-group is NOT special — it is
+an ordinary base-85 digit (the shortcut only fires at a group boundary),
+matching the behaviour confirmed against the live PDFBox oracle.
 """
 
 from __future__ import annotations
@@ -59,11 +60,15 @@ def test_z_shortcut_mixed_with_other_groups() -> None:
     assert _decode(b"!!!!!z~>") == b"\x00" * 8
 
 
-def test_z_shortcut_rejected_mid_group() -> None:
-    """A 'z' in columns 1..4 of a 5-char group is illegal."""
-    # 'a' is one digit into a group, then 'z' is mid-group — must raise.
-    with pytest.raises(OSError, match="mid-group"):
-        _decode(b"az~>")
+def test_z_mid_group_is_an_ordinary_digit() -> None:
+    """A 'z' in columns 1..4 of a group is NOT the 4-zero shortcut.
+
+    PDFBox's ASCII85InputStream only treats 'z' specially at a group
+    boundary; mid-group it contributes ``0x7a - '!' == 89`` to the base-85
+    accumulator like any other digit. Verified against the live oracle
+    (wave 1412): ``az~>`` decodes to a single 0xCA byte, not an error.
+    """
+    assert _decode(b"az~>") == b"\xca"
 
 
 def test_z_shortcut_round_trip_via_encode() -> None:
@@ -105,10 +110,20 @@ def test_decode_eod_inside_whitespace() -> None:
 
 
 def test_decode_with_embedded_whitespace() -> None:
-    """All five PDF whitespace bytes inside the stream are ignored."""
-    # b"87cURDZ" → b"Hello"; sprinkle every whitespace flavour.
-    encoded = b"8\x007\tc\nU\x0cR\rD Z~>"
+    """Only LF, CR and SPACE are ASCII85 whitespace in PDFBox.
+
+    b"87cURDZ" → b"Hello"; sprinkle the three flavours PDFBox actually
+    skips (verified against the live oracle, wave 1412).
+    """
+    encoded = b"8 7\nc\rUR D\nZ~>"
     assert _decode(encoded) == b"Hello"
+
+
+def test_decode_rejects_non_pdfbox_whitespace_mid_stream() -> None:
+    """TAB, NUL and FF are NOT whitespace — they trip the range check."""
+    for ws in (b"\t", b"\x00", b"\x0c"):
+        with pytest.raises(OSError, match="Invalid data"):
+            _decode(b"87" + ws + b"cURDZ~>")
 
 
 def test_decode_leading_whitespace_only() -> None:
@@ -120,25 +135,33 @@ def test_decode_leading_whitespace_only() -> None:
 
 
 def test_decode_rejects_byte_below_bang() -> None:
-    """A byte below 0x21 (excluding whitespace) is illegal."""
-    with pytest.raises(OSError, match="out of range"):
+    """A byte below 0x21 (excluding LF/CR/SPACE) trips the range check."""
+    with pytest.raises(OSError, match="Invalid data"):
         _decode(b"BO\x01u!rDZ~>")
 
 
-def test_decode_rejects_byte_above_u() -> None:
-    """A byte above 0x75 ('u') is illegal — base-85 maxes at 0..84."""
-    with pytest.raises(OSError, match="out of range"):
-        _decode(b"BOv!rDZ~>")  # 'v' is 0x76
+def test_decode_accepts_byte_above_u_up_to_tilde() -> None:
+    """PDFBox accepts digits up to b'~' (0x7e), wider than b'!'..b'u'.
+
+    The encoder never emits a digit above 'u' (0x75), but the decoder's
+    range check is ``c - '!'`` in 0..93, so 'v' (0x76) and anything up to
+    '~' are accepted and the per-group overflow is masked to 32 bits.
+    Verified against the live oracle (wave 1412).
+    """
+    assert _decode(b"BOv!rDZ~>") == bytes.fromhex("686588a56f")
 
 
 # ---- Partial-group handling ------------------------------------------
 
 
-def test_decode_rejects_single_trailing_digit() -> None:
-    """A trailing partial group with only 1 digit is invalid per spec."""
-    # 5 valid digits → 4 bytes, then a single extra digit → illegal.
-    with pytest.raises(OSError, match="one digit"):
-        _decode(b"BOu!rZ~>")
+def test_decode_drops_single_trailing_digit() -> None:
+    """A trailing partial group of one digit yields no output byte.
+
+    5 valid digits → 4 bytes; the lone trailing 'Z' digit cannot form even
+    one of the four group bytes, so PDFBox drops it silently rather than
+    raising. Verified against the live oracle (wave 1412).
+    """
+    assert _decode(b"BOu!rZ~>") == bytes.fromhex("68656c6c")
 
 
 def test_decode_partial_group_two_digits_round_trip() -> None:
