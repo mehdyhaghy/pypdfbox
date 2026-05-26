@@ -132,6 +132,23 @@ Replaces the GPL `jbig2-parser` dependency removed in wave 1420. Ported from the
 | `pypdfbox/jbig2/decoder/arithmetic/cx.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/decoder/arithmetic/CX.java` |
 | `pypdfbox/jbig2/decoder/arithmetic/arithmetic_decoder.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/decoder/arithmetic/ArithmeticDecoder.java` |
 | `pypdfbox/jbig2/decoder/arithmetic/arithmetic_integer_decoder.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/decoder/arithmetic/ArithmeticIntegerDecoder.java` |
+| `pypdfbox/jbig2/decoder/huffman/node.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/decoder/huffman/Node.java` |
+| `pypdfbox/jbig2/decoder/huffman/internal_node.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/decoder/huffman/InternalNode.java` |
+| `pypdfbox/jbig2/decoder/huffman/value_node.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/decoder/huffman/ValueNode.java` |
+| `pypdfbox/jbig2/decoder/huffman/out_of_band_node.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/decoder/huffman/OutOfBandNode.java` |
+| `pypdfbox/jbig2/decoder/huffman/huffman_table.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/decoder/huffman/HuffmanTable.java` |
+| `pypdfbox/jbig2/decoder/huffman/fixed_size_table.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/decoder/huffman/FixedSizeTable.java` |
+| `pypdfbox/jbig2/decoder/huffman/encoded_table.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/decoder/huffman/EncodedTable.java` |
+| `pypdfbox/jbig2/decoder/huffman/standard_tables.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/decoder/huffman/StandardTables.java` |
+| `pypdfbox/jbig2/decoder/mmr/mmr_constants.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/decoder/mmr/MMRConstants.java` |
+| `pypdfbox/jbig2/decoder/mmr/mmr_decompressor.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/decoder/mmr/MMRDecompressor.java` |
+| `pypdfbox/jbig2/segment_data.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/SegmentData.java` |
+| `pypdfbox/jbig2/region.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/Region.java` |
+| `pypdfbox/jbig2/segment_header.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/SegmentHeader.java` |
+| `pypdfbox/jbig2/segments/region_segment_information.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/segments/RegionSegmentInformation.java` |
+| `pypdfbox/jbig2/segments/page_information.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/segments/PageInformation.java` |
+| `pypdfbox/jbig2/segments/end_of_stripe.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/segments/EndOfStripe.java` |
+| `pypdfbox/jbig2/segments/profiles.py` | apache/pdfbox-jbig2 | `src/main/java/org/apache/pdfbox/jbig2/segments/Profiles.java` |
 
 ### `pypdfbox/contentstream/`
 
