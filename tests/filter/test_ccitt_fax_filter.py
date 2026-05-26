@@ -20,7 +20,13 @@ from pypdfbox.filter.ccitt_fax_filter import (
 
 def _g4_strip(image: Image.Image) -> bytes:
     """Encode a 1-bit Pillow image as a Group 4 TIFF and return the
-    encoded strip bytes (i.e. just the CCITT payload)."""
+    encoded strip bytes (i.e. just the CCITT payload).
+
+    Bit-inverts the raster first so the libtiff-encoded stream carries the
+    Apache PDFBox foreground-run polarity (see the same helper in
+    ``test_ccitt_fax_decode.py``); the decoded scanlines then equal the
+    source ``image.tobytes()``."""
+    image = image.point(lambda v: 0 if v else 255)
     buf = io.BytesIO()
     image.save(buf, format="TIFF", compression="group4")
     raw = buf.getvalue()

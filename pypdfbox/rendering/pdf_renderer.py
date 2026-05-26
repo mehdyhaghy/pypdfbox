@@ -4950,6 +4950,28 @@ class PDFRenderer(PDFStreamEngine):
                 smask = None
             if smask is not None:
                 pil_image = self._apply_smask(pil_image, smask)
+            else:
+                # PDF spec §8.9.6: a base image may instead carry an
+                # explicit-mask /Mask stream (a 1-bit stencil selecting
+                # which sample positions are painted) or a color-key
+                # /Mask array (a per-component value range that, when a
+                # sample falls inside it, masks the pixel out). Both are
+                # mutually exclusive with /SMask. Apply whichever is
+                # present so the masked-out regions become transparent
+                # rather than over-painting the backdrop.
+                try:
+                    explicit_mask = xobject.get_mask()
+                except Exception:  # noqa: BLE001
+                    explicit_mask = None
+                if explicit_mask is not None:
+                    pil_image = self._apply_explicit_mask(pil_image, explicit_mask)
+                else:
+                    try:
+                        color_key = xobject.get_color_key_mask()
+                    except Exception:  # noqa: BLE001
+                        color_key = None
+                    if color_key:
+                        pil_image = self._apply_color_key_mask(pil_image, color_key)
             self._paste_image(pil_image)
             return
 
@@ -5745,6 +5767,117 @@ class PDFRenderer(PDFStreamEngine):
             mask_image = mask_image.resize(image.size, Image.Resampling.BILINEAR)
         rgba = image.convert("RGBA")
         rgba.putalpha(mask_image)
+        return rgba
+
+    def _apply_explicit_mask(self, image: Image.Image, mask: Any) -> Image.Image:
+        """Return ``image`` with an explicit-mask ``/Mask`` stencil applied.
+
+        Mirrors upstream ``PageDrawer.drawImage`` → ``PDImageXObject.getImage``
+        explicit-mask compositing (PDF spec §8.9.6.3). The ``/Mask`` is a
+        1-bit stencil Image XObject whose samples select which positions of
+        the *base* image are painted: a sample of ``1`` masks the pixel out
+        (fully transparent), a sample of ``0`` paints it (fully opaque). A
+        ``/Decode [1 0]`` on the mask reverses that polarity.
+
+        The mask is decoded to an ``"L"`` plane, resized to the base image's
+        size (nearest-neighbour, matching the spec's per-sample selection),
+        and converted to an alpha channel (``0`` → transparent, ``255`` →
+        opaque). Any failure logs at debug level and returns ``image``
+        unchanged — explicit-mask compositing is best-effort in the lite
+        renderer."""
+        from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (  # noqa: PLC0415
+            _unpack_sub_byte_samples,
+        )
+
+        try:
+            mw = int(mask.get_width())
+            mh = int(mask.get_height())
+            if mw <= 0 or mh <= 0:
+                return image
+            with mask.create_input_stream() as src:
+                data = src.read()
+            samples = _unpack_sub_byte_samples(data, mw, mh, 1)
+            if samples is None:
+                return image
+        except Exception as exc:  # noqa: BLE001
+            _log.debug("rendering: cannot decode explicit /Mask: %s", exc)
+            return image
+
+        # PDF spec §8.9.6.3: with the default /Decode [0 1] an explicit
+        # /Mask stencil sample of 1 marks the pixel as *masked out*
+        # (transparent) and a sample of 0 marks it as *painted* (the base
+        # image shows). Verified against the Apache PDFBox oracle
+        # (RenderProbe). A /Decode [1 0] on the mask reverses the polarity.
+        try:
+            decode = mask.get_decode()
+        except Exception:  # noqa: BLE001
+            decode = None
+        masked_sample = 1
+        if decode is not None and len(decode) >= 2 and decode[0] > decode[1]:
+            masked_sample = 0
+
+        alpha_bytes = bytearray(mw * mh)
+        for i, s in enumerate(samples):
+            alpha_bytes[i] = 0 if s == masked_sample else 255
+        alpha = Image.frombytes("L", (mw, mh), bytes(alpha_bytes))
+        if alpha.size != image.size:
+            alpha = alpha.resize(image.size, Image.Resampling.NEAREST)
+        rgba = image.convert("RGBA")
+        rgba.putalpha(alpha)
+        return rgba
+
+    def _apply_color_key_mask(
+        self, image: Image.Image, ranges: list[int]
+    ) -> Image.Image:
+        """Return ``image`` with a color-key ``/Mask`` array applied.
+
+        Mirrors upstream colour-key masking (PDF spec §8.9.6.4): ``/Mask``
+        is an array of ``2 × n`` integers giving, per colour component, an
+        inclusive ``[min max]`` sample range. A pixel whose every component
+        falls inside its range is masked out (made fully transparent); all
+        other pixels stay opaque.
+
+        The ranges are expressed in the image's *raw* sample space. The
+        lite renderer applies them against the decoded RGB raster — exact
+        for 8-bit DeviceRGB/DeviceGray (the common case), which is what the
+        oracle fixtures exercise. Any shape mismatch (odd-length array, or
+        a component count that doesn't match the image bands) logs at debug
+        level and returns ``image`` unchanged."""
+        if not ranges or len(ranges) % 2 != 0:
+            return image
+        rgb = image.convert("RGB")
+        bands = 3
+        pairs = [(ranges[2 * i], ranges[2 * i + 1]) for i in range(len(ranges) // 2)]
+        # Color-key ranges are per source-component. For a grayscale image
+        # the single pair is broadcast across the converted RGB bands; for
+        # an RGB image we expect three pairs. Anything else is malformed.
+        if len(pairs) == 1:
+            pairs = pairs * bands
+        elif len(pairs) != bands:
+            _log.debug(
+                "rendering: color-key /Mask has %d component ranges, "
+                "expected 1 or %d; skipping",
+                len(pairs),
+                bands,
+            )
+            return image
+
+        alpha = Image.new("L", rgb.size, 255)
+        a_px = alpha.load()
+        rgb_px = rgb.load()
+        (r_lo, r_hi), (g_lo, g_hi), (b_lo, b_hi) = pairs
+        w, h = rgb.size
+        for y in range(h):
+            for x in range(w):
+                r, g, b = rgb_px[x, y]
+                if (
+                    r_lo <= r <= r_hi
+                    and g_lo <= g <= g_hi
+                    and b_lo <= b <= b_hi
+                ):
+                    a_px[x, y] = 0
+        rgba = rgb.convert("RGBA")
+        rgba.putalpha(alpha)
         return rgba
 
     def _render_soft_mask_alpha(

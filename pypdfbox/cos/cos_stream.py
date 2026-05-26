@@ -236,6 +236,34 @@ class COSStream(COSDictionary):
             raise OSError("stream has no data")
         return io.BytesIO(self.get_raw_data())
 
+    def ensure_decrypted(self) -> None:
+        """Materialise the decrypted raw body when a security handler is
+        attached and the on-disk bytes are still ciphertext.
+
+        Mirrors PDFBox semantics where the security handler decrypts a
+        stream's bytes on first access so that any later consumer — the
+        filter decode path *or the writer* — sees plaintext. pypdfbox
+        decrypts lazily (``create_input_stream`` undoes the cipher just
+        before the /Filter chain runs), which means a stream that was
+        loaded encrypted but never decoded still holds ciphertext in its
+        ``_buffer``. The writer must call this before re-enciphering on
+        save, otherwise it would encipher already-encrypted bytes a
+        second time (double encryption → FlateDecode garbage on reload).
+
+        Idempotent: ``_decrypted`` guards against a second undo, and the
+        no-handler / skip-encryption cases are no-ops."""
+        if self._security_handler is None or self._decrypted:
+            return
+        if self._buffer is None:
+            self._decrypted = True
+            return
+        raw = self.get_raw_data()
+        plain = self._security_handler.decrypt_stream(
+            raw, self._object_number, self._generation_number
+        )
+        self._set_raw_data_internal(plain)
+        self._decrypted = True
+
     def create_raw_output_stream(self) -> BinaryIO:
         """Return a writable stream; on ``close()`` its contents replace
         this stream's raw body. Raises ``RuntimeError`` if another writer

@@ -81,7 +81,13 @@ def test_image_create_input_stream_honors_short_filter_alias_stop() -> None:
 
 def _g4_strip(image: Image.Image) -> bytes:
     """Encode a 1-bit Pillow image as a Group 4 TIFF and return only the
-    encoded strip bytes."""
+    encoded strip bytes.
+
+    The raster is bit-inverted before libtiff encodes it so the stream
+    carries Apache PDFBox's foreground-run polarity (see the same helper in
+    ``tests/filter/test_ccitt_fax_decode.py``); the decoded scanlines then
+    equal the source ``image.tobytes()``."""
+    image = image.point(lambda v: 0 if v else 255)
     buf = io.BytesIO()
     image.save(buf, format="TIFF", compression="group4")
     raw = buf.getvalue()

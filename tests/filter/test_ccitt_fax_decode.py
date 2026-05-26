@@ -13,7 +13,15 @@ from pypdfbox.filter import CCITTFaxDecode, FilterFactory
 
 def _g4_strip(image: Image.Image) -> bytes:
     """Encode a 1-bit Pillow image as a Group 4 TIFF and return the
-    encoded strip bytes (i.e. just the CCITT payload)."""
+    encoded strip bytes (i.e. just the CCITT payload).
+
+    The raster is bit-inverted before libtiff encodes it: libtiff's fax
+    foreground-run convention is the opposite of Apache PDFBox's (and of
+    pypdfbox's :meth:`CCITTFaxDecode.encode`, which inverts for the same
+    reason), so inverting here produces a stream whose polarity matches
+    the PDFBox-anchored decode path — the decoded scanlines then equal the
+    source ``image.tobytes()`` (a true round-trip identity)."""
+    image = image.point(lambda v: 0 if v else 255)
     buf = io.BytesIO()
     image.save(buf, format="TIFF", compression="group4")
     raw = buf.getvalue()
@@ -28,7 +36,11 @@ def _g4_strip(image: Image.Image) -> bytes:
 
 def _g3_strip(image: Image.Image, *, two_d: bool = False) -> bytes:
     """Encode a 1-bit Pillow image as a Group 3 TIFF and extract the
-    encoded strip. Pillow exposes group3 1D via ``compression='group3'``."""
+    encoded strip. Pillow exposes group3 1D via ``compression='group3'``.
+
+    The raster is bit-inverted before encoding for the same polarity
+    reason described in :func:`_g4_strip`."""
+    image = image.point(lambda v: 0 if v else 255)
     buf = io.BytesIO()
     image.save(
         buf,

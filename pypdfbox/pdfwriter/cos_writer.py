@@ -1472,9 +1472,20 @@ class COSWriter(ICOSVisitor):
         highest = max((k.object_number for k in all_keys), default=0)
         trailer.set_int(COSName.SIZE, highest + 1)  # type: ignore[attr-defined]
 
-        # /ID array stays direct (must round-trip inline per spec §14.4).
+        # /ID: ISO 32000-1 §14.4 — "if the file has been updated, the second
+        # [byte string] shall be changed". PDFBox's incremental save preserves
+        # /ID[0] (the permanent file identifier) and regenerates /ID[1] (the
+        # changing identifier) as a SHA-256 digest over the document state.
+        # Mirror that contract: keep /ID[0] stable, replace /ID[1] with a fresh
+        # 32-byte digest. We build a NEW array on a copied dict so the in-memory
+        # document is left untouched (a re-save must still see the source /ID).
         id_arr = trailer.get_dictionary_object(COSName.get_pdf_name("ID"))
-        if isinstance(id_arr, COSArray):
+        if isinstance(id_arr, COSArray) and id_arr.size() == 2:
+            first = id_arr.get_object(0)
+            new_id = self._regenerate_changing_id(doc, first)
+            new_id.set_direct(True)
+            trailer.set_item(COSName.get_pdf_name("ID"), new_id)
+        elif isinstance(id_arr, COSArray):
             id_arr.set_direct(True)
 
         # Other ephemeral keys upstream strips before re-emit.
@@ -2293,6 +2304,48 @@ class COSWriter(ICOSVisitor):
         new_arr.set_direct(True)
         trailer.set_item(COSName.get_pdf_name("ID"), new_arr)
 
+    def _regenerate_changing_id(
+        self, doc: COSDocument, first: COSBase | None
+    ) -> COSArray:
+        """Build a fresh ``/ID`` array for an incremental update.
+
+        Per ISO 32000-1 §14.4 the first element (the *permanent* identifier)
+        stays stable across updates while the second (the *changing*
+        identifier) is regenerated so consumers can detect the file changed.
+        Mirrors PDFBox's ``saveIncremental`` which preserves ``/ID[0]`` and
+        emits a fresh SHA-256 digest for ``/ID[1]``.
+
+        ``first`` is the source ``/ID[0]``; it is preserved byte-for-byte.
+        The new ``/ID[1]`` is a 32-byte SHA-256 over the document state (size
+        + the existing identifier + a wall-clock seed and random nonce). The
+        exact digest input differs from upstream's MD5 recipe — only the
+        contract (stable first, changed second) is load-bearing here."""
+        if isinstance(first, COSString):
+            first_string: COSString = COSString(first.get_bytes())
+        else:
+            # Defensive: source /ID[0] was not a string — synthesise one so we
+            # never emit a malformed array. Shouldn't happen for a well-formed
+            # source trailer.
+            first_string = COSString(secrets.token_bytes(16))
+        first_string.set_force_hex_form(True)
+
+        trailer = doc.get_trailer()
+        size = 0
+        if trailer is not None:
+            size_obj = trailer.get_dictionary_object(COSName.SIZE)  # type: ignore[attr-defined]
+            if isinstance(size_obj, COSInteger):
+                size = size_obj.value
+        seed = (
+            f"{size}".encode("ascii")
+            + first_string.get_bytes()
+            + f"{time.time_ns()}".encode("ascii")
+            + secrets.token_bytes(16)
+        )
+        changing = hashlib.sha256(seed).digest()
+        second = COSString(changing)
+        second.set_force_hex_form(True)
+        return COSArray([first_string, second])
+
     # ---------- visitor: leaves ----------
 
     def visit_from_boolean(self, obj: COSBoolean) -> Any:
@@ -2420,6 +2473,21 @@ class COSWriter(ICOSVisitor):
 
     def visit_from_stream(self, obj: COSStream) -> Any:
         out = self._standard_output
+
+        # Decrypt-on-write: a stream loaded from an encrypted document keeps
+        # its on-disk ciphertext in the buffer until something decodes it
+        # (pypdfbox decrypts lazily, just before the /Filter chain). If the
+        # body was never decoded, ``create_raw_input_stream`` would hand us
+        # the still-ciphertext bytes — and the encryption pass below would
+        # encipher them a SECOND time (double encryption → FlateDecode
+        # garbage on reload). Force the one-shot decrypt now so the snapshot
+        # below is plaintext, then the encryption pass enciphers exactly
+        # once. Mirrors upstream COSWriter, which sees handler-decrypted
+        # bytes because PDFBox decrypts on access. No-op for plaintext
+        # streams or streams already decoded.
+        ensure_decrypted = getattr(obj, "ensure_decrypted", None)
+        if callable(ensure_decrypted):
+            ensure_decrypted()
 
         # Snapshot raw bytes (already filter-encoded, per parser cluster).
         if obj.has_data():

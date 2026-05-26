@@ -152,6 +152,9 @@ def test_wave517_subset_embeds_bytes_tags_basefont_and_clears_cache(
         def to_bytes(self) -> bytes:
             return b"subset-bytes"
 
+        def get_gid_map(self) -> dict[int, int]:
+            return {}
+
     descendant = PDCIDFontType2(COSDictionary())
     descendant._ttf = object()  # noqa: SLF001
     monkeypatch.setattr(descendant, "get_true_type_font", lambda: descendant._ttf)

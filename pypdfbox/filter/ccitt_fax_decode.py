@@ -216,9 +216,19 @@ class CCITTFaxDecode(Filter):
         # a generous upper bound and trim afterwards.
         wrapper_rows = rows if rows > 0 else _estimate_rows(encoded_bytes, columns)
 
-        # PDF default polarity: 0 = black, 1 = white  → TIFF photometric
-        # 1 (BlackIsZero). With /BlackIs1 = true the polarity flips.
-        photometric = 1 if not black_is_1 else 0
+        # Polarity must match Apache PDFBox's CCITTFaxFilter, which is the
+        # behavioural oracle. PDFBox decodes the fax bitstream into a buffer
+        # where a *set* bit means black, then inverts the whole buffer when
+        # /BlackIs1 is **false** (CCITTFaxFilter.java: ``if (!blackIs1)
+        # invertBitmap(...)``). The net effect, verified against the live
+        # oracle on PDFBox-encoded streams, is:
+        #   /BlackIs1 false (default) -> decoded sample 0 = black  (TIFF
+        #       photometric 0 / WhiteIsZero feeds libtiff that polarity);
+        #   /BlackIs1 true            -> decoded sample 1 = black  (TIFF
+        #       photometric 1 / BlackIsZero).
+        # The earlier mapping (1 when BlackIs0) was the exact bit-inverse of
+        # PDFBox and made every CCITT image render with black/white swapped.
+        photometric = 0 if not black_is_1 else 1
 
         tiff_bytes = _build_tiff_wrapper(
             encoded_bytes,
@@ -309,14 +319,19 @@ class CCITTFaxDecode(Filter):
         # are not part of the image.
         raw_bytes = raw_bytes[:expected]
 
-        # PDF default polarity is BlackIs0 (0=black, 1=white). Pillow's
-        # "1" mode treats 0=black/1=white the same way, so the bytes go
-        # straight into ``Image.frombytes`` without inversion. With
-        # /BlackIs1 we invert before encoding so the resulting CCITT
-        # stream still represents BlackIs0 to libtiff (which is what we
-        # told it via the TIFF photometric tag during decode); upstream
-        # PDFBox does the equivalent flip in CCITTFactory.
-        if black_is_1:
+        # Polarity must mirror :meth:`decode` (which is anchored to Apache
+        # PDFBox's CCITTFaxFilter). libtiff's Group 3/4 encoder uses the
+        # opposite foreground-run convention to PDFBox: feeding a PIL "1"
+        # raster (1=white) straight in produces a CCITT stream that is the
+        # exact bit-inverse of PDFBox's CCITTFactory output. So for the
+        # default /BlackIs1 false case we invert the raster before handing
+        # it to libtiff, which yields a stream byte-identical to PDFBox's
+        # encoder and decodes back to the source under the matching
+        # ``photometric = 0`` decode path. With /BlackIs1 true the decode
+        # path uses ``photometric = 1``, so the encoder must *not* invert
+        # to keep the encode/decode round-trip an identity (verified
+        # against the live oracle for both polarities).
+        if not black_is_1:
             raw_bytes = bytes(b ^ 0xFF for b in raw_bytes)
 
         try:

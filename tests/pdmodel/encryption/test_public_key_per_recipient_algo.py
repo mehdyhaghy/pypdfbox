@@ -59,6 +59,22 @@ def _build_self_signed_rsa() -> tuple[object, object]:
     return cert, private_key
 
 
+def _recipients_of(encryption: object) -> object:
+    """Read the ``/Recipients`` array from the crypt-filter-based V>=4 handler.
+
+    The public-key handler writes ``/Recipients`` inside ``/CF
+    /DefaultCryptFilter`` (PDFBox-compatible location), falling back to the
+    legacy ``/Encrypt`` top level if present.
+    """
+    top = encryption.get_recipients()  # type: ignore[attr-defined]
+    if top is not None and top.size() > 0:
+        return top
+    default_cf = encryption.get_default_crypt_filter_dictionary()  # type: ignore[attr-defined]
+    if default_cf is not None:
+        return default_cf.get_recipients()
+    return None
+
+
 class _StubDocument:
     """Captures the ``/Encrypt`` dictionary written by ``prepare_document``."""
 
@@ -155,7 +171,7 @@ def test_two_recipients_same_perms_collapse_to_single_envelope(
 
     encryption = document.encryption
     assert encryption is not None
-    recipients_array = encryption.get_recipients()
+    recipients_array = _recipients_of(encryption)
     assert recipients_array is not None
     # One envelope total — the two recipients share permissions and ride a
     # single multi-recipient PKCS#7 ContentInfo per PDF 32000-1 §7.6.5.
@@ -186,7 +202,7 @@ def test_two_recipients_different_perms_emit_separate_envelopes(
 
     encryption = document.encryption
     assert encryption is not None
-    recipients_array = encryption.get_recipients()
+    recipients_array = _recipients_of(encryption)
     assert recipients_array is not None
     assert recipients_array.size() == 2
 
@@ -302,7 +318,7 @@ def test_three_recipients_two_share_permissions_yield_two_envelopes() -> None:
 
     encryption = document.encryption
     assert encryption is not None
-    recipients_array = encryption.get_recipients()
+    recipients_array = _recipients_of(encryption)
     assert recipients_array is not None
     # Two distinct permission masks → two envelopes (one carries r1 + r2).
     assert recipients_array.size() == 2

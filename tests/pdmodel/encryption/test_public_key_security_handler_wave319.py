@@ -59,7 +59,12 @@ def test_wave319_prepare_document_marks_recipients_array_direct() -> None:
     PublicKeySecurityHandler(protection_policy=policy).prepare_document(document)
 
     assert document.encryption is not None
-    recipients = document.encryption.get_recipients()
+    # V>=4 handler stores /Recipients inside /CF /DefaultCryptFilter
+    # (PDFBox-compatible location); the array stays direct so a reader doesn't
+    # dereference an indirect object mid-prepareForDecryption.
+    default_cf = document.encryption.get_default_crypt_filter_dictionary()
+    assert default_cf is not None
+    recipients = default_cf.get_recipients()
     assert recipients is not None
     assert recipients.size() == 1
     assert recipients.is_direct() is True

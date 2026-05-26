@@ -131,6 +131,9 @@ def test_wave585_subset_preserves_existing_subset_tag(
         def to_bytes(self) -> bytes:
             return b"subset"
 
+        def get_gid_map(self) -> dict[int, int]:
+            return {}
+
     import pypdfbox.fontbox.ttf as ttf_module
     import pypdfbox.pdmodel.font.pd_true_type_font as true_type_module
 

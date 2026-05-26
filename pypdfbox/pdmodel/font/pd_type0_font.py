@@ -1223,15 +1223,76 @@ class PDType0Font(PDFont):
         non-Identity CMaps without a reverse mapping the codepoint is
         replaced with the bytes of CID 0 (``.notdef``).
         """
-        if isinstance(text, int):
-            return self._encode_codepoint(text, self.get_cmap())
         cmap = self.get_cmap()
+        # Embedded Identity-keyed fonts (the ones produced by load_ttf /
+        # load_otf) emit the embedded program's *glyph id* as the CID, not
+        # the raw Unicode codepoint — mirrors upstream PDCIDFontType2.encode
+        # (PDCIDFontType2.java:357-407): for an embedded font under an
+        # Identity- CMap the CID is ``cmap.getGlyphId(unicode)``. The 2-byte
+        # CID is then mapped back to a glyph through /CIDToGIDMap (Identity
+        # for a full embed; a remap stream after subsetting). Without this,
+        # a freshly embedded font renders the wrong glyphs because the
+        # content-stream codes would be Unicode codepoints, not glyph ids.
+        gid_lookup = self._embedded_gid_lookup(cmap)
+        if isinstance(text, int):
+            if gid_lookup is not None:
+                return self._encode_embedded_codepoint(text, gid_lookup)
+            return self._encode_codepoint(text, cmap)
         out = bytearray()
         for ch in text:
             cp = ord(ch)
-            encoded = self._encode_codepoint(cp, cmap)
-            out.extend(encoded)
+            if gid_lookup is not None:
+                out.extend(self._encode_embedded_codepoint(cp, gid_lookup))
+            else:
+                out.extend(self._encode_codepoint(cp, cmap))
         return bytes(out)
+
+    def _embedded_gid_lookup(self, cmap: CMap | None) -> Any | None:
+        """Return the embedded program's unicode cmap lookup when this font
+        should encode codepoints to glyph ids, else ``None``.
+
+        Matches upstream's ``isEmbedded && parent.getCMap().getName()
+        .startsWith("Identity-")`` guard in ``PDCIDFontType2.encode``. Only
+        an embedded CIDFontType2 under an Identity- parent CMap goes through
+        the codepoint -> GID path; everything else keeps the predefined-CMap
+        reverse-lookup behaviour in :meth:`_encode_codepoint`.
+        """
+        if cmap is None:
+            return None
+        name_getter = getattr(cmap, "get_name", None)
+        name = (name_getter() or "") if callable(name_getter) else ""
+        if not name.startswith("Identity"):
+            return None
+        from .pd_cid_font_type2 import PDCIDFontType2  # noqa: PLC0415
+
+        descendant = self.get_descendant_font()
+        if not isinstance(descendant, PDCIDFontType2):
+            return None
+        try:
+            if not descendant.is_embedded():
+                return None
+        except Exception:  # noqa: BLE001 — defensive: missing /FontFile2 etc.
+            return None
+        return descendant.get_cmap_lookup()
+
+    @staticmethod
+    def _encode_embedded_codepoint(cp: int, gid_lookup: Any) -> bytes:
+        """Encode ``cp`` to its 2-byte glyph id via an embedded cmap lookup.
+
+        Mirrors upstream ``PDCIDFontType2.encode`` + ``encodeGlyphId``
+        (PDCIDFontType2.java:357-414): ``cid = cmap.getGlyphId(unicode)`` and
+        the CID is always emitted as a 16-bit big-endian value. A lookup miss
+        (GID 0 / no mapping) falls back to ``.notdef`` (CID 0) rather than
+        raising, so a partial codepoint set still produces parsable bytes.
+        """
+        gid = 0
+        getter = getattr(gid_lookup, "get_glyph_id", None)
+        if callable(getter):
+            try:
+                gid = int(getter(cp) or 0)
+            except Exception:  # noqa: BLE001 — odd cmaps / surrogate inputs
+                gid = 0
+        return (gid & 0xFFFF).to_bytes(2, "big")
 
     def encode_string(self, text: str) -> bytes:
         """Encode a Python string with GSUB-aware ligature substitution.
@@ -1458,15 +1519,45 @@ class PDType0Font(PDFont):
         tag = prefix if prefix is not None else _random_subset_tag()
 
         subsetter = TTFSubsetter(ttf)
-        subsetter.add_all(codepoints)
-        if self._subset_glyph_ids:
-            # Pin raw glyph IDs registered via add_glyphs_to_subset.
-            subsetter.add_glyph_ids(self._subset_glyph_ids)
+        # The content stream emits each character's *original* glyph id as
+        # its 2-byte CID (see :meth:`encode`). Pin those original glyph ids
+        # into the subset directly so the GID we encoded survives, then
+        # rebuild /CIDToGIDMap to remap original-GID -> renumbered-subset-GID.
+        original_gids: set[int] = set()
+        cmap_lookup = descendant.get_cmap_lookup()
+        if cmap_lookup is not None:
+            getter = getattr(cmap_lookup, "get_glyph_id", None)
+            if callable(getter):
+                for cp in codepoints:
+                    try:
+                        gid = int(getter(cp) or 0)
+                    except Exception:  # noqa: BLE001
+                        gid = 0
+                    if gid:
+                        original_gids.add(gid)
+        original_gids.update(self._subset_glyph_ids)
+        if original_gids:
+            subsetter.add_glyph_ids(original_gids)
+        else:
+            # No resolvable glyphs (e.g. font has no cmap) — fall back to the
+            # codepoint-driven subset so we still emit a valid program.
+            subsetter.add_all(codepoints)
         subsetter.set_prefix(tag)
         subset_bytes = subsetter.to_bytes()
 
+        # new_gid -> old_gid; invert to old_gid -> new_gid for /CIDToGIDMap.
+        # Under our encoding the CID written in the content stream IS the
+        # old (original) glyph id, so /CIDToGIDMap must map old_gid -> new_gid.
+        gid_map = subsetter.get_gid_map()
+        old_to_new = {old: new for new, old in gid_map.items()}
+
         # Embed onto the descendant (where /FontFile2 lives).
         _embed_subset_bytes(descendant, subset_bytes, tag)
+        # Rebuild /CIDToGIDMap + /W so the original-GID CIDs in the content
+        # stream resolve to the renumbered subset glyphs with correct widths.
+        # Mirrors PDCIDFontType2Embedder.buildSubset (CIDToGIDMap + buildWidths).
+        self._rebuild_subset_cid_to_gid_map(descendant, old_to_new)
+        self._rebuild_subset_widths(descendant, old_to_new, ttf)
         # Mirror the tag onto our own /BaseFont — per PDF 32000-1 §9.7.6.2
         # the parent and descendant must share the tagged PostScript name.
         from .pd_true_type_font import _BASE_FONT  # noqa: PLC0415
@@ -1494,6 +1585,71 @@ class PDType0Font(PDFont):
         # no-op rather than re-subsetting the already-subsetted bytes.
         self._will_be_subset = False
         return subset_bytes
+
+    @staticmethod
+    def _rebuild_subset_cid_to_gid_map(
+        descendant: Any, old_to_new: dict[int, int]
+    ) -> None:
+        """Replace the descendant's ``/CIDToGIDMap`` with a remap stream.
+
+        After subsetting, glyphs are renumbered, so the original-GID CIDs in
+        the content stream must be redirected to the new subset glyph ids.
+        Mirrors upstream ``PDCIDFontType2Embedder.buildCIDToGIDMap``: a
+        ``2 * (maxCid + 1)`` byte stream of big-endian uint16 new-GIDs indexed
+        by CID, zero for unmapped CIDs (.notdef).
+        """
+        if not old_to_new:
+            return
+        max_cid = max(old_to_new)
+        buf = bytearray(2 * (max_cid + 1))
+        for old_gid, new_gid in old_to_new.items():
+            buf[2 * old_gid] = (new_gid >> 8) & 0xFF
+            buf[2 * old_gid + 1] = new_gid & 0xFF
+        stream = COSStream()
+        stream.set_raw_data(bytes(buf))
+        descendant.get_cos_object().set_item(
+            COSName.get_pdf_name("CIDToGIDMap"), stream
+        )
+
+    @staticmethod
+    def _rebuild_subset_widths(
+        descendant: Any, old_to_new: dict[int, int], original_ttf: Any
+    ) -> None:
+        """Rebuild ``/W`` keyed by CID (= original GID) for the subset.
+
+        The advance for each surviving CID is read from the *original* font's
+        hmtx (the CID equals the original glyph id), scaled to 1000-unit text
+        space. Mirrors ``PDCIDFontType2Embedder.buildWidths(TreeMap)`` — the
+        default-width entries (1000) are dropped and contiguous CIDs are
+        grouped into ``c [w...]`` form-1 runs. CID 0 (.notdef) is included.
+        """
+        from pypdfbox.cos import COSInteger as _COSInteger  # noqa: PLC0415
+
+        header_getter = getattr(original_ttf, "get_header", None)
+        if not callable(header_getter):
+            return
+        head = header_getter()
+        units_per_em = head.get_units_per_em() if head is not None else 1000
+        if units_per_em <= 0:
+            units_per_em = 1000
+        scale = 1000.0 / units_per_em
+        advances = list(getattr(original_ttf, "advance_widths", []) or [])
+
+        widths = COSArray()
+        inner = COSArray()
+        prev = None
+        for cid in sorted(old_to_new):
+            width = round(advances[cid] * scale) if 0 <= cid < len(advances) else 1000
+            if width == 1000:
+                prev = None
+                continue
+            if prev is None or cid != prev + 1:
+                inner = COSArray()
+                widths.add(_COSInteger.get(int(cid)))
+                widths.add(inner)
+            inner.add(_COSInteger.get(int(width)))
+            prev = cid
+        descendant.get_cos_object().set_item(COSName.get_pdf_name("W"), widths)
 
     def _collect_subset_codepoints(
         self,
@@ -1731,7 +1887,56 @@ def _build_type0_from_ttf(ttf_bytes: bytes, *, fallback_name: str) -> PDType0Fon
     arr.add(descendant_dict)
     parent_dict.set_item(_DESCENDANT_FONTS, arr)
 
+    # /ToUnicode — map each content-stream code (the original glyph id, which
+    # is what encode() emits under Identity-H) back to its Unicode codepoint
+    # so text extraction round-trips. Mirrors the embedder's buildToUnicodeCMap
+    # but keyed by glyph id (= our CID) rather than CID==GID.
+    to_unicode = _build_to_unicode_stream_for_gids(ttf)
+    if to_unicode is not None:
+        parent_dict.set_item(_TO_UNICODE, to_unicode)
+
     return PDType0Font(parent_dict)
+
+
+def _build_to_unicode_stream_for_gids(ttf: Any) -> COSStream | None:
+    """Build a ``/ToUnicode`` CMap stream mapping each glyph id to its Unicode
+    codepoint via the embedded program's unicode cmap (reverse lookup).
+
+    Under our Identity-H encoding the content-stream code is the original
+    glyph id, so the ToUnicode CMap is keyed by glyph id. Returns ``None`` when
+    the font has no usable cmap (nothing to map).
+    """
+    import io as _io  # noqa: PLC0415
+
+    from .to_unicode_writer import ToUnicodeWriter  # noqa: PLC0415
+
+    cmap_getter = getattr(ttf, "get_unicode_cmap_subtable", None)
+    if not callable(cmap_getter):
+        return None
+    try:
+        cmap = cmap_getter()
+    except Exception:  # noqa: BLE001 — defensive against malformed cmaps
+        cmap = None
+    if cmap is None:
+        return None
+    num_glyphs = ttf.get_number_of_glyphs()
+    writer = ToUnicodeWriter()
+    added = 0
+    for gid in range(1, num_glyphs):
+        try:
+            codes = cmap.get_char_codes(gid)
+        except Exception:  # noqa: BLE001 — defensive against odd cmaps
+            codes = None
+        if codes:
+            writer.add(gid, chr(codes[0]))
+            added += 1
+    if added == 0:
+        return None
+    buf = _io.BytesIO()
+    writer.write_to(buf)
+    stream = COSStream()
+    stream.set_raw_data(buf.getvalue())
+    return stream
 
 
 def _ps_name_from_ttf(ttf: Any, fallback: str) -> str:

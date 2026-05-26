@@ -246,7 +246,11 @@ def test_prepare_document_round_trip_matches_decrypt_path(
     else:
         assert document.encryption.get_v() == 4
         assert document.encryption.get_sub_filter() == "adbe.pkcs7.s4"
-    recipients_array = document.encryption.get_recipients()
+    # V>=4 crypt-filter handler keeps /Recipients inside /CF /DefaultCryptFilter
+    # (PDFBox-compatible location).
+    default_cf = document.encryption.get_default_crypt_filter_dictionary()
+    assert default_cf is not None
+    recipients_array = default_cf.get_recipients()
     assert recipients_array is not None
     assert recipients_array.size() == 1
 

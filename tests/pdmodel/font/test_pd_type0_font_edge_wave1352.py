@@ -224,6 +224,10 @@ def test_subset_forwards_pinned_glyph_ids_to_subsetter(
         def to_bytes(self) -> bytes:
             return b"subset-bytes-with-pinned-gids"
 
+        def get_gid_map(self) -> dict[int, int]:
+            # new_gid -> old_gid; the pinned originals renumber to 1..n.
+            return {0: 0, 1: 3, 2: 7, 3: 11}
+
     descendant = PDCIDFontType2(COSDictionary())
     descendant._ttf = object()  # noqa: SLF001
     monkeypatch.setattr(descendant, "get_true_type_font", lambda: descendant._ttf)

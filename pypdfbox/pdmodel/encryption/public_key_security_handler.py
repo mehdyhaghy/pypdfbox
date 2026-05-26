@@ -22,6 +22,7 @@ import hashlib
 import os
 from typing import TYPE_CHECKING, cast
 
+from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.ciphers import algorithms
 from cryptography.hazmat.primitives.serialization import pkcs7
@@ -103,9 +104,25 @@ class PublicKeySecurityHandler(SecurityHandler):
                 "PublicKeyDecryptionMaterial is missing a certificate or private key"
             )
 
+        # Per PDF 32000-1 §7.6.5 the /Recipients array lives at the /Encrypt
+        # top level for the legacy (V<4) public-key handler, but moves *into*
+        # the default crypt filter (/CF /DefaultCryptFilter /Recipients) for
+        # the crypt-filter-based V>=4 handlers (AES-128 V=4, AES-256 V=5) that
+        # Acrobat and Apache PDFBox emit. Probe the top level first, then fall
+        # back to the default crypt filter — mirrors upstream
+        # PublicKeySecurityHandler#prepareForDecryption, which reads
+        # getDefaultCryptFilterDictionary().getRecipients() when the
+        # /Encrypt-level array is absent.
         recipients_array = encryption.get_recipients()
         if recipients_array is None or recipients_array.size() == 0:
-            raise ValueError("/Recipients array missing or empty on /Encrypt dictionary")
+            default_cf = encryption.get_default_crypt_filter_dictionary()
+            if default_cf is not None:
+                recipients_array = default_cf.get_recipients()
+        if recipients_array is None or recipients_array.size() == 0:
+            raise ValueError(
+                "/Recipients array missing or empty on /Encrypt dictionary "
+                "(checked both the top level and /CF /DefaultCryptFilter)"
+            )
 
         # Snapshot the recipient blobs in their array order — needed both for
         # the per-recipient decrypt attempt and the eventual hash composition.
@@ -120,17 +137,37 @@ class PublicKeySecurityHandler(SecurityHandler):
 
         envelope_plaintext: bytes | None = None
         rsa_private_key = cast("RSAPrivateKey", private_key)
+        unsupported_algo: bool = False
         for blob in recipient_blobs:
             try:
                 envelope_plaintext = pkcs7.pkcs7_decrypt_der(
                     blob, cert, rsa_private_key, options=[]
                 )
+            except UnsupportedAlgorithm:
+                # The CMS envelope uses a content-encryption cipher the
+                # ``cryptography`` PKCS#7 backend can't decrypt (it supports
+                # AES-128/256-CBC only). Apache PDFBox and Acrobat default to
+                # RC2-CBC for the recipient envelope, which OpenSSL no longer
+                # exposes — so a PDFBox/Acrobat-produced public-key file is not
+                # decryptable here regardless of the private key. Flag it so the
+                # final error names the real cause instead of "wrong key".
+                unsupported_algo = True
+                continue
             except Exception:  # noqa: BLE001 — try every recipient before giving up
                 continue
             if envelope_plaintext is not None:
                 break
 
         if envelope_plaintext is None:
+            if unsupported_algo:
+                raise UnsupportedAlgorithm(
+                    "Recipient envelope uses an unsupported CMS content cipher "
+                    "(e.g. RC2-CBC, the Apache PDFBox / Acrobat default). The "
+                    "cryptography PKCS#7 backend decrypts AES-128/256-CBC "
+                    "envelopes only; RC2 is not exposed by OpenSSL. pypdfbox "
+                    "writes AES envelopes, which interoperate; reading a "
+                    "PDFBox-RC2 public-key file is not supported."
+                )
             raise ValueError(
                 "Supplied private key matched none of the /Recipients envelopes"
             )
@@ -313,13 +350,44 @@ class PublicKeySecurityHandler(SecurityHandler):
         encryption.set_revision(revision)
         encryption.set_length(key_length_bits)
 
-        encryption.set_recipients(envelopes)
-
+        # Crypt-filter-based public-key handler (V>=4): the /Recipients array
+        # lives INSIDE /CF /DefaultCryptFilter, not at the /Encrypt top level.
+        # This is what Apache PDFBox and Acrobat emit and expect to read back
+        # (PublicKeySecurityHandler#prepareEncryptionDictAES) — writing it at
+        # the top level instead produces a file PDFBox opens without error but
+        # derives the WRONG file key for (recipient-byte mismatch → garbage
+        # streams → empty extracted text). Mirror upstream by routing the
+        # envelopes through :meth:`prepare_encryption_dict_aes`, which sets the
+        # crypt filter's /Recipients + wires /StmF and /StrF.
         crypt_filter = PDCryptFilterDictionary()
         crypt_filter.set_cfm(cfm)
-        # /CF /Length is in bytes per Table 25 (note the bits/bytes split).
-        crypt_filter.set_length(key_length_bits // 8)
+        # The public-key READ path derives the file-key length from this crypt
+        # filter's /Length: upstream PublicKeySecurityHandler#prepareForDecryption
+        # calls setKeyLength(getDefaultCryptFilterDictionary().getLength()) and
+        # truncates the SHA digest to that-many-bits/8. Apache PDFBox writes the
+        # value in BITS here (128 / 256), NOT bytes — so we must too. Writing 16
+        # (bytes) makes a PDFBox reader truncate the file key to 16 *bits* (2
+        # bytes), opening the file without error but deciphering every stream to
+        # garbage (empty extracted text). Match upstream and write bits.
+        crypt_filter.set_length(key_length_bits)
+        recipients_cos = COSArray()
+        for envelope_der in envelopes:
+            recipients_cos.add(COSString(envelope_der))
+        crypt_filter.set_recipients(recipients_cos)
+        recipients_cos.set_direct(True)
         encryption.set_default_crypt_filter_dictionary(crypt_filter)
+        # Keep the whole /CF subtree DIRECT (inline). If /CF — or its
+        # /DefaultCryptFilter, or the /Recipients COSStrings within it — were
+        # written as indirect objects, a reader (Apache PDFBox / Acrobat) would
+        # dereference them mid-``prepareForDecryption`` and run the per-object
+        # string decrypt with the file key still unset → NullPointerException
+        # in calcFinalKey. Upstream's prepareEncryptionDictAES marks the same
+        # subtree direct for exactly this reason (and the PDFBOX-4436 Android
+        # workaround). The crypt filter dict itself is already set direct by
+        # set_crypt_filter_dictionary; mark the containing /CF too.
+        cf_dict = encryption.get_cf()
+        if cf_dict is not None:
+            cf_dict.set_direct(True)
         encryption.set_stm_f("DefaultCryptFilter")
         encryption.set_str_f("DefaultCryptFilter")
 

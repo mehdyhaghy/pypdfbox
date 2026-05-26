@@ -715,7 +715,10 @@ def test_public_key_four_recipients_two_distinct_masks_yield_two_envelopes() -> 
     handler.prepare_document(document)
     encryption = document.encryption
     assert encryption is not None
-    recipients = encryption.get_recipients()
+    # V>=4 crypt-filter handler keeps /Recipients inside /CF /DefaultCryptFilter.
+    default_cf = encryption.get_default_crypt_filter_dictionary()
+    assert default_cf is not None
+    recipients = default_cf.get_recipients()
     assert recipients is not None
     # Two distinct masks → exactly two envelopes regardless of recipient count.
     assert recipients.size() == 2

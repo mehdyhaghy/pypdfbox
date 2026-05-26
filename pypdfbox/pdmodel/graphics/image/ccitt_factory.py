@@ -360,10 +360,13 @@ class CCITTFactory:
 
         width, height = image.size
         # PIL "1": 1 = white (high value), 0 = black. Upstream flips bits
-        # via ``writeBits(~rgb & 1)`` so the Group 4 stream encodes
-        # without /BlackIs1. PIL's tobytes() already produces the same
-        # 1=white packing -- no flip needed at the CCITT layer for
-        # parity with upstream's stream payload polarity.
+        # via ``writeBits(~rgb & 1)`` so the Group 4 stream encodes black as
+        # the foreground run. ``prepare_image_x_object`` carries no
+        # /BlackIs1, so ``CCITTFaxDecode.encode`` takes its default
+        # (BlackIs0) branch and performs the equivalent inversion before
+        # handing the raster to libtiff -- the resulting stream is
+        # byte-identical to upstream ``CCITTFactory`` and decodes back to
+        # this raster. We therefore pass PIL's ``tobytes()`` unchanged.
         raw = image.tobytes()
 
         return prepare_image_x_object(

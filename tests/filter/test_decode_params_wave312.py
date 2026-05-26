@@ -54,6 +54,10 @@ def test_wave312_lzw_decode_uses_indirect_indexed_decode_params() -> None:
 
 
 def _g4_strip(image: Image.Image) -> bytes:
+    # Bit-invert the raster first so the libtiff-encoded stream carries the
+    # Apache PDFBox foreground-run polarity (matches the same helper in
+    # ``test_ccitt_fax_decode.py``); decoded scanlines then equal the source.
+    image = image.point(lambda v: 0 if v else 255)
     tiff = io.BytesIO()
     image.save(tiff, format="TIFF", compression="group4")
 

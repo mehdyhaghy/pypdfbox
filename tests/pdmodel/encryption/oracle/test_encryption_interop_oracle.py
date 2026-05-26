@@ -255,21 +255,6 @@ def test_java_rejects_wrong_password_on_pypdfbox_encrypted_file(
 
 
 @requires_oracle
-@pytest.mark.xfail(
-    reason=(
-        "Cross-module bug in pypdfbox/pdfwriter (NOT encryption): "
-        "COSWriter.visit_from_stream reads create_raw_input_stream() — the "
-        "still-ciphertext body — when a stream was loaded encrypted, lazily "
-        "decrypted (handler attached, _decrypted=False), and then re-encrypted "
-        "on save. The body is enciphered a second time → double encryption → "
-        "FlateDecode garbage on reload. Reproduces on flat (non-ObjStm) files "
-        "too, so it is independent of the wave-1409 object-stream decrypt fix. "
-        "Fix belongs in cos_writer.py (decrypt-on-read before re-encipher), "
-        "out of this wave's encryption-only scope. The single-hop directions "
-        "(Java->py and py->Java) all pass and are the contract that matters."
-    ),
-    strict=True,
-)
 @pytest.mark.parametrize(
     ("algo_id", "key_length", "prefer_aes"),
     _ALGORITHMS,
@@ -282,9 +267,10 @@ def test_double_hop_java_to_py_to_java_preserves_content(
     Java decrypts again, recovering the original text. Exercises both the
     read AND write halves of pypdfbox's standard handler in one chain.
 
-    Currently XFAIL: the write-half double-enciphers bodies of streams that
-    were loaded encrypted (see the module + marker docstring). Tracked as a
-    cross-module pdfwriter divergence."""
+    Wave 1418: the writer now forces the lazy stream-body decrypt before
+    re-enciphering on save (COSStream.ensure_decrypted +
+    COSWriter.visit_from_stream), so the double-hop no longer double-
+    enciphers stream bodies."""
     _fixture_present()
     base_text = run_probe_text("TextExtractProbe", str(_FIXTURE))
 
@@ -319,4 +305,58 @@ def test_double_hop_java_to_py_to_java_preserves_content(
     # Hop 3: Java opens the pypdfbox-re-encrypted file.
     pages, text = _java_decrypt(hop2, _USER_PW)
     assert pages == 2
+    assert text == base_text
+
+
+# ------------------------------------------- pypdfbox-only re-encrypt round-trip
+
+
+@requires_oracle
+@pytest.mark.parametrize(
+    ("algo_id", "key_length", "prefer_aes"),
+    _ALGORITHMS,
+    ids=[a[0] for a in _ALGORITHMS],
+)
+def test_load_encrypted_resave_encrypted_roundtrip_pypdfbox(
+    algo_id: str, key_length: int, prefer_aes: bool, tmp_path: Path
+) -> None:
+    """pypdfbox-only double hop: Java encrypts → pypdfbox loads, re-protects,
+    re-saves → pypdfbox loads the re-encrypted file and recovers the original
+    content. Guards the wave-1418 decrypt-on-write fix without involving the
+    Java decrypt side, so a regression surfaces even if the oracle JAR is the
+    only thing that drifts."""
+    _fixture_present()
+    base_pages, base_text = _plaintext_baseline()
+
+    enc = tmp_path / f"src_{algo_id}.pdf"
+    run_probe(
+        "EncryptProbe",
+        str(_FIXTURE),
+        str(enc),
+        _OWNER_PW,
+        _USER_PW,
+        str(key_length),
+        "true" if prefer_aes else "false",
+    )
+
+    resaved = tmp_path / f"resaved_{algo_id}.pdf"
+    doc = PDDocument.load(str(enc), password=_USER_PW)
+    try:
+        policy = StandardProtectionPolicy(
+            owner_password=_OWNER_PW,
+            user_password=_USER_PW,
+            permissions=AccessPermission(),
+        )
+        policy.set_encryption_key_length(key_length)
+        policy.set_prefer_aes(prefer_aes)
+        doc.protect(policy)
+        doc.save(str(resaved))
+    finally:
+        doc.close()
+
+    # The re-encrypted file must not leak the plaintext verbatim.
+    assert base_text[:40].encode("latin-1", "ignore") not in resaved.read_bytes()
+
+    pages, text = _py_extract(resaved, _USER_PW)
+    assert pages == base_pages
     assert text == base_text
