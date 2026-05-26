@@ -883,15 +883,30 @@ class BaseParser:
         c = self._src.peek()
         if c == RandomAccessRead.EOF:
             return None
-        if c == 0x3C:  # '<'
-            self._src.read()
-            second = self._src.peek()
-            self._src.rewind(1)
-            if second == 0x3C:
-                return self.parse_cos_dictionary(is_direct=True)
-            return self.parse_cos_string()
-        if c == 0x5B:  # '['
-            return self.parse_cos_array()
+        # The container branches below recurse (array/dict elements are
+        # themselves parsed via ``parse_dir_object``). Deeply nested direct
+        # ``[...]`` / ``<<...>>`` structures in a malformed PDF can exhaust
+        # Python's recursion limit; convert that into the parser's own error
+        # type so callers catching ``PDFParseError`` aren't surprised by a
+        # raw ``RecursionError``. Legitimate PDFs nest only a few levels
+        # (direct nesting, not indirect references), so this never fires on
+        # real documents — it is a hostile-input guard. (Upstream PDFBox is
+        # likewise recursive here; it tolerates more only because the JVM
+        # stack is deeper.)
+        try:
+            if c == 0x3C:  # '<'
+                self._src.read()
+                second = self._src.peek()
+                self._src.rewind(1)
+                if second == 0x3C:
+                    return self.parse_cos_dictionary(is_direct=True)
+                return self.parse_cos_string()
+            if c == 0x5B:  # '['
+                return self.parse_cos_array()
+        except RecursionError as exc:
+            raise PDFParseError(
+                "PDF object nesting too deep to parse", position=self.position
+            ) from exc
         if c == 0x28:  # '('
             return self.parse_cos_string()
         if c == 0x2F:  # '/'
@@ -1184,7 +1199,16 @@ class BaseParser:
         text = bytes(buf).decode("ascii")
         if any(ch in text for ch in (".", "e", "E")):
             return COSFloat(text)
-        return COSInteger.get(int(text))
+        try:
+            return COSInteger.get(int(text))
+        except ValueError as exc:
+            # CPython caps int() string parsing at sys.get_int_max_str_digits()
+            # (4300 digits by default) as a CPU-DoS guard. A pathologically long
+            # integer literal in a malformed PDF would otherwise leak a bare
+            # ValueError to the caller instead of the parser's own error type.
+            raise PDFParseError(
+                "integer literal too long to parse", position=self.position
+            ) from exc
 
     def parse_cos_string(self) -> COSString:
         """Parse a literal ``( ... )`` or hex ``< ... >`` string per upstream

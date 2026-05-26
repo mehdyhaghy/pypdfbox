@@ -363,7 +363,15 @@ class COSStream(COSDictionary):
         for index, name in enumerate(chain):
             if _canonical_filter_name(name.name) in stop_set:
                 break
-            f = FilterFactory.get(name)
+            try:
+                f = FilterFactory.get(name)
+            except KeyError as exc:
+                # Untrusted /Filter naming an unregistered (or corrupted)
+                # filter must fail with an I/O-level error, not leak the
+                # registry's KeyError to the caller. Mirrors upstream
+                # ``FilterFactory.getFilter`` which throws
+                # ``IOException("Invalid filter: ...")`` during decode.
+                raise OSError(f"Invalid filter: {name.name}") from exc
             src = io.BytesIO(data)
             dst = io.BytesIO()
             f.decode(src, dst, self, index)
