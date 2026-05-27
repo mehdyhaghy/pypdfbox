@@ -14,15 +14,20 @@ def _make_path_pen(glyph_set: Any | None = None) -> Any:
     glyph paths are ever requested.
 
     ``glyph_set`` is the fontTools glyph set the pen belongs to. It must
-    be supplied when drawing a glyph that may be **composite** (a
-    TrueType ``glyf`` glyph with ``numberOfContours < 0``, e.g. an
-    accented ``eacute`` = ``e`` + ``acute``): fontTools' ``BasePen``
-    decomposes a composite by looking its component glyphs up in this
-    glyph set via ``addComponent``. With ``glyphSet=None`` that lookup
-    is ``None[name]``, which raises ``TypeError`` and (when swallowed by
-    the caller) silently drops the whole composite outline. Type 1
-    charstrings have no component references, so the default ``None`` is
-    safe for the Type 1 path.
+    be supplied when drawing a glyph that may be **composite**, e.g. a
+    Type 1 ``seac`` accented character (``eacute`` = base ``e`` + accent
+    ``acute``, each referenced by StandardEncoding code). fontTools'
+    ``T1OutlineExtractor.op_seac`` does not assemble the composite
+    itself — it emits two ``pen.addComponent(glyphName, transform)``
+    calls and relies on the pen's glyph set to resolve and replay each
+    component outline. With ``glyphSet=None`` ``BasePen.addComponent``
+    looks up ``None[glyphName]``, which raises ``TypeError`` and (when
+    swallowed by the caller) silently drops the whole composite —
+    rendering every accented Type 1 glyph **blank**. This is the Type 1
+    analogue of the wave-1438 TrueType composite-component drop. Pass a
+    :class:`_T1GlyphSet` so fontTools' built-in component decomposition
+    resolves the base/accent outlines. Pure simple charstrings carry no
+    component references, so the default ``None`` is still safe there.
     """
     from fontTools.pens.basePen import BasePen  # type: ignore[import-untyped] # noqa: PLC0415
 
@@ -59,6 +64,37 @@ def _make_path_pen(glyph_set: Any | None = None) -> Any:
             self.commands.append(("closepath",))
 
     return _PathPen()
+
+
+class _T1GlyphSet:
+    """A minimal fontTools-shaped glyph set backing ``seac`` component
+    resolution for the embedded-``/FontFile`` (``cs.draw``) path.
+
+    fontTools' ``T1OutlineExtractor.op_seac`` resolves a composite's base
+    and accent glyph *names* through StandardEncoding and then calls
+    ``pen.addComponent(name, transform)``; ``BasePen.addComponent`` in
+    turn does ``glyphSet[name].draw(componentPen)``. This adapter is that
+    ``glyphSet``: ``__getitem__`` returns a tiny drawable whose ``draw``
+    replays the named component charstring (a ``T1CharString.draw``)
+    through the supplied pen, so the base + accent outlines compose into
+    the same pen recording the accented glyph. Component charstrings are
+    simple (non-``seac``) so there is no unbounded recursion.
+    """
+
+    def __init__(self, charstrings: dict[str, Any]) -> None:
+        self._charstrings = charstrings
+
+    def __getitem__(self, name: str) -> Any:
+        cs = self._charstrings[name]  # KeyError on a missing component
+
+        class _T1Glyph:
+            def draw(_self, pen: Any) -> None:  # noqa: N805
+                cs.draw(pen)
+
+        return _T1Glyph()
+
+    def __contains__(self, name: str) -> bool:
+        return name in self._charstrings
 
 
 class _ParsedT1:
@@ -1032,7 +1068,12 @@ class Type1Font:
                 name, float(char_string.get_width() or 0.0)
             )
             return commands
-        pen = _make_path_pen()
+        # A ``seac`` charstring composes a base + accent glyph: fontTools'
+        # ``op_seac`` resolves each via StandardEncoding and emits
+        # ``pen.addComponent`` calls, which need a glyph set to look the
+        # component outlines up (see ``_make_path_pen`` / ``_T1GlyphSet``).
+        # Without it every accented Type 1 glyph drew blank.
+        pen = _make_path_pen(_T1GlyphSet(cs_map))
         try:
             cs.draw(pen)
         except Exception:  # noqa: BLE001

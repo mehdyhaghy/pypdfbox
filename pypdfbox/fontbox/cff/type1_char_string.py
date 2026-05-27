@@ -120,11 +120,54 @@ def _draw_with_extended_extractor(t1: Any, pen: Any) -> float:
     return width
 
 
-def _make_path_pen() -> Any:
+def _apply_affine(
+    cmd: tuple[Any, ...],
+    transform: tuple[float, float, float, float, float, float],
+) -> tuple[Any, ...]:
+    """Apply a 6-tuple affine ``(a, b, c, d, e, f)`` to a path command.
+
+    Point ``(x, y)`` maps to ``(a*x + c*y + e, b*x + d*y + f)``. Used by
+    the path pen's ``add_component`` to replay a seac base/accent glyph's
+    outline under the component transform fontTools' ``op_seac`` supplies
+    (``(1, 0, 0, 1, adx, ady)`` — the ``adx`` already carries the
+    ``sbx - asb`` seac adjustment).
+    """
+    a, b, c, d, e, f = transform
+
+    def _pt(x: float, y: float) -> tuple[float, float]:
+        return (a * x + c * y + e, b * x + d * y + f)
+
+    tag = cmd[0]
+    if tag in ("moveto", "lineto"):
+        nx, ny = _pt(cmd[1], cmd[2])
+        return (tag, nx, ny)
+    if tag == "curveto":
+        x1, y1 = _pt(cmd[1], cmd[2])
+        x2, y2 = _pt(cmd[3], cmd[4])
+        x3, y3 = _pt(cmd[5], cmd[6])
+        return (tag, x1, y1, x2, y2, x3, y3)
+    return cmd
+
+
+def _make_path_pen(font: Any = None) -> Any:
     """Build a fontTools BasePen subclass that records draw commands as
     the simple list-of-tuples format used elsewhere in pypdfbox
     (mirrors ``cff_font._make_path_pen`` and
     ``type2_char_string._make_path_pen``).
+
+    ``font`` is the parent Type 1 charstring reader (a ``Type1Font`` /
+    ``Type1CharStringReader``). It is consulted by ``add_component`` to
+    resolve a ``seac`` composite's base/accent component outlines.
+    fontTools' ``op_seac`` (in ``T1OutlineExtractor``) does not assemble
+    the composite itself — it emits two ``pen.addComponent(glyphName,
+    transform)`` calls (one per StandardEncoding component) and relies on
+    the pen to fetch and replay each component's outline. ``BasePen``'s
+    own ``addComponent`` raises ``NotImplementedError`` (and, with the
+    ``glyphSet=None`` we pass, even the inherited fallback dereferences
+    ``None`` and raises ``TypeError``), so without this override every
+    seac accented glyph (``é``/``à``/``ñ``/``ç`` …) decoded to an empty
+    path and rendered **blank** — the Type 1 analogue of the wave-1438
+    TrueType composite-component drop.
     """
     from fontTools.pens.basePen import BasePen  # type: ignore[import-untyped]  # noqa: PLC0415
 
@@ -159,6 +202,39 @@ def _make_path_pen() -> Any:
 
         def _closePath(self) -> None:
             self.commands.append(("closepath",))
+
+        def addComponent(  # noqa: N802 (fontTools BasePen hook name)
+            self,
+            glyph_name: str,
+            transformation: tuple[
+                float, float, float, float, float, float
+            ],
+        ) -> None:
+            """Resolve a ``seac`` component glyph by name and replay its
+            (transformed) outline into this pen.
+
+            ``op_seac`` calls this once for the base glyph (identity
+            transform) and once for the accent glyph (translate by the
+            ``adx``/``ady`` it already adjusted for the side bearing).
+            We fetch the component outline through the parent reader's
+            ``get_type1_char_string`` and append each command under the
+            affine ``transformation``. Missing reader / lookup / self-
+            recursion degrade to a no-op, matching upstream's seac
+            warn-and-skip.
+            """
+            get = getattr(font, "get_type1_char_string", None)
+            if get is None:
+                return
+            try:
+                component = get(glyph_name)
+                outline = component.get_path() or []
+            except Exception:  # noqa: BLE001
+                # Missing component / decode failure / runaway recursion
+                # (a seac whose component resolves back to itself,
+                # PDFBOX-5339) — skip, matching upstream warn-and-skip.
+                return
+            for cmd in outline:
+                self.commands.append(_apply_affine(cmd, transformation))
 
     return _PathPen()
 
@@ -315,7 +391,7 @@ class Type1CharString:
         """
         if self._cached_path is not None:
             return list(self._cached_path)
-        pen = _make_path_pen()
+        pen = _make_path_pen(self._font)
         try:
             width = _draw_with_extended_extractor(self._t1, pen)
         except Exception:  # noqa: BLE001
@@ -419,7 +495,7 @@ class Type1CharString:
         """
         if self._cached_path is not None:
             return list(self._cached_path)
-        pen = _make_path_pen()
+        pen = _make_path_pen(self._font)
         try:
             width = _draw_with_extended_extractor(self._t1, pen)
         except Exception:  # noqa: BLE001
