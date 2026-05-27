@@ -8708,16 +8708,28 @@ class PDFRenderer(PDFStreamEngine):
         """
         ctm_scale = self._approx_scale(ctm)
         page_scale = self._approx_scale(self._full_ctm())
-        # ``ctm_scale <= 0.0`` is a pathological / degenerate text matrix —
-        # fall back to the page scale only (stroke ends up at user-space
-        # width interpreted in glyph-local units, which is still better
-        # than dividing by zero).
-        ratio = page_scale if ctm_scale <= 0.0 else page_scale / ctm_scale
-        width_px = max(0.5, self._gs.line_width * ratio)
+        # The pen width passed to skia is in the path's *glyph-local* em
+        # coordinate space (the path is unit-em scaled), and skia applies
+        # the stroke width before the per-glyph ``ctm`` transform — so the
+        # effective stroke in device pixels is ``pen.width * ctm_scale``.
+        # Wave 1442 bug fix: the floor (``max(0.5, ...)``) and the /SA snap
+        # to 1.0 must be applied to the *device-pixel* width, then converted
+        # back to glyph-local units by dividing by ``ctm_scale``. Previously
+        # the 0.5 / 1.0 minima were clamped against the glyph-local pen
+        # width directly — at a 60-pt font that turned a 1-user-unit hairline
+        # into a 0.5-em (≈30 device-px) slab, painting Tr modes 1/2/5/6 as
+        # near-solid blocks instead of thin glyph outlines.
+        device_width = self._gs.line_width * page_scale
+        device_width = max(0.5, device_width)
         # Wave 1386 — /SA: hairline strokes snap to integer-pixel width
         # to avoid sub-pixel anti-aliasing fade-out (parity with §10.6.5).
-        if self._gs.stroke_adjustment and width_px < 1.0:
-            width_px = 1.0
+        if self._gs.stroke_adjustment and device_width < 1.0:
+            device_width = 1.0
+        # ``ctm_scale <= 0.0`` is a pathological / degenerate text matrix —
+        # fall back to the device width directly (stroke ends up at the
+        # user-space width interpreted in glyph-local units, which is still
+        # better than dividing by zero).
+        width_px = device_width if ctm_scale <= 0.0 else device_width / ctm_scale
         # Wave 1386 — /CA (stroke alpha) — fold into the pen opacity.
         stroke_opacity = int(
             round(255.0 * max(0.0, min(1.0, self._gs.stroke_alpha)))

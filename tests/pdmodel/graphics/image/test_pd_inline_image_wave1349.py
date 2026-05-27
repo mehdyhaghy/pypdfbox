@@ -109,17 +109,17 @@ def test_wave1349_get_image_subsampling_floor_clamps_to_at_least_one_pixel() -> 
 
 
 def test_wave1349_get_image_returns_none_when_to_pil_image_returns_none() -> None:
-    # Multi-component 16-bit rasters (16-bit DeviceRGB) remain
-    # rendering-cluster work and fall through ``to_pil_image`` → ``None``;
-    # ``get_image`` must propagate the None even when region / subsampling
-    # are provided (the short-circuit guard). (16-bit *DeviceGray* now
-    # decodes — only multi-component 16-bit stays unsupported.)
+    # 16-bit DeviceCMYK rasters remain rendering-cluster work and fall
+    # through ``to_pil_image`` → ``None``; ``get_image`` must propagate the
+    # None even when region / subsampling are provided (the short-circuit
+    # guard). (16-bit DeviceGray and DeviceRGB now decode — only the wider
+    # 16-bit colour models stay unsupported.)
     params = COSDictionary()
     params.set_int("W", 2)
     params.set_int("H", 2)
     params.set_int("BPC", 16)
-    params.set_item("CS", COSName.get_pdf_name("RGB"))
-    img = PDInlineImage(params, b"\x00" * 24, None)
+    params.set_item("CS", COSName.get_pdf_name("CMYK"))
+    img = PDInlineImage(params, b"\x00" * 32, None)
 
     assert img.get_image(region=(0, 0, 1, 1)) is None
 

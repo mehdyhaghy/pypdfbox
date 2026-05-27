@@ -1020,7 +1020,7 @@ def decode_pdimage_to_pil(
     sub_byte = bpc in (1, 2, 4)
     if bpc not in (8, -1) and not (
         (sub_byte and color_space_name in ("DeviceGray", "Indexed"))
-        or (bpc == 16 and color_space_name == "DeviceGray")
+        or (bpc == 16 and color_space_name in ("DeviceGray", "DeviceRGB"))
     ):
         return None
     with pd_image.create_input_stream() as src:
@@ -1037,6 +1037,20 @@ def decode_pdimage_to_pil(
     if color_space_name == "DeviceRGB" or (
         color_space_name is None and len(data) >= rgb_len
     ):
+        if bpc == 16:
+            # Big-endian 16-bit samples, three per pixel. PDFBox reads the
+            # 16-bit raster and down-shifts to 8-bit for rendering; the
+            # decode-array math below reproduces that scaling (raw / 65535
+            # * 255) exactly.
+            samples = _unpack_16bit_samples(data, width, height, components=3)
+            if samples is None:
+                return None
+            decoded = _apply_decode_to_8bit_samples(
+                samples, pixel_count, 3, decode, bpc=16
+            )
+            if decoded is None:
+                return None
+            return Image.frombytes("RGB", (width, height), decoded)
         if len(data) < rgb_len:
             return None
         decoded = _apply_decode_to_8bit_samples(data[:rgb_len], pixel_count, 3, decode)
