@@ -187,7 +187,11 @@ def test_type1_path_builder_and_aggdraw_pen_quadratic_branches() -> None:
     pen.q_curve_to((3.0, 1.0), (4.0, 0.0))
     pen.q_curve_to((5.0, 1.0), (6.0, 1.0), (7.0, 0.0))
     pen.curve_to((7.0, 0.0), (8.0, 1.0))
-    pen.add_component("base", (1.0, 0.0, 0.0, 1.0, 0.0, 0.0))
+    # Wave 1438: _AggdrawPathPen no longer defines ``add_component`` — a
+    # composite glyph's components are decomposed into real segments by the
+    # pen bridge (BasePen's default ``addComponent``), not by a no-op hook on
+    # this pen. The pen therefore has no ``add_component`` attribute.
+    assert not hasattr(pen, "add_component")
     pen.close_path()
     pen.end_path()
 

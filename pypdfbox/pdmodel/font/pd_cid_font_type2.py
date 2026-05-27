@@ -572,7 +572,12 @@ class PDCIDFontType2(PDCIDFont):
             return []
         from pypdfbox.fontbox.type1.type1_font import _make_path_pen  # noqa: PLC0415
 
-        pen = _make_path_pen()
+        # Pass the glyph set so a composite glyph (numberOfContours < 0,
+        # e.g. an accented ``eacute`` = ``e`` + ``acute``) decomposes
+        # through its component lookups; without it fontTools' BasePen
+        # raises TypeError on the None glyph set and the composite
+        # outline is dropped (renders blank).
+        pen = _make_path_pen(glyph_set)
         try:
             glyph.draw(pen)
         except Exception:  # noqa: BLE001
@@ -689,7 +694,10 @@ class PDCIDFontType2(PDCIDFont):
             return None
         from pypdfbox.fontbox.type1.type1_font import _make_path_pen  # noqa: PLC0415
 
-        pen = _make_path_pen()
+        # Pass the glyph set so a composite glyph decomposes through its
+        # component lookups (see get_glyph_path); without it fontTools'
+        # BasePen raises TypeError and the composite outline is dropped.
+        pen = _make_path_pen(glyph_set)
         try:
             glyph.draw(pen)
         except Exception:  # noqa: BLE001

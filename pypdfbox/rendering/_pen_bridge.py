@@ -73,6 +73,7 @@ def make_base_pen_bridge(delegate: Any, glyph_set: Any | None = None) -> Any:
         ) -> None:
             super().__init__(glyph_set)
             self._delegate = delegate
+            self._glyph_set = glyph_set
 
         def moveTo(self, pt: tuple[float, float]) -> None:  # noqa: N802 - BasePen contract
             fn = getattr(self._delegate, "move_to", None)
@@ -111,8 +112,27 @@ def make_base_pen_bridge(delegate: Any, glyph_set: Any | None = None) -> Any:
             glyphName: str,  # noqa: N803 - matches BasePen signature
             transformation: tuple[float, float, float, float, float, float],
         ) -> None:
+            # A composite TrueType glyph (e.g. an accented ``eacute`` =
+            # ``e`` + ``acute``) references its components here. A delegate
+            # that defines ``add_component`` wants the raw component ref
+            # (e.g. a collector recording component GIDs); forward to it.
+            # Otherwise fall back to fontTools' BasePen default, which
+            # *decomposes* the component — it transforms the base glyph's
+            # outline and replays it through ``moveTo`` / ``lineTo`` /
+            # ``curveTo`` (i.e. back through this bridge to the delegate's
+            # snake_case methods). That default needs the ``glyph_set``
+            # passed to this bridge; without this fallback a composite
+            # glyph paints nothing (the components are silently dropped).
             fn = getattr(self._delegate, "add_component", None)
             if fn is not None:
                 fn(glyphName, transformation)
+            elif self._glyph_set is not None:
+                # No delegate handler but a glyph set is available: let
+                # BasePen decompose the component into segments. Without a
+                # glyph set there is nothing to look the component up in,
+                # so the only safe action is to skip (a no-op), matching
+                # the historical behaviour for delegates that ignore
+                # composites.
+                super().addComponent(glyphName, transformation)
 
     return _BasePenBridge(delegate, glyph_set)

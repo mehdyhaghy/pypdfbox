@@ -9077,16 +9077,17 @@ class _AggdrawPathPen:
         # in PostScript-land; aggdraw's brush will close implicitly.
         pass
 
-    def add_component(
-        self,
-        base_glyph_name: str,  # noqa: ARG002
-        transformation: tuple[float, float, float, float, float, float],  # noqa: ARG002
-    ) -> None:
-        # Composite glyph — the glyphSet wrapper for TT fonts already
-        # decomposes components into segments before calling move_to/line_to,
-        # so this hook is rarely hit. When it is, the safest behaviour is
-        # to silently skip rather than half-render.
-        pass
+    # NOTE: ``_AggdrawPathPen`` deliberately does NOT define
+    # ``add_component``. A composite glyph's component references must be
+    # *decomposed* into real segments, which fontTools' ``BasePen``
+    # default ``addComponent`` does by replaying the (transformed) base
+    # glyph outline back through ``move_to`` / ``line_to`` / ``curve_to``.
+    # The pen bridge (``_pen_bridge.make_base_pen_bridge``) only forwards
+    # ``addComponent`` to a delegate that defines ``add_component``;
+    # because this pen does not, the bridge falls back to that default
+    # decomposition (which needs the glyph set the bridge was built with).
+    # Defining a no-op ``add_component`` here would silently drop every
+    # composite glyph (accented characters render blank).
 
 
 def _bezier_point(

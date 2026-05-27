@@ -1,13 +1,20 @@
 import java.io.File;
 import java.io.PrintStream;
+import java.util.ArrayList;
 import java.util.List;
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.cos.COSBase;
+import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.common.filespecification.PDFileSpecification;
 import org.apache.pdfbox.pdmodel.fdf.FDFAnnotation;
 import org.apache.pdfbox.pdmodel.fdf.FDFDictionary;
 import org.apache.pdfbox.pdmodel.fdf.FDFDocument;
 import org.apache.pdfbox.pdmodel.fdf.FDFField;
+import org.apache.pdfbox.pdmodel.interactive.form.PDAcroForm;
+import org.apache.pdfbox.pdmodel.interactive.form.PDField;
+import org.apache.pdfbox.pdmodel.interactive.form.PDNonTerminalField;
 
 /**
  * Live oracle probe for FDF / XFDF documents.
@@ -17,6 +24,10 @@ import org.apache.pdfbox.pdmodel.fdf.FDFField;
  *   roundtrip <kind> <input> <outFdf> <outXfdf>   load, re-save FDF + XFDF,
  *                                                  then load each back and emit
  *                                                  the round-tripped facts.
+ *   import    <pdf> <fdf>                          load the AcroForm PDF, import
+ *                                                  the FDF field values into it,
+ *                                                  and emit each AcroForm field's
+ *                                                  post-import /V value + COS type.
  *
  * <kind> is "fdf" (Loader.loadFDF) or "xfdf" (Loader.loadXFDF).
  *
@@ -24,6 +35,7 @@ import org.apache.pdfbox.pdmodel.fdf.FDFField;
  *   F=<source PDF path or - >
  *   FIELD <fully-qualified-name> | value=<repr> | kids=<n>
  *   ANNOT <subtype or -> | rect=<llx,lly,urx,ury or - >
+ *   IMPORT <fully-qualified-name> | value=<repr> | type=<COS-class or - >
  *
  * Fields are walked depth-first; the fully-qualified name joins partial names
  * with '.', matching how AcroForm addresses nested fields. The value repr is
@@ -33,6 +45,14 @@ public final class FdfProbe {
     public static void main(String[] args) throws Exception {
         PrintStream out = new PrintStream(System.out, true, "UTF-8");
         String mode = args[0];
+
+        if ("import".equals(mode)) {
+            String pdf = args[1];
+            String fdf = args[2];
+            importMode(pdf, fdf, out);
+            return;
+        }
+
         String kind = args[1];
         String input = args[2];
 
@@ -60,6 +80,81 @@ public final class FdfProbe {
         } else {
             throw new IllegalArgumentException("unknown mode: " + mode);
         }
+    }
+
+    /**
+     * Load an AcroForm PDF, import the FDF field values into it, then emit
+     * each terminal field's fully-qualified name, the post-import /V value
+     * repr, and the COS class of the stored /V (so a choice/checkbox name vs
+     * text string coercion difference would show up as a type mismatch).
+     */
+    private static void importMode(String pdf, String fdf, PrintStream out)
+            throws Exception {
+        try (PDDocument doc = Loader.loadPDF(new File(pdf))) {
+            PDAcroForm form = doc.getDocumentCatalog().getAcroForm();
+            try (FDFDocument fdfDoc = Loader.loadFDF(new File(fdf))) {
+                form.importFDF(fdfDoc);
+            }
+            List<PDField> ordered = new ArrayList<>();
+            for (PDField top : form.getFields()) {
+                collectFields(top, ordered);
+            }
+            for (PDField field : ordered) {
+                COSBase v = field.getCOSObject().getDictionaryObject(COSName.V);
+                String valueRepr;
+                String type;
+                if (v == null) {
+                    valueRepr = "-";
+                    type = "-";
+                } else {
+                    valueRepr = cosValueRepr(v);
+                    type = v.getClass().getSimpleName();
+                }
+                out.println("IMPORT " + field.getFullyQualifiedName()
+                        + " | value=" + valueRepr + " | type=" + type);
+            }
+        }
+    }
+
+    /** Depth-first walk of the field tree (parents before children). */
+    private static void collectFields(PDField field, List<PDField> out) {
+        out.add(field);
+        if (field instanceof PDNonTerminalField) {
+            for (PDField child : ((PDNonTerminalField) field).getChildren()) {
+                collectFields(child, out);
+            }
+        }
+    }
+
+    /** Canonical repr of a stored /V COSBase: name string, string text, or
+     * "[a|b|c]" for an array, matching the Python side. */
+    private static String cosValueRepr(COSBase v) {
+        if (v instanceof COSName) {
+            return ((COSName) v).getName();
+        }
+        if (v instanceof org.apache.pdfbox.cos.COSString) {
+            return ((org.apache.pdfbox.cos.COSString) v).getString();
+        }
+        if (v instanceof org.apache.pdfbox.cos.COSArray) {
+            org.apache.pdfbox.cos.COSArray arr = (org.apache.pdfbox.cos.COSArray) v;
+            StringBuilder sb = new StringBuilder("[");
+            for (int i = 0; i < arr.size(); i++) {
+                if (i > 0) {
+                    sb.append("|");
+                }
+                COSBase item = arr.getObject(i);
+                if (item instanceof org.apache.pdfbox.cos.COSString) {
+                    sb.append(((org.apache.pdfbox.cos.COSString) item).getString());
+                } else if (item instanceof COSName) {
+                    sb.append(((COSName) item).getName());
+                } else {
+                    sb.append(String.valueOf(item));
+                }
+            }
+            sb.append("]");
+            return sb.toString();
+        }
+        return String.valueOf(v);
     }
 
     private static FDFDocument load(String kind, String input) throws Exception {

@@ -38,6 +38,13 @@ from pathlib import Path
 import pytest
 
 from pypdfbox import Loader
+from pypdfbox.cos import (
+    COSArray,
+    COSDictionary,
+    COSFloat,
+    COSName,
+    COSStream,
+)
 from pypdfbox.pdmodel.common.filespecification.pd_simple_file_specification import (
     PDSimpleFileSpecification,
 )
@@ -45,6 +52,16 @@ from pypdfbox.pdmodel.fdf import FDFDocument
 from pypdfbox.pdmodel.fdf.fdf_annotation_square import FDFAnnotationSquare
 from pypdfbox.pdmodel.fdf.fdf_annotation_text import FDFAnnotationText
 from pypdfbox.pdmodel.fdf.fdf_field import FDFField
+from pypdfbox.pdmodel.interactive.form.pd_acro_form import PDAcroForm
+from pypdfbox.pdmodel.interactive.form.pd_check_box import PDCheckBox
+from pypdfbox.pdmodel.interactive.form.pd_combo_box import PDComboBox
+from pypdfbox.pdmodel.interactive.form.pd_non_terminal_field import (
+    PDNonTerminalField,
+)
+from pypdfbox.pdmodel.interactive.form.pd_text_field import PDTextField
+from pypdfbox.pdmodel.pd_document import PDDocument
+from pypdfbox.pdmodel.pd_page import PDPage
+from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 from tests.oracle.harness import requires_oracle, run_probe_text
 
 # --------------------------------------------------------------- fixture build
@@ -318,6 +335,278 @@ def test_fdf_saved_by_pypdfbox_round_trips_through_pypdfbox(tmp_path: Path) -> N
         "ANNOT Text | rect=10,20,30,40",
         "ANNOT Square | rect=1.5,2.5,3.5,4.5",
     ]
+
+
+# --------------------------------------------- AcroForm import parity fixtures
+
+
+def _add_widget_rect(
+    field_dict: COSDictionary,
+    page: PDPage,
+    rect: tuple[float, float, float, float],
+) -> None:
+    """Make ``field_dict`` a merged-widget field (no /Kids) anchored on
+    ``page`` with a /Rect — gives the import-time appearance generator a
+    rectangle so the build matches a real form widget."""
+    field_dict.set_item(COSName.get_pdf_name("Subtype"), COSName.get_pdf_name("Widget"))
+    field_dict.set_item(COSName.get_pdf_name("Type"), COSName.get_pdf_name("Annot"))
+    arr = COSArray()
+    for v in rect:
+        arr.add(COSFloat(float(v)))
+    field_dict.set_item(COSName.get_pdf_name("Rect"), arr)
+    field_dict.set_item(COSName.get_pdf_name("P"), page.get_cos_object())
+    annots = page.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Annots"))
+    if not isinstance(annots, COSArray):
+        annots = COSArray()
+        page.get_cos_object().set_item(COSName.get_pdf_name("Annots"), annots)
+    annots.add(field_dict)
+
+
+def _form_xobject() -> COSStream:
+    """A minimal /AP /N appearance form XObject (empty content)."""
+    s = COSStream()
+    s.set_item(COSName.get_pdf_name("Type"), COSName.get_pdf_name("XObject"))
+    s.set_item(COSName.get_pdf_name("Subtype"), COSName.get_pdf_name("Form"))
+    bbox = COSArray()
+    for v in (0.0, 0.0, 20.0, 20.0):
+        bbox.add(COSFloat(v))
+    s.set_item(COSName.get_pdf_name("BBox"), bbox)
+    s.set_raw_data(b"q Q\n")
+    return s
+
+
+def _build_form_pdf(path_pdf: Path) -> None:
+    """Build an AcroForm PDF whose fields mirror the import FDF: a text
+    ``name``, a combo ``color`` (a choice — exercises string coercion), a
+    checkbox ``agree`` carrying real ``Yes``/``Off`` on-state appearances (so
+    the on-value is valid on *both* libraries — PDFBox's ``PDButton.checkValue``
+    rejects an on-value with no matching appearance state), and a hierarchical
+    ``address`` parent with a ``city`` text child (the FQN case)."""
+    doc = PDDocument()
+    try:
+        page = PDPage(PDRectangle(0.0, 0.0, 612.0, 792.0))
+        doc.add_page(page)
+        form = PDAcroForm(doc)
+        doc.get_document_catalog().set_acro_form(form)
+
+        name = PDTextField(form)
+        name.set_partial_name("name")
+        _add_widget_rect(name.get_cos_object(), page, (10.0, 700.0, 210.0, 720.0))
+
+        color = PDComboBox(form)
+        color.set_partial_name("color")
+        color.set_options(["Red", "Green", "Blue"])
+        _add_widget_rect(color.get_cos_object(), page, (10.0, 650.0, 210.0, 670.0))
+
+        agree = PDCheckBox(form)
+        agree.set_partial_name("agree")
+        _add_widget_rect(agree.get_cos_object(), page, (10.0, 600.0, 30.0, 620.0))
+        ap_n = COSDictionary()
+        ap_n.set_item(COSName.get_pdf_name("Yes"), _form_xobject())
+        ap_n.set_item(COSName.get_pdf_name("Off"), _form_xobject())
+        ap = COSDictionary()
+        ap.set_item(COSName.get_pdf_name("N"), ap_n)
+        agree.get_cos_object().set_item(COSName.get_pdf_name("AP"), ap)
+        agree.get_cos_object().set_name(COSName.get_pdf_name("AS"), "Off")
+
+        address = PDNonTerminalField(form)
+        address.set_partial_name("address")
+        city = PDTextField(form, None, address)
+        city.set_partial_name("city")
+        _add_widget_rect(city.get_cos_object(), page, (10.0, 550.0, 210.0, 570.0))
+        address.set_children([city])
+
+        form.set_fields([name, color, agree, address])
+        doc.save(str(path_pdf))
+    finally:
+        doc.close()
+
+
+def _build_import_fdf(path_fdf: Path) -> None:
+    """Build the FDF whose values are imported into the AcroForm: a text
+    value, a choice value, a checkbox name value, and a hierarchical
+    ``address`` → ``city`` value (exercises the kids-tree import walk)."""
+    doc = FDFDocument()
+    try:
+        fdf = doc.get_catalog().get_fdf()
+
+        f_name = FDFField()
+        f_name.set_partial_field_name("name")
+        f_name.set_value("Alice")
+
+        f_color = FDFField()
+        f_color.set_partial_field_name("color")
+        f_color.set_value("Green")
+
+        # Checkbox: a /V name (not a string) — exercises name coercion.
+        f_agree = FDFField()
+        f_agree.set_partial_field_name("agree")
+        f_agree.get_cos_object().set_item(
+            COSName.get_pdf_name("V"), COSName.get_pdf_name("Yes")
+        )
+
+        f_addr = FDFField()
+        f_addr.set_partial_field_name("address")
+        f_city = FDFField()
+        f_city.set_partial_field_name("city")
+        f_city.set_value("Paris")
+        f_addr.set_kids([f_city])
+
+        fdf.set_fields([f_name, f_color, f_agree, f_addr])
+        doc.save(str(path_fdf))
+    finally:
+        doc.close()
+
+
+def _cos_value_repr(v: object | None) -> str:
+    """Match the probe's ``cosValueRepr``: name string / decoded string /
+    ``[a|b|c]`` array, else ``str``."""
+    from pypdfbox.cos import COSString
+
+    if v is None:
+        return "-"
+    if isinstance(v, COSName):
+        return v.name
+    if isinstance(v, COSString):
+        return v.get_string()
+    if isinstance(v, COSArray):
+        parts = []
+        for item in v:
+            if isinstance(item, COSString):
+                parts.append(item.get_string())
+            elif isinstance(item, COSName):
+                parts.append(item.name)
+            else:
+                parts.append(str(item))
+        return "[" + "|".join(parts) + "]"
+    return str(v)
+
+
+def _py_import_dump(form: PDAcroForm) -> list[str]:
+    """Reproduce the probe's ``import`` mode output from pypdfbox: a
+    depth-first ``IMPORT <fqn> | value=<repr> | type=<COS-class or - >``
+    line per field (parents before children)."""
+    lines: list[str] = []
+
+    def walk(field: object) -> None:
+        cos = field.get_cos_object()  # type: ignore[attr-defined]
+        v = cos.get_dictionary_object(COSName.get_pdf_name("V"))
+        type_name = "-" if v is None else type(v).__name__
+        fqn = field.get_fully_qualified_name()  # type: ignore[attr-defined]
+        lines.append(
+            f"IMPORT {fqn} | value={_cos_value_repr(v)} | type={type_name}"
+        )
+        if isinstance(field, PDNonTerminalField):
+            for child in field.get_children():
+                walk(child)
+
+    for top in form.get_fields():
+        walk(top)
+    return lines
+
+
+# ------------------------------------------------------- import parity tests
+
+
+@requires_oracle
+def test_fdf_import_into_acroform_matches_pdfbox(tmp_path: Path) -> None:
+    """High-value case: build an AcroForm PDF + a matching FDF via pypdfbox,
+    then have *both* PDFBox and pypdfbox load the PDF, import the FDF, and
+    report each field's post-import /V value and COS type. The hierarchical
+    ``address.city`` FQN transfer and the per-type coercion (text/choice →
+    string, checkbox → name) must match line-for-line."""
+    pdf_path = tmp_path / "form.pdf"
+    fdf_path = tmp_path / "data.fdf"
+    _build_form_pdf(pdf_path)
+    _build_import_fdf(fdf_path)
+
+    java = [
+        ln
+        for ln in run_probe_text(
+            "FdfProbe", "import", str(pdf_path), str(fdf_path)
+        ).splitlines()
+        if ln
+    ]
+
+    doc = PDDocument.load(str(pdf_path))
+    fdf = Loader.load_fdf(str(fdf_path))
+    try:
+        form = doc.get_document_catalog().get_acro_form()
+        form.import_fdf(fdf)
+        py = _py_import_dump(form)
+    finally:
+        fdf.close()
+        doc.close()
+
+    assert py == java
+
+
+@requires_oracle
+def test_fdf_import_values_and_coercion(tmp_path: Path) -> None:
+    """Pin the exact post-import facts (independent of Java) so a regression
+    in value transfer or type coercion is caught even without the oracle:
+    text/choice land as COSString, the checkbox name lands as COSName, the
+    non-terminal ``address`` parent keeps no /V, and the kid ``address.city``
+    receives its value through the hierarchical import walk."""
+    pdf_path = tmp_path / "form.pdf"
+    fdf_path = tmp_path / "data.fdf"
+    _build_form_pdf(pdf_path)
+    _build_import_fdf(fdf_path)
+
+    doc = PDDocument.load(str(pdf_path))
+    fdf = Loader.load_fdf(str(fdf_path))
+    try:
+        form = doc.get_document_catalog().get_acro_form()
+        form.import_fdf(fdf)
+        dump = _py_import_dump(form)
+    finally:
+        fdf.close()
+        doc.close()
+
+    assert dump == [
+        "IMPORT name | value=Alice | type=COSString",
+        "IMPORT color | value=Green | type=COSString",
+        "IMPORT agree | value=Yes | type=COSName",
+        "IMPORT address | value=- | type=-",
+        "IMPORT address.city | value=Paris | type=COSString",
+    ]
+
+
+@requires_oracle
+def test_fdf_export_then_reimport_round_trip(tmp_path: Path) -> None:
+    """Round-trip: import an FDF into an AcroForm, export the form back to a
+    fresh FDF, then re-import that exported FDF into a clean copy of the same
+    form. The twice-imported field values must equal the once-imported ones —
+    export must faithfully snapshot every transferred /V (incl. the nested
+    ``address.city``)."""
+    pdf_path = tmp_path / "form.pdf"
+    fdf_path = tmp_path / "data.fdf"
+    _build_form_pdf(pdf_path)
+    _build_import_fdf(fdf_path)
+
+    # First import, then export to a new FDF.
+    doc = PDDocument.load(str(pdf_path))
+    fdf = Loader.load_fdf(str(fdf_path))
+    try:
+        form = doc.get_document_catalog().get_acro_form()
+        form.import_fdf(fdf)
+        once = _py_import_dump(form)
+        exported = form.export_fdf()
+    finally:
+        fdf.close()
+        doc.close()
+
+    # Re-import the exported FDF into a clean copy of the form.
+    doc2 = PDDocument.load(str(pdf_path))
+    try:
+        form2 = doc2.get_document_catalog().get_acro_form()
+        form2.import_fdf(exported)
+        twice = _py_import_dump(form2)
+    finally:
+        exported.close()
+        doc2.close()
+
+    assert twice == once
 
 
 if __name__ == "__main__":  # pragma: no cover

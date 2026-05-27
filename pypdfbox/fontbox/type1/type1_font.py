@@ -6,18 +6,29 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
-def _make_path_pen() -> Any:
+def _make_path_pen(glyph_set: Any | None = None) -> Any:
     """Build a fontTools BasePen subclass that records draw commands as
     the simple list-of-tuples format used by ``PD…Font.get_glyph_path``.
 
     Lazily imports fontTools so this module is cheap to import when no
     glyph paths are ever requested.
+
+    ``glyph_set`` is the fontTools glyph set the pen belongs to. It must
+    be supplied when drawing a glyph that may be **composite** (a
+    TrueType ``glyf`` glyph with ``numberOfContours < 0``, e.g. an
+    accented ``eacute`` = ``e`` + ``acute``): fontTools' ``BasePen``
+    decomposes a composite by looking its component glyphs up in this
+    glyph set via ``addComponent``. With ``glyphSet=None`` that lookup
+    is ``None[name]``, which raises ``TypeError`` and (when swallowed by
+    the caller) silently drops the whole composite outline. Type 1
+    charstrings have no component references, so the default ``None`` is
+    safe for the Type 1 path.
     """
     from fontTools.pens.basePen import BasePen  # type: ignore[import-untyped] # noqa: PLC0415
 
     class _PathPen(BasePen):  # type: ignore[misc]
         def __init__(self) -> None:
-            super().__init__(glyphSet=None)
+            super().__init__(glyphSet=glyph_set)
             self.commands: list[tuple[Any, ...]] = []
 
         def _moveTo(self, pt: tuple[float, float]) -> None:
