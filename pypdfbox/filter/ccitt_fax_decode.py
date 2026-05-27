@@ -295,6 +295,7 @@ class CCITTFaxDecode(Filter):
         columns = decode_params.get_int(_COLUMNS, 0)
         rows = decode_params.get_int(_ROWS, 0)
         black_is_1 = decode_params.get_boolean(_BLACK_IS_1, False)
+        encoded_byte_align = decode_params.get_boolean(_ENCODED_BYTE_ALIGN, False)
 
         if columns <= 0:
             raise OSError(
@@ -305,6 +306,22 @@ class CCITTFaxDecode(Filter):
                 f"CCITTFaxDecode.encode: /Rows must be > 0, got {rows}"
             )
         compression = "group4" if k < 0 else "group3"
+
+        # /EncodedByteAlign (ISO 32000-1 §7.4.9, Table 11): pad every encoded
+        # scanline to a byte boundary so a decoder can re-sync per row. In the
+        # TIFF model this is T4Options bit 2 (0x4); libtiff honours it for both
+        # Group 3 1-D (K==0) and Group 3 mixed 2-D (K>0). T.6 / Group 4
+        # (K<0) has no byte-align bit in TIFF 6.0's T6Options and libtiff
+        # ignores any such request, so honouring it for K<0 would require
+        # re-aligning the bitstream by hand (bit-level CCITT re-framing). We do
+        # not silently emit a non-aligned stream — that was the wave-1429 gap;
+        # a caller asking for byte alignment must get it or a clear error.
+        if encoded_byte_align and k < 0:
+            raise OSError(
+                "CCITTFaxDecode.encode: /EncodedByteAlign is only supported "
+                "for Group 3 (K >= 0); Group 4 (K < 0, T.6) has no byte-align "
+                "framing in the TIFF encoder backend"
+            )
 
         raw_bytes = raw.read()
         row_bytes = (columns + 7) // 8
@@ -341,17 +358,27 @@ class CCITTFaxDecode(Filter):
                 "format": "TIFF",
                 "compression": compression,
             }
-            if k > 0:
-                # Set T4Options bit 0 (2D coding) so libtiff emits a
-                # mixed Group 3 2D stream. libtiff selects the
-                # 2D-coded/1D-coded line interval internally — this is
-                # opaque to PDF decoders, which treat ``K`` as a coarse
-                # upper bound rather than a precise framing knob.
-                from PIL.TiffImagePlugin import ImageFileDirectory_v2
+            # Assemble the T4Options tag for the Group 3 (K >= 0) paths. Bit 0
+            # (2D coding) is set for mixed Group 3 2-D (K > 0); bit 2
+            # (byte-align) is set when /EncodedByteAlign was requested. Only
+            # emit the tag when at least one bit is set so the K==0 /
+            # non-aligned case stays byte-identical to the previous output.
+            if k >= 0:
+                t4_options = 0
+                if k > 0:
+                    # libtiff selects the 2D-coded/1D-coded line interval
+                    # internally — this is opaque to PDF decoders, which treat
+                    # ``K`` as a coarse upper bound rather than a precise
+                    # framing knob.
+                    t4_options |= _T4_TWO_DIMENSIONAL
+                if encoded_byte_align:
+                    t4_options |= _T4_ENCODED_BYTE_ALIGN
+                if t4_options:
+                    from PIL.TiffImagePlugin import ImageFileDirectory_v2
 
-                ifd = ImageFileDirectory_v2()
-                ifd[_TIFF_T4_OPTIONS] = _T4_TWO_DIMENSIONAL
-                save_kwargs["tiffinfo"] = ifd
+                    ifd = ImageFileDirectory_v2()
+                    ifd[_TIFF_T4_OPTIONS] = t4_options
+                    save_kwargs["tiffinfo"] = ifd
             image.save(buf, **save_kwargs)
             tiff_bytes = buf.getvalue()
         except Exception as exc:

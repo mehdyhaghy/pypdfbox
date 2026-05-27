@@ -885,9 +885,46 @@ class PDFTextStripper:
             if values is not None:
                 a, b, c, d, e, f = values
                 state.ctm = Matrix(a, b, c, d, e, f).multiply(state.ctm)
-        # Other operators (paths, colour, marked content, etc.) are
+        elif op == "BMC":
+            # Begin marked content with a bare tag (no property list).
+            tag = operands[0] if operands and isinstance(operands[0], COSName) else None
+            self.begin_marked_content_sequence(tag, None)
+        elif op == "BDC":
+            # Begin marked content with a property list — the source of
+            # an ``/ActualText`` replacement (PDF §14.9.4).
+            tag = operands[0] if operands and isinstance(operands[0], COSName) else None
+            self.begin_marked_content_sequence(tag, self._resolve_bdc_properties(operands))
+        elif op == "EMC":
+            self.end_marked_content_sequence()
+        # Other operators (paths, colour, marked-content points, etc.) are
         # intentionally ignored — they have no effect on the lite text
         # stream.
+
+    def _resolve_bdc_properties(
+        self,
+        operands: list[COSBase],
+    ) -> COSDictionary | None:
+        """``BDC`` carries either an inline property dictionary or a
+        ``COSName`` referencing the active page resources' ``/Properties``
+        subdictionary. The inline dictionary wins; otherwise resolve the
+        name through the page resources. Returns ``None`` when neither is
+        present or the resource lookup fails (defensive against malformed
+        resources).
+        """
+        if len(operands) < 2:
+            return None
+        prop = operands[1]
+        if isinstance(prop, COSDictionary):
+            return prop
+        if isinstance(prop, COSName) and self._active_page is not None:
+            try:
+                resources = self._active_page.get_resources()
+                pl = resources.get_property_list(prop)
+                if pl is not None:
+                    return pl.get_cos_object()
+            except Exception:  # noqa: BLE001 — defensive: malformed resources
+                return None
+        return None
 
     # ---------- emission ----------
 
@@ -939,42 +976,60 @@ class PDFTextStripper:
         y_scale = trm.get_scaling_factor_y()
         x_scale = trm.get_scaling_factor_x()
         effective_font_size = state.font_size * y_scale
+        # ``/ActualText`` substitution (PDF §14.9.4): inside a marked-content
+        # span carrying ``/ActualText``, the glyph-derived text is replaced
+        # and the ``/ActualText`` string is emitted *once* (at the origin of
+        # the span's first show-text run), mirroring Apache PDFBox's
+        # ``PDFTextStripper``. Every run still advances the cursor by its
+        # glyph width so positions after ``EMC`` line up.
+        # ``_actual_text_for_run`` returns the replacement string for the
+        # first run, ``None`` for suppressed later runs, and the unchanged
+        # ``text`` when no ``/ActualText`` is active.
+        emit_text = self._actual_text_for_run(text)
+        run_width = len(text) * per_char
+
         if self._ignore_content_stream_space_glyphs:
-            self._emit_ignoring_space_glyphs(
-                text,
-                state,
-                positions,
-                font,
-                resolved_font_name,
-                per_char,
-                width_of_space,
-            )
+            if emit_text is not None:
+                self._emit_ignoring_space_glyphs(
+                    emit_text,
+                    state,
+                    positions,
+                    font,
+                    resolved_font_name,
+                    per_char,
+                    width_of_space,
+                )
+                return
+            # Suppressed run inside an ActualText span: keep the cursor
+            # advance (carried below) but emit no positions.
+            state.text_x += run_width * state.tm_a
+            state.text_y += run_width * state.tm_b
             return
 
-        run_width = len(text) * per_char
-        positions.append(
-            TextPosition(
-                text=text,
-                x=device_x,
-                y=device_y,
-                font_size=effective_font_size,
-                font_name=state.font_name,
-                font=font,
-                resolved_font_name=resolved_font_name,
-                width=run_width * x_scale,
-                width_of_space=width_of_space * x_scale,
-                char_spacing=state.char_spacing,
-                word_spacing=state.word_spacing,
-                text_matrix=[
-                    state.tm_a,
-                    state.tm_b,
-                    state.tm_c,
-                    state.tm_d,
-                    state.text_x,
-                    state.text_y,
-                ],
+        if emit_text is not None:
+            positions.append(
+                TextPosition(
+                    text=emit_text,
+                    x=device_x,
+                    y=device_y,
+                    font_size=effective_font_size,
+                    font_name=state.font_name,
+                    font=font,
+                    resolved_font_name=resolved_font_name,
+                    width=run_width * x_scale,
+                    width_of_space=width_of_space * x_scale,
+                    char_spacing=state.char_spacing,
+                    word_spacing=state.word_spacing,
+                    text_matrix=[
+                        state.tm_a,
+                        state.tm_b,
+                        state.tm_c,
+                        state.tm_d,
+                        state.text_x,
+                        state.text_y,
+                    ],
+                )
             )
-        )
         # Advance the text origin by an approximation of the run width.
         # If the active font has a ``/Widths`` array, we use its average
         # glyph advance (already scaled to user-space units in
@@ -2234,6 +2289,30 @@ class PDFTextStripper:
         having to import the standalone class."""
         return WordWithTextPositions(word, positions)
 
+    # ---------- /ActualText substitution ----------
+
+    def _actual_text_for_run(self, text: str) -> str | None:
+        """Decide what a show-text run contributes under an active
+        ``/ActualText`` span.
+
+        Returns:
+          * ``text`` unchanged when no ``/ActualText`` is in effect;
+          * the ``/ActualText`` replacement string for the **first**
+            show-text run of the span (consuming the first-position flag);
+          * ``None`` for every later run in the span (its glyph text is
+            suppressed — the cursor still advances).
+
+        Mirrors Apache PDFBox's ``PDFTextStripper``, which emits the
+        ``/ActualText`` once at the span's first glyph and drops the
+        glyph-derived text for the rest of the span (PDF §14.9.4).
+        """
+        if self._actual_text is None:
+            return text
+        if self._first_actual_text_position:
+            self._first_actual_text_position = False
+            return self._actual_text
+        return None
+
     # ---------- marked-content hooks ----------
 
     def begin_marked_content_sequence(
@@ -2241,16 +2320,19 @@ class PDFTextStripper:
         tag: COSName | None,
         properties: COSDictionary | None,
     ) -> None:
-        """Hook invoked at every ``BMC`` / ``BDC`` operator. Tracks
-        ``/ActualText`` so subsequent runs use the marked-content
-        replacement instead of their raw glyph text.
+        """Hook invoked at every ``BMC`` / ``BDC`` operator. Tracks the
+        current span's ``/ActualText`` so subsequent show-text runs emit
+        the replacement instead of their raw glyph text (PDF §14.9.4).
 
         Mirrors upstream's overridden
         ``beginMarkedContentSequence(COSName, COSDictionary)``
-        (PDFTextStripper.java:863). Lite mode does not yet route the
-        content-stream walker through the marked-content stack, so the
-        captured ``actual_text`` is exposed for subclasses but not
-        consumed by the default extraction path. See CHANGES.md."""
+        (PDFTextStripper.java): the current ``actualText`` field is set
+        **unconditionally** to this span's ``/ActualText`` — so entering a
+        nested span *without* one clears any inherited replacement, exactly
+        as PDFBox does (verified against the live oracle, wave 1445). When
+        the span carries an ``/ActualText`` the soft hyphen (U+00AD) is
+        stripped and the first-position flag is armed so the replacement is
+        emitted once, at the span's first glyph."""
         actual: str | None = None
         if properties is not None:
             try:
@@ -2260,22 +2342,26 @@ class PDFTextStripper:
             if raw is not None:
                 actual = raw.replace("­", "")
         self._marked_content_stack.append((tag, properties, actual))
+        # Upstream sets the field unconditionally; ``None`` here means a
+        # nested span without /ActualText turns substitution back off.
+        self._actual_text = actual
         if actual is not None:
-            self._actual_text = actual
             self._first_actual_text_position = True
 
     def end_marked_content_sequence(self) -> None:
-        """Hook invoked at every ``EMC`` operator. Pops the
-        marked-content stack and clears ``actual_text`` when the popped
-        entry contributed it.
+        """Hook invoked at every ``EMC`` operator. Pops the marked-content
+        stack and clears the current ``actual_text`` when the popped span
+        contributed one.
 
         Mirrors upstream's overridden ``endMarkedContentSequence``
-        (PDFTextStripper.java:877)."""
+        (PDFTextStripper.java), which peeks the top span, nulls
+        ``actualText`` if that span had an ``/ActualText``, then pops."""
         if not self._marked_content_stack:
             return
-        _, _, actual = self._marked_content_stack.pop()
+        _, _, actual = self._marked_content_stack[-1]
         if actual is not None:
             self._actual_text = None
+        self._marked_content_stack.pop()
 
 
 class _LineItem:

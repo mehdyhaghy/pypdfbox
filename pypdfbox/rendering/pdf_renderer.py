@@ -8564,10 +8564,24 @@ class PDFRenderer(PDFStreamEngine):
                 # Prefer the PDFont's declared advance width (already in
                 # 1/1000 em — populated from /Widths for simple TTF fonts
                 # and from the descendant CIDFont's /W array for Type0
-                # composites). Only when the font omits the entry do we
-                # fall back to the TTF program's own hmtx table.
+                # composites). This mirrors upstream
+                # ``PDFStreamEngine.showText`` →
+                # ``font.getDisplacement(code).getX()`` =
+                # ``getWidth(code) / 1000`` which has NO hmtx fallback.
+                #
+                # The hmtx fallback below is a pypdfbox-only safety net for
+                # the case where the font supplies *no* width for ``code``
+                # at all (no /Widths or /W entry, and the default-width path
+                # yielded 0). It must NOT fire when the width is *present and
+                # exactly 0* — a legal /W or /Widths declaration (e.g.
+                # combining marks) that upstream honours verbatim. Guarding
+                # on ``has_explicit_width`` distinguishes "width absent →
+                # hmtx fallback OK" from "width present and 0 → honour the 0"
+                # (PDFBOX-563 semantics).
                 advance_units = self._font_width_units(font, code)
-                if advance_units <= 0.0:
+                if advance_units <= 0.0 and not self._has_explicit_width(
+                    font, code
+                ):
                     advance_units = ttf.get_advance_width(gid) * (
                         1000.0 / ttf.get_units_per_em()
                     )
@@ -8629,7 +8643,15 @@ class PDFRenderer(PDFStreamEngine):
         # match returns ``0.0`` from step 4 of its lookup. Both are signs
         # the caller has nothing better, so route through the FontMappers
         # fallback for a real metric.
-        if advance_units == 500.0 or advance_units <= 0.0:
+        #
+        # An *explicit* /Widths (or /W) entry of exactly 0 is a deliberate,
+        # legal declaration (combining marks) that upstream honours — so do
+        # NOT route it through the substitute upgrade; only the genuinely
+        # absent / hard-default (500.0) cases get the FontMappers metric.
+        explicit_zero = (
+            advance_units == 0.0 and self._has_explicit_width(font, code)
+        )
+        if (advance_units == 500.0 or advance_units <= 0.0) and not explicit_zero:
             substitute = self._resolve_font_program(font)
             if substitute is not None:
                 with contextlib.suppress(Exception):
@@ -8802,6 +8824,28 @@ class PDFRenderer(PDFStreamEngine):
             except Exception:  # noqa: BLE001
                 return 500.0
         return 500.0
+
+    @staticmethod
+    def _has_explicit_width(font: Any, code: int) -> bool:
+        """``True`` when ``font`` declares an explicit advance for ``code``.
+
+        Mirrors upstream ``PDFontLike.hasExplicitWidth``: a simple font's
+        ``/Widths`` entry or a composite font's descendant ``/W`` entry that
+        actually covers ``code``. Default-width fallbacks (``/MissingWidth``,
+        ``/DW``) and embedded-program (hmtx) widths do **not** count.
+
+        Used by the TTF glyph-advance path to distinguish "width absent →
+        hmtx fallback is correct" from "width present and exactly 0 → honour
+        the declared 0" so a legal zero-width ``/W`` declaration is not
+        overridden by the embedded program's hmtx advance.
+        """
+        has = getattr(font, "has_explicit_width", None)
+        if not callable(has):
+            return False
+        try:
+            return bool(has(code))
+        except Exception:  # noqa: BLE001
+            return False
 
     def _fill_aggdraw_path(
         self,

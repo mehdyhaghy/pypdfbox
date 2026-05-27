@@ -717,14 +717,24 @@ class PDICCBased(PDColorSpace):
         upstream's ``toRGBImageAWT(raster, awtColorSpace)`` path which
         hands the raw raster to ``ICC_ColorSpace.toRGB`` rather than
         looping per pixel. When the embedded profile is unreadable
-        (corrupt, unsupported channel count, ImageCms missing) we fall
-        through to the per-pixel path in the base class, which then
-        defers to ``/Alternate`` via :meth:`to_rgb`. A warning is logged
-        on the first failure so corruption is observable.
+        (corrupt, unsupported channel count, e.g. a CMYK profile carrying
+        no A2B0 LUT that LittleCMS refuses to build a transform from, or
+        ImageCms missing) we delegate to the ``/Alternate`` color space's
+        *bulk* ``to_rgb_image`` — mirroring upstream's
+        ``alternateColorSpace.toRGBImage(raster)`` short-circuit when the
+        AWT colour space is null (``PDICCBased.toRGBImage`` line 312). The
+        alternate is resolved via :meth:`fallback_to_alternate_color_space`
+        (``/Alternate`` or one inferred from ``/N`` ∈ {1, 3, 4}). Only if
+        no alternate resolves do we drop to the base class's per-pixel
+        loop — that path would otherwise re-attempt the already-failed ICC
+        transform once per pixel (a warning storm + O(w·h) slowdown).
         """
         image = self._try_icc_to_rgb_image(raster, width, height)
         if image is not None:
             return image
+        alternate = self.fallback_to_alternate_color_space()
+        if alternate is not None and alternate is not self:
+            return alternate.to_rgb_image(raster, width, height)
         return super().to_rgb_image(raster, width, height)
 
     def to_raw_image(
