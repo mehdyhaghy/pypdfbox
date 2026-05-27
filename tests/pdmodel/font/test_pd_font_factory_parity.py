@@ -10,8 +10,6 @@ from __future__ import annotations
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream
-from pypdfbox.pdmodel.font.pd_cid_font import PDCIDFont
-from pypdfbox.pdmodel.font.pd_cid_font_type0 import PDCIDFontType0
 from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
 from pypdfbox.pdmodel.font.pd_simple_font import PDSimpleFont
 from pypdfbox.pdmodel.font.pd_true_type_font import PDTrueTypeFont
@@ -144,20 +142,25 @@ def test_create_simple_font_on_type1c_returns_pd_type1c_font() -> None:
     assert isinstance(out, PDSimpleFont)
 
 
-def test_create_simple_font_on_unknown_returns_none() -> None:
-    raw = _make_font_dict("CIDFontType2")
-    assert PDFontFactory.create_simple_font(raw) is None
+def test_create_simple_font_on_unknown_falls_back_to_type1() -> None:
+    # An unknown /Subtype falls back to PDType1Font (a PDSimpleFont), so
+    # create_simple_font returns it rather than None.
+    raw = _make_font_dict("Bogus")
+    out = PDFontFactory.create_simple_font(raw)
+    assert isinstance(out, PDSimpleFont)
+    assert isinstance(out, PDType1Font)
 
 
 # ---------- create_cid_font ----------
 
 
-def test_create_cid_font_on_cid_font_type0_with_cff_returns_pd_cid_font_type0() -> None:
+def test_create_cid_font_on_top_level_cid_font_type0_raises() -> None:
+    # A top-level /CIDFontType0 is not allowed — create_cid_font delegates
+    # to create_font, which raises.
     raw = _make_font_dict("CIDFontType0")
     _attach_font_file3(raw, "CIDFontType0C")
-    out = PDFontFactory.create_cid_font(raw)
-    assert isinstance(out, PDCIDFontType0)
-    assert isinstance(out, PDCIDFont)
+    with pytest.raises(OSError, match="Type 0 descendant font not allowed"):
+        PDFontFactory.create_cid_font(raw)
 
 
 def test_create_cid_font_on_simple_font_returns_none() -> None:
@@ -171,11 +174,12 @@ def test_create_cid_font_on_type0_returns_none() -> None:
     assert PDFontFactory.create_cid_font(raw) is None
 
 
-def test_create_cid_font_on_bare_cid_font_type0_returns_none() -> None:
-    # Without the CFF /FontFile3 marker, bare CIDFontType0 is reached via
-    # the Type0 descendant path; the top-level factory returns None.
+def test_create_cid_font_on_bare_cid_font_type0_raises() -> None:
+    # A top-level /CIDFontType0 (with or without an embedded program) is
+    # not allowed — create_font raises and create_cid_font propagates.
     raw = _make_font_dict("CIDFontType0")
-    assert PDFontFactory.create_cid_font(raw) is None
+    with pytest.raises(OSError, match="Type 0 descendant font not allowed"):
+        PDFontFactory.create_cid_font(raw)
 
 
 # ---------- create_font: signature parity (resource_cache kwarg accepted) ----------

@@ -121,11 +121,13 @@ def test_tiling_pattern_step_greater_than_cell_leaves_gap_pixels_unchanged() -> 
     gap_pixel = img.getpixel((10, 10))
     assert _is_white(gap_pixel), f"gap should be background, got {gap_pixel}"
 
-    # Sample a pixel that falls inside one of the cell paints. The
-    # tiling lattice paints a 5x5 red square at every (i*20, j*20)
-    # origin in the image pixel coordinate system; (2, 2) is inside
-    # the very first cell.
-    cell_pixel = img.getpixel((2, 2))
+    # Sample a pixel that falls inside one of the cell paints. The /BBox cell
+    # is painted at the *lower-left* of each lattice cell (PDF 32000-1
+    # §8.7.3.3, wave 1443 bottom-alignment fix), and the device y-axis is
+    # flipped, so the 5x5 red square of the lattice-origin cell (PDF y in
+    # [0, 5]) lands at the bottom of the image — PIL rows ~[75, 80]. Pixel
+    # (2, 77) is inside that cell.
+    cell_pixel = img.getpixel((2, 77))
     assert cell_pixel[0] >= 200 and cell_pixel[1] <= 60 and cell_pixel[2] <= 60, (
         f"expected red cell pixel, got {cell_pixel}"
     )

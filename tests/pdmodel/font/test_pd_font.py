@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSInteger, COSName, COSStream
 from pypdfbox.pdmodel.common.pd_stream import PDStream
 from pypdfbox.pdmodel.font import (
@@ -401,10 +403,14 @@ def test_font_factory_dispatches_type0() -> None:
     assert isinstance(PDFontFactory.create_font(raw), PDType0Font)
 
 
-def test_font_factory_returns_none_for_unsupported_subtype() -> None:
+def test_font_factory_raises_for_top_level_cid_font_subtype() -> None:
+    # A CIDFont is only legal as a /Type0 descendant; a top-level
+    # /CIDFontType0 dict raises (upstream IOException -> pypdfbox OSError),
+    # matching PDFBox PDFontFactory.createFont.
     raw = COSDictionary()
     raw.set_name(COSName.SUBTYPE, "CIDFontType0")  # type: ignore[attr-defined]
-    assert PDFontFactory.create_font(raw) is None
+    with pytest.raises(OSError, match="Type 0 descendant font not allowed"):
+        PDFontFactory.create_font(raw)
 
 
 # ---------- inheritance sanity ----------

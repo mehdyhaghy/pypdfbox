@@ -37,7 +37,6 @@ _FONT_FILE2: COSName = COSName.get_pdf_name("FontFile2")
 _FONT_FILE3: COSName = COSName.get_pdf_name("FontFile3")
 _DESCENDANT_FONTS: COSName = COSName.get_pdf_name("DescendantFonts")
 _TYPE1C: str = "Type1C"
-_CID_FONT_TYPE0C: str = "CIDFontType0C"
 
 # Header-kind labels returned by :meth:`PDFontFactory.get_font_program_kind`.
 # These match the upstream private constants used as routing keys in
@@ -117,33 +116,22 @@ _SUPPORTED_SUBTYPES: frozenset[str] = frozenset(
 )
 
 
-def _font_file3_subtype(font_dict: COSDictionary) -> str | None:
-    """Return ``font_dict /FontDescriptor /FontFile3 /Subtype`` as a name
-    string, or ``None`` if any link in the chain is absent or the wrong
-    type. Uses typed accessors only — does not assume any particular
-    dict layout beyond what ``COSDictionary`` exposes.
-    """
-    descriptor = font_dict.get_dictionary_object(_FONT_DESCRIPTOR)
-    if not isinstance(descriptor, COSDictionary):
-        return None
-    font_file3 = descriptor.get_dictionary_object(_FONT_FILE3)
-    if not isinstance(font_file3, COSStream):
-        return None
-    return font_file3.get_name(_SUBTYPE)
+def _descriptor_has_font_file3(font_dict: COSDictionary) -> bool:
+    """Return ``True`` when ``font_dict /FontDescriptor`` exists and
+    *contains the key* ``/FontFile3`` — regardless of that stream's own
+    ``/Subtype``.
 
-
-def _has_font_file2(font_dict: COSDictionary) -> bool:
-    """Return ``True`` when ``font_dict /FontDescriptor /FontFile2`` is a
-    stream — i.e. the descriptor carries an embedded TrueType program.
-    Used to disambiguate top-level /CIDFontType2 dispatch (the bare
-    /CIDFontType2 case is reached via the /Type0 descendant path; only
-    when the descriptor proves a TrueType program is embedded do we
-    wrap it directly here).
+    Mirrors upstream ``PDFontFactory.createFont``: for a ``/Type1`` or
+    ``/MMType1`` font dictionary the factory routes to ``PDType1CFont``
+    when the descriptor merely ``containsKey(FONT_FILE3)`` — it does not
+    inspect the FontFile3 ``/Subtype`` (a Type1C / OpenType / subtype-less
+    CFF program all dispatch the same way). The byte-level program kind is
+    resolved lazily inside ``PDType1CFont`` itself, not at dispatch time.
     """
     descriptor = font_dict.get_dictionary_object(_FONT_DESCRIPTOR)
     if not isinstance(descriptor, COSDictionary):
         return False
-    return isinstance(descriptor.get_dictionary_object(_FONT_FILE2), COSStream)
+    return descriptor.contains_key(_FONT_FILE3)
 
 
 class PDFontFactory:
@@ -184,65 +172,100 @@ class PDFontFactory:
             )
         sub_type = font_dict.get_name(_SUBTYPE)
         if sub_type == PDType1Font.SUB_TYPE:
-            # /Type1 with /FontDescriptor /FontFile3 /Subtype /Type1C is
-            # a CFF-backed Type 1 font; route to PDType1CFont so the CFF
-            # program is consulted for widths / outlines. Plain /Type1
-            # (no FontFile3, or FontFile3 of /Subtype /OpenType etc.)
-            # stays on PDType1Font.
-            if _font_file3_subtype(font_dict) == _TYPE1C:
+            # /Type1 whose /FontDescriptor merely *contains* a /FontFile3
+            # is a CFF-backed Type 1 font; route to PDType1CFont so the
+            # CFF program is consulted for widths / outlines. Upstream
+            # checks only ``containsKey(FONT_FILE3)`` here — it does NOT
+            # inspect the FontFile3 /Subtype (a Type1C / OpenType /
+            # subtype-less CFF program all dispatch identically; the
+            # byte-level kind is resolved lazily inside PDType1CFont).
+            # Plain /Type1 with no FontFile3 stays on PDType1Font.
+            if _descriptor_has_font_file3(font_dict):
                 return PDType1CFont(font_dict)
             return PDType1Font(font_dict)
-        if sub_type == PDTrueTypeFont.SUB_TYPE:
-            return PDTrueTypeFont(font_dict)
-        if sub_type == PDType0Font.SUB_TYPE:
-            return PDType0Font(font_dict)
-        if sub_type == PDType3Font.SUB_TYPE:
-            return PDType3Font(font_dict)
         if sub_type == PDMMType1Font.SUB_TYPE:
-            # MMType1 with /FontDescriptor /FontFile3 /Subtype /Type1C is
-            # a CFF-backed multiple-master Type 1 font; route to
-            # PDType1CFont so the CFF program is consulted (mirrors
-            # upstream PDFontFactory.createFont — the MMType1 + FontFile3
-            # branch returns PDType1CFont).
-            if _font_file3_subtype(font_dict) == _TYPE1C:
+            # MMType1 whose /FontDescriptor contains a /FontFile3 is a
+            # CFF-backed multiple-master Type 1 font; route to
+            # PDType1CFont (mirrors upstream PDFontFactory.createFont — the
+            # MMType1 + containsKey(FONT_FILE3) branch returns PDType1CFont,
+            # again without inspecting the FontFile3 /Subtype).
+            if _descriptor_has_font_file3(font_dict):
                 return PDType1CFont(font_dict)
             return PDMMType1Font(font_dict)
+        if sub_type == PDTrueTypeFont.SUB_TYPE:
+            return PDTrueTypeFont(font_dict)
+        if sub_type == PDType3Font.SUB_TYPE:
+            # Upstream forwards the ResourceCache to PDType3Font's two-arg
+            # constructor; pypdfbox's PDType3Font does not pool resources,
+            # so the cache is dropped here (see the resource_cache note at
+            # the top of create_font).
+            return PDType3Font(font_dict)
+        if sub_type == PDType0Font.SUB_TYPE:
+            # Upstream repairs a mismatched descendant /Subtype against the
+            # embedded font program kind (fixType0Subtype) before wrapping,
+            # then always returns PDType0Font.
+            PDFontFactory._fix_type0_descendant_subtype(font_dict, sub_type)
+            return PDType0Font(font_dict)
         if sub_type == PDCIDFontType0.SUB_TYPE:
-            # CIDFontType0 is normally reached via PDType0Font.get_descendant_font;
-            # when it appears as the top-level /Subtype with a CFF /FontFile3
-            # (/Subtype /CIDFontType0C) we wrap it directly. Without that
-            # marker we leave it to the Type0 descendant path (returns None).
-            if _font_file3_subtype(font_dict) == _CID_FONT_TYPE0C:
-                return PDCIDFontType0(font_dict)
-            return None
+            # A CIDFont is only ever legal as a /Type0 descendant — it must
+            # never be the top-level font dictionary. Upstream raises
+            # IOException("Type 0 descendant font not allowed"); we raise
+            # OSError to match (the parser-context analogue per the porting
+            # conventions).
+            raise OSError("Type 0 descendant font not allowed")
         if sub_type == PDCIDFontType2.SUB_TYPE:
-            # Symmetric to the CIDFontType0 arm: bare /CIDFontType2 is
-            # reached via PDType0Font.get_descendant_font; only when the
-            # descriptor carries an embedded TrueType program (/FontFile2)
-            # do we wrap it directly here. Without that marker we return
-            # ``None`` so the Type0 descendant path stays authoritative.
-            if _has_font_file2(font_dict):
-                return PDCIDFontType2(font_dict)
-            return None
-        if sub_type is None:
-            # Mirrors upstream PDFontFactory: missing /Subtype is a
-            # malformed font dictionary; rather than fail outright PDFBox
-            # logs a warning and falls back to PDType1Font so callers can
-            # still attempt rendering / text extraction with the Standard
-            # 14 metrics for whatever /BaseFont might be present.
-            _LOG.warning(
-                "Invalid font subtype 'None', will be handled as Type1"
-            )
-            return PDType1Font(font_dict)
-        # Unknown subtype — log and return ``None`` so the caller can
-        # decide whether to skip this font dictionary entirely. (Upstream
-        # falls back to PDType1Font here as well, but that would mask
-        # /CIDFontType2 dispatch for callers relying on the bare-CID
-        # contract documented above.)
+            # Symmetric to the CIDFontType0 arm — upstream raises
+            # IOException("Type 2 descendant font not allowed").
+            raise OSError("Type 2 descendant font not allowed")
+        # Missing or unknown /Subtype: upstream logs a warning and falls
+        # back to PDType1Font (so callers can still attempt rendering /
+        # text extraction with Standard 14 metrics for whatever /BaseFont
+        # is present). ``COSName.__str__`` renders as ``COSName{Foo}``;
+        # match the upstream message shape for null vs. a real name.
         _LOG.warning(
-            "Invalid font subtype '%s', skipping font dictionary", sub_type
+            "Invalid font subtype '%s'",
+            "null" if sub_type is None else f"COSName{{{sub_type}}}",
         )
-        return None
+        return PDType1Font(font_dict)
+
+    @staticmethod
+    def _fix_type0_descendant_subtype(
+        font_dict: COSDictionary, sub_type: str
+    ) -> None:
+        """Reconcile a /Type0 descendant's /Subtype with the embedded
+        font-program kind before the font is wrapped.
+
+        Mirrors the in-line repair block of upstream
+        ``PDFontFactory.createFont`` for the /Type0 arm: it sniffs the
+        descendant's embedded program (via :meth:`get_font_type_from_font`)
+        and, when the declared descendant /Subtype does NOT match the
+        program kind (``FontType.isCIDSubtype`` is false), calls
+        :meth:`fix_type0_subtype` to move the FontFile* stream and rewrite
+        the descendant /Subtype. No-op when there is no descendant, no
+        descriptor, or the program kind can't be classified (e.g. a
+        non-embedded composite font) — exactly the upstream null-guard
+        sequence.
+        """
+        descriptor = PDFontFactory.get_font_descriptor_dict(font_dict)
+        font_type = PDFontFactory.get_font_type_from_font(
+            descriptor, COSName.get_pdf_name(sub_type)
+        )
+        if font_type is None:
+            return
+        descendant = PDFontFactory.get_descendant_font_dict(font_dict)
+        if descendant is None or descriptor is None:
+            return
+        descendant_subtype_name = descendant.get_name(_SUBTYPE)
+        if descendant_subtype_name is None:
+            return
+        descendant_subtype = COSName.get_pdf_name(descendant_subtype_name)
+        derived_subtype = font_type.get_subtype()
+        if derived_subtype is None:
+            return
+        if not font_type.is_cid_subtype(descendant_subtype):
+            PDFontFactory.fix_type0_subtype(
+                descendant, descriptor, derived_subtype
+            )
 
     # ---------- descendant-CIDFont dispatch ----------
 
@@ -309,11 +332,13 @@ class PDFontFactory:
         """Return the dispatched font only if it's a :class:`PDCIDFont`
         (CIDFontType0 / CIDFontType2); otherwise ``None``.
 
-        Mirrors PDFBox ``PDFontFactory.createCIDFont``. Note that the
-        top-level :meth:`create_font` only returns a CID font directly
-        when /Subtype is ``CIDFontType0`` *and* the descriptor carries a
-        CFF /FontFile3; bare ``CIDFontType2`` is reached via the Type0
-        descendant path and will return ``None`` here.
+        Convenience wrapper over :meth:`create_font` (no direct upstream
+        analogue). Note that :meth:`create_font` never returns a bare CID
+        font from a top-level font dictionary — a CIDFont is only legal as
+        a /Type0 *descendant*, so passing a top-level ``/CIDFontType0`` or
+        ``/CIDFontType2`` dictionary raises :class:`OSError` (matching
+        upstream). To wrap a descendant CIDFont directly use
+        :meth:`create_descendant_font`.
         """
         font = PDFontFactory.create_font(font_dict)
         return font if isinstance(font, PDCIDFont) else None

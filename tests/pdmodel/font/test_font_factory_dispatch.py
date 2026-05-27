@@ -1,13 +1,14 @@
-"""Dispatch-table tests for ``PDFontFactory.create_font`` — covers the
-``/FontDescriptor /FontFile3 /Subtype`` enrichment that distinguishes
-CFF-backed fonts (Type1C, CIDFontType0C) from their plain counterparts,
-plus regressions for the existing dispatch arms.
+"""Dispatch-table tests for ``PDFontFactory.create_font`` — mirrors upstream
+PDFBox ``PDFontFactory.createFont`` exactly: a ``/Type1`` (or ``/MMType1``)
+whose ``/FontDescriptor`` *contains* a ``/FontFile3`` routes to
+``PDType1CFont`` regardless of the FontFile3 ``/Subtype``; a top-level
+``/CIDFontType0`` / ``/CIDFontType2`` raises; an unknown / missing
+``/Subtype`` falls back to ``PDType1Font``.
 """
 
 from __future__ import annotations
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream
-from pypdfbox.pdmodel.font.pd_cid_font_type0 import PDCIDFontType0
 from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
 from pypdfbox.pdmodel.font.pd_mm_type1_font import PDMMType1Font
 from pypdfbox.pdmodel.font.pd_true_type_font import PDTrueTypeFont
@@ -65,48 +66,47 @@ def test_type1_with_font_descriptor_but_no_font_file3_stays_type1() -> None:
     assert not isinstance(out, PDType1CFont)
 
 
-def test_type1_with_font_file3_open_type_stays_type1() -> None:
-    # /FontFile3 /Subtype /OpenType is NOT Type1C — must route to PDType1Font.
+def test_type1_with_font_file3_open_type_dispatches_to_type1c() -> None:
+    # Upstream PDFontFactory checks only containsKey(FONT_FILE3) for the
+    # /Type1 arm — it does NOT inspect the FontFile3 /Subtype. A FontFile3
+    # of /Subtype /OpenType therefore still routes to PDType1CFont.
     raw = _make_font_dict("Type1")
     _attach_font_file3(raw, "OpenType")
     out = PDFontFactory.create_font(raw)
-    assert isinstance(out, PDType1Font)
-    assert not isinstance(out, PDType1CFont)
+    assert isinstance(out, PDType1CFont)
 
 
-def test_type1_with_font_file3_missing_subtype_stays_type1() -> None:
-    # /FontFile3 stream with no /Subtype name on it — defensive case.
+def test_type1_with_font_file3_missing_subtype_dispatches_to_type1c() -> None:
+    # /FontFile3 present but with no /Subtype name — upstream still routes
+    # to PDType1CFont because it only tests containsKey(FONT_FILE3).
     raw = _make_font_dict("Type1")
     descriptor = COSDictionary()
     descriptor.set_item(_FONT_FILE3, COSStream())
     raw.set_item(_FONT_DESCRIPTOR, descriptor)
     out = PDFontFactory.create_font(raw)
-    assert isinstance(out, PDType1Font)
-    assert not isinstance(out, PDType1CFont)
+    assert isinstance(out, PDType1CFont)
 
 
-# ---------- CIDFontType0 dispatch (FontFile3 /Subtype /CIDFontType0C) ----------
+# ---------- top-level CIDFont subtypes are not allowed (raise) ----------
 
 
-def test_cid_font_type0_with_font_file3_cid_font_type0c_dispatches() -> None:
+def test_top_level_cid_font_type0_raises() -> None:
+    # A CIDFont is only legal as a /Type0 descendant. Upstream raises
+    # IOException("Type 0 descendant font not allowed"); we raise OSError.
+    import pytest
+
     raw = _make_font_dict("CIDFontType0")
     _attach_font_file3(raw, "CIDFontType0C")
-    out = PDFontFactory.create_font(raw)
-    assert isinstance(out, PDCIDFontType0)
-    assert out.get_cos_object() is raw
+    with pytest.raises(OSError, match="Type 0 descendant font not allowed"):
+        PDFontFactory.create_font(raw)
 
 
-def test_cid_font_type0_without_font_file3_returns_none() -> None:
-    # Bare /CIDFontType0 without the CFF marker is reached via the
-    # Type0 descendant path; the top-level factory returns None here.
+def test_top_level_cid_font_type0_bare_raises() -> None:
+    import pytest
+
     raw = _make_font_dict("CIDFontType0")
-    assert PDFontFactory.create_font(raw) is None
-
-
-def test_cid_font_type0_with_font_file3_wrong_subtype_returns_none() -> None:
-    raw = _make_font_dict("CIDFontType0")
-    _attach_font_file3(raw, "OpenType")
-    assert PDFontFactory.create_font(raw) is None
+    with pytest.raises(OSError, match="Type 0 descendant font not allowed"):
+        PDFontFactory.create_font(raw)
 
 
 # ---------- regressions: existing dispatch arms unchanged ----------
@@ -132,9 +132,26 @@ def test_dispatches_mm_type1() -> None:
     assert isinstance(PDFontFactory.create_font(raw), PDMMType1Font)
 
 
-def test_unknown_subtype_returns_none() -> None:
+def test_top_level_cid_font_type2_raises() -> None:
+    import pytest
+
     raw = _make_font_dict("CIDFontType2")
-    assert PDFontFactory.create_font(raw) is None
+    with pytest.raises(OSError, match="Type 2 descendant font not allowed"):
+        PDFontFactory.create_font(raw)
+
+
+def test_unknown_subtype_falls_back_to_type1() -> None:
+    # Upstream logs a warning and falls back to PDType1Font for any
+    # unrecognised /Subtype.
+    raw = _make_font_dict("Bogus")
+    out = PDFontFactory.create_font(raw)
+    assert isinstance(out, PDType1Font)
+
+
+def test_missing_subtype_falls_back_to_type1() -> None:
+    raw = COSDictionary()  # no /Subtype at all
+    out = PDFontFactory.create_font(raw)
+    assert isinstance(out, PDType1Font)
 
 
 def test_none_returns_none() -> None:

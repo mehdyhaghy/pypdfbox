@@ -147,21 +147,29 @@ class PDCalGray(PDColorSpace):
     def to_rgb(self, values: list[float]) -> tuple[float, float, float]:
         """Convert a single-component CalGray sample to clamped sRGB.
 
-        Per PDF 32000-1 §8.6.5.2:
+        Mirrors upstream ``PDCalGray.toRGB`` (PDFBox 3.0.x): when
+        ``isWhitePoint()`` is ``True`` (the ``/WhitePoint`` is the unit
+        tristimulus ``(1, 1, 1)``) the calibrated CIE pipeline runs:
 
-        ``A' = A ** Gamma``
-        ``X = X_w * A'``, ``Y = Y_w * A'``, ``Z = Z_w * A'``
+        ``A' = A ** Gamma``; then ``convXYZtoRGB(A', A', A')`` — the
+        gamma-decoded value is fed to the CMM as all three of X, Y and Z
+        (upstream does NOT multiply by the white point; with the unit
+        white point that multiply would be a no-op anyway).
 
-        Then XYZ → sRGB (IEC 61966-2-1, no chromatic adaptation; assumes
-        the white point is already a sensible illuminant — we do not do
-        Bradford here, mirroring PDFBox's behaviour of trusting the
-        embedded white point).
+        For any other white point upstream skips CIE calibration and
+        returns ``(A, A, A)`` verbatim — a documented PDFBOX-2553 hack
+        that only behaves correctly for whitepoint D65; we follow it so
+        CalGray ``toRGB`` is byte-parity with PDFBox.
 
         ``values`` must contain exactly one component in ``[0, 1]``.
         """
         if not values:
             raise ValueError("CalGray.to_rgb requires one component, got 0")
         a = float(values[0])
+        if not self.is_white_point():
+            # Upstream PDFBox shortcut (PDFBOX-2553): skip CIE
+            # calibration, return the component verbatim as grey.
+            return (a, a, a)
         if a < 0.0:
             a = 0.0
         elif a > 1.0:
@@ -169,12 +177,9 @@ class PDCalGray(PDColorSpace):
         gamma = float(self.get_gamma())
         # 0 ** non-positive blows up; guard.
         a_g = (a ** gamma) if a > 0.0 else 0.0
-        wp = self.get_white_point()
-        x_w, y_w, z_w = float(wp[0]), float(wp[1]), float(wp[2])
-        x = x_w * a_g
-        y = y_w * a_g
-        z = z_w * a_g
-        return _xyz_to_srgb(x, y, z)
+        # Upstream feeds the gamma-decoded value to the CMM as X = Y = Z;
+        # the white point is NOT applied (it is the unit tristimulus here).
+        return _xyz_to_srgb(a_g, a_g, a_g)
 
 
 __all__ = ["PDCalGray"]

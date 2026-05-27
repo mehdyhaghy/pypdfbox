@@ -1154,11 +1154,17 @@ class PDFRenderer(PDFStreamEngine):
 
         dpi = _require_positive_finite(dpi, "dpi")
         page = self._get_page_for_render(page_index)
-        media_box = page.get_media_box()
+        # Upstream ``PDFRenderer.renderImage`` sizes and anchors the raster to
+        # the *crop* box, not the media box: the rendered image spans the crop
+        # window, a non-zero-origin crop offsets the painted content (the CTM
+        # translate uses the crop origin), and ``/Rotate`` swaps the crop —
+        # not media — width/height. ``get_crop_box`` already resolves the
+        # CropBox-or-MediaBox default and clips an oversized crop to media.
+        render_box = page.get_crop_box()
         # PDF user-space units are 1/72 inch. Pixel dims = pts * dpi / 72.
         scale = float(dpi) / 72.0
-        width_pt = media_box.get_width()
-        height_pt = media_box.get_height()
+        width_pt = render_box.get_width()
+        height_pt = render_box.get_height()
         # Page rotation (/Rotate) is applied during rasterisation: a 90° or
         # 270° rotation swaps the rendered image's width and height (mirrors
         # upstream PDFRenderer.renderImage which sizes the BufferedImage from
@@ -1233,7 +1239,7 @@ class PDFRenderer(PDFStreamEngine):
         previous_active_destination = getattr(self, "_active_destination", None)
         self._active_destination = resolved_destination
         try:
-            page_drawer.draw_page(image, media_box)
+            page_drawer.draw_page(image, render_box)
         finally:
             self._active_destination = previous_active_destination
 
@@ -1279,11 +1285,12 @@ class PDFRenderer(PDFStreamEngine):
         keeps living on the renderer.
 
         ``page_size`` mirrors upstream's PDRectangle argument and
-        anchors the device CTM origin/flip. It's currently expected to
-        be the page's media box (the only shape ``render_image_with_dpi``
-        forwards), but a downstream caller can pass any rectangle to
-        re-anchor the y-axis flip (e.g. for crop-box rendering or
-        ``renderPageToGraphics``-style overlays).
+        anchors the device CTM origin/flip. ``render_image_with_dpi``
+        forwards the page's *crop* box (matching upstream
+        ``PDFRenderer.renderImage``), so its lower-left origin offsets a
+        non-zero-origin crop and its width/height drive the rotate swap;
+        a downstream caller can pass any rectangle to re-anchor the
+        y-axis flip (e.g. ``renderPageToGraphics``-style overlays).
         """
         width_px, height_px = image.size
 
@@ -3253,15 +3260,40 @@ class PDFRenderer(PDFStreamEngine):
         if fill and self._gs.fill_pattern is not None:
             self._paint_pattern_fill(even_odd=even_odd)
             if stroke:
+                # The stroke must respect a stroking pattern too (PDF
+                # 32000-1 §8.7.3.1) — paint its band with the stroke
+                # pattern rather than the solid stroke colour.
+                if self._gs.stroke_pattern is not None:
+                    self._paint_pattern_stroke()
+                else:
+                    clip_mask = self._gs.clip_mask
+                    if clip_mask is not None:
+                        # Re-feed through the clip path for the stroke.
+                        self._paint_through_clip(
+                            stroke=True, fill=False, even_odd=False,
+                            clip_mask=clip_mask,
+                        )
+                    else:
+                        self._stroke_via_aggdraw()
+            self._apply_pending_clip(default_even_odd=even_odd)
+            self._reset_path()
+            return
+
+        # Stroke pattern with no pattern fill (solid or no fill). Paint the
+        # solid fill (if any) first, then the stroke band with the pattern.
+        if stroke and self._gs.stroke_pattern is not None:
+            if fill:
                 clip_mask = self._gs.clip_mask
                 if clip_mask is not None:
-                    # Re-feed through the clip path for the stroke.
                     self._paint_through_clip(
-                        stroke=True, fill=False, even_odd=False,
+                        stroke=False, fill=True, even_odd=even_odd,
                         clip_mask=clip_mask,
                     )
                 else:
-                    self._stroke_via_aggdraw()
+                    self._draw_via_aggdraw(
+                        stroke=False, fill=True, even_odd=even_odd,
+                    )
+            self._paint_pattern_stroke()
             self._apply_pending_clip(default_even_odd=even_odd)
             self._reset_path()
             return
@@ -3687,6 +3719,106 @@ class PDFRenderer(PDFStreamEngine):
             sk_path, width_px, height_px,
         )
 
+    def _build_skia_path_stroke_mask(self) -> Image.Image | None:
+        """Rasterise the *stroked outline* of the current subpaths through
+        skia and return its alpha channel as an ``"L"`` PIL image (same size
+        as ``_image``).
+
+        Used by stroke-pattern painting (PDF 32000-1 §8.7.3.1: a tiling or
+        shading pattern selected as the stroking colour via ``SCN /Name``).
+        The mask is the band the pen would cover, so the pattern fill helper
+        can clip the pattern to it exactly the way it clips a fill pattern to
+        the path interior. The stroke width stays in user space and the page
+        CTM is set on the canvas, so skia scales the band (and the dash
+        rhythm) by the CTM — matching ``_draw_via_aggdraw``'s solid-stroke
+        geometry and PDF stroke semantics.
+        """
+        if self._image is None:
+            return None
+        import skia  # noqa: PLC0415
+
+        width_px, height_px = self._image.size
+        sk_path = skia.Path()
+        any_segments = False
+        for subpath in self._subpaths:
+            for seg in subpath:
+                tag = seg[0]
+                if tag == "M":
+                    sk_path.moveTo(float(seg[1]), float(seg[2]))
+                    any_segments = True
+                elif tag == "L":
+                    sk_path.lineTo(float(seg[1]), float(seg[2]))
+                    any_segments = True
+                elif tag == "C":
+                    sk_path.cubicTo(
+                        float(seg[1]), float(seg[2]),
+                        float(seg[3]), float(seg[4]),
+                        float(seg[5]), float(seg[6]),
+                    )
+                    any_segments = True
+                elif tag == "Z":
+                    sk_path.close()
+        if not any_segments:
+            return None
+
+        row_bytes = width_px * 4
+        pixels = bytearray(width_px * height_px * 4)
+        info = skia.ImageInfo.Make(
+            width_px, height_px,
+            skia.kRGBA_8888_ColorType,
+            skia.kUnpremul_AlphaType,
+        )
+        surface = skia.Surface.MakeRasterDirect(info, pixels, row_bytes)
+        if surface is None:  # pragma: no cover - skia always succeeds
+            return None
+        canvas = surface.getCanvas()
+        a, b, c_, d, e, f = self._full_ctm()
+        canvas.setMatrix(
+            skia.Matrix.MakeAll(a, c_, e, b, d, f, 0.0, 0.0, 1.0),
+        )
+        # User-space line width (>= a hairline) — the CTM on the canvas
+        # scales it into device pixels, mirroring ``_draw_via_aggdraw``.
+        scale = self._approx_scale(self._full_ctm())
+        line_width = self._gs.line_width
+        if line_width * scale < 1.0:
+            line_width = 1.0 / scale if scale > 0 else 1.0
+        paint = skia.Paint(
+            Color=skia.ColorSetARGB(255, 255, 255, 255),
+            Style=skia.Paint.kStroke_Style,
+            StrokeWidth=line_width,
+            AntiAlias=True,
+        )
+        cap = {
+            0: skia.Paint.Cap.kButt_Cap,
+            1: skia.Paint.Cap.kRound_Cap,
+            2: skia.Paint.Cap.kSquare_Cap,
+        }.get(self._gs.line_cap, skia.Paint.Cap.kButt_Cap)
+        join = {
+            0: skia.Paint.Join.kMiter_Join,
+            1: skia.Paint.Join.kRound_Join,
+            2: skia.Paint.Join.kBevel_Join,
+        }.get(self._gs.line_join, skia.Paint.Join.kMiter_Join)
+        paint.setStrokeCap(cap)
+        paint.setStrokeJoin(join)
+        if self._gs.miter_limit > 0.0:
+            paint.setStrokeMiter(self._gs.miter_limit)
+        dash = self._gs.dash_pattern
+        if dash is not None:
+            intervals, phase = dash
+            ivals = [float(v) for v in intervals]
+            if len(ivals) % 2 == 1:
+                ivals = ivals + ivals
+            if ivals and sum(ivals) > 0.0:
+                effect = skia.DashPathEffect.Make(ivals, float(phase))
+                if effect is not None:
+                    paint.setPathEffect(effect)
+        canvas.drawPath(sk_path, paint)
+        surface.flushAndSubmit()
+        rgba = Image.frombytes(
+            "RGBA", (width_px, height_px), bytes(pixels),
+        )
+        return rgba.split()[3]
+
     def _build_skia_path_alpha_mask_rgba(
         self, sk_path: Any, width_px: int, height_px: int,
     ) -> Image.Image | None:
@@ -3765,6 +3897,53 @@ class PDFRenderer(PDFStreamEngine):
         )
         self._fill_mask_with_rgb(mask, self._gs.fill_rgb)
 
+    def _paint_pattern_stroke(self) -> None:
+        """Dispatch a *stroke* pattern (PDF 32000-1 §8.7.3.1) to the right
+        helper. The stroked outline of the current path is rasterised into a
+        mask and the active stroke pattern (tiling or shading) is painted
+        clipped to that band — so a thick stroked path shows the pattern in
+        its stroke band instead of a solid colour. Mirrors
+        :meth:`_paint_pattern_fill` but over the stroke mask and the
+        stroking-colour pattern slot.
+        """
+        from pypdfbox.pdmodel.graphics.pattern import (  # noqa: PLC0415
+            PDShadingPattern,
+            PDTilingPattern,
+        )
+
+        pattern = self._gs.stroke_pattern
+        if pattern is None:
+            return
+        mask = self._build_skia_path_stroke_mask()
+        if mask is None:
+            return
+        clip_mask = self._gs.clip_mask
+        if clip_mask is not None:
+            mask = ImageChops.multiply(mask, clip_mask)
+
+        if isinstance(pattern, PDTilingPattern):
+            # The uncolored-tiling tint for a stroke lives in
+            # ``stroke_pattern_tint``; temporarily expose it on the
+            # fill-tint slot the tiling helper reads, then restore.
+            saved_tint = self._gs.fill_pattern_tint
+            self._gs.fill_pattern_tint = self._gs.stroke_pattern_tint
+            try:
+                self._paint_tiling_pattern(pattern, region_mask=mask)
+            finally:
+                self._gs.fill_pattern_tint = saved_tint
+            return
+        if isinstance(pattern, PDShadingPattern):
+            shading = pattern.get_shading()
+            if shading is not None:
+                self._paint_shading(shading, region_mask=mask)
+                return
+        _log.debug(
+            "rendering: unsupported stroke pattern type %s; falling back "
+            "to solid",
+            type(pattern).__name__,
+        )
+        self._fill_mask_with_rgb(mask, self._gs.stroke_rgb)
+
     def _fill_mask_with_rgb(
         self, mask: Image.Image, rgb: tuple[int, int, int]
     ) -> None:
@@ -3836,18 +4015,23 @@ class PDFRenderer(PDFStreamEngine):
         a, b, c, d, _e, _f = pattern_device_ctm
         sx = (a * a + b * b) ** 0.5 or 1.0
         sy = (c * c + d * d) ** 0.5 or 1.0
-        # Tile size in device pixels — at least 1 px to avoid zero-size
-        # PIL images.
+        # Tile size in device pixels — one lattice cell is (/XStep, /YStep),
+        # at least 1 px to avoid a zero-size PIL image. Upstream's
+        # ``TilingPaint`` builds a ``TexturePaint`` over an anchor rectangle
+        # of exactly (/XStep, /YStep): the /BBox cell content is rendered into
+        # that rectangle and anything extending past it is **clipped**. So the
+        # tile is always step-sized.
         tile_w_px = max(1, int(round(x_step * sx)))
         tile_h_px = max(1, int(round(y_step * sy)))
-        # BBox-sized cell region in device pixels (PDF 32000-1 §8.7.3.3:
-        # the cell paints into a /BBox sub-region of the (XStep, YStep)
-        # lattice; when /XStep or /YStep is larger than /BBox the gap
-        # remains transparent. Clamp to the tile size — when the cell is
-        # larger than the step (overlap case), the lattice still steps by
-        # (XStep, YStep) and successive tiles paint over each other so
-        # rendering the cell at min(bbox, step) keeps the visible result
-        # correct without leaking past the next tile origin).
+        # /BBox cell footprint in device pixels, clipped to the tile (PDF
+        # 32000-1 §8.7.3.3 + upstream TexturePaint clipping):
+        #   * /XStep or /YStep LARGER than the /BBox → the surplus strip on the
+        #     top / right of the tile stays transparent (the gap between cells,
+        #     background shows through);
+        #   * /XStep or /YStep SMALLER than the /BBox → the cell is clipped to
+        #     the step-sized tile, so successive cells abut without the part of
+        #     the /BBox beyond the step leaking into the next cell (matching
+        #     PDFBox's TexturePaint, which never paints past the anchor rect).
         bbox_w_px = max(1, min(tile_w_px, int(round(bbox_w * sx))))
         bbox_h_px = max(1, min(tile_h_px, int(round(bbox_h * sy))))
 
@@ -3869,6 +4053,7 @@ class PDFRenderer(PDFStreamEngine):
                 bbox=bbox,
                 tile_size=(tile_w_px, tile_h_px),
                 cell_size=(bbox_w_px, bbox_h_px),
+                device_scale=(sx, sy),
                 tint_rgb=tint_rgb,
             )
         except Exception as exc:  # noqa: BLE001
@@ -3889,21 +4074,42 @@ class PDFRenderer(PDFStreamEngine):
         # position of the pattern-space cell origin, not the canvas (0, 0)
         # corner. For a pattern with a translating ``/Matrix`` (or a /BBox
         # whose lower-left is offset) this shifts every tile so the lattice
-        # registers exactly where PDFBox places it. The tile image's top-left
-        # corner maps to pattern-space point ``(bbox_x, bbox_y + y_step)``
-        # (top edge of the cell in y-up space, which is the smallest device-y
-        # of the tile after the y-flip). We compute that device pixel and
-        # reduce it modulo the tile size so the paste loop still tiles the
-        # whole canvas while honouring the phase.
+        # registers exactly where PDFBox places it. The cell is rendered
+        # bottom-aligned within the tile, so the tile's *bottom* edge maps to
+        # the device position of pattern point ``(bbox_x, bbox_y)`` and the
+        # tile top is that minus the tile height; both are reduced modulo the
+        # tile size so the paste loop still covers the whole canvas while
+        # honouring the phase.
         anchor_x, anchor_y = _transform_point(
-            (bbox.get_lower_left_x(), bbox.get_lower_left_y() + y_step),
+            (bbox.get_lower_left_x(), bbox.get_lower_left_y()),
             pattern_device_ctm,
         )
         phase_x = int(round(anchor_x)) % tile_w_px
-        phase_y = int(round(anchor_y)) % tile_h_px
+        phase_y = int(round(anchor_y - tile_h_px)) % tile_h_px
+        # The device y-flip (``device_y = page_height - pattern_y``) maps
+        # pattern y=bbox_y to device row ``anchor_y``, the edge one row *past*
+        # the last pixel that samples inside the cell (PDFBox uses pixel-centre
+        # sampling, so the cell's bottom pixel is row ``anchor_y - 1``). Nudge
+        # every tile down one device row so the bottom-aligned cell lands on
+        # the same rows PDFBox paints; without it the whole lattice sits one
+        # pixel too high (a uniform 1 px vertical shift, not a phase change, so
+        # it is applied to the paste offset rather than folded into the modulo).
+        # The nudge only applies when the combined transform flips the y-axis
+        # (the real page CTM does; the ``d`` term is then negative). An
+        # unflipped transform maps pattern y straight onto device rows with no
+        # boundary slip, so no nudge is needed there.
+        y_flip_nudge = 1 if pattern_device_ctm[3] < 0 else 0
+        # Paste using the tile's own alpha as the mask so the transparent gap
+        # pixels (step > /BBox) never erase the page background between cells.
+        # A tile without an alpha channel (e.g. an RGB cell from a caller that
+        # pre-rasterised one) is treated as fully opaque.
+        if tile.mode == "RGBA":
+            tile_alpha: Image.Image | None = tile.split()[3]
+        else:
+            tile_alpha = None
         for ty in range(phase_y - tile_h_px, canvas_h, tile_h_px):
             for tx in range(phase_x - tile_w_px, canvas_w, tile_w_px):
-                tiled.paste(tile, (tx, ty))
+                tiled.paste(tile, (tx, ty + y_flip_nudge), tile_alpha)
         # Combine the tiled alpha with ``region_mask`` so only the path
         # interior receives pattern pixels and only the cell-painted
         # portion of each tile contributes (gap pixels stay transparent).
@@ -3921,16 +4127,31 @@ class PDFRenderer(PDFStreamEngine):
         bbox: Any,
         tile_size: tuple[int, int],
         cell_size: tuple[int, int] | None = None,
+        device_scale: tuple[float, float] | None = None,
         tint_rgb: tuple[int, int, int] | None = None,
     ) -> Image.Image | None:
         """Render one cell of ``pattern`` to a fresh PIL image of size
-        ``tile_size``.
+        ``tile_size`` (one lattice cell = ``(/XStep, /YStep)`` device px).
 
-        ``cell_size`` is the device-pixel footprint of the pattern's
-        ``/BBox`` and defaults to ``tile_size`` (legacy behaviour). When
-        ``/XStep`` or ``/YStep`` exceeds the cell dimension the cell
-        paints only the cell-sized region of the tile and the surrounding
-        pixels stay fully transparent (PDF 32000-1 §8.7.3.3).
+        ``device_scale`` is the true pattern-space → device-pixel scale
+        ``(sx, sy)`` (from the combined pattern/device matrix). The cell
+        content is drawn at this scale and the tile boundary clips it —
+        mirroring upstream's ``TexturePaint`` over an ``(/XStep, /YStep)``
+        anchor rectangle, which never paints past the rectangle. So:
+
+          * /XStep or /YStep LARGER than the /BBox → the /BBox cell occupies
+            only the bottom-left ``cell_size`` of the tile and the surplus
+            strip on the top / right stays transparent (the gap between cells,
+            PDF 32000-1 §8.7.3.3);
+          * /XStep or /YStep SMALLER than the /BBox → the cell extends past
+            the tile and is clipped to the step-sized tile (it is *not* scaled
+            down to fit).
+
+        ``cell_size`` is the /BBox footprint in device pixels clamped to the
+        tile, retained for the bottom-left anchor; when ``device_scale`` is
+        ``None`` the legacy ``cell_size``-derived scale is used (cell == tile).
+        The cell is rendered bottom-aligned within the tile (the /BBox sits at
+        the lower-left of the lattice cell).
 
         ``tint_rgb`` is the tint colour for ``PaintType=2`` (uncolored)
         tiling patterns — used to seed the recursive ``_GState``'s fill
@@ -3958,7 +4179,8 @@ class PDFRenderer(PDFStreamEngine):
         tile_w, tile_h = tile_size
         cell_w, cell_h = cell_size
         # RGBA tile — transparent everywhere by default; the cell content
-        # paints opaque pixels into the cell-sized sub-region.
+        # paints opaque pixels into the cell sub-region and the tile boundary
+        # clips anything beyond it.
         tile_image = Image.new("RGBA", (tile_w, tile_h), (0, 0, 0, 0))
         bbox_w = bbox.get_width()
         bbox_h = bbox.get_height()
@@ -3966,17 +4188,29 @@ class PDFRenderer(PDFStreamEngine):
             return None
         bbox_x = bbox.get_lower_left_x()
         bbox_y = bbox.get_lower_left_y()
-        # Affine that maps the pattern's /BBox onto the cell pixel
-        # sub-region of the tile (origin (0, 0), size cell_size) with the
-        # standard PDF y-flip baked in. When cell == tile this matches
-        # the old behaviour; when cell < tile the extra strip on the
-        # right / bottom remains transparent.
-        sx = cell_w / bbox_w
-        sy = cell_h / bbox_h
+        # Per-axis pattern-space → device-pixel scale. Use the true scale from
+        # the combined pattern/device matrix so the cell is rendered at its
+        # natural size and the tile boundary clips the overflow (the
+        # TexturePaint model). Fall back to the cell-size-derived scale only
+        # when the caller didn't supply one (cell == tile, legacy path).
+        if device_scale is not None:
+            sx, sy = device_scale
+        else:
+            sx = cell_w / bbox_w
+            sy = cell_h / bbox_h
+        # Affine that maps the pattern's /BBox into the tile with the standard
+        # PDF y-flip baked in. The lattice cell spans pattern
+        # ``[0, /XStep] x [0, /YStep]`` anchored at the /BBox lower-left, and
+        # the /BBox cell sits at the *lower-left* of that lattice cell (PDF
+        # 32000-1 §8.7.3.3). After the y-flip the cell lands at the
+        # **bottom-left** of the tile image; the gap (step > /BBox) is the
+        # transparent strip on the top / right, and overflow (step < /BBox) is
+        # clipped by the tile bounds. Using ``tile_h`` as the y-translate
+        # anchors pattern y=``bbox_y`` to the tile's bottom edge.
         tile_device_ctm: _Matrix = (
             sx, 0.0,
             0.0, -sy,
-            -bbox_x * sx, bbox_y * sy + cell_h,
+            -bbox_x * sx, bbox_y * sy + tile_h,
         )
 
         # Snapshot + replace per-render state for the recursion.
@@ -3995,10 +4229,11 @@ class PDFRenderer(PDFStreamEngine):
         self._draw = aggdraw.Draw(tile_image)
         self._draw.setantialias(True)
         self._device_ctm = tile_device_ctm
-        # Use cell height for the page-height clip baseline so the y-flip
+        # Use the tile height for the page-height clip baseline so the y-flip
         # in operators that consult ``_page_height_px`` matches the
-        # device-CTM we just installed.
-        self._page_height_px = float(cell_h)
+        # device-CTM we just installed (the cell is bottom-aligned within a
+        # tile that may be taller than the cell in the gapped/overlap cases).
+        self._page_height_px = float(tile_h)
         # Seed the recursive _GState with the uncolored-tiling tint when
         # the caller supplied one — the cell's content stream then paints
         # in the tint for any op that consults the current colour without

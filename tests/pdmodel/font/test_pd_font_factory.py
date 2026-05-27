@@ -4,18 +4,16 @@ Companion to the longer-standing ``test_font_factory_dispatch.py`` and
 ``test_pd_font_factory_parity.py`` suites — focuses on the wave-37
 additions:
 
-* ``/CIDFontType2`` top-level dispatch (only when the descriptor carries
-  an embedded TrueType ``/FontFile2`` stream).
-* Missing ``/Subtype`` falls back to :class:`PDType1Font` with a logged
-  warning, mirroring upstream ``PDFontFactory.createFont``.
-* Unknown ``/Subtype`` values stay non-fatal: a warning is logged and
-  the factory returns ``None`` (callers decide whether to skip).
+* A top-level ``/CIDFontType2`` (or ``/CIDFontType0``) raises ``OSError``
+  — a CIDFont is only legal as a ``/Type0`` descendant (upstream raises
+  IOException "Type N descendant font not allowed").
+* Missing OR unknown ``/Subtype`` falls back to :class:`PDType1Font` with
+  a logged warning, mirroring upstream ``PDFontFactory.createFont``.
 
-These behaviours are also exercised in
-``upstream/test_pd_font_factory.py`` against the JUnit cases ported from
-``PDFontFactoryTest.java``; this file covers the pypdfbox-specific
-contract surface (logging strings, ``PDCIDFontType2`` round-trip, the
-``resource_cache`` parity kwarg interaction with the new arms).
+These behaviours match the live PDFBox 3.0.7 oracle (see
+``oracle/test_font_factory_oracle.py``); this file covers the
+pypdfbox-specific contract surface (logging strings, the
+``resource_cache`` parity kwarg interaction).
 """
 
 from __future__ import annotations
@@ -25,8 +23,6 @@ import logging
 import pytest
 
 from pypdfbox.cos import COSDictionary, COSName, COSStream
-from pypdfbox.pdmodel.font.pd_cid_font import PDCIDFont
-from pypdfbox.pdmodel.font.pd_cid_font_type2 import PDCIDFontType2
 from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
 from pypdfbox.pdmodel.font.pd_mm_type1_font import PDMMType1Font
 from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
@@ -56,61 +52,44 @@ def _attach_font_file2(font_dict: COSDictionary) -> COSStream:
     return stream
 
 
-# ---------- CIDFontType2 dispatch (FontFile2 present) ----------
+# ---------- top-level CIDFont subtypes raise (not allowed) ----------
 
 
-def test_cid_font_type2_with_font_file2_dispatches_to_pd_cid_font_type2() -> None:
+def test_top_level_cid_font_type2_with_font_file2_raises() -> None:
+    # A CIDFont is only legal as a /Type0 descendant. Even with an
+    # embedded /FontFile2, a *top-level* /CIDFontType2 dict raises.
     raw = _make_font_dict("CIDFontType2")
     _attach_font_file2(raw)
-    out = PDFontFactory.create_font(raw)
-    assert isinstance(out, PDCIDFontType2)
-    assert isinstance(out, PDCIDFont)
-    # Identity preservation: the wrapper holds the same dict the caller
-    # passed in (no defensive copy).
-    assert out.get_cos_object() is raw
+    with pytest.raises(OSError, match="Type 2 descendant font not allowed"):
+        PDFontFactory.create_font(raw)
 
 
-def test_cid_font_type2_with_font_file2_via_create_cid_font() -> None:
+def test_top_level_cid_font_type2_via_create_cid_font_raises() -> None:
     raw = _make_font_dict("CIDFontType2")
     _attach_font_file2(raw)
-    out = PDFontFactory.create_cid_font(raw)
-    assert isinstance(out, PDCIDFontType2)
+    with pytest.raises(OSError, match="Type 2 descendant font not allowed"):
+        PDFontFactory.create_cid_font(raw)
 
 
-def test_cid_font_type2_without_descriptor_returns_none() -> None:
-    # Bare /CIDFontType2 without any FontDescriptor is reached via the
-    # /Type0 descendant path; the top-level factory must return None so
-    # callers don't double-wrap.
+def test_top_level_cid_font_type2_bare_raises() -> None:
     raw = _make_font_dict("CIDFontType2")
-    assert PDFontFactory.create_font(raw) is None
+    with pytest.raises(OSError, match="Type 2 descendant font not allowed"):
+        PDFontFactory.create_font(raw)
 
 
-def test_cid_font_type2_with_descriptor_but_no_font_file2_returns_none() -> None:
-    raw = _make_font_dict("CIDFontType2")
-    raw.set_item(_FONT_DESCRIPTOR, COSDictionary())
-    assert PDFontFactory.create_font(raw) is None
+def test_top_level_cid_font_type0_bare_raises() -> None:
+    raw = _make_font_dict("CIDFontType0")
+    with pytest.raises(OSError, match="Type 0 descendant font not allowed"):
+        PDFontFactory.create_font(raw)
 
 
-def test_cid_font_type2_with_font_file3_only_returns_none() -> None:
-    # /FontFile3 (CFF / OpenType) doesn't satisfy the /FontFile2 marker
-    # we use to disambiguate top-level CIDFontType2 — must still defer
-    # to the descendant path.
-    raw = _make_font_dict("CIDFontType2")
-    descriptor = COSDictionary()
-    ff3 = COSStream()
-    ff3.set_name(_SUBTYPE, "OpenType")
-    descriptor.set_item(_FONT_FILE3, ff3)
-    raw.set_item(_FONT_DESCRIPTOR, descriptor)
-    assert PDFontFactory.create_font(raw) is None
-
-
-def test_cid_font_type2_with_font_file2_accepts_resource_cache_kwarg() -> None:
-    # Signature parity: the resource_cache kwarg is accepted but ignored
-    # — make sure the new dispatch arm honours that.
+def test_top_level_cid_font_type2_raise_honours_resource_cache_kwarg() -> None:
+    # Signature parity: the resource_cache kwarg is accepted; the raise
+    # behaviour is unaffected by it.
     raw = _make_font_dict("CIDFontType2")
     _attach_font_file2(raw)
-    out = PDFontFactory.create_font(raw, resource_cache=object())
-    assert isinstance(out, PDCIDFontType2)
+    with pytest.raises(OSError, match="Type 2 descendant font not allowed"):
+        PDFontFactory.create_font(raw, resource_cache=object())
 
 
 # ---------- missing /Subtype fallback to PDType1Font ----------
@@ -129,11 +108,12 @@ def test_missing_subtype_logs_warning(caplog: pytest.LogCaptureFixture) -> None:
     raw = _make_font_dict(None)
     with caplog.at_level(logging.WARNING, logger="pypdfbox.pdmodel.font.pd_font_factory"):
         PDFontFactory.create_font(raw)
-    # Message must mention the subtype is missing/None and that we're
-    # falling back to Type1, so log scrapers can spot malformed inputs.
+    # Mirrors upstream PDFontFactory: "Invalid font subtype 'null'" for a
+    # missing /Subtype (the warning lets log scrapers spot malformed input;
+    # the actual fallback to PDType1Font is asserted separately above).
     joined = "\n".join(rec.message for rec in caplog.records)
     assert "subtype" in joined.lower()
-    assert "type1" in joined.lower()
+    assert "null" in joined.lower()
 
 
 def test_missing_subtype_via_create_simple_font_returns_pd_type1_font() -> None:
@@ -149,23 +129,29 @@ def test_missing_subtype_via_create_cid_font_returns_none() -> None:
     assert PDFontFactory.create_cid_font(raw) is None
 
 
-# ---------- unknown /Subtype: warn-and-skip ----------
+# ---------- unknown /Subtype: warn-and-fall-back-to-Type1 ----------
 
 
-def test_unknown_subtype_returns_none_and_logs(caplog: pytest.LogCaptureFixture) -> None:
+def test_unknown_subtype_falls_back_to_type1_and_logs(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Upstream PDFontFactory logs a warning and falls back to PDType1Font
+    # for any unrecognised /Subtype (so text extraction can still proceed
+    # with Standard 14 metrics).
     raw = _make_font_dict("Bogus")
     with caplog.at_level(logging.WARNING, logger="pypdfbox.pdmodel.font.pd_font_factory"):
         out = PDFontFactory.create_font(raw)
-    assert out is None
+    assert isinstance(out, PDType1Font)
     joined = "\n".join(rec.message for rec in caplog.records)
     assert "Bogus" in joined
 
 
-def test_empty_subtype_string_returns_none() -> None:
-    # Empty /Subtype name is structurally an unknown subtype, not a
-    # missing one — we don't fall back to Type1 for it.
+def test_empty_subtype_string_falls_back_to_type1() -> None:
+    # Empty /Subtype name is an unknown subtype — upstream still falls
+    # back to PDType1Font (the unknown-subtype arm).
     raw = _make_font_dict("")
-    assert PDFontFactory.create_font(raw) is None
+    out = PDFontFactory.create_font(raw)
+    assert isinstance(out, PDType1Font)
 
 
 # ---------- regression: known-subtype paths don't log spurious warnings ----------
@@ -184,21 +170,34 @@ def test_known_subtype_does_not_warn(
     assert caplog.records == []
 
 
-def test_bare_cid_font_type0_does_not_warn(caplog: pytest.LogCaptureFixture) -> None:
-    # Bare /CIDFontType0 is a *known* subtype that's just dispatched via
-    # the descendant path — must not emit the "invalid subtype" warning.
+def test_bare_cid_font_type0_raises_without_warning(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # A top-level /CIDFontType0 is not allowed: upstream raises rather
+    # than logging the "invalid subtype" warning (that warning is only
+    # for truly unknown subtypes).
     raw = _make_font_dict("CIDFontType0")
-    with caplog.at_level(logging.WARNING, logger="pypdfbox.pdmodel.font.pd_font_factory"):
-        out = PDFontFactory.create_font(raw)
-    assert out is None
+    with (
+        caplog.at_level(
+            logging.WARNING, logger="pypdfbox.pdmodel.font.pd_font_factory"
+        ),
+        pytest.raises(OSError, match="Type 0 descendant font not allowed"),
+    ):
+        PDFontFactory.create_font(raw)
     assert caplog.records == []
 
 
-def test_bare_cid_font_type2_does_not_warn(caplog: pytest.LogCaptureFixture) -> None:
+def test_bare_cid_font_type2_raises_without_warning(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     raw = _make_font_dict("CIDFontType2")
-    with caplog.at_level(logging.WARNING, logger="pypdfbox.pdmodel.font.pd_font_factory"):
-        out = PDFontFactory.create_font(raw)
-    assert out is None
+    with (
+        caplog.at_level(
+            logging.WARNING, logger="pypdfbox.pdmodel.font.pd_font_factory"
+        ),
+        pytest.raises(OSError, match="Type 2 descendant font not allowed"),
+    ):
+        PDFontFactory.create_font(raw)
     assert caplog.records == []
 
 
@@ -237,11 +236,10 @@ def test_mm_type1_without_font_file3_still_returns_pd_mm_type1_font() -> None:
     assert not isinstance(out, PDType1CFont)
 
 
-def test_mm_type1_with_non_type1c_font_file3_stays_on_pd_mm_type1_font() -> None:
-    # /FontFile3 carrying a non-Type1C marker (e.g. /OpenType) is not a
-    # CFF program — must NOT be promoted to PDType1CFont.
+def test_mm_type1_with_non_type1c_font_file3_routes_to_pd_type1c_font() -> None:
+    # Upstream checks only containsKey(FONT_FILE3) for the /MMType1 arm —
+    # a /FontFile3 of any (or no) /Subtype routes to PDType1CFont.
     raw = _make_font_dict("MMType1")
     _attach_font_file3_with_subtype(raw, "OpenType")
     out = PDFontFactory.create_font(raw)
-    assert isinstance(out, PDMMType1Font)
-    assert not isinstance(out, PDType1CFont)
+    assert isinstance(out, PDType1CFont)

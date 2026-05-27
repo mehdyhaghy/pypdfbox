@@ -1140,6 +1140,7 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `pypdfbox/fontbox/cmap/resources/GBK-EUC-H` | 3.0.x | `fontbox/src/main/resources/org/apache/fontbox/cmap/GBK-EUC-H` |
 | `pypdfbox/fontbox/cmap/resources/GBK-EUC-V` | 3.0.x | `fontbox/src/main/resources/org/apache/fontbox/cmap/GBK-EUC-V` |
 | `tests/fontbox/cmap/oracle/test_predefined_cmap_type0_oracle.py` | 3.0.x | hand-written live-oracle differential (probe `oracle/probes/PredefCMapType0Probe.java`); no single upstream JUnit source |
+| `tests/pdmodel/oracle/test_page_box_oracle.py` | 3.0.x | hand-written live-oracle differential (probe `oracle/probes/PageBoxRenderProbe.java`); PDPage box accessors (incl. Art/Trim/Bleed→Crop default) + crop-box/`/Rotate` render geometry vs `PDFRenderer.renderImage`; no single upstream JUnit source |
 | `tests/xmpbox/type/upstream/test_abstract_structured_type.py` | 3.0.x | `xmpbox/src/test/java/org/apache/xmpbox/type/TestAbstractStructuredType.java` |
 | `tests/xmpbox/type/upstream/test_structured_type.py` | 3.0.x | `xmpbox/src/test/java/org/apache/xmpbox/type/TestStructuredType.java` |
 | `tests/xmpbox/upstream/test_xmp_basic_schema.py` | 3.0.x | `xmpbox/src/test/java/org/apache/xmpbox/schema/XMPBasicTest.java` (includes Bag-cardinality typed-property parity for Advisory/XPath and Identifier/Text) |
