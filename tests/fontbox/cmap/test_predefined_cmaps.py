@@ -58,6 +58,18 @@ _BUNDLED_PREDEFINED = {
     "UniJIS-UCS2-H": ("Adobe", "Japan1", 4, 0),
     "UniKS-UTF16-H": ("Adobe", "Korea1", 1, 0),
     "UniKS-UTF16-V": ("Adobe", "Korea1", 1, 1),
+    # Adobe Unicode (UCS2) encoding CMaps — the high-traffic CJK names
+    # bundled in wave 1441 so Type0 fonts referencing them resolve a CMap
+    # rather than degrading to None.
+    "UniGB-UCS2-H": ("Adobe", "GB1", 4, 0),
+    "UniGB-UCS2-V": ("Adobe", "GB1", 4, 1),
+    "UniCNS-UCS2-H": ("Adobe", "CNS1", 3, 0),
+    "UniCNS-UCS2-V": ("Adobe", "CNS1", 3, 1),
+    "UniKS-UCS2-H": ("Adobe", "Korea1", 1, 0),
+    "UniKS-UCS2-V": ("Adobe", "Korea1", 1, 1),
+    # GBK-EUC — the GBK (CP936) EUC encoding; mixed 1/2-byte codespace.
+    "GBK-EUC-H": ("Adobe", "GB1", 2, 0),
+    "GBK-EUC-V": ("Adobe", "GB1", 2, 1),
     "GB-EUC-H": ("Adobe", "GB1", 0, 0),
     "GB-EUC-V": ("Adobe", "GB1", 0, 1),
     "B5pc-H": ("Adobe", "CNS1", 0, 0),
@@ -136,28 +148,21 @@ class TestCachingAcrossPredefinedNames:
 
 
 _UNBUNDLED_PREDEFINED = [
-    # GB family beyond GB-EUC-H/V and UniGB-UTF16-H/V — not bundled.
+    # GB family beyond GB-EUC-H/V, GBK-EUC-H/V, UniGB-UTF16-H/V and
+    # UniGB-UCS2-H/V — not bundled.
     "GBpc-EUC-H",
     "GBpc-EUC-V",
-    "GBK-EUC-H",
-    "GBK-EUC-V",
     "GBK2K-H",
     "GBK2K-V",
-    "UniGB-UCS2-H",
-    "UniGB-UCS2-V",
     # CNS1 / Japan1 / Korea1 names that are not in the curated subset.
     "ETen-B5-H",
     "ETen-B5-V",
-    "UniCNS-UCS2-H",
-    "UniCNS-UCS2-V",
     "83pv-RKSJ-H",
     "EUC-H",
     "EUC-V",
     "UniJIS-UCS2-V",
     "UniJIS-UCS2-HW-H",
     "UniJIS-UCS2-HW-V",
-    "UniKS-UCS2-H",
-    "UniKS-UCS2-V",
 ]
 
 

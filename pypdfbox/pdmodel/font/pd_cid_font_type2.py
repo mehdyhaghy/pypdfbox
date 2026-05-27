@@ -133,11 +133,29 @@ class PDCIDFontType2(PDCIDFont):
         return self.cid_to_gid(code)
 
     def code_to_cid(self, code: int) -> int:
-        """Identity — the parent :class:`PDType0Font` CMap has already
-        mapped ``code`` to CID before this descendant is consulted.
-        Mirrors upstream ``PDCIDFontType2.codeToCID``.
+        """Map a character ``code`` to a CID via the parent's encoding CMap.
+
+        Mirrors upstream ``PDCIDFontType2.codeToCID`` exactly: when the
+        parent's encoding CMap carries *only* Unicode mappings (e.g. an
+        Adobe ``*-UCS2`` collection used directly as ``/Encoding``) the
+        first Unicode codepoint of ``toUnicode(code)`` is returned;
+        otherwise ``cmap.toCID(code)`` is returned verbatim — including
+        the ``0`` (`.notdef`) result for an unmapped code such as
+        ``0xFFFF`` under a Unicode encoding CMap. When the descendant has
+        no parent / the parent carries no encoding CMap (a bare wrapper,
+        as in unit tests) the code passes through unchanged.
         """
-        return int(code)
+        parent = self.get_parent()
+        if parent is None:
+            return int(code)
+        cmap = parent.get_cmap()
+        if cmap is None:
+            return int(code)
+        if not cmap.has_cid_mappings() and cmap.has_unicode_mappings():
+            unicode_str = cmap.to_unicode(code)
+            if unicode_str:
+                return ord(unicode_str[0])
+        return cmap.to_cid(code)
 
     def _code_to_gid(self, code: int, ttf: object | None = None) -> int:
         """Renderer-facing hook mirroring ``PDTrueTypeFont._code_to_gid``."""

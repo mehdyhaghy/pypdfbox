@@ -87,12 +87,22 @@ class PDCIDFontType0(PDCIDFont):
     # ---------- code -> CID ----------
 
     def code_to_cid(self, code: int) -> int:  # type: ignore[override]
-        """For CID-keyed CFF fonts the "code" arriving at this layer is
-        already the CID (the parent :class:`PDType0Font`'s ``/Encoding``
-        CMap performed ``code -> CID`` upstream). Identity mapping here
-        mirrors upstream ``PDCIDFontType0.codeToCID``.
+        """Map a character ``code`` to a CID via the parent's encoding CMap.
+
+        Mirrors upstream ``PDCIDFontType0.codeToCID``:
+        ``parent.getCMap().toCID(code)`` — the CMap's mapping is returned
+        verbatim, including the ``0`` (`.notdef`) result for a code the
+        CMap does not map. When the descendant has no parent / the parent
+        carries no encoding CMap (a bare wrapper, as in unit tests) the
+        code passes through unchanged.
         """
-        return int(code)
+        parent = self.get_parent()
+        if parent is None:
+            return int(code)
+        cmap = parent.get_cmap()
+        if cmap is None:
+            return int(code)
+        return cmap.to_cid(code)
 
     # ---------- code -> GID ----------
 

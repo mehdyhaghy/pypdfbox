@@ -8,11 +8,13 @@ the loader co-located with the resources directory under
 together.
 
 A curated subset of the Adobe predefined CMaps is bundled — the four
-``*-UCS2`` Unicode-mapping CMaps, ``Identity-H`` / ``Identity-V``, and
-the H/V encoding CMaps that the vast majority of CJK PDFs reference
+``Adobe-*-UCS2`` Unicode-mapping CMaps, ``Identity-H`` / ``Identity-V``,
+and the H/V encoding CMaps that the vast majority of CJK PDFs reference
 (``UniCNS-UTF16-H/V``, ``UniGB-UTF16-H/V``, ``UniJIS-UTF16-H/V``,
-``UniKS-UTF16-H/V``, plus the legacy ``GB-EUC-H/V``, ``B5pc-H/V``,
-``90ms-RKSJ-H/V``, ``KSC-EUC-H/V``). The full upstream set is ~50 files
+``UniKS-UTF16-H/V``, the Adobe Unicode UCS2 encoding CMaps
+``UniGB-UCS2-H/V``, ``UniCNS-UCS2-H/V``, ``UniKS-UCS2-H/V``,
+``UniJIS-UCS2-H``, plus the legacy ``GB-EUC-H/V``, ``GBK-EUC-H/V``,
+``B5pc-H/V``, ``90ms-RKSJ-H/V``, ``KSC-EUC-H/V``). The full upstream set is ~50 files
 / tens of megabytes — too heavy to ship with the wheel in full. PDFs
 referencing other predefined CMaps fall through to a ``None`` return
 from :meth:`CMapManager.get_predefined_cmap`, which the caller can

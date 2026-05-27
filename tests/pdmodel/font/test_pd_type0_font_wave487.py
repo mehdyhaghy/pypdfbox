@@ -32,18 +32,6 @@ class _Descendant:
         return cid + 1000
 
 
-class _CMap:
-    def __init__(self, cid: int, *, has_mappings: bool = True) -> None:
-        self.cid = cid
-        self.has_mappings = has_mappings
-
-    def has_cid_mappings(self) -> bool:
-        return self.has_mappings
-
-    def to_cid(self, code: int) -> int:
-        return self.cid if code != 0 else 7
-
-
 def test_wave487_alias_descriptor_encoding_and_cid_info_delegate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -143,23 +131,27 @@ def test_wave487_get_cmap_ucs2_parser_failure_caches_none(
     assert calls == ["Adobe-GB1-UCS2"]
 
 
-def test_wave487_code_to_cid_uses_cmap_hit_zero_code_and_descendant_fallback(
+def test_wave487_code_to_cid_delegates_to_descendant_codeto_cid(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """``PDType0Font.code_to_cid`` delegates straight to the descendant's
+    ``code_to_cid`` — mirroring upstream ``PDType0Font.codeToCID`` which is
+    a one-liner ``descendantFont.codeToCID(code)``. The descendant resolves
+    the code against the *parent's* encoding CMap (see PDCIDFontType0 /
+    PDCIDFontType2 ports); here the mock descendant simply records that it
+    was called and returns a sentinel so we can assert the delegation.
+    """
     font = PDType0Font()
     descendant = _Descendant()
     monkeypatch.setattr(font, "get_descendant_font", lambda: descendant)
 
-    monkeypatch.setattr(font, "get_cmap", lambda: _CMap(55))
-    assert font.code_to_cid(8) == 55
-
-    monkeypatch.setattr(font, "get_cmap", lambda: _CMap(0))
-    assert font.code_to_cid(0) == 7
+    # Every code now routes through descendant.code_to_cid (-> code + 100),
+    # regardless of the parent CMap shape (the CMap is consulted *inside*
+    # the descendant in production, not by the parent).
     assert font.code_to_cid(8) == 108
-
-    monkeypatch.setattr(font, "get_cmap", lambda: _CMap(0, has_mappings=False))
+    assert font.code_to_cid(0) == 100
     assert font.code_to_cid(9) == 109
-    assert descendant.calls == [("cid", 8), ("cid", 9)]
+    assert descendant.calls == [("cid", 8), ("cid", 0), ("cid", 9)]
 
 
 def test_wave487_code_to_gid_handles_no_descendant_missing_cid_to_gid_and_gsub_failure(

@@ -286,20 +286,33 @@ class PDType0Font(PDFont):
     def code_to_cid(self, code: int) -> int:
         """Map an input character code to a CID through the encoding CMap.
 
-        For Identity / missing CMaps the code passes through unchanged
-        — matches upstream ``PDType0Font.codeToCID``.
+        Mirrors upstream ``PDType0Font.codeToCID`` which delegates to the
+        descendant CIDFont's ``codeToCID``. The descendant resolves the
+        code against the *parent's* encoding CMap (PDF 32000-1 §9.7.4.3):
+
+        * :class:`PDCIDFontType0` — ``cmap.toCID(code)`` verbatim, so a
+          code the CMap maps to CID 0 yields 0 (no fall-through).
+        * :class:`PDCIDFontType2` — when the CMap carries *only* Unicode
+          mappings (e.g. an Adobe ``*-UCS2`` collection used as
+          ``/Encoding``) the first Unicode codepoint of ``toUnicode(code)``
+          is returned; otherwise ``cmap.toCID(code)``.
+
+        Both descendant paths return ``cmap.toCID(code)`` unconditionally
+        when the CMap has CID mappings — including the ``0`` (`.notdef`)
+        result for an unmapped code such as ``0xFFFF`` under a Unicode
+        encoding CMap. The previous fall-through to the descendant's own
+        ``code_to_cid`` (which echoed the raw code) diverged from PDFBox
+        for exactly those unmapped-to-zero codes.
         """
-        cmap = self.get_cmap()
-        if cmap is not None and cmap.has_cid_mappings():
-            cid = cmap.to_cid(code)
-            if cid != 0 or code == 0:
-                return cid
-            # Fall through to descendant for codes the active CMap
-            # doesn't explicitly map (e.g. Identity-H).
         descendant = self.get_descendant_font()
         if descendant is not None:
             return descendant.code_to_cid(code)
-        return int(code)
+        # No descendant (bare wrapper / malformed dict): resolve directly
+        # against the encoding CMap, mirroring the descendant logic.
+        cmap = self.get_cmap()
+        if cmap is None:
+            return int(code)
+        return cmap.to_cid(code)
 
     def code_to_gid(self, code: int) -> int:
         """Map an input character code to a glyph index.

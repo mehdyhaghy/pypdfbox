@@ -60,6 +60,18 @@ Includes the Adobe Glyph List
 Includes the Zapf Dingbats Glyph List
   Copyright 2002, 2010 Adobe Systems Incorporated.
 
+Adobe predefined CMap resources
+  Copyright 1990-2009 Adobe Systems Incorporated. All rights reserved.
+
+  pypdfbox bundles the Adobe predefined CMap resources (CID-keyed
+  character collection mappings: Adobe-Japan1, Adobe-GB1, Adobe-CNS1,
+  Adobe-Korea1 / Adobe-KR encodings such as UniGB-UCS2-H, GBK-EUC-H,
+  90ms-RKSJ-H, …) under ``pypdfbox/fontbox/cmap/resources/`` to decode
+  code→CID for Type0 fonts that reference a predefined CMap
+  (PDF 32000-1:2008 §9.7.5.2). The files are redistributed verbatim
+  from Apache PDFBox; each CMap file carries Adobe's BSD-3-Clause
+  redistribution terms + copyright in its own ``%%Copyright:`` header.
+
 ----------------------------------------------------------------------
 
 Liberation Fonts

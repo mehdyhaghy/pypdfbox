@@ -5633,6 +5633,18 @@ class PDFRenderer(PDFStreamEngine):
         """
         if self._annotation_should_skip(annotation):
             return
+        # Optional-content gate: an annotation whose ``/OC`` names an OCG (or
+        # OCMD) that is hidden in the active config must not paint (PDF
+        # 32000-1 §8.11.4.3). Mirrors upstream ``PageDrawer.showAnnotation``,
+        # which returns early on ``isHiddenOCG(annotation.getOptionalContent())``.
+        oc_getter = getattr(annotation, "get_optional_content", None)
+        if callable(oc_getter):
+            try:
+                oc = oc_getter()
+            except Exception:  # noqa: BLE001
+                oc = None
+            if oc is not None and self._property_list_is_hidden(oc):
+                return
         # Resolve the normal appearance stream. If absent, give the
         # annotation one chance to synthesise one (upstream calls
         # ``annotation.constructAppearances(renderer.document)``).

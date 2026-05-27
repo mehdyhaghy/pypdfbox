@@ -66,19 +66,31 @@ def test_wave546_ucs2_fallback_skips_identity_collection(
     assert font.get_cmap_ucs2() is None
 
 
-def test_wave546_code_to_cid_falls_back_to_descendant_for_unmapped_nonzero(
+def test_wave546_code_to_cid_returns_cmap_zero_verbatim_for_unmapped_code(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Upstream ``PDType0Font.codeToCID`` delegates to the descendant's
+    ``codeToCID`` which returns ``parent.getCMap().toCID(code)`` verbatim —
+    *including* the ``0`` (`.notdef`) result for a code the CMap does not
+    map. There is no fall-through that echoes the raw code (the disassembled
+    PDFBox 3.0.7 ``PDCIDFontType2.codeToCID`` confirms this), so a code the
+    CMap maps to ``0`` must resolve to ``0``, not to the input code.
+    """
     font = PDType0Font()
     cmap = SimpleNamespace(
         has_cid_mappings=lambda: True,
+        has_unicode_mappings=lambda: False,
         to_cid=lambda _code: 0,
     )
-    descendant = SimpleNamespace(code_to_cid=lambda code: code + 1000)
+    # Real descendant logic (PDCIDFontType2.code_to_cid): consult the
+    # parent CMap and return its toCID result verbatim.
+    descendant = SimpleNamespace(
+        code_to_cid=lambda code: cmap.to_cid(code),
+    )
     monkeypatch.setattr(font, "get_cmap", lambda: cmap)
     monkeypatch.setattr(font, "get_descendant_font", lambda: descendant)
 
-    assert font.code_to_cid(41) == 1041
+    assert font.code_to_cid(41) == 0
     assert font.code_to_cid(0) == 0
 
 
