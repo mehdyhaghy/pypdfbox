@@ -26,6 +26,40 @@ class _RenderContext:
     path: list[tuple[Any, ...]] = field(default_factory=list)
 
 
+def _font_subrs_as_charstrings(font: Any, ps_char_strings: Any) -> list[Any]:
+    """Return the parent font's local ``/Private /Subrs`` as a list of
+    executable fontTools ``T1CharString`` objects, suitable for assignment
+    to a ``T1CharString.subrs`` so ``op_callsubr`` can ``execute`` them.
+
+    The in-memory ``create_with_pfb`` path stores each subr as already-
+    decrypted charstring *bytes*; the reload path stores decompiled
+    ``T1CharString`` objects. Normalise both to ``T1CharString`` here.
+    Anything we cannot interpret (no parent / no subrs / odd entry types)
+    degrades to an empty list — a glyph that then issues ``callsubr`` will
+    decode to a blank path, matching upstream's warn-and-drop for a
+    charstring referencing a missing subroutine.
+    """
+    get = getattr(font, "get_subrs_array", None)
+    if get is None:
+        return []
+    try:
+        raw_subrs = get()
+    except Exception:  # noqa: BLE001
+        return []
+    wrapped: list[Any] = []
+    for entry in raw_subrs:
+        if isinstance(entry, ps_char_strings.T1CharString):
+            wrapped.append(entry)
+        elif isinstance(entry, (bytes, bytearray, memoryview)):
+            wrapped.append(ps_char_strings.T1CharString(bytecode=bytes(entry)))
+        else:
+            # Unknown subr representation — push a no-op so the index
+            # stays aligned (a charstring calling it draws nothing rather
+            # than raising and dropping the whole glyph).
+            wrapped.append(ps_char_strings.T1CharString())
+    return wrapped
+
+
 def _command_name(command: Any) -> str:
     """Extract the operator mnemonic from a token.
 
@@ -325,6 +359,28 @@ class Type1CharString:
                 f"tokens, or None — got {type(sequence).__name__}"
             )
             raise TypeError(msg)
+
+        # Wire up the parent font's local /Private /Subrs so the charstring
+        # interpreter can resolve ``callsubr`` (Adobe Type 1 spec §8.3). A
+        # real .pfb's flex / hint-replacement machinery is reached through
+        # ``callsubr`` into the four standard subroutines (Subr 0 = flex end,
+        # Subr 1 = flex begin, Subr 2 = flex point, Subr 3 = hint
+        # replacement), each of which fronts a ``callothersubr`` (OtherSubrs
+        # 0/1/2/3). fontTools' ``op_callsubr`` does ``self.subrs[index]`` and
+        # ``self.execute(subr)``, so the charstring must carry a ``subrs``
+        # list of executable ``T1CharString`` objects.
+        #
+        # When ``sequence`` is already a ``T1CharString`` (the embedded
+        # ``/FontFile`` reload path, where fontTools' ``t1Lib`` parse attaches
+        # decompiled subrs), it already has them — leave those alone. For the
+        # in-memory ``create_with_pfb`` path the charstring is built from raw
+        # *bytes* / a program list with no subrs attached, so ``callsubr``
+        # raised ``TypeError`` (``self.subrs`` was ``None``) and the whole
+        # glyph was swallowed to a blank path. Pull the parent's subrs and
+        # wrap each (raw bytes → ``T1CharString``) so the in-memory path
+        # resolves ``callsubr`` exactly as the reload path does.
+        if getattr(self._t1, "subrs", None) is None:
+            self._t1.subrs = _font_subrs_as_charstrings(font, psCharStrings)
 
     # ---------- accessors (PDFBox-shaped) -----------------------------------
 
