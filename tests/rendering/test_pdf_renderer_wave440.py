@@ -142,8 +142,11 @@ def test_paste_image_with_alpha_and_clip_uses_combined_mask() -> None:
         renderer._paste_image(source)  # noqa: SLF001
         _finish(renderer)
 
-        assert renderer._image.getpixel((1, 1)) == (255, 255, 255)  # noqa: SLF001
-        assert renderer._image.getpixel((1, 2)) == (255, 0, 0)  # noqa: SLF001
+        # Image row 0 (opaque red) maps to the top of the painted box
+        # (device y=1) and row 1 (the transparent pixel) to device y=2 —
+        # the spec-correct orientation matching PDFBox (no extra y-flip).
+        assert renderer._image.getpixel((1, 1)) == (255, 0, 0)  # noqa: SLF001
+        assert renderer._image.getpixel((1, 2)) == (255, 255, 255)  # noqa: SLF001
         assert renderer._image.getpixel((2, 2)) == (255, 255, 255)  # noqa: SLF001
         assert renderer._draw is not None  # noqa: SLF001
     finally:

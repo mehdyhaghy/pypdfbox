@@ -65,16 +65,19 @@ def test_paste_image_routes_active_blend_with_transformed_bbox_and_alpha(
         renderer._paste_image(source)  # noqa: SLF001
 
         assert len(calls) == 1
-        flipped_rgb, alpha, bbox = calls[0]
+        staged_rgb, alpha, bbox = calls[0]
         assert bbox == (1, 1, 2, 3)
-        assert flipped_rgb.size == (2, 3)
-        top = flipped_rgb.getpixel((0, 0))
-        bottom = flipped_rgb.getpixel((0, 2))
-        assert top[0] > bottom[0]
-        assert top[1] > bottom[1]
-        assert top[2] > bottom[2]
+        assert staged_rgb.size == (2, 3)
+        # No extra y-flip: image row 0 (the darker (10,20,30) pixel) stays at
+        # the top of the staged raster and row 1 (the brighter (90,80,70)
+        # pixel) at the bottom — the spec-correct orientation matching PDFBox.
+        top = staged_rgb.getpixel((0, 0))
+        bottom = staged_rgb.getpixel((0, 2))
+        assert top[0] < bottom[0]
+        assert top[1] < bottom[1]
+        assert top[2] < bottom[2]
         assert alpha is not None
-        assert alpha.getpixel((0, 0)) > alpha.getpixel((0, 2))
+        assert alpha.getpixel((0, 0)) < alpha.getpixel((0, 2))
     finally:
         _finish(renderer)
         doc.close()

@@ -772,6 +772,14 @@ class COSParser(BaseParser):
         (no upstream accessor — exposed here for parity testability)."""
         return self._trailer_was_rebuild
 
+    def set_trailer_was_rebuild(self, value: bool) -> None:
+        """Record that the trailer was rebuilt by brute-force recovery.
+
+        Set by :class:`PDFParser` when it takes the full-rebuild fallback
+        (missing ``startxref`` / unparseable xref) so downstream callers
+        can distinguish a recovered trailer from a normally-parsed one."""
+        self._trailer_was_rebuild = bool(value)
+
     # File-length accessor. Upstream stores ``fileLen`` as a protected
     # ``long`` populated at construction; downstream subclasses
     # (``PDFParser``) read it. Mirroring the read/write surface keeps

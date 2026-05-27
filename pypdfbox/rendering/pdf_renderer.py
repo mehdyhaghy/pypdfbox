@@ -7009,12 +7009,18 @@ class PDFRenderer(PDFStreamEngine):
         target_w = max(1, x1 - x0)
         target_h = max(1, y1 - y0)
         # PDF images live in a flipped-y unit square (origin top-left in
-        # image space, bottom-left in user space). The CTM y-flip baked
-        # into device CTM already inverts it back, but we still need to
-        # vertically mirror the source so the visible result matches
-        # PDFBox's renderer.
-        resized = pil_image.resize((target_w, target_h), Image.Resampling.BILINEAR)
-        flipped = resized.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+        # image space, bottom-left in user space). The page-level device
+        # CTM already bakes in the user-space y-flip (``set_page_size`` puts
+        # ``-scale`` in the device matrix's d component), so unit-square
+        # y=1 (the image's top row) maps to device y-min (screen top) —
+        # exactly the orientation PDFBox renders. The decode helpers
+        # (``to_pil_image`` / ``_decode_image_xobject``) already produce a
+        # row-0-at-top raster matching PDFBox's getImage(), so the resized
+        # raster is pasted as-is. (A prior FLIP_TOP_BOTTOM here double-flipped
+        # the y-axis, mirroring every rendered image vertically vs PDFBox;
+        # existing oracle fixtures missed it because their images were
+        # vertically symmetric.)
+        flipped = pil_image.resize((target_w, target_h), Image.Resampling.BILINEAR)
 
         # If the source image carries an alpha channel (e.g. an SMask
         # was applied upstream), split it off and use it as the paste
@@ -7151,6 +7157,25 @@ class PDFRenderer(PDFStreamEngine):
         keep rendering).
         """
         if self._draw is None or self._image is None:
+            return
+        # PDF spec §8.9.5.4: an inline image with ``/IM true`` (or the long
+        # ``/ImageMask true``) is a stencil mask — its 1-bit sample data is
+        # an alpha matte painted in the current non-stroking colour, not a
+        # literal raster. Route it through the same coloured-stencil paint
+        # the XObject ``Do`` path uses; without this branch the stencil's
+        # 1-bit samples are decoded as opaque DeviceGray (black where the
+        # stencil should take the fill colour, opaque white where it should
+        # be transparent), so the image is painted with the wrong colour and
+        # never lets the backdrop through.
+        try:
+            is_stencil = bool(inline_image.is_stencil())
+        except Exception:  # noqa: BLE001
+            is_stencil = False
+        if is_stencil:
+            try:
+                self._paint_stencil_mask(inline_image)
+            except Exception as exc:  # noqa: BLE001
+                _log.debug("rendering: cannot paint inline stencil mask: %s", exc)
             return
         pil_image: Image.Image | None
         try:

@@ -194,19 +194,59 @@ class PDFParser:
         # parameter dictionary. Advisory only — the regular xref-walk
         # path below is unaffected (trailing xref still wins).
         self._detect_linearization()
-        startxref = self.find_startxref_offset(validate_bounds=not self._lenient)
-        startxref = self._recover_xref_offset_if_needed(startxref)
-        if not self._xref_section_starts_at(startxref):
-            raise PDFParseError(f"startxref offset {startxref} does not point to xref")
-        self._cos_parser.set_xref_offset(startxref)
-        # Record so the incremental writer can chain its appended xref
-        # via /Prev (PRD §6.5 cluster #2).
-        self._document.set_start_xref(startxref)
-        self.parse_xref_chain(startxref)
+        rebuilt = False
+        # ---- locate the xref (startxref directive + shape check) ----
+        # In lenient mode, an *unlocatable* xref (no ``startxref`` keyword,
+        # or one whose offset can't be corrected to a real xref section)
+        # falls back to a full brute-force rebuild — mirrors upstream
+        # COSParser.retrieveTrailer. A located-but-malformed xref STREAM is
+        # NOT recovered here: its content errors propagate from
+        # ``parse_xref_chain`` below, preserving the strict-on-bad-structure
+        # contract. Strict (non-lenient) mode re-raises location failures.
+        startxref = -1
+        try:
+            startxref = self.find_startxref_offset(
+                validate_bounds=not self._lenient
+            )
+            startxref = self._recover_xref_offset_if_needed(startxref)
+            located = self._xref_section_starts_at(startxref)
+        except PDFParseError:
+            if not self._lenient:
+                raise
+            located = False
+        if located:
+            self._cos_parser.set_xref_offset(startxref)
+            # Record so the incremental writer can chain its appended xref
+            # via /Prev (PRD §6.5 cluster #2).
+            self._document.set_start_xref(startxref)
+            self.parse_xref_chain(startxref)
+        elif self._lenient:
+            self._rebuild_document_from_brute_force()
+            rebuilt = True
+        else:
+            raise PDFParseError(
+                f"startxref offset {startxref} does not point to xref"
+            )
         trailer = self._resolver.get_trailer()
         if trailer is not None:
             self._document.set_trailer(trailer)
         self.populate_document()
+        if rebuilt:
+            # Upstream BruteForceParser.searchForTrailerItems (driven by
+            # rebuildTrailer) eagerly DEREFERENCES every recovered object
+            # to inspect its /Type / /Root / /Info candidacy. That eager
+            # resolution is why a brute-force-recovered file whose body
+            # holds a broken object (e.g. a stream with no ``endstream``)
+            # still surfaces the parse error at load time rather than
+            # silently "recovering". Mirror that so our rebuild outcome
+            # matches PDFBox's PARSE_FAIL vs success decision.
+            self._resolve_recovered_objects()
+        elif self._lenient:
+            # PDFBox's COSParser.checkXrefOffsets: in lenient mode every
+            # parsed xref offset is verified to point at its ``n g obj``
+            # header; entries that don't are brute-force-corrected so a
+            # single bad subsection offset doesn't strand an object.
+            self._check_xref_offsets_lenient()
         # ``initial_parse()`` is intentionally **not** auto-invoked here.
         # Upstream PDFBox does call it from ``parse()``, but pypdfbox's
         # historical contract has been that ``parse()`` returns the
@@ -1341,6 +1381,129 @@ class PDFParser:
                 offset_table[key] = entry.offset
         if offset_table:
             self._document.add_xref_table(offset_table)
+
+    def _rebuild_document_from_brute_force(self) -> None:
+        """Reconstruct the cross-reference + trailer entirely from a
+        brute-force ``n g obj`` scan of the body.
+
+        Mirrors the recovery half of upstream ``COSParser.retrieveTrailer``
+        / ``rebuildTrailer``: used when ``startxref`` is missing or the
+        located xref section cannot be parsed. Every recovered object
+        becomes a TABLE entry in a fresh resolver section so the standard
+        :meth:`populate_document` machinery can attach lazy loaders, and the
+        rebuilt trailer (with brute-force ``/Root`` / ``/Info`` detection)
+        is registered on that section."""
+        assert self._cos_parser is not None
+        offsets = self._cos_parser.bf_search_for_objects()
+        if not offsets:
+            # No ``n g obj`` definition anywhere in the body: there is nothing
+            # to rebuild a cross-reference from. PDFBox's brute-force recovery
+            # likewise gives up here (Loader.loadPDF raises), so a file that is
+            # only a header + trailing garbage must surface a parse failure
+            # rather than "recover" into an empty, rootless document.
+            raise PDFParseError(
+                "no recoverable objects found during brute-force rebuild"
+            )
+        trailer = self._cos_parser.rebuild_trailer()
+        # Register a synthetic section (start offset -1: position unknown)
+        # holding one TABLE entry per recovered object. ``begin_section``
+        # with a negative offset keeps it out of visited-offset tracking.
+        self._resolver.begin_section(-1)
+        for key, offset in offsets.items():
+            self._resolver.set_entry(
+                key, XrefEntry(type=XrefType.TABLE, offset=offset)
+            )
+        self._resolver.set_trailer(trailer)
+        self._cos_parser.set_trailer_was_rebuild(True)
+        # ``startxref`` is unknown after a full rebuild. Leave the
+        # COSDocument's start-xref at its default (0 — the "no trailing
+        # startxref" sentinel the incremental writer already treats as
+        # "synthesised / unsaved"); the setter rejects the upstream -1
+        # sentinel, and a bogus positive offset would mislead a later
+        # incremental /Prev chain.
+
+    def _resolve_recovered_objects(self) -> None:
+        """Eagerly dereference every brute-force-recovered object.
+
+        Mirrors the eager resolution upstream
+        ``BruteForceParser.searchForTrailerItems`` performs while rebuilding
+        the trailer: each recovered object is dereferenced (full parse,
+        including stream bodies) so a body-level defect — a stream missing
+        its ``endstream`` marker, a truncated object — surfaces as a
+        ``PDFParseError`` at load time, exactly as PDFBox surfaces the
+        equivalent ``IOException`` out of ``Loader.loadPDF``. Without this,
+        the rebuild would "succeed" and only fail lazily, diverging from
+        PDFBox's load-time PARSE_FAIL."""
+        assert self._document is not None
+        for cos_obj in self._document.get_objects():
+            cos_obj.get_object()
+
+    def _check_xref_offsets_lenient(self) -> None:
+        """Verify every parsed xref offset points at its ``n g obj`` header
+        and brute-force-correct the ones that don't.
+
+        Mirrors upstream ``COSParser.checkXrefOffsets``: a single wrong
+        subsection offset (corrupt xref entry) must not strand the object —
+        the body still contains a valid ``n g obj`` definition that a
+        linear scan can relocate. Only invoked in lenient mode. The scan is
+        run lazily (only when at least one offset fails its header check) so
+        well-formed documents pay nothing."""
+        assert self._cos_parser is not None
+        assert self._document is not None
+        xref = self._resolver.get_xref_table()
+        bf_offsets: dict[COSObjectKey, int] | None = None
+        corrected: dict[COSObjectKey, int] = {}
+        for key, entry in xref.items():
+            if entry.type is XrefType.COMPRESSED or entry.compressed_index == -1:
+                continue
+            if self._object_header_matches(entry.offset, key):
+                continue
+            # Offset is wrong — locate the object by brute force.
+            if bf_offsets is None:
+                bf_offsets = self._cos_parser.bf_search_for_objects()
+            real_offset = bf_offsets.get(key)
+            if real_offset is None or real_offset == entry.offset:
+                continue
+            entry.offset = real_offset
+            corrected[key] = real_offset
+        if not corrected:
+            return
+        # Re-attach loaders for the corrected entries so lazy resolution
+        # reads from the relocated offset, and refresh the document's
+        # public xref-table view.
+        for key, real_offset in corrected.items():
+            cos_obj = self._document.get_object_from_pool(key)
+            cos_obj.set_loader(
+                self._make_loader(
+                    XrefEntry(type=XrefType.TABLE, offset=real_offset)
+                )
+            )
+        self._document.add_xref_table(corrected)
+
+    def _object_header_matches(self, offset: int, key: COSObjectKey) -> bool:
+        """Return ``True`` when ``offset`` seeks to an ``n g obj`` header
+        whose object number matches ``key``. Cursor position is restored.
+
+        Used by :meth:`_check_xref_offsets_lenient` to decide whether an
+        xref entry's byte offset is trustworthy before resolving it."""
+        if offset < 0 or offset >= self._src.length():
+            return False
+        saved = self._src.get_position()
+        try:
+            self._src.seek(offset)
+            self._base.skip_whitespace()
+            on = self._base.read_int()
+            self._base.skip_whitespace()
+            self._base.read_int()
+            self._base.skip_whitespace()
+            return (
+                self._base.read_keyword() == b"obj"
+                and on == key.object_number
+            )
+        except PDFParseError:
+            return False
+        finally:
+            self._src.seek(saved)
 
     def _make_loader(self, entry: XrefEntry):  # type: ignore[no-untyped-def]
         """Build a lazy loader callback for a single xref entry."""

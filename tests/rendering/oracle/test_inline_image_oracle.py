@@ -44,6 +44,7 @@ from pypdfbox.io.random_access_read_buffer import RandomAccessReadBuffer
 from pypdfbox.pdfparser.pdf_stream_parser import Operator, PDFStreamParser
 from pypdfbox.pdmodel.graphics.image.pd_inline_image import PDInlineImage
 from pypdfbox.pdmodel.pd_document import PDDocument
+from pypdfbox.rendering.pdf_renderer import PDFRenderer
 from tests.oracle.harness import requires_oracle, run_probe_text
 
 _GRID = 16
@@ -307,4 +308,161 @@ def test_blank_inline_raster_would_fail_tolerance(tmp_path) -> None:
     mad = sum(diffs) / len(diffs)
     assert mad >= _MAD_TOLERANCE, (
         "tolerance too loose: a blank inline raster passes the MAD gate"
+    )
+
+
+# ==========================================================================
+# Render-level parity — full PDFRenderer page render vs PDFBox PDFRenderer.
+#
+# The decode-level tests above compare ``PDInlineImage.get_image()`` rasters.
+# These render-level tests instead run the whole inline-image paint path
+# (``PDFRenderer`` -> ``_op_inline_image`` -> ``show_inline_image``) against
+# Java PDFBox's ``PDFRenderer.renderImageWithDPI`` via ``RenderProbe.java``.
+# This is what exercises the *paint* side: a ``/IM true`` stencil must take
+# the current non-stroking colour (not be pasted as a literal black/white
+# raster), abbreviated + full key names must both parse, and EI must be
+# detected past the raw binary body.
+# ==========================================================================
+_RENDER_MAD_TOLERANCE = 6.0
+_RENDER_MAXDIFF_TOLERANCE = 60
+
+
+def _build_render_pdf(content: bytes) -> bytes:
+    """One-page 200x200 PDF whose content stream is ``content`` verbatim
+    (no implicit ``cm`` wrapper — each render case supplies its own CTM /
+    colour state)."""
+
+    def obj(num: int, data: bytes) -> bytes:
+        return f"{num} 0 obj\n".encode() + data + b"\nendobj\n"
+
+    stream_obj = b"<< /Length %d >>\nstream\n%s\nendstream" % (len(content), content)
+    parts = [
+        obj(1, b"<< /Type /Catalog /Pages 2 0 R >>"),
+        obj(2, b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>"),
+        obj(
+            3,
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] "
+            b"/Contents 4 0 R /Resources << >> >>",
+        ),
+        obj(4, stream_obj),
+    ]
+    pdf = bytearray(b"%PDF-1.7\n")
+    offsets: list[int] = []
+    for part in parts:
+        offsets.append(len(pdf))
+        pdf += part
+    xref_off = len(pdf)
+    pdf += b"xref\n0 5\n0000000000 65535 f \n"
+    for off in offsets:
+        pdf += b"%010d 00000 n \n" % off
+    pdf += b"trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF" % xref_off
+    return bytes(pdf)
+
+
+def _draw_inline(prefix: bytes, params: bytes, data: bytes) -> bytes:
+    """Content stream: optional colour/state ``prefix`` then an inline image
+    scaled to fill a 100x100 box centred on the 200x200 page."""
+    return prefix + b"q 100 0 0 100 50 50 cm\n" + _inline(params, data) + b"Q\n"
+
+
+# (a) /IM true stencil painted in a colour: 8x8 1-bpc, top half opaque
+#     (sample 0 -> painted), bottom half transparent (sample 1). Fill red.
+def _render_image_mask() -> bytes:
+    stencil = bytes([0, 0, 0, 0, 0xFF, 0xFF, 0xFF, 0xFF])
+    return _draw_inline(b"1 0 0 rg\n", b"/W 8 /H 8 /IM true", stencil)
+
+
+# (b) /RGB 8-bpc inline image via /AHx.
+def _render_ahx_rgb() -> bytes:
+    rgb = bytes([200, 30, 30, 30, 200, 30, 30, 30, 200, 200, 200, 30])
+    return _draw_inline(b"", b"/W 2 /H 2 /BPC 8 /CS /RGB /F /AHx", _ahx(rgb))
+
+
+# (c) /Fl Flate inline image (DeviceGray gradient).
+def _render_flate_gray() -> bytes:
+    px = bytes(range(0, 256, 16))[:16]
+    return _draw_inline(b"", b"/W 4 /H 4 /BPC 8 /CS /G /F /Fl", zlib.compress(px))
+
+
+# (d) Full (long-form) key names — confirms both abbreviated and full forms
+#     parse + paint identically. Same RGB raster as (b) but every key spelled
+#     out (Width/Height/BitsPerComponent/ColorSpace/Filter + DeviceRGB +
+#     ASCIIHexDecode).
+def _render_full_keys_rgb() -> bytes:
+    rgb = bytes([200, 30, 30, 30, 200, 30, 30, 30, 200, 200, 200, 30])
+    params = (
+        b"/Width 2 /Height 2 /BitsPerComponent 8 "
+        b"/ColorSpace /DeviceRGB /Filter /ASCIIHexDecode"
+    )
+    return _draw_inline(b"", params, _ahx(rgb))
+
+
+_RENDER_CASES: list[tuple[str, bytes]] = [
+    ("image_mask_red", _render_image_mask()),
+    ("ahx_rgb", _render_ahx_rgb()),
+    ("flate_gray", _render_flate_gray()),
+    ("full_keys_rgb", _render_full_keys_rgb()),
+]
+
+
+def _render_oracle_signature(
+    tmp_path, pdf_bytes: bytes
+) -> tuple[tuple[int, int], list[int]]:
+    fixture = tmp_path / "inline_render.pdf"
+    fixture.write_bytes(pdf_bytes)
+    lines = run_probe_text("RenderProbe", str(fixture), "0").splitlines()
+    width, height = (int(v) for v in lines[0].split())
+    grid = [int(v) for v in lines[1].split()]
+    assert len(grid) == _GRID * _GRID
+    return (width, height), grid
+
+
+@requires_oracle
+@pytest.mark.parametrize(
+    ("label", "content"),
+    [(c[0], _build_render_pdf(c[1])) for c in _RENDER_CASES],
+    ids=[c[0] for c in _RENDER_CASES],
+)
+def test_inline_image_render_matches_pdfbox(
+    tmp_path, label: str, content: bytes
+) -> None:
+    """Full-page render parity: PDFRenderer paints each inline image the
+    same way Java PDFBox does — exact dims + 16x16 luminance grid within
+    perceptual tolerance."""
+    (java_w, java_h), java_grid = _render_oracle_signature(tmp_path, content)
+
+    with PDDocument.load(content) as doc:
+        img = PDFRenderer(doc).render_image_with_dpi(0, 72.0)
+    py_w, py_h = img.size
+    py_grid = _grid_from_image(img)
+
+    assert (py_w, py_h) == (java_w, java_h), (
+        f"{label}: rendered dimensions diverge from PDFBox: "
+        f"pypdfbox={py_w}x{py_h} java={java_w}x{java_h}"
+    )
+    diffs = [abs(a - b) for a, b in zip(java_grid, py_grid, strict=True)]
+    mad = sum(diffs) / len(diffs)
+    maxdiff = max(diffs)
+    assert mad < _RENDER_MAD_TOLERANCE, (
+        f"{label}: mean abs cell diff {mad:.2f} >= {_RENDER_MAD_TOLERANCE} "
+        f"(maxdiff={maxdiff}) — inline image painted grossly differently"
+    )
+    assert maxdiff < _RENDER_MAXDIFF_TOLERANCE, (
+        f"{label}: worst cell diff {maxdiff} >= {_RENDER_MAXDIFF_TOLERANCE} "
+        f"(mad={mad:.2f}) — a region diverges far beyond AA / codec tolerance"
+    )
+
+
+@requires_oracle
+def test_blank_inline_render_would_fail_tolerance(tmp_path) -> None:
+    """Guard the render gate: a blank-white page is far from the painted
+    inline-image reference, so the gate discriminates a real paint from a
+    silently-dropped (unpainted) inline image."""
+    content = _build_render_pdf(_render_image_mask())
+    _dims, java_grid = _render_oracle_signature(tmp_path, content)
+    blank = [255] * (_GRID * _GRID)
+    diffs = [abs(a - b) for a, b in zip(java_grid, blank, strict=True)]
+    mad = sum(diffs) / len(diffs)
+    assert mad >= _RENDER_MAD_TOLERANCE, (
+        "tolerance too loose: a blank render passes the inline-image MAD gate"
     )
