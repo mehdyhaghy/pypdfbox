@@ -245,7 +245,9 @@ class SecurityHandler(ABC):
 
     # ------------------------------------------------------------ object key
 
-    def compute_object_key(self, obj_num: int, gen_num: int) -> bytes:
+    def compute_object_key(
+        self, obj_num: int, gen_num: int, aes: bool | None = None
+    ) -> bytes:
         """Return the per-object key per PDF 32000-1 §7.6.3.2.
 
         For revisions <= 4 the per-object key is MD5(file_key || obj_num[0:3]
@@ -254,6 +256,16 @@ class SecurityHandler(ABC):
 
         For revisions >= 5 (V >= 5) the file-encryption key is used directly
         for every object, no salting.
+
+        ``aes`` overrides the handler-wide :attr:`_aes` flag for this one
+        derivation. Mixed crypt-filter routing (e.g. /StmF /Identity but
+        /StrF /StdCF AESV2) means the AES-salt rule cannot be read off the
+        single document-level flag: an AESV2-routed object always needs the
+        ``sAlT`` suffix even when the document's *default* filter is not AES.
+        The V4/V5 dispatch passes ``aes=True`` for AESV2 and ``aes=False``
+        for V2/RC4 so each object is keyed correctly regardless of the
+        default-filter flag. Left ``None`` it falls back to :attr:`_aes`,
+        preserving the legacy single-algorithm behaviour.
         """
         if self._encryption_key is None:
             raise ValueError(
@@ -277,7 +289,8 @@ class SecurityHandler(ABC):
                 ]
             )
         )
-        if self._aes:
+        use_aes = self._aes if aes is None else aes
+        if use_aes:
             md5.update(_AES_SALT)
         digest = md5.digest()
         return digest[: min(n + 5, 16)]
@@ -480,7 +493,13 @@ class SecurityHandler(ABC):
         set_value = getattr(string, "set_value", None)
         if not callable(get_bytes) or not callable(set_value):
             return string
-        plain = self._decrypt(get_bytes(), obj_num, gen_num)
+        # Route through ``decrypt_string`` (not the raw ``_decrypt``) so the
+        # V4/V5 ``StandardSecurityHandler`` override honours the /StrF crypt
+        # filter — e.g. a /StrF /Identity slot leaves strings cleartext while
+        # streams stay AES-enciphered (PDF 32000-1 §7.6.5). The base handler's
+        # ``decrypt_string`` delegates straight to ``_decrypt``, so V<4
+        # behaviour is unchanged.
+        plain = self.decrypt_string(get_bytes(), obj_num, gen_num)
         set_value(plain)
         seen.add(id(string))
         return string
@@ -535,7 +554,10 @@ class SecurityHandler(ABC):
             try:
                 raw = get_raw()
                 if isinstance(raw, (bytes, bytearray, memoryview)):
-                    plain = self._decrypt(bytes(raw), obj_num, gen_num)
+                    # Route through ``decrypt_stream`` so the V4/V5 override
+                    # honours the /StmF crypt filter (Identity ⇒ cleartext);
+                    # base handler delegates to ``_decrypt`` for V<4 parity.
+                    plain = self.decrypt_stream(bytes(raw), obj_num, gen_num)
                     set_raw(plain)
             except Exception:  # noqa: BLE001 — mirror upstream tolerant decrypt
                 return

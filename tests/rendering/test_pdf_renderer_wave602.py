@@ -61,6 +61,8 @@ def test_show_string_falls_back_when_font_read_code_raises(
             _ttf: object,
             _glyph_set: object,
             _type1_units_per_em: object,
+            *,
+            vertical: bool = False,
         ) -> float:
             drawn_codes.append(code)
             return 200.0

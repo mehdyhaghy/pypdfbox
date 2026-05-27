@@ -67,6 +67,8 @@ def test_show_string_handles_zero_consumed_code_and_spacing(monkeypatch: Any) ->
             _ttf: object,
             _glyph_set: object,
             _type1_units_per_em: object,
+            *,
+            vertical: bool = False,
         ) -> float:
             drawn_codes.append(code)
             return 500.0

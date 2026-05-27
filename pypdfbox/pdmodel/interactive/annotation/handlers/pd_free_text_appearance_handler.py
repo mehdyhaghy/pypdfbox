@@ -192,14 +192,16 @@ class PDFreeTextAppearanceHandler(PDAbstractAppearanceHandler):
             )
             cs.draw_shape(ab.width, has_stroke, has_background)
 
-            # Optional /Rotate transform.
-            rotation = annotation.get_cos_object().get_int("Rotate", 0)
-            if rotation:
-                from pypdfbox.util.matrix import Matrix
+            # /Rotate transform. Upstream emits this unconditionally
+            # (PDFreeTextAppearanceHandler.java) — when /Rotate is absent or
+            # 0 the matrix is the identity, but the ``cm`` operator is still
+            # written, so the appearance op-sequence carries it regardless.
+            from pypdfbox.util.matrix import Matrix
 
-                _apply_matrix(
-                    cs, Matrix.get_rotate_instance(math.radians(rotation), 0.0, 0.0)
-                )
+            rotation = annotation.get_cos_object().get_int("Rotate", 0)
+            _apply_matrix(
+                cs, Matrix.get_rotate_instance(math.radians(rotation), 0.0, 0.0)
+            )
 
             # Resolve the font from /DA + AcroForm default resources.
             self.extract_font_details(annotation)

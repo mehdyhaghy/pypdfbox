@@ -38,26 +38,51 @@ def _make_page(doc: PDDocument, content: bytes) -> PDPage:
 # ---------------------------------------------------------------------------
 
 
-def test_region_inclusive_lower_left_boundary() -> None:
-    """A position whose origin is exactly the rectangle's lower-left
-    corner is included — boundary checks use ``<=`` not ``<``."""
+def test_region_left_and_top_edge_inclusive() -> None:
+    """A position on the rectangle's left edge (``min_x``) and top edge
+    (``max_y`` in user space) is included.
+
+    Mirrors Java ``Rectangle2D.contains`` after the user-space y-flip:
+    the *left* x bound and the *upper* (user-space ``max_y``) y bound are
+    inclusive. Verified against the live PDFBox oracle in
+    ``tests/text/oracle/test_text_sort_area_oracle.py``.
+    """
     doc = PDDocument()
     page = _make_page(doc, b"BT /F0 12 Tf 100 700 Td (edge) Tj ET")
     s = PDFTextStripperByArea()
-    # Lower-left at exactly the position's origin (100, 700).
-    s.add_region("r", (100.0, 700.0, 200.0, 50.0))
+    # Origin (100, 700) sits on the region's left edge (x == min_x) and
+    # its top edge (y == max_y == 700 + 50 - 50). Use a rect whose
+    # max_y == 700 so the top edge is exactly the origin's y.
+    s.add_region("r", (100.0, 650.0, 200.0, 50.0))  # x[100,300] y[650,700]
     s.extract_regions(page)
     assert "edge" in s.get_text_for_region("r")
 
 
-def test_region_inclusive_upper_right_boundary() -> None:
+def test_region_right_edge_exclusive() -> None:
+    """A position exactly on the rectangle's right edge (``max_x``) is
+    *excluded* — Java ``Rectangle2D.contains`` is half-open on the right
+    (``x < rx + rw``). Oracle-verified."""
     doc = PDDocument()
     page = _make_page(doc, b"BT /F0 12 Tf 100 700 Td (edge) Tj ET")
     s = PDFTextStripperByArea()
-    # Upper-right at exactly the position's origin (100, 700).
-    s.add_region("r", (0.0, 0.0, 100.0, 700.0))
+    # Right edge (max_x) lands exactly on the origin's x (100).
+    s.add_region("r", (0.0, 650.0, 100.0, 100.0))  # x[0,100] y[650,750]
     s.extract_regions(page)
-    assert "edge" in s.get_text_for_region("r")
+    assert s.get_text_for_region("r").strip() == ""
+
+
+def test_region_bottom_edge_exclusive() -> None:
+    """A position exactly on the rectangle's bottom edge (user-space
+    ``min_y``) is *excluded*. The Java y-flip turns the half-open
+    bottom (``y < ry + rh`` in device space) into an exclusive
+    user-space ``min_y``. Oracle-verified."""
+    doc = PDDocument()
+    page = _make_page(doc, b"BT /F0 12 Tf 100 700 Td (edge) Tj ET")
+    s = PDFTextStripperByArea()
+    # min_y lands exactly on the origin's y (700).
+    s.add_region("r", (50.0, 700.0, 200.0, 50.0))  # x[50,250] y[700,750]
+    s.extract_regions(page)
+    assert s.get_text_for_region("r").strip() == ""
 
 
 def test_region_just_outside_lower_left_drops_text() -> None:

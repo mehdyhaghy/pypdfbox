@@ -104,7 +104,8 @@ def test_text_operator_guards_and_read_code_fallback(monkeypatch: Any) -> None:
         monkeypatch.setattr(
             renderer,
             "_draw_glyph",
-            lambda _font, code, *_args: seen_codes.append(code) or 100.0,
+            lambda _font, code, *_args, **_kwargs: seen_codes.append(code)
+            or 100.0,
         )
 
         renderer._show_string(b"AZ")  # noqa: SLF001

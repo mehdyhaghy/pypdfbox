@@ -7978,6 +7978,20 @@ class PDFRenderer(PDFStreamEngine):
         # ``font.get_glyph_path(code)`` rather than fontTools' glyphSet.
         type1_units_per_em = self._get_type1_units_per_em(font)
 
+        # Vertical writing mode (PDF 32000-1 §9.7.4.3): a Type0 font with a
+        # ``-V`` encoding CMap (``Identity-V`` / WMode 1) stacks glyphs
+        # downward. Per upstream PDFStreamEngine.showText the advance then
+        # uses the displacement vector's *y* component (``ty``) with
+        # ``tx == 0``, and each glyph is shifted by the font's position
+        # vector before painting so it sits centred in the vertical column.
+        is_vertical = False
+        getter = getattr(font, "is_vertical", None)
+        if callable(getter):
+            try:
+                is_vertical = bool(getter())
+            except Exception:  # noqa: BLE001
+                is_vertical = False
+
         # Type0 (composite) fonts read multi-byte codes through their
         # encoding CMap. Other fonts treat each byte as a single code.
         read_code = getattr(font, "read_code", None)
@@ -8002,19 +8016,34 @@ class PDFRenderer(PDFStreamEngine):
                 consumed = 1
             offset += consumed
             advance_units = self._draw_glyph(
-                font, code, ttf, glyph_set, type1_units_per_em
+                font, code, ttf, glyph_set, type1_units_per_em,
+                vertical=is_vertical,
             )
             # Word spacing applies to the space character (0x20) per spec —
             # for Type0 fonts it only applies when the encoded code
             # represents a single-byte 0x20, matching upstream PDFBox.
             is_space = consumed == 1 and code == 0x20
             wordspace = self._gs.text_wordspace if is_space else 0.0
-            tx = (
-                (advance_units / 1000.0) * self._gs.text_font_size
-                + self._gs.text_charspace
-                + wordspace
-            ) * (self._gs.text_horizontal_scaling / 100.0)
-            trans: _Matrix = (1.0, 0.0, 0.0, 1.0, tx, 0.0)
+            if is_vertical:
+                # Advance downward by the glyph's vertical displacement
+                # (``getDisplacement().getY()`` — negative for normal
+                # top-to-bottom CJK glyphs). Horizontal scaling does not
+                # apply to vertical advance. ``advance_units`` here is the
+                # vertical displacement (w1y) in 1/1000 em, supplied by
+                # ``_draw_glyph`` for the vertical branch.
+                ty = (
+                    (advance_units / 1000.0) * self._gs.text_font_size
+                    + self._gs.text_charspace
+                    + wordspace
+                )
+                trans: _Matrix = (1.0, 0.0, 0.0, 1.0, 0.0, ty)
+            else:
+                tx = (
+                    (advance_units / 1000.0) * self._gs.text_font_size
+                    + self._gs.text_charspace
+                    + wordspace
+                ) * (self._gs.text_horizontal_scaling / 100.0)
+                trans = (1.0, 0.0, 0.0, 1.0, tx, 0.0)
             self._gs.text_matrix = _matmul(trans, self._gs.text_matrix)
 
     def _get_ttf_glyph_set(
@@ -8202,10 +8231,16 @@ class PDFRenderer(PDFStreamEngine):
         ttf: Any | None,
         glyph_set: Any | None,
         type1_units_per_em: int | None = None,
+        *,
+        vertical: bool = False,
     ) -> float:
-        """Draw glyph for ``code`` and return its advance width in 1/1000
-        em (PDF units). Falls back to a placeholder rectangle when no
-        glyph outline is available (Standard 14, Type 3, etc.)."""
+        """Draw glyph for ``code`` and return its advance in 1/1000 em (PDF
+        units). For a horizontal font this is the glyph's horizontal width;
+        for a vertical (``vertical=True``) font it is the glyph's vertical
+        displacement (``w1y`` from ``/W2`` / ``/DW2``, negative for normal
+        top-to-bottom CJK glyphs), so the caller advances downward. Falls
+        back to a placeholder rectangle when no glyph outline is available
+        (Standard 14, Type 3, etc.)."""
         # Compute the text-rendering matrix per PDF 32000-1 §9.4.4:
         #   Trm = text_local * Tm * CTM
         # then stack the device CTM (y-flip + DPI scale) on top so the
@@ -8230,8 +8265,40 @@ class PDFRenderer(PDFStreamEngine):
             0.0, font_size,
             0.0, rise,
         )
+        # Vertical writing mode: shift each glyph by the font's position
+        # vector (PDF 32000-1 §9.7.4.3) before painting so it sits centred
+        # in the vertical column. Upstream PDFStreamEngine.showText applies
+        # this via ``textRenderingMatrix.translate(v.x, v.y)`` — i.e. the
+        # offset is prepended to the text-local matrix (so it is scaled by
+        # the font size). ``get_position_vector`` already returns em units.
+        if vertical:
+            pv_getter = getattr(font, "get_position_vector", None)
+            if callable(pv_getter):
+                try:
+                    pv_x, pv_y = pv_getter(code)
+                except Exception:  # noqa: BLE001
+                    pv_x = pv_y = 0.0
+                if pv_x or pv_y:
+                    text_local = _matmul(
+                        (1.0, 0.0, 0.0, 1.0, pv_x, pv_y), text_local
+                    )
         glyph_to_user = _matmul(text_local, self._gs.text_matrix)
         glyph_to_device = _matmul(glyph_to_user, self._full_ctm())
+
+        # For a vertical font the *advance* returned to the caller is the
+        # vertical displacement (w1y in 1/1000 em), not the horizontal
+        # width. Resolve it once here; ``_advance`` selects it for every
+        # return path below so glyph painting stays branch-for-branch
+        # identical to the horizontal case.
+        vertical_advance_units = 0.0
+        if vertical:
+            disp_getter = getattr(font, "get_displacement", None)
+            if callable(disp_getter):
+                with contextlib.suppress(Exception):
+                    vertical_advance_units = disp_getter(code)[1] * 1000.0
+
+        def _advance(width_units: float) -> float:
+            return vertical_advance_units if vertical else width_units
 
         # Optional-content gate: a glyph inside a hidden OCG/OCMD frame
         # still advances the text matrix (so following glyphs land in the
@@ -8263,7 +8330,7 @@ class PDFRenderer(PDFStreamEngine):
                         glyph_to_device,
                         self._gs.fill_rgb,
                     )
-                return advance_units
+                return _advance(advance_units)
             except Exception as exc:  # noqa: BLE001
                 _log.debug("rendering: glyph %d draw failed: %s", code, exc)
 
@@ -8297,7 +8364,7 @@ class PDFRenderer(PDFStreamEngine):
                         code,
                         exc,
                     )
-            return advance_units
+            return _advance(advance_units)
 
         # ----- placeholder rectangle (no outline source available) -----
         # Draw a faint outline at the glyph's nominal box so callers can see
@@ -8334,7 +8401,7 @@ class PDFRenderer(PDFStreamEngine):
         if self._draw is not None and draw_enabled:
             with contextlib.suppress(Exception):
                 self._draw_placeholder_box(glyph_to_device, advance_units)
-        return advance_units
+        return _advance(advance_units)
 
     @staticmethod
     def _fallback_advance_units(

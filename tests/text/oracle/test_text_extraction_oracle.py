@@ -115,19 +115,35 @@ def test_text_area_region_matches_pdfbox() -> None:
 
 
 @requires_oracle
-def test_text_area_empty_region_is_empty() -> None:
-    """A region that contains no glyphs yields ``""`` (no stray trailing
-    separator) — matches Java's empty ``StringWriter`` for an unmatched
-    region."""
+def test_text_area_empty_region_matches_pdfbox() -> None:
+    """A region that is extracted but captures no glyphs yields the page
+    line separator (``"\\n"``), not the empty string.
+
+    Java's ``PDFTextStripperByArea`` runs the standard ``writePage`` loop
+    once per registered region whether or not the region matched anything,
+    so its per-region ``StringWriter`` always ends in one line separator.
+    Verified against the live PDFBox oracle (wave 1439 corrected pypdfbox,
+    which previously suppressed the trailing separator for empty regions).
+    Note the region must sit *within* a contents-bearing page — a page
+    with no ``/Contents`` skips ``writePage`` and yields ``""`` in both
+    engines (see ``test_pdf_text_stripper_by_area`` blank-page case)."""
     fixture = _FIXTURES / "pdfwriter" / "unencrypted.pdf"
+    # AWT rect far off the page → matches no glyph but is still extracted.
+    java = run_probe_text(
+        "TextSortAreaProbe", "area", str(fixture), "-100", "-100", "1", "1"
+    )
+    java_text = java.split("AREA:", 1)[1].split("\n", 1)[0].replace("\\n", "\n")
     doc = PDDocument.load(str(fixture))
     try:
         stripper = PDFTextStripperByArea()
+        stripper.set_sort_by_position(True)
         stripper.add_region("nowhere", (-100.0, -100.0, 1.0, 1.0))
         stripper.extract_regions(doc.get_page(0))
-        assert stripper.get_text_for_region("nowhere") == ""
+        py = stripper.get_text_for_region("nowhere")
     finally:
         doc.close()
+    assert py == java_text
+    assert py == "\n"
 
 
 # ---- CTM-aware extraction (wave 1409) ----

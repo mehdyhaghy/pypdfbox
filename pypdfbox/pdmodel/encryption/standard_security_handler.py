@@ -843,10 +843,15 @@ class StandardSecurityHandler(SecurityHandler):
         if cfm in (_CFM_IDENTITY, _CFM_NONE):
             return data
         if cfm == _CFM_V2:
-            return _rc4(self.compute_object_key(obj_num, gen_num), data)
+            # RC4: per-object key WITHOUT the AES salt, regardless of the
+            # document-level /StmF default (mixed routing — see
+            # compute_object_key's ``aes`` parameter).
+            return _rc4(self.compute_object_key(obj_num, gen_num, aes=False), data)
         if cfm == _CFM_AESV2:
+            # AESV2: per-object key WITH the "sAlT" suffix even when the
+            # default filter is not AES (e.g. /StmF /Identity + /StrF AESV2).
             return _aes128_cbc_decrypt(
-                self.compute_object_key(obj_num, gen_num), data
+                self.compute_object_key(obj_num, gen_num, aes=True), data
             )
         if cfm == _CFM_AESV3:
             # AES-256: file-encryption key used directly (no per-object salt).
@@ -860,10 +865,10 @@ class StandardSecurityHandler(SecurityHandler):
         if cfm in (_CFM_IDENTITY, _CFM_NONE):
             return data
         if cfm == _CFM_V2:
-            return _rc4(self.compute_object_key(obj_num, gen_num), data)
+            return _rc4(self.compute_object_key(obj_num, gen_num, aes=False), data)
         if cfm == _CFM_AESV2:
             return _aes128_cbc_encrypt(
-                self.compute_object_key(obj_num, gen_num), data
+                self.compute_object_key(obj_num, gen_num, aes=True), data
             )
         if cfm == _CFM_AESV3:
             return _aes128_cbc_encrypt(self.get_encryption_key() or b"", data)

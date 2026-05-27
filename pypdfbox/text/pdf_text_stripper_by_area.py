@@ -211,13 +211,16 @@ class PDFTextStripperByArea(PDFTextStripper):
                 bin_positions = self._region_character_list.get(name, [])
                 formatted = self._format_positions(bin_positions)
                 # Upstream's region writer runs the standard ``writePage``
-                # loop, which terminates the final line of a non-empty
-                # region with ``getLineSeparator()`` (the Java oracle's
-                # ``getTextForRegion`` therefore always ends in ``"\n"``).
-                # ``_format_positions`` only writes separators *between*
-                # lines, so append the trailing separator here to match.
-                if formatted:
-                    formatted += self.get_line_separator()
+                # loop once per region, which terminates the page with
+                # ``getLineSeparator()`` whether or not the region captured
+                # any glyphs. The Java oracle therefore returns exactly one
+                # trailing ``"\n"`` for an *extracted* region — including an
+                # empty one (``getTextForRegion`` over a region that matched
+                # nothing returns ``"\n"``, not ``""``; verified against the
+                # live PDFBox oracle, wave 1439). ``_format_positions`` only
+                # writes separators *between* lines, so append the trailing
+                # separator unconditionally here to match.
+                formatted += self.get_line_separator()
                 self._region_text[name] = formatted
         finally:
             self._active_page = None
@@ -233,6 +236,21 @@ class PDFTextStripperByArea(PDFTextStripper):
         whose ``(x, y)`` falls inside multiple regions is added to all
         of them (regions can overlap). Positions outside every region
         are dropped.
+
+        Boundary semantics (Java ``Rectangle2D.contains`` parity)
+        --------------------------------------------------------
+        Upstream tests each ``TextPosition`` with
+        ``Rectangle2D.contains(x, y)``, which is *half-open*:
+        ``rx <= x < rx + rw`` and ``ry <= y < ry + rh`` in Java AWT
+        device space (y-down, origin top-left). A glyph sitting exactly on
+        the left/top edge is inside; one on the right/bottom edge is
+        outside. pypdfbox stores regions in PDF user space (y-up), so the
+        Java y-flip turns the y half-openness inside out: the user-space
+        ``min_y`` becomes exclusive and ``max_y`` inclusive, while x keeps
+        ``min_x`` inclusive / ``max_x`` exclusive. The asymmetric bounds
+        below reproduce ``Rectangle2D.contains`` exactly (verified against
+        the live PDFBox oracle — see
+        ``tests/text/oracle/test_text_sort_area_oracle.py``).
 
         Lite-stripper subtlety
         ----------------------
@@ -250,7 +268,9 @@ class PDFTextStripperByArea(PDFTextStripper):
         x = text.get_x()
         y = text.get_y()
         for name, (min_x, min_y, max_x, max_y) in self._region_area.items():
-            if min_x <= x <= max_x and min_y <= y <= max_y:
+            # Half-open in Java device space; the y-flip into user space
+            # makes ``min_y`` exclusive and ``max_y`` inclusive.
+            if min_x <= x < max_x and min_y < y <= max_y:
                 self._region_character_list[name].append(text)
 
 
