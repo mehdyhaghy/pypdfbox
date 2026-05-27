@@ -971,6 +971,18 @@ class Type1Font:
         cs = cs_map.get(name)
         if cs is None:
             return 0.0
+        # A ``/CharStrings`` value can be either an already-decompiled
+        # fontTools ``T1CharString`` (the path when the program was parsed
+        # back from an embedded ``/FontFile``) or raw charstring *bytes*
+        # (the path when the program was assembled in-memory via
+        # :meth:`create_with_pfb`). Only the former exposes ``.draw``; for
+        # the latter we route through pypdfbox's own Type 1 charstring
+        # interpreter so the advance (``hsbw`` / ``sbw``) is decoded
+        # regardless of how the charstrings were stored.
+        if not hasattr(cs, "draw"):
+            width = float(self.get_type1_char_string(name).get_width() or 0.0)
+            self._widths[name] = width
+            return width
         # Force draw to populate .width. We use a no-op pen so we don't
         # build the path twice.
         from fontTools.pens.basePen import NullPen  # noqa: PLC0415
@@ -994,6 +1006,21 @@ class Type1Font:
         cs = cs_map.get(name)
         if cs is None:
             return []
+        # As in :meth:`get_width`, a value may be raw charstring *bytes*
+        # (in-memory ``create_with_pfb`` programs) rather than a
+        # decompiled fontTools ``T1CharString``. Bytes have no ``.draw``,
+        # so decode the outline through pypdfbox's Type 1 charstring
+        # interpreter, which runs the full op set (``hsbw`` / ``rmoveto`` /
+        # ``rlineto`` / ``rrcurveto`` / ``closepath`` / ``seac`` / flex +
+        # hint-replacement ``OtherSubrs``) and emits the same
+        # moveto/lineto/curveto/closepath command tuples.
+        if not hasattr(cs, "draw"):
+            char_string = self.get_type1_char_string(name)
+            commands = list(char_string.get_path() or [])
+            self._widths.setdefault(
+                name, float(char_string.get_width() or 0.0)
+            )
+            return commands
         pen = _make_path_pen()
         try:
             cs.draw(pen)

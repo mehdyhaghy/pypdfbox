@@ -9,22 +9,28 @@ float rendering.
 
 Canonical line grammar (must match ``oracle/probes/ActionProbe.java``)::
 
-    <location>\t<subtype>\t<salient>
+    <location>\t<subtype>\t<salient>\t<next>
 
 where ``location`` is ``openaction`` for the catalog action, then
 ``page<p>.link<i>`` for the i-th link annotation of page p (links counted in
 ``/Annots`` order, non-link annotations skipped); ``subtype`` is the action's
-``/S`` name; and ``salient`` is the target-identifying field per subtype:
+``/S`` name; ``salient`` is the target-identifying field per subtype; and
+``next`` carries the ``/Next`` action chain:
 
-  * URI    -> ``uri=<URI string>``
-  * GoTo   -> ``dest=<resolved destination>``
-  * GoToR  -> ``file=<F text>;dest=<resolved destination>``
-  * Launch -> ``file=<F file-spec text>;dest=<D launch command>``
-  * Named  -> ``name=<N>``
-  * other  -> ``""``
+  * URI        -> ``uri=<URI string>``
+  * GoTo       -> ``dest=<resolved destination>``
+  * GoToR      -> ``file=<F text>;dest=<resolved destination>``
+  * Launch     -> ``file=<F file-spec text>;dest=<D launch command>``
+  * Named      -> ``name=<N>``
+  * JavaScript -> ``js=<JS source, decoded from string OR stream>``
+  * SubmitForm -> ``url=<F text>;flags=<Flags>;fields=<Fields count>``
+  * ResetForm  -> ``flags=<Flags>;fields=<Fields count>``
+  * other      -> ``""``
 
 A destination resolves to ``page<index>`` (0-based, via ``retrievePageNumber``),
-``named:<name>``, or ``none``.
+``named:<name>``, or ``none``. The ``next`` column is ``next=<len>`` for an
+empty/absent ``/Next`` and ``next=<len>:<sub0>,<sub1>,...`` when present
+(``PDAction.get_next`` normalises the single-dict and array forms).
 
 No fixture PDF in ``tests/fixtures`` carries uncompressed action dictionaries
 the harness can find by grep, so the primary fixture is built in-process by
@@ -40,16 +46,25 @@ from pathlib import Path
 
 import pytest
 
-from pypdfbox.cos import COSBase
+from pypdfbox.cos import COSArray, COSBase, COSName, COSString
 from pypdfbox.pdmodel.common.filespecification.pd_file_specification import (
     PDFileSpecification,
 )
 from pypdfbox.pdmodel.interactive.action.pd_action import PDAction
 from pypdfbox.pdmodel.interactive.action.pd_action_go_to import PDActionGoTo
+from pypdfbox.pdmodel.interactive.action.pd_action_java_script import (
+    PDActionJavaScript,
+)
 from pypdfbox.pdmodel.interactive.action.pd_action_launch import PDActionLaunch
 from pypdfbox.pdmodel.interactive.action.pd_action_named import PDActionNamed
 from pypdfbox.pdmodel.interactive.action.pd_action_remote_go_to import (
     PDActionRemoteGoTo,
+)
+from pypdfbox.pdmodel.interactive.action.pd_action_reset_form import (
+    PDActionResetForm,
+)
+from pypdfbox.pdmodel.interactive.action.pd_action_submit_form import (
+    PDActionSubmitForm,
 )
 from pypdfbox.pdmodel.interactive.action.pd_action_uri import PDActionURI
 from pypdfbox.pdmodel.interactive.annotation.pd_annotation_link import (
@@ -120,6 +135,16 @@ def _null_to_empty(s: str | None) -> str:
     return "" if s is None else s
 
 
+def _array_size(array: object) -> int:
+    """Mirror ``ActionProbe.arraySize``: element count, or ``-1`` when absent.
+
+    pypdfbox's ``get_cos_fields`` / ``get_fields`` return the raw ``COSArray``
+    (or ``None``) — the upstream ``getFields()`` shape — so ``.size()`` lines
+    up with the Java ``COSArray.size()`` the probe calls.
+    """
+    return -1 if array is None else array.size()  # type: ignore[attr-defined]
+
+
 def _salient(action: PDAction) -> str:
     """Mirror ``ActionProbe.salient``."""
     if isinstance(action, PDActionURI):
@@ -145,7 +170,37 @@ def _salient(action: PDAction) -> str:
     if isinstance(action, PDActionNamed):
         n = action.get_n()
         return "name=" + ("" if n is None else n)
+    if isinstance(action, PDActionJavaScript):
+        js = action.get_action()
+        return "js=" + ("" if js is None else js)
+    if isinstance(action, PDActionSubmitForm):
+        return (
+            "url="
+            + _null_to_empty(_file_text(action.get_file()))
+            + ";flags="
+            + str(action.get_flags())
+            + ";fields="
+            + str(_array_size(action.get_cos_fields()))
+        )
+    if isinstance(action, PDActionResetForm):
+        return (
+            "flags="
+            + str(action.get_flags())
+            + ";fields="
+            + str(_array_size(action.get_fields()))
+        )
     return ""
+
+
+def _next_chain(action: PDAction) -> str:
+    """Mirror ``ActionProbe.nextChain``: ``next=<len>[:<sub0>,<sub1>,...]``."""
+    nxt = action.get_next()
+    if not nxt:
+        return "next=0"
+    subs = ",".join(
+        "null" if a.get_sub_type() is None else a.get_sub_type() for a in nxt
+    )
+    return f"next={len(nxt)}:{subs}"
 
 
 def _emit(lines: list[str], location: str, action: PDAction) -> None:
@@ -153,6 +208,7 @@ def _emit(lines: list[str], location: str, action: PDAction) -> None:
     lines.append(
         f"{location}\t{'null' if subtype is None else _escape(subtype)}"
         f"\t{_escape(_salient(action))}"
+        f"\t{_escape(_next_chain(action))}"
     )
 
 
@@ -227,7 +283,55 @@ def _build_action_pdf(out: Path) -> None:
         gotor_link = PDAnnotationLink()
         gotor_link.set_action(gotor_action)
 
-        page0.set_annotations([uri_link, goto_link, named_link, gotor_link])
+        # page0.link4: JavaScript action (string-form /JS).
+        js_action = PDActionJavaScript("app.alert('hi');")
+        js_link = PDAnnotationLink()
+        js_link.set_action(js_action)
+
+        # page0.link5: SubmitForm action — URL + flags + two named fields.
+        submit_action = PDActionSubmitForm()
+        submit_action.set_url("https://example.com/submit")
+        submit_action.set_flags(PDActionSubmitForm.FLAG_EXPORT_FORMAT)
+        submit_fields = COSArray()
+        submit_fields.add(COSString("field.a"))
+        submit_fields.add(COSString("field.b"))
+        submit_action.set_fields(submit_fields)
+        submit_link = PDAnnotationLink()
+        submit_link.set_action(submit_action)
+
+        # page0.link6: ResetForm action — flags + one named field.
+        reset_action = PDActionResetForm()
+        reset_action.set_flags(PDActionResetForm.FLAG_INCLUDE_EXCLUDE)
+        reset_fields = COSArray()
+        reset_fields.add(COSString("field.a"))
+        reset_action.set_fields(reset_fields)
+        reset_link = PDAnnotationLink()
+        reset_link.set_action(reset_action)
+
+        # page0.link7: a URI action carrying a /Next chain of two actions
+        # (a Named action followed by a ResetForm action). PDAction.get_next
+        # must walk both, normalising the single-or-array /Next form.
+        chained_action = PDActionURI()
+        chained_action.set_uri("https://example.com/chained")
+        next_named = PDActionNamed()
+        next_named.set_n(PDActionNamed.NAMED_ACTION_FIRST_PAGE)
+        next_reset = PDActionResetForm()
+        chained_action.set_next([next_named, next_reset])
+        chained_link = PDAnnotationLink()
+        chained_link.set_action(chained_action)
+
+        page0.set_annotations(
+            [
+                uri_link,
+                goto_link,
+                named_link,
+                gotor_link,
+                js_link,
+                submit_link,
+                reset_link,
+                chained_link,
+            ]
+        )
 
         # page1.link0: GoTo back to page 0.
         back_dest = PDPageFitDestination()
@@ -261,12 +365,184 @@ def test_built_action_dump_matches_pdfbox(action_pdf: Path) -> None:
     finally:
         doc.close()
     assert py == java
-    # Sanity: the fixture must actually exercise the five action subtypes.
-    assert "\tURI\turi=https://example.com/path?q=1" in java
-    assert "openaction\tGoTo\tdest=page1" in java
-    assert "\tNamed\tname=NextPage" in java
-    assert "\tGoToR\tfile=other.pdf;dest=named:Chapter2" in java
-    assert "\tGoTo\tdest=page0" in java
+    # Sanity: the fixture must actually exercise every action subtype, the
+    # type-specific salient fields, AND the /Next chain column.
+    assert "\tURI\turi=https://example.com/path?q=1\tnext=0" in java
+    assert "openaction\tGoTo\tdest=page1\tnext=0" in java
+    assert "\tNamed\tname=NextPage\tnext=0" in java
+    assert "\tGoToR\tfile=other.pdf;dest=named:Chapter2\tnext=0" in java
+    assert "\tGoTo\tdest=page0\tnext=0" in java
+    # JavaScript: string-form /JS round-trips its source.
+    assert "\tJavaScript\tjs=app.alert('hi');\tnext=0" in java
+    # SubmitForm: /F URL + /Flags + /Fields element count.
+    submit_flag = PDActionSubmitForm.FLAG_EXPORT_FORMAT
+    assert (
+        f"\tSubmitForm\turl=https://example.com/submit;flags={submit_flag};fields=2\tnext=0"
+        in java
+    )
+    # ResetForm: /Flags + /Fields element count.
+    reset_flag = PDActionResetForm.FLAG_INCLUDE_EXCLUDE
+    assert f"\tResetForm\tflags={reset_flag};fields=1\tnext=0" in java
+    # /Next chain: a URI action followed by Named + ResetForm.
+    assert (
+        "\tURI\turi=https://example.com/chained\tnext=2:Named,ResetForm" in java
+    )
+
+
+def _collect_link_actions(doc: PDDocument) -> dict[str, PDAction]:
+    """Index page-0 link actions by their ``/S`` subtype for round-trip checks.
+
+    The chained URI is keyed ``URI.next`` so it doesn't collide with the plain
+    URI action; everything else is keyed by bare subtype.
+    """
+    by_subtype: dict[str, PDAction] = {}
+    page0 = doc.get_pages().get(0)
+    for annot in page0.get_annotations():
+        if not isinstance(annot, PDAnnotationLink):
+            continue
+        action = annot.get_action()
+        if action is None:
+            continue
+        key = action.get_sub_type() or "null"
+        if key == "URI" and action.get_next():
+            key = "URI.next"
+        by_subtype[key] = action
+    return by_subtype
+
+
+@requires_oracle
+def test_built_action_accessor_round_trip(action_pdf: Path) -> None:
+    """Build via pypdfbox, save once, reload via pypdfbox: every type-specific
+    accessor returns the value that was written, and the /Next chain is walked.
+
+    PDFBox parity for the same saved bytes is proven by
+    :func:`test_built_action_dump_matches_pdfbox`; this asserts the pypdfbox
+    accessor surface directly so a silent dispatch/accessor regression is
+    caught at the field level, not just the canonical-line level.
+    """
+    doc = PDDocument.load(str(action_pdf))
+    try:
+        actions = _collect_link_actions(doc)
+
+        uri = actions["URI"]
+        assert isinstance(uri, PDActionURI)
+        assert uri.get_uri() == "https://example.com/path?q=1"
+
+        named = actions["Named"]
+        assert isinstance(named, PDActionNamed)
+        assert named.get_n() == PDActionNamed.NAMED_ACTION_NEXT_PAGE
+
+        js = actions["JavaScript"]
+        assert isinstance(js, PDActionJavaScript)
+        assert js.get_action() == "app.alert('hi');"
+        assert js.is_string_payload()
+
+        submit = actions["SubmitForm"]
+        assert isinstance(submit, PDActionSubmitForm)
+        assert submit.get_url() == "https://example.com/submit"
+        assert submit.get_flags() == PDActionSubmitForm.FLAG_EXPORT_FORMAT
+        assert submit.is_export_format()
+        submit_fields = submit.get_cos_fields()
+        assert submit_fields is not None
+        assert submit_fields.size() == 2
+
+        reset = actions["ResetForm"]
+        assert isinstance(reset, PDActionResetForm)
+        assert reset.get_flags() == PDActionResetForm.FLAG_INCLUDE_EXCLUDE
+        assert reset.is_exclude()
+        reset_fields = reset.get_fields()
+        assert reset_fields is not None
+        assert reset_fields.size() == 1
+
+        # /Next chain: URI -> [Named(FirstPage), ResetForm].
+        chained = actions["URI.next"]
+        assert chained.get_uri() == "https://example.com/chained"
+        chain = chained.get_next()
+        assert chain is not None
+        assert [a.get_sub_type() for a in chain] == ["Named", "ResetForm"]
+        head = chain[0]
+        assert isinstance(head, PDActionNamed)
+        assert head.get_n() == PDActionNamed.NAMED_ACTION_FIRST_PAGE
+        assert isinstance(chain[1], PDActionResetForm)
+    finally:
+        doc.close()
+
+
+@requires_oracle
+def test_javascript_stream_payload_matches_pdfbox(tmp_path: Path) -> None:
+    """``/JS`` stored as a ``COSStream`` (not a ``COSString``) must decode to
+    the same source under pypdfbox and PDFBox. PDF 32000-1 §12.6.4.16 permits
+    both forms; large scripts are usually streams. Guards the stream-vs-string
+    branch in ``PDActionJavaScript.get_action`` against silent divergence."""
+    out = tmp_path / "js_stream.pdf"
+    doc = PDDocument()
+    try:
+        page = PDPage()
+        doc.add_page(page)
+        js = PDActionJavaScript()
+        stream = doc.get_document().create_cos_stream()
+        body = stream.create_output_stream()
+        body.write(b'app.alert("streamed");')
+        body.close()
+        js.get_cos_object().set_item(COSName.get_pdf_name("JS"), stream)
+        link = PDAnnotationLink()
+        link.set_action(js)
+        page.set_annotations([link])
+        doc.save(str(out))
+    finally:
+        doc.close()
+
+    java = run_probe_text("ActionProbe", str(out))
+    reloaded = PDDocument.load(str(out))
+    try:
+        py = _dump_actions(reloaded)
+        action = reloaded.get_pages().get(0).get_annotations()[0].get_action()
+        assert isinstance(action, PDActionJavaScript)
+        assert action.is_stream_payload()
+        assert action.get_action() == 'app.alert("streamed");'
+    finally:
+        reloaded.close()
+    assert py == java
+    assert '\tJavaScript\tjs=app.alert("streamed");\tnext=0' in java
+
+
+@requires_oracle
+def test_single_next_dict_walked_as_chain(tmp_path: Path) -> None:
+    """A ``/Next`` stored as a single action dictionary (not an array) must be
+    walked by both libraries as a length-1 chain. PDFBox normalises the
+    single-dict and array forms; pypdfbox's ``get_next`` must agree.
+
+    This builds the single-dict form directly on the COS dictionary so the
+    saved bytes carry ``/Next`` as a dictionary, then diffs the canonical dump.
+    """
+    out = tmp_path / "single_next.pdf"
+    doc = PDDocument()
+    try:
+        page = PDPage()
+        doc.add_page(page)
+        uri = PDActionURI()
+        uri.set_uri("https://example.com/single")
+        nxt = PDActionNamed()
+        nxt.set_n(PDActionNamed.NAMED_ACTION_LAST_PAGE)
+        # Store /Next as a single dictionary, not an array.
+        uri.get_cos_object().set_item(
+            COSName.get_pdf_name("Next"), nxt.get_cos_object()
+        )
+        link = PDAnnotationLink()
+        link.set_action(uri)
+        page.set_annotations([link])
+        doc.save(str(out))
+    finally:
+        doc.close()
+
+    java = run_probe_text("ActionProbe", str(out))
+    reloaded = PDDocument.load(str(out))
+    try:
+        py = _dump_actions(reloaded)
+    finally:
+        reloaded.close()
+    assert py == java
+    assert "\tURI\turi=https://example.com/single\tnext=1:Named" in java
 
 
 # --------------------------------------------------------------------------

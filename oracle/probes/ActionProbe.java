@@ -12,9 +12,12 @@ import org.apache.pdfbox.pdmodel.common.PDDestinationOrAction;
 import org.apache.pdfbox.pdmodel.common.filespecification.PDFileSpecification;
 import org.apache.pdfbox.pdmodel.interactive.action.PDAction;
 import org.apache.pdfbox.pdmodel.interactive.action.PDActionGoTo;
+import org.apache.pdfbox.pdmodel.interactive.action.PDActionJavaScript;
 import org.apache.pdfbox.pdmodel.interactive.action.PDActionLaunch;
 import org.apache.pdfbox.pdmodel.interactive.action.PDActionNamed;
 import org.apache.pdfbox.pdmodel.interactive.action.PDActionRemoteGoTo;
+import org.apache.pdfbox.pdmodel.interactive.action.PDActionResetForm;
+import org.apache.pdfbox.pdmodel.interactive.action.PDActionSubmitForm;
 import org.apache.pdfbox.pdmodel.interactive.action.PDActionURI;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationLink;
@@ -49,7 +52,15 @@ import org.apache.pdfbox.pdmodel.interactive.documentnavigation.destination.PDPa
  *   - GoToR  : "file=" + /F text ; "dest=" + resolved destination.
  *   - Launch : "file=" + /F file-spec text ; "dest=" + /D launch command.
  *   - Named  : "name=" + the /N name.
+ *   - JavaScript : "js=" + the /JS source (decoded from a string OR a stream).
+ *   - SubmitForm : "url=" + /F text ; "flags=" + /Flags ; "fields=" + /Fields count.
+ *   - ResetForm  : "flags=" + /Flags ; "fields=" + /Fields count.
  *   - other  : "" (subtype carries all the salient info).
+ *
+ * A trailing tab-separated column carries the /Next action chain:
+ *   "next=" + chain-length + (":" + comma-joined subtypes when length > 0).
+ * /Next may be a single action dict or an array (PDF 32000-1 Table 192);
+ * PDAction.getNext() normalises both to a List, walked in order here.
  *
  * A destination resolves to "page<index>" for an explicit page target
  * (0-based, via retrievePageNumber), "named:<name>" for a named destination,
@@ -92,7 +103,25 @@ public final class ActionProbe {
         String subtype = action.getSubType();
         sb.append(location).append('\t')
           .append(subtype == null ? "null" : escape(subtype)).append('\t')
-          .append(escape(salient(action))).append('\n');
+          .append(escape(salient(action))).append('\t')
+          .append(escape(nextChain(action))).append('\n');
+    }
+
+    /** Canonical "next=<len>[:<sub0>,<sub1>,...]" for the /Next chain. */
+    private static String nextChain(PDAction action) {
+        java.util.List<PDAction> next = action.getNext();
+        if (next == null || next.isEmpty()) {
+            return "next=0";
+        }
+        StringBuilder sub = new StringBuilder();
+        for (int i = 0; i < next.size(); i++) {
+            if (i > 0) {
+                sub.append(',');
+            }
+            String s = next.get(i).getSubType();
+            sub.append(s == null ? "null" : s);
+        }
+        return "next=" + next.size() + ":" + sub;
     }
 
     private static String salient(PDAction action) throws Exception {
@@ -118,7 +147,27 @@ public final class ActionProbe {
             String n = ((PDActionNamed) action).getN();
             return "name=" + (n == null ? "" : n);
         }
+        if (action instanceof PDActionJavaScript) {
+            String js = ((PDActionJavaScript) action).getAction();
+            return "js=" + (js == null ? "" : js);
+        }
+        if (action instanceof PDActionSubmitForm) {
+            PDActionSubmitForm a = (PDActionSubmitForm) action;
+            return "url=" + nullToEmpty(fileText(a.getFile()))
+                    + ";flags=" + a.getFlags()
+                    + ";fields=" + arraySize(a.getFields());
+        }
+        if (action instanceof PDActionResetForm) {
+            PDActionResetForm a = (PDActionResetForm) action;
+            return "flags=" + a.getFlags()
+                    + ";fields=" + arraySize(a.getFields());
+        }
         return "";
+    }
+
+    /** Element count of a COSArray, or -1 when the array is absent. */
+    private static int arraySize(COSArray array) {
+        return array == null ? -1 : array.size();
     }
 
     private static String fileText(PDFileSpecification fs) throws Exception {
