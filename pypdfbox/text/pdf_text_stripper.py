@@ -1381,7 +1381,15 @@ class PDFTextStripper:
                 return
             text = "".join(word_buffer)
             word_buffer.clear()
-            sink(self.handle_direction(text))
+            # ``normalize_word`` decomposes Unicode presentation forms
+            # (Alphabetic Presentation Forms FB00–FDFF, e.g. the ``ﬁ``/``ﬂ``
+            # ligatures → ``fi``/``fl``, and Arabic Presentation Forms-B)
+            # via NFKC and then applies the per-word ``handle_direction``
+            # bidi reorder — mirroring upstream's ``normalizeWord`` →
+            # ``handleDirection`` chain in ``LegacyPDFStreamEngine.normalize``.
+            # It already wraps ``handle_direction`` in both branches, so
+            # this also covers the pure-LTR bidi fast path.
+            sink(self.normalize_word(text))
 
         prev: TextPosition | None = None
         for pos in positions:

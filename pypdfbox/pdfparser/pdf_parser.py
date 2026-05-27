@@ -798,16 +798,22 @@ class PDFParser:
 
         encryption = PDEncryption(enc_dict)
         document_id = self._resolve_document_id(trailer) or b""
-        password_bytes: bytes
-        if isinstance(self._password, str):
-            password_bytes = self._password.encode("utf-8")
-        else:
-            password_bytes = bytes(self._password)
+        # Pass the raw str through so the decryption material applies the
+        # revision-aware charset (Latin-1 for r2-r4, UTF-8 for r5-r6) *and* the
+        # r6 SaslPrep canonicalisation (PDF 32000-2 §7.6.4.3.4). Eagerly
+        # UTF-8-encoding here would bypass both, so a password with a
+        # compatibility character (e.g. the ``ﬀ`` ligature) hashed differently
+        # from PDFBox. ``bytes`` callers pass already-encoded material through.
+        password_material: str | bytes = (
+            self._password
+            if isinstance(self._password, str)
+            else bytes(self._password)
+        )
         handler = StandardSecurityHandler(encryption)
         handler.prepare_for_decryption(
             encryption,
             document_id,
-            StandardDecryptionMaterial(password_bytes),
+            StandardDecryptionMaterial(password_material),
         )
         self._security_handler = handler
         return handler

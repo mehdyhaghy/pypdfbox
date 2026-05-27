@@ -964,16 +964,22 @@ class PDDocument:
             if isinstance(first, _COSString):
                 document_id = first.get_bytes()
 
-        if isinstance(password, str):
-            password_bytes: bytes = password.encode("utf-8")
-        else:
-            password_bytes = bytes(password)
+        # Hand the raw str straight to the decryption material so its
+        # revision-aware ``get_password_bytes`` can apply the correct charset
+        # *and* the SaslPrep canonicalisation r6 mandates (PDF 32000-2
+        # §7.6.4.3.4). Eagerly UTF-8-encoding here would bypass SaslPrep and
+        # the r2-r4 Latin-1 path, so a password with a compatibility character
+        # (e.g. the ``ﬀ`` ligature) hashed differently from PDFBox. ``bytes``
+        # callers pass already-encoded material through untouched.
+        password_material: str | bytes = (
+            password if isinstance(password, str) else bytes(password)
+        )
 
         handler = StandardSecurityHandler(encryption)
         handler.prepare_for_decryption(
             encryption,
             document_id,
-            StandardDecryptionMaterial(password_bytes),
+            StandardDecryptionMaterial(password_material),
         )
 
         # Walk every loaded indirect in two passes.

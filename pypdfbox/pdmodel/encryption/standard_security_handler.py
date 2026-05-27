@@ -42,6 +42,7 @@ except ImportError:  # pragma: no cover
 from .access_permission import AccessPermission
 from .decryption_material import DecryptionMaterial
 from .invalid_password_exception import InvalidPasswordException
+from .sasl_prep import SaslPrep
 from .security_handler import SecurityHandler
 
 if TYPE_CHECKING:
@@ -94,13 +95,22 @@ class StandardDecryptionMaterial(DecryptionMaterial):
 
         Mirrors the upstream ``prepareForDecryption`` charset switch:
         ISO-8859-1 (Latin-1) for r2-r4 and UTF-8 for r5-r6 (PDFBOX-4155).
-        ``bytes`` inputs are returned as-is so callers can pass already-encoded
-        password material straight through.
+        For revision 6 the string is first canonicalised with
+        ``SaslPrep.saslPrepQuery`` exactly as upstream does (PDF 32000-2
+        §7.6.4.3.4): a password containing a code point NFKC normalises (a
+        ligature, a compatibility character) or that SASLprep maps to a space
+        must hash to the same bytes PDFBox produced, or the file is mutually
+        unopenable. ``bytes`` inputs are returned as-is so callers can pass
+        already-encoded password material straight through.
         """
         if self._password is None:
             return None
         if isinstance(self._password, bytes):
             return self._password
+        if int(revision) == 6:
+            return SaslPrep.sasl_prep_query(self._password).encode(
+                "utf-8", errors="replace"
+            )
         if int(revision) >= 5:
             return self._password.encode("utf-8", errors="replace")
         return self._password.encode("latin-1", errors="replace")
@@ -1085,9 +1095,20 @@ class StandardSecurityHandler(SecurityHandler):
         if not self._encrypt_metadata:
             encryption.set_encrypt_meta_data(False)
 
-        # PDF 32000-2 §7.6.4.3.4 — r6 writes UTF-8 (after SaslPrep), r2-r4
-        # use Latin-1. Match upstream's ``prepareDocumentForEncryption``.
-        if revision >= 5:
+        # PDF 32000-2 §7.6.4.3.4 — r6 writes UTF-8 after SaslPrep (stored
+        # variant: prohibited/unassigned code points raise), r2-r4 use Latin-1.
+        # Match upstream's ``prepareEncryptionDictRev6`` so a password with a
+        # compatibility character (e.g. the ligature ``ﬀ`` → ``ff``) hashes to
+        # the same /U /O PDFBox would produce; otherwise the file is mutually
+        # unopenable. r5 (not written by pypdfbox) would skip SaslPrep upstream.
+        if revision == 6:
+            owner_pw = SaslPrep.sasl_prep_stored(owner_password).encode(
+                "utf-8", errors="replace"
+            )
+            user_pw = SaslPrep.sasl_prep_stored(user_password).encode(
+                "utf-8", errors="replace"
+            )
+        elif revision >= 5:
             owner_pw = owner_password.encode("utf-8", errors="replace")
             user_pw = user_password.encode("utf-8", errors="replace")
         else:

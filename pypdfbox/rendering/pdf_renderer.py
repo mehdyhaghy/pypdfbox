@@ -5517,7 +5517,7 @@ class PDFRenderer(PDFStreamEngine):
             except Exception:  # noqa: BLE001
                 smask = None
             if smask is not None:
-                pil_image = self._apply_smask(pil_image, smask)
+                pil_image = self._apply_smask(pil_image, smask, xobject)
             else:
                 # PDF spec §8.9.6: a base image may instead carry an
                 # explicit-mask /Mask stream (a 1-bit stencil selecting
@@ -6312,14 +6312,26 @@ class PDFRenderer(PDFStreamEngine):
 
         return PDFRenderer._hsl_blend_pixels(backdrop, source, _compose)
 
-    def _apply_smask(self, image: Image.Image, smask: Any) -> Image.Image:
+    def _apply_smask(
+        self, image: Image.Image, smask: Any, base: Any = None
+    ) -> Image.Image:
         """Return ``image`` with the SMask Image XObject applied as alpha.
 
         The mask is decoded as 8-bit grayscale via the existing
-        :meth:`PDImageXObject.to_pil_image` helper and resized to match
-        the cover image. Any failure logs at debug level and returns the
-        original image unchanged — alpha-mask compositing is best-effort
-        in the lite renderer (PDF spec §11.6.5)."""
+        :meth:`PDImageXObject.to_pil_image` helper (which honours the
+        SMask's own ``/Decode`` array and ``/BitsPerComponent`` ≠ 8) and
+        resized to match the cover image. Any failure logs at debug level
+        and returns the original image unchanged — alpha-mask compositing
+        is best-effort in the lite renderer (PDF spec §11.6.5).
+
+        When the soft mask carries a ``/Matte`` array (PDF §11.6.5.3) the
+        base image's colour samples were *pre-blended* against that matte
+        colour, so they are un-pre-multiplied before compositing —
+        ``c = matte + (c' - matte) / alpha`` — mirroring upstream
+        ``PDImageXObject.applyMask``. ``base`` is the base image XObject
+        carrying the colour space whose ``extract_matte`` resolves the
+        matte into sRGB; when ``None`` (legacy callers) matte handling is
+        skipped."""
         try:
             mask_image = smask.to_pil_image()
         except Exception as exc:  # noqa: BLE001
@@ -6335,6 +6347,50 @@ class PDFRenderer(PDFStreamEngine):
             mask_image = mask_image.resize(image.size, Image.Resampling.BILINEAR)
         rgba = image.convert("RGBA")
         rgba.putalpha(mask_image)
+        if base is not None:
+            rgba = self._unpremultiply_matte(rgba, mask_image, base, smask)
+        return rgba
+
+    def _unpremultiply_matte(
+        self, rgba: Image.Image, alpha: Image.Image, base: Any, smask: Any
+    ) -> Image.Image:
+        """Un-pre-multiply the matte colour out of an RGBA soft-masked image.
+
+        When the soft mask declares ``/Matte`` (PDF §11.6.5.3) the base
+        image colour ``c'`` was stored pre-blended against the matte colour
+        ``m``; the true colour is recovered as
+        ``c = m + (c' - m) / alpha`` (alpha in [0,1]). Mirrors upstream
+        ``PDImageXObject.applyMask`` (matte branch): pixels with alpha 0 are
+        left untouched and every recovered component is clamped to [0,255].
+        ``base.extract_matte(smask)`` yields the matte in sRGB (0..1); any
+        failure or absent matte returns ``rgba`` unchanged."""
+        try:
+            matte = base.extract_matte(smask)
+        except Exception as exc:  # noqa: BLE001
+            _log.debug("rendering: cannot resolve SMask /Matte: %s", exc)
+            return rgba
+        if not matte or len(matte) < 3:
+            return rgba
+        m = [max(0.0, min(255.0, float(c) * 255.0)) for c in matte[:3]]
+        px = rgba.load()
+        apx = alpha.load()
+        width, height = rgba.size
+        for y in range(height):
+            for x in range(width):
+                a = apx[x, y]
+                if a == 0:
+                    continue
+                r, g, b, _ = px[x, y]
+                scale = 255.0 / a
+                nr = m[0] + (r - m[0]) * scale
+                ng = m[1] + (g - m[1]) * scale
+                nb = m[2] + (b - m[2]) * scale
+                px[x, y] = (
+                    0 if nr < 0 else 255 if nr > 255 else int(round(nr)),
+                    0 if ng < 0 else 255 if ng > 255 else int(round(ng)),
+                    0 if nb < 0 else 255 if nb > 255 else int(round(nb)),
+                    a,
+                )
         return rgba
 
     def _apply_explicit_mask(self, image: Image.Image, mask: Any) -> Image.Image:
