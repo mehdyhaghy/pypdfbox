@@ -11,6 +11,7 @@ from pypdfbox.pdmodel.font import (
     PDType0Font,
     PDType1Font,
 )
+from pypdfbox.pdmodel.font.encoding.standard_encoding import StandardEncoding
 from pypdfbox.pdmodel.font.pd_font_descriptor import (
     FLAG_FIXED_PITCH,
     FLAG_ITALIC,
@@ -101,8 +102,15 @@ def test_simple_font_get_encoding_typed_resolves_winansi() -> None:
     assert font.get_encoding_typed() is typed
 
 
-def test_simple_font_get_encoding_typed_returns_none_when_absent() -> None:
-    assert PDType1Font().get_encoding_typed() is None
+def test_simple_font_get_encoding_typed_falls_back_to_builtin_when_absent() -> None:
+    # No /Encoding entry: upstream PDSimpleFont.readEncoding falls back to
+    # readEncodingFromFont(), which for a bare PDType1Font (no embedded
+    # program, no AFM) bottoms out at StandardEncoding — verified against the
+    # live PDFBox oracle (BuiltinEncodingProbe: bare Type1 -> StandardEncoding,
+    # 65 -> A). Previously this returned None (the wave-1434 blank-render bug).
+    encoding = PDType1Font().get_encoding_typed()
+    assert isinstance(encoding, StandardEncoding)
+    assert encoding.get_name(65) == "A"
 
 
 def test_simple_font_encode_winansi_ascii() -> None:

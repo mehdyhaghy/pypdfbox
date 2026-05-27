@@ -209,16 +209,29 @@ def test_pd_true_type_font_get_glyph_width_from_fontfile2() -> None:
     font_dict = _make_font_dict_with_fontfile2(ttf_bytes)
     font = PDTrueTypeFont(font_dict)
 
-    # No /Widths and no /Encoding → falls through to cmap (format-0
-    # identity) → hmtx → 500 / 1000 * 1000 = 500.
+    # No /Widths and no /Encoding. Wave-1434: a no-/Encoding non-symbolic
+    # TrueType now resolves StandardEncoding via read_encoding_from_font()
+    # (upstream PDSimpleFont.readEncoding), so each *code* routes through
+    # StandardEncoding to a glyph NAME before the cmap — verified against the
+    # live PDFBox oracle (synthetic TTF, no /Encoding -> StandardEncoding,
+    # code 1 -> .notdef). Codes 0/1/2 are all .notdef in StandardEncoding ->
+    # GID 0 -> hmtx[0] = 500. (Pre-wave-1434 the encoding was wrongly None and
+    # codes fell straight through the identity cmap to GIDs 1/2 -> 750.) The
+    # direct GID->advance hmtx lookup is still covered by
+    # test_true_type_font_parses_directory_and_hmtx.
     assert font.get_glyph_width(0) == 500.0
-    assert font.get_glyph_width(1) == 750.0
-    # gid 2 inherits from the last hMetric.
-    assert font.get_glyph_width(2) == 750.0
+    assert font.get_glyph_width(1) == 500.0
+    assert font.get_glyph_width(2) == 500.0
 
 
 def test_pd_true_type_font_get_glyph_width_scales_units_per_em() -> None:
-    """unitsPerEm=2048 should rescale advances into 1/1000 em."""
+    """unitsPerEm=2048 should rescale advances into 1/1000 em.
+
+    Wave-1434: no /Encoding -> StandardEncoding; codes 0/1 are both .notdef
+    -> GID 0 -> hmtx[0] = 1024, rescaled 1024/2048*1000 = 500. (Pre-wave-1434
+    the code fell through the identity cmap to GID 1 -> 2048 -> 1000.) The
+    unitsPerEm rescale itself is still exercised: 1024/2048*1000 == 500.0.
+    """
     ttf_bytes = _build_ttf(
         units_per_em=2048,
         num_h_metrics=2,
@@ -230,8 +243,8 @@ def test_pd_true_type_font_get_glyph_width_scales_units_per_em() -> None:
     font_dict = _make_font_dict_with_fontfile2(ttf_bytes)
     font = PDTrueTypeFont(font_dict)
 
-    assert font.get_glyph_width(0) == 500.0  # 1024/2048 * 1000
-    assert font.get_glyph_width(1) == 1000.0  # 2048/2048 * 1000
+    assert font.get_glyph_width(0) == 500.0  # GID 0 -> 1024/2048 * 1000
+    assert font.get_glyph_width(1) == 500.0  # code 1 -> .notdef -> GID 0
 
 
 def test_widths_array_overrides_hmtx() -> None:
@@ -287,8 +300,12 @@ def test_widths_overrides_only_inside_first_last_range() -> None:
 
     font = PDTrueTypeFont(font_dict)
     assert font.get_glyph_width(1) == 999.0          # /Widths wins
-    assert font.get_glyph_width(0) == 500.0          # hmtx fallback
-    assert font.get_glyph_width(2) == 750.0          # hmtx fallback
+    # Codes outside [FirstChar, LastChar] fall through to the program. With no
+    # /Encoding they route through StandardEncoding (wave-1434): codes 0 and 2
+    # are both .notdef -> GID 0 -> hmtx[0] = 500. (Pre-wave-1434 code 2 fell
+    # through the identity cmap to GID 2 -> 750.)
+    assert font.get_glyph_width(0) == 500.0          # outside range -> GID 0
+    assert font.get_glyph_width(2) == 500.0          # outside range -> GID 0
 
 
 def test_pd_true_type_font_no_fontfile2_returns_zero_without_widths() -> None:

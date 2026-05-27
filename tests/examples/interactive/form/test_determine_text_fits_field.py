@@ -30,14 +30,29 @@ def test_check_field_returns_widths(tmp_path: Path) -> None:
 
 def test_check_field_long_string_wider_than_short(tmp_path: Path) -> None:
     """Sanity check: when widths *can* be measured the long string should
-    have a larger width than the short one (or both NaN if the lite port
-    cannot measure the embedded font)."""
+    have a larger width than the short one.
+
+    The form's ``/Helv`` font is a bare ``PDType1Font()`` (no ``/BaseFont``,
+    no ``/Widths``, no embedded program — the "built-in Helvetica fallback"
+    idiom shared across the examples), so it carries no width source. Since
+    wave 1434 such a font resolves StandardEncoding (matching upstream's
+    no-``/Encoding`` fallback) instead of raising, so ``get_string_width``
+    now returns ``0.0`` for every glyph rather than ``NaN``. Both ``NaN``
+    (unmeasurable) and ``0.0`` (no width source) mean "nothing to compare",
+    so the ordering assertion only applies when widths are genuinely
+    measurable (finite and positive)."""
     src = tmp_path / "form.pdf"
     CreateSimpleForm.create(str(src))
     _, short_w, long_w = DetermineTextFitsField.check_field(
         str(src), "SampleField",
     )
-    if not math.isnan(short_w) and not math.isnan(long_w):
+    measurable = (
+        not math.isnan(short_w)
+        and not math.isnan(long_w)
+        and short_w > 0
+        and long_w > 0
+    )
+    if measurable:
         assert long_w > short_w
 
 

@@ -67,7 +67,14 @@ def test_render_soft_mask_alpha_uses_group_paint_alpha_and_restores_state() -> N
         doc.close()
 
 
-def test_render_soft_mask_luminosity_uses_backdrop_colour_for_empty_group() -> None:
+def test_render_soft_mask_luminosity_empty_group_masks_to_zero() -> None:
+    """A luminosity mask whose group paints nothing yields alpha 0 across
+    the canvas — even with a non-default ``/BC`` grey backdrop. Verified
+    against the live PDFBox oracle (wave 1434): the luminosity is modulated
+    by the mask group's coverage, so uncovered pixels contribute alpha 0
+    regardless of the ``/BC`` luminance. (This previously asserted the
+    backdrop luminance 0.5 → 128 everywhere — a non-parity assumption the
+    oracle disproved; ``/BC`` only colours where the group paints.)"""
     doc, renderer = _prepared_renderer((2, 2))
     try:
         mask = _soft_mask("Luminosity", b"")
@@ -79,7 +86,7 @@ def test_render_soft_mask_luminosity_uses_backdrop_colour_for_empty_group() -> N
 
         assert alpha is not None
         assert {alpha.getpixel((x, y)) for x in range(2) for y in range(2)} == {
-            128
+            0
         }
     finally:
         _finish(renderer)

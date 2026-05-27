@@ -148,7 +148,10 @@ def test_wave465_prepare_document_uses_owner_default_and_attaches_encryption() -
     handler.prepare_document(doc)
 
     assert doc.encryption is not None
-    assert doc.encryption.get_revision() == 2
+    # /V 1 (40-bit RC4) with the default AccessPermission() — whose revision-3
+    # bits are all set — is written at R3, matching PDFBox's
+    # computeRevisionNumber (wave 1434). R2 requires clearing the rev-3 bits.
+    assert doc.encryption.get_revision() == 3
     assert doc.encryption.get_v() == 1
     assert StandardSecurityHandler.is_user_password(
         "shared", doc.encryption, b"\0" * 16

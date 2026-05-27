@@ -169,8 +169,15 @@ def _catalog_metadata_bytes(pd: PDDocument) -> bytes | None:
 
 
 # (label, key_length, prefer_aes, expected_revision, expected_version)
+#
+# RC4-40 maps to /V 1; its revision is R2 only when NO revision-3 permission
+# bit is set, else R3 (PDFBox computeRevisionNumber). Every test in this matrix
+# uses a permission set whose revision-3 bits (fill-in-form, accessibility,
+# assemble, print-faithful) stay at their default True, so the 40-bit row is
+# R3 — matching PDFBox exactly (wave 1434 fixed prepare_document, which had
+# previously hardcoded R2 for all 40-bit documents).
 _REVISION_MATRIX: list[tuple[str, int, bool, int, int]] = [
-    ("r2-rc4-40", 40, False, 2, 1),
+    ("r3-rc4-40", 40, False, 3, 1),
     ("r3-rc4-128", 128, False, 3, 2),
     ("r4-aes-128", 128, True, 4, 4),
     ("r6-aes-256", 256, False, 6, 5),

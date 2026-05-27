@@ -706,6 +706,8 @@ Upstream baseline branch: `apache/pdfbox` `3.0` (most files at `pdfbox/src/test/
 | `tests/fixtures/filter/ccittg4multi.ccitt` | 3.0.x | `pdfbox/src/test/resources/org/apache/pdfbox/pdmodel/graphics/image/ccittg4multi.tif` (wave 1429; raw CCITT G4 multi-strip bytes, 221 bytes) |
 | `tests/fixtures/pdmodel/font/PDFBOX-3062-005717-p1.pdf` | 3.0.x | `pdfbox/src/test/resources/input/PDFBOX-3062-005717-p1.pdf` (wave 1430; byte-identical Type0/CFF `/FontFile3 /CIDFontType0C` subset fixture for the CFF subset oracle) |
 | `tests/fixtures/pdmodel/font/PDFBOX-3044-010197-p5-ligatures.pdf` | 3.0.x | `pdfbox/src/test/resources/input/PDFBOX-3044-010197-p5-ligatures.pdf` (wave 1430; byte-identical simple-Type1 `/FontFile3 /Type1C` subset fixture for the CFF subset oracle) |
+| `tests/fixtures/pdfparser/linearized_unencrypted.pdf` | 3.0.x | locally derived (wave 1434) via `qpdf --linearize` of the bundled `tests/fixtures/pdfwriter/unencrypted.pdf` — genuine Annex F linearized form, feeds the linearization read/round-trip oracle (not a byte-identical upstream copy) |
+| `tests/fixtures/pdfparser/linearized_PDFBOX-3110-poems-beads.pdf` | 3.0.x | locally derived (wave 1434) via `qpdf --linearize` of the bundled `tests/fixtures/pdfwriter/PDFBOX-3110-poems-beads.pdf` — genuine Annex F linearized form |
 
 ### `tests/pdfwriter/upstream/`
 

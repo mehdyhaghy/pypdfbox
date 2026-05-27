@@ -50,7 +50,15 @@ def _soft_mask(subtype: str, stream_data: bytes) -> PDSoftMask:
 def test_soft_mask_luminosity_applies_transfer_lookup(monkeypatch: Any) -> None:
     doc, renderer = _prepared_renderer((2, 2))
     try:
-        mask = _soft_mask("Luminosity", b"")
+        # Mask group paints grey 0.25 over its full bbox so coverage is 1
+        # everywhere: luminance ~= 64, then the /TR lookup (255 - value) maps
+        # 64 -> 191. (Wave 1434: the mask now needs full coverage to reach a
+        # non-zero pre-transfer value — an uncovered region masks to 0, since
+        # the luminosity is modulated by the group's coverage. The transfer
+        # function is still applied to the modulated value, which this asserts.)
+        mask = _soft_mask(
+            "Luminosity", b"0.25 0.25 0.25 rg\n0 0 2 2 re\nf\n"
+        )
         backdrop = COSArray()
         backdrop.add(COSFloat(0.25))
         mask.set_backdrop_color(backdrop)
@@ -68,9 +76,12 @@ def test_soft_mask_luminosity_applies_transfer_lookup(monkeypatch: Any) -> None:
 
         assert alpha is not None
         assert seen == [transfer]
-        assert {alpha.getpixel((x, y)) for x in range(2) for y in range(2)} == {
-            191
-        }
+        # 0.25 grey -> luminance 64; transfer 255 - 64 = 191 (+/- 1 rounding).
+        assert all(
+            abs(alpha.getpixel((x, y)) - 191) <= 1
+            for x in range(2)
+            for y in range(2)
+        )
     finally:
         _finish(renderer)
         doc.close()

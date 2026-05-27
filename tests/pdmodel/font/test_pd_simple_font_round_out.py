@@ -170,11 +170,16 @@ def test_is_font_symbolic_false_for_standard_encoding() -> None:
     assert font.is_font_symbolic() is False
 
 
-def test_is_font_symbolic_none_when_encoding_absent_and_no_descriptor() -> None:
-    """No /Encoding, no descriptor, not Standard 14 → indeterminate.
-    Upstream wraps this in ``isSymbolic`` which then defaults to ``True``.
+def test_is_font_symbolic_false_when_encoding_absent_and_no_descriptor() -> None:
+    """No /Encoding, no descriptor, not Standard 14.
+
+    Upstream PDSimpleFont.readEncoding falls back to readEncodingFromFont(),
+    which for a bare PDType1Font resolves StandardEncoding; isFontSymbolic then
+    returns ``false`` because a Latin encoding guarantees nonsymbolic (verified
+    against the live PDFBox oracle: bare Type1 -> StandardEncoding). Previously
+    the encoding was wrongly None and this returned None (the wave-1434 bug).
     """
-    assert PDType1Font().is_font_symbolic() is None
+    assert PDType1Font().is_font_symbolic() is False
 
 
 def test_is_font_symbolic_false_for_dictionary_encoding_with_latin_only_diffs() -> None:
@@ -235,9 +240,14 @@ def test_is_font_symbolic_skips_notdef_in_differences() -> None:
 # ---------- to_unicode (single code) ----------
 
 
-def test_to_unicode_returns_none_when_no_encoding_and_no_cmap() -> None:
-    """No /Encoding, no /ToUnicode → no mapping possible."""
-    assert PDType1Font().to_unicode(65) is None
+def test_to_unicode_resolves_via_builtin_when_no_encoding_and_no_cmap() -> None:
+    """No /Encoding, no /ToUnicode.
+
+    get_encoding_typed now falls back to read_encoding_from_font() (upstream
+    PDSimpleFont.readEncoding), resolving StandardEncoding for a bare
+    PDType1Font; code 65 -> "A" -> unicode "A" via the Adobe Glyph List.
+    Was None pre-wave-1434 (the blank-render bug)."""
+    assert PDType1Font().to_unicode(65) == "A"
 
 
 def test_to_unicode_resolves_via_winansi_encoding() -> None:

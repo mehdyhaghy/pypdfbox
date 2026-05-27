@@ -290,13 +290,16 @@ def test_encode_codepoint_returns_single_byte_for_known_glyph() -> None:
     assert encoded == b"A"
 
 
-def test_encode_codepoint_raises_when_no_encoding() -> None:
-    """No /Encoding -> upstream throws IllegalArgumentException; we
-    raise ValueError."""
+def test_encode_codepoint_resolves_via_builtin_when_no_encoding() -> None:
+    """No /Encoding entry: get_encoding_typed falls back to
+    read_encoding_from_font() (upstream PDSimpleFont.readEncoding), resolving
+    StandardEncoding for a bare PDType1CFont — verified against the live PDFBox
+    oracle (bare Type1C -> StandardEncoding, 65 -> A). So 'A' encodes to its
+    StandardEncoding code (b"A") instead of raising. Pre-wave-1434 the encoding
+    was wrongly None and this raised ValueError (the blank-render bug)."""
     font = PDType1CFont()
     font.get_cos_object().set_name(_BASE_FONT, "MyEmbeddedType1C")
-    with pytest.raises(ValueError, match="has no /Encoding"):
-        font.encode_codepoint(ord("A"))
+    assert font.encode_codepoint(ord("A")) == b"A"
 
 
 def test_encode_codepoint_raises_for_codepoint_outside_encoding() -> None:

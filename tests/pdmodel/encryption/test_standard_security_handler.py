@@ -751,6 +751,12 @@ def test_compute_revision_number_consistent_with_round_trip() -> None:
         StandardProtectionPolicy,
     )
 
+    # (key_len, prefer_aes, expected_revision). The 40-bit row uses a permission
+    # set with NO revision-3 bit so prepare_document's permission-aware revision
+    # (PDFBox computeRevisionNumber: /V 1 + no rev-3 perms ⇒ R2, wave 1434)
+    # agrees with the key-length-only static compute_revision_number. With the
+    # default AccessPermission() (all rev-3 bits set) the 40-bit case is R3 —
+    # see test_rc4_interop_oracle / test_revision_matrix_wave1367.
     cases = [
         (256, False, 6),
         (128, True, 4),
@@ -762,10 +768,16 @@ def test_compute_revision_number_consistent_with_round_trip() -> None:
             StandardSecurityHandler.compute_revision_number(key_len, prefer_aes)
             == expected_revision
         )
+        permissions = AccessPermission()
+        if key_len == 40:
+            permissions.set_can_fill_in_form(False)
+            permissions.set_can_extract_for_accessibility(False)
+            permissions.set_can_assemble_document(False)
+            permissions.set_can_print_faithful(False)
         policy = StandardProtectionPolicy(
             owner_password="o",
             user_password="u",
-            permissions=AccessPermission(),
+            permissions=permissions,
         )
         policy.set_encryption_key_length(key_len)
         policy.set_prefer_aes(prefer_aes)

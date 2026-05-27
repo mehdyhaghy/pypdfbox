@@ -242,11 +242,20 @@ def test_extgstate_smask_alpha_masks_transparency_group() -> None:
     assert _is_close(right, (255, 255, 255), tol=8), f"right={right}"
 
 
-def test_extgstate_smask_luminosity_uses_backdrop_color() -> None:
-    """A luminosity SMask with ``/BC`` set to white should leave
-    untouched mask-canvas areas at the backdrop's luminance — so when
-    the mask group itself paints nothing, the composite is fully visible
-    (backdrop is white → luminance = 1.0 → alpha = 1.0)."""
+def test_extgstate_smask_luminosity_empty_group_masks_to_zero() -> None:
+    """A luminosity SMask whose mask group paints nothing yields mask
+    alpha 0 everywhere — even with ``/BC`` set to white. Verified against
+    the live PDFBox oracle (wave 1434): PDFBox derives the luminosity
+    mask from the group result modulated by the group's *coverage*, so an
+    uncovered region contributes alpha 0 regardless of the ``/BC``
+    luminance. ``/BC`` only colours the backdrop the group composites
+    *over* where it does paint (matters for partially-transparent mask
+    content, §11.6.5.3). The masked content therefore does NOT show; the
+    page background (white) is preserved.
+
+    (This previously asserted the content was fully visible — a
+    non-parity assumption the oracle disproved; see CHANGES.md wave
+    1434.)"""
     doc, page = _make_doc(50.0, 50.0)
 
     # Empty mask group.
@@ -296,9 +305,12 @@ def test_extgstate_smask_luminosity_uses_backdrop_color() -> None:
     )
     page.get_cos_object().set_item(COSName.CONTENTS, contents)
     img = PDFRenderer(doc).render_image(0)
-    # The whole 30x30 rect should be visible (white backdrop → max alpha).
+    # The mask group paints nothing → coverage 0 → mask alpha 0 → the
+    # blue content is fully masked out, leaving the white page background
+    # (matches PDFBox: uncovered mask area is transparent regardless of
+    # the white /BC).
     inside = img.getpixel((15, 25))
-    assert _is_close(inside, (0, 0, 255), tol=20), inside
+    assert _is_close(inside, (255, 255, 255), tol=20), inside
 
 
 def test_extgstate_smask_luminosity_black_backdrop_masks_to_zero() -> None:

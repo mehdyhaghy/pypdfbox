@@ -119,9 +119,12 @@ def test_get_glyph_name_for_code_via_differences() -> None:
     assert font.get_glyph_name_for_code(66) == "B"
 
 
-def test_get_glyph_name_for_code_returns_none_for_unmapped() -> None:
-    # No /Encoding at all → every code is unmapped.
-    assert PDType1Font().get_glyph_name_for_code(65) is None
+def test_get_glyph_name_for_code_resolves_via_builtin_when_no_encoding() -> None:
+    # No /Encoding at all: upstream PDSimpleFont.readEncoding falls back to
+    # readEncodingFromFont(), which resolves StandardEncoding for a bare
+    # PDType1Font, so code 65 -> "A" (verified against the live PDFBox oracle:
+    # bare Type1 -> StandardEncoding, 65 -> A). Was None pre-wave-1434.
+    assert PDType1Font().get_glyph_name_for_code(65) == "A"
 
 
 # ---------- get_displacement ----------
@@ -277,9 +280,12 @@ def test_code_to_name_via_encoding() -> None:
     assert font.code_to_name(65) == "Lslash"
 
 
-def test_code_to_name_returns_notdef_when_no_encoding() -> None:
-    # Upstream falls back to ".notdef" when the font has no /Encoding.
-    assert PDType1Font().code_to_name(65) == ".notdef"
+def test_code_to_name_resolves_via_builtin_when_no_encoding() -> None:
+    # No /Encoding: upstream PDSimpleFont.readEncoding falls back to
+    # readEncodingFromFont() (StandardEncoding for a bare PDType1Font), so
+    # code 65 -> "A" (live oracle: bare Type1 -> StandardEncoding, 65 -> A).
+    # Was ".notdef" pre-wave-1434 (the blank-render bug).
+    assert PDType1Font().code_to_name(65) == "A"
 
 
 def test_get_name_in_font_passthrough_without_program() -> None:
@@ -309,8 +315,12 @@ def test_has_glyph_for_code_via_encoding() -> None:
     assert font.has_glyph_for_code(0) is False
 
 
-def test_has_glyph_for_code_false_when_no_encoding() -> None:
-    assert PDType1Font().has_glyph_for_code(65) is False
+def test_has_glyph_for_code_via_builtin_when_no_encoding() -> None:
+    # No /Encoding: get_encoding_typed falls back to StandardEncoding for a
+    # bare PDType1Font (upstream PDSimpleFont.readEncoding), so code 65 -> "A"
+    # is a glyph; code 0 is still .notdef. Was False pre-wave-1434.
+    assert PDType1Font().has_glyph_for_code(65) is True
+    assert PDType1Font().has_glyph_for_code(0) is False
 
 
 def test_has_glyph_false_when_no_program() -> None:

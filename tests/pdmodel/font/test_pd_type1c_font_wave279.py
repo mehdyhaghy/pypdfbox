@@ -5,6 +5,7 @@ import pytest
 from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.fontbox.cff.cff_font import CFFFont
 from pypdfbox.pdmodel.font import PDFontDescriptor
+from pypdfbox.pdmodel.font.encoding.standard_encoding import StandardEncoding
 from pypdfbox.pdmodel.font.pd_type1c_font import PDType1CFont
 
 _BASE_FONT = COSName.get_pdf_name("BaseFont")
@@ -114,12 +115,25 @@ def test_get_font_program_ignores_type1_font_file_slot() -> None:
     assert font.get_cff_font() is None
 
 
-def test_defaults_without_encoding_are_latin1_and_have_empty_glyph_surface() -> None:
+def test_defaults_without_encoding_resolve_standard_and_have_empty_glyph_surface() -> None:
     font = PDType1CFont()
 
-    assert font.encode("A\u00e9") == b"A\xe9"
-    assert font.decode(b"A\xe9") == "A\u00e9"
-    assert font.code_to_name(65) is None
+    # No /Encoding entry: upstream PDSimpleFont.readEncoding falls back to
+    # readEncodingFromFont(), which for a bare PDType1CFont bottoms out at
+    # StandardEncoding (verified against the live PDFBox oracle: bare Type1C ->
+    # StandardEncoding, 65 -> A). Pre-wave-1434 the encoding was wrongly None
+    # and the font fell back to a Latin-1 default (the blank-render bug).
+    assert isinstance(font.get_encoding_typed(), StandardEncoding)
+    # StandardEncoding round-trips ASCII; code 65 == "A".
+    assert font.code_to_name(65) == "A"
+    # 'A' encodes to its StandardEncoding code (0x41); '\u00e9' is not in
+    # StandardEncoding so it falls back to the '?' substitute byte.
+    assert font.encode("A") == b"A"
+    assert font.encode("A\u00e9") == b"A?"
+    # decode maps each byte through StandardEncoding -> glyph -> unicode;
+    # 0xE9 is "Oslash" -> U+00D8.
+    assert font.decode(b"A\xe9") == "A\u00d8"
+    # No embedded CFF program -> no glyph surface (unchanged by the fix).
     assert font.code_to_gid(65) == 0
     assert font.get_glyph_path(65) == []
     assert font.get_path("A") == []

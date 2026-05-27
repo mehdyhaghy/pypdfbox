@@ -236,8 +236,13 @@ def test_code_to_name_via_differences_overlay() -> None:
     assert font.code_to_name(66) == "B"
 
 
-def test_code_to_name_returns_none_when_no_encoding() -> None:
-    assert PDType1CFont().code_to_name(65) is None
+def test_code_to_name_resolves_via_builtin_when_no_encoding() -> None:
+    # No /Encoding: upstream PDSimpleFont.readEncoding falls back to
+    # readEncodingFromFont(), which for PDType1CFont bottoms out at
+    # StandardEncoding (verified against the live PDFBox oracle: bare Type1C ->
+    # StandardEncoding, 65 -> A). So code 65 -> "A" rather than None
+    # (the latter was the wave-1434 blank-render bug).
+    assert PDType1CFont().code_to_name(65) == "A"
 
 
 # ---------- code_to_gid ----------
@@ -263,12 +268,16 @@ def test_code_to_gid_returns_zero_for_unmapped_code() -> None:
     assert font.code_to_gid(90) == 0
 
 
-def test_code_to_gid_returns_zero_when_no_encoding() -> None:
+def test_code_to_gid_resolves_via_builtin_when_no_encoding() -> None:
     cff = CFFFont.from_bytes(_build_minimal_cff_bytes())
     font = PDType1CFont()
     font.set_font_program(cff)
-    # No /Encoding → code_to_name returns None → GID 0.
-    assert font.code_to_gid(65) == 0
+    # No /Encoding → get_encoding_typed falls back to StandardEncoding
+    # (upstream PDSimpleFont.readEncoding), so code 65 -> "A" -> GID 1 via the
+    # CFF charset ([".notdef", "A", "B"]). Pre-wave-1434 the encoding was
+    # wrongly None and this returned GID 0 (the blank-render bug).
+    assert font.code_to_gid(65) == 1
+    assert font.code_to_gid(66) == 2
 
 
 # ---------- has_glyph ----------

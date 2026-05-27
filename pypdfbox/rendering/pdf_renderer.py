@@ -6483,8 +6483,18 @@ class PDFRenderer(PDFStreamEngine):
         # starts with zero alpha (a fully-masked-out canvas).
         is_luminosity = soft_mask.is_luminosity()
         if is_luminosity:
+            # Seed the mask group's backdrop colour in RGB but start with
+            # *zero* alpha so the group's own coverage is tracked in the
+            # alpha channel. PDFBox derives the luminosity mask from the
+            # group result modulated by the group's coverage: areas the
+            # mask group never paints contribute mask alpha 0 (the page
+            # backdrop shows through) regardless of the ``/BC`` luminance
+            # — verified against the oracle, every ``/BC`` value yields a
+            # transparent masked-out region. ``/BC`` only sets the colour
+            # the group composites *over* where it does paint (so it
+            # affects partially-transparent mask content, §11.6.5.3).
             bc = self._soft_mask_backdrop_rgb(soft_mask)
-            mask_canvas = Image.new("RGBA", size, (bc[0], bc[1], bc[2], 255))
+            mask_canvas = Image.new("RGBA", size, (bc[0], bc[1], bc[2], 0))
         else:
             mask_canvas = Image.new("RGBA", size, (0, 0, 0, 0))
 
@@ -6543,8 +6553,19 @@ class PDFRenderer(PDFStreamEngine):
             self._knockout_form_depth = prev_knockout_form_depth
 
         # Extract the mask channel.
-        # Luminance of RGB → 8-bit grayscale.
-        alpha_plane = mask_canvas.convert("L") if is_luminosity else mask_canvas.split()[3]
+        if is_luminosity:
+            # Luminosity mask (§11.6.5.3): the mask value is the luminance
+            # of the group result modulated by the group's coverage.
+            # ``mask_canvas`` was seeded with the ``/BC`` colour at alpha 0
+            # and the group's paints raised alpha where it drew, so
+            # multiply the per-pixel luminance by the coverage alpha — an
+            # uncovered pixel (alpha 0) contributes mask alpha 0 (page
+            # backdrop shows), matching PDFBox.
+            luminance = mask_canvas.convert("RGB").convert("L")
+            coverage = mask_canvas.split()[3]
+            alpha_plane = ImageChops.multiply(luminance, coverage)
+        else:
+            alpha_plane = mask_canvas.split()[3]
 
         # Wave 1386 — /AIS (alpha-is-shape, PDF §11.6.4.3): when the
         # active ExtGState carries AIS=true, the mask source's coverage
@@ -6717,6 +6738,24 @@ class PDFRenderer(PDFStreamEngine):
             # form Do calls then run at depth >= 1 and don't fire the
             # snapshot reset.
             self._knockout_form_depth = -1
+        # Group constant alpha (PDF 32000-1 §11.6.4.3 / §11.4.7): the
+        # ExtGState ``/ca`` (and ``/CA``) in force at the ``Do`` operator
+        # applies to the group *as a whole*, NOT to each element painted
+        # inside it. Snapshot the inherited alpha, then reset the live
+        # graphics-state alpha to 1.0 so the group's interior paints are
+        # rendered fully opaque; the saved value is multiplied into the
+        # group's composite alpha at the end (alongside any soft mask).
+        # Without this the constant alpha is wrongly applied per-element,
+        # which diverges from PDFBox whenever the group has overlapping or
+        # multiple objects (an isolated group at ``/ca 0.5`` scored MAD~14
+        # before this fix).
+        group_fill_alpha = self._gs.fill_alpha
+        group_stroke_alpha = self._gs.stroke_alpha
+        # The group's overall constant alpha is the non-stroking ``/ca``
+        # (the group composite is a fill-like operation per §11.6.4.3).
+        group_alpha = group_fill_alpha
+        self._gs.fill_alpha = 1.0
+        self._gs.stroke_alpha = 1.0
         # Suppress per-paint SMask while rendering the group's own contents
         # (the SMask is applied once at the group's composite step below).
         self._transparency_group_depth += 1
@@ -6724,6 +6763,9 @@ class PDFRenderer(PDFStreamEngine):
             self._render_form_xobject(form)
         finally:
             self._transparency_group_depth -= 1
+            # Restore the inherited alpha for the caller's continued state.
+            self._gs.fill_alpha = group_fill_alpha
+            self._gs.stroke_alpha = group_stroke_alpha
             # Commit any final group strokes, then composite back.
             current = self._draw
             if current is not None:
@@ -6734,6 +6776,47 @@ class PDFRenderer(PDFStreamEngine):
             self._knockout_active = prev_knockout_active
             self._knockout_snapshot = prev_knockout_snapshot
             self._knockout_form_depth = prev_knockout_form_depth
+
+        # Non-isolated backdrop removal (PDF 32000-1 §11.4.8): a
+        # non-isolated group composites over a backdrop equal to the
+        # parent at group entry, so ``group_canvas`` already contains the
+        # parent's pixels wherever the group painted nothing. To recover
+        # the group's *own* contribution before applying group alpha and
+        # compositing back onto the parent (which would otherwise add the
+        # backdrop a second time), zero the alpha of any pixel that still
+        # matches the seeded parent backdrop. Isolated groups start from a
+        # clear backdrop, so this step is a no-op for them.
+        if not isolated:
+            parent_seed = parent_image.convert("RGBA")
+            seed_bands = parent_seed.split()
+            canvas_bands = group_canvas.split()
+            # A pixel is "untouched backdrop" when its RGB still equals the
+            # seed. ``ImageChops.difference`` is 0 there; sum the channel
+            # differences and keep alpha only where the group changed a
+            # pixel (difference > 0). This is the lite-renderer equivalent
+            # of upstream's saved-backdrop subtraction in §11.4.8.
+            diff = ImageChops.difference(
+                Image.merge("RGB", canvas_bands[:3]),
+                Image.merge("RGB", seed_bands[:3]),
+            )
+            touched = diff.convert("L").point(lambda v: 255 if v else 0)
+            kept_alpha = ImageChops.multiply(canvas_bands[3], touched)
+            group_canvas = Image.merge(
+                "RGBA",
+                (canvas_bands[0], canvas_bands[1], canvas_bands[2], kept_alpha),
+            )
+
+        # Group constant alpha (§11.6.4.3): multiply the recovered group
+        # alpha by the saved ``/ca`` so the group composites onto the
+        # parent as a single object at the group's overall opacity.
+        if group_alpha < 1.0:
+            bands = group_canvas.split()
+            scaled_alpha = bands[3].point(
+                lambda v, _a=group_alpha: round(v * _a)
+            )
+            group_canvas = Image.merge(
+                "RGBA", (bands[0], bands[1], bands[2], scaled_alpha)
+            )
 
         # Apply ExtGState /SMask (PDF spec §11.6.5.2): if a soft mask
         # is active, multiply the group's alpha by the mask's alpha

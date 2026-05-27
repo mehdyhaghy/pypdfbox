@@ -109,10 +109,20 @@ def test_type1c_program_width_rejects_missing_glyph_bad_units_and_zero_width() -
     assert font._program_width(65) is None
 
 
-def test_type1c_missing_encoding_returns_empty_path_height_and_gid() -> None:
+def test_type1c_glyph_absent_from_charset_returns_empty_path_height_and_gid() -> None:
+    # Wave-1434: a no-/Encoding PDType1CFont now resolves StandardEncoding via
+    # read_encoding_from_font() (upstream PDSimpleFont.readEncoding), so code 65
+    # -> "A" (matching PDFBox). The empty-charset case checked here is therefore
+    # "glyph name not present in the embedded CFF": model it consistently
+    # (empty charset -> no glyphs, no path) so code 65 -> "A" -> GID 0 -> empty
+    # path/height. Pre-wave-1434 the encoding was wrongly None so code 65
+    # produced no glyph name at all (the blank-render bug).
     font = PDType1CFont()
-    font._get_cff_font = lambda: _FakeCFF(charset=[])  # type: ignore[method-assign]
+    font._get_cff_font = lambda: _FakeCFF(  # type: ignore[method-assign]
+        charset=[], glyphs=set(), path=[]
+    )
 
+    assert font.code_to_name(65) == "A"
     assert font.get_glyph_path(65) == []
     assert font.get_height(65) == 0.0
     assert font.code_to_gid(65) == 0

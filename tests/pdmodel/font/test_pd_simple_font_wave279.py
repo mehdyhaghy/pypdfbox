@@ -11,7 +11,11 @@ from pypdfbox.cos import (
     COSObject,
 )
 from pypdfbox.pdmodel.font import PDFontDescriptor, PDTrueTypeFont, PDType1Font
-from pypdfbox.pdmodel.font.encoding import DictionaryEncoding, WinAnsiEncoding
+from pypdfbox.pdmodel.font.encoding import (
+    DictionaryEncoding,
+    StandardEncoding,
+    WinAnsiEncoding,
+)
 from pypdfbox.pdmodel.font.pd_font_descriptor import (
     FLAG_FORCE_BOLD,
     FLAG_ITALIC,
@@ -31,11 +35,20 @@ def test_defaults_without_optional_font_entries_are_conservative() -> None:
     assert font.get_widths() == []
     assert font.get_average_font_width() == 0.0
     assert font.get_encoding() is None
-    assert font.get_encoding_typed() is None
+    # No /Encoding entry: get_encoding_typed falls back to
+    # read_encoding_from_font() (mirroring upstream PDSimpleFont.readEncoding),
+    # which for a bare PDType1Font bottoms out at StandardEncoding — verified
+    # against the live PDFBox oracle (BuiltinEncodingProbe: bare Type1 ->
+    # StandardEncoding, 65 -> A). Was None pre-wave-1434 (the blank-render bug).
+    assert isinstance(font.get_encoding_typed(), StandardEncoding)
     assert font.get_font_descriptor() is None
     assert font.get_symbolic_flag() is None
+    # With the StandardEncoding now resolved, is_font_symbolic returns False
+    # (a Latin encoding guarantees nonsymbolic) — matching upstream
+    # PDSimpleFont.isFontSymbolic. is_symbolic still defaults False here.
     assert font.is_symbolic() is False
-    assert font.to_unicode(65) is None
+    # StandardEncoding maps code 65 -> "A" -> unicode "A" via the glyph list.
+    assert font.to_unicode(65) == "A"
     assert font.will_be_subset() is False
 
 

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.fontbox.type1.type1_font import Type1Font
+from pypdfbox.pdmodel.font.encoding.standard_encoding import StandardEncoding
 from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
 
 # ---------- helpers (mirror the in-tree minimal Type1 program) ----------
@@ -212,12 +213,18 @@ def test_get_path_for_code_uses_encoding() -> None:
     assert path[0] == ("moveto", 0.0, 0.0)
 
 
-def test_get_path_for_code_returns_empty_when_no_encoding() -> None:
-    """No /Encoding → ``get_path_for_code`` returns ``[]``."""
+def test_get_path_for_code_resolves_via_builtin_when_no_encoding() -> None:
+    """No /Encoding entry: get_encoding_typed falls back to
+    read_encoding_from_font() (upstream PDSimpleFont.readEncoding), which here
+    resolves StandardEncoding, so code 65 -> "A" and the glyph outline is
+    drawn from the program. Pre-wave-1434 the encoding was wrongly None, code
+    65 resolved to no glyph name, and the path came back ``[]`` — the
+    blank-render bug this guards."""
     program = _stub_type1_program()
     font = _font_with_program(program, encoding=None)
-    assert font.get_encoding_typed() is None
-    assert font.get_path_for_code(65) == []
+    assert isinstance(font.get_encoding_typed(), StandardEncoding)
+    assert font._code_to_glyph_name(65) == "A"
+    assert font.get_path_for_code(65)  # non-empty — the glyph is drawn
 
 
 def test_get_path_for_code_returns_empty_for_unmapped_code() -> None:

@@ -75,7 +75,16 @@ def test_prepare_document_without_policy_raises_value_error() -> None:
 
 def test_prepare_document_40_bit_policy_writes_revision2_dictionary() -> None:
     captured: dict[str, PDEncryption] = {}
-    policy = StandardProtectionPolicy("owner", "user", AccessPermission())
+    # A 40-bit (/V 1) document is written at R2 only when NO revision-3
+    # permission bit is set; the default AccessPermission() sets all four, so
+    # PDFBox (and now pypdfbox) would emit R3. Clear the revision-3 bits to
+    # exercise the genuine R2 path. See computeRevisionNumber parity (wave 1434).
+    perms = AccessPermission()
+    perms.set_can_fill_in_form(False)
+    perms.set_can_extract_for_accessibility(False)
+    perms.set_can_assemble_document(False)
+    perms.set_can_print_faithful(False)
+    policy = StandardProtectionPolicy("owner", "user", perms)
     policy.set_encryption_key_length(40)
 
     class _Document:

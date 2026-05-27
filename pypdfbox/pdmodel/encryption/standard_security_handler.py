@@ -375,8 +375,16 @@ class StandardSecurityHandler(SecurityHandler):
         padded_owner = cls._pad_password(owner_password)
         digest = hashlib.md5(padded_owner, usedforsecurity=False).digest()
         if revision >= 3:
+            # Upstream computeRC4key hashes only the first ``key_len_bytes`` of
+            # the running digest each round (``md.update(digest, 0, length)``),
+            # NOT the full 16-byte digest. For 128-bit keys (16 bytes) the two
+            # are identical, but for a 40-bit (5-byte) key under R3 — reachable
+            # once the revision honours the permission set (wave 1434) — the
+            # full-digest variant derives the wrong key and the owner password
+            # is rejected. Upstream's comment notes this truncation is required
+            # for Adobe Reader to accept the 40-bit owner password.
             for _ in range(50):
-                digest = hashlib.md5(digest, usedforsecurity=False).digest()
+                digest = hashlib.md5(digest[:key_len_bytes], usedforsecurity=False).digest()
         rc4_key = digest[:key_len_bytes]
         if revision == 2:
             return _rc4(rc4_key, owner_entry)
@@ -1043,7 +1051,16 @@ class StandardSecurityHandler(SecurityHandler):
             revision, version = 3, 2
             self.set_aes(False)
         else:
-            revision, version = 2, 1
+            # RC4-40 (/V 1). Upstream's prepareDocumentForEncryption derives
+            # the revision from the permission set, not the key length:
+            # computeRevisionNumber(1) returns R2 only when no revision-3
+            # permission bit is set, else R3 (PDFBox
+            # StandardSecurityHandler.computeRevisionNumber). The default
+            # AccessPermission() has every revision-3 bit set, so a plain
+            # 40-bit protect emits R3 in PDFBox — pypdfbox previously
+            # hardcoded R2 here, diverging on the on-the-wire /R.
+            version = 1
+            revision = self.compute_revision_number_from_version(version)
             key_len_bits = 40
             self.set_aes(False)
 

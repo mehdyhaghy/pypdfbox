@@ -284,34 +284,52 @@ class PDSimpleFont(PDFont):
                 is_non_symbolic=is_non_symbolic,
                 built_in=built_in,
             )
-        else:
-            # No /Encoding entry. A non-embedded Standard 14 font carries no
-            # /Encoding in its dict but still has a well-defined built-in
-            # encoding (StandardEncoding for the Latin text fonts, the
-            # font-specific Symbol / ZapfDingbats encodings for those two).
-            # Upstream PDFBox's PDSimpleFont.readEncoding resolves it via
-            # readEncodingFromFont(), and PDType1Font.getStandard14Width reads
-            # the per-glyph AFM advance through that encoding — so without it
-            # every code resolves to ``.notdef`` and getWidth/getStringWidth
-            # collapse to the 250-unit substitute width. Mirror upstream for
-            # this case so the AFM metric path returns the real widths.
+        elif raw is None:
+            # No /Encoding entry at all. Upstream PDFBox's
+            # PDSimpleFont.readEncoding falls back to readEncodingFromFont()
+            # here for *every* such font — embedded or not — so the font
+            # program's built-in encoding surfaces through getEncoding(). This
+            # matters in two distinct ways:
             #
-            # For every other no-/Encoding font (bare PDType1Font with no
-            # /BaseFont, embedded programs, non-Standard-14 base names)
-            # pypdfbox's established contract of returning None is preserved —
-            # those fonts surface the built-in via per-subclass helpers, not
-            # through get_encoding_typed. See CHANGES.md.
-            # Use the base ``PDFont.is_standard14`` (name + not-embedded only)
-            # rather than the PDSimpleFont override — the override calls
-            # ``get_encoding_typed`` (the /Differences carve-out) and would
-            # recurse back into this method before ``_encoding_resolved`` is
-            # set. The base check is sufficient here: we are already in the
-            # no-/Encoding branch, so there is no /Differences overlay to
-            # disqualify the font.
-            if PDFont.is_standard14(self) and not self.is_embedded():
-                self._encoding_typed = self.read_encoding_from_font()
-            else:
-                self._encoding_typed = None
+            #   * Non-embedded Standard 14 (the wave-1431 case): the AFM
+            #     metric path (PDType1Font.getStandard14Width) reads the
+            #     per-glyph advance through that encoding, so without it every
+            #     code collapses to the 250-unit substitute width.
+            #   * Embedded simple fonts (the wave-1434 case): every code
+            #     resolved to ``None`` glyph name, so PDType1Font's render
+            #     path dropped the glyph and the page came out blank. PDFBox
+            #     surfaces the program's built-in (Type1Encoding for an
+            #     embedded Type1, the post-table-derived BuiltInEncoding —
+            #     or StandardEncoding for non-symbolic — for an embedded
+            #     TrueType), verified against the live oracle
+            #     (BuiltinEncodingProbe): 65->A, 66->B, 67->C for both.
+            #
+            # ``read_encoding_from_font`` still returns ``None`` for the
+            # genuinely-encoding-less cases PDFBox also leaves null (e.g. a
+            # non-embedded TrueType whose only fallback would be a
+            # Type1Encoding-from-AFM we don't port); the None contract is
+            # preserved by deferring entirely to the per-subclass helper
+            # rather than gating on font identity here.
+            #
+            # Set ``_encoding_resolved`` *before* the call: TrueType's
+            # ``read_encoding_from_font`` consults ``is_standard14()`` for the
+            # symbolic branch, which re-enters ``get_encoding_typed`` — the
+            # flag makes the re-entrant call return the in-progress value
+            # instead of recursing. (For embedded fonts the PDSimpleFont
+            # ``is_standard_14`` override short-circuits on the not-embedded
+            # base check before it ever reads the encoding, but the guard
+            # keeps the contract robust for every path.)
+            self._encoding_resolved = True
+            self._encoding_typed = self.read_encoding_from_font()
+            return self._encoding_typed
+        else:
+            # /Encoding is present but neither a COSName nor a COSDictionary
+            # (e.g. a stray COSInteger). Upstream PDSimpleFont.readEncoding
+            # nests the name/dictionary tests inside ``if (encoding != null)``
+            # with no else, so a present-but-malformed /Encoding leaves
+            # ``encoding`` null — it does NOT fall back to the font program.
+            # Mirror that: return None rather than synthesising a built-in.
+            self._encoding_typed = None
         self._encoding_resolved = True
         return self._encoding_typed
 
