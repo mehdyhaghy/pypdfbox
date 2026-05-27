@@ -114,6 +114,15 @@ public final class ContentGenProbe {
         cs.showText("Hello");
         cs.newLine();
         cs.showText("World");
+        // String-escaping stress: balanced parens, backslash, non-ASCII.
+        // PDFBox emits an ASCII-safe literal string with backslash-escaped
+        // ( ) \  and falls back to hex form when a byte is non-ASCII; the
+        // tokenizer canonicalises both to decoded bytes (STR:<hex>), so a
+        // corrupt escape would surface as wrong decoded bytes.
+        cs.newLine();
+        cs.showText("paren (a) and \\backslash");
+        cs.newLine();
+        cs.showText("café é");
         cs.endText();
 
         // --- restore ---

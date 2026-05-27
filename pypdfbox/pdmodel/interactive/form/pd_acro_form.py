@@ -516,20 +516,37 @@ class PDAcroForm:
         """Return the ``/CO`` calculation order — fields whose values are
         recomputed (in order) when any field's value changes.
 
-        Mirrors PDFBox ``getCalculationOrder``: each entry must be a
-        terminal field dictionary; non-dictionary or non-resolvable
-        entries are skipped."""
+        Mirrors upstream ``PDAcroForm.getCalcOrder``: rather than wrapping
+        each ``/CO`` array entry in a fresh field (which would lose the
+        parent chain and therefore the dotted fully-qualified name), the
+        upstream method walks the full field tree (or the field cache when
+        caching is enabled) and, for each ``/CO`` entry, returns the *tree*
+        field whose backing ``COSDictionary`` is the same object. The tree
+        field already carries its resolved ``/Parent`` chain, so its
+        :meth:`PDField.get_fully_qualified_name` yields the dotted path.
+        ``/CO`` entries that don't match a tree field are skipped (matches
+        upstream's ``if (object == field.getCOSObject())`` filter)."""
         raw = self._dictionary.get_dictionary_object(_CO)
         if not isinstance(raw, COSArray):
             return []
+        # Source of already-parented fields: the field cache (when caching
+        # is enabled) or a freshly-walked field tree — mirrors upstream's
+        # ``isCachingFields() ? fieldCache.values() : getFieldTree()``.
+        if self._cache_fields:
+            if self._field_cache is None:
+                self._field_cache = self._build_field_cache()
+            tree_fields: list[PDField] = list(self._field_cache.values())
+        else:
+            tree_fields = list(self.get_field_tree())
         out: list[PDField] = []
         for i in range(raw.size()):
             entry = raw.get_object(i)
             if not isinstance(entry, COSDictionary):
                 continue
-            field = PDFieldFactory.create_field(self, entry, None)
-            if field is not None:
-                out.append(field)
+            for field in tree_fields:
+                if field.get_cos_object() is entry:
+                    out.append(field)
+                    break
         return out
 
     def has_calc_order(self) -> bool:

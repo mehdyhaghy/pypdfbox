@@ -53,9 +53,15 @@ def test_date_converter_invalid_iso_raises_oserror() -> None:
         to_calendar("2024-02-31T00:00:00")
 
 
-def test_date_converter_invalid_pdf_timezone_raises_oserror() -> None:
-    with pytest.raises(OSError):
-        to_calendar("D:20240101000000+99'00'")
+def test_date_converter_out_of_range_pdf_timezone_folds_modulo_day() -> None:
+    # PDFBox's DateConverter does NOT reject an out-of-range TZ designation —
+    # ``restrainTZoffset`` folds it modulo a day. ``+99'00'`` therefore parses
+    # to +03:00 (verified against the live PDFBox 3.0.7 oracle, which returns
+    # 2024-01-01 00:00:00+03:00, not null). A prior wave wrongly expected this
+    # to raise.
+    parsed = to_calendar("D:20240101000000+99'00'")
+    assert parsed is not None
+    assert parsed.utcoffset() == timedelta(hours=3)
 
 
 def test_date_converter_pdf_offset_without_minutes() -> None:

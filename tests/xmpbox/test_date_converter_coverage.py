@@ -254,13 +254,16 @@ def test_new_greg_defaults_to_utc_non_lenient() -> None:
 # ---------- adjust_time_zone_nicely ---------------------------------------
 
 
-def test_adjust_time_zone_nicely_shifts_wall_clock_backward() -> None:
+def test_adjust_time_zone_nicely_keeps_wall_clock_and_attaches_offset() -> None:
     g = DateConverter.new_greg()
     g.set_fields(2020, 0, 1, 12, 0, 0)
-    # +60 minute zone — must subtract 60 minutes from wall clock.
+    # +60 minute zone. Upstream's ``setTimeZone`` + ``add(MINUTE, -offset)``
+    # nets out to "keep the displayed wall clock, attach the offset" — the
+    # wall clock stays 12:00, NOT 11:00 (a prior wave shifted it, which put the
+    # resulting instant an hour off PDFBox; fixed against the live oracle).
     DateConverter.adjust_time_zone_nicely(g, 60 * 60 * 1000)
     assert g.zone_offset == 60 * 60 * 1000
-    assert g.hour == 11
+    assert g.hour == 12
 
 
 # ---------- parse_t_zoffset -----------------------------------------------

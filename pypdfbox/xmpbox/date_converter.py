@@ -34,16 +34,6 @@ from typing import ClassVar
 # Mirrors upstream's regex check that distinguishes a leading-ISO-style date
 # (``YYYY-MM-DDT...``) from the ``D:YYYYMMDD...`` PDF dictionary form.
 _ISO_PREFIX_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T.*")
-_PDF_LIKE_RE = re.compile(
-    r"^(?P<year>\d{4})"
-    r"(?:-?(?P<month>\d{2})"
-    r"(?:-?(?P<day>\d{2})"
-    r"(?:T?(?P<hour>\d{2})"
-    r"(?::?(?P<minute>\d{2})"
-    r"(?::?(?P<second>\d{2})?)?"
-    r")?)?)?)?"
-    r"(?P<tz>Z|[+-]\d{2}(?::?'?\d{2}'?)?)?$"
-)
 
 # Upstream constants: timing units in millis (DateConverter.java lines 73-78).
 _MINUTES_PER_HOUR = 60
@@ -274,13 +264,6 @@ def to_calendar(date_string: str | None) -> datetime | None:
     if not date:
         return None
 
-    # Default values match upstream's locals.
-    month = 1
-    day = 1
-    hour = 0
-    minute = 0
-    second = 0
-
     if _ISO_PREFIX_RE.match(date):
         return _from_iso8601(date)
 
@@ -293,64 +276,22 @@ def to_calendar(date_string: str | None) -> datetime | None:
     # rather than raising, matching upstream.
     if not date.strip():
         return None
-    pos_of_t = date.find("T")
-    # The "T at offset != 10" sanity check applies only to digit-led inputs
-    # that look like the ``YYYYMMDD`` PDF/ISO shape — for alpha-led shapes
-    # (``Friday July 6 17:22:1 GMT+08:00 1979``) the ``T`` inside ``GMT`` is
-    # benign and we should fall through to the locale parser.
-    if (
-        date
-        and date[0].isdigit()
-        and pos_of_t != 10
-        and pos_of_t != -1
-    ):
-        raise OSError(f"Error converting date:{date}")
 
-    match = _PDF_LIKE_RE.match(date) if date and date[0].isdigit() else None
-    if match is None:
-        # Wave 1387 — fall through to the SimpleDateFormat dispatcher for
-        # alpha-start shapes (``Friday, January 11, 2115`` etc.) and the
-        # digit-start shapes the PDF regex doesn't cover (``9:47 5/12/2002``,
-        # ``200312172:2:3``, ``26 May 2020 11:25:10``, etc.). Upstream's
-        # ``DateConverter.toCalendar`` ultimately delegates here too —
-        # ``parseDate`` is invoked when no big-endian / regex form matches.
-        return _try_parse_date_fallback(date_string)
-
-    try:
-        year = int(match.group("year"))
-        if match.group("month") is not None:
-            month = int(match.group("month"))
-        if match.group("day") is not None:
-            day = int(match.group("day"))
-        if match.group("hour") is not None:
-            hour = int(match.group("hour"))
-        if match.group("minute") is not None:
-            minute = int(match.group("minute"))
-        if match.group("second") is not None:
-            second = int(match.group("second"))
-
-        tz_text = match.group("tz")
-        tz: timezone | None = None
-        if tz_text == "Z":
-            tz = UTC
-        elif tz_text is not None:
-            offset_text = tz_text[1:].replace(":", "").replace("'", "")
-            hours = int(offset_text[0:2])
-            minutes = int(offset_text[2:4]) if len(offset_text) >= 4 else 0
-            offset = timedelta(hours=hours, minutes=minutes)
-            if tz_text[0] == "-":
-                offset = -offset
-            tz = timezone(offset)
-    except ValueError as exc:
-        raise OSError(f"Error converting date:{date}") from exc
-
-    if tz is None:
-        # upstream uses local default GregorianCalendar; for parity with the
-        # ISO fallback (which attaches UTC) we attach UTC here too. Callers
-        # that need local time can re-zone the result.
-        tz = UTC
-
-    return datetime(year, month, day, hour, minute, second, tzinfo=tz)
+    # Upstream's ``DateConverter.toCalendar`` does NOT special-case the
+    # ``D:YYYYMMDD…`` regex shape — it feeds the whole (``D:``-stripped) string
+    # through ``parseDate``, which walks ``parseBigEndianDate`` (the
+    # ``YYYY[-/ ]MM[-/ ]DD[ T]HH[:]mm[:]ss`` form, with an optional trailing
+    # ``parseTZoffset``) before the SimpleDateFormat tables. Earlier waves took
+    # a regex fast-path here; it diverged from PDFBox in four ways — it crashed
+    # with an uncaught ``ValueError`` on out-of-range fields (second 60, Feb 31,
+    # hour 24, month 13, day 0) instead of rejecting, it raised on out-of-range
+    # TZ designations (``+99'00'``) instead of folding them modulo a day, it
+    # mis-handled a missing trailing apostrophe (``+05'``) / a ``Z`` followed by
+    # an explicit offset (``Z05'00'``), and it rejected GMT/UTC-prefixed and
+    # named-TZ forms. Delegating to ``parse_date`` makes every one of those
+    # match PDFBox's ``org.apache.pdfbox.util.DateConverter.toCalendar`` exactly
+    # (verified against the live 3.0.7 oracle, DateConvertProbe).
+    return _try_parse_date_fallback(date_string)
 
 
 def _try_parse_date_fallback(date_string: str) -> datetime | None:
@@ -502,8 +443,15 @@ class DateConverter:
         proposed_offset = ((proposed_offset + _HALF_DAY) % _DAY + _DAY) % _DAY
         if proposed_offset == 0:
             return _HALF_DAY
-        # 0 <= proposed_offset < DAY
-        proposed_offset = (proposed_offset - _HALF_DAY) % _HALF_DAY
+        # 0 <= proposed_offset < DAY. Java's ``%`` truncates toward zero
+        # (sign follows the dividend); Python's ``%`` floors (sign follows the
+        # divisor). For a negative intermediate the two disagree by one
+        # divisor — e.g. ``-99'00'`` reduces to a dividend of ``-10800000`` and
+        # Java's truncated ``% HALF_DAY`` leaves it at ``-3h`` while Python's
+        # floored ``%`` would wrap it to ``+9h``. Use the truncated form so the
+        # offset sign matches PDFBox exactly.
+        dividend = proposed_offset - _HALF_DAY
+        proposed_offset = dividend - _HALF_DAY * int(dividend / _HALF_DAY)
         # -HALF_DAY < proposed_offset < HALF_DAY
         return int(proposed_offset)
 
@@ -624,14 +572,20 @@ class DateConverter:
     def adjust_time_zone_nicely(cal: _GregLike, tz_offset_millis: int) -> None:
         """Mirror private ``adjustTimeZoneNicely(GregorianCalendar, TimeZone)``.
 
-        Replace the calendar's zone offset without shifting the wall clock
-        forward — instead, subtract the offset back out via ``add(MINUTE)``
-        so the moment-in-time changes but the displayed fields stay put.
+        Upstream does ``cal.setTimeZone(tz); cal.add(MINUTE, -offset)``. In
+        java.util.Calendar, ``setTimeZone`` preserves the *instant* and
+        re-displays the wall-clock fields under the new zone; the subsequent
+        ``add(MINUTE, -offset)`` then cancels that field-shift exactly, so the
+        net effect is "keep the original wall-clock fields, attach the new
+        offset". pypdfbox's :class:`_GregLike` keeps the wall clock as its
+        canonical fields (offset is a separate slot), so reproducing that net
+        effect means simply recording the offset — *not* calling
+        :meth:`_GregLike.add_minutes`, which would shift the wall clock and
+        double-apply the offset (PDFBOX parity: ``D:...+05'30'`` would land 5.5h
+        off). See DateConverter.java ``adjustTimeZoneNicely``.
         """
         cal.zone_offset = tz_offset_millis
         cal.dst_offset = 0
-        offset_minutes = (cal.zone_offset + cal.dst_offset) // _MILLIS_PER_MINUTE
-        cal.add_minutes(-offset_minutes)
 
     # ------------------------------------------------------------------ #
     # TZ parser (lines 429-473)

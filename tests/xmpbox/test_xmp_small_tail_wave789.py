@@ -29,11 +29,17 @@ class _BareStructured(AbstractStructuredType):
 
 
 def test_wave789_date_converter_invalid_iso_and_pdf_value_errors() -> None:
+    # An impossible ISO calendar date (Feb 31) is rejected — PDFBox returns
+    # null; pypdfbox surfaces the rejection as OSError.
     with pytest.raises(OSError):
         to_calendar("2024-02-31T00:00:00")
 
-    with pytest.raises(OSError):
-        to_calendar("D:20240101000000+99'00'")
+    # An out-of-range PDF TZ designation is NOT rejected — PDFBox's
+    # ``restrainTZoffset`` folds it modulo a day, so ``+99'00'`` parses to
+    # +03:00 (verified against the live PDFBox 3.0.7 oracle).
+    parsed = to_calendar("D:20240101000000+99'00'")
+    assert parsed is not None
+    assert parsed.utcoffset() == timedelta(hours=3)
 
 
 def test_wave789_date_converter_pdf_offset_without_minutes() -> None:

@@ -183,6 +183,10 @@ def test_calc_order_default_empty_and_round_trip() -> None:
 
     field = PDFieldStub(form, COSDictionary(), None)
     field.set_partial_name("a")
+    # /CO entries are matched against the field tree (upstream parity —
+    # getCalcOrder only returns /CO fields reachable from /Fields), so the
+    # field must be a root field for get_calc_order to surface it.
+    form.set_fields([field])
     form.set_calc_order([field])
 
     co = form.get_calc_order()

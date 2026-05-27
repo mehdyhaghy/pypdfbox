@@ -131,6 +131,10 @@ def test_wave400_get_calc_order_materializes_dictionary_entries() -> None:
     form = PDAcroForm()
     field = PDTextField(form)
     field.set_partial_name("total")
+    # /CO is matched against the field tree (upstream parity), so the field
+    # must be reachable from /Fields. A non-dictionary /CO entry (the COSName)
+    # is skipped exactly as upstream skips it.
+    form.set_fields([field])
     calc_order = COSArray()
     calc_order.add(COSName.get_pdf_name("skip"))
     calc_order.add(field.get_cos_object())

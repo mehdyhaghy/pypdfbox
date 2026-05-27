@@ -46,6 +46,10 @@ def test_wave525_calc_order_missing_clear_and_round_trip() -> None:
     field.set_partial_name("amount")
 
     assert form.get_calc_order() == []
+    # /CO is matched against the field tree (upstream parity — getCalcOrder
+    # only returns /CO fields reachable from /Fields), so add the field as a
+    # root field before driving the round trip.
+    form.set_fields([field])
     form.set_calc_order([field])
     assert form.has_calc_order() is True
     assert [item.get_partial_name() for item in form.get_calc_order()] == ["amount"]

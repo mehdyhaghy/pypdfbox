@@ -443,5 +443,9 @@ def test_parse_date_full_pdf_with_offset() -> None:
     assert cal.year == 2016
     assert cal.month == 4 - 1
     assert cal.day == 11
-    assert cal.hour == 16 - 12  # adjust_time_zone_nicely shifts wall clock back
+    # adjust_time_zone_nicely attaches the offset WITHOUT shifting the wall
+    # clock — the displayed fields stay 16:01:15 and the moment-in-time is
+    # 16:01:15 at +12 (verified against the live PDFBox 3.0.7 oracle:
+    # toCalendar("20160411160115+12'00'") = 2016-04-11 16:01:15+12:00).
+    assert cal.hour == 16
     assert cal.zone_offset == 12 * HRS

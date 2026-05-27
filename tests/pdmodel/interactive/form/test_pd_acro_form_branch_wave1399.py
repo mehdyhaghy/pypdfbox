@@ -2,9 +2,10 @@
 
 Targets the 7 partial arrows surviving after wave 1396:
 
-* 531->526 — ``get_calc_order`` with a /CO entry that
-  :class:`PDFieldFactory` cannot build (returns ``None``) skips the
-  append and continues the loop.
+* ``get_calc_order`` with a /CO entry that is not reachable from the
+  field tree (upstream parity: getCalcOrder only returns /CO fields whose
+  backing dictionary matches a field in /Fields) is skipped; the matching
+  loop continues scanning the rest of the /CO array.
 * 609->608 — ``refresh_appearances`` skips a non-:class:`PDTerminalField`
   entry in the input list (loop ``continue``-equivalent).
 * 640->635 — ``import_fdf`` whose FDF carries a field name absent from
@@ -27,31 +28,35 @@ def _num_array(*values: float) -> COSArray:
     return COSArray([COSFloat(v) for v in values])
 
 
-# ---------- 531->526 — get_calc_order skips an unbuildable /CO entry --------
+# ---------- get_calc_order skips a /CO entry not in the field tree ----------
 
 
-def test_get_calc_order_skips_entries_pdfieldfactory_cannot_build() -> None:
-    """``PDFieldFactory.create_field`` returns ``None`` for a dictionary
-    with no recognisable /FT. The for-loop must skip that None and
-    continue scanning the rest of the /CO array. Closes False arm at
-    line 531."""
+def test_get_calc_order_skips_entries_not_in_field_tree() -> None:
+    """``get_calc_order`` matches each /CO entry against the field tree
+    (upstream parity — ``getCalcOrder`` only returns /CO fields whose
+    backing dictionary is reachable from /Fields). A /CO entry not present
+    in the tree is skipped; the loop continues to the matching entry."""
+    from pypdfbox.pdmodel.interactive.form.pd_text_field import PDTextField
+
     form = PDAcroForm()
 
-    # Two entries: one valid text-field dict, one bare dict with no /FT.
-    bogus = COSDictionary()  # no /FT → factory returns None
-    valid = COSDictionary()
-    valid.set_item(COSName.get_pdf_name("FT"), COSName.get_pdf_name("Tx"))
-    valid.set_item(COSName.get_pdf_name("T"), COSName.get_pdf_name("good"))
+    # Two /CO entries: one bare dict that is NOT a form field, and one valid
+    # text field that IS a root field of the form.
+    bogus = COSDictionary()  # not in /Fields → never matches the tree
+    valid = PDTextField(form)
+    valid.set_partial_name("good")
+    form.set_fields([valid])
 
     co = COSArray()
     co.add(bogus)
-    co.add(valid)
+    co.add(valid.get_cos_object())
     form.get_cos_object().set_item(COSName.get_pdf_name("CO"), co)
 
-    # Walk completes without raising; the valid entry surfaces, the bogus
-    # one is silently dropped.
+    # The matching loop completes without raising; only the in-tree field
+    # surfaces, the bogus entry is silently dropped.
     out = form.get_calc_order()
     assert len(out) == 1
+    assert out[0].get_partial_name() == "good"
 
 
 # ---------- 609->608 — refresh_appearances skips non-terminal field ---------

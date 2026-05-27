@@ -116,6 +116,14 @@ def _py_draw(cs: PDPageContentStream, font: PDType1Font) -> None:
     cs.show_text("Hello")
     cs.new_line()
     cs.show_text("World")
+    # String-escaping stress (see ContentGenProbe.drawFixedSequence):
+    # balanced parens, backslash, non-ASCII. Both impls escape ( ) \ in
+    # the ASCII-safe literal form and fall back to hex for non-ASCII; the
+    # tokenizer compares the decoded bytes, so a wrong escape would fail.
+    cs.new_line()
+    cs.show_text("paren (a) and \\backslash")
+    cs.new_line()
+    cs.show_text("café é")
     cs.end_text()
 
     # --- restore ---
