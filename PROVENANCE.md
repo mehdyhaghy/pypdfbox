@@ -708,6 +708,8 @@ Upstream baseline branch: `apache/pdfbox` `3.0` (most files at `pdfbox/src/test/
 | `tests/fixtures/pdmodel/font/PDFBOX-3044-010197-p5-ligatures.pdf` | 3.0.x | `pdfbox/src/test/resources/input/PDFBOX-3044-010197-p5-ligatures.pdf` (wave 1430; byte-identical simple-Type1 `/FontFile3 /Type1C` subset fixture for the CFF subset oracle) |
 | `tests/fixtures/pdfparser/linearized_unencrypted.pdf` | 3.0.x | locally derived (wave 1434) via `qpdf --linearize` of the bundled `tests/fixtures/pdfwriter/unencrypted.pdf` — genuine Annex F linearized form, feeds the linearization read/round-trip oracle (not a byte-identical upstream copy) |
 | `tests/fixtures/pdfparser/linearized_PDFBOX-3110-poems-beads.pdf` | 3.0.x | locally derived (wave 1434) via `qpdf --linearize` of the bundled `tests/fixtures/pdfwriter/PDFBOX-3110-poems-beads.pdf` — genuine Annex F linearized form |
+| `tests/fixtures/pdfparser/hybrid_xrefstm.pdf` | 3.0.x | locally hand-crafted (wave 1436) — PDF 1.5 hybrid-reference file: classic xref table + trailer `/XRefStm` pointing at a cross-reference stream listing a compressed object (object 6 in ObjStm 7) marked free in the classic table; feeds the hybrid `/XRefStm` read-parity oracle. `qpdf --check`-clean |
+| `tests/fixtures/pdfparser/extends_objstm_chain.pdf` | 3.0.x | locally hand-crafted (wave 1436) — base ObjStm 7 + extending ObjStm 8 (`/Extends 7 0 R`); a `/Type /XRef` stream routes one object into each container; feeds the `/Extends` ObjStm-chain read-parity oracle. `qpdf --check`-clean |
 
 ### `tests/pdfwriter/upstream/`
 
