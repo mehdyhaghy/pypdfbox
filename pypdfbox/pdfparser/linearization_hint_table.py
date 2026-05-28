@@ -23,7 +23,7 @@ This module decodes all three sub-tables:
   per-page thumbnail objects so a streaming consumer can fetch
   thumbnails before the full page data.
 
-Layout (PDF 32000-1 Table F.3 — Page Offset Hint Table header, 12
+Layout (PDF 32000-1 Table F.3 — Page Offset Hint Table header, 36
 fixed bytes followed by variable-length per-page records):
 
     Item 1 (4 bytes) — least number of objects in a page
@@ -40,7 +40,7 @@ fixed bytes followed by variable-length per-page records):
     Item 12 (2 bytes) — bits needed in the numerator for fractional position
     Item 13 (2 bytes) — denominator of fractional position
 
-After the 32-byte header, per-page records follow (one per page in
+After the 36-byte header, per-page records follow (one per page in
 document order). Each record packs five bit-fields (widths driven by
 Items 3, 5, 7, 9, and 10) — the data is **byte-aligned at the start of
 each table** but **bit-packed within the table**: padding to the next
@@ -224,13 +224,27 @@ def _read_u32(data: bytes, offset: int) -> int:
     return int.from_bytes(data[offset : offset + 4], "big")
 
 
+#: Total fixed header size in bytes — items 1-13 of PDF 32000-1 Table F.3
+#: laid out contiguously: 4+4+2+4+2+4+2+4+2+2+2+2+2 = 36.
+_PAGE_OFFSET_HEADER_BYTES = 36
+
+
 def parse_page_offset_hint_header(decoded: bytes) -> PageOffsetHintHeader:
-    """Parse the 32-byte Page Offset Hint Table header (Items 1-13) from
-    the **decoded** hint stream body. The body must be at least 32 bytes
-    or :class:`HintTableParseError` is raised."""
-    if len(decoded) < 32:
+    """Parse the 36-byte Page Offset Hint Table header (Items 1-13) from
+    the **decoded** hint stream body. The body must be at least 36 bytes
+    or :class:`HintTableParseError` is raised.
+
+    Wave 1452 fix: an earlier revision treated the header as 32 bytes
+    (Items 1-11 only) and started the per-page bit-stream at offset 32,
+    which shifted every per-page delta by 4 bytes — a cross-checked
+    bug surfaced by the live PDFBox / qpdf oracle (qpdf's
+    ``--show-linearization`` confirmed ``shared_denominator`` lives at
+    offset 34 of the decoded body, and Items 12 + 13 are mandatory in
+    qpdf-produced linearized PDFs)."""
+    if len(decoded) < _PAGE_OFFSET_HEADER_BYTES:
         raise HintTableParseError(
-            f"hint stream too short for header: {len(decoded)} < 32"
+            "hint stream too short for header: "
+            f"{len(decoded)} < {_PAGE_OFFSET_HEADER_BYTES}"
         )
     return PageOffsetHintHeader(
         least_objects_per_page=_read_u32(decoded, 0),
@@ -244,13 +258,13 @@ def parse_page_offset_hint_header(decoded: bytes) -> PageOffsetHintHeader:
         bits_for_content_stream_length_delta=_read_u16(decoded, 26),
         bits_for_shared_object_count=_read_u16(decoded, 28),
         bits_for_shared_object_id=_read_u16(decoded, 30),
-        # Items 12 + 13 sit at offsets 32 + 34 but the spec packs them
-        # *after* the per-page records — they live in the header for
-        # documentation purposes only; some producers omit them when
-        # they're zero. We surface them via a second-pass read at the
-        # caller's discretion (see ``parse_page_offset_hint_table``).
-        bits_for_fraction_numerator=0,
-        fraction_denominator=0,
+        # Items 12 + 13 sit at the tail of the fixed header (offsets 32
+        # + 34); both are mandatory per PDF 32000-1 Table F.3 and qpdf
+        # writes them on every linearized PDF it produces. Reading them
+        # is what advances the per-page bit cursor past the full 36-byte
+        # header rather than landing 4 bytes early.
+        bits_for_fraction_numerator=_read_u16(decoded, 32),
+        fraction_denominator=_read_u16(decoded, 34),
     )
 
 
@@ -263,43 +277,86 @@ def parse_page_offset_hint_table(
     body, given the total page count from the linearization parameter
     dictionary's ``/N`` entry.
 
-    The function expects the body to start with the Page Offset header
-    (§F.3 Items 1-11; Items 12-13 are not required by this decoder and
-    are emitted as zero). One :class:`PageOffsetEntry` per page is
-    decoded sequentially; the bit cursor is byte-aligned only at the
-    very start (the per-page block is bit-packed end-to-end).
+    The function expects the body to start with the 36-byte Page Offset
+    header (§F.3 Items 1-13), followed by the per-page block. The
+    per-page block is laid out **column-major** per PDF 32000-1 §F.3:
+    all pages' ``delta_nobjects`` first, then all pages'
+    ``delta_page_length``, then ``nshared_objects``, then per-page
+    ``shared_identifiers[]`` + ``shared_numerators[]`` (we read past
+    them — the Shared Object Hint Table proper carries the per-shared
+    record), and finally ``delta_content_offset`` and
+    ``delta_content_length`` across all pages. Each column ends with a
+    skip-to-next-byte alignment.
+
+    Wave 1452 fix: the previous decoder read row-major (one full page's
+    five fields, then the next page's five fields) which is the layout
+    PDFBox upstream never decodes and which produces values that don't
+    match qpdf's ``--show-linearization`` output. Verified against the
+    qpdf 12.3.2 reference reader and the published qpdf source code.
 
     Raises :class:`HintTableParseError` when the body is truncated, when
     any bit field is negative, or when ``page_count`` is non-positive."""
     if page_count <= 0:
         raise HintTableParseError(f"page_count must be > 0, got {page_count}")
     header = parse_page_offset_hint_header(decoded)
-    # The per-page block starts immediately after the 32-byte fixed
-    # header (Items 12 + 13 sit at the very end of the table and are
-    # decoded only by the optional second pass — they're zero in the
-    # vast majority of producers).
-    body = decoded[32:]
+    # The per-page block starts immediately after the 36-byte fixed
+    # header. Items 12 + 13 (fraction numerator bit width + denominator)
+    # are part of the header, **not** a trailing afterword — wave 1452
+    # fix: the previous 32-byte slice shifted every per-page delta read
+    # by 4 bytes and gave garbage values when verified against qpdf.
+    body = decoded[_PAGE_OFFSET_HEADER_BYTES:]
     reader = _BitReader(body)
-    pages: list[PageOffsetEntry] = []
-    for _ in range(page_count):
-        object_count_delta = reader.read(header.bits_for_object_count_delta)
-        page_length_delta = reader.read(header.bits_for_page_length_delta)
-        content_stream_offset_delta = reader.read(
-            header.bits_for_content_stream_offset_delta
+    # Column 1 — delta_nobjects across all pages, then byte-align.
+    object_count_deltas = [
+        reader.read(header.bits_for_object_count_delta) for _ in range(page_count)
+    ]
+    reader.align_to_byte()
+    # Column 2 — delta_page_length across all pages, then byte-align.
+    page_length_deltas = [
+        reader.read(header.bits_for_page_length_delta) for _ in range(page_count)
+    ]
+    reader.align_to_byte()
+    # Column 3 — nshared_objects across all pages, then byte-align.
+    shared_counts = [
+        reader.read(header.bits_for_shared_object_count) for _ in range(page_count)
+    ]
+    reader.align_to_byte()
+    # Column 4 — per-page shared_identifiers[] (variable length per
+    # page based on shared_counts[page]). The values are not exposed in
+    # the typed return — they belong to the Shared Object Hint Table
+    # surface — but we MUST consume their bits to keep the cursor on
+    # the next column. Same for shared_numerators (column 5).
+    for nshared in shared_counts:
+        for _ in range(nshared):
+            reader.read(header.bits_for_shared_object_id)
+    reader.align_to_byte()
+    # Column 5 — per-page shared_numerators[].
+    for nshared in shared_counts:
+        for _ in range(nshared):
+            reader.read(header.bits_for_fraction_numerator)
+    reader.align_to_byte()
+    # Column 6 — delta_content_offset across all pages, then byte-align.
+    content_offset_deltas = [
+        reader.read(header.bits_for_content_stream_offset_delta)
+        for _ in range(page_count)
+    ]
+    reader.align_to_byte()
+    # Column 7 — delta_content_length across all pages, then byte-align.
+    content_length_deltas = [
+        reader.read(header.bits_for_content_stream_length_delta)
+        for _ in range(page_count)
+    ]
+    reader.align_to_byte()
+    pages = [
+        PageOffsetEntry(
+            object_count_delta=object_count_deltas[i],
+            page_length_delta=page_length_deltas[i],
+            content_stream_offset_delta=content_offset_deltas[i],
+            content_stream_length_delta=content_length_deltas[i],
+            shared_object_count=shared_counts[i],
         )
-        content_stream_length_delta = reader.read(
-            header.bits_for_content_stream_length_delta
-        )
-        shared_object_count = reader.read(header.bits_for_shared_object_count)
-        pages.append(
-            PageOffsetEntry(
-                object_count_delta=object_count_delta,
-                page_length_delta=page_length_delta,
-                content_stream_offset_delta=content_stream_offset_delta,
-                content_stream_length_delta=content_stream_length_delta,
-                shared_object_count=shared_object_count,
-            )
-        )
+        for i in range(page_count)
+    ]
     return PageOffsetHintTable(header=header, pages=pages)
 
 
@@ -395,41 +452,65 @@ def parse_shared_object_hint_header(decoded: bytes) -> SharedObjectHintHeader:
 def parse_shared_object_hint_table(decoded: bytes) -> SharedObjectHintTable:
     """Parse a Shared Object Hint Table out of the **decoded** sub-table
     body. The body must start with the 24-byte fixed header; the
-    per-entry block immediately follows and is bit-packed end-to-end.
+    per-entry block follows in **column-major** order per qpdf's
+    reference reader (and the PDF 32000-1 spec text confirming each
+    row starts on a byte boundary):
 
-    Each entry encodes four fields (PDF 32000-1 Table F.5):
+    1. All entries' ``length_delta`` (width
+       ``bits_for_shared_object_length_delta``), then skip to next byte.
+    2. All entries' ``signature_present`` flag (1 bit each), then skip
+       to next byte.
+    3. For each entry whose flag is set, a 128-bit (16-byte) MD5
+       signature laid out contiguously, then skip to next byte.
+    4. All entries' ``nobjects_minus_one`` (alias of the
+       ``group_object_count`` field — width
+       ``bits_for_group_object_count``).
 
-    1. ``length_delta`` — width ``bits_for_shared_object_length_delta``
-    2. ``signature_present`` — 1 bit
-    3. ``signature_md5`` — 128 bits, present iff ``signature_present``
-    4. ``group_object_count`` — width ``bits_for_group_object_count``
+    Wave 1452 fix: prior decoder read each entry row-major, which
+    produced garbage when verified against qpdf's
+    ``--show-linearization`` output. The new column-major loop matches
+    qpdf 12.3.2 exactly.
 
     Raises :class:`HintTableParseError` when the body is truncated."""
     header = parse_shared_object_hint_header(decoded)
     body = decoded[24:]
     reader = _BitReader(body)
-    entries: list[SharedObjectEntry] = []
-    for _ in range(header.num_shared_objects_total):
-        length_delta = reader.read(
-            header.bits_for_shared_object_length_delta
-        )
-        signature_flag = reader.read(1)
-        if signature_flag:
+    total = header.num_shared_objects_total
+    # Column 1 — length_delta across all entries.
+    length_deltas = [
+        reader.read(header.bits_for_shared_object_length_delta)
+        for _ in range(total)
+    ]
+    reader.align_to_byte()
+    # Column 2 — signature_present (1 bit each).
+    signature_flags = [reader.read(1) for _ in range(total)]
+    reader.align_to_byte()
+    # Column 3 — MD5 signatures for the subset whose flag is set.
+    signatures: list[bytes] = []
+    for flag in signature_flags:
+        if flag:
             md5_bytes = bytearray(16)
             for i in range(16):
                 md5_bytes[i] = reader.read(8)
-            signature_md5 = bytes(md5_bytes)
+            signatures.append(bytes(md5_bytes))
         else:
-            signature_md5 = b""
-        group_object_count = reader.read(header.bits_for_group_object_count)
-        entries.append(
-            SharedObjectEntry(
-                length_delta=length_delta,
-                signature_present=bool(signature_flag),
-                signature_md5=signature_md5,
-                group_object_count=group_object_count,
-            )
+            signatures.append(b"")
+    reader.align_to_byte()
+    # Column 4 — nobjects_minus_one across all entries (qpdf's name for
+    # this field; pypdfbox exposes it as ``group_object_count`` to keep
+    # the dataclass-field name stable).
+    group_object_counts = [
+        reader.read(header.bits_for_group_object_count) for _ in range(total)
+    ]
+    entries = [
+        SharedObjectEntry(
+            length_delta=length_deltas[i],
+            signature_present=bool(signature_flags[i]),
+            signature_md5=signatures[i],
+            group_object_count=group_object_counts[i],
         )
+        for i in range(total)
+    ]
     return SharedObjectHintTable(header=header, entries=entries)
 
 

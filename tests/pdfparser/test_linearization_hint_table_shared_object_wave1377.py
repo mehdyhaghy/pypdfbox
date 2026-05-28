@@ -92,6 +92,64 @@ def test_parse_shared_object_hint_header_too_short_raises() -> None:
 # ----------------------------------------------------------- full table
 
 
+class _BitWriter:
+    """Append bits and align to byte boundaries — encoder twin of the
+    column-major reader used by ``parse_shared_object_hint_table``."""
+
+    def __init__(self) -> None:
+        self._buf = 0
+        self._nbits = 0
+
+    def write(self, value: int, width: int) -> None:
+        if width == 0:
+            return
+        self._buf = (self._buf << width) | (value & ((1 << width) - 1))
+        self._nbits += width
+
+    def align_to_byte(self) -> None:
+        pad = (-self._nbits) % 8
+        if pad:
+            self._buf <<= pad
+            self._nbits += pad
+
+    def to_bytes(self) -> bytes:
+        self.align_to_byte()
+        if self._nbits == 0:
+            return b""
+        return self._buf.to_bytes(self._nbits // 8, "big")
+
+
+def _pack_shared_object_body(
+    *,
+    bits_length_delta: int,
+    bits_group_count: int,
+    entries: list[tuple[int, bool, bytes, int]],
+) -> bytes:
+    """Encode a Shared Object Hint Table per-entry block in
+    **column-major** order matching ``parse_shared_object_hint_table``:
+    all length_deltas (byte-align), all 1-bit signature flags
+    (byte-align), then the variable-length MD5 signatures for set
+    flags (byte-align), then all group counts. ``entries`` is a list
+    of ``(length_delta, signature_present, md5_or_empty, group_count)``
+    tuples."""
+    w = _BitWriter()
+    for length_delta, _, _, _ in entries:
+        w.write(length_delta, bits_length_delta)
+    w.align_to_byte()
+    for _, present, _, _ in entries:
+        w.write(1 if present else 0, 1)
+    w.align_to_byte()
+    for _, present, md5, _ in entries:
+        if present:
+            assert len(md5) == 16
+            for byte in md5:
+                w.write(byte, 8)
+    w.align_to_byte()
+    for _, _, _, group_count in entries:
+        w.write(group_count, bits_group_count)
+    return w.to_bytes()
+
+
 def _pack_bits(values: list[tuple[int, int]]) -> bytes:
     """Pack a list of ``(value, bit_width)`` tuples MSB-first into a
     minimal bytes blob. Inverse of ``_BitReader``."""
@@ -137,27 +195,19 @@ def test_parse_shared_object_hint_table_mixed_signatures() -> None:
     )
     md5_a = bytes(range(16))
     md5_b = bytes(range(16, 32))
-    # Three entries: (length_delta=10, signed=True, md5=md5_a, group=2),
+    # Three entries encoded column-major per the spec:
+    # (length_delta=10, signed=True, md5=md5_a, group=2),
     # (length_delta=0, signed=False, md5=N/A, group=0),
     # (length_delta=255, signed=True, md5=md5_b, group=7).
-    bits: list[tuple[int, int]] = []
-    # Entry 1
-    bits.append((10, 8))
-    bits.append((1, 1))
-    for byte in md5_a:
-        bits.append((byte, 8))
-    bits.append((2, 3))
-    # Entry 2
-    bits.append((0, 8))
-    bits.append((0, 1))
-    bits.append((0, 3))
-    # Entry 3
-    bits.append((255, 8))
-    bits.append((1, 1))
-    for byte in md5_b:
-        bits.append((byte, 8))
-    bits.append((7, 3))
-    body = _pack_bits(bits)
+    body = _pack_shared_object_body(
+        bits_length_delta=8,
+        bits_group_count=3,
+        entries=[
+            (10, True, md5_a, 2),
+            (0, False, b"", 0),
+            (255, True, md5_b, 7),
+        ],
+    )
     table = parse_shared_object_hint_table(header_bytes + body)
     assert isinstance(table, SharedObjectHintTable)
     assert table.shared_object_count() == 3
@@ -351,13 +401,16 @@ def test_decode_shared_object_hint_table_through_parser() -> None:
         least_length=64,
         bits_length_delta=8,
     )
-    bits: list[tuple[int, int]] = [
-        # Entry 1: length_delta=5, no signature
-        (5, 8), (0, 1),
-        # Entry 2: length_delta=100, no signature
-        (100, 8), (0, 1),
-    ]
-    shared_body = _pack_bits(bits)
+    shared_body = _pack_shared_object_body(
+        bits_length_delta=8,
+        bits_group_count=0,
+        entries=[
+            # Entry 1: length_delta=5, no signature, group=0
+            (5, False, b"", 0),
+            # Entry 2: length_delta=100, no signature, group=0
+            (100, False, b"", 0),
+        ],
+    )
     shared_offset = len(page_off_section)
     pdf = _build_linearized_pdf_with_subtables(
         n_pages=1,

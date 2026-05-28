@@ -97,11 +97,16 @@ def _build_page_offset_header(
     bits_content_len_delta: int = 8,
     bits_shared_count: int = 4,
     bits_shared_id: int = 8,
+    bits_fraction_numerator: int = 0,
+    fraction_denominator: int = 0,
 ) -> bytes:
-    """Pack the 32-byte fixed header of a Page Offset Hint Table per
-    PDF 32000-1 Table F.3 Items 1-11. Items 12-13 default to 0."""
+    """Pack the 36-byte fixed header of a Page Offset Hint Table per
+    PDF 32000-1 Table F.3 Items 1-13. The trailing items 12 + 13 are
+    part of the fixed header — wave 1452 fixed the decoder that
+    previously stopped at byte 32 and bled the next 4 bytes into the
+    per-page bit stream."""
     return struct.pack(
-        ">IIHIHIHIHHH",
+        ">IIHIHIHIHHHHH",
         least_objects,
         first_page_offset,
         bits_object_delta,
@@ -113,6 +118,8 @@ def _build_page_offset_header(
         bits_content_len_delta,
         bits_shared_count,
         bits_shared_id,
+        bits_fraction_numerator,
+        fraction_denominator,
     )
 
 
@@ -171,9 +178,89 @@ def _pack_bits(values: list[tuple[int, int]]) -> bytes:
     return buf.to_bytes(nbits // 8, "big")
 
 
+class _BitWriter:
+    """Append bits and align to byte boundaries — the encoder twin of
+    the column-major reader used by the production decoder. Calls to
+    :meth:`align_to_byte` zero-pad to the next byte boundary, matching
+    qpdf's ``skipToNextByte`` between successive column reads."""
+
+    def __init__(self) -> None:
+        self._buf = 0
+        self._nbits = 0
+
+    def write(self, value: int, width: int) -> None:
+        if width == 0:
+            return
+        self._buf = (self._buf << width) | (value & ((1 << width) - 1))
+        self._nbits += width
+
+    def align_to_byte(self) -> None:
+        pad = (-self._nbits) % 8
+        if pad:
+            self._buf <<= pad
+            self._nbits += pad
+
+    def to_bytes(self) -> bytes:
+        self.align_to_byte()
+        return self._buf.to_bytes(self._nbits // 8, "big")
+
+
+def _pack_page_offset_body(
+    *,
+    bits_object_delta: int,
+    bits_page_len_delta: int,
+    bits_content_off_delta: int,
+    bits_content_len_delta: int,
+    bits_shared_count: int,
+    bits_shared_id: int,
+    bits_shared_numerator: int,
+    page_fields: list[tuple[int, int, int, int, int]],
+) -> bytes:
+    """Encode the per-page block in **column-major** order matching the
+    decoder. Each column ends with a byte alignment, the same way the
+    reference qpdf reader emits ``skipToNextByte`` between successive
+    ``load_vector_int`` calls."""
+    w = _BitWriter()
+    # Column 1 — obj_count_delta across all pages.
+    for ocd, _, _, _, _ in page_fields:
+        w.write(ocd, bits_object_delta)
+    w.align_to_byte()
+    # Column 2 — page_length_delta across all pages.
+    for _, pld, _, _, _ in page_fields:
+        w.write(pld, bits_page_len_delta)
+    w.align_to_byte()
+    # Column 3 — nshared_objects across all pages.
+    for _, _, _, _, sc in page_fields:
+        w.write(sc, bits_shared_count)
+    w.align_to_byte()
+    # Column 4 — shared_identifiers (one per shared ref per page) —
+    # empty when all shared counts are zero; we leave it empty for
+    # this fixture which uses non-zero shared counts but with zero
+    # identifier bit width is impractical, so for this test we write
+    # `nshared * bits_shared_id` zero bits per page.
+    for _, _, _, _, sc in page_fields:
+        for _ in range(sc):
+            w.write(0, bits_shared_id)
+    w.align_to_byte()
+    # Column 5 — shared_numerators (one per shared ref per page).
+    for _, _, _, _, sc in page_fields:
+        for _ in range(sc):
+            w.write(0, bits_shared_numerator)
+    w.align_to_byte()
+    # Column 6 — content_offset_delta across all pages.
+    for _, _, cod, _, _ in page_fields:
+        w.write(cod, bits_content_off_delta)
+    w.align_to_byte()
+    # Column 7 — content_length_delta across all pages.
+    for _, _, _, cld, _ in page_fields:
+        w.write(cld, bits_content_len_delta)
+    w.align_to_byte()
+    return w.to_bytes()
+
+
 def test_parse_page_offset_hint_table_three_pages_round_trip() -> None:
-    """Hand-craft a 3-page hint table, decode it, assert every recovered
-    field matches what we packed."""
+    """Hand-craft a 3-page hint table column-major encoded per the spec,
+    decode it, assert every recovered field matches what we packed."""
     header_bytes = _build_page_offset_header(
         least_objects=3,
         first_page_offset=1024,
@@ -188,20 +275,23 @@ def test_parse_page_offset_hint_table_three_pages_round_trip() -> None:
         bits_shared_id=4,
     )
     # Three pages, five fields per row: obj-count delta, page-len delta,
-    # content-off delta, content-len delta, shared-count.
+    # content-off delta, content-len delta, shared-count. Encoded
+    # column-major per the qpdf-reference layout.
     page_fields: list[tuple[int, int, int, int, int]] = [
         (0, 0, 0, 0, 0),
         (5, 60, 12, 40, 1),
         (10, 120, 14, 50, 2),
     ]
-    bits: list[tuple[int, int]] = []
-    for ocd, pld, cod, cld, sc in page_fields:
-        bits.append((ocd, 4))
-        bits.append((pld, 8))
-        bits.append((cod, 4))
-        bits.append((cld, 6))
-        bits.append((sc, 2))
-    body = _pack_bits(bits)
+    body = _pack_page_offset_body(
+        bits_object_delta=4,
+        bits_page_len_delta=8,
+        bits_content_off_delta=4,
+        bits_content_len_delta=6,
+        bits_shared_count=2,
+        bits_shared_id=4,
+        bits_shared_numerator=0,
+        page_fields=page_fields,
+    )
     table = parse_page_offset_hint_table(header_bytes + body, page_count=3)
     assert isinstance(table, PageOffsetHintTable)
     assert table.page_count() == 3
@@ -357,13 +447,22 @@ def test_decode_page_offset_hint_table_through_parser() -> None:
         bits_shared_count=0,
         bits_shared_id=0,
     )
-    bits: list[tuple[int, int]] = [
+    page_fields: list[tuple[int, int, int, int, int]] = [
         # Page 0 — zero deltas.
-        (0, 4), (0, 8), (0, 4), (0, 6), (0, 0),
+        (0, 0, 0, 0, 0),
         # Page 1 — assorted deltas.
-        (3, 4), (25, 8), (5, 4), (20, 6), (0, 0),
+        (3, 25, 5, 20, 0),
     ]
-    body = _pack_bits(bits)
+    body = _pack_page_offset_body(
+        bits_object_delta=4,
+        bits_page_len_delta=8,
+        bits_content_off_delta=4,
+        bits_content_len_delta=6,
+        bits_shared_count=0,
+        bits_shared_id=0,
+        bits_shared_numerator=0,
+        page_fields=page_fields,
+    )
     pdf = _build_linearized_pdf_with_flate_hint(
         n_pages=2,
         page_offset_header_bytes=header,
