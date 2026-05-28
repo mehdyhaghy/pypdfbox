@@ -11,6 +11,7 @@ from pypdfbox.cos import (
     COSName,
     COSNull,
     COSNumber,
+    COSString,
 )
 from pypdfbox.io import RandomAccessRead, RandomAccessReadBuffer
 
@@ -230,6 +231,24 @@ class PDFStreamParser(COSParser):
         which calls ``pdContentstream.getContentsForStreamParsing()`` to
         get the underlying ``RandomAccessRead``."""
         return cls(pd_content_stream.get_contents_for_stream_parsing())
+
+    # ---------- string helpers (content-stream variant) ----------
+
+    def _read_cos_hex_string(self) -> COSString:
+        """Read a ``<...>`` hex string operand WITHOUT marking it
+        force-hex-form.
+
+        The base ``COSParser._read_cos_hex_string`` sets
+        ``force_hex_form`` so the document writer round-trips a hex-source
+        string back as hex. Upstream's content-stream parsers
+        (``BaseParser.parseCOSString``) never call ``setForceHexForm``, so
+        a hex string parsed out of a content stream carries the default
+        ``false`` and ``ContentStreamWriter`` re-emits it in literal
+        ``(...)`` form (escaping ``(``/``)``/``\\``) whenever the bytes are
+        ASCII. Overriding here keeps the content-stream round-trip
+        byte-identical to Apache PDFBox while leaving the document-level
+        round-trip preservation in ``COSParser`` untouched."""
+        return COSString(self.read_hex_string())
 
     # ---------- public API ----------
 
