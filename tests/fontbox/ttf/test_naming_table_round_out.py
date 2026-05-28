@@ -156,8 +156,12 @@ def test_accessors_default_to_none_when_records_absent() -> None:
 # ---- charset coverage -----------------------------------------------------
 
 
-def test_macintosh_roman_decodes_high_bytes_with_mac_roman() -> None:
-    # Mac Roman 0xA8 = ®, 0xA9 = ©, 0xAA = ™
+def test_macintosh_roman_decodes_high_bytes_with_latin_1() -> None:
+    # Upstream PDFBox 3.0.7 ``NamingTable.getCharset`` falls through to
+    # ISO-8859-1 for the Macintosh platform — it does NOT decode as
+    # MacRoman. Mirror that for byte-level parity with PDFBox: byte 0xA8 =
+    # Latin-1 ``¨`` (diaeresis), 0xA9 = ``©``, 0xAA = ``ª`` (feminine
+    # ordinal). Wave 1449 ``NameTableProbe`` differential surfaced this.
     raw = bytes([0xA8, 0xA9, 0xAA])
     blob = _build_name_table([
         (NameRecord.PLATFORM_MACINTOSH, NameRecord.ENCODING_MACINTOSH_ROMAN,
@@ -171,11 +175,13 @@ def test_macintosh_roman_decodes_high_bytes_with_mac_roman() -> None:
         NameRecord.ENCODING_MACINTOSH_ROMAN,
         NameRecord.LANGUAGE_MACINTOSH_ENGLISH,
     )
-    assert decoded == "®©™"
+    assert decoded == "¨©ª"
 
 
-def test_macintosh_japanese_decodes_with_shift_jis_best_effort() -> None:
-    # ASCII subset of Shift-JIS — round-trips identically.
+def test_macintosh_japanese_decodes_with_latin_1_best_effort() -> None:
+    # PDFBox's ``getCharset`` returns ISO-8859-1 for every non-Windows /
+    # non-Unicode / non-ISO record — including Macintosh Japanese
+    # (platform=1, encoding=1). ASCII round-trips identically.
     raw = b"NIPPON"
     blob = _build_name_table([
         (NameRecord.PLATFORM_MACINTOSH, 1,  # encoding 1 = Japanese

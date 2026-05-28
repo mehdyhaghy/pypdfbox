@@ -108,6 +108,19 @@ class NamingTable(TTFTable):
         Mirrors upstream ``NamingTable#getCharset`` (NamingTable.java
         line 110), expressed in Python codec strings rather than
         ``java.nio.charset.Charset`` instances.
+
+        Behaviour intentionally matches upstream PDFBox 3.0.7 exactly:
+
+        * platform=3 (Windows) encoding 0/1/10 → UTF-16BE.
+        * platform=0 (Unicode) → UTF-16BE (any encoding).
+        * platform=2 (ISO) encoding 0 → US-ASCII, encoding 1 → UTF-16BE.
+        * **everything else, including platform=1 (Macintosh)** →
+          ISO-8859-1 (Latin-1). Upstream does NOT decode Macintosh records
+          as ``MacRoman``; this surfaces as a parity-visible byte at e.g.
+          ``0xAA`` (Latin-1 ``ª`` vs Mac-Roman ``™``) in NID 10 of
+          ``LiberationSans-Regular``. PDFBox itself has chosen the Latin-1
+          decode, so the port mirrors it — see wave 1449 ``NameTableProbe``
+          differential parity.
         """
         platform = nr.get_platform_id()
         encoding = nr.get_platform_encoding_id()
@@ -124,14 +137,8 @@ class NamingTable(TTFTable):
                 return "us-ascii"
             if encoding == 1:
                 return "utf-16-be"
-        if platform == NameRecord.PLATFORM_MACINTOSH:
-            # Macintosh script manager codes — encoding 0 = Roman, 1 = Japanese.
-            # Python ships ``mac_roman`` and ``shift_jis`` (a superset of MacJapanese
-            # for ASCII-only data) — fall back to latin-1 on lookup failure.
-            if encoding == NameRecord.ENCODING_MACINTOSH_ROMAN:
-                return "mac_roman"
-            if encoding == 1:
-                return "shift_jis"
+        # platform=1 (Macintosh) and every other unrecognised combination
+        # falls through to the upstream default — Latin-1 / ISO-8859-1.
         return "iso-8859-1"
 
     @classmethod

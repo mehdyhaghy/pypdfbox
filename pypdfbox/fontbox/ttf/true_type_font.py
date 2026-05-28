@@ -1254,18 +1254,37 @@ class TrueTypeFont:
             nr.set_platform_encoding_id(int(ft_record.platEncID))
             nr.set_language_id(int(ft_record.langID))
             nr.set_name_id(int(ft_record.nameID))
-            try:
-                value = ft_record.toUnicode()
-            except (UnicodeDecodeError, ValueError):
-                value = None
+            # fontTools stores the raw on-disk bytes on ``ft_record.string``
+            # (decoded form on its ``toUnicode`` accessor). The byte-level
+            # ``NamingTable.read`` path decodes via :meth:`NamingTable.get_charset`
+            # — same selection PDFBox uses, which differs from fontTools'
+            # default ``toUnicode`` for platform=1 (Macintosh) records:
+            # upstream PDFBox falls through to ISO-8859-1 for the Macintosh
+            # platform while fontTools chooses MacRoman. Decoding the raw
+            # bytes through ``NamingTable.get_charset`` keeps every record
+            # parity-identical to PDFBox (wave 1449, ``NameTableProbe``).
+            raw = getattr(ft_record, "string", None)
+            value: str | None = None
+            if isinstance(raw, bytes | bytearray):
+                charset = NamingTable.get_charset(nr)
+                try:
+                    value = NamingTable._decode_string(bytes(raw), charset)  # noqa: SLF001
+                except LookupError:
+                    value = bytes(raw).decode("latin-1")
+                nr.set_string_length(len(raw))
+            else:
+                # ``ft_record.string`` is already a Python ``str`` — fontTools
+                # has decoded it for us (rare; happens on synthesised records).
+                # Fall back to ``toUnicode`` for parity with previous behaviour.
+                try:
+                    value = ft_record.toUnicode()
+                except (UnicodeDecodeError, ValueError):
+                    value = None
+                if value is not None:
+                    value = str(value)
+                    nr.set_string_length(len(value.encode("utf-8")))
             if value is not None:
-                value = str(value)
                 nr.set_string(value)
-                # ``string_length`` upstream is the on-disk byte length;
-                # we don't have it here, so the UTF-8 byte length is the
-                # closest meaningful approximation. Tests only assert the
-                # round-tripped string.
-                nr.set_string_length(len(value.encode("utf-8")))
             records.append(nr)
         nt._name_records = records  # noqa: SLF001
         nt._fill_lookup_table()  # noqa: SLF001
