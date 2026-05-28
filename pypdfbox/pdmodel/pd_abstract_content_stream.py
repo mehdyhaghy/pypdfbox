@@ -8,7 +8,7 @@ The concrete subclass :class:`PDPageContentStream` (and its siblings
 ``PDPatternContentStream``) inherits from this base and may override
 individual operator methods. The base provides default implementations
 that emit operator bytes directly to ``self._output_stream`` using the
-same number-formatting rules as upstream (``setMaximumFractionDigits(4)``
+same number-formatting rules as upstream (``setMaximumFractionDigits(5)``
 with trailing zeros trimmed).
 """
 
@@ -29,8 +29,11 @@ _LF = b"\n"
 _SPACE = b" "
 
 
-def _format_decimal(value: float, max_fraction_digits: int = 4) -> bytes:
-    """Format a numeric operand. Mirrors upstream's ``formatDecimal``."""
+def _format_decimal(value: float, max_fraction_digits: int = 5) -> bytes:
+    """Format a numeric operand. Mirrors upstream's ``formatDecimal``
+    (``NumberFormat.getNumberInstance(Locale.US)`` with
+    ``setMaximumFractionDigits(5)``, grouping off, default
+    ``RoundingMode.HALF_EVEN``)."""
     if isinstance(value, int) and not isinstance(value, bool):
         return str(value).encode("ascii")
     f = float(value)
@@ -55,9 +58,9 @@ class PDAbstractContentStream:
     """
 
     #: Default maximum number of fractional digits emitted for floating
-    #: numeric tokens. Mirrors upstream's ``formatDecimal.setMaximumFractionDigits(4)``
+    #: numeric tokens. Mirrors upstream's ``formatDecimal.setMaximumFractionDigits(5)``
     #: at Java line 112.
-    DEFAULT_MAX_FRACTION_DIGITS: int = 4
+    DEFAULT_MAX_FRACTION_DIGITS: int = 5
 
     def __init__(
         self,

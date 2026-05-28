@@ -2621,20 +2621,39 @@ class PDFRenderer(PDFStreamEngine):
             return
         if ext_gstate is None:
             return
-        try:
-            bm = ext_gstate.get_blend_mode()
-        except Exception:  # noqa: BLE001
-            bm = None
-        # ``Normal`` (or unset) → leave blend_mode as None for the cheap
-        # alpha-over hot path; only stash the wrapper for non-Normal modes.
+        # An ExtGState only updates the parameters it explicitly carries
+        # (PDF 32000-1 §8.4.5 / §11.6.4); keys it omits must be left
+        # unchanged. ``get_blend_mode()`` returns ``Normal`` for an absent
+        # ``/BM`` (matching upstream's never-null accessor), so we must guard
+        # on key presence here — otherwise a later ``gs`` that sets only
+        # ``/ca`` would silently clobber a ``/BM`` set by an earlier ``gs``.
+        # Mirrors upstream ``PDExtendedGraphicsState.copyIntoGraphicsState``,
+        # which applies the blend mode only when the dict contains ``/BM``.
+        from pypdfbox.cos import COSName as _COSName  # noqa: PLC0415
         from pypdfbox.pdmodel.graphics.blend_mode import (  # noqa: PLC0415
             BlendMode,
         )
 
-        if bm is None or bm is BlendMode.NORMAL:
-            self._gs.blend_mode = None
-        else:
-            self._gs.blend_mode = bm
+        # Guarded defensively (like every other accessor in this method): a
+        # malformed/partial ExtGState whose ``get_cos_object`` raises must
+        # leave the blend mode unchanged rather than crash the paint.
+        try:
+            has_bm = ext_gstate.get_cos_object().contains_key(
+                _COSName.get_pdf_name("BM")
+            )
+        except Exception:  # noqa: BLE001
+            has_bm = False
+        if has_bm:
+            try:
+                bm = ext_gstate.get_blend_mode()
+            except Exception:  # noqa: BLE001
+                bm = None
+            # ``Normal`` → leave blend_mode as None for the cheap alpha-over
+            # hot path; only stash the wrapper for non-Normal modes.
+            if bm is None or bm is BlendMode.NORMAL:
+                self._gs.blend_mode = None
+            else:
+                self._gs.blend_mode = bm
 
         # ---- /SMask (soft mask) — §11.6.5.3 ----
         # ``/None`` resets to "no soft mask"; a dict wraps as PDSoftMask
@@ -3431,14 +3450,21 @@ class PDFRenderer(PDFStreamEngine):
             if mask_alpha is not None:
                 combined = ImageChops.multiply(combined, mask_alpha)
         if blend_mode is not None:
-            # Blend the painted layer's RGB against the current backdrop,
-            # then commit the blended pixels through the combined clip /
-            # soft-mask alpha so only the painted region is affected.
+            # Blend the painted layer's RGB against the current backdrop. The
+            # source's alpha (the combined clip / soft-mask / ``/ca`` plane) is
+            # folded INTO :meth:`_blend` via ``putalpha``: per PDF 32000-1
+            # §11.3.6 the blended colour is already interpolated back toward
+            # the backdrop by ``a_s`` (``c_out = (1-a_s)*c_b + a_s*B``), and
+            # the result alpha is the Porter-Duff over-alpha. So ``blended``
+            # is the fully-composited canvas — paste it through its OWN alpha,
+            # not ``combined`` again (a second weighting by ``combined`` would
+            # double-apply the source alpha, e.g. yielding 0.75*Cb+0.25*B at
+            # /ca=0.5 instead of the spec midpoint 0.5*Cb+0.5*B).
             backdrop = prev_image.convert("RGBA")
             source = layer.copy()
             source.putalpha(combined)
             blended = PDFRenderer._blend(source, backdrop, blend_mode)
-            prev_image.paste(blended.convert("RGB"), (0, 0), combined)
+            prev_image.paste(blended.convert("RGB"), (0, 0), blended.split()[3])
         else:
             # Composite the layer's RGB onto the base image using the
             # combined mask.

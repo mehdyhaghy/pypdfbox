@@ -212,7 +212,8 @@ def test_listbox_renders_all_options(acro_form: PDAcroForm) -> None:
     assert b"beta" in body
     assert b"gamma" in body
     # selection highlight — upstream HIGHLIGHT_COLOR is {153/255, 193/255, 215/255}
-    assert b"0.6 0.7569 0.8431" in body
+    # emitted to 5 decimal places (PDFBox formatDecimal max-fraction-digits=5).
+    assert b"0.6 0.75686 0.84314" in body
 
 
 # ---------- combo box ----------

@@ -16,12 +16,14 @@ def test_get_returns_integer_for_integral_input() -> None:
     assert n.value == 99999
 
 
-def test_get_treats_dot_dash_empty_as_zero() -> None:
-    # PDFBox quirk (PDFBOX-592): trivial sub-token shapes parse to zero
-    # instead of raising.
-    assert COSNumber.get("") is COSInteger.ZERO
+def test_get_treats_dot_dash_as_zero() -> None:
+    # Single-character ``-`` / ``.`` parse to ``ZERO`` (upstream length-1 fast
+    # path). The empty string does NOT: it is not length-1, not a float, and
+    # ``"".matches("\\d*")`` is true, so upstream falls through to
+    # ``OUT_OF_RANGE_MAX`` (verified against the live PDFBox oracle).
     assert COSNumber.get("-") is COSInteger.ZERO
     assert COSNumber.get(".") is COSInteger.ZERO
+    assert COSNumber.get("") is COSInteger.OUT_OF_RANGE_MAX
 
 
 def test_get_returns_float_for_decimal_or_exponent() -> None:

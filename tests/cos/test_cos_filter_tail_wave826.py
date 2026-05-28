@@ -23,14 +23,21 @@ def test_wave826_cos_float_set_value_clears_original_and_clamps() -> None:
     assert value.format_string() == "340282350000000000000000000000000000000"
 
 
-def test_wave826_cos_float_write_pdf_preserves_original_repaired_literal() -> None:
+def test_wave826_cos_float_repaired_literal_reformats_not_preserved() -> None:
+    # A literal that only parses after malformed-number repair (PDFBOX-2990 /
+    # -3500 path) does NOT keep its raw bytes: upstream leaves valueAsString
+    # null so the value reformats from the float on output. ``0.00000-33917698``
+    # repairs to ``-0.0000033917698`` then serialises as the shortest float32
+    # form ``-0.0000033917697`` (verified live vs PDFBox in
+    # tests/cos/oracle/test_cos_number_oracle.py).
     value = COSFloat("0.00000-33917698")
     out = io.BytesIO()
 
     value.write_pdf(out)
 
     assert value == COSFloat("-0.0000033917698")
-    assert out.getvalue() == b"0.00000-33917698"
+    assert value.get_original_form() is None
+    assert out.getvalue() == b"-0.0000033917697"
 
 
 def test_wave826_predictor_row_length_rounds_sub_byte_components() -> None:

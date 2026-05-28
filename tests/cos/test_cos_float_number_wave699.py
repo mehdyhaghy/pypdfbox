@@ -16,7 +16,10 @@ def test_wave699_cos_float_nan_preserved_through_float32_helper() -> None:
 
 
 def test_wave699_cos_float_rejects_bad_decimal_literal() -> None:
-    with pytest.raises(OSError, match="not a number"):
+    # Upstream COSFloat(String) raises an IOException reading "Error expected
+    # floating point number actual='...'" when neither the direct
+    # Float.parseFloat nor any malformed-number repair succeeds.
+    with pytest.raises(OSError, match="Error expected floating point number"):
         COSFloat("1.2.3")
 
 
@@ -54,8 +57,11 @@ def test_wave699_cos_number_get_rejects_none() -> None:
         COSNumber.get(None)  # type: ignore[arg-type]
 
 
-def test_wave699_cos_number_get_wraps_float_parse_errors() -> None:
-    with pytest.raises(OSError, match="not a number"):
+def test_wave699_cos_number_get_propagates_float_parse_errors() -> None:
+    # Upstream COSNumber.get delegates the float branch straight to
+    # ``new COSFloat(number)`` with no wrapping, so the COSFloat ctor's
+    # IOException ("Error expected floating point number") propagates as-is.
+    with pytest.raises(OSError, match="Error expected floating point number"):
         COSNumber.get("1.2.3")
 
 

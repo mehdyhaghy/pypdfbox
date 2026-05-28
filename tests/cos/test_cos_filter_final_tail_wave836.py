@@ -24,7 +24,10 @@ def test_wave836_cos_float_preserves_exponent_negative_and_plain_format() -> Non
 
 
 def test_wave836_cos_float_duplicate_internal_negative_is_rejected() -> None:
-    with pytest.raises(OSError, match="misplaced '-'"):
+    # ``0.-26-2`` carries a second interior ``-`` so it matches none of the
+    # three malformed-number repair regexes; upstream COSFloat(String) raises
+    # IOException "Error expected floating point number actual='0.-26-2'".
+    with pytest.raises(OSError, match="Error expected floating point number"):
         COSFloat("0.-26-2")
 
 

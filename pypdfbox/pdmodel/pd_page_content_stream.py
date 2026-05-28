@@ -71,8 +71,8 @@ class PDPageContentStream:
 
     The writer buffers operators into a ``bytearray`` and flushes them
     into the underlying ``COSStream`` on ``close()`` / context-manager
-    exit. Numeric operands are formatted with up to 4 decimal places
-    (matching upstream ``setMaximumFractionDigits(4)``) with trailing
+    exit. Numeric operands are formatted with up to 5 decimal places
+    (matching upstream ``setMaximumFractionDigits(5)``) with trailing
     zeros trimmed.
     """
 
@@ -754,14 +754,18 @@ class PDPageContentStream:
         self._write_operator(b"M")
 
     def set_dash_pattern(self, dash: list[float], phase: float) -> None:
-        """Emit ``[a b c ...] phase d`` — set the dash pattern."""
+        """Emit ``[a b c ... ] phase d`` — set the dash pattern.
+
+        Each array element is written as a numeric operand *followed by a
+        space* (upstream's ``setLineDashPattern`` calls ``writeOperand`` per
+        element, and ``writeOperand`` always appends a space), so a
+        two-element pattern serialises as ``[3 2 ]`` — note the trailing
+        space inside the bracket. An empty pattern serialises as ``[]``.
+        """
         self._buffer.append(0x5B)  # [
-        first = True
         for v in dash:
-            if not first:
-                self._buffer.append(0x20)
             self._buffer.extend(_format_number(v))
-            first = False
+            self._buffer.append(0x20)
         self._buffer.append(0x5D)  # ]
         self._buffer.append(0x20)
         self._write_operands(phase)
@@ -1919,9 +1923,12 @@ def _to_cos_name(name: COSName | str) -> COSName:
 
 
 def _format_number(value: float) -> bytes:
-    """Format a numeric operand using up to 4 decimal places with trailing
+    """Format a numeric operand using up to 5 decimal places with trailing
     zeros stripped. Matches upstream's
-    ``formatDecimal.setMaximumFractionDigits(4)``.
+    ``formatDecimal = NumberFormat.getNumberInstance(Locale.US)`` with
+    ``setMaximumFractionDigits(5)``, ``setGroupingUsed(false)`` and the
+    default ``RoundingMode.HALF_EVEN`` — Python's ``format(f, ".5f")`` also
+    rounds half-to-even and emits no grouping separator, so the two agree.
 
     Non-finite values (``inf`` / ``-inf`` / ``nan``) raise
     :class:`ValueError`, mirroring upstream's ``writeOperand(float)``
@@ -1939,7 +1946,7 @@ def _format_number(value: float) -> bytes:
         raise ValueError(f"{value!r} is not a finite number")
     if f.is_integer():
         return str(int(f)).encode("ascii")
-    text = format(f, ".4f").rstrip("0").rstrip(".")
+    text = format(f, ".5f").rstrip("0").rstrip(".")
     if not text or text == "-":
         text = "0"
     return text.encode("ascii")

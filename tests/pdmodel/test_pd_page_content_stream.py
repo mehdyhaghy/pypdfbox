@@ -68,14 +68,15 @@ def test_add_rect_close_and_stroke_fill() -> None:
     assert body == b"10 20 30 40 re\ns\n0 0 5 5 re\nf\n"
 
 
-def test_floats_use_up_to_4_decimal_places_with_trim() -> None:
+def test_floats_use_up_to_5_decimal_places_with_trim() -> None:
     doc = PDDocument()
     page = _make_page(doc)
     with PDPageContentStream(doc, page) as cs:
         cs.move_to(1.50000, 2.123456)
     body = _stream_bytes(page)
-    # 1.5 trimmed; 2.123456 rounded to 4 dp -> 2.1235
-    assert body == b"1.5 2.1235 m\n"
+    # 1.5 trimmed; 2.123456 rounded to 5 dp (HALF_EVEN) -> 2.12346
+    # (matches PDFBox formatDecimal.setMaximumFractionDigits(5)).
+    assert body == b"1.5 2.12346 m\n"
 
 
 # ------------------------------------------------------------------
@@ -1411,7 +1412,8 @@ def test_set_line_dash_pattern_alias_emits_d() -> None:
     page = _make_page(doc)
     with PDPageContentStream(doc, page) as cs:
         cs.set_line_dash_pattern([3, 2], 0)
-    assert _stream_bytes(page) == b"[3 2] 0 d\n"
+    # Each element is a writeOperand call (trailing space), matching PDFBox.
+    assert _stream_bytes(page) == b"[3 2 ] 0 d\n"
 
 
 def test_close_and_fill_and_stroke_aliases_emit_b_and_b_star() -> None:

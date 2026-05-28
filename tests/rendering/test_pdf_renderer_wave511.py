@@ -5,7 +5,7 @@ from typing import Any
 
 from PIL import Image
 
-from pypdfbox.cos import COSFloat, COSName
+from pypdfbox.cos import COSDictionary, COSFloat, COSName
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.pdmodel.graphics.blend_mode import BlendMode
 from pypdfbox.rendering import _aggdraw_compat as aggdraw
@@ -121,6 +121,14 @@ def test_extgstate_alpha_constants_are_clamped_and_soft_mask_is_stored() -> None
     class _ExtGState:
         def __init__(self) -> None:
             self.soft_mask = object()
+
+        def get_cos_object(self) -> COSDictionary:
+            # The ExtGState must carry /BM for the renderer to apply the
+            # blend mode (upstream copyIntoGraphicsState only applies /BM
+            # when the dict contains the key).
+            d = COSDictionary()
+            d.set_item(COSName.get_pdf_name("BM"), COSName.get_pdf_name("Screen"))
+            return d
 
         def get_blend_mode(self) -> BlendMode:
             return BlendMode.SCREEN

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import re
 import struct
 from decimal import Decimal
 from typing import IO, Any, ClassVar
@@ -10,6 +11,87 @@ from .i_cos_visitor import ICOSVisitor
 
 _FLOAT_MAX = 3.4028234663852886e38  # Float.MAX_VALUE
 _FLOAT_MIN_NORMAL = 1.1754943508222875e-38  # Float.MIN_NORMAL (2**-126)
+
+# Signed 32/64-bit bounds for the ``f2i`` / ``f2l`` saturating narrowing casts.
+_INT_MIN = -(2**31)
+_INT_MAX = 2**31 - 1
+_LONG_MIN = -(2**63)
+_LONG_MAX = 2**63 - 1
+
+
+def _narrow_to_long(value: float, low: int, high: int) -> int:
+    """Reproduce the JVM ``f2i`` / ``f2l`` narrowing-conversion contract.
+
+    Rounds toward zero, maps ``NaN`` to ``0``, and saturates (clamps) to the
+    inclusive ``[low, high]`` bound instead of overflowing the way Python's
+    unbounded ``int(float)`` would. ``COSFloat`` never holds an infinity (the
+    value is float32-clamped on construction), so only finite out-of-range
+    magnitudes need clamping."""
+    if math.isnan(value):
+        return 0
+    truncated = math.trunc(value)
+    if truncated < low:
+        return low
+    if truncated > high:
+        return high
+    return truncated
+
+
+def _float32_or_inf(value: float) -> float:
+    """Round a Python ``float`` (double) to IEEE-754 single precision the way
+    Java's ``Float.parseFloat`` does — *allowing* the result to overflow to
+    ``±inf``. Unlike :func:`_to_float32` this does NOT clamp to ``±MAX_VALUE``,
+    so the constructor's ``parsed == coerce(parsed)`` test can detect that a
+    literal like ``1e40`` overflowed (Java sees ``Infinity`` there, which
+    ``coerce`` then maps to ``MAX_VALUE`` — making the two unequal and
+    discarding the verbatim string)."""
+    if math.isnan(value) or math.isinf(value):
+        return value
+    try:
+        return float(struct.unpack(">f", struct.pack(">f", value))[0])
+    except OverflowError:
+        # A finite double whose magnitude rounds past Float.MAX_VALUE becomes
+        # ±Infinity in IEEE-754 single precision (Java ``Float.parseFloat``);
+        # ``struct.pack`` refuses to encode it, so synthesise the infinity.
+        return math.inf if value > 0 else -math.inf
+
+
+def _parse_float(text: str) -> float:
+    """Parse ``text`` like Java ``Float.parseFloat`` for the malformed-number
+    dispatch: reject the spellings Java would *not* accept (the ``inf`` /
+    ``nan`` / hex-float forms Python's bare ``float()`` tolerates) by raising
+    ``ValueError`` so the caller's repair path engages exactly when upstream's
+    ``catch (NumberFormatException)`` would."""
+    stripped = text.strip()
+    lowered = stripped.lower().lstrip("+-")
+    if lowered.startswith(("0x", "inf", "nan")):
+        raise ValueError(f"not a Java float: {text!r}")
+    return float(stripped)
+
+
+_RE_LEADING_ZERO_DASH = re.compile(r"^0\.0*-\d+$")
+_RE_DASH_FRAC_DASH = re.compile(r"^-\d+\.-\d+$")
+
+
+def _repair_malformed_real(text: str) -> str:
+    r"""Reproduce upstream ``COSFloat(String)``'s ``catch`` block byte-for-byte
+    (PDFBOX-2990 / -3500): three regex-guided repairs, else raise.
+
+    1. a leading double minus ``--16.33`` → drop the first char → ``-16.33``;
+    2. ``^0\.0*-\d+`` (e.g. ``0.-262``) → prepend ``-`` and delete the first
+       interior ``-`` → ``-0.262``;
+    3. ``^-\d+\.-\d+`` (e.g. ``-16.-33``) → prepend ``-`` and delete *all*
+       ``-`` → ``-16.33``.
+
+    Anything else is unrecoverable — raise ``OSError`` (upstream
+    ``IOException``)."""
+    if text.startswith("--"):
+        return text[1:]
+    if _RE_LEADING_ZERO_DASH.match(text):
+        return "-" + text.replace("-", "", 1)
+    if _RE_DASH_FRAC_DASH.match(text):
+        return "-" + text.replace("-", "")
+    raise OSError(f"Error expected floating point number actual='{text}'")
 
 
 def _shortest_float32_decimal(value: float) -> str:
@@ -116,54 +198,13 @@ def _coerce(value: float) -> float:
         return _FLOAT_MAX
     if value == -math.inf:
         return -_FLOAT_MAX
-    if value != 0.0 and abs(value) < _FLOAT_MIN_NORMAL:
+    # Upstream is ``Math.abs(value) < Float.MIN_NORMAL`` — and ``abs(-0.0)`` is
+    # ``+0.0``, so negative zero flushes to *positive* zero (bits 0x00000000),
+    # not ``-0.0`` (mirrors PDFBox coerce's ``fconst_0``). Returning ``+0.0`` for
+    # any sub-normal-or-zero magnitude reproduces that exactly.
+    if abs(value) < _FLOAT_MIN_NORMAL:
         return 0.0
     return value
-
-
-def _normalize_negatives(text: str) -> str:
-    """Recover from common scanner glitches in PDF number literals
-    (PDFBOX-2990, PDFBOX-3369, PDFBOX-3500, PDFBOX-4289). Collapses
-    ``--16.33`` → ``-16.33`` and moves an internal ``-`` like
-    ``0.-262`` to the front, ``0.00000-33917698`` → ``-0.0000033917698``.
-    Raises ``OSError`` if the result still has a misplaced ``-``.
-    """
-    # Numbers in exponential form (``1.4e-46``) carry a legitimate ``-`` in
-    # the exponent — leave them alone; ``float()`` parses them directly.
-    if "e" in text or "E" in text:
-        return text
-    if "-" not in text[1:]:
-        return text
-    leading_neg = text.startswith("-")
-    body = text[1:] if leading_neg else text
-    if "-" not in body:
-        return text
-    # Count internal '-' signs in the body. More than one => unrecoverable.
-    if body.count("-") > 1:
-        raise OSError(f"misplaced '-' in number: {text!r}")
-    pre, post = body.split("-", 1)
-    if "-" in post:
-        raise OSError(f"misplaced '-' in number: {text!r}")
-    # Drop trailing zero block of ``pre`` after the decimal point so that
-    # ``0.00000-33917698`` becomes ``-0.0000033917698``.
-    if "." in pre:
-        int_part, frac_part = pre.split(".", 1)
-        # We already know ``post`` has no decimal point; insert it after
-        # any leading zeros that were already in ``frac_part``.
-        zeros = ""
-        i = 0
-        while i < len(frac_part) and frac_part[i] == "0":
-            zeros += "0"
-            i += 1
-        # Anything to the right of those leading zeros in ``frac_part``
-        # was a stray digit; treat it as part of the post block.
-        post = frac_part[i:] + post
-        recombined = f"{int_part}.{zeros}{post}"
-    else:
-        recombined = pre + post
-    # An internal '-' implies a (re)negation, so the result is always negative
-    # regardless of whether the original carried a leading sign.
-    return "-" + recombined.lstrip("-")
 
 
 class COSFloat(COSNumber):
@@ -184,19 +225,32 @@ class COSFloat(COSNumber):
         super().__init__()
         self._original: str | None
         if isinstance(value, str):
-            normalized = _normalize_negatives(value)
+            # Mirror upstream ``COSFloat(String)`` branch-for-branch: parse the
+            # ORIGINAL string first. Only if that throws do we apply the
+            # malformed-number regex repairs — and in that repair path the
+            # cached ``valueAsString`` stays ``None``, so the value reformats
+            # from the float on output (``--16.33`` round-trips as ``-16.33``,
+            # not the raw bytes). Reproduces PDFBOX-2990 / -3500.
             try:
-                parsed = float(normalized)
-            except ValueError as exc:
-                raise OSError(f"not a number: {value!r}") from exc
-            # Mirror Java's ``float`` (IEEE-754 single precision) followed by
-            # ``COSFloat.coerce`` for the string-construction path: subnormals
-            # flush to 0 and ±infinity clamp to ±MAX_VALUE.
-            coerced = _coerce(_to_float32(parsed))
-            # Preserve the raw bytes only if the round-trip is faithful —
-            # mirrors upstream's ``f == parsedValue ? aFloat : null``.
-            self._original = value if _to_float32(parsed) == coerced else None
-            self._value = coerced
+                # ``Float.parseFloat`` rounds straight to single precision and
+                # may overflow to ±inf; do NOT clamp here so the equality test
+                # below detects an overflowing literal like ``1e40``.
+                parsed = _float32_or_inf(_parse_float(value))
+                coerced = _coerce(parsed)
+                # ``valueAsString = (f == parsedValue) ? aFloat : null``.
+                self._original = value if parsed == coerced else None
+                self._value = coerced
+            except ValueError:
+                repaired = _repair_malformed_real(value)
+                try:
+                    parsed = _float32_or_inf(_parse_float(repaired))
+                except ValueError as exc:
+                    raise OSError(
+                        f"Error expected floating point number actual='{value}'"
+                    ) from exc
+                # Repair path: upstream leaves valueAsString null (reformats).
+                self._original = None
+                self._value = _coerce(parsed)
         else:
             self._value = _to_float32(float(value))
             self._original = None
@@ -217,10 +271,16 @@ class COSFloat(COSNumber):
         return self._value
 
     def int_value(self) -> int:
-        return int(self._value)
+        """Mirror Java's ``f2i`` narrowing cast (``COSFloat.intValue``):
+        round toward zero, ``NaN`` → 0, and saturate at the signed 32-bit
+        bounds rather than overflowing (a large ``COSFloat`` like ``1e40``
+        yields ``Integer.MAX_VALUE``, not its exact 39-digit truncation)."""
+        return _narrow_to_long(self._value, _INT_MIN, _INT_MAX)
 
     def long_value(self) -> int:
-        return int(self._value)
+        """Mirror Java's ``f2l`` narrowing cast (``COSFloat.longValue``):
+        round toward zero, ``NaN`` → 0, saturate at the signed 64-bit bounds."""
+        return _narrow_to_long(self._value, _LONG_MIN, _LONG_MAX)
 
     def get_original_form(self) -> str | None:
         """Original parsed string, or ``None`` if constructed from a float."""

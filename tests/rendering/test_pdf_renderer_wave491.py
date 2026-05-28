@@ -98,6 +98,15 @@ def test_shading_fill_dispatches_resolved_resource(monkeypatch: Any) -> None:
 
 def test_extgstate_normal_blend_resets_mode_and_preserves_missing_alpha() -> None:
     class _ExtGState:
+        def get_cos_object(self) -> COSDictionary:
+            # Carries an explicit /BM /Normal — upstream applies the blend
+            # mode only when the dict contains /BM, so an explicit Normal
+            # resets a prior non-Normal mode (a /BM-absent ExtGState would
+            # leave it unchanged).
+            d = COSDictionary()
+            d.set_item(COSName.get_pdf_name("BM"), COSName.get_pdf_name("Normal"))
+            return d
+
         def get_blend_mode(self) -> BlendMode:
             return BlendMode.NORMAL
 

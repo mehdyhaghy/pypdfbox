@@ -217,7 +217,7 @@ def test_set_border_line_with_dashed_bs() -> None:
     with PDAppearanceContentStream(appearance) as cs:
         cs.set_border_line(2.0, bs, None)
     body = _decoded_body(appearance)
-    assert b"[3 2] 0 d" in body
+    assert b"[3 2 ] 0 d" in body
     assert b"2 w" in body
 
 
@@ -230,7 +230,7 @@ def test_set_border_line_with_dashed_bs_without_dash_array_uses_default() -> Non
         cs.set_border_line(2.0, bs, None)
 
     body = _decoded_body(appearance)
-    assert b"[3] 0 d" in body
+    assert b"[3 ] 0 d" in body
     assert b"2 w" in body
     stored = bs.get_cos_object().get_dictionary_object(COSName.get_pdf_name("D"))
     assert isinstance(stored, COSArray)
@@ -261,7 +261,7 @@ def test_set_border_line_from_border_array() -> None:
     with PDAppearanceContentStream(appearance) as cs:
         cs.set_border_line(0.5, None, border)
     body = _decoded_body(appearance)
-    assert b"[4 2] 0 d" in body
+    assert b"[4 2 ] 0 d" in body
     assert b"0.5 w" in body
 
 
@@ -274,7 +274,7 @@ def test_set_border_line_invalid_border_dash_falls_back_invisible() -> None:
     with PDAppearanceContentStream(appearance) as cs:
         cs.set_border_line(2.0, None, border)
     body = _decoded_body(appearance)
-    assert b"[0] 0 d" in body
+    assert b"[0 ] 0 d" in body
     assert b"2 w" in body
 
 

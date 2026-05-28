@@ -456,8 +456,9 @@ def test_list_box_selected_row_emits_highlight_rect() -> None:
     assert body.count(b"Tj") == 3
     # Selection highlight color (Acrobat default blue) emitted.
     # Upstream HIGHLIGHT_COLOR is exactly {153/255, 193/255, 215/255}
-    # — emitted to four decimal places by the float operand writer.
-    assert b"0.6 0.7569 0.8431" in body
+    # — emitted to five decimal places by the float operand writer,
+    # matching PDFBox formatDecimal.setMaximumFractionDigits(5).
+    assert b"0.6 0.75686 0.84314" in body
     # f operator (fill) emitted for the highlight rect.
     assert b"f\n" in body
 
@@ -504,8 +505,9 @@ def test_list_box_selected_indices_drive_highlight() -> None:
     # Two highlight rects = two `f` fill operators (plus background, none).
     # Just check the highlight color was emitted.
     # Upstream HIGHLIGHT_COLOR is exactly {153/255, 193/255, 215/255}
-    # — emitted to four decimal places by the float operand writer.
-    assert b"0.6 0.7569 0.8431" in body
+    # — emitted to five decimal places by the float operand writer,
+    # matching PDFBox formatDecimal.setMaximumFractionDigits(5).
+    assert b"0.6 0.75686 0.84314" in body
 
 
 # ---------- signature unsigned-state placeholder ----------

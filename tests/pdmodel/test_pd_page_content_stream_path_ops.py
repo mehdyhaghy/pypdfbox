@@ -143,7 +143,8 @@ def test_set_dash_pattern_emits_d_with_array() -> None:
     page = _make_page(doc)
     with PDPageContentStream(doc, page) as cs:
         cs.set_dash_pattern([5.0, 3.0], 0.0)
-    assert _stream_bytes(page) == b"[5 3] 0 d\n"
+    # PDFBox writes each array element via writeOperand (trailing space).
+    assert _stream_bytes(page) == b"[5 3 ] 0 d\n"
 
 
 def test_set_dash_pattern_with_floats() -> None:
@@ -151,7 +152,7 @@ def test_set_dash_pattern_with_floats() -> None:
     page = _make_page(doc)
     with PDPageContentStream(doc, page) as cs:
         cs.set_dash_pattern([2.5, 1.25], 0.5)
-    assert _stream_bytes(page) == b"[2.5 1.25] 0.5 d\n"
+    assert _stream_bytes(page) == b"[2.5 1.25 ] 0.5 d\n"
 
 
 def test_set_dash_pattern_solid_line() -> None:

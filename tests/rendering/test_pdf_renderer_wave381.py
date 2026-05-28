@@ -5,7 +5,7 @@ from typing import Any
 
 from PIL import Image
 
-from pypdfbox.cos import COSFloat, COSName, COSStream
+from pypdfbox.cos import COSDictionary, COSFloat, COSName, COSStream
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.pdmodel.graphics.blend_mode import BlendMode
 from pypdfbox.rendering import PDFRenderer, pdf_renderer
@@ -99,6 +99,15 @@ def test_pattern_shading_and_extgstate_resolution_error_branches(caplog: Any) ->
             return _ExtGState()
 
     class _ExtGState:
+        def get_cos_object(self) -> COSDictionary:
+            # Carries /BM so the renderer applies the blend mode (upstream
+            # copyIntoGraphicsState only applies /BM when the dict has it).
+            d = COSDictionary()
+            d.set_item(
+                COSName.get_pdf_name("BM"), COSName.get_pdf_name("Multiply")
+            )
+            return d
+
         def get_blend_mode(self) -> Any:
             return BlendMode.MULTIPLY
 
