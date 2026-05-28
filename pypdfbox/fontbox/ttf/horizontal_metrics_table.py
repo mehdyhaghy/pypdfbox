@@ -56,19 +56,27 @@ class HorizontalMetricsTable(TTFTable):
         self.initialized = True
 
     def get_advance_width(self, gid: int) -> int:
-        if gid < 0 or not self._advance_width:
+        if not self._advance_width:
             return 250
         if gid < self._num_h_metrics:
+            # Upstream indexes ``advanceWidth[gid]`` directly; a negative gid
+            # throws ArrayIndexOutOfBounds in Java. Python negative-indexing
+            # would silently wrap to the last entry, so guard to preserve the
+            # upstream throw semantics rather than diverge.
+            if gid < 0:
+                raise IndexError(f"advance width index out of range: {gid}")
             return self._advance_width[gid]
         # monospaced fonts may not have a width for every glyph; fall back to last entry.
         return self._advance_width[-1]
 
     def get_left_side_bearing(self, gid: int) -> int:
-        if gid < 0 or not self._left_side_bearing:
+        if not self._left_side_bearing:
             return 0
         if gid < self._num_h_metrics:
+            if gid < 0:
+                raise IndexError(f"left side bearing index out of range: {gid}")
             return self._left_side_bearing[gid]
-        non_horizontal_index = gid - self._num_h_metrics
-        if non_horizontal_index >= len(self._non_horizontal_left_side_bearing):
-            return 0
-        return self._non_horizontal_left_side_bearing[non_horizontal_index]
+        # gid >= numHMetrics: upstream indexes the trailing LSB-only array with
+        # no bounds check, so an out-of-range gid throws (we let IndexError
+        # propagate, mirroring the Java ArrayIndexOutOfBounds).
+        return self._non_horizontal_left_side_bearing[gid - self._num_h_metrics]

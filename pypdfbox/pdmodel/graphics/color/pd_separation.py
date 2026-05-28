@@ -235,16 +235,30 @@ class PDSeparation(PDSpecialColorSpace):
         The Python signature returns the populated ``alt`` list for
         idiomatic use; ``samples`` and ``alt`` are mutated in place to
         preserve upstream's by-reference contract.
+
+        The ``/255`` pre-scale and the ``*255`` post-scale (and the
+        truncating ``(int)`` cast) are evaluated in 32-bit ``float``
+        precision via :func:`numpy.float32`, exactly mirroring upstream's
+        ``float`` arithmetic. In double precision a value like
+        ``1 - 127/255`` lands on ``128.0`` and truncates to ``128``,
+        whereas in 32-bit float it lands on ``127.99999`` and truncates
+        to ``127`` — the raster fan-out must reproduce PDFBox's float
+        rounding so per-pixel bytes match (waves 1456).
         """
+        import numpy as np
+
         function = self.get_tint_transform()
         if function is None:
             raise ValueError(
                 "PDSeparation.tint_transform requires a tint-transform function"
             )
-        samples[0] = samples[0] / 255.0  # scale 0..255 -> 0..1
+        # scale 0..255 -> 0..1 in 32-bit float (matches upstream `float`).
+        samples[0] = float(np.float32(samples[0]) / np.float32(255.0))
         result = function.eval(list(samples))
         for s in range(len(alt)):
-            alt[s] = int(result[s] * 255)
+            # (int)(result * 255f) — float multiply then truncate-toward-zero.
+            scaled = np.float32(result[s]) * np.float32(255.0)
+            alt[s] = int(np.float32(scaled))
         return alt
 
     def to_rgb_image(

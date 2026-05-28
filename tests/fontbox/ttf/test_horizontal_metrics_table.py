@@ -148,6 +148,10 @@ def test_get_left_side_bearing_empty_returns_zero() -> None:
 
 
 def test_invalid_negative_gid_does_not_use_python_negative_indexing() -> None:
+    # Upstream indexes the metric arrays directly, so a negative gid throws
+    # ArrayIndexOutOfBounds in Java. We mirror that by raising IndexError rather
+    # than wrapping to the last element via Python negative indexing (verified
+    # against PDFBox 3.0.7 by the HmtxLsbProbe oracle).
     blob = _pack_metric(500, 10) + _pack_metric(600, -5)
     table = HorizontalMetricsTable()
     table.set_length(len(blob))
@@ -156,11 +160,17 @@ def test_invalid_negative_gid_does_not_use_python_negative_indexing() -> None:
         MemoryTTFDataStream(blob),
     )
 
-    assert table.get_advance_width(-1) == 250
-    assert table.get_left_side_bearing(-1) == 0
+    with pytest.raises(IndexError):
+        table.get_advance_width(-1)
+    with pytest.raises(IndexError):
+        table.get_left_side_bearing(-1)
 
 
-def test_get_left_side_bearing_beyond_available_lsb_returns_zero() -> None:
+def test_get_left_side_bearing_beyond_available_lsb_throws() -> None:
+    # gid >= numHMetrics indexes the trailing LSB-only array with no bounds
+    # check upstream; an out-of-range gid throws ArrayIndexOutOfBounds in Java,
+    # which we mirror as an IndexError (verified against PDFBox 3.0.7 by the
+    # HmtxLsbProbe oracle — out-of-range GIDs emit ERR on both sides).
     blob = _pack_metric(500, 10) + _pack_lsb(7)
     table = HorizontalMetricsTable()
     table.set_length(len(blob))
@@ -170,8 +180,10 @@ def test_get_left_side_bearing_beyond_available_lsb_returns_zero() -> None:
     )
 
     assert table.get_left_side_bearing(1) == 7
-    assert table.get_left_side_bearing(2) == 0
-    assert table.get_left_side_bearing(99) == 0
+    with pytest.raises(IndexError):
+        table.get_left_side_bearing(2)
+    with pytest.raises(IndexError):
+        table.get_left_side_bearing(99)
 
 
 def test_signed_lsb_two_complement() -> None:

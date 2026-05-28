@@ -251,39 +251,104 @@ def _untiff(data: bytes, columns: int, colors: int, bits_per_component: int) -> 
     return bytes(out)
 
 
+def _get_bit_seq(by: int, start_bit: int, bit_size: int) -> int:
+    """Extract ``bit_size`` bits of ``by`` starting at ``start_bit`` (from LSB).
+
+    Mirrors ``org.apache.pdfbox.filter.Predictor#getBitSeq``:
+    ``(by >>> startBit) & ((1 << bitSize) - 1)``. ``by`` is masked to its
+    unsigned 0..255 view to match Java's int promotion of a ``byte``.
+    """
+    mask = (1 << bit_size) - 1
+    return ((by & 0xFF) >> start_bit) & mask
+
+
+def _calc_set_bit_seq(by: int, start_bit: int, bit_size: int, val: int) -> int:
+    """Splice ``val`` into ``by`` at ``start_bit`` preserving the other bits.
+
+    Mirrors ``org.apache.pdfbox.filter.Predictor#calcSetBitSeq``.
+    """
+    mask = (1 << bit_size) - 1
+    truncated = val & mask
+    keep = ~(mask << start_bit) & 0xFF
+    return ((by & 0xFF) & keep) | (truncated << start_bit)
+
+
+def _untiff_1bit_1color(row: bytes) -> bytes:
+    """TIFF Predictor 2 decode, dedicated ``bpc==1 && colors==1`` path.
+
+    Ported verbatim from ``Predictor#decodePredictorRow``: PDFBox special-cases
+    monochrome 1-bit data and walks EVERY bit of EVERY row byte (MSB->LSB,
+    crossing byte boundaries), including any trailing padding bits — not just
+    the ``columns`` real samples. The running XOR-style subtraction therefore
+    transforms padding bits too, which the general sub-byte path does not.
+    """
+    actline = bytearray(row)
+    for byte_idx in range(len(actline)):
+        for bit in range(7, -1, -1):
+            cur = (actline[byte_idx] >> bit) & 1
+            if byte_idx == 0 and bit == 7:
+                continue
+            left = (
+                actline[byte_idx - 1] & 1
+                if bit == 7
+                else (actline[byte_idx] >> (bit + 1)) & 1
+            )
+            if ((cur + left) & 1) == 0:
+                actline[byte_idx] = actline[byte_idx] & (~(1 << bit) & 0xFF)
+            else:
+                actline[byte_idx] = actline[byte_idx] | (1 << bit)
+    return bytes(actline)
+
+
+def _tiff_encode_1bit_1color(row: bytes) -> bytes:
+    """Inverse of :func:`_untiff_1bit_1color` (1-bit monochrome encode).
+
+    Walks every bit LSB->MSB (back-to-front, crossing byte boundaries) so each
+    step still reads the unmodified left bit, subtracting it (mod 2). Mirror of
+    the dedicated PDFBox decode path so the round-trip is exact.
+    """
+    actline = bytearray(row)
+    for byte_idx in range(len(actline) - 1, -1, -1):
+        for bit in range(0, 8):
+            if byte_idx == 0 and bit == 7:
+                continue
+            cur = (actline[byte_idx] >> bit) & 1
+            left = (
+                actline[byte_idx - 1] & 1
+                if bit == 7
+                else (actline[byte_idx] >> (bit + 1)) & 1
+            )
+            if ((cur - left) & 1) == 0:
+                actline[byte_idx] = actline[byte_idx] & (~(1 << bit) & 0xFF)
+            else:
+                actline[byte_idx] = actline[byte_idx] | (1 << bit)
+    return bytes(actline)
+
+
 def _untiff_bits(row: bytes, columns: int, colors: int, bits: int) -> bytes:
-    """TIFF Predictor 2 for sub-byte component widths (1, 2, 4)."""
-    mask = (1 << bits) - 1
-    samples_per_row = columns * colors
-    samples: list[int] = []
-    for s in range(samples_per_row):
-        bit_pos = s * bits
-        byte_idx = bit_pos // 8
-        bit_off = bit_pos % 8
-        if byte_idx + 1 < len(row):
-            window = (row[byte_idx] << 8) | row[byte_idx + 1]
-        else:
-            window = row[byte_idx] << 8
-        shift = 16 - bit_off - bits
-        samples.append((window >> shift) & mask)
-    for i in range(colors, len(samples)):
-        samples[i] = (samples[i] + samples[i - colors]) & mask
-    out = bytearray(len(row))
-    for s, value in enumerate(samples):
-        bit_pos = s * bits
-        byte_idx = bit_pos // 8
-        bit_off = bit_pos % 8
-        shift = 16 - bit_off - bits
-        if byte_idx + 1 < len(out):
-            window = (out[byte_idx] << 8) | out[byte_idx + 1]
-            window |= (value & mask) << shift
-            out[byte_idx] = (window >> 8) & 0xFF
-            out[byte_idx + 1] = window & 0xFF
-        else:
-            window = out[byte_idx] << 8
-            window |= (value & mask) << shift
-            out[byte_idx] = (window >> 8) & 0xFF
-    return bytes(out)
+    """TIFF Predictor 2 decode for sub-byte component widths (1, 2, 4).
+
+    Ported verbatim from ``Predictor#decodePredictorRow`` (predictor 2,
+    sub-byte branch). PDFBox iterates exactly ``columns * colors`` samples
+    starting from index ``colors`` and rewrites each sample window IN PLACE
+    via ``calcSetBitSeq`` — so any trailing padding bits in a non-byte-aligned
+    row are left untouched, never zeroed.
+    """
+    if bits == 1 and colors == 1:
+        return _untiff_1bit_1color(row)
+    actline = bytearray(row)
+    elements = columns * colors
+    for i in range(colors, elements):
+        byte_idx = (i * bits) // 8
+        start_bit = 8 - (i * bits) % 8 - bits
+        left_byte_idx = ((i - colors) * bits) // 8
+        left_start_bit = 8 - ((i - colors) * bits) % 8 - bits
+        cur = _get_bit_seq(actline[byte_idx], start_bit, bits)
+        left = _get_bit_seq(actline[left_byte_idx], left_start_bit, bits)
+        actline[byte_idx] = _calc_set_bit_seq(
+            actline[byte_idx], start_bit, bits, cur + left
+        )
+    return bytes(actline)
 
 
 # ---------------------------------------------------------------------
@@ -351,39 +416,30 @@ def _tiff_encode(
 
 
 def _tiff_encode_bits(row: bytes, columns: int, colors: int, bits: int) -> bytes:
-    """TIFF Predictor 2 encode for sub-byte component widths (1, 2, 4)."""
-    mask = (1 << bits) - 1
-    samples_per_row = columns * colors
-    samples: list[int] = []
-    for s in range(samples_per_row):
-        bit_pos = s * bits
-        byte_idx = bit_pos // 8
-        bit_off = bit_pos % 8
-        if byte_idx + 1 < len(row):
-            window = (row[byte_idx] << 8) | row[byte_idx + 1]
-        else:
-            window = row[byte_idx] << 8
-        shift = 16 - bit_off - bits
-        samples.append((window >> shift) & mask)
-    # Encode back-to-front so each step still sees the original left.
-    for i in range(len(samples) - 1, colors - 1, -1):
-        samples[i] = (samples[i] - samples[i - colors]) & mask
-    out = bytearray(len(row))
-    for s, value in enumerate(samples):
-        bit_pos = s * bits
-        byte_idx = bit_pos // 8
-        bit_off = bit_pos % 8
-        shift = 16 - bit_off - bits
-        if byte_idx + 1 < len(out):
-            window = (out[byte_idx] << 8) | out[byte_idx + 1]
-            window |= (value & mask) << shift
-            out[byte_idx] = (window >> 8) & 0xFF
-            out[byte_idx + 1] = window & 0xFF
-        else:
-            window = out[byte_idx] << 8
-            window |= (value & mask) << shift
-            out[byte_idx] = (window >> 8) & 0xFF
-    return bytes(out)
+    """TIFF Predictor 2 encode for sub-byte component widths (1, 2, 4).
+
+    Exact inverse of :func:`_untiff_bits`: subtract the same-position sample
+    ``colors`` samples to the left, rewriting each sample window IN PLACE
+    (back-to-front so each step still reads the unmodified left sample) and
+    leaving any trailing padding bits untouched. This guarantees a clean
+    round-trip with PDFBox's ``decodePredictorRow``, which preserves padding
+    bits identically.
+    """
+    if bits == 1 and colors == 1:
+        return _tiff_encode_1bit_1color(row)
+    actline = bytearray(row)
+    elements = columns * colors
+    for i in range(elements - 1, colors - 1, -1):
+        byte_idx = (i * bits) // 8
+        start_bit = 8 - (i * bits) % 8 - bits
+        left_byte_idx = ((i - colors) * bits) // 8
+        left_start_bit = 8 - ((i - colors) * bits) % 8 - bits
+        cur = _get_bit_seq(actline[byte_idx], start_bit, bits)
+        left = _get_bit_seq(actline[left_byte_idx], left_start_bit, bits)
+        actline[byte_idx] = _calc_set_bit_seq(
+            actline[byte_idx], start_bit, bits, cur - left
+        )
+    return bytes(actline)
 
 
 # Mapping from PDF /Predictor (10..14) to PNG filter-type tag (0..4).

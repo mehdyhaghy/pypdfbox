@@ -24,8 +24,9 @@ def test_copy_into_graphics_state_covers_remaining_mapping_entries() -> None:
     gs.copy_into_graphics_state(target)
 
     assert target["line_dash_pattern"] is not None
-    assert target["stroking_overprint_control"] is True
-    assert target["non_stroking_overprint_control"] is False
+    # Mirrors upstream PDGraphicsState.setOverprint / setNonStrokingOverprint.
+    assert target["overprint"] is True
+    assert target["non_stroking_overprint"] is False
     assert target["flatness"] == 0.5
     assert target["smoothness"] == 0.25
     assert target["blend_mode"] is BlendMode.SCREEN
@@ -36,10 +37,13 @@ def test_copy_into_graphics_state_uses_fallback_alpha_and_text_setters() -> None
         def __init__(self) -> None:
             self.calls: list[tuple[str, object]] = []
 
-        def set_stroking_alpha_constant(self, value: object) -> None:
+        # Upstream PDGraphicsState method names — setAlphaConstant /
+        # setNonStrokeAlphaConstant; the merge prefers these over the
+        # earlier ``*_constants`` fallbacks.
+        def set_alpha_constant(self, value: object) -> None:
             self.calls.append(("stroking_alpha", value))
 
-        def set_non_stroking_alpha_constant(self, value: object) -> None:
+        def set_non_stroke_alpha_constant(self, value: object) -> None:
             self.calls.append(("non_stroking_alpha", value))
 
         def set_alpha_source_flag(self, value: object) -> None:

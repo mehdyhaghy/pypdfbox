@@ -692,9 +692,64 @@ class PDDeviceN(PDSpecialColorSpace):
         image. Mirrors upstream ``PDDeviceN.toRGBImage(WritableRaster)``
         (PDDeviceN.java line 193) — dispatches to the attribute-driven
         path when ``/Attributes`` is present, else the tint-transform
-        path. Both end up walking each pixel through :meth:`to_rgb`,
-        which already encodes the upstream branching logic."""
-        return super().to_rgb_image(raster, width, height)
+        path.
+
+        The raster path is NOT the generic per-pixel
+        :meth:`PDColorSpace.to_rgb_image` (which rounds): upstream's
+        ``toRGBWithTintTransform(WritableRaster)`` (PDDeviceN.java line
+        261) scales each input band by ``/255f`` in 32-bit ``float``,
+        evaluates the tint transform, routes through the alternate's
+        ``toRGB``, then packs each RGB channel with the truncating
+        ``(int)(c * 255f)`` cast (``f2i``) — also in 32-bit float. Doing
+        the scale/truncate in double precision (as the generic base does)
+        diverges by one byte on values like ``1 - 127/255`` (``128.0`` in
+        double truncates to ``128`` but ``127.99999`` in float truncates
+        to ``127``). We reproduce upstream's float arithmetic so the
+        per-pixel bytes match (wave 1456).
+        """
+        import numpy as np
+        from PIL import Image
+
+        alternate = self.get_alternate_color_space()
+        function = self.get_tint_transform()
+        if alternate is None or function is None:
+            return super().to_rgb_image(raster, width, height)
+
+        n = self.get_number_of_components()
+        w = int(width)
+        h = int(height)
+        expected = w * h * n
+        data = bytes(raster)
+        if len(data) < expected:
+            data = data + b"\x00" * (expected - len(data))
+
+        f255 = np.float32(255.0)
+        cache: dict[bytes, tuple[int, int, int]] = {}
+        out = bytearray(w * h * 3)
+        for pixel_index in range(w * h):
+            offset = pixel_index * n
+            key = data[offset:offset + n]
+            rgb = cache.get(key)
+            if rgb is None:
+                # scale each 8-bit band 0..255 -> 0..1 in 32-bit float.
+                samples = [float(np.float32(b) / f255) for b in key]
+                if self.has_attributes():
+                    triple = self.to_rgb_with_attributes(samples)
+                else:
+                    triple = self.to_rgb_with_tint_transform(samples)
+                if triple is None:
+                    rgb = (0, 0, 0)
+                else:
+                    rgb = tuple(
+                        max(0, min(255, int(np.float32(c) * f255)))
+                        for c in triple
+                    )
+                cache[key] = rgb
+            base = pixel_index * 3
+            out[base] = rgb[0]
+            out[base + 1] = rgb[1]
+            out[base + 2] = rgb[2]
+        return Image.frombytes("RGB", (w, h), bytes(out))
 
     def to_raw_image(
         self, raster: bytes, width: int, height: int

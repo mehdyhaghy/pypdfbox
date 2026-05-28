@@ -157,24 +157,31 @@ class PDExtendedGraphicsState:
                     self.get_line_dash_pattern(),
                 )
             elif key == _RI:
+                # Upstream copies the *typed* RenderingIntent enum
+                # (``setRenderingIntent(getRenderingIntent())``); the raw
+                # string accessor would leave a ``str`` in the graphics
+                # state where a ``RenderingIntent`` is expected.
                 self._copy_value(
                     graphics_state,
                     "set_rendering_intent",
                     "rendering_intent",
-                    self.get_rendering_intent(),
+                    self.get_rendering_intent_typed(),
                 )
             elif key == _OP:
+                # Upstream target: ``PDGraphicsState.setOverprint(boolean)``.
                 self._copy_value(
                     graphics_state,
-                    "set_stroking_overprint_control",
-                    "stroking_overprint_control",
+                    "set_overprint",
+                    "overprint",
                     self.get_stroke_overprint(),
                 )
             elif key == _OP_NS:
+                # Upstream target:
+                # ``PDGraphicsState.setNonStrokingOverprint(boolean)``.
                 self._copy_value(
                     graphics_state,
-                    "set_non_stroking_overprint_control",
-                    "non_stroking_overprint_control",
+                    "set_non_stroking_overprint",
+                    "non_stroking_overprint",
                     self.get_non_stroking_overprint(),
                 )
             elif key == _OPM:
@@ -216,17 +223,18 @@ class PDExtendedGraphicsState:
                 stroking_alpha = self._default_if_none(
                     self.get_stroking_alpha_constant(), 1.0
                 )
+                # Upstream target: ``PDGraphicsState.setAlphaConstant(double)``.
                 copied = self._copy_value(
                     graphics_state,
-                    "set_alpha_constants",
-                    "alpha_constants",
+                    "set_alpha_constant",
+                    "alpha_constant",
                     stroking_alpha,
                 )
                 if not copied:
                     self._copy_value(
                         graphics_state,
-                        "set_stroking_alpha_constant",
-                        "stroking_alpha_constant",
+                        "set_alpha_constants",
+                        "alpha_constants",
                         stroking_alpha,
                     )
             elif key == _CA_NS:
@@ -234,17 +242,19 @@ class PDExtendedGraphicsState:
                 non_stroking_alpha = self._default_if_none(
                     self.get_non_stroking_alpha_constant(), 1.0
                 )
+                # Upstream target:
+                # ``PDGraphicsState.setNonStrokeAlphaConstant(double)``.
                 copied = self._copy_value(
                     graphics_state,
-                    "set_non_stroke_alpha_constants",
-                    "non_stroke_alpha_constants",
+                    "set_non_stroke_alpha_constant",
+                    "non_stroke_alpha_constant",
                     non_stroking_alpha,
                 )
                 if not copied:
                     self._copy_value(
                         graphics_state,
-                        "set_non_stroking_alpha_constant",
-                        "non_stroking_alpha_constant",
+                        "set_non_stroke_alpha_constants",
+                        "non_stroke_alpha_constants",
                         non_stroking_alpha,
                     )
             elif key == _AIS:

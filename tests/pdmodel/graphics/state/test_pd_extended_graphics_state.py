@@ -4,7 +4,10 @@ import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 from pypdfbox.pdmodel.graphics.blend_mode import BlendMode
-from pypdfbox.pdmodel.graphics.state import PDExtendedGraphicsState
+from pypdfbox.pdmodel.graphics.state import (
+    PDExtendedGraphicsState,
+    RenderingIntent,
+)
 
 
 def test_fresh_has_type_ext_g_state() -> None:
@@ -287,10 +290,10 @@ def test_copy_into_graphics_state_uses_matching_setters() -> None:
         def set_overprint_mode(self, value: object) -> None:
             self.calls.append(("overprint_mode", value))
 
-        def set_alpha_constants(self, value: object) -> None:
+        def set_alpha_constant(self, value: object) -> None:
             self.calls.append(("alpha_constants", value))
 
-        def set_non_stroke_alpha_constants(self, value: object) -> None:
+        def set_non_stroke_alpha_constant(self, value: object) -> None:
             self.calls.append(("non_stroke_alpha_constants", value))
 
         def set_alpha_source(self, value: object) -> None:
@@ -324,7 +327,8 @@ def test_copy_into_graphics_state_uses_matching_setters() -> None:
     assert ("line_cap", 1) in target.calls
     assert ("line_join", 2) in target.calls
     assert ("miter_limit", 10.0) in target.calls
-    assert ("rendering_intent", "Perceptual") in target.calls
+    # Upstream copies the typed RenderingIntent enum, not the raw string.
+    assert ("rendering_intent", RenderingIntent.PERCEPTUAL) in target.calls
     assert ("overprint_mode", 1) in target.calls
     assert ("alpha_constants", 0.5) in target.calls
     assert ("non_stroke_alpha_constants", 0.25) in target.calls
@@ -1059,11 +1063,11 @@ def test_copy_into_graphics_state_ca_uses_spec_default_when_value_missing() -> N
     gs.get_cos_object().set_item(COSName.get_pdf_name("CA"), COSName.get_pdf_name("Bogus"))
     target: dict[str, object] = {}
     gs.copy_into_graphics_state(target)
-    # /CA copies into either alpha_constants or stroking_alpha_constant
-    # (depending on which setter shape the target exposes).
+    # /CA copies into the upstream-named alpha_constant slot (with the
+    # earlier ``alpha_constants`` spelling as a fallback).
     assert (
-        target.get("alpha_constants") == 1.0
-        or target.get("stroking_alpha_constant") == 1.0
+        target.get("alpha_constant") == 1.0
+        or target.get("alpha_constants") == 1.0
     )
 
 
@@ -1077,8 +1081,8 @@ def test_copy_into_graphics_state_ca_zero_value_is_preserved() -> None:
     gs.copy_into_graphics_state(target)
     # 0.0 must round-trip — not be replaced with 1.0.
     assert (
-        target.get("alpha_constants") == 0.0
-        or target.get("stroking_alpha_constant") == 0.0
+        target.get("alpha_constant") == 0.0
+        or target.get("alpha_constants") == 0.0
     )
 
 
@@ -1091,8 +1095,8 @@ def test_copy_into_graphics_state_ca_ns_uses_spec_default_when_value_missing() -
     target: dict[str, object] = {}
     gs.copy_into_graphics_state(target)
     assert (
-        target.get("non_stroke_alpha_constants") == 1.0
-        or target.get("non_stroking_alpha_constant") == 1.0
+        target.get("non_stroke_alpha_constant") == 1.0
+        or target.get("non_stroke_alpha_constants") == 1.0
     )
 
 
