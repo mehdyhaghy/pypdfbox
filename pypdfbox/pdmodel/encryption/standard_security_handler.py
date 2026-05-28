@@ -764,7 +764,19 @@ class StandardSecurityHandler(SecurityHandler):
         single-algorithm path on ``SecurityHandler``.
 
         For V>=4 the slots hold the resolved CFM string. /EFF defaults to
-        /StmF when absent, per PDF 32000-1 §7.6.5.
+        /StmF when absent, per PDF 32000-1 §7.6.5. When ``/CF`` is present
+        an absent ``/StmF`` or ``/StrF`` defaults to ``/Identity`` (PDF
+        32000-1 §7.6.4.4 Table 20) — substitute the Identity CFM here so
+        per-object cipher dispatch leaves the slot cleartext instead of
+        falling back to the legacy single-algorithm path. Without this the
+        write side of a ``/StmF /StdCF`` + absent ``/StrF`` file mis-enciphers
+        strings under the document-level AES cipher, breaking interop with
+        PDFBox's reader which coerces an absent ``/StrF`` to Identity in
+        ``PDEncryption.getStringFilterName`` (verified against the 3.0.7
+        bytecode). When ``/CF`` itself is absent (e.g. a handler built ad-hoc
+        for unit tests without document-level routing) the slots stay ``None``
+        and we keep the legacy single-algorithm fallback — that path is the
+        only signal there is no crypt-filter routing in effect.
         """
         version = int(encryption.get_v())
         if version < 4:
@@ -773,8 +785,36 @@ class StandardSecurityHandler(SecurityHandler):
             self._embedded_file_cfm = None
             return
 
-        self._stream_cfm = self._resolve_cfm(encryption, encryption.get_stm_f())
-        self._string_cfm = self._resolve_cfm(encryption, encryption.get_str_f())
+        stm_f = encryption.get_stm_f()
+        str_f = encryption.get_str_f()
+        if not encryption.has_cf() and stm_f is None and str_f is None:
+            # V>=4 dictionary with neither /CF nor any /StmF / /StrF entry —
+            # no per-object routing in effect. The document key + cipher
+            # come from the legacy SecurityHandler state (use_aes /
+            # encryption_key). Leaving all three slots ``None`` keeps the
+            # cipher entry points on the legacy single-algorithm path so
+            # handlers built ad-hoc (without populating /CF) round-trip
+            # under the document-level AES dispatch their callers expect.
+            self._stream_cfm = None
+            self._string_cfm = None
+            self._embedded_file_cfm = None
+            return
+
+        # /CF (or an explicit /StmF or /StrF) signals per-object crypt-filter
+        # routing. Absent slots default to /Identity per PDF 32000-1 §7.6.4.4
+        # Table 20 — pin the spec default at the routing-table level so
+        # ``decrypt_string`` / ``encrypt_string`` (and stream peers) treat the
+        # absent slot as a cleartext pass-through instead of falling through
+        # to the legacy single-algorithm path on ``SecurityHandler`` (which
+        # would otherwise mis-encipher a ``/StmF /StdCF`` + absent ``/StrF``
+        # document's strings under the document-level AES cipher and break
+        # interop with PDFBox's reader).
+        self._stream_cfm = (
+            _CFM_IDENTITY if stm_f is None else self._resolve_cfm(encryption, stm_f)
+        )
+        self._string_cfm = (
+            _CFM_IDENTITY if str_f is None else self._resolve_cfm(encryption, str_f)
+        )
         eff_name = encryption.get_eff()
         if eff_name is None:
             # Spec default: embedded files inherit /StmF.
