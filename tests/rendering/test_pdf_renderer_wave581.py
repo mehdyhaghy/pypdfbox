@@ -141,7 +141,11 @@ def test_show_inline_image_falls_back_when_helper_decode_fails(
     doc, renderer = _prepared_renderer()
     pasted: list[Image.Image] = []
     try:
-        monkeypatch.setattr(renderer, "_paste_image", lambda image: pasted.append(image))
+        monkeypatch.setattr(
+            renderer,
+            "_paste_image",
+            lambda image, interpolate=True: pasted.append(image),
+        )
 
         renderer.show_inline_image(_InlineImage())
 

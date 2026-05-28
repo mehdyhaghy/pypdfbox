@@ -804,19 +804,17 @@ class PDTrueTypeFont(PDSimpleFont):
                 and encoding_id == CmapTable.ENCODING_MAC_ROMAN
             ):
                 self._cmap_mac_roman = _CmapPlatformView(sub, glyph_order)
-            elif (
-                platform_id == CmapTable.PLATFORM_UNICODE
-                and encoding_id
-                in (
-                    CmapTable.ENCODING_UNICODE_1_0,
-                    CmapTable.ENCODING_UNICODE_2_0_BMP,
-                )
-                and self._cmap_win_unicode is None
+            elif platform_id == CmapTable.PLATFORM_UNICODE and encoding_id in (
+                CmapTable.ENCODING_UNICODE_1_0,
+                CmapTable.ENCODING_UNICODE_2_0_BMP,
             ):
-                # PDFBOX-4755 / PDF.js #5501 / PDFBOX-5484 — Unicode platform
-                # entries promote to Win-Unicode when no explicit (3,1) is
-                # present. ``putIfAbsent`` semantics: don't clobber a real
-                # (3,1) subtable.
+                # PDFBOX-4755 / PDF.js #5501 / PDFBOX-5484 — Unicode-platform
+                # entries promote to Win-Unicode. Upstream
+                # ``PDTrueTypeFont.extractCmapTable`` assigns ``cmapWinUnicode``
+                # *unconditionally* here, so when a font carries both a (3,1)
+                # and a (0,0)/(0,3) subtable the **last** one in cmap-directory
+                # order wins. (Previously guarded with ``is None`` — first-wins —
+                # which diverged from upstream for such dual-cmap fonts.)
                 self._cmap_win_unicode = _CmapPlatformView(sub, glyph_order)
         self._cmap_initialized = True
 

@@ -7360,12 +7360,25 @@ class PDFRenderer(PDFStreamEngine):
         rgba.putalpha(alpha)
         self._paste_image(rgba)
 
-    def _paste_image(self, pil_image: Image.Image) -> None:
+    def _paste_image(
+        self, pil_image: Image.Image, interpolate: bool = True
+    ) -> None:
         """Paste ``pil_image`` onto the canvas honouring the current CTM.
 
         Per PDF spec §8.9.5, the image XObject occupies the unit square
         [0,1]×[0,1] in user space; the ``cm`` operator that precedes ``Do``
         scales it into the desired bounding box.
+
+        ``interpolate`` selects the resampling filter when the image is
+        scaled into its device box. Per PDF 32000-1 §8.9.5.3 the image's
+        ``/Interpolate`` flag controls smoothing: when it is *false* (the
+        default), upstream PDFBox paints the image with nearest-neighbour
+        sampling (``VALUE_INTERPOLATION_NEAREST_NEIGHBOR``), so an upscaled
+        low-resolution raster shows hard pixel edges rather than a smooth
+        gradient across sample boundaries. Callers that know the source
+        image is non-interpolated pass ``interpolate=False`` to match that
+        hard-edged paint; the default ``True`` keeps the legacy bilinear
+        smoothing for callers that don't yet thread the flag through.
         """
         assert self._image is not None
         assert self._draw is not None
@@ -7406,7 +7419,12 @@ class PDFRenderer(PDFStreamEngine):
         # the y-axis, mirroring every rendered image vertically vs PDFBox;
         # existing oracle fixtures missed it because their images were
         # vertically symmetric.)
-        flipped = pil_image.resize((target_w, target_h), Image.Resampling.BILINEAR)
+        resample = (
+            Image.Resampling.BILINEAR
+            if interpolate
+            else Image.Resampling.NEAREST
+        )
+        flipped = pil_image.resize((target_w, target_h), resample)
 
         # If the source image carries an alpha channel (e.g. an SMask
         # was applied upstream), split it off and use it as the paste
@@ -7579,7 +7597,16 @@ class PDFRenderer(PDFStreamEngine):
                 return
         if pil_image is None:
             return
-        self._paste_image(pil_image)
+        # PDF 32000-1 §8.9.5.3: honour the inline image's /Interpolate (/I)
+        # flag. When false (the default), upstream PDFBox upscales with
+        # nearest-neighbour sampling (hard pixel edges), not bilinear
+        # smoothing — so a tiny inline raster scaled into a large device box
+        # shows sharp sample boundaries exactly as PDFBox renders them.
+        try:
+            interpolate = bool(inline_image.get_interpolate())
+        except Exception:  # noqa: BLE001
+            interpolate = False
+        self._paste_image(pil_image, interpolate=interpolate)
 
     def _decode_inline_image(
         self, params: COSDictionary | None = None, data: bytes | None = None
