@@ -326,7 +326,10 @@ def load_standard14(name: str) -> AfmMetrics:
         if name not in _STANDARD14:
             raise ValueError(f"{name!r} is not one of the 14 Standard fonts")
         with _afm_resource_for(name).open("rb") as fp:
-            font_metrics = AFMParser(fp).parse()
+            # Upstream Standard14Fonts.getAFM parses with the reduced dataset
+            # (AFMParser.parse(true)) — kern-pair and composite blocks are
+            # skipped, so getKernPairs() is empty for the bundled Core-14 AFMs.
+            font_metrics = AFMParser(fp).parse(reduced_dataset=True)
         _CACHE[name] = AfmMetrics(name, font_metrics)
     return _CACHE[name]
 

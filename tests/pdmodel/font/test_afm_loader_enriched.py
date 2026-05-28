@@ -6,8 +6,23 @@ ported to the in-tree :class:`pypdfbox.fontbox.afm.AFMParser`.
 """
 from __future__ import annotations
 
-from pypdfbox.fontbox.afm import CharMetric, FontMetrics, KernPair, Ligature
+from importlib import resources
+
+from pypdfbox.fontbox.afm import AFMParser, CharMetric, FontMetrics, KernPair, Ligature
 from pypdfbox.pdmodel.font.afm_loader import load_standard14
+
+
+def _parse_full(name: str) -> FontMetrics:
+    """Parse a bundled AFM with the *full* dataset (kern blocks included).
+
+    ``load_standard14`` mirrors upstream ``Standard14Fonts.getAFM``, which
+    parses with the reduced dataset (``AFMParser.parse(true)``) and therefore
+    drops kern pairs. To exercise the parser's ``KPX`` handling we parse the
+    raw bytes directly with ``reduced_dataset=False``.
+    """
+    pkg = resources.files("pypdfbox.pdmodel.font.afm")
+    with pkg.joinpath(f"{name}.afm").open("rb") as fp:
+        return AFMParser(fp).parse(reduced_dataset=False)
 
 # ---------- header parity round-out -----------------------------------------
 
@@ -111,9 +126,17 @@ def test_symbol_has_no_ligatures() -> None:
 # ---------- kern pair coverage ----------------------------------------------
 
 
-def test_helvetica_kern_pairs_count_matches_upstream() -> None:
+def test_helvetica_load_standard14_has_no_kern_pairs() -> None:
+    # Upstream Standard14Fonts.getAFM parses with the reduced dataset, so the
+    # kern-pair block is skipped even though Helvetica.afm ships KPX lines.
     afm = load_standard14("Helvetica")
-    pairs = afm.get_kern_pairs()
+    assert afm.get_kern_pairs() == []
+
+
+def test_helvetica_full_parse_kern_pairs_count() -> None:
+    # When the same AFM is parsed with the full dataset the parser reads the
+    # whole StartKernPairs block.
+    pairs = _parse_full("Helvetica").get_kern_pairs()
     assert len(pairs) == 2705
     assert all(isinstance(p, KernPair) for p in pairs)
 
@@ -130,18 +153,16 @@ def _find_kern_pair(
 
 
 def test_helvetica_known_kern_pair_a_ucircumflex() -> None:
-    """``KPX A Ucircumflex -50`` from Helvetica.afm."""
-    afm = load_standard14("Helvetica")
-    pair = _find_kern_pair(afm.get_kern_pairs(), "A", "Ucircumflex")
+    """``KPX A Ucircumflex -50`` from Helvetica.afm (full-dataset parse)."""
+    pair = _find_kern_pair(_parse_full("Helvetica").get_kern_pairs(), "A", "Ucircumflex")
     assert pair is not None
     assert pair.get_x() == -50.0
     assert pair.get_y() == 0.0  # KPX has zero y
 
 
 def test_helvetica_known_kern_pair_w_agrave() -> None:
-    """``KPX W agrave -40`` from Helvetica.afm."""
-    afm = load_standard14("Helvetica")
-    pair = _find_kern_pair(afm.get_kern_pairs(), "W", "agrave")
+    """``KPX W agrave -40`` from Helvetica.afm (full-dataset parse)."""
+    pair = _find_kern_pair(_parse_full("Helvetica").get_kern_pairs(), "W", "agrave")
     assert pair is not None
     assert pair.get_x() == -40.0
 

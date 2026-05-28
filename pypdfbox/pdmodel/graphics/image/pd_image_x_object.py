@@ -758,9 +758,11 @@ class PDImageXObject(PDXObject):
         region: tuple[int, int, int, int] | None = None,
         subsampling: int = 1,
     ) -> Image.Image | None:
-        """Return a fully-decoded image. Mirrors upstream
+        """Return a fully-decoded image with any soft/stencil/color-key mask
+        composited as the alpha channel. Mirrors upstream
         ``PDImageXObject.getImage()`` and the parameterised overload
-        ``getImage(Rectangle, int)`` (Java lines 463 and 472).
+        ``getImage(Rectangle, int)`` (Java lines 463 and 472), which return
+        an ARGB ``BufferedImage`` once a ``/SMask`` or ``/Mask`` is present.
 
         Library-first: Pillow handles the actual sample decoding via
         :meth:`to_pil_image`. ``region`` is a ``(x, y, w, h)`` tuple and
@@ -769,13 +771,19 @@ class PDImageXObject(PDXObject):
         sampling (matches upstream's per-pixel-row-skip semantics for the
         common case ``subsampling >= 1``).
 
-        Mask compositing (``/SMask``, ``/Mask`` stencil, ``/Matte``)
-        is rendering-cluster work and not yet folded in here — callers
-        currently get the opaque raster regardless.
+        Mask handling mirrors upstream's ``getImage`` ordering: a ``/SMask``
+        (PDF 32000-1 §8.9.5.4) takes precedence and becomes the alpha plane;
+        otherwise an explicit-mask ``/Mask`` stencil (§8.9.6.3) or a
+        color-key ``/Mask`` range (§8.9.6.4) is applied. The mask plane is
+        upscaled to the base image's dimensions when its own dimensions
+        differ and its own ``/Decode`` array is honoured (delegated to
+        :meth:`to_pil_image`). When no mask is present the opaque raster is
+        returned unchanged.
         """
         image = self.to_pil_image()
         if image is None:
             return None
+        image = self._apply_image_masks(image)
         if region is not None:
             x, y, w, h = region
             image = image.crop((x, y, x + w, y + h))
@@ -784,6 +792,38 @@ class PDImageXObject(PDXObject):
                 (max(1, image.width // subsampling), max(1, image.height // subsampling)),
                 Image.NEAREST,
             )
+        return image
+
+    def _apply_image_masks(self, image: Image.Image) -> Image.Image:
+        """Composite this image's ``/SMask`` or ``/Mask`` into ``image`` as
+        alpha, returning an RGBA image when a mask is present (else ``image``
+        unchanged). Mirrors the mask precedence in upstream ``getImage`` —
+        ``/SMask`` first, then explicit-mask ``/Mask`` stream, then color-key
+        ``/Mask`` array. Each step is best-effort: a mask that fails to decode
+        leaves the opaque raster in place rather than raising."""
+        soft_mask = None
+        try:
+            soft_mask = self.get_soft_mask()
+        except Exception:  # noqa: BLE001 - best-effort; opaque raster on failure
+            soft_mask = None
+        if soft_mask is not None:
+            return _apply_soft_mask(image, soft_mask, self)
+
+        explicit_mask = None
+        try:
+            explicit_mask = self.get_mask()
+        except Exception:  # noqa: BLE001
+            explicit_mask = None
+        if explicit_mask is not None:
+            return _apply_explicit_mask(image, explicit_mask)
+
+        color_key = None
+        try:
+            color_key = self.get_color_key_mask()
+        except Exception:  # noqa: BLE001
+            color_key = None
+        if color_key:
+            return _apply_color_key_mask(image, color_key)
         return image
 
     def get_opaque_image(
@@ -796,11 +836,23 @@ class PDImageXObject(PDXObject):
         the raw mask. Mirrors upstream ``PDImageXObject.getOpaqueImage()``
         and the parameterised overload (Java lines 585 and 603).
 
-        Today this is identical to :meth:`get_image` — pypdfbox does not
-        composite ``/SMask`` or stencil ``/Mask`` into the returned
-        raster, so the "opaque" and "with masks applied" forms coincide
-        until the rendering cluster lands."""
-        return self.get_image(region=region, subsampling=subsampling)
+        Unlike :meth:`get_image` this NEVER composites ``/SMask`` /
+        ``/Mask`` into the raster — it returns the colour samples alone,
+        matching upstream's ``getOpaqueImage`` (which decodes the raster
+        without the alpha-mask step). ``region`` / ``subsampling`` are
+        applied identically to :meth:`get_image`."""
+        image = self.to_pil_image()
+        if image is None:
+            return None
+        if region is not None:
+            x, y, w, h = region
+            image = image.crop((x, y, x + w, y + h))
+        if subsampling > 1:
+            image = image.resize(
+                (max(1, image.width // subsampling), max(1, image.height // subsampling)),
+                Image.NEAREST,
+            )
+        return image
 
     def get_stencil_image(self, paint: object) -> Image.Image | None:
         """Return a stencil-painted image. Mirrors upstream
@@ -1108,6 +1160,155 @@ def decode_pdimage_to_pil(
     if color_space_name in ("Separation", "DeviceN") and color_space is not None:
         return _decode_devicen_to_rgb(color_space, data, width, height)
     return None
+
+
+def _apply_soft_mask(
+    image: Image.Image, smask: PDImageXObject, base: PDImageXObject
+) -> Image.Image:
+    """Return ``image`` (RGBA) with the ``/SMask`` Image XObject composited as
+    the alpha channel (PDF 32000-1 §8.9.5.4).
+
+    The soft mask is decoded as grayscale via :meth:`to_pil_image` (which
+    honours its own ``/Decode`` array and ``BitsPerComponent`` ≠ 8), reduced
+    to a single luminance channel, and upscaled to the base image's
+    dimensions when its own dimensions differ. When the soft mask carries a
+    ``/Matte`` array the base colours were pre-blended against it and are
+    un-pre-multiplied (``c = m + (c' - m) / alpha``) — mirroring upstream
+    ``PDImageXObject.applyMask``. Any decode failure returns ``image``
+    unchanged."""
+    try:
+        mask_image = smask.to_pil_image()
+    except Exception:  # noqa: BLE001 - best-effort; opaque raster on failure
+        return image
+    if mask_image is None:
+        return image
+    if mask_image.mode != "L":
+        mask_image = mask_image.convert("L")
+    if mask_image.size != image.size:
+        # Upstream ``applyMask`` scales the mask via ``scaleImage`` honouring
+        # the soft mask's own ``/Interpolate`` flag (default ``false`` → hard
+        # per-sample selection, i.e. nearest-neighbour). Only interpolate when
+        # the SMask explicitly requests it.
+        try:
+            interpolate = bool(smask.get_interpolate())
+        except Exception:  # noqa: BLE001
+            interpolate = False
+        resample = Image.BICUBIC if interpolate else Image.NEAREST
+        mask_image = mask_image.resize(image.size, resample)
+    rgba = image.convert("RGBA")
+    rgba.putalpha(mask_image)
+    return _unpremultiply_matte(rgba, mask_image, base, smask)
+
+
+def _unpremultiply_matte(
+    rgba: Image.Image,
+    alpha: Image.Image,
+    base: PDImageXObject,
+    smask: PDImageXObject,
+) -> Image.Image:
+    """Un-pre-multiply the soft mask's ``/Matte`` colour out of ``rgba``.
+
+    When the soft mask declares ``/Matte`` (PDF §11.6.5.3) the base colour
+    ``c'`` was stored pre-blended against the matte ``m``; the true colour is
+    recovered as ``c = m + (c' - m) / alpha``. Pixels with alpha 0 are left
+    untouched and every recovered component is clamped to ``[0, 255]``. An
+    absent matte (or any resolution failure) returns ``rgba`` unchanged."""
+    try:
+        matte = base.extract_matte(smask)
+    except Exception:  # noqa: BLE001 - best-effort
+        return rgba
+    if not matte or len(matte) < 3:
+        return rgba
+    m = [max(0.0, min(255.0, float(c) * 255.0)) for c in matte[:3]]
+    px = rgba.load()
+    apx = alpha.load()
+    width, height = rgba.size
+    for y in range(height):
+        for x in range(width):
+            a = apx[x, y]
+            if a == 0:
+                continue
+            r, g, b, _ = px[x, y]
+            scale = 255.0 / a
+            nr = m[0] + (r - m[0]) * scale
+            ng = m[1] + (g - m[1]) * scale
+            nb = m[2] + (b - m[2]) * scale
+            px[x, y] = (
+                0 if nr < 0 else 255 if nr > 255 else int(round(nr)),
+                0 if ng < 0 else 255 if ng > 255 else int(round(ng)),
+                0 if nb < 0 else 255 if nb > 255 else int(round(nb)),
+                a,
+            )
+    return rgba
+
+
+def _apply_explicit_mask(image: Image.Image, mask: PDImageXObject) -> Image.Image:
+    """Return ``image`` (RGBA) with an explicit-mask ``/Mask`` 1-bit stencil
+    applied as alpha (PDF 32000-1 §8.9.6.3).
+
+    A stencil sample of ``1`` masks the pixel out (transparent), a sample of
+    ``0`` paints it (opaque); a ``/Decode [1 0]`` on the mask reverses that
+    polarity. The mask is decoded to a 1-component plane, scaled to the base
+    image's dimensions with nearest-neighbour sampling (the spec's per-sample
+    selection — no bilinear blur of the stencil edge), and applied as alpha.
+    Any decode failure returns ``image`` unchanged."""
+    try:
+        mw = int(mask.get_width())
+        mh = int(mask.get_height())
+        if mw <= 0 or mh <= 0:
+            return image
+        with mask.create_input_stream() as src:
+            data = src.read()
+        samples = _unpack_sub_byte_samples(data, mw, mh, 1)
+        if samples is None:
+            return image
+    except Exception:  # noqa: BLE001 - best-effort; opaque raster on failure
+        return image
+
+    try:
+        decode = mask.get_decode()
+    except Exception:  # noqa: BLE001
+        decode = None
+    masked_sample = 1
+    if decode is not None and len(decode) >= 2 and decode[0] > decode[1]:
+        masked_sample = 0
+
+    alpha_bytes = bytearray(mw * mh)
+    for i, s in enumerate(samples):
+        alpha_bytes[i] = 0 if s == masked_sample else 255
+    alpha = Image.frombytes("L", (mw, mh), bytes(alpha_bytes))
+    if alpha.size != image.size:
+        alpha = alpha.resize(image.size, Image.NEAREST)
+    rgba = image.convert("RGBA")
+    rgba.putalpha(alpha)
+    return rgba
+
+
+def _apply_color_key_mask(image: Image.Image, ranges: Sequence[int]) -> Image.Image:
+    """Return ``image`` (RGBA) with a color-key ``/Mask`` range applied as
+    alpha (PDF 32000-1 §8.9.6.4).
+
+    ``ranges`` is ``[min1 max1 min2 max2 ...]`` over the (RGB) sample
+    components; a pixel whose every component falls inside its inclusive
+    range is masked out (alpha 0). Other pixels stay opaque. An odd / too-short
+    range or a non-RGB image returns ``image`` unchanged."""
+    if len(ranges) < 6 or len(ranges) % 2 != 0:
+        return image
+    rgb = image.convert("RGB")
+    px = rgb.load()
+    width, height = rgb.size
+    rgba = rgb.convert("RGBA")
+    apx = rgba.load()
+    rmin, rmax, gmin, gmax, bmin, bmax = ranges[:6]
+    for y in range(height):
+        for x in range(width):
+            r, g, b = px[x, y]
+            keyed = (
+                rmin <= r <= rmax and gmin <= g <= gmax and bmin <= b <= bmax
+            )
+            if keyed:
+                apx[x, y] = (r, g, b, 0)
+    return rgba
 
 
 def _dct_jpeg_to_rgb(
