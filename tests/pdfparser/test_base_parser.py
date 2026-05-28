@@ -247,9 +247,14 @@ def test_literal_string_octal_overflow_truncates_to_byte() -> None:
     assert p.read_literal_string() == b"\xff"
 
 
-def test_literal_string_eol_normalization() -> None:
+def test_literal_string_raw_eol_bytes_preserved() -> None:
+    # PDFBox 3.0.7's BaseParser.parseCOSString writes unescaped EOL bytes
+    # verbatim — it does NOT perform the ISO 32000-1 §7.3.4.2 EOL→LF
+    # normalization on bare CR / CRLF inside a literal string (verified by
+    # the live oracle, ParseLiteralNameProbe). Only the backslash + EOL line
+    # continuation is special. Keep the raw bytes for byte parity.
     p = parser(b"(line1\r\nline2\rline3\nline4)")
-    assert p.read_literal_string() == b"line1\nline2\nline3\nline4"
+    assert p.read_literal_string() == b"line1\r\nline2\rline3\nline4"
 
 
 def test_literal_string_line_continuation_with_backslash_eol() -> None:

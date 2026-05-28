@@ -533,35 +533,53 @@ class BaseParser:
             return out.decode("latin-1")
 
     def read_name_bytes(self) -> bytes:
-        """Parse a name object and return the raw decoded byte sequence."""
+        """Parse a name object and return the raw decoded byte sequence.
+
+        Mirrors upstream ``BaseParser.parseCOSName()`` (line 1412) byte for
+        byte. The ``#XX`` hex escape reads BOTH following bytes via ``read()``
+        (not ``peek``):
+
+        * both hex digits → write the decoded byte and continue;
+        * one byte is EOF → log "Premature EOF" and stop WITHOUT writing the
+          ``#`` (so ``/AB#`` decodes to ``AB``, matching PDFBox 3.0.7);
+        * otherwise (both present, at least one non-hex) → push the second
+          byte back, write a literal ``#``, and re-process the first byte in
+          the loop (so ``/A#GB`` decodes to ``A#GB``).
+        """
         start_pos = self.position
         b = self._src.read()
         if b != 0x2F:  # '/'
             raise PDFParseError("expected name (leading '/')", position=start_pos)
         out = bytearray()
-        while True:
-            b = self._src.read()
-            if b == RandomAccessRead.EOF or not self.is_regular(b):
-                if b != RandomAccessRead.EOF:
-                    self._src.rewind(1)
-                break
+        b = self._src.read()
+        while not self.is_end_of_name(b):
             if b == 0x23:  # '#' — hex escape
-                hi = self._src.peek()
-                if hi == RandomAccessRead.EOF or not self.is_hex_digit(hi):
-                    # Malformed escape — keep '#' literally and continue.
-                    out.append(b)
-                    continue
-                self._src.read()
-                lo = self._src.peek()
-                if lo == RandomAccessRead.EOF or not self.is_hex_digit(lo):
-                    # Only one valid hex digit followed '#'; keep both raw.
-                    out.append(b)
-                    out.append(hi)
-                    continue
-                self._src.read()
-                out.append(int(bytes((hi, lo)).decode("ascii"), 16))
+                ch1 = self._src.read()
+                ch2 = self._src.read()
+                if (
+                    ch1 != RandomAccessRead.EOF
+                    and self.is_hex_digit(ch1)
+                    and ch2 != RandomAccessRead.EOF
+                    and self.is_hex_digit(ch2)
+                ):
+                    out.append(int(bytes((ch1, ch2)).decode("ascii"), 16))
+                    b = self._src.read()
+                elif ch1 == RandomAccessRead.EOF or ch2 == RandomAccessRead.EOF:
+                    # Premature EOF: upstream logs and stops, discarding the
+                    # dangling '#'. Match by breaking without writing it.
+                    b = RandomAccessRead.EOF
+                    break
+                else:
+                    # Neither EOF but not a valid hex pair: rewind the second
+                    # byte, keep '#' literally, and re-process the first byte.
+                    self._src.rewind(1)
+                    b = ch1
+                    out.append(0x23)
             else:
                 out.append(b)
+                b = self._src.read()
+        if b != RandomAccessRead.EOF:
+            self._src.rewind(1)
         return bytes(out)
 
     # ---------- literal string ( ... ) ----------
@@ -603,12 +621,14 @@ class BaseParser:
                 depth = self._consume_escape(out, depth)
                 if depth == 0:
                     return bytes(out)
-            elif b == 0x0D:
-                # CR or CRLF → LF (§7.3.4.2 EOL normalization).
-                if self._src.peek() == 0x0A:
-                    self._src.read()
-                out.append(0x0A)
             else:
+                # Upstream ``BaseParser.parseCOSString`` writes every other
+                # byte verbatim — including bare CR / LF. It does NOT perform
+                # the ISO 32000-1 §7.3.4.2 EOL→LF normalization on
+                # unescaped end-of-line bytes (only the backslash + EOL line
+                # continuation is special, handled in ``_consume_escape``).
+                # Storing the raw byte keeps the decoded payload byte-identical
+                # to PDFBox 3.0.7 (verified by the live oracle).
                 out.append(b)
 
     def check_for_end_of_string(self, braces_parameter: int) -> int:

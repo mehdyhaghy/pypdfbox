@@ -143,12 +143,14 @@ class DublinCoreSchema(XMPSchema):
         if not isinstance(raw, dict) or not raw:
             return None
         la = LangAlt(self._metadata, self._namespace, self._prefix, local_name)
-        # Insert x-default first (mirrors LangAlt._reorganize_alt_order).
-        keys = list(raw.keys())
-        if X_DEFAULT in keys:
-            keys.remove(X_DEFAULT)
-            keys.insert(0, X_DEFAULT)
-        for lang in keys:
+        # Emit children in stored dict order. The storage dict already carries
+        # the correct order for each entry point: the schema setters reorganize
+        # x-default to the front (mirroring upstream reorganizeAltOrder), while
+        # the parser deposits the rdf:li children in source document order
+        # (upstream DomXmpParser does not reorganize on parse). Re-sorting here
+        # would override the parser's faithful source order and diverge from
+        # Apache xmpbox.
+        for lang in list(raw.keys()):
             value = raw[lang]
             if not isinstance(value, str):
                 continue

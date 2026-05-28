@@ -14,7 +14,7 @@ from .type import (
     RationalType,
     TextType,
 )
-from .type.lang_alt import LANG_ATTR_NAME, X_DEFAULT, XML_NS_URI
+from .type.lang_alt import LANG_ATTR_NAME, XML_NS_URI
 from .xmp_schema import XMPSchema
 
 if TYPE_CHECKING:
@@ -331,11 +331,11 @@ class ExifSchema(XMPSchema):
         la = LangAlt(
             self._metadata, self._namespace, self._prefix, self.USER_COMMENT
         )
-        keys = list(raw.keys())
-        if X_DEFAULT in keys:
-            keys.remove(X_DEFAULT)
-            keys.insert(0, X_DEFAULT)
-        for lang in keys:
+        # Emit children in stored dict order — the setters reorganize x-default
+        # to the front, while the parser deposits source document order
+        # (upstream DomXmpParser does not reorganize on parse). Re-sorting here
+        # would override the parser's faithful order and diverge from xmpbox.
+        for lang in list(raw.keys()):
             value = raw[lang]
             if not isinstance(value, str):
                 continue

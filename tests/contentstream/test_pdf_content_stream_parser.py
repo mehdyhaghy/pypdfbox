@@ -91,14 +91,16 @@ def test_literal_string_line_continuation_crlf() -> None:
     assert toks[0].get_bytes() == b"line1line2"
 
 
-def test_literal_string_eol_normalization() -> None:
-    # Bare CR / CRLF inside the string are normalized to LF (§7.3.4.2).
+def test_literal_string_raw_eol_bytes_preserved() -> None:
+    # PDFBox 3.0.7 writes unescaped EOL bytes verbatim inside a literal
+    # string — bare CR / CRLF are NOT normalized to LF (verified by the live
+    # oracle, ParseLiteralNameProbe). Keep the raw bytes for byte parity.
     toks_cr = _parse(b"(a\rb) Tj")
     assert isinstance(toks_cr[0], COSString)
-    assert toks_cr[0].get_bytes() == b"a\nb"
+    assert toks_cr[0].get_bytes() == b"a\rb"
     toks_crlf = _parse(b"(a\r\nb) Tj")
     assert isinstance(toks_crlf[0], COSString)
-    assert toks_crlf[0].get_bytes() == b"a\nb"
+    assert toks_crlf[0].get_bytes() == b"a\r\nb"
     # Bare LF stays as LF.
     toks_lf = _parse(b"(a\nb) Tj")
     assert isinstance(toks_lf[0], COSString)

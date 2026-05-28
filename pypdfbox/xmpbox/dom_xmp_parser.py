@@ -917,8 +917,15 @@ class DomXmpParser:
     @staticmethod
     def _assign(schema: XMPSchema, local_name: str, value: object) -> None:
         if isinstance(value, dict):
-            for lang, v in value.items():
-                schema.set_unqualified_language_property_value(local_name, lang, v)
+            # Lang-alt deposit. Upstream DomXmpParser.manageLangAlt appends each
+            # rdf:li TextType to the container with raw addProperty and never
+            # calls reorganizeAltOrder — so the parsed lang-alt preserves the
+            # source document order of the rdf:li children (x-default is NOT
+            # forced to the front on parse; that reorganisation only happens via
+            # the schema setters). Deposit the lang map directly to mirror that;
+            # routing through set_unqualified_language_property_value would
+            # reorganize x-default first and diverge from xmpbox.
+            schema._properties[local_name] = dict(value)  # noqa: SLF001
         elif isinstance(value, list):
             for item in value:
                 schema.add_qualified_bag_value(local_name, item)

@@ -154,11 +154,11 @@ class XMPRightsManagementSchema(XMPSchema):
         la = LangAlt(
             self._metadata, self._namespace, self._prefix, self.USAGE_TERMS
         )
-        keys = list(raw.keys())
-        if X_DEFAULT in keys:
-            keys.remove(X_DEFAULT)
-            keys.insert(0, X_DEFAULT)
-        for lang in keys:
+        # Emit children in stored dict order — the setters reorganize x-default
+        # to the front, while the parser deposits source document order
+        # (upstream DomXmpParser does not reorganize on parse). Re-sorting here
+        # would override the parser's faithful order and diverge from xmpbox.
+        for lang in list(raw.keys()):
             value = raw[lang]
             if not isinstance(value, str):
                 continue

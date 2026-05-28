@@ -137,7 +137,7 @@ def test_wave365_owner_property_filters_non_simple_children() -> None:
     ]
 
 
-def test_wave365_usage_terms_property_orders_default_and_skips_bad_values() -> None:
+def test_wave365_usage_terms_property_preserves_deposit_order_and_skips_bad_values() -> None:
     schema = _rights()
     schema.set_property(
         XMPRightsManagementSchema.USAGE_TERMS,
@@ -152,8 +152,12 @@ def test_wave365_usage_terms_property_orders_default_and_skips_bad_values() -> N
     children = lang_alt.get_all_properties()
     first_attr = children[0].get_attribute(LANG_ATTR_NAME)
     assert first_attr is not None
-    assert first_attr.get_value() == "x-default"
-    assert lang_alt.get_languages() == ["x-default", "fr"]
+    # The build accessor emits children in stored dict order — it does NOT
+    # force x-default to the front (that reorganisation belongs to the schema
+    # setters and the parser deposits source order; see CHANGES.md). A raw
+    # set_property(dict) deposit is therefore surfaced in insertion order.
+    assert first_attr.get_value() == "fr"
+    assert lang_alt.get_languages() == ["fr", "x-default"]
 
 
 def test_wave365_set_usage_terms_property_defaults_missing_lang_and_clears() -> None:

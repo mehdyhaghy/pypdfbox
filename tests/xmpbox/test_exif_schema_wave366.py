@@ -81,7 +81,7 @@ def test_wave366_typed_setters_pin_names_and_clear() -> None:
     assert schema.get_gps_time_stamp_property() is None
 
 
-def test_wave366_user_comment_property_orders_default_and_filters_non_strings() -> None:
+def test_wave366_user_comment_property_preserves_deposit_order_and_filters_non_strings() -> None:
     schema = _exif()
     schema.set_property(
         ExifSchema.USER_COMMENT,
@@ -93,10 +93,14 @@ def test_wave366_user_comment_property_orders_default_and_filters_non_strings() 
     assert isinstance(lang_alt, LangAlt)
     assert lang_alt.get_language_value("x-default") == "Default"
     assert lang_alt.get_language_value("fr") == "Bonjour"
-    assert lang_alt.get_languages() == ["x-default", "fr"]
+    # The build accessor emits children in stored dict order — it does NOT
+    # force x-default to the front (that reorganisation belongs to the schema
+    # setters; the parser deposits source order — see CHANGES.md). A raw
+    # set_property(dict) deposit is therefore surfaced in insertion order.
+    assert lang_alt.get_languages() == ["fr", "x-default"]
     first_attr = lang_alt.get_all_properties()[0].get_attribute(LANG_ATTR_NAME)
     assert first_attr is not None
-    assert first_attr.get_value() == "x-default"
+    assert first_attr.get_value() == "fr"
 
 
 def test_wave366_sequence_adders_preserve_string_values() -> None:

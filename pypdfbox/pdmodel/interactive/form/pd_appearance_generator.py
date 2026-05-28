@@ -1595,16 +1595,20 @@ class PDAppearanceGenerator:
             # the glyphs paint on top.
             top_y = max(2.0, height - resolved_size * 1.15)
             visible_options = options[top_index:] if top_index < len(options) else []
-            for visible_idx, _ in enumerate(visible_options):
-                option_idx = top_index + visible_idx
-                if option_idx not in highlighted:
-                    continue
+            # Mirror upstream insertGeneratedListboxSelectionHighlight: a
+            # highlight rect is emitted for EVERY selected option, positioned
+            # by its row index relative to /TI. Options scrolled above the
+            # window (index < top_index) land off the top of the rect and are
+            # clipped by the /Tx clip path — upstream still writes the fill,
+            # so the operator count must not be gated on the visible window.
+            for option_idx in sorted(highlighted):
+                visible_idx = option_idx - top_index
                 row_y = top_y - visible_idx * line_height
                 # Highlight rect spans the full interior width and one line.
                 cs.set_non_stroking_color(self.HIGHLIGHT_COLOR)
                 cs.add_rect(
                     1.0,
-                    max(0.0, row_y - resolved_size * 0.15),
+                    row_y - resolved_size * 0.15,
                     interior_w,
                     line_height,
                 )
