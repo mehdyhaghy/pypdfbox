@@ -459,9 +459,13 @@ class BaseParser:
     def read_number(self) -> int | float:
         """Parse an integer or real number per ISO 32000-1 §7.3.3.
 
-        Real numbers may use a leading or trailing decimal point. No
-        scientific-notation branch — that's a malformed-recovery
-        affordance reserved for ``PDFParser``."""
+        Real numbers may use a leading or trailing decimal point. PDF spec
+        does NOT allow scientific notation, but PDFBox's lenient
+        ``BaseParser.parseCOSNumber`` accepts ``e``/``E`` followed by an
+        optional sign and exponent digits — real-world PDFs sometimes
+        carry ``1.5e-2``-shaped reals. A trailing ``e``/``E`` with no
+        following exponent digit is stripped and rewound, matching
+        upstream parseCOSNumber (Java bytecode offsets 95-149)."""
         start_pos = self.position
         sign_chr = b""
         b = self._src.read()
@@ -470,20 +474,49 @@ class BaseParser:
             b = self._src.read()
         body = bytearray()
         saw_dot = False
+        saw_exp = False
         while b != RandomAccessRead.EOF:
             if self.is_digit(b):
                 body.append(b)
-            elif b == 0x2E and not saw_dot:  # '.'
+            elif b == 0x2E and not saw_dot and not saw_exp:  # '.'
                 saw_dot = True
                 body.append(b)
+            elif b in (0x65, 0x45) and not saw_exp:  # 'e' / 'E'
+                saw_exp = True
+                body.append(b)
+                # Accept an optional sign immediately after the exponent
+                # marker (``1.5e-2``).
+                nxt = self._src.read()
+                if nxt in (0x2B, 0x2D):
+                    body.append(nxt)
+                    b = self._src.read()
+                else:
+                    b = nxt
+                continue
             else:
                 self._src.rewind(1)
                 break
             b = self._src.read()
+        # Strip a trailing ``e``/``E`` (no exponent digits followed) and
+        # rewind the source so the next read sees that ``e``/``E`` again —
+        # upstream parseCOSNumber strips it before invoking COSNumber.get.
+        if body and body[-1] in (0x65, 0x45):
+            body.pop()
+            self._src.rewind(1)
+            saw_exp = False
         if not body or body == b".":
             raise PDFParseError("expected number", position=start_pos)
         text = (sign_chr + bytes(body)).decode("ascii")
-        return float(text) if saw_dot else int(text)
+        try:
+            return float(text) if (saw_dot or saw_exp) else int(text)
+        except ValueError as exc:
+            # Pathological number tokens (e.g. ``1.5e+`` with no exponent
+            # digit) reach here from the lenient accept set above; surface
+            # them as a parse error rather than a raw ``ValueError`` so
+            # callers can treat number-read failures uniformly.
+            raise PDFParseError(
+                f"invalid number {text!r}", position=start_pos
+            ) from exc
 
     # ---------- name objects ----------
 
