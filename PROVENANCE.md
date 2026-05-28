@@ -3219,6 +3219,20 @@ Backfill of upstream Java paths for source files added in earlier waves (mostly 
 | `tests/cos/oracle/test_cos_number_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/CosNumberProbe.java`, wave 1458 agent J); COSNumber/COSFloat/COSInteger boundary behaviour. 5 BUGS FIXED — `COSNumber.get("")`→`OUT_OF_RANGE_MAX` (was ZERO), uppercase-`E`/multi-`+` literals now raise, malformed-real recovery reformats (was raw-preserve), `intValue`/`longValue` saturate like JVM `f2i`/`f2l`, and `coerce` flushes `-0.0`→`+0.0`; no single upstream JUnit source |
 
 
+### Wave 1459 additions — live-oracle differential probes + tests (partial wave; 4 surfaces landed, session-limit interrupted the rest)
+
+| File | Upstream version | Upstream Java path / note |
+|---|---|---|
+| `oracle/probes/Type4OpEdgeProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1459 agent A); drives `org.apache.pdfbox.pdmodel.common.function.PDFunction.eval` over Type 4 PostScript-calculator operator edge cases; no single upstream JUnit source |
+| `tests/pdmodel/common/function/oracle/test_type4_op_edge_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/Type4OpEdgeProbe.java`, wave 1459 agent A); Type 4 op edges — `not`-on-int negation (`5 not → -5`), `or`/`xor`/`and`/`bitshift`, `idiv`/`mod` negative-operand signs, `round` ties, `ceiling`/`floor`/`truncate`/`cvi`/`cvr` on negatives, `cos`/`log`/`neg`/`abs`/`atan`-wrap, relational `eq`/`ne`/`le`/`ge`, + Type 2 out-of-domain (no input clip); confirmed at parity; no single upstream JUnit source |
+| `oracle/probes/Type3CharProcProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1459 agent D); Type 3 glyph char-proc metric operators `d0`/`d1`; no single upstream JUnit source |
+| `tests/contentstream/oracle/test_type3_char_proc_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/Type3CharProcProbe.java`, wave 1459 agent D); `d0 wx wy` (set width) and `d1 wx wy llx lly urx ury` (set width + bbox) char-proc operators that begin every Type 3 glyph stream; confirmed at parity; no single upstream JUnit source |
+| `oracle/probes/KernTableProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1459 agent B); drives `org.apache.fontbox.ttf` `KerningTable`/`KerningSubtable` format-0 horizontal kerning; no single upstream JUnit source |
+| `tests/fontbox/ttf/oracle/test_kern_table_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/KernTableProbe.java`, wave 1459 agent B); TrueType `kern` table — `get_horizontal_kerning_subtable()` selection, coverage flags, per-pair `getKerning(left, right)`; confirmed at parity; no single upstream JUnit source |
+| `oracle/probes/HighlightBlendProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1459 agent C); drives the Highlight text-markup `generateNormalAppearance` (multiply-blend `/AP /N`); no single upstream JUnit source |
+| `tests/pdmodel/interactive/annotation/oracle/test_highlight_blend_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/HighlightBlendProbe.java`, wave 1459 agent C); Highlight annotation `/AP /N` operator-keyword sequence + multiply blend (PDF §11.3.5) from `/QuadPoints` + `/C`; confirmed at parity; no single upstream JUnit source |
+
+
 ## External font assets (runtime-fetched, never bundled)
 
 These are **not** Apache PDFBox ports — they are upstream font binaries
