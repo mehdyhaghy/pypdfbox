@@ -229,6 +229,23 @@ def _emit_font(
         for n in names:
             lines.append(f"PROC\t{n}")
 
+    bbox = font.get_font_bbox()
+    if bbox is None:
+        lines.append("BBOX\tNONE")
+    else:
+        lines.append(
+            "BBOX\t"
+            + _fmt(bbox.get_lower_left_x()) + "\t"
+            + _fmt(bbox.get_lower_left_y()) + "\t"
+            + _fmt(bbox.get_upper_right_x()) + "\t"
+            + _fmt(bbox.get_upper_right_y())
+        )
+
+    if first >= 0:
+        for code in range(first, last + 1):
+            tx, ty = font.get_displacement(code)
+            lines.append(f"DISP\t{code}\t{_fmt(tx)}\t{_fmt(ty)}")
+
 
 def _normalize_text_block(text: str) -> str:
     """Strip trailing whitespace so the two libraries' page-text block line
@@ -262,6 +279,99 @@ def test_built_type3_font_matches_pdfbox(tmp_path: Path) -> None:
     pdf_path = tmp_path / "type3.pdf"
     _build_type3_pdf(pdf_path)
     _assert_parity(pdf_path)
+
+
+@requires_oracle
+def test_type3_displacement_with_translating_matrix(tmp_path: Path) -> None:
+    """Probe ``get_displacement(code)`` against PDFBox under a font matrix
+    with non-zero translation (e/f entries).
+
+    Upstream's ``getDisplacement`` is ``FontMatrix.transform(Vector(width, 0))``
+    where PDFBox's ``Matrix.transform(Vector)`` *does* fold translation into
+    the transformed vector — i.e. the result is ``(a*width + e, b*width + f)``,
+    not the geometrically-pure ``(a*width, b*width)``. This test pins the
+    parity by setting ``e = 0.5`` / ``f = 0.25`` so a port that drops the
+    translation diverges by a constant ``(0.5, 0.25)`` per glyph.
+    """
+    from pypdfbox.pdmodel.pd_page import PDPage
+    from pypdfbox.pdmodel.pd_resources import PDResources
+
+    pdf_path = tmp_path / "type3_translating.pdf"
+
+    char_procs = COSDictionary()
+    for _code, gname, _uni, w in _GLYPHS:
+        char_procs.set_item(COSName.get_pdf_name(gname), _char_proc_stream(w))
+
+    differences = COSArray()
+    prev: int | None = None
+    for code, gname, _uni, _w in _GLYPHS:
+        if prev is None or code != prev + 1:
+            differences.add(COSInteger.get(code))
+        differences.add(COSName.get_pdf_name(gname))
+        prev = code
+    enc = COSDictionary()
+    enc.set_item(COSName.TYPE, COSName.get_pdf_name("Encoding"))
+    enc.set_item(COSName.get_pdf_name("Differences"), differences)
+
+    widths = COSArray([COSFloat(w) for _c, _g, _u, w in _GLYPHS])
+    # Translating matrix: a=0.002, d=0.002, e=0.5, f=0.25.
+    matrix = COSArray([
+        COSFloat(0.002), COSFloat(0.0),
+        COSFloat(0.0), COSFloat(0.002),
+        COSFloat(0.5), COSFloat(0.25),
+    ])
+    bbox = COSArray([COSInteger.get(v) for v in (0, 0, 500, 700)])
+
+    font_dict = COSDictionary()
+    font_dict.set_item(COSName.TYPE, COSName.get_pdf_name("Font"))
+    font_dict.set_item(COSName.get_pdf_name("Subtype"), COSName.get_pdf_name("Type3"))
+    font_dict.set_item(COSName.get_pdf_name("Name"), COSName.get_pdf_name("T3Trans"))
+    font_dict.set_item(COSName.get_pdf_name("FontMatrix"), matrix)
+    font_dict.set_item(COSName.get_pdf_name("FontBBox"), bbox)
+    font_dict.set_item(COSName.get_pdf_name("CharProcs"), char_procs)
+    font_dict.set_item(COSName.get_pdf_name("Encoding"), enc)
+    font_dict.set_int(COSName.FIRST_CHAR, _FIRST_CHAR)
+    font_dict.set_int(COSName.LAST_CHAR, _LAST_CHAR)
+    font_dict.set_item(COSName.get_pdf_name("Widths"), widths)
+
+    doc = PDDocument()
+    try:
+        page = PDPage()
+        doc.add_page(page)
+        font = PDType3Font(font_dict)
+        res = PDResources()
+        res.put(COSName.get_pdf_name("F1"), font)
+        font.set_resources(PDResources())
+        page.set_resources(res)
+        doc.save(str(pdf_path))
+    finally:
+        doc.close()
+
+    java_lines = run_probe_text("Type3FontProbe", str(pdf_path)).splitlines()
+    java_disp = [line for line in java_lines if line.startswith("DISP\t")]
+
+    doc = PDDocument.load(pdf_path)
+    try:
+        font = None
+        for page in doc.get_pages():
+            res = page.get_resources()
+            for name in res.get_font_names():
+                f = res.get_font(name)
+                if isinstance(f, PDType3Font):
+                    font = f
+                    break
+        assert font is not None
+        py_disp = []
+        for code in range(font.get_first_char(), font.get_last_char() + 1):
+            tx, ty = font.get_displacement(code)
+            py_disp.append(f"DISP\t{code}\t{_fmt(tx)}\t{_fmt(ty)}")
+    finally:
+        doc.close()
+
+    assert py_disp == java_disp, (
+        "Type 3 displacement diverges under a translating font matrix:\n"
+        f"  java: {java_disp}\n  py:   {py_disp}"
+    )
 
 
 @requires_oracle

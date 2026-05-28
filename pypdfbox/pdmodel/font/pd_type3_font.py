@@ -318,17 +318,21 @@ class PDType3Font(PDSimpleFont):
         """Glyph displacement vector ``(tx, ty)`` for ``code``, in text
         space units.
 
-        Mirrors upstream ``PDType3Font.getDisplacement(int code)``,
-        which transforms ``(getWidth(code), 0)`` through the font
-        matrix. For the spec-default ``[0.001, 0, 0, 0.001, 0, 0]`` this
-        is just ``(width / 1000, 0)``; we apply the matrix's
-        ``a`` / ``b`` scale (entries 0 and 1) to honour custom
-        Type 3 matrices (see PDFBOX-2298).
+        Mirrors upstream ``PDType3Font.getDisplacement(int code)`` which
+        is ``getFontMatrix().transform(new Vector(getWidth(code), 0))``.
+        For a 6-element matrix ``[a b c d e f]`` and the vector
+        ``(x, 0)`` PDFBox's ``Matrix.transform(Vector)`` produces
+        ``(a*x + e, b*x + f)`` — translation IS folded into the
+        transformed vector (atypical for vector math but matches
+        upstream behaviour, see PDFBOX-2298). For the spec-default
+        ``[0.001, 0, 0, 0.001, 0, 0]`` this collapses to
+        ``(width / 1000, 0)``.
         """
         width = self.get_width(int(code))
         matrix = self.get_font_matrix()
-        # 6-element matrix [a b c d e f]; transform of (x, 0) = (a*x, b*x).
-        return matrix[0] * width, matrix[1] * width
+        # 6-element matrix [a b c d e f]; PDFBox's Vector.transform of
+        # (x, 0) = (a*x + e, b*x + f) — translation IS applied.
+        return matrix[0] * width + matrix[4], matrix[1] * width + matrix[5]
 
     def get_position_vector(self, code: int) -> tuple[float, float]:
         """Return the glyph position vector for ``code``.

@@ -6,10 +6,12 @@ import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDResources;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType3Font;
 import org.apache.pdfbox.pdmodel.font.encoding.Encoding;
 import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.pdfbox.util.Vector;
 
 /**
  * Live oracle probe for Type 3 fonts.
@@ -23,6 +25,8 @@ import org.apache.pdfbox.text.PDFTextStripper;
  *   ENC   <code> <glyphName>                  (code 0..255, glyphName or .notdef)
  *   WIDTH <code> <width>                      (code FirstChar..LastChar, getWidth(code))
  *   PROC  <glyphName>                          (each /CharProcs key, sorted)
+ *   BBOX  <llx> <lly> <urx> <ury>             (font.getFontBBox(), or NONE)
+ *   DISP  <code> <tx> <ty>                    (font.getDisplacement(code), in-range)
  * Then once for the whole page:
  *   TEXT  <extracted text for the page, one trailing block>
  *
@@ -97,6 +101,26 @@ public final class Type3FontProbe {
             for (String n : names) {
                 out.println("PROC\t" + n);
             }
+        }
+
+        PDRectangle bbox = font.getFontBBox();
+        if (bbox == null) {
+            out.println("BBOX\tNONE");
+        } else {
+            out.println(
+                "BBOX\t"
+                + fmt(bbox.getLowerLeftX()) + "\t"
+                + fmt(bbox.getLowerLeftY()) + "\t"
+                + fmt(bbox.getUpperRightX()) + "\t"
+                + fmt(bbox.getUpperRightY())
+            );
+        }
+
+        for (int code = first; code <= last && first >= 0; code++) {
+            Vector disp = font.getDisplacement(code);
+            out.println(
+                "DISP\t" + code + "\t" + fmt(disp.getX()) + "\t" + fmt(disp.getY())
+            );
         }
     }
 

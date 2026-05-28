@@ -176,6 +176,21 @@ class PDPage:
         The page's resource cache is threaded through to the returned
         wrapper, matching PDFBox's ``new PDResources(resources, resourceCache)``
         path so indirect resource wrappers can be reused.
+
+        **Divergence note (wave 1454).** Upstream PDFBox 3.0.7 returns
+        ``null`` from ``PDPage.getResources()`` when the inheritable walk
+        yields no ``/Resources`` dictionary; pypdfbox returns an empty
+        :class:`PDResources` wrapper instead. The blast radius of matching
+        upstream exactly (50+ test files use the
+        ``res = page.get_resources(); res.put(...)`` pattern that relies on
+        the empty-bag fallback) makes the strict-null fix a project-wide
+        sweep rather than a single-class change; the divergence is tracked
+        in DEFERRED.md and the differential probe
+        :file:`oracle/probes/PageInheritanceProbe.java` deliberately
+        excludes a ``res`` presence flag — emitting only sub-resource
+        counts — so the substantive parts of the contract (counts,
+        media/crop/rotate) stay testable while the structural mismatch
+        is documented and deferred to a follow-up sweep wave.
         """
         resolved = self._get_inheritable(_RESOURCES)
         cache = self.get_resource_cache()

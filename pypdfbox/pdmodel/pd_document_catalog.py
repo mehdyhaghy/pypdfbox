@@ -26,6 +26,7 @@ _PAGE_LABELS: COSName = COSName.get_pdf_name("PageLabels")
 _VIEWER_PREFERENCES: COSName = COSName.get_pdf_name("ViewerPreferences")
 _OUTLINES: COSName = COSName.get_pdf_name("Outlines")
 _OPEN_ACTION: COSName = COSName.get_pdf_name("OpenAction")
+_S_KEY: COSName = COSName.get_pdf_name("S")
 _DESTS: COSName = COSName.get_pdf_name("Dests")
 _NAMES: COSName = COSName.get_pdf_name("Names")
 _STRUCT_TREE_ROOT: COSName = COSName.get_pdf_name("StructTreeRoot")
@@ -664,12 +665,49 @@ class PDDocumentCatalog:
         return None
 
     def get_open_action(self) -> Any:
-        from pypdfbox.pdmodel.common.pd_destination_or_action import (
-            PDDestinationOrAction,
+        """Return the catalog's ``/OpenAction`` decoded the way PDFBox 3.0.7
+        does in ``PDDocumentCatalog.getOpenAction()``:
+
+        * ``COSDictionary`` → :meth:`PDAction.create` (returns ``None`` when
+          the dict has no recognized ``/S`` subtype — upstream's
+          ``PDActionFactory.createAction`` returns null for that case).
+        * ``COSArray`` → :meth:`PDDestination.create`.
+        * anything else (including ``COSName`` / ``COSString`` shorthand) →
+          ``None``.
+
+        This mirrors the upstream catalog dispatch byte-for-byte, including
+        the "/D without /S → null" arm. The looser
+        :meth:`PDDestinationOrAction.create` factory still handles the
+        shorthand for callers that want it — but the catalog itself behaves
+        like upstream.
+        """
+        from pypdfbox.pdmodel.interactive.action.pd_action import PDAction
+        from pypdfbox.pdmodel.interactive.action.pd_action_unknown import (
+            PDActionUnknown,
+        )
+        from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_destination import (
+            PDDestination,
         )
 
         value = self._catalog.get_dictionary_object(_OPEN_ACTION)
-        return PDDestinationOrAction.create(value)
+        if isinstance(value, COSDictionary):
+            # Upstream PDActionFactory.createAction returns null for dicts
+            # with no /S; match that exactly so a /D-only shorthand dict
+            # round-trips through both stacks as the same None.
+            sub_type = value.get_name_as_string(_S_KEY)
+            if sub_type is None:
+                return None
+            action = PDAction.create(value)
+            # PDFBox's factory has no PDActionUnknown fallback — unknown /S
+            # subtypes yield null. pypdfbox's PDAction.create returns a
+            # PDActionUnknown; collapse that arm to match upstream behavior
+            # at the catalog dispatch boundary.
+            if isinstance(action, PDActionUnknown):
+                return None
+            return action
+        if isinstance(value, COSArray):
+            return PDDestination.create(value)
+        return None
 
     def set_open_action(self, action: Any) -> None:
         """Set the catalog's ``/OpenAction`` (an action dictionary or a
