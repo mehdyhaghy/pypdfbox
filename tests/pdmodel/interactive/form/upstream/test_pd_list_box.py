@@ -116,12 +116,19 @@ def test_set_value_list_syncs_selected_indices(choice: PDListBox) -> None:
     assert choice.get_selected_options_index() == [0, 2]
 
 
-def test_set_value_rejects_missing_option(choice: PDListBox) -> None:
-    """Subset of upstream ``setValue`` option validation."""
+def test_set_value_string_accepts_missing_option(choice: PDListBox) -> None:
+    """Upstream ``setValue(String)`` (TestListBox.testValue) writes ``/V`` and
+    clears ``/I`` with no ``/Opt`` membership check — a value outside the
+    options is accepted. Only the ``setValue(List)`` overload validates (see
+    ``test_set_value_list_requires_multi_select``). The earlier ``ValueError``
+    expectation was a pypdfbox-only divergence, closed in wave 1447 after the
+    live PDFBox oracle confirmed acceptance."""
     choice.set_options(["export01", "export02"])
 
-    with pytest.raises(ValueError):
-        choice.set_value("missing")
+    choice.set_value("missing")
+    assert choice.get_value() == ["missing"]
+    assert choice.get_cos_object().get_dictionary_object(_OPT) is not None
+    assert choice.get_cos_object().get_dictionary_object(COSName.get_pdf_name("I")) is None
 
 
 def test_set_value_list_requires_multi_select(choice: PDListBox) -> None:

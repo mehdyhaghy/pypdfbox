@@ -177,13 +177,20 @@ def test_choice_clear_value_removes_selected_option_indices() -> None:
     assert lb.get_cos_object().get_dictionary_object(_I) is None
 
 
-def test_choice_rejects_unknown_option_when_options_exist() -> None:
+def test_choice_set_value_string_accepts_unknown_option() -> None:
+    """Upstream ``PDChoice.setValue(String)`` (PDChoice.java:387) writes ``/V``
+    unconditionally and clears ``/I`` — it performs no membership check against
+    ``/Opt``. A single-string set therefore accepts a value outside the options
+    on any choice field (list box included). Confirmed against the live PDFBox
+    oracle (wave 1447); the earlier ``ValueError`` was a pypdfbox-only
+    divergence. Only the ``setValue(List)`` overload validates."""
     form = PDAcroForm()
     lb = PDListBox(form)
     lb.set_options(["one", "two"])
 
-    with pytest.raises(ValueError, match="not one of the field options"):
-        lb.set_value("three")
+    lb.set_value("three")
+    assert lb.get_value() == ["three"]
+    assert lb.get_cos_object().get_dictionary_object(_I) is None
 
 
 def test_choice_rejects_multiple_values_without_multi_select() -> None:

@@ -196,7 +196,13 @@ def test_do_image_ignores_soft_mask_lookup_failure(monkeypatch: Any) -> None:
         )
 
         pasted: list[Image.Image] = []
-        monkeypatch.setattr(renderer, "_paste_image", pasted.append)
+        # _paste_image grew an ``interpolate`` kwarg (wave 1446 inline + wave
+        # 1447 XObject Do wiring), so the monkeypatch must accept it.
+        monkeypatch.setattr(
+            renderer,
+            "_paste_image",
+            lambda img, interpolate=True: pasted.append(img),  # noqa: ARG005
+        )
 
         renderer._op_do(None, [COSName.get_pdf_name("Im0")])  # noqa: SLF001
 

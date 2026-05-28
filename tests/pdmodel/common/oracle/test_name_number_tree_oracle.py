@@ -388,3 +388,123 @@ def test_no_limit_kid_number_no_crash() -> None:
     assert node.get_value(10) == 1010  # found via no-limit fallback search
     assert node.get_value(25) == 1025  # PDFBox crashes before reaching this
     assert node.get_value(99) is None
+
+
+# ---------- save -> reload round-trip (serialization parity) ----------
+#
+# The tests above build the COS in memory and never touch the writer. This one
+# closes that gap: pypdfbox SAVES a PDF carrying a 3-deep name tree (catalog
+# /Names /JavaScript) and a 3-deep number tree (catalog /PageLabels), then both
+# libraries re-parse the *same* saved file and descend through it. This pins the
+# writer's serialization of a balanced /Kids+/Limits tree — the indirect-object
+# layout, the sorted /Names / /Nums arrays and the /Limits [lo hi] arrays must
+# all survive so PDFBox can binary-descend through them identically.
+
+# 8-entry name tree, 3 levels deep: root /Kids -> 2 intermediates -> 4 leaves.
+_RT_NAME_KEYS = [
+    "alpha", "bravo", "delta", "echo", "golf", "hotel", "kilo", "lima",
+    "charlie", "foxtrot", "india", "zulu", "aaa", "echo", "golf",
+]
+# 10-entry number tree, 3 levels deep: root /Kids -> 2 intermediates -> 5
+# leaves. Ranges are strictly non-overlapping and ascending, as a well-formed
+# number tree requires.
+_RT_NUM_KEYS = [0, 2, 10, 12, 20, 25, 30, 33, 40, 47, 1, 11, 26, 35, -5, 50, 100]
+
+
+def _rt_name_root() -> COSDictionary:
+    """Root /Kids node (no /Limits) of a 3-deep name tree."""
+    left = _name_intermediate(
+        [
+            _name_leaf([("alpha", "1"), ("bravo", "2")], limits=True),
+            _name_leaf([("delta", "3"), ("echo", "4")], limits=True),
+        ]
+    )
+    right = _name_intermediate(
+        [
+            _name_leaf([("golf", "5"), ("hotel", "6")], limits=True),
+            _name_leaf([("kilo", "7"), ("lima", "8")], limits=True),
+        ]
+    )
+    root = COSDictionary()
+    kids = COSArray()
+    kids.add(left)
+    kids.add(right)
+    root.set_item(_KIDS, kids)  # root: /Kids only, no /Limits
+    return root
+
+
+def _rt_num_root() -> COSDictionary:
+    """Root /Kids node (no /Limits) of a 3-deep number tree."""
+    left = _num_intermediate(
+        [
+            _num_leaf([(0, 1000), (2, 1002)], limits=True),
+            _num_leaf([(10, 1010), (12, 1012)], limits=True),
+            _num_leaf([(20, 1020), (25, 1025)], limits=True),
+        ]
+    )
+    right = _num_intermediate(
+        [
+            _num_leaf([(30, 1030), (33, 1033)], limits=True),
+            _num_leaf([(40, 1040), (47, 1047)], limits=True),
+        ]
+    )
+    root = COSDictionary()
+    kids = COSArray()
+    kids.add(left)
+    kids.add(right)
+    root.set_item(_KIDS, kids)  # root: /Kids only, no /Limits
+    return root
+
+
+@requires_oracle
+def test_round_trip_multi_level_trees_match_pdfbox(tmp_path) -> None:
+    """pypdfbox-saved multi-level trees re-parse + descend identically.
+
+    Builds a 3-deep name tree (catalog /Names /JavaScript) and number tree
+    (catalog /PageLabels), saves with pypdfbox, then asserts pypdfbox's
+    reload-and-descend report equals PDFBox's report of the same file.
+    """
+    from pypdfbox.cos import COSName as _COSName
+    from pypdfbox.pdmodel.pd_document import PDDocument
+    from pypdfbox.pdmodel.pd_page import PDPage
+
+    pdf_path = tmp_path / "name_num_tree.pdf"
+
+    # --- build + save with pypdfbox ---
+    doc = PDDocument()
+    try:
+        doc.add_page(PDPage())
+        catalog = doc.get_document_catalog().get_cos_object()
+        names_dict = COSDictionary()
+        names_dict.set_item(_COSName.get_pdf_name("JavaScript"), _rt_name_root())
+        catalog.set_item(_COSName.get_pdf_name("Names"), names_dict)
+        catalog.set_item(_COSName.get_pdf_name("PageLabels"), _rt_num_root())
+        doc.save(str(pdf_path))
+    finally:
+        doc.close()
+
+    # --- reload with pypdfbox and build the report from the re-parsed COS ---
+    reloaded = PDDocument.load(str(pdf_path))
+    try:
+        cat = reloaded.get_document_catalog().get_cos_object()
+        nd = cat.get_dictionary_object(COSName.get_pdf_name("Names"))
+        assert isinstance(nd, COSDictionary)
+        js_root = nd.get_dictionary_object(COSName.get_pdf_name("JavaScript"))
+        assert isinstance(js_root, COSDictionary)
+        labels_root = cat.get_dictionary_object(COSName.get_pdf_name("PageLabels"))
+        assert isinstance(labels_root, COSDictionary)
+
+        py = (
+            "# name tree\n"
+            + _report_name(_StrNode(js_root), _RT_NAME_KEYS)
+            + "# num tree\n"
+            + _report_num(_IntNode(labels_root), _RT_NUM_KEYS)
+        )
+    finally:
+        reloaded.close()
+
+    java = run_probe_text("NameNumTreeRoundTripProbe", str(pdf_path))
+    assert py == java, (
+        "round-tripped multi-level name/number tree diverges from PDFBox.\n"
+        f"--- pypdfbox ---\n{py}\n--- java ---\n{java}"
+    )

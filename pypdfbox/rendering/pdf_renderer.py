@@ -5775,7 +5775,18 @@ class PDFRenderer(PDFStreamEngine):
                         color_key = None
                     if color_key:
                         pil_image = self._apply_color_key_mask(pil_image, color_key)
-            self._paste_image(pil_image)
+            # PDF 32000-1 §8.9.5.3: honour the image XObject's /Interpolate
+            # flag. When false (the default), upstream PDFBox upscales with
+            # nearest-neighbour sampling (hard pixel edges), not bilinear
+            # smoothing — so a tiny image XObject scaled into a large device
+            # box via ``cm`` shows sharp sample boundaries exactly as PDFBox
+            # renders them. (Wave 1446 wired this for inline images but the
+            # XObject ``Do`` site still pasted positionally → always bilinear.)
+            try:
+                interpolate = bool(xobject.get_interpolate())
+            except Exception:  # noqa: BLE001
+                interpolate = False
+            self._paste_image(pil_image, interpolate=interpolate)
             return
 
         if isinstance(xobject, PDFormXObject):

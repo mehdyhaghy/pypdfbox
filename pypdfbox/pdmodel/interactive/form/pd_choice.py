@@ -353,24 +353,6 @@ class PDChoice(PDVariableText):
             self.set_selected_options_indices(None)
         return values
 
-    def _validate_value_against_options(self, value: str) -> None:
-        """Single-value membership check used by :meth:`set_value(str)`.
-
-        Editable combo boxes bypass this gate (free-text is permitted);
-        anything else with a non-empty ``/Opt`` rejects values that are
-        not in the export-values list. Matches the upstream
-        ``checkValue``-shaped contract that ``PDChoice.setValue(String)``
-        relies on indirectly through ``updateSelectedOptionsIndex``.
-        """
-        options = self.get_options_export_values()
-        if not options:
-            return
-        if value in options:
-            return
-        if self.is_combo() and bool(getattr(self, "is_edit", lambda: False)()):
-            return
-        raise ValueError(f"value {value!r} is not one of the field options")
-
     def get_value(self) -> list[str]:
         item = self.get_inheritable_attribute(_V)
         return self._read_string_or_array(item)
@@ -394,9 +376,16 @@ class PDChoice(PDVariableText):
             self.set_selected_options_indices(None)
             return
 
-        # Upstream single-value path: writes /V, clears /I.
+        # Upstream single-value path: writes /V, clears /I. Mirrors
+        # ``PDChoice.setValue(String)`` (PDChoice.java:387), which writes /V
+        # unconditionally and removes /I — it performs NO membership check
+        # against /Opt. Editable combos (free text), non-editable combos and
+        # list boxes alike therefore accept any string here; only the list
+        # overload (``setValue(List)``) validates via ``containsAll`` (see
+        # ``_normalize_value_for_set``). The previous
+        # ``_validate_value_against_options`` gate was a pypdfbox-only
+        # divergence (confirmed against the live oracle, wave 1447).
         if isinstance(value, str):
-            self._validate_value_against_options(value)
             self._field.set_string(_V, value)
             self.set_selected_options_indices(None)
             return
