@@ -7388,8 +7388,9 @@ class PDFRenderer(PDFStreamEngine):
         low-resolution raster shows hard pixel edges rather than a smooth
         gradient across sample boundaries. Callers that know the source
         image is non-interpolated pass ``interpolate=False`` to match that
-        hard-edged paint; the default ``True`` keeps the legacy bilinear
-        smoothing for callers that don't yet thread the flag through.
+        hard-edged paint; the default ``True`` uses bicubic resampling
+        (matching PDFBox's ``VALUE_INTERPOLATION_BICUBIC``) for callers that
+        don't yet thread the flag through.
         """
         assert self._image is not None
         assert self._draw is not None
@@ -7430,8 +7431,12 @@ class PDFRenderer(PDFStreamEngine):
         # the y-axis, mirroring every rendered image vertically vs PDFBox;
         # existing oracle fixtures missed it because their images were
         # vertically symmetric.)
+        # Wave 1448 — match PDFBox's ``VALUE_INTERPOLATION_BICUBIC`` for the
+        # smoothing branch. The previous BILINEAR diverged from PDFBox on
+        # aggressive upscales of low-resolution rasters (MAD ~14 on a 4×4 →
+        # ~92×92pt upscale); a bicubic kernel lands inside the parity gate.
         resample = (
-            Image.Resampling.BILINEAR
+            Image.Resampling.BICUBIC
             if interpolate
             else Image.Resampling.NEAREST
         )

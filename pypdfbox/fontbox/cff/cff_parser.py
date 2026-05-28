@@ -156,6 +156,19 @@ class CFFParser:
                     font = CFFCIDFont.from_cff_font(base)
                 else:
                     font = CFFType1Font.from_cff_font(base)
+                    # Install a proper ``CFFEncoding`` object on the
+                    # name-keyed font so ``get_encoding()`` returns the
+                    # polymorphic upstream type — ``CFFStandardEncoding``
+                    # / ``CFFExpertEncoding`` for predefined IDs (Top DICT
+                    # /Encoding 0 / 1), or a :class:`Format0Encoding` /
+                    # :class:`Format1Encoding` instance for embedded
+                    # encodings (offset > 1). Without this fontTools'
+                    # raw surface — a string for predefined, a 256-name
+                    # list for embedded — leaks through, breaking parity
+                    # with ``CFFType1Font.getEncoding().getClass()``.
+                    encoding_obj = _resolve_top_dict_encoding(top)
+                    if encoding_obj is not None:
+                        font.set_encoding(encoding_obj)
                 font.set_name(name)
                 font.set_data(cff_payload)
                 # GSubrs are shared across the whole FontSet — pull them
@@ -1043,6 +1056,65 @@ def _extract_cff_table(otf_bytes: bytes) -> bytes:
         record_offset += 16
     msg = "CFF tag not found in this OpenType font."
     raise OSError(msg)
+
+
+def _resolve_top_dict_encoding(top: Any) -> Any | None:
+    """Resolve fontTools' raw Top DICT ``Encoding`` value into the
+    matching :class:`CFFEncoding` subclass instance.
+
+    fontTools surfaces three on-disk shapes:
+
+    * The string ``"StandardEncoding"`` — Top DICT operand 0; resolves
+      to :class:`CFFStandardEncoding` (predefined, font-independent).
+    * The string ``"ExpertEncoding"``  — Top DICT operand 1; resolves
+      to :class:`CFFExpertEncoding` (predefined).
+    * A 256-element ``list`` of glyph names — embedded Format0 / Format1
+      table; lifted into a :class:`Format0Encoding` whose ``get_name``
+      mirrors the fontTools-decompiled list. We never re-parse the
+      on-disk Format0/Format1 byte layout here (fontTools already did
+      that during ``decompile``); the wrapper simply re-surfaces the
+      same code-to-name mapping with the upstream class identity so
+      callers branching on ``isinstance(enc, Format0Encoding)`` (or
+      checking ``enc.__class__.__name__``) see the right type.
+
+    Returns ``None`` when the Top DICT has no /Encoding entry — the CFF
+    default is StandardEncoding but absence is reported explicitly so
+    callers can detect it.
+    """
+    encoding = getattr(top, "Encoding", None)
+    if encoding is None:
+        return None
+    if isinstance(encoding, str):
+        if encoding == "StandardEncoding":
+            from .cff_standard_encoding import CFFStandardEncoding  # noqa: PLC0415
+
+            return CFFStandardEncoding.get_instance()
+        if encoding == "ExpertEncoding":
+            from .cff_expert_encoding import CFFExpertEncoding  # noqa: PLC0415
+
+            return CFFExpertEncoding.get_instance()
+        return None
+    if isinstance(encoding, list):
+        # Embedded encoding — fontTools has already decompiled the
+        # Format0 / Format1 table into a 256-entry list of names. We
+        # wrap that list as a :class:`Format0Encoding` so callers see
+        # the upstream class identity and surface the code-to-name
+        # mapping via the ordinary ``CFFEncoding.get_name`` API.
+        from .format0_encoding import Format0Encoding  # noqa: PLC0415
+
+        encoded_count = sum(
+            1 for name in encoding if name and name != ".notdef"
+        )
+        built = Format0Encoding(encoded_count)
+        for code, name in enumerate(encoding):
+            if not name:
+                continue
+            # pylint: disable=protected-access
+            built._code_to_name[code] = name
+            if name not in built._name_to_code:
+                built._name_to_code[name] = code
+        return built
+    return None
 
 
 __all__ = ["CFFParser"]

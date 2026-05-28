@@ -274,9 +274,33 @@ class PDTrueTypeFont(PDSimpleFont):
                 "(or a TrueTypeFont injected via set_true_type_font)"
             )
 
-        tag = prefix if prefix is not None else _random_subset_tag()
         subsetter = TTFSubsetter(ttf)
         subsetter.add_all(codepoints)
+        if prefix is not None:
+            tag = prefix
+        else:
+            # Resolve the codepoints to glyph IDs via the embedded cmap so the
+            # tag is keyed by the surviving glyph set — mirrors upstream
+            # ``TrueTypeEmbedder.getTag(gidToCid)`` determinism contract. Fall
+            # back to the codepoint set when no cmap is reachable.
+            resolved: set[int] = set()
+            try:
+                cmap = ttf.get_unicode_cmap_lookup()
+            except Exception:  # noqa: BLE001
+                cmap = None
+            if cmap is not None:
+                getter = getattr(cmap, "get_glyph_id", None)
+                if callable(getter):
+                    for cp in codepoints:
+                        try:
+                            gid = int(getter(cp) or 0)
+                        except Exception:  # noqa: BLE001
+                            gid = 0
+                        if gid:
+                            resolved.add(gid)
+            tag = _deterministic_subset_tag(
+                resolved if resolved else codepoints
+            )
         subsetter.set_prefix(tag)
         subset_bytes = subsetter.to_bytes()
 
@@ -1260,12 +1284,40 @@ def _glyph_bbox_height(ttf: TrueTypeFont, gid: int) -> float:
         return 0.0
 
 
+_BASE25 = "BCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+
+def _deterministic_subset_tag(glyph_ids: Iterable[int]) -> str:
+    """Return a deterministic six-uppercase-letter PDF subset tag.
+
+    Mirrors upstream ``TrueTypeEmbedder.getTag(gidToCid)`` (PDFBox 3.0
+    ``TrueTypeEmbedder.java`` lines 363-387) — base-25 encode a stable
+    hash of the surviving glyph id set, then left-pad with ``A`` to six
+    characters and suffix ``+``. Determinism: the same input glyph set
+    produces the same tag across runs and processes (Python's hash
+    randomisation only randomises ``str`` / ``bytes`` / ``frozenset``;
+    ``hash`` of a tuple of ints is stable across interpreter starts),
+    which is the contract subset round-trip relies on.
+    """
+    ids = sorted({int(g) for g in glyph_ids})
+    num = abs(hash(tuple(ids))) % (10**18)
+    sb: list[str] = []
+    while num != 0 and len(sb) < 6:
+        div, mod = divmod(num, 25)
+        sb.append(_BASE25[mod])
+        num = div
+    while len(sb) < 6:
+        sb.insert(0, "A")
+    return "".join(sb)
+
+
 def _random_subset_tag() -> str:
     """Return a fresh six-uppercase-letter PDF subset tag.
 
-    Per PDF 32000-1 §9.6.4 the tag is six uppercase ASCII letters chosen
-    arbitrarily. We use ``secrets`` so concurrent subsetters in the same
-    process don't collide on a deterministic seed.
+    Retained for callers that explicitly want a non-deterministic tag.
+    The default subset path uses :func:`_deterministic_subset_tag` so
+    the same input round-trips to the same prefix (mirrors upstream
+    ``TrueTypeEmbedder.getTag``).
     """
     alphabet = string.ascii_uppercase
     return "".join(secrets.choice(alphabet) for _ in range(6))

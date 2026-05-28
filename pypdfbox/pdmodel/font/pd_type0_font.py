@@ -1515,8 +1515,8 @@ class PDType0Font(PDFont):
 
         from .pd_cid_font_type2 import PDCIDFontType2
         from .pd_true_type_font import (
+            _deterministic_subset_tag,
             _embed_subset_bytes,
-            _random_subset_tag,
         )
 
         descendant = self.get_descendant_font()
@@ -1539,7 +1539,6 @@ class PDType0Font(PDFont):
             )
 
         codepoints = self._collect_subset_codepoints(text_or_codepoints, used_chars)
-        tag = prefix if prefix is not None else _random_subset_tag()
 
         subsetter = TTFSubsetter(ttf)
         # The content stream emits each character's *original* glyph id as
@@ -1565,6 +1564,15 @@ class PDType0Font(PDFont):
             # No resolvable glyphs (e.g. font has no cmap) — fall back to the
             # codepoint-driven subset so we still emit a valid program.
             subsetter.add_all(codepoints)
+        # Derive the 6-letter subset prefix deterministically from the input
+        # glyph set (mirrors upstream ``TrueTypeEmbedder.getTag(gidToCid)``)
+        # so the same text round-trips to the same /BaseFont tag.
+        if prefix is not None:
+            tag = prefix
+        else:
+            tag = _deterministic_subset_tag(
+                original_gids if original_gids else codepoints
+            )
         subsetter.set_prefix(tag)
         subset_bytes = subsetter.to_bytes()
 

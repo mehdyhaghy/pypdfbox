@@ -138,18 +138,42 @@ class CFFType1Font(CFFFont):
         return getattr(self._top, "Encoding", None)
 
     def is_standard_encoding(self) -> bool:
-        """True when the font uses the predefined StandardEncoding."""
-        return bool(self.get_encoding() == "StandardEncoding")
+        """True when the font uses the predefined StandardEncoding.
+
+        Matches both the string sentinel ``"StandardEncoding"`` (the
+        legacy stub-Top-DICT form) and a real :class:`CFFStandardEncoding`
+        instance (installed by :meth:`CFFParser.parse` so callers see
+        the polymorphic upstream class identity)."""
+        from .cff_standard_encoding import CFFStandardEncoding  # noqa: PLC0415
+
+        enc = self.get_encoding()
+        if enc == "StandardEncoding":
+            return True
+        return isinstance(enc, CFFStandardEncoding)
 
     def is_expert_encoding(self) -> bool:
         """True when the font uses the predefined ExpertEncoding."""
-        return bool(self.get_encoding() == "ExpertEncoding")
+        from .cff_expert_encoding import CFFExpertEncoding  # noqa: PLC0415
+
+        enc = self.get_encoding()
+        if enc == "ExpertEncoding":
+            return True
+        return isinstance(enc, CFFExpertEncoding)
 
     def is_custom_encoding(self) -> bool:
         """True when the font carries a custom (non-predefined) encoding
-        array, i.e. /Encoding is not a string."""
+        — a list-shaped Top DICT entry or an embedded :class:`Format0Encoding`
+        / :class:`Format1Encoding` installed by the parser."""
+        from .cff_built_in_encoding import CFFBuiltInEncoding  # noqa: PLC0415
+
         enc = self.get_encoding()
-        return enc is not None and not isinstance(enc, str)
+        if enc is None:
+            return False
+        if self.is_standard_encoding() or self.is_expert_encoding():
+            return False
+        # A list-shaped fontTools surface, or any CFFBuiltInEncoding
+        # subclass (Format0Encoding / Format1Encoding), counts as custom.
+        return isinstance(enc, (list, CFFBuiltInEncoding))
 
     def has_encoding(self) -> bool:
         """Predicate: whether the font has any /Encoding (predefined
@@ -230,6 +254,11 @@ class CFFType1Font(CFFFont):
         enc = self.get_encoding()
         if enc is None:
             return ".notdef"
+        # CFFEncoding instance (Standard / Expert / Format0 / Format1)
+        # installed by the parser path — delegate to the encoding's own
+        # code→name surface.
+        if hasattr(enc, "get_name") and not isinstance(enc, (str, list)):
+            return str(enc.get_name(code)) or ".notdef"
         if isinstance(enc, str):
             if enc == "StandardEncoding":
                 from pypdfbox.fontbox.encoding.standard_encoding import (  # noqa: PLC0415
@@ -272,6 +301,10 @@ class CFFType1Font(CFFFont):
         enc = self.get_encoding()
         if enc is None:
             return -1
+        # CFFEncoding instance: ``get_code`` returns None for unmapped names.
+        if hasattr(enc, "get_code") and not isinstance(enc, (str, list)):
+            code = enc.get_code(name)
+            return -1 if code is None else int(code)
         if isinstance(enc, str):
             if enc == "StandardEncoding":
                 from pypdfbox.fontbox.encoding.standard_encoding import (  # noqa: PLC0415
