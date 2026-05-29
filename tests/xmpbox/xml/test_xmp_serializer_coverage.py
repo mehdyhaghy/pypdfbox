@@ -312,7 +312,8 @@ def test_save_public_mirror_writes_xml_bytes() -> None:
     sink = io.BytesIO()
     XmpSerializer().save(doc, sink, encoding="UTF-8")
     blob = sink.getvalue()
-    assert blob.startswith(b"<?xml")
+    # Upstream omits the XML declaration (OMIT_XML_DECLARATION="yes").
+    assert not blob.startswith(b"<?xml")
     assert b"<root/>" in blob
 
 

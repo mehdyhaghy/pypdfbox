@@ -12,6 +12,7 @@ the same tree with :mod:`xml.dom.minidom`, then call
 from __future__ import annotations
 
 from datetime import datetime
+from io import StringIO
 from typing import BinaryIO
 from xml.dom.minidom import Document, Element
 
@@ -301,20 +302,7 @@ class XmpSerializer:
         return rdf
 
     def _save(self, doc: Document, output: BinaryIO) -> None:
-        encoding = "UTF-8"
-        # Upstream ``XmpSerializer.save`` declares ``throws TransformerException``
-        # and the serializer surfaces any transform/write failure as an
-        # ``XmpSerializationException``. The Python analogue of the
-        # ``transformer.transform(source, result)`` step is rendering the DOM
-        # and writing it to the stream; wrap that so I/O or rendering failures
-        # become ``XmpSerializationException`` instead of a raw OSError/ValueError.
-        try:
-            data = doc.toxml(encoding=encoding)
-            output.write(data)
-        except (OSError, ValueError, TypeError) as exc:
-            raise XmpSerializationException(
-                "Failed to serialize the XMP metadata", exc
-            ) from exc
+        self.save(doc, output)
 
     # --- Upstream parity surface --------------------------------------
     # These map upstream's protected/private helpers onto public methods
@@ -350,10 +338,20 @@ class XmpSerializer:
         rendering the DOM or writing it to the stream is reported as an
         :class:`XmpSerializationException` (matching the serializer's
         documented error contract).
+
+        Upstream sets ``OMIT_XML_DECLARATION="yes"`` on the Transformer, so the
+        serialized packet starts with the ``<?xpacket?>`` processing
+        instruction and never with an ``<?xml version=...?>`` prolog — an XMP
+        packet that begins with an XML declaration is malformed. ``minidom``'s
+        ``Document.toxml`` always prepends that prolog, so we render each
+        top-level node individually with ``writexml`` (which never emits the
+        prolog) to match upstream byte-for-byte at the packet boundary.
         """
         try:
-            data = doc.toxml(encoding=encoding)
-            output.write(data)
+            buf = StringIO()
+            for node in doc.childNodes:
+                node.writexml(buf, "", "", "")
+            output.write(buf.getvalue().encode(encoding))
         except (OSError, ValueError, TypeError) as exc:
             raise XmpSerializationException(
                 "Failed to serialize the XMP metadata", exc

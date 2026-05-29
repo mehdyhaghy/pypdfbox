@@ -136,39 +136,47 @@ def test_serialize_uses_rdf_about_attribute() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_save_emits_utf8_xml_declaration_by_default() -> None:
+def test_save_omits_xml_declaration() -> None:
+    # Upstream XmpSerializer.save sets OMIT_XML_DECLARATION="yes"; the packet
+    # must never start with an <?xml ...?> prolog (a prolog before the
+    # <?xpacket?> PI is malformed XMP). save() of a bare element therefore
+    # emits only the serialized node, with no declaration.
     doc = Document()
     root = doc.createElement("root")
     doc.appendChild(root)
     out = io.BytesIO()
     XmpSerializer().save(doc, out)
     blob = out.getvalue()
-    assert blob.startswith(b'<?xml')
-    assert b'encoding="UTF-8"' in blob
+    assert not blob.startswith(b"<?xml")
+    assert blob == b"<root/>"
 
 
 def test_save_honours_explicit_encoding_kwarg() -> None:
     doc = Document()
     root = doc.createElement("root")
+    text = doc.createTextNode("é")
+    root.appendChild(text)
     doc.appendChild(root)
     out = io.BytesIO()
     XmpSerializer().save(doc, out, encoding="utf-16")
     blob = out.getvalue()
-    # UTF-16 output is rendered with a BOM (BE or LE) and the encoding
-    # string appears in the XML declaration (encoded in utf-16).
-    decoded = blob.decode("utf-16")
-    assert "utf-16" in decoded.lower()
+    # No XML declaration; the bytes decode back under the requested encoding.
+    assert not blob.lstrip(b"\xff\xfe\xfe\xff").startswith(b"<?xml")
+    assert blob.decode("utf-16") == "<root>é</root>"
 
 
 def test_save_explicit_latin_1_encoding() -> None:
     doc = Document()
     root = doc.createElement("root")
+    text = doc.createTextNode("é")
+    root.appendChild(text)
     doc.appendChild(root)
     out = io.BytesIO()
     XmpSerializer().save(doc, out, encoding="iso-8859-1")
     blob = out.getvalue()
-    # ASCII-compatible — the declaration is grep-able.
-    assert b"iso-8859-1" in blob.lower()
+    # No declaration; the é byte is the latin-1 encoding of the text node.
+    assert not blob.startswith(b"<?xml")
+    assert blob.decode("iso-8859-1") == "<root>é</root>"
 
 
 # ---------------------------------------------------------------------------

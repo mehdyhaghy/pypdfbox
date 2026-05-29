@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 import sys
 import unicodedata
@@ -17,6 +18,8 @@ from .bidi import _reorder_indices as _bidi_reorder_indices
 from .position_wrapper import PositionWrapper
 from .text_position import TextPosition
 from .word_with_text_positions import WordWithTextPositions
+
+_log = logging.getLogger(__name__)
 
 # Unicode bidi-mirroring map for L4 — pairs are derived from
 # ``unicodedata.mirrored`` at module load time. The PDFBox upstream
@@ -76,6 +79,7 @@ if TYPE_CHECKING:
     from pypdfbox.pdmodel.interactive.documentnavigation.outline.pd_outline_item import (
         PDOutlineItem,
     )
+    from pypdfbox.pdmodel.pd_resources import PDResources
 
 
 class _TextWriter(Protocol):
@@ -219,6 +223,16 @@ class PDFTextStripper:
         self._active_page: PDPage | None = None
         self._active_cmap: CMap | None = None
         self._active_font: PDFont | None = None
+        # Resources override active while recursing into a form XObject's
+        # content stream (the ``Do`` operator). When set, font / ToUnicode /
+        # property-list lookups consult these resources instead of the host
+        # page's — mirroring upstream ``PDFStreamEngine.showForm`` pushing the
+        # form's ``/Resources`` for the duration of the form body. ``None``
+        # restores the page-level resources.
+        self._active_resources: PDResources | None = None
+        # Form-XObject recursion depth guard, matching the upstream
+        # ``DrawObject`` cap of 50 nested forms.
+        self._form_level: int = 0
         # Per-glyph advance for the active font in user-space units (i.e.
         # already multiplied by ``font_size`` and divided by 1000). When
         # ``None`` we fall back to the legacy 0.5-em estimate so unknown
@@ -903,9 +917,131 @@ class PDFTextStripper:
             self.begin_marked_content_sequence(tag, self._resolve_bdc_properties(operands))
         elif op == "EMC":
             self.end_marked_content_sequence()
+        elif op == "Do":
+            # Draw an XObject. For text extraction we descend into form
+            # XObjects (and transparency groups, which are form XObjects)
+            # so their show-text operators contribute to the page text —
+            # mirroring upstream ``PDFStreamEngine.showForm`` reached via
+            # the ``DrawObject`` operator. Image XObjects carry no text and
+            # are skipped.
+            self._show_form_xobject(operands, state, positions)
         # Other operators (paths, colour, marked-content points, etc.) are
         # intentionally ignored — they have no effect on the lite text
         # stream.
+
+    def _show_form_xobject(
+        self,
+        operands: list[COSBase],
+        state: _TextState,
+        positions: list[TextPosition],
+    ) -> None:
+        """``Do`` — recurse into a form XObject's content stream.
+
+        Resolves the named XObject through the resources currently in
+        effect, skips image XObjects (no text), and for a form / group
+        XObject concatenates the form's ``/Matrix`` onto the current CTM
+        and replays the form body so its show-text operators emit text.
+        The form's ``/Resources`` are pushed for the duration so its own
+        ``Tf`` names resolve against the right font dictionaries. Recursion
+        depth is capped at 50, matching upstream's ``DrawObject`` guard.
+        """
+        if not operands or not isinstance(operands[0], COSName):
+            return
+        name = operands[0]
+        resources = self._current_resources()
+        if resources is None:
+            return
+        try:
+            is_image = getattr(resources, "is_image_x_object", None)
+            if is_image is not None and is_image(name):
+                return
+            xobject = resources.get_x_object(name)
+        except Exception:  # noqa: BLE001 — defensive: malformed XObject entry
+            return
+        if xobject is None:
+            return
+        if type(xobject).__name__ not in {"PDFormXObject", "PDTransparencyGroup"}:
+            return
+        if self._form_level >= 50:
+            _log.error("recursion is too deep, skipping form XObject")
+            return
+
+        try:
+            body = self._get_form_contents(xobject)
+        except Exception:  # noqa: BLE001 — defensive: malformed form stream
+            return
+        if not body:
+            return
+
+        # Concatenate the form's /Matrix onto the current CTM (PDF §8.10.1).
+        form_matrix = self._form_matrix(xobject)
+        form_ctm = form_matrix.multiply(state.ctm)
+
+        # Save and swap the resolution context: the form's own resources and
+        # a fresh per-context font/cmap cache (resource names like ``F0`` can
+        # mean different fonts inside the form than on the host page).
+        saved_resources = self._active_resources
+        saved_cmap_cache = self._cmap_cache
+        saved_font_cache = self._font_cache
+        saved_active_cmap = self._active_cmap
+        saved_active_font = self._active_font
+        saved_avg_advance = self._active_avg_advance
+        try:
+            form_resources = xobject.get_resources()
+        except Exception:  # noqa: BLE001 — defensive
+            form_resources = None
+        self._active_resources = form_resources
+        self._cmap_cache = {}
+        self._font_cache = {}
+        self._active_cmap = None
+        self._active_font = None
+        self._active_avg_advance = None
+        self._form_level += 1
+
+        form_state = _TextState()
+        form_state.ctm = form_ctm
+        try:
+            with RandomAccessReadBuffer(body) as src:
+                parser = PDFStreamParser(src)
+                form_operands: list[COSBase] = []
+                for token in parser.tokens():
+                    if isinstance(token, Operator):
+                        self._dispatch(
+                            token.get_name(), form_operands, form_state, positions
+                        )
+                        form_operands = []
+                    else:
+                        form_operands.append(token)
+        finally:
+            self._form_level -= 1
+            self._active_resources = saved_resources
+            self._cmap_cache = saved_cmap_cache
+            self._font_cache = saved_font_cache
+            self._active_cmap = saved_active_cmap
+            self._active_font = saved_active_font
+            self._active_avg_advance = saved_avg_advance
+
+    @staticmethod
+    def _get_form_contents(xobject: object) -> bytes:
+        """Return the decoded content-stream bytes of a form XObject."""
+        cos = xobject.get_cos_object()  # type: ignore[attr-defined]
+        if not isinstance(cos, COSStream):
+            return b""
+        with cos.create_input_stream() as src:
+            return src.read()
+
+    @staticmethod
+    def _form_matrix(xobject: object) -> Matrix:
+        """Return the form's ``/Matrix`` as a :class:`Matrix` (identity when
+        absent or malformed)."""
+        try:
+            values = xobject.get_matrix()  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001 — defensive
+            return Matrix()
+        if values is None or len(values) != 6:
+            return Matrix()
+        a, b, c, d, e, f = (float(v) for v in values)
+        return Matrix(a, b, c, d, e, f)
 
     def _resolve_bdc_properties(
         self,
@@ -925,7 +1061,9 @@ class PDFTextStripper:
             return prop
         if isinstance(prop, COSName) and self._active_page is not None:
             try:
-                resources = self._active_page.get_resources()
+                resources = self._current_resources()
+                if resources is None:
+                    return None
                 pl = resources.get_property_list(prop)
                 if pl is not None:
                     return pl.get_cos_object()
@@ -1175,6 +1313,20 @@ class PDFTextStripper:
 
     # ---------- /ToUnicode CMap helpers ----------
 
+    def _current_resources(self) -> PDResources | None:
+        """Resources in effect for font / property-list lookups.
+
+        While recursing into a form XObject (``Do``) the form's own
+        ``/Resources`` override the host page's, mirroring upstream's
+        ``PDFStreamEngine.showForm`` pushing the form resources for the
+        duration of the form body. Otherwise the active page's resources.
+        """
+        if self._active_resources is not None:
+            return self._active_resources
+        if self._active_page is None:
+            return None
+        return self._active_page.get_resources()
+
     def _get_cmap_for_font(self, font_resource_name: str | None) -> CMap | None:
         """Resolve and cache the parsed ``/ToUnicode`` CMap for the
         font registered as ``font_resource_name`` in the active page's
@@ -1197,7 +1349,10 @@ class PDFTextStripper:
             return cached
         cmap: CMap | None = None
         try:
-            resources = self._active_page.get_resources()
+            resources = self._current_resources()
+            if resources is None:
+                self._cmap_cache[font_resource_name] = None
+                return None
             font_entry = resources.get_font(COSName.get_pdf_name(font_resource_name))
             if font_entry is not None:
                 font_dict = (
@@ -1266,7 +1421,10 @@ class PDFTextStripper:
             # Local import to break the pdmodel.font ↔ text cycle.
             from pypdfbox.pdmodel.font import PDFontFactory  # noqa: PLC0415
 
-            resources = self._active_page.get_resources()
+            resources = self._current_resources()
+            if resources is None:
+                self._font_cache[font_resource_name] = None
+                return None
             font_entry = resources.get_font(COSName.get_pdf_name(font_resource_name))
             if font_entry is not None:
                 if isinstance(font_entry, COSDictionary):

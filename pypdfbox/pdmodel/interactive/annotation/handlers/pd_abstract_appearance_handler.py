@@ -627,6 +627,33 @@ class PDAbstractAppearanceHandler(PDAppearanceHandler):
         return color.to_float_array()
 
     @staticmethod
+    def _pd_color_from_components(components: list[float]):  # type: ignore[no-untyped-def]
+        """Wrap raw ``/C`` float components in a :class:`PDColor` carrying the
+        device color space implied by the component count (1 → DeviceGray,
+        3 → DeviceRGB, 4 → DeviceCMYK).
+
+        Upstream handlers pass the full ``PDColor`` returned by ``getColor()``
+        to ``cs.setStrokingColor`` / ``setNonStrokingColor`` so the appearance
+        stream emits ``/DeviceRGB CS <r> <g> <b> SC`` (color-space name +
+        ``CS`` + components + ``SC``), never the device-shorthand ``RG`` / ``G``
+        / ``K`` operators. A bare component list routes through the shorthand
+        path and diverges byte-for-byte from PDFBox, so handlers that mirror an
+        upstream ``setStrokingColor(getColor())`` call must wrap first.
+        """
+        from pypdfbox.pdmodel.graphics.color.pd_color import PDColor
+        from pypdfbox.pdmodel.graphics.color.pd_device_cmyk import PDDeviceCMYK
+        from pypdfbox.pdmodel.graphics.color.pd_device_gray import PDDeviceGray
+        from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
+
+        if len(components) == 1:
+            color_space = PDDeviceGray.INSTANCE
+        elif len(components) == 4:
+            color_space = PDDeviceCMYK.INSTANCE
+        else:
+            color_space = PDDeviceRGB.INSTANCE
+        return PDColor(list(components), color_space)
+
+    @staticmethod
     def _components_to_rgb(components: list[float]) -> tuple[float, float, float]:
         """Best-effort conversion of /C components to RGB. The annotation
         ``/C`` array uses DeviceGray (1), DeviceRGB (3), or DeviceCMYK (4)

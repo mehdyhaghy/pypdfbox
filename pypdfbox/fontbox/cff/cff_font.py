@@ -74,6 +74,35 @@ class CFFFont:
     NUM_STANDARD_STRINGS: int = 391
     # CFF Top DICT default /CIDCount per Adobe Technote #5176 §9, Table 9.
     DEFAULT_CID_COUNT: int = 8720
+    # Top DICT operator defaults that upstream ``CFFParser.parseFont``
+    # materialises into the map returned by ``getTopDict()`` — i.e. these
+    # appear in the resolved Top DICT even when the operator is physically
+    # absent from the byte stream. Mirrors the ``getNumber/getArray/
+    # getBoolean(key, default)`` + ``addValueToTopDict`` pairs in upstream
+    # ``CFFParser.parseFont`` (Adobe Technote #5176 Table 9). Keys with no
+    # default (version/Notice/Copyright/FullName/FamilyName/Weight/
+    # UniqueID/XUID) are intentionally absent: upstream stores them only
+    # when present, so they stay ``None`` when omitted.
+    _TOP_DICT_DEFAULTS: dict[str, Any] = {
+        "isFixedPitch": False,
+        "ItalicAngle": 0,
+        "UnderlinePosition": -100,
+        "UnderlineThickness": 50,
+        "PaintType": 0,
+        "CharstringType": 2,
+        "FontMatrix": [0.001, 0, 0, 0.001, 0, 0],
+        "FontBBox": [0, 0, 0, 0],
+        "StrokeWidth": 0,
+    }
+    # Private DICT operator defaults that upstream ``CFFParser.parsePrivate``
+    # materialises into the map returned by ``getPrivateDict()`` via
+    # ``getNumber(key, 0)`` + ``addToPrivateDict``. ``BlueValues`` / ``StdHW``
+    # / ``StdVW`` (and the other hint operators) carry *no* default upstream
+    # (``getDelta/getNumber(key, null)``), so an omitted hint stays absent.
+    _PRIVATE_DICT_DEFAULTS: dict[str, Any] = {
+        "defaultWidthX": 0,
+        "nominalWidthX": 0,
+    }
 
     def __init__(self) -> None:
         self._fontset: Any | None = None  # fontTools CFFFontSet
@@ -236,6 +265,16 @@ class CFFFont:
         with any entries added via :meth:`add_value_to_top_dict`
         layered on top."""
         merged: dict[str, Any] = {}
+        # Upstream ``CFFParser.parseFont`` stamps operator defaults into the
+        # Top DICT map during a real parse (see ``_TOP_DICT_DEFAULTS``); a
+        # present operator overrides its default. We gate on a genuine
+        # fontTools parse (``_fontset`` set) so synthetic / unparsed fonts
+        # — which never ran ``parseFont`` upstream — keep an undecorated map.
+        if self._fontset is not None and self._top is not None:
+            for key, default in self._TOP_DICT_DEFAULTS.items():
+                merged[key] = (
+                    list(default) if isinstance(default, list) else default
+                )
         if self._top is not None:
             merged.update(getattr(self._top, "rawDict", {}))
         merged.update(self._top_overlay)
@@ -263,7 +302,17 @@ class CFFFont:
             return {}
         if priv is None:
             return {}
-        return dict(getattr(priv, "rawDict", {}))
+        merged: dict[str, Any] = {}
+        # Upstream ``CFFParser`` stamps ``defaultWidthX`` / ``nominalWidthX``
+        # (default 0) into the Private DICT map during a real parse; a present
+        # operator overrides. Hint operators (BlueValues/StdHW/StdVW/…) carry
+        # no default upstream, so they stay absent when omitted. Gate on a
+        # genuine fontTools parse so synthetic / unparsed fonts keep an
+        # undecorated map (matches the no-``parseFont`` upstream path).
+        if self._fontset is not None:
+            merged.update(self._PRIVATE_DICT_DEFAULTS)
+        merged.update(getattr(priv, "rawDict", {}))
+        return merged
 
     def get_charset(self) -> list[str]:
         """PDFBox: ``CFFFont.getCharset()`` — ordered glyph names in

@@ -43,8 +43,12 @@ class PDCaretAppearanceHandler(PDAbstractAppearanceHandler):
         components = self._color_components_from_annotation(annotation)
         with self.get_normal_appearance_as_content_stream() as cs:
             if components is not None:
-                cs.set_stroking_color(components)
-                cs.set_non_stroking_color(components)
+                # Upstream passes the full PDColor (annotation.getColor()) so
+                # the stream emits /DeviceRGB CS <r> <g> <b> SC, never the
+                # device shorthand RG/G/K — see PDCaretAppearanceHandler.java.
+                color = self._pd_color_from_components(components)
+                cs.set_stroking_color(color)
+                cs.set_non_stroking_color(color)
             self.set_opacity(cs, annotation.get_constant_opacity())
 
             rect_width = rect.get_width()

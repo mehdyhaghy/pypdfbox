@@ -1169,6 +1169,28 @@ def decode_pdimage_to_pil(
         return color_space.to_rgb_image(data[:lab_len], width, height)
     if color_space_name in ("Separation", "DeviceN") and color_space is not None:
         return _decode_devicen_to_rgb(color_space, data, width, height)
+    if color_space_name == "ICCBased" and color_space is not None:
+        # ICCBased (PDF §8.6.5.5): /N ∈ {1, 3, 4} gives the component count.
+        # Mirrors upstream ``PDImageXObject.getImage()`` handing the raw 8-bpc
+        # raster to ``PDICCBased.toRGBImage(raster)``, which converts through
+        # the embedded ICC profile (or, on an unparseable/LUT-less profile,
+        # the /Alternate fallback). The raw samples are decoded N-channels-
+        # per-pixel with the component-wise /Decode array applied, then handed
+        # to the colour space's bulk ``to_rgb_image`` — identical pipeline to
+        # the DeviceCMYK/DeviceRGB/DeviceGray branches above, but keyed off the
+        # ICC profile's /N rather than a device-space name.
+        components = color_space.get_number_of_components()
+        if components not in (1, 3, 4):
+            return None
+        needed = pixel_count * components
+        if len(data) < needed:
+            return None
+        decoded = _apply_decode_to_8bit_samples(
+            data[:needed], pixel_count, components, decode
+        )
+        if decoded is None:
+            return None
+        return color_space.to_rgb_image(decoded, width, height)
     return None
 
 

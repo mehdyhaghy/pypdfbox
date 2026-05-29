@@ -261,7 +261,11 @@ def _build_battery() -> list[tuple[object, str]]:
 # ---------------------------------------------------------------------------
 
 _JAVA_COLOR_OPS = {"CS", "SC", "cs", "sc"}
-_PY_COLOR_OPS = {"RG", "rg", "G", "g"}
+# Handlers that mirror an upstream ``setStrokingColor(getColor())`` (e.g. Caret)
+# now emit the verbose ``/DeviceRGB CS … SC`` form byte-for-byte; the remaining
+# lite-surface handlers still emit the device shorthand ``RG``/``rg``. Strip
+# both spellings so this test isolates the *path-drawing* operator sequence.
+_PY_COLOR_OPS = {"RG", "rg", "G", "g", "CS", "SC", "cs", "sc"}
 
 
 def _strip_color_ops(ops: list[str], color_ops: set[str]) -> list[str]:
