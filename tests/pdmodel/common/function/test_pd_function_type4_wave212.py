@@ -254,21 +254,18 @@ def test_eval_exact_match_of_output_count_succeeds() -> None:
     assert fn.eval([0.4]) == pytest.approx([0.4, 0.4])
 
 
-def test_eval_extra_outputs_are_clipped_pass_through() -> None:
-    """When the program leaves more values than /Range declares, the
-    extras pass through unclipped — clip_output only iterates the
-    declared dimensions. This documents existing behaviour."""
-    fn = _make(
-        "{ 0.1 0.2 0.3 }",
-        domain=[0.0, 1.0],
-        rng=[0.0, 1.0],  # one declared output
-    )
-    # input pop'd would underflow, so use empty input + empty domain
+def test_eval_extra_outputs_take_top_n_of_stack() -> None:
+    """When the program leaves more values than /Range declares, only the
+    TOP N stack values are returned (clipped) — surplus lower values are
+    discarded. Mirrors upstream ``PDFunctionType4.eval`` which fills the
+    output array with ``popReal()`` from the stack top (verified against
+    PDFBox 3.0.7: a body of ``{ 0.1 0.2 0.3 }`` with a 1-output /Range
+    returns ``[0.3]``, not ``[0.1, 0.2, 0.3]``)."""
     fn = _make(
         "{ 0.1 0.2 0.3 }",
         domain=[],
         rng=[0.0, 1.0],
     )
     result = fn.eval([])
-    # First value clipped to /Range; extras flow through.
-    assert result == pytest.approx([0.1, 0.2, 0.3])
+    # Only the top stack value (0.3) is returned, clipped to /Range.
+    assert result == pytest.approx([0.3])

@@ -2300,11 +2300,15 @@ class COSWriter(ICOSVisitor):
         existing = trailer.get_dictionary_object(COSName.get_pdf_name("ID"))
         if isinstance(existing, COSArray) and existing.size() == 2:
             return
-        # Generate two 16-byte halves. Upstream uses SHA-256 over time +
-        # info-dict; we use a SHA-256 over a wall-clock seed plus a random
-        # nonce for reproducibility-of-shape (not value).
+        # Generate two identical 32-byte halves. Upstream COSWriter
+        # (PDFBox 3.0.7) feeds current time + file size + Info-dict entries
+        # into a SHA-256 MessageDigest and uses the full, untruncated 32-byte
+        # digest() for both /ID halves. We seed differently (wall-clock + a
+        # random nonce) — the value is time-based either way — but must match
+        # the *length*: emit the full SHA-256 digest, not a 16-byte slice, so
+        # the synthesised /ID is structurally identical to PDFBox's.
         seed = f"{time.time_ns()}".encode("ascii") + secrets.token_bytes(16)
-        digest = hashlib.sha256(seed).digest()[:16]
+        digest = hashlib.sha256(seed).digest()
         first = COSString(digest)
         first.set_force_hex_form(True)
         second = COSString(digest)

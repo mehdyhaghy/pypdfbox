@@ -7,7 +7,9 @@ second is the *changing* identifier (regenerated whenever the file is updated so
 consumers can detect a modification). PDFBox 3.0.7 implements this as:
 
 * **Full save** — preserves an existing ``/ID`` array verbatim; synthesises a
-  fresh ``[id id]`` (both halves identical) for a document that lacks one.
+  fresh ``[id id]`` (both halves identical, 32-byte SHA-256 digest) for a
+  document that lacks one. (The synthesis path's structure is verified against
+  the oracle in ``test_file_id_synth_oracle.py``.)
 * **Incremental save** — preserves ``/ID[0]`` and regenerates ``/ID[1]`` as a
   fresh 32-byte SHA-256 digest over the document state.
 

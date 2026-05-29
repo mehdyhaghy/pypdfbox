@@ -86,7 +86,11 @@ class PDSquigglyAppearanceHandler(PDAbstractAppearanceHandler):
         # support classes don't exist yet in the pypdfbox port.
         with self.get_normal_appearance_as_content_stream() as cs:
             self.set_opacity(cs, annotation.get_constant_opacity())
-            cs.set_stroking_color(stroke_components)
+            # Upstream passes the typed PDColor to setStrokingColor, so the
+            # appearance stream emits "/DeviceRGB CS r g b SC" (color-space
+            # select + components + SC), not the device-shorthand RG. Mirror
+            # that exactly by wrapping the raw /C components first.
+            cs.set_stroking_color(self._pd_color_from_components(stroke_components))
             cs.set_line_width(ab.width)
             # Lite approximation: draw a simple zig-zag along the baseline
             # of each quad. The tiling-pattern version preserves better

@@ -54,15 +54,18 @@ Documented (NOT a bug — legitimate lite-surface differences, render-identical)
   handler applies the same alpha + Multiply ``ExtGState`` inline and fills the
   quad directly (``gs gs rg <path> f``). ``/BBox`` matches exactly; the rendered
   fill is pixel-equivalent (MAD ~0).
-* **Underline / StrikeOut colour-set operator**: upstream emits the colour-space
-  pair ``CS SC`` (typed ``PDColor`` with explicit DeviceRGB space); the lite
-  colour surface emits the device shorthand ``RG``. Identical colour, identical
-  path-drawing operators ``w m l S``.
+* **Underline colour-set operator**: upstream emits the colour-space pair
+  ``CS SC`` (typed ``PDColor`` with explicit DeviceRGB space); the lite colour
+  surface emits the device shorthand ``RG``. Identical colour, identical
+  path-drawing operators ``w m l S``. (StrikeOut and Squiggly were converted to
+  the typed-PDColor ``CS SC`` form in wave 1467, so only Underline still
+  differs here.)
 * **Squiggly tiling pattern**: upstream paints the zig-zag via a tiling pattern
   wrapped in a form XObject (outer stream ``CS SC cm Do``). Pattern / form
   XObject emission isn't ported, so the lite handler draws the zig-zag polyline
-  inline (``RG w m l ... l S``). ``/BBox`` matches exactly; the rendered zig-zag
-  is perceptually equivalent at 72 DPI (the high-value render gate confirms it).
+  inline (``CS SC w m l ... l S``). The colour ops (``CS SC``) and ``/BBox`` now
+  match exactly; the rendered zig-zag is perceptually equivalent at 72 DPI (the
+  high-value render gate confirms it).
 
 Every ``/QuadPoints`` value, every ``/C`` component, every ``/BBox``, and the
 whole rendered page are asserted against Apache PDFBox; only the operator
@@ -338,8 +341,17 @@ def test_appearance_operator_sequence_matches_pdfbox(tmp_path: Path) -> None:
             assert py_ops[:2] == ["gs", "gs"], f"pypdfbox highlight: {py_ops}"
             assert jr_ops[-1] == "Do", f"PDFBox highlight not Do form: {jr_ops}"
             assert "f" in py_ops, f"pypdfbox highlight did not fill: {py_ops}"
-        elif subtype in ("Underline", "StrikeOut"):
-            # Colour-set spelling divergence; the line-drawing ops must match.
+        elif subtype == "StrikeOut":
+            # StrikeOut now emits the typed-PDColor colour (CS SC) like upstream
+            # (wave 1467); the whole operator sequence matches exactly. See
+            # test_strikeout_squiggly_oracle.py for the colour-op + line-geometry
+            # parity pin.
+            assert py_ops == jr_ops, (
+                f"StrikeOut operator sequence diverges: {py_ops} vs {jr_ops}"
+            )
+        elif subtype == "Underline":
+            # Documented colour-set spelling divergence (Underline still emits
+            # the device shorthand RG); the line-drawing ops must match.
             assert _drop_prefix(py_ops, _LINE_COLOR_OPS_PY) == _drop_prefix(
                 jr_ops, _LINE_COLOR_OPS_JAVA
             ), f"{subtype} path operators diverge: {py_ops} vs {jr_ops}"

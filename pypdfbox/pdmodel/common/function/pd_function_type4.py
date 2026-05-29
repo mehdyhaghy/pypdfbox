@@ -74,22 +74,29 @@ class PDFunctionType4(PDFunction):
         stack: Stack = list(clipped)
         _execute(sequence, stack)
 
-        # Booleans surviving in the output are coerced to floats (1.0 / 0.0)
-        # before /Range clipping; /Range is defined over numeric outputs.
-        result = [_to_output_float(v) for v in stack]
-
         # Upstream parity: when /Range declares N output dimensions, the
         # program must leave at least N values on the stack. Under-supply
         # is a malformed function and bubbles up as OSError (mirrors
         # IllegalStateException in PDFunctionType4.eval). When /Range is
         # absent (e.g. inline shading helpers) we skip the check and
-        # return the raw stack — clip_output is a no-op in that case.
+        # return the whole stack — clip_output is a no-op in that case.
         declared = self.get_number_of_output_parameters()
-        if declared > 0 and len(result) < declared:
-            raise OSError(
-                f"type 4 function returned {len(result)} values "
-                f"but /Range declares {declared}"
-            )
+        if declared > 0:
+            if len(stack) < declared:
+                raise OSError(
+                    f"type 4 function returned {len(stack)} values "
+                    f"but /Range declares {declared}"
+                )
+            # Upstream pops the TOP N values off the stack into the output
+            # (PDFunctionType4.eval fills output[N-1..0] via popReal), so any
+            # surplus values left BELOW the top N — e.g. the original inputs a
+            # pure-stack program never consumed — are discarded. Mirror that by
+            # keeping only the last N stack entries before clipping.
+            stack = stack[-declared:]
+
+        # Booleans surviving in the output are coerced to floats (1.0 / 0.0)
+        # before /Range clipping; /Range is defined over numeric outputs.
+        result = [_to_output_float(v) for v in stack]
 
         return self.clip_output(result)
 

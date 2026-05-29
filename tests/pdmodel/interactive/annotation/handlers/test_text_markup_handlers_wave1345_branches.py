@@ -296,9 +296,11 @@ def test_squiggly_handler_skips_zero_length_quad() -> None:
     PDSquigglyAppearanceHandler(annotation).generate_normal_appearance()
     body = _appearance_bytes(annotation)
     # No path operators were emitted from the degenerate quad — body holds
-    # just opacity / color / line-width prologue plus a trailing newline.
-    assert b" S" not in body  # stroke
-    assert b" l" not in body  # line_to
+    # just the opacity / colour / line-width prologue. Tokenise so the colour
+    # operator (``... SC``) isn't mistaken for the stroke operator ``S``.
+    tokens = body.split()
+    assert b"S" not in tokens  # stroke
+    assert b"l" not in tokens  # line_to
 
 
 # ---------------------------------------------------------------------------
