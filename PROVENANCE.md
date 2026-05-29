@@ -3328,6 +3328,20 @@ Backfill of upstream Java paths for source files added in earlier waves (mostly 
 | `tests/pdmodel/encryption/oracle/test_perm_write_roundtrip_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/PermWriteProbe.java`, wave 1463 agent J); restricted-permission WRITE round-trip — both libraries serialise the identical signed `/P` (-2336) and read each other's restricted `/P` back to identical predicates, both directions; confirmed at parity; no single upstream JUnit source |
 
 
+### Wave 1464 additions — live-oracle differential probes + tests (partial wave; 4 surfaces landed, user-interrupted)
+
+| File | Upstream version | Upstream Java path / note |
+|---|---|---|
+| `oracle/probes/HeadMaxpProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1464 agent B); `org.apache.fontbox.ttf.HeaderTable` (`head`) + `MaximumProfileTable` (`maxp`); no single upstream JUnit source |
+| `tests/fontbox/ttf/oracle/test_head_maxp_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/HeadMaxpProbe.java`, wave 1464 agent B); all `head`/`maxp` fields across LiberationSans + DejaVuSansMono — `created`/`modified` as epoch-millis, `version`/`fontRevision` via Java `Float.toString` 32-bit-shortest repr, v1.0-gated maxp maxima; confirmed at parity; no single upstream JUnit source |
+| `oracle/probes/CommentCompatTokenizeProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1464 agent D); drives `org.apache.pdfbox.pdfparser.PDFStreamParser` over comments + `BX`/`EX` blocks; no single upstream JUnit source |
+| `tests/contentstream/oracle/test_comment_compat_tokenize_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/CommentCompatTokenizeProbe.java`, wave 1464 agent D); 12 cases — `%`-comment skipping across LF/CRLF/bare-CR/empty/no-space terminators, `BX`/`EX` wrapping unknown ops, nested/empty `BX..EX`, bare unknown op (preserved as `Operator`); confirmed at parity; no single upstream JUnit source |
+| `oracle/probes/CatalogPageEnumProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1464 agent G); `PDDocumentCatalog.getPageMode`/`getPageLayout`; no single upstream JUnit source |
+| `tests/pdmodel/oracle/test_catalog_page_enum_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/CatalogPageEnumProbe.java`, wave 1464 agent G); full `/PageMode` (6 members) + `/PageLayout` (6 members) enum round-trip (pypdfbox setter → on-disk COSName → PDFBox getter); confirmed at parity; no single upstream JUnit source |
+| `oracle/probes/SeparationAllNoneProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1464 agent I); `PDSeparation` `/All` + `/None` special colorants; no single upstream JUnit source |
+| `tests/pdmodel/graphics/color/oracle/test_separation_all_none_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/SeparationAllNoneProbe.java`, wave 1464 agent I); `/All`/`/None` colorant name (verbatim; `""` for default ctor), 1 component, initial colour `[1.0]`, `toRGB` over DeviceGray (exact) + DeviceCMYK (documented CMM-divergence tier); confirmed at parity; no single upstream JUnit source |
+
+
 ## External font assets (runtime-fetched, never bundled)
 
 These are **not** Apache PDFBox ports — they are upstream font binaries
