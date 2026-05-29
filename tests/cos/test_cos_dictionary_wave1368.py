@@ -11,10 +11,9 @@ Round-out tests for accessor paths not yet exercised:
 * ``get_date`` returning ``default`` for a non-COSString entry.
 * ``get_embedded_date`` returning ``default`` when the embedded dictionary
   is absent.
-* ``get_string`` returning the ``COSName`` text when the value is a name
-  (PDFBox parity — ``Name`` values are accepted by string accessors).
-* ``get_name_as_string`` mirroring ``get_string`` for both name and string
-  values.
+* ``get_string`` ignoring a ``COSName`` value (PDFBox parity — only a
+  ``COSString`` is decoded; names need ``get_name_as_string``).
+* ``get_name_as_string`` coercing both name and string values to text.
 """
 
 from __future__ import annotations
@@ -102,9 +101,12 @@ def test_get_boolean_returns_fallback_for_non_bool_value() -> None:
     assert d.get_boolean("Flag", default=False) is False
 
 
-def test_get_string_returns_name_text() -> None:
+def test_get_string_ignores_name_value() -> None:
+    # Upstream getString decodes only a COSString — a COSName returns the
+    # default. get_name_as_string is the name-coercing accessor.
     d = COSDictionary([("Type", COSName.get_pdf_name("Page"))])
-    assert d.get_string("Type") == "Page"
+    assert d.get_string("Type") is None
+    assert d.get_name_as_string("Type") == "Page"
 
 
 def test_get_name_as_string_matches_get_string() -> None:
@@ -253,7 +255,9 @@ def test_has_int_distinguishes_numeric_and_non_numeric() -> None:
     assert d.has_int("Missing") is False
 
 
-def test_has_string_true_for_both_name_and_string() -> None:
+def test_has_string_true_only_for_cosstring() -> None:
+    # has_string mirrors get_string: only a COSString qualifies, a COSName
+    # does not (upstream getString decodes COSString exclusively).
     d = COSDictionary(
         [
             ("S", COSString("hello")),
@@ -261,7 +265,7 @@ def test_has_string_true_for_both_name_and_string() -> None:
         ]
     )
     assert d.has_string("S") is True
-    assert d.has_string("N") is True
+    assert d.has_string("N") is False
 
 
 def test_clear_int_removes_entry() -> None:

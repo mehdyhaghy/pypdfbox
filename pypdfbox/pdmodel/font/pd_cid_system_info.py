@@ -97,7 +97,8 @@ class PDCIDSystemInfo:
     # ---------- /Registry ----------
 
     def get_registry(self) -> str | None:
-        return self._dict.get_string(_REGISTRY)
+        # Upstream uses getNameAsString — accept COSName or COSString.
+        return self._dict.get_name_as_string(_REGISTRY)
 
     def set_registry(self, registry: str | None) -> None:
         if registry is None:
@@ -108,7 +109,8 @@ class PDCIDSystemInfo:
     # ---------- /Ordering ----------
 
     def get_ordering(self) -> str | None:
-        return self._dict.get_string(_ORDERING)
+        # Upstream uses getNameAsString — accept COSName or COSString.
+        return self._dict.get_name_as_string(_ORDERING)
 
     def set_ordering(self, ordering: str | None) -> None:
         if ordering is None:

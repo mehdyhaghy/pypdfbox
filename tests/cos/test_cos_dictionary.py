@@ -227,9 +227,12 @@ def test_get_long_default_and_numeric_coercion() -> None:
     assert d.get_long("Name", 11) == 11
 
 
-def test_get_string_falls_through_to_name() -> None:
+def test_get_string_does_not_coerce_name() -> None:
+    # Upstream COSDictionary.getString decodes only a COSString; a COSName
+    # value falls through to the default. Use get_name_as_string for names.
     d = COSDictionary([("X", COSName.get_pdf_name("Page"))])
-    assert d.get_string("X") == "Page"
+    assert d.get_string("X") is None
+    assert d.get_name_as_string("X") == "Page"
 
 
 def test_get_cos_dictionary_returns_resolved_dictionary_or_none() -> None:

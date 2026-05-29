@@ -79,10 +79,11 @@ class PDViewportDictionary:
         — some producers emit the entry as a string. ``None`` is returned
         when the entry is absent or has any other type.
         """
-        # ``COSDictionary.get_string`` mirrors upstream ``getNameAsString``
-        # exactly: it returns the underlying value of either a ``COSName``
-        # or a ``COSString``, falling back to the (here unused) default.
-        return self._dict.get_string(_NAME)
+        # ``COSDictionary.get_name_as_string`` mirrors upstream
+        # ``getNameAsString``: it returns the underlying value of either a
+        # ``COSName`` or a ``COSString``, falling back to the (here unused)
+        # default.
+        return self._dict.get_name_as_string(_NAME)
 
     def set_name(self, name: str | None) -> None:
         """Set the name of the viewport."""

@@ -161,6 +161,43 @@ _STANDARD14_SUBSTITUTES: dict[str, list[str]] = {
 }
 
 
+# Acrobat alias names that the upstream constructor folds into the
+# substitute table. Mirrors the exact key set of upstream
+# ``Standard14Fonts.ALIASES`` (Standard14Fonts.java line 72-115) as iterated
+# by ``Standard14Fonts.getNames()`` in ``FontMapperImpl()`` (Java line
+# 106-114). We pin the upstream key set here verbatim instead of driving the
+# loop off :meth:`Standard14Fonts.get_all_names` because pypdfbox's alias map
+# carries extra hyphenated spellings (e.g. ``Arial-Bold``,
+# ``CourierNew-Bold``) that upstream does *not* register — folding those in
+# would diverge from PDFBox, which leaves them with an empty substitute list.
+_STANDARD14_ALIAS_NAMES: tuple[str, ...] = (
+    "CourierCourierNew",
+    "CourierNew",
+    "CourierNew,Italic",
+    "CourierNew,Bold",
+    "CourierNew,BoldItalic",
+    "Arial",
+    "Arial,Italic",
+    "Arial,Bold",
+    "Arial,BoldItalic",
+    "TimesNewRoman",
+    "TimesNewRoman,Italic",
+    "TimesNewRoman,Bold",
+    "TimesNewRoman,BoldItalic",
+    "Symbol,Italic",
+    "Symbol,Bold",
+    "Symbol,BoldItalic",
+    "Times",
+    "Times,Italic",
+    "Times,Bold",
+    "Times,BoldItalic",
+    "ArialMT",
+    "Arial-ItalicMT",
+    "Arial-BoldMT",
+    "Arial-BoldItalicMT",
+)
+
+
 class FontMapperImpl(FontMapper):
     """Default FontMapper backed by a pluggable :class:`FontProvider`.
 
@@ -180,6 +217,20 @@ class FontMapperImpl(FontMapper):
         self._substitutes: dict[str, list[str]] = {}
         for canonical, names in _STANDARD14_SUBSTITUTES.items():
             self._substitutes[canonical.lower()] = list(names)
+        # Acrobat also uses alternative names for Standard 14 fonts, which we
+        # map to those above; these include names such as "Arial" and
+        # "TimesNewRoman". Mirrors upstream constructor (Java line 106-114):
+        # for every Standard-14 alias whose substitute list is still empty,
+        # adopt the canonical mapped font's substitutes.
+        from .standard14_fonts import Standard14Fonts  # noqa: PLC0415
+
+        for base_name in _STANDARD14_ALIAS_NAMES:
+            if not self._get_substitutes(base_name):
+                mapped = Standard14Fonts.get_mapped_font_name(base_name)
+                if mapped is not None:
+                    self._substitutes[base_name.lower()] = list(
+                        self._get_substitutes(mapped)
+                    )
         # Legacy single-slot cache (kept for backwards-compat with code
         # that pokes ``impl._last_resort_font = sentinel`` for tests).
         self._last_resort_font: Any | None = None

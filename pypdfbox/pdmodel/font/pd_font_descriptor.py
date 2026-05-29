@@ -83,9 +83,9 @@ class PDFontDescriptor:
     def get_font_name(self) -> str | None:
         # Upstream uses ``dic.getNameAsString(FONT_NAME)`` which tolerates a
         # /FontName stored as a COSString (some non-conformant writers do
-        # this) in addition to the spec-mandated COSName form. ``get_string``
-        # implements the same fallback.
-        return self._dict.get_string(_FONT_NAME)
+        # this) in addition to the spec-mandated COSName form.
+        # ``get_name_as_string`` implements the same fallback.
+        return self._dict.get_name_as_string(_FONT_NAME)
 
     def set_font_name(self, name: str | None) -> None:
         if name is None:
@@ -340,7 +340,7 @@ class PDFontDescriptor:
         # Upstream uses ``dic.getNameAsString(FONT_STRETCH)`` — tolerate a
         # /FontStretch stored as a COSString as well as the spec-mandated
         # COSName form.
-        return self._dict.get_string(_FONT_STRETCH)
+        return self._dict.get_name_as_string(_FONT_STRETCH)
 
     def set_font_stretch(self, value: str | None) -> None:
         if value is None:

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import pytest
+
 from pypdfbox import PDDocument
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSObject, COSStream
-from pypdfbox.pdmodel import PDResources
+from pypdfbox.pdmodel import MissingResourceException, PDResources
 from pypdfbox.pdmodel.font import PDType1Font
 from pypdfbox.pdmodel.graphics.color import PDDeviceRGB
 from pypdfbox.pdmodel.graphics.form import PDFormXObject
@@ -95,9 +97,12 @@ def test_get_ext_gstate_returns_typed_wrapper() -> None:
     assert egs.get_cos_object() is egs_dict
 
 
-def test_get_color_space_missing_returns_none() -> None:
+def test_get_color_space_missing_raises_missing_resource() -> None:
+    # Matches upstream PDFBox: an unresolvable non-device color-space name
+    # raises MissingResourceException rather than returning None.
     res = PDResources()
-    assert res.get_color_space(COSName.get_pdf_name("Nope")) is None
+    with pytest.raises(MissingResourceException, match="Missing color space: Nope"):
+        res.get_color_space(COSName.get_pdf_name("Nope"))
 
 
 def test_get_pattern_missing_returns_none() -> None:

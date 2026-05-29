@@ -35,13 +35,14 @@ _PREFIX_PATTERN: str = "p"
 _PREFIX_PROPERTY_LIST: str = "Prop"
 _PREFIX_OPTIONAL_CONTENT_GROUP: str = "oc"
 
+# Device color-space name -> its Default* override key (PDF 32000-1 §8.6.5.6).
+# Only the long Device* forms reach ``getColorSpace`` — inline-image short
+# forms (G / RGB / CMYK) are expanded by ``PDInlineImage#toLongName`` before
+# any resource-dictionary lookup, so they never participate in this override.
 _DEFAULT_COLOR_SPACE_BY_DEVICE: dict[str, COSName] = {
     "DeviceGray": COSName.get_pdf_name("DefaultGray"),
-    "G": COSName.get_pdf_name("DefaultGray"),
     "DeviceRGB": COSName.get_pdf_name("DefaultRGB"),
-    "RGB": COSName.get_pdf_name("DefaultRGB"),
     "DeviceCMYK": COSName.get_pdf_name("DefaultCMYK"),
-    "CMYK": COSName.get_pdf_name("DefaultCMYK"),
 }
 
 
@@ -427,25 +428,64 @@ class PDResources:
                 return cached
 
         if base is None:
-            default_color_space = self._get_default_color_space(name, was_default)
-            if default_color_space is not None:
-                return default_color_space
-            return PDColorSpace.create(name)
+            return self._color_space_for_bare_name(name, was_default)
 
         color_space = PDColorSpace.create(base, self, was_default)
         if cache is not None and isinstance(raw, COSObject) and color_space is not None:
             cache.put_color_space(raw, color_space)
         return color_space
 
-    def _get_default_color_space(
+    def _color_space_for_bare_name(
         self, name: COSName, was_default: bool
     ) -> PDColorSpace | None:
-        if was_default:
-            return None
-        default_name = _DEFAULT_COLOR_SPACE_BY_DEVICE.get(name.get_name())
-        if default_name is None or not self.has_color_space(default_name):
-            return None
-        return self.get_color_space(default_name, was_default=True)
+        """Resolve a ``/ColorSpace`` name with no resource-dictionary entry.
+
+        Mirrors the ``COSName`` branch of upstream
+        ``PDColorSpace.create(COSBase, PDResources, boolean)`` (which is the
+        path PDFBox's ``getColorSpace`` takes when ``get(COLORSPACE, name)``
+        is null): apply the ``Default*`` override for ``Device*`` references,
+        return the device singleton for ``Device*`` / ``Pattern`` names, and
+        raise :class:`MissingResourceException` for any other unresolved name.
+        pypdfbox keeps this branch here (rather than in ``PDColorSpace.create``)
+        so the bare ``PDColorSpace.create(name)`` factory stays permissive for
+        callers outside the resource-dictionary lookup."""
+        from pypdfbox.pdmodel.graphics.color.pd_device_cmyk import (  # noqa: PLC0415
+            PDDeviceCMYK,
+        )
+        from pypdfbox.pdmodel.graphics.color.pd_device_gray import (  # noqa: PLC0415
+            PDDeviceGray,
+        )
+        from pypdfbox.pdmodel.graphics.color.pd_device_rgb import (  # noqa: PLC0415
+            PDDeviceRGB,
+        )
+        from pypdfbox.pdmodel.graphics.color.pd_pattern import (  # noqa: PLC0415
+            PDPattern,
+        )
+        from pypdfbox.pdmodel.missing_resource_exception import (  # noqa: PLC0415
+            MissingResourceException,
+        )
+
+        cs_name = name.get_name()
+        # Default* override (PDF 32000-1 §8.6.5.6): a Device* reference picks
+        # up the page's DefaultGray/DefaultRGB/DefaultCMYK when present, unless
+        # we are already resolving a default (``was_default``), which loops.
+        default_name = _DEFAULT_COLOR_SPACE_BY_DEVICE.get(cs_name)
+        if (
+            not was_default
+            and default_name is not None
+            and self.has_color_space(default_name)
+        ):
+            return self.get_color_space(default_name, was_default=True)
+
+        if cs_name == "DeviceCMYK":
+            return PDDeviceCMYK.INSTANCE
+        if cs_name == "DeviceRGB":
+            return PDDeviceRGB.INSTANCE
+        if cs_name == "DeviceGray":
+            return PDDeviceGray.INSTANCE
+        if cs_name == "Pattern":
+            return PDPattern(resources=self)
+        raise MissingResourceException(f"Missing color space: {cs_name}")
 
     def has_color_space(self, name: COSName) -> bool:
         """Return ``True`` if a ``/ColorSpace`` entry exists for ``name``."""

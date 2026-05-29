@@ -63,8 +63,9 @@ class PDUserProperty:
         # matching upstream ``getNameAsString`` (which similarly tolerates
         # either). Pre-existing dict-form callers in pypdfbox write ``/N``
         # as ``COSString``; the typed setter below preserves that
-        # convention so both surfaces stay interchangeable.
-        return self._dictionary.get_string(_N)
+        # convention so both surfaces stay interchangeable. Upstream uses
+        # getNameAsString(N), which also reads back a COSName form.
+        return self._dictionary.get_name_as_string(_N)
 
     def set_name(self, name: str) -> None:
         self.potentially_notify_changed(self.get_name(), name)

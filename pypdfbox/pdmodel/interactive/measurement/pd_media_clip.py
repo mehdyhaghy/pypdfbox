@@ -36,7 +36,7 @@ class PDMediaClip:
             raise TypeError(
                 f"PDMediaClip.create expects COSDictionary, got {type(base).__name__}"
             )
-        sub_type = base.get_string(_S)
+        sub_type = base.get_name_as_string(_S)
         if sub_type == PDMediaClipData.SUB_TYPE:
             return PDMediaClipData(base)
         if sub_type == PDMediaClipSection.SUB_TYPE:
@@ -47,7 +47,7 @@ class PDMediaClip:
         return self._dict
 
     def get_subtype(self) -> str | None:
-        return self._dict.get_string(_S)
+        return self._dict.get_name_as_string(_S)
 
     def get_n(self) -> str | None:
         return self._dict.get_string(_N)

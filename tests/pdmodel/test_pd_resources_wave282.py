@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSStream
-from pypdfbox.pdmodel import PDResources
+from pypdfbox.pdmodel import MissingResourceException, PDResources
 
 
 def test_malformed_category_entries_are_treated_as_absent() -> None:
@@ -36,7 +36,11 @@ def test_malformed_category_entries_are_treated_as_absent() -> None:
     assert not res.has_property_list(key)
     assert res.get_xobject(key) is None
     assert res.get_font(key) is None
-    assert res.get_color_space(key) is None
+    # A malformed (non-dict) /ColorSpace category leaves the entry
+    # unresolvable, so get_color_space follows upstream PDFBox and raises
+    # MissingResourceException for the bare non-device name.
+    with pytest.raises(MissingResourceException, match="Missing color space: R0"):
+        res.get_color_space(key)
     assert res.get_ext_gstate(key) is None
     assert res.get_shading(key) is None
     assert res.get_pattern(key) is None

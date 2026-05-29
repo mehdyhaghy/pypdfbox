@@ -1206,7 +1206,9 @@ class PDFTextStripper:
            the resource lookup could resolve.
         """
         if self._active_cmap is not None:
-            return self._decode_text_via_cmap(text_bytes, self._active_cmap)
+            return self._decode_text_via_cmap(
+                text_bytes, self._active_cmap, self._active_font
+            )
         font = self._active_font
         if font is not None:
             # Local import to avoid pulling pdmodel.font into the text
@@ -1297,10 +1299,21 @@ class PDFTextStripper:
         return fallback
 
     @staticmethod
-    def _decode_text_via_cmap(text_bytes: bytes, cmap: CMap) -> str:
+    def _decode_text_via_cmap(
+        text_bytes: bytes, cmap: CMap, font: PDFont | None = None
+    ) -> str:
         """Walk ``text_bytes`` consuming codes whose width is governed by
         the CMap's codespace ranges, look each up via ``cmap.to_unicode``,
-        and concatenate. Codes with no Unicode mapping are skipped.
+        and concatenate.
+
+        When the ``/ToUnicode`` CMap has no mapping for a code, resolve it
+        through ``font.to_unicode(code)`` — this preserves upstream's
+        ``PDFont.toUnicode`` fallback chain (ToUnicode → ``/Encoding`` glyph
+        name → Adobe Glyph List). A simple font whose ``/ToUnicode`` CMap
+        covers only some codes (a common subsetting/ligature pattern) would
+        otherwise lose every uncovered glyph, diverging from Apache PDFBox's
+        ``PDFTextStripper`` which emits ``font.toUnicode(code)`` per glyph.
+        Only when the font fallback also yields nothing is the code dropped.
 
         Mirrors PDFBox's ``PDFont.encode``/``readCode`` loop, simplified
         for the lite stripper: we drive ``CMap.read_code`` directly off a
@@ -1321,6 +1334,11 @@ class PDFTextStripper:
             if stream.tell() == pos_before:
                 break
             piece = cmap.to_unicode(code)
+            if piece is None and font is not None:
+                try:
+                    piece = font.to_unicode(code)
+                except Exception:  # noqa: BLE001 — defensive: malformed font
+                    piece = None
             if piece is not None:
                 out.append(piece)
         return "".join(out)

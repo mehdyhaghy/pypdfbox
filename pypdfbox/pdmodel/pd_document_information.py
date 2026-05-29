@@ -560,15 +560,17 @@ class PDDocumentInformation:
         """Return a snapshot of every string-valued entry as a plain ``dict``.
 
         Pypdfbox addition — useful for logging / serialization. Only entries
-        whose value coerces to a string via :meth:`COSDictionary.get_string`
-        appear; entries holding non-string types (numbers, arrays, etc.) are
-        skipped rather than stringified. The returned dict is a copy, not a
-        live view — mutating it does not affect the underlying info dict.
+        whose value coerces to text via
+        :meth:`COSDictionary.get_name_as_string` (i.e. ``COSString`` and
+        ``COSName`` values) appear; entries holding non-string types
+        (numbers, arrays, etc.) are skipped rather than stringified. The
+        returned dict is a copy, not a live view — mutating it does not
+        affect the underlying info dict.
         """
         out: dict[str, str] = {}
         for key in self._info.key_set():
             name = key.get_name()
-            value = self._info.get_string(name)
+            value = self._info.get_name_as_string(name)
             if value is not None:
                 out[name] = value
         return out

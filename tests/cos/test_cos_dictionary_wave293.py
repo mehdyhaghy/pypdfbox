@@ -29,7 +29,8 @@ def test_typed_presence_helpers_match_dictionary_getter_shapes() -> None:
     )
 
     assert dictionary.has_name("Name")
-    assert dictionary.has_string("Name")
+    # has_string is COSString-only (upstream getString ignores COSName).
+    assert not dictionary.has_string("Name")
     assert dictionary.has_string("String")
     assert dictionary.has_int("Int")
     assert dictionary.has_int("Float")

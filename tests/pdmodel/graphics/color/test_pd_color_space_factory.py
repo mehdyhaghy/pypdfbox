@@ -244,9 +244,15 @@ def test_create_named_color_space_array_form_via_resources() -> None:
     assert isinstance(cs, PDLab)
 
 
-def test_create_unknown_name_with_resources_but_missing_entry_returns_none() -> None:
+def test_create_unknown_name_with_resources_but_missing_entry_raises() -> None:
+    # With a PDResources in hand, an unknown non-device name routes through
+    # PDResources.get_color_space, which (matching upstream PDFBox) raises
+    # MissingResourceException rather than returning None.
+    from pypdfbox.pdmodel import MissingResourceException
+
     resources = PDResources()
-    assert PDColorSpace.create(_name("Unknown"), resources) is None
+    with pytest.raises(MissingResourceException, match="Missing color space: Unknown"):
+        PDColorSpace.create(_name("Unknown"), resources)
 
 
 def test_create_pattern_name_propagates_resources() -> None:

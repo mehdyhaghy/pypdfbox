@@ -282,7 +282,7 @@ class PDSeedValueCertificate:
 
     def get_url_type(self) -> str | None:
         # Upstream uses getNameAsString — accepts either a name or string.
-        return self._dict.get_string(_URL_TYPE)
+        return self._dict.get_name_as_string(_URL_TYPE)
 
     def set_url_type(self, url_type: str) -> None:
         self._dict.set_name(_URL_TYPE, url_type)

@@ -547,7 +547,7 @@ class PDSignature:
         # Upstream uses getNameAsString — accept either a name or a string,
         # to be permissive with non-conformant writers that store /Filter
         # as a COSString instead of a COSName.
-        return self._dict.get_string(_FILTER)
+        return self._dict.get_name_as_string(_FILTER)
 
     def set_filter(self, name: str | None) -> None:
         if name is None:
@@ -559,7 +559,7 @@ class PDSignature:
 
     def get_sub_filter(self) -> str | None:
         # Upstream uses getNameAsString — see ``get_filter`` for rationale.
-        return self._dict.get_string(_SUB_FILTER)
+        return self._dict.get_name_as_string(_SUB_FILTER)
 
     def set_sub_filter(self, name: str | None) -> None:
         if name is None:

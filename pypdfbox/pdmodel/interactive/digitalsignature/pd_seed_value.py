@@ -100,7 +100,7 @@ class PDSeedValue:
         """Return the ``/Filter`` value as a string. Mirrors upstream
         ``getNameAsString(COSName.FILTER)`` — handles both ``COSName`` and
         ``COSString`` storage shapes (some producers write a string)."""
-        return self._dict.get_string(_FILTER)
+        return self._dict.get_name_as_string(_FILTER)
 
     def set_filter(self, name: str | COSName | None) -> None:
         """Set or remove the ``/Filter`` entry. Upstream signature is

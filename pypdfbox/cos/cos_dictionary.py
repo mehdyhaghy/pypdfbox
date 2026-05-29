@@ -455,16 +455,21 @@ class COSDictionary(COSBase):
     # ---------- typed convenience getters ----------
 
     def get_string(self, key: COSName | str, default: str | None = None) -> str | None:
+        """Return the entry as text when it is a ``COSString``.
+
+        Mirrors PDFBox ``COSDictionary.getString`` (Java lines 718, 750):
+        only a ``COSString`` is decoded; a ``COSName`` (or any other shape)
+        falls back to ``default``. Use :meth:`get_name_as_string` when a
+        name should also coerce to text.
+        """
         v = self.get_dictionary_object(key)
         if isinstance(v, COSString):
             return v.get_string()
-        if isinstance(v, COSName):
-            return v.name
         return default
 
     def has_string(self, key: COSName | str) -> bool:
-        """Return true when ``key`` resolves to a string-like COS value."""
-        return isinstance(self.get_dictionary_object(key), (COSString, COSName))
+        """Return true when ``key`` resolves to a ``COSString``."""
+        return isinstance(self.get_dictionary_object(key), COSString)
 
     def clear_string(self, key: COSName | str) -> None:
         self.clear_item(key)
@@ -480,11 +485,16 @@ class COSDictionary(COSBase):
     ) -> str | None:
         """Return a name-like value as text.
 
-        Mirrors PDFBox ``COSDictionary.getNameAsString``: names return their
-        PDF name, strings return their decoded string, and other shapes fall
-        back to ``default``.
+        Mirrors PDFBox ``COSDictionary.getNameAsString`` (Java lines 653,
+        689): names return their PDF name, strings return their decoded
+        string, and other shapes fall back to ``default``.
         """
-        return self.get_string(key, default)
+        v = self.get_dictionary_object(key)
+        if isinstance(v, COSName):
+            return v.name
+        if isinstance(v, COSString):
+            return v.get_string()
+        return default
 
     def has_name(self, key: COSName | str) -> bool:
         return isinstance(self.get_dictionary_object(key), COSName)
