@@ -1753,7 +1753,7 @@ class PDAppearanceGenerator:
             if is_comb and max_len > 0:
                 self._emit_comb_text(
                     cs, value, font, resolved_size, color,
-                    width, height, max_len,
+                    bbox_w, bbox_h, max_len, quadding,
                 )
             elif is_multiline:
                 self._emit_multiline_text(
@@ -2198,28 +2198,60 @@ class PDAppearanceGenerator:
         width: float,
         height: float,
         max_len: int,
+        quadding: int = 0,
     ) -> None:
         # Comb mode: PDF 32000-1 §12.7.3.3 — the field's value is split
         # into one-character-per-cell entries, each centered horizontally
-        # within a 1/MaxLen wide cell.
-        cell_w = width / float(max_len)
-        y = max(2.0, (height - size) / 2.0)
+        # within a 1/MaxLen wide cell. This mirrors upstream
+        # AppearanceGeneratorHelper.insertGeneratedCombAppearance exactly:
+        # the per-cell offsets are emitted with an incremental
+        # ``xOffset = xOffset + prevCharWidth/2 - currCharWidth/2`` scheme
+        # (note the ``fontSize/2`` half-width on currCharWidth), the
+        # baseline is ascent-centred, and ``/Q`` shifts the run for a value
+        # shorter than ``/MaxLen``.
+        if not value:
+            return
+        num_chars = min(len(value), max_len)
+        comb_width = width / float(max_len)
+
+        descriptor = font.get_font_descriptor()
+        ascent = descriptor.get_ascent() if descriptor is not None else 0.0
+        ascent_at_font_size = ascent / self.FONTSCALE * size
+        # The appearance bbox lower-left y is 0 for the fresh form XObject.
+        baseline_offset = (height - ascent_at_font_size) / 2.0
+
+        # Initial offset centres the first char in its cell.
+        first_char_width = (
+            font.get_string_width(value[0:1]) / self.FONTSCALE * size
+        )
+        initial_offset = (comb_width - first_char_width) / 2.0
+        # Right-aligned / centred shift when the value is shorter than MaxLen.
+        if quadding == 2:
+            initial_offset += (max_len - num_chars) * comb_width
+        elif quadding == 1:
+            initial_offset += ((max_len - num_chars) // 2) * comb_width
+
+        x_offset = initial_offset
+        prev_char_width = 0.0
+
         cs.begin_text()
         if color is not None:
             cs.set_non_stroking_color(color)
         cs.set_font(font, size)
-        # Anchor at the absolute origin so each char's Td below is in
-        # the same coord system.
-        cs.new_line_at_offset(0.0, y)
-        prev_x = 0.0
-        chars = list(value or "")
-        for idx, ch in enumerate(chars[:max_len]):
-            ch_w = self._estimate_text_width(font, size, ch)
-            cell_center = cell_w * (idx + 0.5)
-            x = cell_center - ch_w / 2.0
-            cs.new_line_at_offset(x - prev_x, 0.0)
-            prev_x = x
-            cs.show_text(ch)
+        for i in range(num_chars):
+            comb_string = value[i : i + 1]
+            curr_char_width = (
+                font.get_string_width(comb_string) / self.FONTSCALE * size / 2.0
+            )
+            x_offset = x_offset + prev_char_width / 2.0 - curr_char_width / 2.0
+            if i == 0:
+                cs.new_line_at_offset(initial_offset, baseline_offset)
+            else:
+                cs.new_line_at_offset(x_offset, baseline_offset)
+            cs.show_text(comb_string)
+            baseline_offset = 0.0
+            prev_char_width = curr_char_width
+            x_offset = comb_width
         cs.end_text()
 
     def _x_for_quadding(

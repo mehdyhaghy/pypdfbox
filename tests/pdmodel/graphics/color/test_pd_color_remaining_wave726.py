@@ -159,7 +159,11 @@ def test_wave726_device_n_colorants_skip_none_and_string_separates_entries() -> 
     attrs = PDDeviceNAttributes(attrs_dict)
 
     assert list(attrs.get_colorants()) == ["RGB", "CMYK"]
-    assert str(attrs) == 'DeviceN{Colorants{"RGB": DeviceRGB "CMYK": DeviceCMYK}}'
+    # Upstream PDDeviceNAttributes.toString appends a trailing space after
+    # EVERY colorant entry, so the closing "}}" is space-preceded when at
+    # least one colorant exists (pinned against the live oracle in
+    # tests/.../oracle/test_devicen_attr_tostring_oracle.py, wave 1472).
+    assert str(attrs) == 'DeviceN{Colorants{"RGB": DeviceRGB "CMYK": DeviceCMYK }}'
 
 
 def test_wave726_device_n_initial_color_refresh_and_short_array_slots() -> None:

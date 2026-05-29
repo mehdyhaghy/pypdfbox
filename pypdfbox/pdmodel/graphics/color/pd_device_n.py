@@ -99,7 +99,15 @@ class PDDeviceNProcess:
         """Mirrors upstream ``PDDeviceNProcess.toString()`` —
         ``Process{<color-space> "<comp0>" "<comp1>" ...}``. Surfaced
         explicitly so callers porting from PDFBox can keep the literal
-        ``.toString()`` invocation spelled snake_case."""
+        ``.toString()`` invocation spelled snake_case.
+
+        DELIBERATE DIVERGENCE: upstream appends ``getColorSpace()`` via
+        ``StringBuilder.append(Object)`` and neither ``PDColorSpace`` nor
+        the device colour spaces override ``Object.toString()``, so the
+        upstream string embeds a non-deterministic JVM hashcode
+        (``...PDDeviceCMYK@1b6d3586``). We substitute the stable
+        :meth:`PDColorSpace.get_name` form so the rendering is
+        reproducible; this is recorded in CHANGES.md."""
         cs = self.get_color_space()
         cs_repr = "None" if cs is None else cs.get_name()
         parts = [f'Process{{{cs_repr}']
@@ -173,10 +181,18 @@ class PDDeviceNAttributes:
         Each value is created via :meth:`PDColorSpace.create`. Entries
         whose color space cannot be created are silently skipped — keep
         the lite path tolerant of partial dictionaries.
+
+        Side effect (matches upstream ``getColorants(PDResources)``,
+        ``PDDeviceNAttributes.java`` line 80): when ``/Colorants`` is
+        absent the backing dictionary gets a fresh empty ``/Colorants``
+        COSDictionary inserted, and the returned map is empty. This makes
+        a subsequent ``has_colorants()`` true even on an attributes dict
+        that started without the entry.
         """
         cos_colorants = self._dictionary.get_dictionary_object("Colorants")
         out: dict[str, PDColorSpace] = {}
         if not isinstance(cos_colorants, COSDictionary):
+            self._dictionary.set_item("Colorants", COSDictionary())
             return out
         for key in cos_colorants.key_set():
             value = cos_colorants.get_dictionary_object(key)
@@ -240,12 +256,18 @@ class PDDeviceNAttributes:
         self._dictionary.remove_item("MixingHints")
 
     def __str__(self) -> str:
-        """Mirrors upstream ``PDDeviceNAttributes.toString``:
-        ``<subtype>{<process>? Colorants{"<name>": <cs>...}}``.
+        """Mirrors upstream ``PDDeviceNAttributes.toString`` (PDFBox
+        ``PDDeviceNAttributes.java`` line 150):
+        ``<subtype>{<process>? Colorants{"<name>": <cs> ...}}``.
 
         The leading prefix is the ``/Subtype`` name (``DeviceN`` /
         ``NChannel``); empty when the entry is absent. ``<process>`` is
-        the :meth:`PDDeviceNProcess.__str__` form when present.
+        the :meth:`PDDeviceNProcess.__str__` form when present, followed
+        by a single space. Each ``/Colorants`` entry is rendered as
+        ``"<name>": <cs>`` using the colour space's FULL ``str()`` form
+        (upstream appends the ``PDSeparation`` object, not just its name)
+        and is ALWAYS followed by a trailing space — so the closing
+        ``}}`` is preceded by a space when at least one colorant exists.
         Colorants entries whose color space cannot be resolved are
         silently skipped — matches the leniency of :meth:`get_colorants`.
         """
@@ -256,12 +278,8 @@ class PDDeviceNAttributes:
             parts.append(str(process))
             parts.append(" ")
         parts.append("Colorants{")
-        first = True
         for name, cs in self.get_colorants().items():
-            if not first:
-                parts.append(" ")
-            parts.append(f'"{name}": {cs.get_name()}')
-            first = False
+            parts.append(f'"{name}": {cs} ')
         parts.append("}")
         parts.append("}")
         return "".join(parts)

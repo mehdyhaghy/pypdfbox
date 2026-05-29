@@ -3534,63 +3534,20 @@ class PDFRenderer(PDFStreamEngine):
                     path.close()
         if not any_segments:
             return
-        # Compute the CTM once — used both for settransform and for the
-        # stroke-width scale factor.  (Wave 1330B trim — was previously
-        # recomputed twice per draw call.)
         full_ctm = self._full_ctm()
-        self._draw.settransform(_to_pil_affine(full_ctm))
-        try:
-            pen: aggdraw.Pen | None = None
-            brush: aggdraw.Brush | None = None
-            if stroke:
-                # Convert PDF user-space line width to device-pixel width
-                # so thin strokes don't disappear at sub-pixel widths.
-                # Use a representative scale factor (sqrt(|det(CTM)|)).
-                scale = self._approx_scale(full_ctm)
-                width_px = max(1.0, self._gs.line_width * scale)
-                # Wave 1386 — /SA (stroke adjustment, PDF spec §10.6.5):
-                # when set and the resulting device-pixel width is sub-
-                # pixel, snap to an integer-pixel width so the stroke
-                # doesn't anti-alias into a fainter-than-intended ghost
-                # line. Skia's AA already covers the > 1px case; SA only
-                # makes a visible difference on hairlines.
-                # pragma: no cover — line 3113 condition unreachable
-                # because `width_px = max(1.0, line_width * scale)`
-                # above already guarantees `width_px >= 1.0`.
-                if (
-                    self._gs.stroke_adjustment
-                    and width_px < 1.0
-                ):  # pragma: no cover - dead branch
-                    width_px = 1.0  # pragma: no cover
-                # Wave 1386 — /CA (stroke alpha) multiplies into the pen's
-                # opacity so semi-transparent strokes actually render at
-                # the requested alpha. Was previously stored on the GS but
-                # never consumed by the paint path.
-                stroke_opacity = int(
-                    round(255.0 * max(0.0, min(1.0, self._gs.stroke_alpha)))
-                )
-                # Wave 1428 — plumb the line cap (``J``), join (``j``),
-                # miter limit (``M``) and dash pattern (``d``) from the GS
-                # through to the skia stroke paint. These were previously
-                # tracked on the GS but never consumed at stroke time, so
-                # every stroke rendered solid with butt caps / miter joins
-                # regardless of the content stream. The dash intervals stay
-                # in user space: the canvas CTM set above scales both the
-                # path geometry and the DashPathEffect uniformly, keeping
-                # the dash rhythm proportional to the stroked geometry.
-                dash = self._gs.dash_pattern
-                pen = aggdraw.Pen(
-                    self._apply_transfer_to_rgb_bytes(self._gs.stroke_rgb),
-                    width=width_px,
-                    opacity=stroke_opacity,
-                    line_cap=self._gs.line_cap,
-                    line_join=self._gs.line_join,
-                    miter_limit=self._gs.miter_limit,
-                    dash=dash,
-                )
-            if fill:
+        # Fill (if any) transforms exactly under the canvas CTM. The stroke,
+        # by contrast, is rendered in *device space* so the pen width matches
+        # Apache PDFBox's isotropic scalar device width (PDFBox approximates
+        # the elliptical transformed pen of PDF 32000-1 §8.5.3.1 with a single
+        # scalar — see ``_stroke_path_device_space`` / ``transform_width``).
+        # Letting the canvas CTM scale the pen would instead yield skia's true
+        # elliptical stroke, which diverges from PDFBox under an anisotropic
+        # CTM (e.g. ``cm 3 0 0 1``). Fill first so the stroke sits on top.
+        if fill:
+            self._draw.settransform(_to_pil_affine(full_ctm))
+            try:
                 # Wave 1386 — /ca (non-stroke alpha) multiplies into the
-                # brush opacity. Mirrors the /CA fix above.
+                # brush opacity.
                 fill_opacity = int(
                     round(255.0 * max(0.0, min(1.0, self._gs.fill_alpha)))
                 )
@@ -3598,12 +3555,85 @@ class PDFRenderer(PDFStreamEngine):
                     self._apply_transfer_to_rgb_bytes(self._gs.fill_rgb),
                     opacity=fill_opacity,
                 )
-            # ``even_odd=`` is a wave-1330B shim extension — aggdraw had
-            # no fill-rule knob.
-            self._draw.path(path, pen, brush, even_odd=even_odd)
+                # ``even_odd=`` is a wave-1330B shim extension — aggdraw had
+                # no fill-rule knob.
+                self._draw.path(path, None, brush, even_odd=even_odd)
+            finally:
+                # aggdraw resets the transform when settransform is called
+                # with no args (the documented "omitted" form).
+                self._draw.settransform()
+        if stroke:
+            self._stroke_path_device_space(full_ctm)
+
+    def _stroke_path_device_space(self, full_ctm: _Matrix) -> None:
+        """Stroke the current path in device space with PDFBox's isotropic
+        scalar pen width.
+
+        Apache PDFBox (``PageDrawer.getStroke`` / ``transformWidth``) does not
+        let Java2D transform the stroke pen by the CTM; it instead transforms
+        the *path* to device space and builds the ``BasicStroke`` with a single
+        device-space scalar width ``lineWidth * sqrt((x²+y²)/2)`` (where
+        ``x = a+c``, ``y = b+d`` of the CTM). We mirror that exactly: flatten
+        the path to device coordinates and stroke it under an identity canvas
+        transform with the scalar device width. The dash intervals — which
+        PDFBox likewise transforms through ``transformWidth`` — are scaled by
+        the same scalar so the dash rhythm stays proportional to the stroke.
+        """
+        assert self._draw is not None
+        device_path = aggdraw.Path()
+        any_segments = False
+        for subpath in self._subpaths:
+            for seg in subpath:
+                tag = seg[0]
+                if tag == "M":
+                    x, y = _transform_point((seg[1], seg[2]), full_ctm)
+                    device_path.moveto(x, y)
+                    any_segments = True
+                elif tag == "L":
+                    x, y = _transform_point((seg[1], seg[2]), full_ctm)
+                    device_path.lineto(x, y)
+                    any_segments = True
+                elif tag == "C":
+                    x1, y1 = _transform_point((seg[1], seg[2]), full_ctm)
+                    x2, y2 = _transform_point((seg[3], seg[4]), full_ctm)
+                    x3, y3 = _transform_point((seg[5], seg[6]), full_ctm)
+                    device_path.curveto(x1, y1, x2, y2, x3, y3)
+                    any_segments = True
+                elif tag == "Z":
+                    device_path.close()
+        if not any_segments:
+            return
+        scale = self._transform_width_scale(full_ctm)
+        # Device-space pen width. PDFBox floors a zero/sub-pixel width to a
+        # 1-device-pixel hairline so thin strokes stay visible.
+        width_px = self._gs.line_width * scale
+        if width_px < 1.0:
+            width_px = 1.0
+        # Wave 1386 — /CA (stroke alpha) multiplies into the pen opacity.
+        stroke_opacity = int(
+            round(255.0 * max(0.0, min(1.0, self._gs.stroke_alpha)))
+        )
+        # Wave 1428 — line cap (``J``), join (``j``), miter limit (``M``) and
+        # dash (``d``) plumbed from the GS. Dash intervals scale by the same
+        # device-space scalar as the width (PDFBox transforms them the same
+        # way), keeping the on/off rhythm proportional to the stroke.
+        dash = self._gs.dash_pattern
+        if dash is not None:
+            intervals, phase = dash
+            dash = ([float(v) * scale for v in intervals], float(phase) * scale)
+        self._draw.settransform()
+        try:
+            pen = aggdraw.Pen(
+                self._apply_transfer_to_rgb_bytes(self._gs.stroke_rgb),
+                width=width_px,
+                opacity=stroke_opacity,
+                line_cap=self._gs.line_cap,
+                line_join=self._gs.line_join,
+                miter_limit=self._gs.miter_limit,
+                dash=dash,
+            )
+            self._draw.path(device_path, pen, None)
         finally:
-            # aggdraw resets the transform when settransform is called
-            # with no args (the documented "omitted" form).
             self._draw.settransform()
 
     def _stroke_via_aggdraw(self) -> None:
@@ -3614,6 +3644,20 @@ class PDFRenderer(PDFStreamEngine):
         a, b, c, d, _e, _f = m
         det = abs(a * d - b * c)
         return det**0.5 if det > 0 else 1.0
+
+    @staticmethod
+    def _transform_width_scale(m: _Matrix) -> float:
+        """Scalar CTM→device stroke-width factor, matching Apache PDFBox's
+        ``PageDrawer.transformWidth``: ``sqrt((x²+y²)/2)`` where ``x`` and
+        ``y`` are the column sums ``a+c`` and ``b+d`` of the CTM. For a
+        uniform scale ``s`` this is ``s`` (== ``sqrt(|det|)``); under an
+        anisotropic scale it differs (e.g. ``cm 3 0 0 1`` → ``sqrt(5)``),
+        which is why PDFBox's stroke is isotropic, not elliptical."""
+        a, b, c, d, _e, _f = m
+        x = a + c
+        y = b + d
+        scale = ((x * x + y * y) * 0.5) ** 0.5
+        return scale if scale > 0.0 else 1.0
 
     def _fill_even_odd_via_pil(self) -> None:
         """Render an even-odd filled path by flattening Beziers and using

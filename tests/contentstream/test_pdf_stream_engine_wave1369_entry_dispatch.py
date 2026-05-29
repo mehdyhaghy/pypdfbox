@@ -159,10 +159,12 @@ def test_process_stream_does_not_touch_current_page_context() -> None:
     assert engine.get_current_page() is None
 
 
-def test_process_stream_bumps_level_during_dispatch() -> None:
-    """``process_stream`` increments ``_level`` for the duration of the
-    dispatch (so nested form / pattern / Type3 calls can introspect
-    via ``get_level``) and decrements on return."""
+def test_process_stream_does_not_bump_level_during_dispatch() -> None:
+    """``process_stream`` does NOT touch ``_level`` — upstream's private
+    ``processStream`` leaves the recursion level alone; only ``DrawObject``
+    (the ``Do`` form-XObject handler) bumps it, so the ``getLevel() > 50``
+    cap counts form-XObject ``Do`` recursion depth and nothing else (wave
+    1472)."""
 
     levels: list[int] = []
 
@@ -178,7 +180,7 @@ def test_process_stream_bumps_level_during_dispatch() -> None:
     assert engine.get_level() == 0
     engine.process_stream(_BytesContentStream(b"q"))
     assert engine.get_level() == 0
-    assert levels == [1]
+    assert levels == [0]
 
 
 def test_process_stream_swaps_resources_for_dispatch_window() -> None:
@@ -374,6 +376,7 @@ def test_process_form_is_alias_for_process_stream() -> None:
         out.write(b"q")
     form = PDFormXObject(cs)
     engine.process_form(form)
-    # ``process_stream`` bumps level → ``process_form`` does too.
-    assert levels == [1]
+    # ``process_stream`` does NOT touch the level → neither does
+    # ``process_form``. Only ``DrawObject`` bumps it (wave 1472).
+    assert levels == [0]
     assert engine.get_level() == 0

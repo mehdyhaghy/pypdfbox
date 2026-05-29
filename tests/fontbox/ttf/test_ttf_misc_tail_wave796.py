@@ -46,6 +46,9 @@ def _font(tt: _FakeTTFont | None = None, raw: bytes = b"abcdef") -> TrueTypeFont
     font._table_map = None  # noqa: SLF001
     font._advance_widths = None  # noqa: SLF001
     font._closed = False  # noqa: SLF001
+    font._post_resolved = False  # noqa: SLF001
+    font._post = None  # noqa: SLF001
+    font._post_script_names = None  # noqa: SLF001
     return font
 
 
@@ -84,12 +87,39 @@ def test_true_type_font_table_byte_helpers_clamp_valid_entries() -> None:
     assert font.get_table_n_bytes("test", 99) == b"23456"
 
 
+def _post_2_0(glyph_order: list[str]) -> SimpleNamespace:
+    """A fontTools-shaped format-2.0 ``post`` table carrying glyph names.
+
+    ``name_to_gid`` only consults the ``post`` table for the formats that
+    actually carry names (2.0 / 2.5 / 4.0) — matching upstream FontBox, which
+    leaves the name list ``null`` for format 3.0 and so returns 0 for any name
+    lookup on a 3.0-``post`` font.
+    """
+    return SimpleNamespace(
+        formatType=2.0,
+        italicAngle=0.0,
+        underlinePosition=0,
+        underlineThickness=0,
+        isFixedPitch=0,
+        minMemType42=0,
+        maxMemType42=0,
+        minMemType1=0,
+        maxMemType1=0,
+        glyphOrder=list(glyph_order),
+    )
+
+
 def test_true_type_font_glyph_name_helpers_and_width_lookup() -> None:
     hmtx = SimpleNamespace(metrics={".notdef": (500, 0), "A": (610, 20)})
-    font = _font(_FakeTTFont({"hmtx": hmtx}, [".notdef", "A"]))
+    maxp = SimpleNamespace(numGlyphs=2)
+    order = [".notdef", "A"]
+    font = _font(_FakeTTFont({"hmtx": hmtx, "maxp": maxp, "post": _post_2_0(order)}, order))
 
     assert font.name_to_gid("") == 0
     assert font.name_to_gid("A") == 1
+    # No glyph-name table (format-3.0 ``post`` semantics) -> 0, like upstream.
+    font_no_names = _font(_FakeTTFont({"hmtx": hmtx, "maxp": maxp}, order))
+    assert font_no_names.name_to_gid("A") == 0
     assert font.has_glyph("A") is True
     assert font.has_glyph(".notdef") is False
     assert font.get_width("A") == 610.0
@@ -97,7 +127,9 @@ def test_true_type_font_glyph_name_helpers_and_width_lookup() -> None:
 
 
 def test_true_type_font_get_path_accepts_glyph_names() -> None:
-    font = _font(_FakeTTFont(glyph_order=[".notdef", "A"]))
+    order = [".notdef", "A"]
+    maxp = SimpleNamespace(numGlyphs=2)
+    font = _font(_FakeTTFont({"maxp": maxp, "post": _post_2_0(order)}, order))
 
     def _get_glyph(gid: int) -> Any:
         return SimpleNamespace(get_path=lambda: ("path", gid))

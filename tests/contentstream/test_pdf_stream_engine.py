@@ -564,9 +564,10 @@ def test_process_child_stream_sets_current_page_for_duration() -> None:
     assert engine.is_processing_page() is False
 
 
-def test_process_child_stream_increments_level() -> None:
-    """A nested stream bumps ``get_level`` by one (matches
-    ``process_stream`` parity)."""
+def test_process_child_stream_does_not_increment_level() -> None:
+    """A nested stream does NOT bump ``get_level`` — upstream manages the
+    recursion level exclusively from ``DrawObject`` (the ``Do`` form-XObject
+    handler), so ``processStream`` leaves it untouched (wave 1472)."""
 
     class _LevelProbe(OperatorProcessor):
         def __init__(self) -> None:
@@ -584,7 +585,7 @@ def test_process_child_stream_increments_level() -> None:
     engine.add_operator(probe)
     child = _BytesContentStream(b"(X) Tj")
     engine.process_child_stream(child, None)
-    assert probe.levels == [1]
+    assert probe.levels == [0]
     assert engine.get_level() == 0
 
 
@@ -611,7 +612,15 @@ def test_decrease_level_below_zero_logs_and_clamps(caplog: pytest.LogCaptureFixt
     assert "level is below 0" in caplog.text
 
 
-def test_process_stream_uses_level_helpers() -> None:
+def test_process_stream_does_not_touch_level_helpers() -> None:
+    """``process_stream`` must NOT call ``increase_level`` / ``decrease_level``.
+
+    Upstream's private ``processStream`` leaves the recursion level alone —
+    only ``DrawObject`` (the ``Do`` form-XObject handler) bumps it, so the
+    ``getLevel() > 50`` cap counts form-XObject ``Do`` recursion depth and
+    nothing else (wave 1472).
+    """
+
     class _LevelEngine(PDFStreamEngine):
         def __init__(self) -> None:
             super().__init__()
@@ -629,7 +638,7 @@ def test_process_stream_uses_level_helpers() -> None:
     engine = _LevelEngine()
     engine.process_stream(_BytesContentStream(b""))
 
-    assert engine.transitions == [("increase", 1), ("decrease", 1)]
+    assert engine.transitions == []
     assert engine.get_level() == 0
 
 
@@ -877,10 +886,11 @@ def test_show_form_dispatches_non_empty_body_through_engine() -> None:
     assert len(probe.calls) == 1
 
 
-def test_show_form_increments_level_through_process_stream() -> None:
-    """``show_form`` routes through ``process_stream`` — the level
-    helpers should reflect the nesting just like ``process_form`` /
-    ``process_child_stream`` do."""
+def test_show_form_does_not_increment_level_through_process_stream() -> None:
+    """``show_form`` routes through ``process_stream`` — which does NOT
+    touch the recursion level. Only ``DrawObject`` bumps the level, so a
+    plain ``show_form`` runs the inner operators at the same level (wave
+    1472)."""
 
     class _Probe(OperatorProcessor):
         def __init__(self) -> None:
@@ -905,7 +915,7 @@ def test_show_form_increments_level_through_process_stream() -> None:
         engine._current_page = None
         engine._is_processing_page = False
 
-    assert probe.levels == [1]
+    assert probe.levels == [0]
     assert engine.get_level() == 0
 
 

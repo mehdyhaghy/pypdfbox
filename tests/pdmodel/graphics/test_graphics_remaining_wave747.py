@@ -102,7 +102,9 @@ def test_device_n_rejects_objects_without_cos_form_and_skips_null_colorants() ->
     rendered = str(PDDeviceNAttributes(attrs_dict))
 
     assert list(PDDeviceNAttributes(attrs_dict).get_colorants()) == ["RGB", "Gray"]
-    assert rendered == '{Colorants{"RGB": DeviceRGB "Gray": DeviceGray}}'
+    # Upstream PDDeviceNAttributes.toString appends a trailing space after
+    # every colorant entry (oracle-pinned in wave 1472).
+    assert rendered == '{Colorants{"RGB": DeviceRGB "Gray": DeviceGray }}'
 
 
 def test_lab_predicates_invalid_slot_and_short_ranges() -> None:

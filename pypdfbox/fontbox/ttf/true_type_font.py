@@ -1171,14 +1171,15 @@ class TrueTypeFont:
             except ValueError:  # pragma: no cover - name[1:].isdigit() guarantees int() succeeds
                 return 0
 
-        # Final fallback — fontTools glyph-order lookup, which catches the
-        # synthetic ``glyph123`` placeholders for unnamed glyphs (the only
-        # path we previously supported, retained as a safety net).
-        order = self._tt.getGlyphOrder()
-        try:
-            return int(order.index(name))
-        except ValueError:
-            return 0
+        # Upstream returns 0 (``.notdef``) when nothing matches — there is NO
+        # glyph-order-by-name fallback (see TrueTypeFont.nameToGID bytecode:
+        # post -> parseUniName/cmap -> ``g\d+`` -> ``return 0``). A previous
+        # wave added a ``getGlyphOrder().index(name)`` safety net here, which
+        # made name lookups for real glyph names (e.g. ``A``) on a font with a
+        # format-3.0 ``post`` table resolve via fontTools' synthetic glyph
+        # order instead of returning 0 like Apache FontBox. That diverged the
+        # OTF/CFF loading surface, so the fallback is gone.
+        return 0
 
     def _read_post_script_names(self) -> None:
         """Build the PostScript-name -> GID map from the ``post`` table.
@@ -1312,19 +1313,24 @@ class TrueTypeFont:
         t._max_mem_type42 = int(ft_post.maxMemType42)  # noqa: SLF001
         t._mim_mem_type1 = int(ft_post.minMemType1)  # noqa: SLF001
         t._max_mem_type1 = int(ft_post.maxMemType1)  # noqa: SLF001
-        # fontTools resolves glyph names onto the post table for format 2.0;
-        # both formats end up in ``glyphOrder``, indexed by gid. In lazy
-        # mode ``glyphOrder`` may not yet be populated on the post table,
-        # so fall back to the parent ``TTFont``'s glyph order — same data,
-        # always present once the font is parsed.
-        glyph_names = getattr(ft_post, "glyphOrder", None)
-        if glyph_names is None:  # pragma: no cover - fontTools always sets glyphOrder
-            try:
-                glyph_names = self._tt.getGlyphOrder()
-            except (AttributeError, KeyError):
-                glyph_names = None
-        if glyph_names is not None:
-            t._glyph_names = list(glyph_names)  # noqa: SLF001
+        # Only formats that actually carry a glyph-name table populate the
+        # name list — upstream ``PostScriptTable.read`` leaves the names
+        # ``null`` for format 3.0 (and 1.0, whose names are the implicit Mac
+        # standard order). fontTools exposes a synthetic ``glyphOrder`` even
+        # for format 3.0, so blindly copying it made ``name_to_gid`` resolve
+        # real names (e.g. ``A``) on a 3.0-``post`` font — Apache FontBox
+        # returns 0 there (PDFBox-shaped ``nameToGID`` never consults a
+        # synthetic order). Gate on the format so a 3.0 ``post`` carries no
+        # names, exactly as upstream.
+        if t._format_type in (2.0, 2.5, 4.0):  # noqa: SLF001, PLR2004
+            glyph_names = getattr(ft_post, "glyphOrder", None)
+            if glyph_names is None:  # pragma: no cover - fontTools sets glyphOrder
+                try:
+                    glyph_names = self._tt.getGlyphOrder()
+                except (AttributeError, KeyError):
+                    glyph_names = None
+            if glyph_names is not None:
+                t._glyph_names = list(glyph_names)  # noqa: SLF001
         t.initialized = True
         self._post = t
         return t

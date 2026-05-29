@@ -185,13 +185,18 @@ class PDFStreamEngine:
         Cluster #2 uses the random-access bytes view directly; the
         graphics-state save/restore and BBox clip that upstream's private
         ``processStream`` performs around the loop are deferred to
-        cluster #3. ``_level`` is bumped for the duration so nested
-        ``process_form`` / ``process_tiling_pattern`` /
-        ``process_type3_stream`` reflect their depth via
-        :meth:`get_level`, matching upstream.
+        cluster #3.
+
+        ``processStream`` does **not** touch the recursion level — upstream
+        manages ``_level`` exclusively from ``DrawObject`` (the ``Do``
+        form-XObject handler), so the ``getLevel() > 50`` cap counts
+        form-XObject ``Do`` recursion depth and nothing else. Bumping the
+        level here too (the pre-wave-1472 behaviour) double-counted every
+        nested stream and halved the effective cap, terminating a
+        self-referencing / cyclic form at depth ~25 instead of 50. Leaving
+        the level alone here restores byte/behaviour parity with PDFBox.
         """
         prev_resources = self._resources
-        self.increase_level()
         try:
             stream_resources = content_stream.get_resources()
             if stream_resources is not None:
@@ -201,7 +206,6 @@ class PDFStreamEngine:
                 self._dispatch_tokens(parser)
         finally:
             self._resources = prev_resources
-            self.decrease_level()
 
     def process_child_stream(
         self,
