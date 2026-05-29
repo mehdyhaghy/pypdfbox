@@ -90,10 +90,17 @@ def test_wave396_nonstroking_pdcolor_device_rgb_and_cmyk_paths() -> None:
             PDColor([0.4, 0.5, 0.6, 0.7], PDDeviceCMYK.INSTANCE)
         )
 
-    assert _stream_bytes(page) == b"0.1 0.2 0.3 rg\n0.4 0.5 0.6 0.7 k\n"
+    # Mirrors upstream PDAbstractContentStream.setNonStrokingColor(PDColor):
+    # the colour-space name + ``cs`` then components + ``sc`` (device spaces
+    # included), NOT the ``rg``/``k`` device shorthand — that path belongs to
+    # the ``float[]`` overload only.
+    assert (
+        _stream_bytes(page)
+        == b"/DeviceRGB cs\n0.1 0.2 0.3 sc\n/DeviceCMYK cs\n0.4 0.5 0.6 0.7 sc\n"
+    )
 
 
-def test_wave396_pdcolor_pattern_name_emits_scn_without_resource_registration() -> None:
+def test_wave396_pdcolor_pattern_name_emits_scn() -> None:
     doc = PDDocument()
     page = _make_page(doc)
     pattern_name = COSName.get_pdf_name("P1")
@@ -104,7 +111,10 @@ def test_wave396_pdcolor_pattern_name_emits_scn_without_resource_registration() 
         cs.set_stroking_color(stroking)
         cs.set_non_stroking_color(nonstroking)
 
-    assert _stream_bytes(page) == b"0.5 /P1 SCN\n/P1 scn\n"
+    # Mirrors upstream: a non-device colour space is registered as a
+    # /Resources/ColorSpace entry, referenced via ``/csN CS`` (``cs`` for
+    # non-stroking), then the components + optional pattern name + ``SCN``.
+    assert _stream_bytes(page) == b"/cs0 CS\n0.5 /P1 SCN\n/cs1 cs\n/P1 scn\n"
 
 
 def test_wave396_set_font_rejects_non_font() -> None:

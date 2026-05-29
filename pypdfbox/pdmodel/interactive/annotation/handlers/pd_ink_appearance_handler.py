@@ -72,7 +72,7 @@ class PDInkAppearanceHandler(PDAbstractAppearanceHandler):
         annotation.set_rectangle(rect)
         with self.get_normal_appearance_as_content_stream() as cs:
             self.set_opacity(cs, annotation.get_constant_opacity())
-            cs.set_stroking_color(stroke_components)
+            cs.set_stroking_color(self._stroking_color(stroke_components))
             if ab.dash_array is not None:
                 cs.set_dash_pattern(list(ab.dash_array), 0)
             cs.set_line_width(ab.width)
@@ -83,6 +83,31 @@ class PDInkAppearanceHandler(PDAbstractAppearanceHandler):
                     else:
                         cs.line_to(x, y)
                 cs.stroke()
+
+    @staticmethod
+    def _stroking_color(components: list[float]):  # type: ignore[no-untyped-def]
+        """Wrap the raw ``/C`` components in a :class:`PDColor` carrying the
+        device color space implied by the component count (1 → DeviceGray,
+        3 → DeviceRGB, 4 → DeviceCMYK), mirroring upstream ``ink.getColor()``.
+
+        Upstream passes the full ``PDColor`` to ``cs.setStrokingColor`` so the
+        appearance stream emits ``/DeviceRGB CS <r> <g> <b> SC`` (color-space
+        name + ``CS`` + components + ``SC``), never the device-shorthand
+        ``RG``/``G``/``K`` operators. A bare component list would have routed
+        through the shorthand path and diverged byte-for-byte from PDFBox.
+        """
+        from pypdfbox.pdmodel.graphics.color.pd_color import PDColor
+        from pypdfbox.pdmodel.graphics.color.pd_device_cmyk import PDDeviceCMYK
+        from pypdfbox.pdmodel.graphics.color.pd_device_gray import PDDeviceGray
+        from pypdfbox.pdmodel.graphics.color.pd_device_rgb import PDDeviceRGB
+
+        if len(components) == 1:
+            color_space = PDDeviceGray.INSTANCE
+        elif len(components) == 4:
+            color_space = PDDeviceCMYK.INSTANCE
+        else:
+            color_space = PDDeviceRGB.INSTANCE
+        return PDColor(list(components), color_space)
 
     def generate_rollover_appearance(self) -> None:
         # No rollover appearance (PDInkAppearanceHandler.java:135)

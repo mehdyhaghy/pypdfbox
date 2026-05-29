@@ -47,9 +47,11 @@ def test_multi_filter_chain_ascii85_then_flate_round_trip() -> None:
             out.write(payload)
         names = [n.name for n in s.get_filter_list()]
         assert names == ["ASCII85Decode", "FlateDecode"]
-        # Raw bytes end with ASCII85 terminator.
+        # Raw bytes end with the ASCII85 EOD marker + trailing LF, matching
+        # upstream ASCII85OutputStream (which always emits the newline after
+        # `>`).
         raw = s.to_raw_byte_array()
-        assert raw.endswith(b"~>")
+        assert raw.endswith(b"~>\n")
         # Round-trip yields the original payload.
         assert s.to_byte_array() == payload
 

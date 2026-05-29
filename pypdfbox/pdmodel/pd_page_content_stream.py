@@ -640,39 +640,56 @@ class PDPageContentStream:
         )
 
     def _emit_pd_color(self, color: Any, *, stroking: bool) -> None:
+        # Mirrors upstream ``PDAbstractContentStream.setStrokingColor(PDColor)``
+        # / ``setNonStrokingColor(PDColor)`` (Java lines 661 / 781). Upstream
+        # never takes the device-shorthand path (``RG``/``G``/``K``) for a
+        # PDColor: it always writes the color-space name + ``CS``/``cs`` (when
+        # the color-space stack top differs), then the components, then
+        # ``SCN``/``scn`` for Pattern / Separation / DeviceN / ICCBased and
+        # ``SC``/``sc`` for everything else (including the device spaces).
         cs = color.get_color_space()
-        cs_name = cs.get_name() if cs is not None else None
         components = color.get_components()
         pattern_name = color.get_pattern_name()
 
-        # Device color spaces use the dedicated single-byte operators.
-        if cs_name == "DeviceGray" and pattern_name is None:
-            if stroking:
-                self.set_stroking_color_gray(components[0])
-            else:
-                self.set_non_stroking_color_gray(components[0])
-            return
-        if cs_name == "DeviceRGB" and pattern_name is None:
-            if stroking:
-                self.set_stroking_color_rgb(*components[:3])
-            else:
-                self.set_non_stroking_color_rgb(*components[:3])
-            return
-        if cs_name == "DeviceCMYK" and pattern_name is None:
-            if stroking:
-                self.set_stroking_color_cmyk(*components[:4])
-            else:
-                self.set_non_stroking_color_cmyk(*components[:4])
-            return
+        # Color-space stack: upstream ``PDAbstractContentStream`` tracks one
+        # per stroking/non-stroking channel so a repeat ``setStrokingColor``
+        # of the same space skips the ``CS`` operator. This lite
+        # ``PDPageContentStream`` has no such parent state, so track it
+        # locally (lazily initialised) to reproduce the byte-for-byte output.
+        attr = (
+            "_pd_color_cs_stroking" if stroking else "_pd_color_cs_non_stroking"
+        )
+        current_cs = getattr(self, attr, None)
+        if current_cs is not cs:
+            self._write_name(self._resource_key_for_color_space(cs))
+            self._buffer.append(0x20)
+            self._write_operator(b"CS" if stroking else b"cs")
+            setattr(self, attr, cs)
 
-        # Non-device or pattern: emit components (and optional pattern
-        # name) followed by SCN / scn.
         for value in components:
             self._write_operands(float(value))
-        if pattern_name is not None:
-            self._write_name(pattern_name)
-            self._buffer.append(0x20)
-        self._write_operator(b"SCN" if stroking else b"scn")
+        if self._is_scn_color_space(cs):
+            if pattern_name is not None:
+                self._write_name(pattern_name)
+                self._buffer.append(0x20)
+            self._write_operator(b"SCN" if stroking else b"scn")
+        else:
+            self._write_operator(b"SC" if stroking else b"sc")
+
+    @staticmethod
+    def _is_scn_color_space(color_space: Any) -> bool:
+        """Mirrors the ``instanceof PDPattern | PDSeparation | PDDeviceN |
+        PDICCBased`` check that selects ``SCN``/``scn`` over ``SC``/``sc`` in
+        upstream ``setStrokingColor``/``setNonStrokingColor`` (Java lines
+        685 / 805)."""
+        from pypdfbox.pdmodel.graphics.color.pd_device_n import PDDeviceN
+        from pypdfbox.pdmodel.graphics.color.pd_icc_based import PDICCBased
+        from pypdfbox.pdmodel.graphics.color.pd_pattern import PDPattern
+        from pypdfbox.pdmodel.graphics.color.pd_separation import PDSeparation
+
+        return isinstance(
+            color_space, (PDPattern, PDSeparation, PDDeviceN, PDICCBased)
+        )
 
     def set_stroking_color_space(self, color_space: Any) -> None:
         """Emit ``/<key> CS`` — set the stroking color space.

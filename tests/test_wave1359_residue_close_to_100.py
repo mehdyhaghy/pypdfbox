@@ -160,9 +160,13 @@ def test_copy_needed_resources_skips_color_space_missing_in_dr() -> None:
     sr = PDResources()
     da = _make_da("/Helv 0 Tf 0 g", dr)
     da._color_space_names.append(COSName.get_pdf_name("Missing"))  # noqa: SLF001
-    # No exception, and stream's /ColorSpace stays untouched.
+    # No exception, and stream's /ColorSpace stays untouched: the missing
+    # colour space was NOT copied into the stream resources. (Asserted via
+    # has_color_space rather than get_color_space, which since wave 1461
+    # raises MissingResourceException for an unresolvable non-device name,
+    # matching upstream PDColorSpace.create.)
     da.copy_needed_resources_to(_appearance_stream_with_resources(sr))
-    assert sr.get_color_space(COSName.get_pdf_name("Missing")) is None
+    assert not sr.has_color_space(COSName.get_pdf_name("Missing"))
 
 
 def test_record_named_operand_ignores_empty_and_non_cosname() -> None:

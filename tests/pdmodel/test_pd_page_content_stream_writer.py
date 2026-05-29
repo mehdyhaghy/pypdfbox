@@ -83,13 +83,16 @@ def test_set_non_stroking_color_with_cmyk_quadruple() -> None:
 
 
 def test_set_stroking_color_with_pdcolor_devicergb() -> None:
-    """A PDColor backed by DeviceRGB lowers to the ``RG`` operator."""
+    """A PDColor backed by DeviceRGB writes the colour-space name + ``CS``
+    then the components + ``SC`` — mirroring upstream
+    ``PDAbstractContentStream.setStrokingColor(PDColor)``, which never takes
+    the ``RG`` device-shorthand path (that is only the ``float[]`` overload)."""
     doc = PDDocument()
     page = _make_page(doc)
     color = PDColor([1.0, 0.0, 0.5], PDDeviceRGB.INSTANCE)
     with PDPageContentStream(doc, page) as cs:
         cs.set_stroking_color(color)
-    assert _stream_bytes(page) == b"1 0 0.5 RG\n"
+    assert _stream_bytes(page) == b"/DeviceRGB CS\n1 0 0.5 SC\n"
 
 
 def test_set_non_stroking_color_with_pdcolor_devicegray() -> None:
@@ -98,7 +101,7 @@ def test_set_non_stroking_color_with_pdcolor_devicegray() -> None:
     color = PDColor([0.75], PDDeviceGray.INSTANCE)
     with PDPageContentStream(doc, page) as cs:
         cs.set_non_stroking_color(color)
-    assert _stream_bytes(page) == b"0.75 g\n"
+    assert _stream_bytes(page) == b"/DeviceGray cs\n0.75 sc\n"
 
 
 def test_set_stroking_color_with_pdcolor_devicecmyk() -> None:
@@ -107,7 +110,7 @@ def test_set_stroking_color_with_pdcolor_devicecmyk() -> None:
     color = PDColor([0.1, 0.2, 0.3, 0.4], PDDeviceCMYK.INSTANCE)
     with PDPageContentStream(doc, page) as cs:
         cs.set_stroking_color(color)
-    assert _stream_bytes(page) == b"0.1 0.2 0.3 0.4 K\n"
+    assert _stream_bytes(page) == b"/DeviceCMYK CS\n0.1 0.2 0.3 0.4 SC\n"
 
 
 def test_set_stroking_color_rejects_two_args() -> None:

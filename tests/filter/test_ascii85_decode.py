@@ -41,16 +41,21 @@ def test_round_trip_long_random() -> None:
 
 
 def test_round_trip_empty() -> None:
-    # Empty input must encode to just the EOD marker, decode back to empty.
+    # Empty input encodes to ZERO bytes — upstream ASCII85OutputStream starts
+    # `flushed=true`, so a stream that never received a byte emits nothing on
+    # flush (not even the `~>` marker). Verified against the PDFBox 3.0.7
+    # oracle (wave 1463).
     encoded = _encode(b"")
-    assert encoded == b"~>"
+    assert encoded == b""
     assert _decode(encoded) == b""
 
 
 def test_z_shortcut_on_encode() -> None:
-    # 4 zero bytes collapse to 'z' on encode (Adobe rule).
+    # 4 zero bytes collapse to 'z' on encode (Adobe rule); the body is
+    # followed by the `~>` EOD marker AND a trailing newline (upstream
+    # ASCII85OutputStream always emits the LF after `>`).
     encoded = _encode(b"\x00\x00\x00\x00")
-    assert encoded == b"z~>"
+    assert encoded == b"z~>\n"
 
 
 def test_z_shortcut_on_decode() -> None:
@@ -62,24 +67,24 @@ def test_partial_trailing_group_one_byte() -> None:
     # 1 -> 2 chars
     raw = b"M"
     encoded = _encode(raw)
-    # Adobe ASCII85 of b"M" is b"9`~>": 2 chars + EOD.
-    assert encoded == b"9`~>"
+    # ASCII85 of b"M" is b"9`": 2 chars + EOD marker + trailing LF.
+    assert encoded == b"9`~>\n"
     assert _decode(encoded) == raw
 
 
 def test_partial_trailing_group_two_bytes() -> None:
     raw = b"Ma"
     encoded = _encode(raw)
-    # 2 -> 3 chars + EOD.
-    assert encoded == b"9jn~>"
+    # 2 -> 3 chars + EOD marker + trailing LF.
+    assert encoded == b"9jn~>\n"
     assert _decode(encoded) == raw
 
 
 def test_partial_trailing_group_three_bytes() -> None:
     raw = b"Man"
     encoded = _encode(raw)
-    # 3 -> 4 chars + EOD.
-    assert encoded == b"9jqo~>"
+    # 3 -> 4 chars + EOD marker + trailing LF.
+    assert encoded == b"9jqo~>\n"
     assert _decode(encoded) == raw
 
 
@@ -105,7 +110,7 @@ def test_encode_flushes_encoded_sink_after_eod_marker() -> None:
 
     ASCII85Decode().encode(io.BytesIO(b"Man"), out)
 
-    assert out.getvalue() == b"9jqo~>"
+    assert out.getvalue() == b"9jqo~>\n"
     assert out.flush_count == 1
 
 

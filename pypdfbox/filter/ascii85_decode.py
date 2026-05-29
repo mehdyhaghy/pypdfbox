@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 from typing import BinaryIO, Final
 
 from pypdfbox.cos import COSDictionary
@@ -19,10 +18,11 @@ from .filter_factory import FilterFactory
 # The encoded stream is terminated by b'~>'. Whitespace inside the stream is
 # ignored on decode.
 #
-# ENCODE delegates to the Python stdlib (``base64.a85encode``) which implements
-# the exact base-85 numerical scheme — including the b'z' shortcut — so the
-# encoder is a thin adapter per PRD §3.7. The PDF-specific bits we own are
-# stripping the leading b'<~' Adobe marker (PDF uses only the b'~>' tail).
+# ENCODE delegates to ``ASCII85OutputStream`` (mirroring upstream
+# ``ASCII85Filter.encode``, which wraps its destination in that stream). The
+# wrapper owns the exact base-85 numerical scheme — including the b'z'
+# shortcut — plus the PDF framing PDFBox emits byte-for-byte: hard line breaks
+# every 72 chars and the b'~>' EOD marker followed by a trailing LF.
 #
 # Decode reproduces the accumulator of upstream's
 # ``org.apache.pdfbox.filter.ASCII85InputStream`` exactly, verified
@@ -88,15 +88,30 @@ class ASCII85Decode(Filter):
         encoded: BinaryIO,
         parameters: COSDictionary | None = None,
     ) -> None:
+        # Mirror upstream ``ASCII85Filter.encode``: wrap the destination in
+        # an ``ASCII85OutputStream`` and copy the raw bytes through it. The
+        # output stream owns the PDF-specific framing pypdfbox must emit
+        # byte-for-byte: base-85 body, hard line breaks every 72 chars, and
+        # the ``~>`` EOD marker followed by a trailing newline. (Encoding the
+        # body via ``base64.a85encode`` directly is NOT byte-equal to upstream
+        # — it skips the line-folding and the terminating LF.)
+        #
+        # Local import keeps the codec module free of a load-time dependency
+        # on the output-stream wrapper (which itself imports base64 / io).
+        from .ascii85_output_stream import ASCII85OutputStream  # noqa: PLC0415
+
         data = raw.read()
-        # Adobe-mode a85encode wraps with b'<~' ... b'~>'; the PDF variant
-        # has no leading marker, so strip the prefix the stdlib added.
-        framed = base64.a85encode(data, adobe=True)
-        # framed always starts with b'<~' and ends with b'~>'.
-        encoded.write(framed[2:])
-        flush = getattr(encoded, "flush", None)
-        if callable(flush):
-            flush()
+        sink = ASCII85OutputStream(encoded)
+        sink.write(data)
+        # ``flush()`` emits the full encoded body + ``~>\n`` to ``encoded``.
+        # The surrounding encode chain reads ``encoded.getvalue()`` after we
+        # return, so the destination must stay open: upstream closes its
+        # wrapper but its destination is a ``ByteArrayOutputStream`` whose
+        # contents survive close, whereas pypdfbox's destination is a live
+        # ``BytesIO``. Flush, then detach the destination so the wrapper's
+        # finaliser (``RawIOBase.__del__`` → ``close()``) cannot close it.
+        sink.flush()
+        sink.detach()
 
     def is_decompression_input_size_known(self) -> bool:
         return False

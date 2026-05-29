@@ -70,5 +70,9 @@ def test_wave784_filter_factory_register_accepts_cos_name(
 
 
 def test_wave784_cos_float_rejects_multiple_internal_minus_signs() -> None:
-    with pytest.raises(OSError, match="misplaced '-'"):
+    # Upstream COSFloat(String) raises IOException
+    # "Error expected floating point number actual='1-2-3'" for an
+    # unrecoverable multi-minus literal (wave 1458 aligned the message to
+    # upstream; the prior pypdfbox-specific "misplaced '-'" was a divergence).
+    with pytest.raises(OSError, match="Error expected floating point number"):
         COSFloat("1-2-3")

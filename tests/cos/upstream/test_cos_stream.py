@@ -60,9 +60,10 @@ def test_compressed_stream2_encode() -> None:
     with stream.create_output_stream(["ASCII85Decode", "FlateDecode"]) as out:
         out.write(_TEST_STRING)
     # Outer encoding is ASCII85: raw bytes should be in the printable
-    # ASCII85 alphabet (plus the ``~>`` terminator).
+    # ASCII85 alphabet, ending with the ``~>`` EOD marker plus the trailing
+    # LF that upstream ASCII85OutputStream always appends after ``>``.
     raw = stream.create_raw_input_stream().read()
-    assert raw.endswith(b"~>")
+    assert raw.endswith(b"~>\n")
     stream.close()
 
 

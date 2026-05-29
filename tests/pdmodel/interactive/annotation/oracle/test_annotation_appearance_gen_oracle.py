@@ -223,23 +223,6 @@ def _build_battery() -> list[tuple[object, str]]:
     ]
 
 
-# Documented, normalised divergences (see module docstring).
-#
-# Ink: upstream emits the colour-space pair ``CS SC`` (PDColor with explicit
-# DeviceRGB colour space); pypdfbox's lite colour surface emits the device
-# shorthand ``RG``. Identical colour, identical path drawing operators.
-_INK_COLOR_OPS_JAVA = ["CS", "SC"]
-_INK_COLOR_OPS_PY = ["RG"]
-
-
-def _normalise_ink(ops: list[str], color_ops: list[str]) -> list[str]:
-    """Drop the leading colour-set operator(s) so the path-drawing operator
-    sequence can be compared regardless of the colour-set spelling."""
-    if ops[: len(color_ops)] == color_ops:
-        return ops[len(color_ops) :]
-    return ops
-
-
 def _java_records() -> dict[str, dict[str, object]]:
     with tempfile.TemporaryDirectory() as tmp:
         out = str(Path(tmp) / "annot_appear.pdf")
@@ -270,13 +253,7 @@ def test_appearance_generation_matches_pdfbox() -> None:
         py_ops = list(py["ops"])  # type: ignore[arg-type]
         jr_ops = list(jr["ops"])  # type: ignore[arg-type]
 
-        if subtype == "Ink":
-            # Normalise only the colour-set operator (documented divergence);
-            # the path-drawing operators must match exactly.
-            assert _normalise_ink(py_ops, _INK_COLOR_OPS_PY) == _normalise_ink(
-                jr_ops, _INK_COLOR_OPS_JAVA
-            ), f"Ink path operators diverge: {py_ops} vs {jr_ops}"
-        elif subtype == "Highlight":
+        if subtype == "Highlight":
             # Documented transparency-group divergence: upstream's outer
             # stream is ``gs gs Do`` (a form XObject); the lite handler
             # inlines the fill. Assert both start with the two ExtGState

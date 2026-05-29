@@ -160,11 +160,23 @@ class PDAppearanceContentStream(PDPageContentStream):
     # color — component-array form
     # ------------------------------------------------------------------
 
-    def set_stroking_color(self, components: Sequence[float]) -> None:
+    def set_stroking_color(self, components: Sequence[float] | PDColor) -> None:
         """Emit ``c1 c2 ... cN <op>`` where the operator is selected by
         component count (``G`` for 1, ``RG`` for 3, ``K`` for 4). Other
         component counts are silently ignored (matches upstream's
-        ``default: break``)."""
+        ``default: break``).
+
+        A :class:`PDColor` argument is delegated to the inherited
+        polymorphic base setter (``/<cs> CS <components> SC``/``SCN``).
+        Upstream only overrides the ``float[]`` overload here; the
+        ``setStrokingColor(PDColor)`` overload resolves to
+        ``PDAbstractContentStream``. Mirroring that, a ``PDColor`` does NOT
+        take the device-shorthand path the ``float[]`` overload does — the
+        Ink appearance handler relies on this to emit ``/DeviceRGB CS ... SC``
+        byte-for-byte like PDFBox."""
+        if isinstance(components, PDColor):
+            self._emit_pd_color(components, stroking=True)
+            return
         n = len(components)
         if n not in (1, 3, 4):
             return
@@ -177,9 +189,15 @@ class PDAppearanceContentStream(PDPageContentStream):
         else:
             self._write_operator(b"K")
 
-    def set_non_stroking_color(self, components: Sequence[float]) -> None:
+    def set_non_stroking_color(self, components: Sequence[float] | PDColor) -> None:
         """Emit the non-stroking equivalent of :meth:`set_stroking_color`
-        (``g`` / ``rg`` / ``k``)."""
+        (``g`` / ``rg`` / ``k``). A :class:`PDColor` argument is delegated to
+        the inherited polymorphic base setter (``/<cs> cs <components>
+        sc``/``scn``), mirroring upstream's un-overridden
+        ``setNonStrokingColor(PDColor)``."""
+        if isinstance(components, PDColor):
+            self._emit_pd_color(components, stroking=False)
+            return
         n = len(components)
         if n not in (1, 3, 4):
             return

@@ -246,20 +246,6 @@ def _build_battery() -> list[tuple[str, object]]:
     ]
 
 
-# Documented, normalised colour-set divergence (see module docstring + the
-# earlier wave-1414 entry in CHANGES.md): upstream Ink emits the colour-space
-# pair ``CS SC`` (typed PDColor); pypdfbox's lite colour surface emits the
-# device shorthand ``RG``. Identical colour, identical path-drawing operators.
-_INK_COLOR_OPS_JAVA = ["CS", "SC"]
-_INK_COLOR_OPS_PY = ["RG"]
-
-
-def _strip_leading(ops: list[str], color_ops: list[str]) -> list[str]:
-    if ops[: len(color_ops)] == color_ops:
-        return ops[len(color_ops) :]
-    return ops
-
-
 def _java_records() -> dict[str, dict[str, object]]:
     with tempfile.TemporaryDirectory() as tmp:
         out = str(Path(tmp) / "annot_ap.pdf")
@@ -346,20 +332,17 @@ def test_matrix_is_rect_to_origin_translation() -> None:
 @requires_oracle
 def test_operator_sequence_matches_pdfbox() -> None:
     """Sanity cross-check that the content stream WITHIN the structurally
-    matched form XObject draws the same operator sequence (Ink colour-set
-    spelling normalised — the only documented divergence)."""
+    matched form XObject draws the same operator sequence. As of wave 1463
+    the Ink colour-set divergence is resolved — Ink now emits the typed
+    ``CS``/``SC`` pair byte-for-byte like PDFBox, so no normalisation is
+    needed."""
     java = _java_records()
     for subtype, ann in _build_battery():
         py = _py_fingerprint(ann, subtype)
         jr = java[subtype]
         py_ops = list(py["ops"])  # type: ignore[arg-type]
         jr_ops = list(jr["ops"])  # type: ignore[arg-type]
-        if subtype == "Ink":
-            assert _strip_leading(py_ops, _INK_COLOR_OPS_PY) == _strip_leading(
-                jr_ops, _INK_COLOR_OPS_JAVA
-            ), f"Ink path operators diverge: {py_ops} vs {jr_ops}"
-        else:
-            assert py_ops == jr_ops, (
-                f"{subtype}: operator sequence diverges\n"
-                f"  pypdfbox: {py_ops}\n  PDFBox:   {jr_ops}"
+        assert py_ops == jr_ops, (
+            f"{subtype}: operator sequence diverges\n"
+            f"  pypdfbox: {py_ops}\n  PDFBox:   {jr_ops}"
             )

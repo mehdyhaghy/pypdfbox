@@ -15,12 +15,11 @@ required: two conformant compressors legitimately differ in their bit streams,
 so we assert round-trip equivalence instead (and merely *observe* that Flate
 happens to agree byte-for-byte because both sides wrap zlib/Deflater).
 
-ASCII85 framing note. PDFBox's ``ASCII85OutputStream`` wraps the encoded digits
-with line breaks (roughly every ~72 columns, plus a trailing ``\n`` after the
-``~>`` marker) and writes nothing at all for empty input; pypdfbox emits the
-digits as one unwrapped run ending in ``~>``. The digit content is identical
-after stripping the (decode-ignorable) newlines — a documented, spec-equivalent
-framing difference, not a bug.
+ASCII85 framing note. pypdfbox's ASCII85 encode is a faithful port of upstream
+``ASCII85OutputStream`` (wave 1463): hard line breaks every 72 columns, a
+trailing ``\n`` after the ``~>`` EOD marker, and zero bytes for empty input.
+The FULL encoded output is therefore byte-identical to PDFBox 3.0.7 (the
+earlier framing divergence is closed).
 
 The Java side runs through ``oracle/probes/FilterEncodeProbe.java`` (encode)
 and ``oracle/probes/FilterDecodeProbe.java`` (decode); both build a minimal
@@ -303,31 +302,25 @@ def test_ascii85_encode_round_trip(payload: bytes) -> None:
     [b"A", b"AB", b"ABC", b"\x00\x00\x00\x00", b"Hello, PDFBox!", bytes(range(256))],
     ids=["one", "two", "three", "four-zero", "hello", "all-bytes"],
 )
-def test_ascii85_encode_digits_identical_modulo_framing(payload: bytes) -> None:
-    # DOCUMENTED DIVERGENCE (ascii85_decode.py): the base-85 DIGIT content is
-    # byte-identical between pypdfbox and PDFBox (both terminate with '~>').
-    # PDFBox's ASCII85OutputStream additionally injects line breaks ('\n') —
-    # it wraps the encoded stream roughly every ~72 columns and appends a final
-    # trailing newline after the '~>' EOD marker; pypdfbox emits the digits as
-    # one unwrapped run ending in '~>' with no newlines at all. '\n' is
-    # ignorable whitespace on decode, so the two are spec-equivalent: after
-    # removing every newline the bytes coincide exactly.
+def test_ascii85_encode_byte_identical(payload: bytes) -> None:
+    # Wave 1463 closed the prior framing divergence: pypdfbox now routes
+    # encode through a faithful port of upstream ``ASCII85OutputStream``, so
+    # the FULL encoded output — base-85 digits, hard line breaks every 72
+    # columns, the ``~>`` EOD marker AND the trailing newline after ``>`` —
+    # is byte-identical to PDFBox 3.0.7.
     py_enc = _py_encode("ASCII85Decode", payload)
     java_enc = _java_encode("ASCII85Decode", payload)
-    assert py_enc.endswith(b"~>")
-    assert b"\n" not in py_enc
-    assert java_enc.replace(b"\n", b"") == py_enc
+    assert py_enc == java_enc
+    assert py_enc.endswith(b"~>\n")
 
 
 @requires_oracle
-def test_ascii85_encode_empty_framing_divergence() -> None:
-    # DOCUMENTED DIVERGENCE: for empty input PDFBox's ASCII85 encoder writes
-    # nothing at all (zero bytes — not even the '~>' marker), whereas pypdfbox
-    # emits the bare EOD marker '~>'. Both decode back to empty on either
-    # engine, so the round-trip is preserved.
-    assert _py_encode("ASCII85Decode", b"") == b"~>"
+def test_ascii85_encode_empty_emits_nothing() -> None:
+    # Wave 1463: pypdfbox now matches upstream exactly for empty input —
+    # ``ASCII85OutputStream`` starts ``flushed=true`` so a stream that never
+    # received a byte emits NOTHING on flush (not even the ``~>`` marker).
+    assert _py_encode("ASCII85Decode", b"") == b""
     assert _java_encode("ASCII85Decode", b"") == b""
-    assert _java_decode("ASCII85Decode", b"~>") == b""
     assert _py_decode("ASCII85Decode", b"") == b""
 
 

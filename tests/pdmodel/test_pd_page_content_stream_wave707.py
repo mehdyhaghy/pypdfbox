@@ -32,7 +32,7 @@ def _stream_bytes(page: PDPage) -> bytes:
     return page.get_contents()
 
 
-def test_pd_color_device_gray_uses_dedicated_gray_operators(
+def test_pd_color_device_gray_emits_colorspace_then_sc(
     doc: PDDocument,
 ) -> None:
     page = _make_page(doc)
@@ -42,7 +42,10 @@ def test_pd_color_device_gray_uses_dedicated_gray_operators(
         cs.set_stroking_color(gray)
         cs.set_non_stroking_color(gray)
 
-    assert _stream_bytes(page) == b"0.25 G\n0.25 g\n"
+    # Mirrors upstream PDAbstractContentStream.setStrokingColor(PDColor):
+    # ``/DeviceGray CS 0.25 SC`` (and the non-stroking ``cs``/``sc`` pair),
+    # NOT the ``G``/``g`` device shorthand reserved for the float[] overload.
+    assert _stream_bytes(page) == b"/DeviceGray CS\n0.25 SC\n/DeviceGray cs\n0.25 sc\n"
 
 
 def test_draw_image_jpeg_path_uses_jpeg_factory(
