@@ -35,8 +35,13 @@ class _SyntheticCIDCFF(CFFCIDFont):
     def _cff_name_for_cid(cid: int) -> str:
         return ".notdef" if cid == 0 else f"cid{cid:05d}"
 
-    def get_type2_char_string(self, gid: int) -> tuple[str, int]:
-        return ("gid", gid)
+    def get_type2_char_string(self, cid: int) -> tuple[str, int]:
+        # Mirror the real ``CFFCIDFont.getType2CharString(int cid)`` contract:
+        # the parameter is a *CID*, resolved CID -> GID internally before the
+        # charstring lookup. ``PDCIDFontType0.get_type2_char_string`` passes
+        # the CID straight through (matching upstream
+        # ``cidFont.getType2CharString(cid)``).
+        return ("gid", self.gid_for_cid(cid))
 
 
 class _Glyph:

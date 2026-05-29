@@ -4,7 +4,13 @@ from pypdfbox.cos import COSArray, COSBoolean, COSFloat, COSInteger, COSName, CO
 from pypdfbox.cos.cos_string import COSString
 
 
-def test_typed_getters_resolve_indirect_entries_without_changing_raw_get() -> None:
+def test_typed_getters_match_upstream_raw_entry_semantics() -> None:
+    # Upstream COSArray.getName / getInt / getString read the *raw* entry
+    # (objects.get(index)), NOT getObject — they do not dereference an indirect
+    # COSObject, so an indirect element falls through to the default. Verified
+    # against PDFBox 3.0.7 by tests/cos/oracle/test_cos_array_accessor_oracle.py.
+    # (get_float / get_boolean are pypdfbox additions with no upstream
+    # equivalent and intentionally still dereference.)
     name = COSName.get_pdf_name("DeviceRGB")
     array = COSArray(
         [
@@ -17,11 +23,15 @@ def test_typed_getters_resolve_indirect_entries_without_changing_raw_get() -> No
     )
 
     assert isinstance(array.get(0), COSObject)
-    assert array.get_name(0) == "DeviceRGB"
-    assert array.get_int(1) == 7
+    assert array.get_name(0) is None
+    assert array.get_name(0, "fallback") == "fallback"
+    assert array.get_int(1) == -1
+    assert array.get_int(1, 99) == 99
+    assert array.get_string(4) is None
+    assert array.get_string(4, "fallback") == "fallback"
+    # pypdfbox-only accessors still dereference.
     assert array.get_float(2) == 2.5
     assert array.get_boolean(3) is True
-    assert array.get_string(4) == "hello"
 
 
 def test_typed_getters_treat_indirect_null_as_absent() -> None:

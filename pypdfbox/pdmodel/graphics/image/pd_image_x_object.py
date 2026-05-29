@@ -1157,6 +1157,16 @@ def decode_pdimage_to_pil(
         if decoded is None:
             return None
         return color_space.to_rgb_image(decoded, width, height)
+    if color_space_name == "Lab" and color_space is not None:
+        lab_len = width * height * 3
+        if len(data) < lab_len:
+            return None
+        # Mirrors upstream ``PDLab.toRGBImage(WritableRaster)``: the colour
+        # space consumes the *raw* 8-bit samples and performs its own
+        # L*a*b* scaling (0..255 -> L*=0..100, a*/b*=minA+t*deltaA), so no
+        # /Decode-array pre-pass is applied here — the Lab toRGBImage loop
+        # is the decode.
+        return color_space.to_rgb_image(data[:lab_len], width, height)
     if color_space_name in ("Separation", "DeviceN") and color_space is not None:
         return _decode_devicen_to_rgb(color_space, data, width, height)
     return None

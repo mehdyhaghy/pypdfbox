@@ -211,7 +211,10 @@ class COSArray(COSBase):
         self._check_non_negative_index(index)
         if index >= len(self._items):
             return default
-        item = self.get_object(index)
+        # Upstream COSArray.getName uses the *raw* entry (objects.get(index)),
+        # not getObject: it does NOT dereference an indirect COSObject, so an
+        # indirect name falls through to the default.
+        item = self._items[index]
         if isinstance(item, COSName):
             return item.get_name()
         return default
@@ -227,7 +230,11 @@ class COSArray(COSBase):
         self._check_non_negative_index(index)
         if index >= len(self._items):
             return default
-        item = self.get_object(index)
+        # Upstream COSArray.getInt uses the *raw* entry (objects.get(index)),
+        # not getObject: it does NOT dereference an indirect COSObject. Any
+        # COSNumber (COSInteger or COSFloat) is coerced via intValue()
+        # (truncation toward zero); everything else falls through to default.
+        item = self._items[index]
         if isinstance(item, COSInteger):
             return item.value
         if isinstance(item, COSFloat):
@@ -277,7 +284,10 @@ class COSArray(COSBase):
         self._check_non_negative_index(index)
         if index >= len(self._items):
             return default
-        item = self.get_object(index)
+        # Upstream COSArray.getString uses the *raw* entry (objects.get(index)),
+        # not getObject: it does NOT dereference an indirect COSObject, so an
+        # indirect string falls through to the default.
+        item = self._items[index]
         if isinstance(item, COSString):
             return item.get_string()
         return default

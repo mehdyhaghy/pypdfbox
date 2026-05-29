@@ -47,7 +47,12 @@ class _FakeCIDCFF(CFFCIDFont):
     def get_charset(self) -> list[str]:
         return self._charset
 
-    def get_type2_char_string(self, gid: int) -> tuple[str, int]:
+    def get_type2_char_string(self, cid: int) -> tuple[str, int]:
+        # Mirror the real ``CFFCIDFont.getType2CharString(int cid)``: the
+        # parameter is a *CID*, resolved CID -> GID internally. The PD layer
+        # passes the CID straight through (upstream
+        # ``cidFont.getType2CharString(cid)``).
+        gid = self.gid_for_cid(cid)
         self.seen_gids.append(gid)
         return ("charstring", gid)
 

@@ -584,16 +584,12 @@ class PDCIDFontType0(PDCIDFont):
         if program is None:
             return None
         if isinstance(program, CFFCIDFont):
-            target = self._cff_glyph_name(cid)
-            charset = program.get_charset()
-            if not charset:
-                gid = 0
-            else:
-                try:
-                    gid = charset.index(target)
-                except ValueError:
-                    gid = 0
-            return program.get_type2_char_string(gid)
+            # Pass the CID straight through: ``CFFCIDFont.get_type2_char_string``
+            # does the CID→GID resolution itself (mirroring upstream
+            # ``cidFont.getType2CharString(cid)``). Pre-resolving the GID here
+            # and passing *that* would trigger a second CID→GID lookup inside
+            # the CFFCIDFont accessor, corrupting the returned wrapper's GID.
+            return program.get_type2_char_string(int(cid))
         # Name-keyed CFF: CID is GID.
         return program.get_type2_char_string(int(cid))
 
