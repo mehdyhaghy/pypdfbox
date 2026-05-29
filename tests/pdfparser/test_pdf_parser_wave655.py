@@ -164,19 +164,36 @@ def test_wave655_indirect_loader_rejects_bad_object_and_end_markers() -> None:
     finally:
         doc.close()
 
+    # A non-'endobj' closing keyword raises only in STRICT mode (upstream
+    # parseFileObject, Java line 691); lenient mode warns and returns.
     parser, doc = _ready_parser(b"1 0 obj 42 stuff")
+    parser.set_lenient(False)
     try:
         obj = doc.get_object_from_pool(COSObjectKey(1, 0))
-        with pytest.raises(PDFParseError, match="expected 'endobj'"):
+        with pytest.raises(PDFParseError, match="does not end with 'endobj'"):
             parser._load_indirect_object_at(0, obj)  # noqa: SLF001
     finally:
         doc.close()
 
     parser, doc = _ready_parser(b"1 0 obj 42 nope")
+    parser.set_lenient(False)
     try:
         obj = doc.get_object_from_pool(COSObjectKey(1, 0))
-        with pytest.raises(PDFParseError, match="expected 'endobj'"):
+        with pytest.raises(PDFParseError, match="does not end with 'endobj'"):
             parser._load_indirect_object_at(0, obj)  # noqa: SLF001
+    finally:
+        doc.close()
+
+
+def test_wave655_indirect_loader_lenient_warns_on_wrong_endobj() -> None:
+    # Default lenient mode (upstream isLenient=true) only warns and returns the
+    # parsed body when the closing keyword is not 'endobj'.
+    parser, doc = _ready_parser(b"1 0 obj 42 nope")
+    try:
+        obj = doc.get_object_from_pool(COSObjectKey(1, 0))
+        result = parser._load_indirect_object_at(0, obj)  # noqa: SLF001
+        assert isinstance(result, COSInteger)
+        assert result.value == 42
     finally:
         doc.close()
 

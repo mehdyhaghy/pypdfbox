@@ -332,11 +332,24 @@ class PDType0Font(PDFont):
         descendant = self.get_descendant_font()
         if descendant is None:
             return self.code_to_cid(code)
-        # Prefer the descendant's own ``code_to_gid`` when available
-        # (PDCIDFontType2). Otherwise fall back to CID == GID.
+        # Mirrors upstream ``PDType0Font.codeToGID`` which delegates to
+        # ``descendantFont.codeToGID(code)``. The two descendant flavours
+        # carry different CID→GID maps:
+        #   * :class:`PDCIDFontType2` exposes ``cid_to_gid`` (the
+        #     ``/CIDToGIDMap`` stream / Identity), so feed it the CID.
+        #   * :class:`PDCIDFontType0` has no ``/CIDToGIDMap``; its
+        #     ``code_to_gid`` resolves the CID through the embedded
+        #     CID-keyed CFF charset (CID 40 → charset-index 10, *not*
+        #     the identity GID == CID the previous fall-back assumed).
+        # Routing the Type0 case through the descendant's own
+        # ``code_to_gid`` recovers the charset-mapped GID.
         cid = self.code_to_cid(code)
         cid_to_gid = getattr(descendant, "cid_to_gid", None)
-        gid = int(cid_to_gid(cid)) if callable(cid_to_gid) else cid
+        if callable(cid_to_gid):
+            gid = int(cid_to_gid(cid))
+        else:
+            descendant_code_to_gid = getattr(descendant, "code_to_gid", None)
+            gid = int(descendant_code_to_gid(code)) if callable(descendant_code_to_gid) else cid
 
         # GSUB single-substitution — glyph-by-glyph rewrites only.
         gsub = self._get_gsub_table()

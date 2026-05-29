@@ -823,7 +823,7 @@ class PDImageXObject(PDXObject):
         except Exception:  # noqa: BLE001
             color_key = None
         if color_key:
-            return _apply_color_key_mask(image, color_key)
+            return _apply_color_key_mask(image, color_key, self)
         return image
 
     def get_opaque_image(
@@ -1316,31 +1316,166 @@ def _apply_explicit_mask(image: Image.Image, mask: PDImageXObject) -> Image.Imag
     return rgba
 
 
-def _apply_color_key_mask(image: Image.Image, ranges: Sequence[int]) -> Image.Image:
+def _apply_color_key_mask(
+    image: Image.Image,
+    ranges: Sequence[int],
+    pd_image: PDImage,
+) -> Image.Image:
     """Return ``image`` (RGBA) with a color-key ``/Mask`` range applied as
     alpha (PDF 32000-1 §8.9.6.4).
 
-    ``ranges`` is ``[min1 max1 min2 max2 ...]`` over the (RGB) sample
-    components; a pixel whose every component falls inside its inclusive
-    range is masked out (alpha 0). Other pixels stay opaque. An odd / too-short
-    range or a non-RGB image returns ``image`` unchanged."""
-    if len(ranges) < 6 or len(ranges) % 2 != 0:
+    ``ranges`` is ``[min1 max1 min2 max2 ...]`` over the **raw colour-component
+    sample values** in the image's native colour space — one inclusive pair
+    per component. A pixel is masked out (alpha 0) iff every raw component
+    sample falls inside its pair. This mirrors upstream
+    ``SampledImageReader.applyColorKeyMask`` / the spec's "before any further
+    colour conversion" rule: the comparison is against the integer samples in
+    ``[0, 2**bpc - 1]`` (after ``/Decode`` sample-index remap for the index of
+    an Indexed image, but before the colour lookup / device conversion), NOT
+    against the converted sRGB pixels. So a DeviceGray image keys on its single
+    gray sample (``[min max]``), a DeviceCMYK image on its four CMYK samples,
+    and an Indexed image on the palette index (``[min max]``).
+
+    A mask whose pair-count does not match the image's component count, an odd
+    or too-short range, or a raster we cannot read back as raw samples leaves
+    ``image`` unchanged (best-effort — never raise)."""
+    if len(ranges) < 2 or len(ranges) % 2 != 0:
         return image
-    rgb = image.convert("RGB")
-    px = rgb.load()
-    width, height = rgb.size
-    rgba = rgb.convert("RGBA")
+    components = len(ranges) // 2
+
+    samples = _read_color_key_samples(pd_image, components)
+    if samples is None:
+        # Fall back to the sRGB-pixel comparison for the 3-component RGB case
+        # (raw samples already equal the displayed RGB there); otherwise leave
+        # the raster opaque rather than key on the wrong colour space.
+        if components != 3:
+            return image
+        samples = _rgb_pixels_as_samples(image)
+        if samples is None:
+            return image
+
+    width, height = image.size
+    if len(samples) < width * height * components:
+        return image
+
+    rgba = image.convert("RGBA")
     apx = rgba.load()
-    rmin, rmax, gmin, gmax, bmin, bmax = ranges[:6]
+    pair_lo = ranges[0::2]
+    pair_hi = ranges[1::2]
+    pixel = 0
     for y in range(height):
         for x in range(width):
-            r, g, b = px[x, y]
-            keyed = (
-                rmin <= r <= rmax and gmin <= g <= gmax and bmin <= b <= bmax
-            )
+            base = pixel * components
+            keyed = True
+            for c in range(components):
+                s = samples[base + c]
+                if not (pair_lo[c] <= s <= pair_hi[c]):
+                    keyed = False
+                    break
             if keyed:
+                r, g, b, _ = apx[x, y]
                 apx[x, y] = (r, g, b, 0)
+            pixel += 1
     return rgba
+
+
+def _rgb_pixels_as_samples(image: Image.Image) -> list[int]:
+    """Flatten an image's sRGB pixels into interleaved R,G,B sample values —
+    the raw-sample stand-in for a 3-component DeviceRGB color-key when the
+    native raster is unavailable."""
+    return list(image.convert("RGB").tobytes())
+
+
+def _read_color_key_samples(
+    pd_image: PDImage, components: int
+) -> list[int] | None:
+    """Read the raw, interleaved per-component sample values for ``pd_image``
+    in its native colour space, ``components`` per pixel, row-major.
+
+    Used only for color-key ``/Mask`` evaluation (PDF §8.9.6.4), which compares
+    the **raw integer samples** in ``[0, 2**bpc - 1]`` — not the converted
+    sRGB pixels — against the range pairs (also expressed in raw-sample units).
+    Handles raw DeviceGray (1/2/4/8/16 bpc), Indexed (1/2/4/8 bpc, the palette
+    index itself, with its ``/Decode`` index remap honoured), DeviceRGB and
+    DeviceCMYK (8-bit). Returns ``None`` for filtered payloads (DCT/JPX) or any
+    colour-space / bit-depth combination whose raw samples we cannot
+    reconstruct — the caller then leaves the raster opaque (or falls back to
+    the sRGB-pixel path for plain RGB)."""
+    cos = pd_image.get_cos_object()
+    if not isinstance(cos, COSStream):
+        return None
+    filter_names = {item.name for item in cos.get_filter_list()}
+    if filter_names & {"DCTDecode", "DCT", "JPXDecode", "JPX"}:
+        return None
+
+    width = pd_image.get_width()
+    height = pd_image.get_height()
+    if width <= 0 or height <= 0:
+        return None
+    pixel_count = width * height
+
+    try:
+        color_space = pd_image.get_color_space()
+    except OSError:
+        color_space = None
+    cs_name = color_space.get_name() if color_space is not None else None
+    if cs_name not in ("DeviceGray", "DeviceRGB", "DeviceCMYK", "Indexed"):
+        return None
+    if color_space is not None and color_space.get_number_of_components() != components:
+        return None
+
+    bpc = pd_image.get_bits_per_component()
+    with pd_image.create_input_stream() as src:
+        data = src.read()
+
+    if cs_name == "Indexed":
+        if bpc in (1, 2, 4):
+            samples = _unpack_sub_byte_samples(data, width, height, bpc)
+        elif bpc in (8, -1):
+            samples = data[:pixel_count] if len(data) >= pixel_count else None
+        else:
+            return None
+        if samples is None:
+            return None
+        return _apply_color_key_index_decode(
+            list(samples), pixel_count, pd_image, bpc
+        )
+
+    if cs_name == "DeviceGray":
+        if bpc in (1, 2, 4):
+            samples = _unpack_sub_byte_samples(data, width, height, bpc)
+            return list(samples) if samples is not None else None
+        if bpc == 16:
+            return _unpack_16bit_samples(data, width, height)
+        return list(data[:pixel_count]) if len(data) >= pixel_count else None
+
+    # DeviceRGB / DeviceCMYK — raw 8-bit interleaved samples only.
+    if bpc not in (8, -1):
+        return None
+    needed = pixel_count * components
+    return list(data[:needed]) if len(data) >= needed else None
+
+
+def _apply_color_key_index_decode(
+    samples: list[int], pixel_count: int, pd_image: PDImage, bpc: int
+) -> list[int]:
+    """Map raw Indexed samples through any ``/Decode`` index remap to the
+    palette-index values the color-key range is expressed against. With no
+    ``/Decode`` the raw index is used unchanged; the comparison is against the
+    integer index, not the looked-up colour (PDF §8.9.6.4)."""
+    decode = pd_image.get_decode()
+    if isinstance(decode, COSArray):
+        decode = _numeric_array_to_floats(decode)
+    if not decode or len(decode) != 2:
+        return samples[:pixel_count]
+    max_sample = float((1 << int(bpc if bpc in (1, 2, 4) else 8)) - 1)
+    if max_sample <= 0.0:
+        return samples[:pixel_count]
+    dmin, dmax = decode[0], decode[1]
+    return [
+        int(round(_clamp(dmin + (samples[i] / max_sample) * (dmax - dmin), 0.0, 255.0)))
+        for i in range(pixel_count)
+    ]
 
 
 def _dct_jpeg_to_rgb(

@@ -135,11 +135,28 @@ def test_wave664_load_compressed_object_tolerates_header_object_number_mismatch(
         doc.close()
 
 
-def test_wave664_indirect_loader_stream_rejects_wrong_endobj_keyword() -> None:
+def test_wave664_indirect_loader_stream_strict_rejects_wrong_endobj_keyword() -> None:
+    # Strict mode mirrors upstream parseFileObject (Java line 691): a stream
+    # object whose closing keyword is not 'endobj' is an IOError.
+    parser, doc = _ready_parser(b"1 0 obj\n<< /Length 0 >>\nstream\nendstream\nwrong")
+    parser.set_lenient(False)
+    try:
+        obj = doc.get_object_from_pool(COSObjectKey(1, 0))
+        with pytest.raises(PDFParseError, match="does not end with 'endobj'"):
+            parser._load_indirect_object_at(0, obj)  # noqa: SLF001
+    finally:
+        doc.close()
+
+
+def test_wave664_indirect_loader_stream_lenient_warns_on_wrong_endobj() -> None:
+    # Lenient mode (the default, matching upstream isLenient=true) only warns
+    # and keeps the recovered stream when the closing keyword is not 'endobj'
+    # (Java lines 682-688) — the embedded-endstream recovery path relies on
+    # this, since the scan can leave the cursor mid-body.
     parser, doc = _ready_parser(b"1 0 obj\n<< /Length 0 >>\nstream\nendstream\nwrong")
     try:
         obj = doc.get_object_from_pool(COSObjectKey(1, 0))
-        with pytest.raises(PDFParseError, match="expected 'endobj' after stream"):
-            parser._load_indirect_object_at(0, obj)  # noqa: SLF001
+        result = parser._load_indirect_object_at(0, obj)  # noqa: SLF001
+        assert isinstance(result, COSStream)
     finally:
         doc.close()

@@ -1143,6 +1143,8 @@ class PDFRenderer(PDFStreamEngine):
         :meth:`_render_page_into` so the heavy PIL/aggdraw state stays on
         the renderer for now.
         """
+        import numpy as np  # noqa: PLC0415
+
         # Imported lazily — both modules import each other, and the
         # circular import only resolves once both classes are bound.
         from pypdfbox.rendering.page_drawer import (  # noqa: PLC0415
@@ -1162,9 +1164,28 @@ class PDFRenderer(PDFStreamEngine):
         # CropBox-or-MediaBox default and clips an oversized crop to media.
         render_box = page.get_crop_box()
         # PDF user-space units are 1/72 inch. Pixel dims = pts * dpi / 72.
+        #
+        # Upstream ``PDFRenderer.renderImage`` does this arithmetic in Java
+        # ``float`` (32-bit single precision): ``float scale = dpi / 72f`` and
+        # the page dims come back from ``PDRectangle.getWidth()/getHeight()``
+        # as floats, so ``widthPt * scale`` is a single-precision product
+        # before ``Math.floor``. Python floats are double precision, and the
+        # extra mantissa bits change the floor at exact-ish boundaries — e.g.
+        # a 792 pt page at 150 DPI is ``792 * (150/72) = 1650.0`` in double
+        # but ``792f * (150f/72f) = 1649.9999f`` in float, which floors to
+        # 1649 (Apache PDFBox's answer), not 1650. ``numpy.float32`` mirrors
+        # the single-precision rounding exactly so our raster dimensions match
+        # upstream to the pixel. This single-precision product is used ONLY for
+        # the raster pixel dimensions below — the device CTM and all downstream
+        # geometry keep the double-precision ``scale``, so painted content is
+        # unaffected (upstream likewise sizes a float BufferedImage but
+        # transforms with a double-precision CTM).
         scale = float(dpi) / 72.0
+        scale_f32 = np.float32(float(dpi)) / np.float32(72.0)
         width_pt = render_box.get_width()
         height_pt = render_box.get_height()
+        width_pt_f32 = np.float32(width_pt)
+        height_pt_f32 = np.float32(height_pt)
         # Page rotation (/Rotate) is applied during rasterisation: a 90° or
         # 270° rotation swaps the rendered image's width and height (mirrors
         # upstream PDFRenderer.renderImage which sizes the BufferedImage from
@@ -1177,11 +1198,11 @@ class PDFRenderer(PDFStreamEngine):
         # truncates toward zero, matching that.
         rotation = _normalise_rotation(page.get_rotation())
         if rotation in (90, 270):
-            width_px = max(1, int(height_pt * scale))
-            height_px = max(1, int(width_pt * scale))
+            width_px = max(1, int(height_pt_f32 * scale_f32))
+            height_px = max(1, int(width_pt_f32 * scale_f32))
         else:
-            width_px = max(1, int(width_pt * scale))
-            height_px = max(1, int(height_pt * scale))
+            width_px = max(1, int(width_pt_f32 * scale_f32))
+            height_px = max(1, int(height_pt_f32 * scale_f32))
 
         # aggdraw can only rasterise onto an RGB canvas, so we always
         # render into RGB and convert at teardown when the caller asked
@@ -3900,6 +3921,21 @@ class PDFRenderer(PDFStreamEngine):
         )
         return rgba.split()[3]
 
+    @staticmethod
+    def _pattern_matrix(pattern: Any) -> _Matrix:
+        """The pattern's ``/Matrix`` as a 6-tuple, defaulting to identity.
+
+        Mirrors the tiling-pattern matrix read: a pattern's ``/Matrix`` maps
+        pattern space to the page's *default* (initial) user space, not the
+        CTM in force at the fill (PDF 32000-1 §8.7.3.1)."""
+        try:
+            matrix = tuple(pattern.get_matrix())
+        except Exception:  # noqa: BLE001 — defensive, missing /Matrix
+            return _IDENTITY
+        if len(matrix) != 6:
+            return _IDENTITY
+        return matrix  # type: ignore[return-value]
+
     def _paint_pattern_fill(self, *, even_odd: bool) -> None:
         """Dispatch a pattern fill to the right helper. Tiling vs. shading
         is decided on the resolved ``PDAbstractPattern`` instance.
@@ -3929,7 +3965,11 @@ class PDFRenderer(PDFStreamEngine):
         if isinstance(pattern, PDShadingPattern):
             shading = pattern.get_shading()
             if shading is not None:
-                self._paint_shading(shading, region_mask=mask)
+                self._paint_shading(
+                    shading,
+                    region_mask=mask,
+                    pattern_matrix=self._pattern_matrix(pattern),
+                )
                 return
         # Unknown / unsupported — fall back to solid fill.
         _log.debug(
@@ -3976,7 +4016,11 @@ class PDFRenderer(PDFStreamEngine):
         if isinstance(pattern, PDShadingPattern):
             shading = pattern.get_shading()
             if shading is not None:
-                self._paint_shading(shading, region_mask=mask)
+                self._paint_shading(
+                    shading,
+                    region_mask=mask,
+                    pattern_matrix=self._pattern_matrix(pattern),
+                )
                 return
         _log.debug(
             "rendering: unsupported stroke pattern type %s; falling back "
@@ -4320,13 +4364,35 @@ class PDFRenderer(PDFStreamEngine):
         shading: Any,
         *,
         region_mask: Image.Image | None,
+        pattern_matrix: _Matrix | None = None,
     ) -> None:
         """Render a ``PDShading`` onto the canvas. ``region_mask`` (when
         provided) restricts output to the path interior; ``None`` means
         "paint over the current clip / whole page" which is what the
-        ``sh`` operator wants."""
+        ``sh`` operator wants.
+
+        ``pattern_matrix`` (set only for a shading *pattern* fill /stroke,
+        ``/PatternType 2``) is the pattern's ``/Matrix``. A shading pattern's
+        coordinate space is ``patternMatrix x initialPageCTM`` (PDF 32000-1
+        §8.7.3.1) and is *independent* of the CTM in force when the path is
+        filled — unlike the ``sh`` operator, whose shading is in the current
+        user space. Since the page's initial CTM is identity, we realise that
+        space by temporarily swapping ``self._gs.ctm`` for ``pattern_matrix``
+        so every sub-painter's ``_full_ctm()`` maps shading coords through
+        ``patternMatrix x device_ctm``. ``None`` keeps the current CTM (the
+        ``sh`` path)."""
         if self._image is None or self._draw is None:
             return
+
+        if pattern_matrix is not None:
+            saved_ctm = self._gs.ctm
+            self._gs.ctm = pattern_matrix
+            try:
+                self._paint_shading(shading, region_mask=region_mask)
+            finally:
+                self._gs.ctm = saved_ctm
+            return
+
         # Local import to keep cluster boundaries explicit.
         from pypdfbox.pdmodel.graphics.shading import (  # noqa: PLC0415
             PDShadingType2,
@@ -8728,14 +8794,18 @@ class PDFRenderer(PDFStreamEngine):
         # the caller has nothing better, so route through the FontMappers
         # fallback for a real metric.
         #
-        # An *explicit* /Widths (or /W) entry of exactly 0 is a deliberate,
-        # legal declaration (combining marks) that upstream honours — so do
-        # NOT route it through the substitute upgrade; only the genuinely
-        # absent / hard-default (500.0) cases get the FontMappers metric.
-        explicit_zero = (
-            advance_units == 0.0 and self._has_explicit_width(font, code)
-        )
-        if (advance_units == 500.0 or advance_units <= 0.0) and not explicit_zero:
+        # An *explicit* /Widths (or /W) entry is a deliberate, legal
+        # declaration that upstream honours verbatim — so do NOT route it
+        # through the substitute upgrade, no matter its value. This matters
+        # not only for an explicit 0 (combining marks) but also for a font
+        # whose declared width happens to equal the 500.0 hard-default
+        # sentinel: that collision must not let the FontMappers substitute
+        # silently overwrite a real /W advance (a composite-font subset
+        # whose embedded-glyph draw fails still has correct /W metrics, and
+        # upstream advances by ``getWidth(code)/1000`` with no fallback).
+        # Only the genuinely absent / hard-default cases get the metric.
+        has_explicit = self._has_explicit_width(font, code)
+        if (advance_units == 500.0 or advance_units <= 0.0) and not has_explicit:
             substitute = self._resolve_font_program(font)
             if substitute is not None:
                 with contextlib.suppress(Exception):

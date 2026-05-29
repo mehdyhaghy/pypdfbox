@@ -1638,22 +1638,44 @@ class PDFParser:
                 # After endstream comes endobj.
                 self._base.skip_whitespace()
                 end_kw = self._base.read_keyword()
-                if end_kw != b"endobj":
-                    raise PDFParseError(
-                        f"expected 'endobj' after stream, got {end_kw!r}"
-                    )
+                self._check_endobj(end_kw, on, gn, offset)
                 return stream
-            raise PDFParseError(
-                f"expected 'endobj' after object body, got {kw2!r}",
-                position=self._base.position,
-            )
+            # An 's'-keyword that isn't 'stream' is just a wrong closing
+            # keyword — upstream parseFileObject treats any non-'endobj'
+            # trailing keyword the same (warn in lenient, raise in strict).
+            self._check_endobj(kw2, on, gn, offset)
+            return body
         end_kw = self._base.read_keyword()
-        if end_kw != b"endobj":
-            raise PDFParseError(
-                f"expected 'endobj' after object body, got {end_kw!r}",
-                position=self._base.position,
-            )
+        self._check_endobj(end_kw, on, gn, offset)
         return body
+
+    def _check_endobj(
+        self, end_kw: bytes, obj_nr: int, obj_gen: int, offset: int
+    ) -> None:
+        """Validate the keyword that closes an indirect object. Mirrors
+        upstream ``COSParser.parseFileObject`` (Java lines 682-695): when the
+        trailing keyword does not start with ``endobj`` the parser warns and
+        carries on in lenient mode (recovered streams whose body contained an
+        embedded ``endstream`` token leave the cursor mid-body, so the closing
+        keyword is whatever followed the false terminator), and only raises in
+        strict mode."""
+        if end_kw.startswith(b"endobj"):
+            return
+        if self._lenient:
+            _LOG.warning(
+                "Object (%d:%d) at offset %d does not end with 'endobj' "
+                "but with %r",
+                obj_nr,
+                obj_gen,
+                offset,
+                end_kw,
+            )
+            return
+        raise PDFParseError(
+            f"Object ({obj_nr}:{obj_gen}) at offset {offset} does not end "
+            f"with 'endobj' but with {end_kw!r}",
+            position=self._base.position,
+        )
 
     def _convert_dict_to_stream(self, src: COSDictionary) -> COSStream:
         """Build a fresh ``COSStream`` from a parsed dictionary, copying
