@@ -1,5 +1,12 @@
 """
-``pypdfbox merge -i a.pdf b.pdf -o out.pdf`` — concatenate PDFs.
+``pypdfbox merge -i a.pdf -i b.pdf -o out.pdf`` — concatenate PDFs.
+
+The ``-i/--input`` flag is repeatable, one input per flag, mirroring upstream
+``org.apache.pdfbox.tools.PDFMerger``'s picocli synopsis
+(``-i=<infile> [-i=<infile>]...``). The upstream picocli tool *rejects* a single
+``-i`` gobbling several inputs (``-i a b c`` → usage error); we additionally
+accept that space-separated form for convenience, so both ``-i a -i b`` and
+``-i a b`` resolve to the same ordered input list.
 
 Mirrors upstream ``org.apache.pdfbox.tools.PDFMerger``, which delegates the
 real work to ``org.apache.pdfbox.multipdf.PDFMergerUtility``. This module
@@ -36,8 +43,9 @@ def build_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]
         "/StructTreeRoot).",
     )
     p.add_argument(
-        "-i", "--input", dest="inputs", nargs="+", required=True,
-        metavar="INFILE", help="PDF files to merge (two or more)",
+        "-i", "--input", dest="inputs", action="append", nargs="+",
+        required=True, metavar="INFILE",
+        help="a PDF file to merge; repeat -i for each input (two or more)",
     )
     p.add_argument(
         "-o", "--output", required=True, metavar="OUTFILE",
@@ -47,7 +55,10 @@ def build_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser]
 
 
 def run(args: argparse.Namespace) -> int:
-    inputs: list[str] = list(args.inputs)
+    # ``action="append"`` + ``nargs="+"`` yields a list-of-lists (one inner list
+    # per ``-i`` flag); flatten to the ordered flat input list. This accepts both
+    # upstream's repeatable ``-i a -i b`` form and the ``-i a b`` shorthand.
+    inputs: list[str] = [path for group in args.inputs for path in group]
     if len(inputs) < 2:
         print("merge: need at least two input files", flush=True)
         return 2

@@ -8329,19 +8329,38 @@ class PDFRenderer(PDFStreamEngine):
                 self._gs.text_matrix = _matmul(trans, self._gs.text_matrix)
 
     def _op_show_text_line(self, _op: Any, operands: list[COSBase]) -> None:
-        # ' (apostrophe) — move to next line then show. Equivalent to T* + Tj.
-        self._op_text_next_line(_op, [])
-        self._op_show_text(_op, operands)
+        # ' (apostrophe) — move to next line then show. Per ISO 32000-1
+        # §9.4.3 this is exactly ``T*`` followed by ``Tj``. Upstream
+        # ``ShowTextLine.process`` re-enters the engine via
+        # ``processOperator("T*", null)`` / ``processOperator("Tj", args)``
+        # rather than calling the sub-handlers directly, so an engine-level
+        # observer (and the knockout-group / operator-dispatch machinery in
+        # ``process_operator``) sees the constituent ``T*`` / ``Tj``. We
+        # mirror that re-entry for behavioural parity.
+        from pypdfbox.contentstream.operator_name import (  # noqa: PLC0415
+            OperatorName,
+        )
+
+        self.process_operator(OperatorName.NEXT_LINE, None)
+        self.process_operator(OperatorName.SHOW_TEXT, operands)
 
     def _op_show_text_line_with_spacing(
         self, _op: Any, operands: list[COSBase]
     ) -> None:
-        # " aw ac string — set word + char spacing then '.
+        # " aw ac string — set word & char spacing, move to next line, show.
+        # Per ISO 32000-1 §9.4.3 this decomposes into ``Tw`` / ``Tc`` / ``'``;
+        # upstream ``ShowTextLineAndSpace.process`` dispatches each through
+        # ``processOperator`` (each on a one-element sub-list), so we re-enter
+        # the engine the same way rather than mutating the state inline.
         if len(operands) < 3:
             return
-        self._gs.text_wordspace = _to_float(operands[0])
-        self._gs.text_charspace = _to_float(operands[1])
-        self._op_show_text_line(_op, [operands[2]])
+        from pypdfbox.contentstream.operator_name import (  # noqa: PLC0415
+            OperatorName,
+        )
+
+        self.process_operator(OperatorName.SET_WORD_SPACING, [operands[0]])
+        self.process_operator(OperatorName.SET_CHAR_SPACING, [operands[1]])
+        self.process_operator(OperatorName.SHOW_TEXT_LINE, [operands[2]])
 
     # ---- glyph drawing ----
 

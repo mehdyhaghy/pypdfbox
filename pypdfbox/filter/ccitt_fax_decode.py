@@ -21,6 +21,11 @@ _END_OF_BLOCK = "EndOfBlock"
 _BLACK_IS_1 = "BlackIs1"
 _ENCODED_BYTE_ALIGN = "EncodedByteAlign"
 _DAMAGED_ROWS_BEFORE_ERROR = "DamagedRowsBeforeError"
+# Stream-dict geometry keys (image XObject). /Rows above is the /DecodeParms
+# scanline count; /Height (alias /H) is the XObject's row count and wins via
+# ``rows = max(rows, height)`` — see CCITTFaxFilter.decode.
+_HEIGHT = "Height"
+_H = "H"
 
 # TIFF tag IDs used in the synthetic wrapper.
 _TIFF_IMAGE_WIDTH = 256
@@ -191,6 +196,21 @@ class CCITTFaxDecode(Filter):
         k = decode_params.get_int(_K, 0)
         columns = decode_params.get_int(_COLUMNS, 1728)  # PDF default
         rows = decode_params.get_int(_ROWS, 0)
+        # PDF spec §7.4.9 / Apache PDFBox CCITTFaxFilter: /Rows lives in
+        # /DecodeParms but the authoritative scanline count for an image
+        # XObject is its /Height (alias /H) on the *stream dict*. PDFBox
+        # reconciles the two EXACTLY as (CCITTFaxFilter.decode):
+        #     if (rows > 0 && height > 0) rows = height;   // /Height wins
+        #     else                        rows = max(rows, height);
+        # i.e. when BOTH are present /Height *overrides* /Rows outright (even
+        # when /Rows is the larger value — it is NOT a plain max); when only
+        # one is present the non-zero one is used. ``parameters`` IS the
+        # stream dict here, so we read /Height off it (decode_params is the
+        # nested /DecodeParms, which carries no /Height). When a caller passes
+        # the decode-params dict directly there is no /Height and rows is left
+        # as the /Rows value.
+        height = parameters.get_int(_HEIGHT, _H, 0) if parameters is not None else 0
+        rows = height if (rows > 0 and height > 0) else max(rows, height)
         black_is_1 = decode_params.get_boolean(_BLACK_IS_1, False)
         encoded_byte_align = decode_params.get_boolean(_ENCODED_BYTE_ALIGN, False)
         # /EndOfLine and /EndOfBlock affect the *encoded* G3 stream's
@@ -249,12 +269,30 @@ class CCITTFaxDecode(Filter):
         except Exception as exc:
             raise OSError(f"CCITTFaxDecode: libtiff decode failed: {exc}") from exc
 
-        # If the caller declared /Rows, trim trailing scanlines libtiff
-        # may have produced past EOF. (When /Rows was omitted we keep
-        # everything libtiff returned.)
+        # If the effective row count is known (declared /Rows or the
+        # reconciled /Height), force the output to exactly that many
+        # scanlines. Apache PDFBox allocates a fixed ``rows * rowBytes``
+        # buffer and fills only the rows it decodes, so a shorter decode is
+        # zero-padded (white) and an over-long libtiff decode is trimmed.
+        # Matching that fixed footprint keeps the decoded body byte-exact
+        # with PDFBox whether /Rows is smaller, larger, or absent vs the
+        # encoded image's natural row count. (When rows == 0 — neither /Rows
+        # nor /Height given — we keep everything libtiff returned.)
         if rows > 0:
             row_bytes = (actual_width + 7) // 8
-            scanlines = scanlines[: rows * row_bytes]
+            target = rows * row_bytes
+            if len(scanlines) >= target:
+                scanlines = scanlines[:target]
+            else:
+                # PDFBox zero-fills its decode buffer (set bit = black) before
+                # decoding, then inverts the whole buffer when /BlackIs1 is
+                # false. The padded tail rows therefore read out as WHITE in
+                # both polarities: 0xFF for /BlackIs1 false (sample 0 = black,
+                # so white = 1 bits), 0x00 for /BlackIs1 true (sample 1 =
+                # black, white = 0 bits). Match that so the padded scanlines
+                # are byte-exact with PDFBox.
+                pad_byte = 0x00 if black_is_1 else 0xFF
+                scanlines = scanlines + bytes([pad_byte]) * (target - len(scanlines))
             actual_height = rows
 
         bytes_written = decoded.write(scanlines)

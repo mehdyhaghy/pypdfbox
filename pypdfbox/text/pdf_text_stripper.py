@@ -6,6 +6,7 @@ import re
 import sys
 import unicodedata
 from collections.abc import Callable
+from functools import cmp_to_key
 from typing import TYPE_CHECKING, Protocol
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSNumber, COSStream, COSString
@@ -1612,7 +1613,7 @@ class PDFTextStripper:
                 positions = sorted(positions, key=lambda p: (p.dir % 360.0, p.x, p.y))
             else:
                 positions = sorted(
-                    positions, key=lambda p: (p.dir % 360.0, -p.y, p.x)
+                    positions, key=cmp_to_key(self._compare_reading_order)
                 )
 
         # Bead-separation: bucket positions by the bead whose rectangle
@@ -1698,6 +1699,68 @@ class PDFTextStripper:
             self.write_string_with_positions(pos.text, [pos], _buffered_sink)
             prev = pos
         _flush_word()
+
+    # Tolerance (user-space units) below which two runs are treated as
+    # sharing a baseline. Mirrors upstream ``TextPositionComparator``'s
+    # ``yDifference < .1`` literal.
+    _SORT_Y_TOLERANCE: float = 0.1
+
+    def _compare_reading_order(
+        self, pos1: TextPosition, pos2: TextPosition
+    ) -> int:
+        """Reading-order comparison for the non-flipped (``dir==0``) sort.
+
+        Mirrors upstream ``org.apache.pdfbox.text.TextPositionComparator``:
+        glyphs are grouped by direction first, then two runs that share a
+        baseline (Y difference under tolerance) *or whose vertical glyph
+        extents overlap* are ordered left-to-right by X rather than by their
+        raw Y. Only runs that are vertically disjoint fall through to a
+        Y comparison.
+
+        The lite stripper carries Y in the PDF user-space frame (y-up: a
+        larger Y is higher on the page), so the directions of the tolerance
+        and Y comparisons are the user-space mirror of upstream's
+        upper-left (y-down) frame: "top first" means *larger* Y first.
+
+        Replacing the previous naive ``(-y, x)`` key (wave 1471) fixes the
+        case where two runs on a visually shared line differ in Y by a
+        sub-line-height jitter: the naive key reordered them by raw Y
+        (putting the higher glyph first regardless of X) and then the
+        word-break test, keyed on X gaps, misfired — diverging from Java,
+        which keeps such runs in left-to-right reading order.
+        """
+        d1 = pos1.dir % 360.0
+        d2 = pos2.dir % 360.0
+        if d1 < d2:
+            return -1
+        if d1 > d2:
+            return 1
+
+        x1 = pos1.x
+        x2 = pos2.x
+        # Baselines in the user-space (y-up) frame.
+        y1 = pos1.y
+        y2 = pos2.y
+        # Top edge of each run (one line height above its baseline).
+        y1_top = y1 + pos1.get_height_dir()
+        y2_top = y2 + pos2.get_height_dir()
+
+        y_difference = abs(y1 - y2)
+        if (
+            y_difference < self._SORT_Y_TOLERANCE
+            or (y1 <= y2 <= y1_top)
+            or (y2 <= y1 <= y2_top)
+        ):
+            if x1 < x2:
+                return -1
+            if x1 > x2:
+                return 1
+            return 0
+
+        # Vertically disjoint — top-to-bottom: larger Y (higher) first.
+        if y1 > y2:
+            return -1
+        return 1
 
     def _is_line_break(
         self, pos: TextPosition, prev: TextPosition

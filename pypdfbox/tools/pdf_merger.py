@@ -61,8 +61,9 @@ class PDFMerger:
             prog="merge", description="Merges multiple PDF documents into one"
         )
         parser.add_argument(
-            "-i", "--input", dest="infiles", required=True, nargs="+",
-            help="the PDF files to merge",
+            "-i", "--input", dest="infiles", required=True,
+            action="append", nargs="+",
+            help="a PDF file to merge; repeat -i for each input",
         )
         parser.add_argument(
             "-o", "--output", dest="outfile", required=True,
@@ -70,7 +71,10 @@ class PDFMerger:
         )
         ns = parser.parse_args(args)
         merger = PDFMerger()
-        merger.infiles = [Path(p) for p in ns.infiles]
+        # ``action="append"`` + ``nargs="+"`` gives a list-of-lists; flatten so
+        # both ``-i a -i b`` (upstream picocli style) and ``-i a b`` resolve to
+        # the same ordered input list.
+        merger.infiles = [Path(p) for group in ns.infiles for p in group]
         merger.outfile = Path(ns.outfile)
         return merger.call()
 

@@ -194,7 +194,13 @@ class PDFParser:
         # parameter dictionary. Advisory only — the regular xref-walk
         # path below is unaffected (trailing xref still wins).
         self._detect_linearization()
-        rebuilt = False
+        # ``full_rebuild`` marks the no-locatable-xref path (a complete
+        # brute-force reconstruction of the cross-reference) as distinct from
+        # the missing-/Root path, where the located xref's entries are valid
+        # and only the trailer's /Root needed repairing. Only the full
+        # rebuild eagerly resolves every recovered object — the missing-/Root
+        # path keeps the regular lenient offset check + lazy resolution.
+        full_rebuild = False
         # ---- locate the xref (startxref directive + shape check) ----
         # In lenient mode, an *unlocatable* xref (no ``startxref`` keyword,
         # or one whose offset can't be corrected to a real xref section)
@@ -220,9 +226,24 @@ class PDFParser:
             # via /Prev (PRD §6.5 cluster #2).
             self._document.set_start_xref(startxref)
             self.parse_xref_chain(startxref)
+            # Mirror upstream COSParser.retrieveTrailer: a trailer that
+            # parsed cleanly but carries NO /Root item (the key is absent —
+            # checked raw via getItem, not resolved) triggers a brute-force
+            # rebuild in lenient mode. The catalog is then relocated by
+            # scanning every recovered object for /Type /Catalog and the
+            # trailer's /Root is repaired. A trailer whose /Root key IS
+            # present but dangles (points at a missing/non-catalog object)
+            # is NOT rebuilt — upstream lets that surface as "Missing root"
+            # at initialParse time.
+            located_trailer = self._resolver.get_trailer()
+            if self._lenient and (
+                located_trailer is None
+                or located_trailer.get_item(COSName.ROOT) is None
+            ):
+                self._rebuild_trailer_for_missing_root()
         elif self._lenient:
             self._rebuild_document_from_brute_force()
-            rebuilt = True
+            full_rebuild = True
         else:
             raise PDFParseError(
                 f"startxref offset {startxref} does not point to xref"
@@ -231,7 +252,7 @@ class PDFParser:
         if trailer is not None:
             self._document.set_trailer(trailer)
         self.populate_document()
-        if rebuilt:
+        if full_rebuild:
             # Upstream BruteForceParser.searchForTrailerItems (driven by
             # rebuildTrailer) eagerly DEREFERENCES every recovered object
             # to inspect its /Type / /Root / /Info candidacy. That eager
@@ -239,7 +260,9 @@ class PDFParser:
             # holds a broken object (e.g. a stream with no ``endstream``)
             # still surfaces the parse error at load time rather than
             # silently "recovering". Mirror that so our rebuild outcome
-            # matches PDFBox's PARSE_FAIL vs success decision.
+            # matches PDFBox's PARSE_FAIL vs success decision. Only the
+            # full (no-locatable-xref) rebuild does this; the missing-/Root
+            # path leaves the valid located entries to lazy resolution.
             self._resolve_recovered_objects()
         elif self._lenient:
             # PDFBox's COSParser.checkXrefOffsets: in lenient mode every
@@ -280,7 +303,15 @@ class PDFParser:
         # object — repair it when lenient (matches upstream PDFBox).
         if self._lenient and not root.contains_key(COSName.TYPE):
             root.set_item(COSName.TYPE, COSName.CATALOG)
+        # Validate the page tree (and, when the trailer was rebuilt, prune
+        # dangling /Kids). Mirrors upstream PDFParser.initialParse's
+        # checkPages(root) call right after the /Type repair: a /Root that
+        # resolves to a dictionary lacking a /Pages tree (e.g. a /Root that
+        # was mis-pointed at a non-catalog object) raises "Page tree root
+        # must be a dictionary" here rather than silently yielding a
+        # zero-page document.
         if self._cos_parser is not None:
+            self._cos_parser.check_pages(root)
             self._cos_parser.set_initial_parse_done(True)
 
     def create_document(self) -> Any:
@@ -1427,6 +1458,45 @@ class PDFParser:
         # "synthesised / unsaved"); the setter rejects the upstream -1
         # sentinel, and a bogus positive offset would mislead a later
         # incremental /Prev chain.
+
+    def _rebuild_trailer_for_missing_root(self) -> None:
+        """Brute-force-rebuild the trailer when a cleanly parsed xref's
+        trailer is missing its ``/Root`` key.
+
+        Mirrors the upstream ``COSParser.retrieveTrailer`` branch that fires
+        when ``trailer.getItem(ROOT) == null`` in lenient mode: the body is
+        re-scanned for ``n g obj`` definitions, the first object advertising
+        ``/Type /Catalog`` becomes the recovered ``/Root`` (plus ``/Info`` /
+        ``/Encrypt`` / ``/ID`` candidates), and the recovered objects are
+        merged into the resolver so the relocated catalog — which may not
+        have appeared in the original (broken) xref — is reachable.
+
+        Unlike :meth:`_rebuild_document_from_brute_force` this keeps the
+        already-parsed xref section (the located xref's entries are valid;
+        only the trailer's ``/Root`` was absent), registering brute-force
+        offsets only for keys the xref didn't already carry."""
+        assert self._cos_parser is not None
+        offsets = self._cos_parser.bf_search_for_objects()
+        if not offsets:
+            # Nothing to recover from — leave the rootless trailer in place
+            # so initial_parse surfaces "Missing root", matching upstream's
+            # rebuild-then-still-no-root path.
+            return
+        trailer = self._cos_parser.rebuild_trailer()
+        existing = self._resolver.get_xref_table()
+        # Register a synthetic section holding any recovered object the
+        # located xref did not already map (e.g. the catalog itself when the
+        # broken xref omitted it). begin_section(-1) keeps it out of
+        # visited-offset tracking.
+        self._resolver.begin_section(-1)
+        for key, offset in offsets.items():
+            if key in existing:
+                continue
+            self._resolver.set_entry(
+                key, XrefEntry(type=XrefType.TABLE, offset=offset)
+            )
+        self._resolver.set_trailer(trailer)
+        self._cos_parser.set_trailer_was_rebuild(True)
 
     def _resolve_recovered_objects(self) -> None:
         """Eagerly dereference every brute-force-recovered object.
