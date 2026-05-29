@@ -3465,9 +3465,24 @@ class PDFRenderer(PDFStreamEngine):
             source.putalpha(combined)
             blended = PDFRenderer._blend(source, backdrop, blend_mode)
             prev_image.paste(blended.convert("RGB"), (0, 0), blended.split()[3])
+        elif prev_image.mode == "RGBA":
+            # Compositing onto a transparency-group canvas (RGBA, seeded
+            # transparent for an isolated group). PIL's ``paste(rgb, mask)``
+            # blends the source RGB toward the *destination* RGB weighted by
+            # the mask — onto a fully-transparent (0,0,0,0) pixel that yields
+            # ``src * alpha`` (premultiplied) RGB while still recording the
+            # correct alpha. The premultiplied RGB then darkens wrongly when
+            # the group composites onto the page (an isolated cyan fill at
+            # ``/ca 0.55`` over orange came out (115,146,89) instead of the
+            # spec (115,209,152)). Build a straight-alpha source layer (clip /
+            # soft-mask folded into the alpha plane) and source-over composite
+            # so the group canvas keeps un-premultiplied colour.
+            source = layer.copy()
+            source.putalpha(combined)
+            prev_image.alpha_composite(source)
         else:
-            # Composite the layer's RGB onto the base image using the
-            # combined mask.
+            # Opaque (RGB) base: ``paste`` through the combined mask is exact
+            # — the destination has no transparency to premultiply against.
             rgb = layer.convert("RGB")
             prev_image.paste(rgb, (0, 0), combined)
         # Re-attach aggdraw to the (mutated) base image.
