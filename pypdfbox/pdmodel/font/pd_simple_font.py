@@ -105,14 +105,20 @@ class PDSimpleFont(PDFont):
     def get_last_char(self) -> int:
         return self._dict.get_int(_LAST_CHAR, -1)
 
-    def get_widths(self) -> list[float]:
+    def get_widths(self) -> list[float | None]:
+        # Mirrors upstream ``PDFont.getWidths`` via
+        # ``COSArray.toCOSNumberFloatList``: a non-numeric entry maps to
+        # ``None`` in place so the list keeps its length and the index of
+        # every later entry stays aligned with ``/FirstChar``.
         arr = self._dict.get_dictionary_object(_WIDTHS)
         if not isinstance(arr, COSArray):
             return []
-        widths: list[float] = []
+        widths: list[float | None] = []
         for item in arr:
             if isinstance(item, (COSInteger, COSFloat)):
                 widths.append(float(item.value))
+            else:
+                widths.append(None)
         return widths
 
     def set_first_char(self, value: int | None) -> None:
@@ -235,7 +241,7 @@ class PDSimpleFont(PDFont):
         their own fallback in that case.
         """
         widths = self.get_widths()
-        non_zero = [w for w in widths if w > 0.0]
+        non_zero = [w for w in widths if w is not None and w > 0.0]
         if not non_zero:
             return 0.0
         return sum(non_zero) / len(non_zero)

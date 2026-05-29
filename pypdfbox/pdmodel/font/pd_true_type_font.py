@@ -347,7 +347,8 @@ class PDTrueTypeFont(PDSimpleFont):
         if first_char >= 0 and widths:
             idx = code - first_char
             if 0 <= idx < len(widths):
-                return float(widths[idx])
+                entry = widths[idx]
+                return float(entry) if entry is not None else 0.0
 
         return self.get_width_from_font(code)
 

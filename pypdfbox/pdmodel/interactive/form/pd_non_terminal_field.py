@@ -5,11 +5,9 @@ from typing import TYPE_CHECKING
 from pypdfbox.cos import (
     COSArray,
     COSBase,
-    COSBoolean,
     COSDictionary,
     COSInteger,
     COSName,
-    COSString,
 )
 
 from .pd_field import PDField
@@ -103,45 +101,25 @@ class PDNonTerminalField(PDField):
     def get_value_as_string(self) -> str:
         """String view of own ``/V``; ``""`` when ``/V`` is absent.
 
-        Mirrors upstream ``PDNonTerminalField.getValueAsString`` which
-        returns ``fieldValue.toString()`` for any non-null COS value.
-        Concretely:
+        Mirrors upstream ``PDNonTerminalField.getValueAsString`` exactly::
 
-        * ``COSString`` -> the decoded text (``get_string``)
-        * ``COSName`` -> the name
-        * ``COSStream`` -> ``to_text_string()`` (PDF text-string decode)
-        * ``COSInteger`` / ``COSBoolean`` -> Python ``str(.)``
-        * ``COSArray`` -> comma-joined string view of the contained items
-          (matches PDF 32000-1 multi-value field display)
-        * any other ``COSBase`` -> ``str(item)`` fallback (mirrors
-          upstream's ``toString()``)
+            COSBase fieldValue = getValue();
+            return fieldValue != null ? fieldValue.toString() : "";
+
+        i.e. it returns the COS value's ``toString()`` — *not* its decoded
+        payload. Each pypdfbox COS type's :meth:`to_string` mirrors the Java
+        ``toString()`` form (``COSString{...}``, ``COSName{...}``,
+        ``COSInt{...}``, ``COSArray{...}``, ``true``/``false``), so deferring
+        to it keeps the rendered value byte-for-byte identical to PDFBox.
+        Confirmed against the live oracle (wave 1469): the earlier
+        decoded-payload dispatch (``COSString`` -> ``get_string()`` etc.)
+        diverged — PDFBox emits ``COSString{shared-value}``, not the bare
+        decoded text.
         """
         item = self.get_value()
         if item is None:
             return ""
-        if isinstance(item, COSString):
-            return item.get_string()
-        if isinstance(item, COSName):
-            return item.name
-        # Local import: COSStream pulls in I/O machinery; keep it lazy.
-        from pypdfbox.cos import COSStream  # noqa: PLC0415
-
-        if isinstance(item, COSStream):
-            return item.to_text_string()
-        if isinstance(item, (COSInteger, COSBoolean)):
-            return str(item.value)
-        if isinstance(item, COSArray):
-            parts: list[str] = []
-            for i in range(item.size()):
-                entry = item.get_object(i)
-                if isinstance(entry, COSString):
-                    parts.append(entry.get_string())
-                elif isinstance(entry, COSName):
-                    parts.append(entry.name)
-                elif entry is not None:
-                    parts.append(str(entry))
-            return ",".join(parts)
-        return str(item)
+        return item.to_string()
 
     # ---------- /DV (raw COSBase per upstream) ----------
 

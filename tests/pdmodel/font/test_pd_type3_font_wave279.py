@@ -167,7 +167,15 @@ def test_type3_font_ignores_malformed_top_level_shapes() -> None:
     assert font.get_font_bbox() is None
     assert font.get_font_b_box() is cos.get_dictionary_object(_FONT_BBOX)
     assert font.get_font_matrix() == [0.001, 0.0, 0.0, 0.001, 0.0, 0.0]
-    assert font.get_widths() == pytest.approx([250.0, 333.5])
+    # Upstream COSArray.toCOSNumberFloatList keeps a None slot for the
+    # non-numeric "bad-width" entry (index alignment preserved) — see the
+    # live oracle in tests/pdmodel/font/oracle/test_simple_font_widths_oracle.py
+    # (wave 1469).
+    widths = font.get_widths()
+    assert len(widths) == 3
+    assert widths[0] == pytest.approx(250.0)
+    assert widths[1] is None
+    assert widths[2] == pytest.approx(333.5)
 
 
 def test_char_proc_malformed_local_resources_falls_back_to_font_resources() -> None:

@@ -424,9 +424,10 @@ def test_pd_non_terminal_field_get_children_when_factory_returns_none() -> None:
         PDFieldFactory.create_field = staticmethod(original_create)  # type: ignore[assignment]
 
 
-def test_pd_non_terminal_field_get_value_as_string_array_with_none_entry() -> None:
-    """Closes 141->135: a None-valued entry in a /V array is silently
-    skipped during the array stringify loop."""
+def test_pd_non_terminal_field_get_value_as_string_array_renders_to_string() -> None:
+    """Upstream PDNonTerminalField.getValueAsString returns the raw /V value's
+    toString(); for a COSArray that is the array's own ``to_string`` render
+    (wave 1469 — the previous decoded comma-join diverged from PDFBox)."""
     from pypdfbox.pdmodel.interactive.form.pd_non_terminal_field import (
         PDNonTerminalField,
     )
@@ -438,15 +439,11 @@ def test_pd_non_terminal_field_get_value_as_string_array_with_none_entry() -> No
     d = COSDictionary()
     arr = COSArray()
     arr.add(COSString(b"alpha"))
-    # Inject a None via .add — bypass typed setter:
-    arr.add(None)  # type: ignore[arg-type]
     arr.add(COSString(b"beta"))
     d.set_item(COSName.get_pdf_name("V"), arr)
 
     field = PDNonTerminalField(_StubAcroForm(), d, None)
-    out = field.get_value_as_string()
-    # None entry is dropped silently — output joins only non-None entries.
-    assert out == "alpha,beta"
+    assert field.get_value_as_string() == arr.to_string()
 
 
 # ---------------------------------------------------------------------------

@@ -185,7 +185,8 @@ def test_pdtype1_pfb_to_segments_pfa_input() -> None:
 
 
 def test_pdfont_get_widths_skips_non_number_entries() -> None:
-    """215->214: /Widths entries that aren't COSInteger/COSFloat are skipped."""
+    """/Widths entries that aren't COSInteger/COSFloat are kept as None in place
+    (index-aligned), matching upstream COSArray.toCOSNumberFloatList (wave 1469)."""
     from pypdfbox.pdmodel.font.pd_font import PDFont
 
     # Make a minimal PDFont subclass exposing _dict.
@@ -197,12 +198,12 @@ def test_pdfont_get_widths_skips_non_number_entries() -> None:
 
     arr = COSArray()
     arr.add(COSInteger.get(100))
-    arr.add(COSName.get_pdf_name("garbage"))  # should be skipped
+    arr.add(COSName.get_pdf_name("garbage"))  # non-numeric — kept as None
     arr.add(COSFloat(250.5))
     d = COSDictionary()
     d.set_item(COSName.get_pdf_name("Widths"), arr)
     f = _StubFont(d)
-    assert f.get_widths() == [100.0, 250.5]
+    assert f.get_widths() == [100.0, None, 250.5]
 
 
 def test_pdfont_get_space_width_widths_out_of_range() -> None:

@@ -258,7 +258,8 @@ class PDType3Font(PDSimpleFont):
         if widths and first <= code <= last:
             index = int(code) - first
             if 0 <= index < len(widths):
-                return widths[index]
+                entry = widths[index]
+                return float(entry) if entry is not None else 0.0
             # In-range but past the array end mirrors upstream's explicit
             # ``return 0`` branch.
             return 0.0

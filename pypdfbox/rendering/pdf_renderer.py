@@ -9304,7 +9304,7 @@ class PDFRenderer(PDFStreamEngine):
             # precedence over ``d0`` when both somehow appear.
             advance_units = 0.0
             idx = int(code) - first_char
-            if 0 <= idx < len(widths):
+            if 0 <= idx < len(widths) and widths[idx] is not None:
                 advance_units = widths[idx] * width_to_advance_units
             if self._type3_d1_wx is not None:
                 advance_units = self._type3_d1_wx * width_to_advance_units

@@ -67,7 +67,12 @@ def test_char_range_reads_numeric_values_and_rejects_malformed_shapes() -> None:
     assert font.get_last_char() == -1
 
 
-def test_widths_skip_malformed_entries_and_average_only_positive_numbers() -> None:
+def test_widths_keep_null_slots_and_average_only_positive_numbers() -> None:
+    # Mirrors upstream COSArray.toCOSNumberFloatList: a non-numeric /Widths
+    # entry maps to None *in place* so the list keeps its length and index
+    # alignment (verified against the live oracle in
+    # tests/pdmodel/font/oracle/test_simple_font_widths_oracle.py, wave 1469).
+    # get_average_font_width still filters to positive numeric entries.
     font = PDType1Font()
     cos = font.get_cos_object()
     cos.set_item(
@@ -84,7 +89,7 @@ def test_widths_skip_malformed_entries_and_average_only_positive_numbers() -> No
         ),
     )
 
-    assert font.get_widths() == [0.0, 250.0, 500.5, -12.0]
+    assert font.get_widths() == [0.0, None, 250.0, None, 500.5, -12.0]
     assert font.get_average_font_width() == pytest.approx((250.0 + 500.5) / 2)
 
 
@@ -98,10 +103,15 @@ def test_has_explicit_width_uses_first_char_and_parsed_width_entries() -> None:
         COSArray([COSInteger.get(100), _name("bad-width"), COSInteger.get(300)]),
     )
 
+    # /Widths keeps a None slot for the non-numeric entry (upstream
+    # toCOSNumberFloatList), so the list length is 3 and code 42 (offset 2)
+    # falls inside the explicit-width window even though its parsed value is
+    # None — matches upstream hasExplicitWidth (size-based, not value-based).
     assert font.has_explicit_width(39) is False
     assert font.has_explicit_width(40) is True
     assert font.has_explicit_width(41) is True
-    assert font.has_explicit_width(42) is False
+    assert font.has_explicit_width(42) is True
+    assert font.has_explicit_width(43) is False
 
 
 def test_encoding_raw_typed_and_dictionary_round_trip_from_cos() -> None:

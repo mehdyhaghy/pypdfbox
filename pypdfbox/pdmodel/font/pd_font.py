@@ -201,19 +201,25 @@ class PDFont:
 
     # ---------- char-range / widths ----------
 
-    def get_widths(self) -> list[float]:
+    def get_widths(self) -> list[float | None]:
         """Return the contents of ``/Widths`` as a list of floats.
 
-        Mirrors PDFBox ``PDFont.getWidths``. Non-numeric entries are
-        skipped. Returns an empty list when ``/Widths`` is absent.
+        Mirrors PDFBox ``PDFont.getWidths`` which delegates to
+        ``COSArray.toCOSNumberFloatList``: every entry maps to its float
+        value, and a non-``COSNumber`` entry (a ``null`` or a stray name)
+        maps to ``None`` **in place** so the list keeps its length and the
+        index of every later entry stays aligned with ``/FirstChar``.
+        Returns an empty list when ``/Widths`` is absent.
         """
         arr = self._dict.get_dictionary_object(_WIDTHS)
         if not isinstance(arr, COSArray):
             return []
-        widths: list[float] = []
+        widths: list[float | None] = []
         for item in arr:
             if isinstance(item, (COSInteger, COSFloat)):
                 widths.append(float(item.value))
+            else:
+                widths.append(None)
         return widths
 
     def get_first_char(self) -> int:
@@ -236,7 +242,7 @@ class PDFont:
         if self._avg_font_width_cached is not None:
             return self._avg_font_width_cached
         widths = self.get_widths()
-        non_zero = [w for w in widths if w > 0.0]
+        non_zero = [w for w in widths if w is not None and w > 0.0]
         if not non_zero:
             self._avg_font_width_cached = 0.0
         else:
@@ -286,7 +292,7 @@ class PDFont:
                 index = 32 - first
                 if 0 <= index < len(widths):
                     width = widths[index]
-                    if width > 0.0:
+                    if width is not None and width > 0.0:
                         self._font_width_of_space = width
                         return width
             # 4) Ask the embedded font program directly.
@@ -587,7 +593,11 @@ class PDFont:
                 and code <= last_char
                 and 0 <= idx < len(widths)
             ):
-                width = float(widths[idx])
+                # A null /Widths slot (non-numeric entry) reads back as 0.0 —
+                # mirrors upstream's ``if (width == null) width = 0f`` after
+                # ``widths.get(idx)`` (PDFont.getWidth).
+                entry = widths[idx]
+                width = float(entry) if entry is not None else 0.0
                 self._code_to_width[code] = width
                 return width
             fd = self.get_font_descriptor()

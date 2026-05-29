@@ -207,7 +207,8 @@ class PDType1Font(PDSimpleFont):
         if widths and 0 <= first <= code <= last:
             idx = code - first
             if idx < len(widths):
-                return float(widths[idx])
+                entry = widths[idx]
+                return float(entry) if entry is not None else 0.0
 
         # 2. Embedded font program.
         program_width = self._program_width(code)
@@ -620,7 +621,7 @@ class PDType1Font(PDSimpleFont):
         3. ``0.0``.
         """
         widths = self.get_widths()
-        non_zero = [w for w in widths if w > 0.0]
+        non_zero = [w for w in widths if w is not None and w > 0.0]
         if non_zero:
             return sum(non_zero) / len(non_zero)
         afm = self.get_standard_14_font_metrics()

@@ -260,14 +260,16 @@ def test_non_terminal_field_get_value_returns_own_v() -> None:
     item = nt.get_value()
     assert isinstance(item, COSString)
     assert item.get_string() == "group-value"
-    assert nt.get_value_as_string() == "group-value"
+    # Upstream PDNonTerminalField.getValueAsString returns the raw COS value's
+    # toString() — the COSString wrapper render, not the decoded payload.
+    assert nt.get_value_as_string() == "COSString{group-value}"
 
 
 def test_non_terminal_field_value_as_string_for_name() -> None:
     form = PDAcroForm()
     nt = PDNonTerminalField(form)
     nt.set_value(COSName.get_pdf_name("On"))
-    assert nt.get_value_as_string() == "On"
+    assert nt.get_value_as_string() == "COSName{On}"
 
 
 def test_non_terminal_field_clear_value() -> None:

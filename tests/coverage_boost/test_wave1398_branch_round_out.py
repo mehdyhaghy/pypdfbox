@@ -176,7 +176,8 @@ def test_pd_cid_font_read_vertical_displacements_no_w2() -> None:
 
 
 def test_pd_font_widths_skip_non_numeric_entries() -> None:
-    """Non-numeric entries in /Widths are skipped (covers 215->214)."""
+    """Non-numeric /Widths entries are kept as None in place (index-aligned),
+    matching upstream COSArray.toCOSNumberFloatList (wave 1469)."""
     from pypdfbox.pdmodel.font import PDType1Font
 
     font = PDType1Font()
@@ -187,12 +188,12 @@ def test_pd_font_widths_skip_non_numeric_entries() -> None:
     cos = font.get_cos_object()
     arr = COSArray()
     arr.add(COSInteger.get(500))
-    arr.add(COSName.get_pdf_name("BogusEntry"))  # non-numeric — must be skipped
+    arr.add(COSName.get_pdf_name("BogusEntry"))  # non-numeric — kept as None
     arr.add(COSFloat(600.0))
     cos.set_item(COSName.get_pdf_name("Widths"), arr)
     try:
         widths = font.get_widths()
-        assert widths == [500.0, 600.0]
+        assert widths == [500.0, None, 600.0]
     finally:
         cos.remove_item(COSName.get_pdf_name("Widths"))
 

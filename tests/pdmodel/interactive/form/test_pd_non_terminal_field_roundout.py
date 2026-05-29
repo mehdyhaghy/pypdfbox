@@ -225,7 +225,9 @@ def test_non_terminal_set_value_string_round_trips_via_get_value_as_string() -> 
     form = PDAcroForm()
     nt = PDNonTerminalField(form)
     nt.set_value("round-trip")
-    assert nt.get_value_as_string() == "round-trip"
+    # Upstream PDNonTerminalField.getValueAsString returns the raw COS value's
+    # toString() (a COSString wrapper render), NOT the decoded payload.
+    assert nt.get_value_as_string() == "COSString{round-trip}"
 
 
 def test_non_terminal_set_value_empty_string_stores_empty_cos_string() -> None:
@@ -268,20 +270,28 @@ def test_get_value_as_string_returns_empty_when_v_absent() -> None:
     assert nt.get_value_as_string() == ""
 
 
+# Upstream PDNonTerminalField.getValueAsString is uniformly
+# ``getValue().toString()`` — it does NOT decode the COS payload. Each case
+# below therefore asserts the COS value's own ``to_string()`` (the pypdfbox
+# mirror of Java ``toString()``), confirmed against the live oracle (wave 1469).
+
+
 def test_get_value_as_string_handles_cos_name() -> None:
     form = PDAcroForm()
     d = COSDictionary()
-    d.set_item(_V, COSName.get_pdf_name("Yes"))
+    name = COSName.get_pdf_name("Yes")
+    d.set_item(_V, name)
     nt = PDNonTerminalField(form, d)
-    assert nt.get_value_as_string() == "Yes"
+    assert nt.get_value_as_string() == name.to_string() == "COSName{Yes}"
 
 
 def test_get_value_as_string_handles_cos_integer() -> None:
     form = PDAcroForm()
     d = COSDictionary()
-    d.set_item(_V, COSInteger.get(42))
+    integer = COSInteger.get(42)
+    d.set_item(_V, integer)
     nt = PDNonTerminalField(form, d)
-    assert nt.get_value_as_string() == "42"
+    assert nt.get_value_as_string() == integer.to_string() == "COSInt{42}"
 
 
 def test_get_value_as_string_handles_cos_boolean_true() -> None:
@@ -289,7 +299,7 @@ def test_get_value_as_string_handles_cos_boolean_true() -> None:
     d = COSDictionary()
     d.set_item(_V, COSBoolean.get(True))
     nt = PDNonTerminalField(form, d)
-    assert nt.get_value_as_string() == "True"
+    assert nt.get_value_as_string() == "true"
 
 
 def test_get_value_as_string_handles_cos_boolean_false() -> None:
@@ -297,11 +307,12 @@ def test_get_value_as_string_handles_cos_boolean_false() -> None:
     d = COSDictionary()
     d.set_item(_V, COSBoolean.get(False))
     nt = PDNonTerminalField(form, d)
-    assert nt.get_value_as_string() == "False"
+    assert nt.get_value_as_string() == "false"
 
 
 def test_get_value_as_string_handles_cos_array_of_strings() -> None:
-    """Multi-value choice-style ``/V`` array is comma-joined."""
+    """Multi-value choice-style ``/V`` array renders via the array's
+    ``to_string`` (upstream ``COSArray.toString``), not a comma-join."""
     form = PDAcroForm()
     d = COSDictionary()
     arr = COSArray()
@@ -310,7 +321,7 @@ def test_get_value_as_string_handles_cos_array_of_strings() -> None:
     arr.add(COSString("c"))
     d.set_item(_V, arr)
     nt = PDNonTerminalField(form, d)
-    assert nt.get_value_as_string() == "a,b,c"
+    assert nt.get_value_as_string() == arr.to_string()
 
 
 def test_get_value_as_string_handles_cos_array_of_names() -> None:
@@ -321,19 +332,21 @@ def test_get_value_as_string_handles_cos_array_of_names() -> None:
     arr.add(COSName.get_pdf_name("Y"))
     d.set_item(_V, arr)
     nt = PDNonTerminalField(form, d)
-    assert nt.get_value_as_string() == "X,Y"
+    assert nt.get_value_as_string() == arr.to_string()
 
 
 def test_get_value_as_string_handles_empty_cos_array() -> None:
     form = PDAcroForm()
     d = COSDictionary()
-    d.set_item(_V, COSArray())
+    arr = COSArray()
+    d.set_item(_V, arr)
     nt = PDNonTerminalField(form, d)
-    assert nt.get_value_as_string() == ""
+    assert nt.get_value_as_string() == arr.to_string()
 
 
 def test_get_value_as_string_handles_cos_stream() -> None:
-    """COSStream values decode through the filter chain."""
+    """COSStream values render via the stream's ``to_string`` (upstream
+    ``getValue().toString()``), not a decoded payload."""
     form = PDAcroForm()
     d = COSDictionary()
     stream = COSStream()
@@ -341,9 +354,7 @@ def test_get_value_as_string_handles_cos_stream() -> None:
         out.write(b"streamed value")
     d.set_item(_V, stream)
     nt = PDNonTerminalField(form, d)
-    # COSStream.to_text_string decodes — for a plain ASCII body this
-    # round-trips through PDFDocEncoding to the original text.
-    assert nt.get_value_as_string() == "streamed value"
+    assert nt.get_value_as_string() == stream.to_string()
 
 
 # ---------- PDField.from_dictionary helper ----------
@@ -581,7 +592,8 @@ def test_export_then_import_round_trip_preserves_values() -> None:
         child_value=None,
     )
     dst.import_fdf(fdf)
-    assert dst.get_value_as_string() == "P"
+    # Non-terminal getValueAsString is the raw COS value's toString().
+    assert dst.get_value_as_string() == "COSString{P}"
     leaf_v = dst.get_children()[0].get_cos_object().get_dictionary_object(_V)
     assert isinstance(leaf_v, COSString)
     assert leaf_v.get_string() == "C"

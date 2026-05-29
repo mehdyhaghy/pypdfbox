@@ -592,7 +592,7 @@ class PDType1CFont(PDType1Font):
         and is a far better answer for non-Standard-14 embedded fonts.
         """
         widths = self.get_widths()
-        non_zero = [w for w in widths if w > 0.0]
+        non_zero = [w for w in widths if w is not None and w > 0.0]
         if non_zero:
             return sum(non_zero) / len(non_zero)
         program = self._get_cff_font()
@@ -633,7 +633,7 @@ class PDType1CFont(PDType1Font):
            absolute floor when no real signal is available.
         """
         widths = self.get_widths()
-        non_zero = [w for w in widths if w > 0.0]
+        non_zero = [w for w in widths if w is not None and w > 0.0]
         if non_zero:
             return sum(non_zero) / len(non_zero)
         program = self._get_cff_font()

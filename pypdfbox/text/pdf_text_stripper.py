@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import re
 import sys
 import unicodedata
@@ -1091,6 +1092,25 @@ class PDFTextStripper:
         )
         return text_matrix.multiply(state.ctm)
 
+    @staticmethod
+    def _text_dir(trm: Matrix) -> float:
+        """Text direction in degrees (0 / 90 / 180 / 270) for a run.
+
+        Mirrors upstream ``TextPosition.getDir()``: the direction is the
+        rotation baked into the text-rendering matrix, snapped to the
+        nearest right angle. PDFBox derives it from the matrix's X basis
+        vector — ``getScaleX()`` (slot 0,0) and ``getShearY()`` (slot 0,1)
+        — so a ``Tm`` rotated 90/180/270° (or a page-rotation folded into
+        the CTM) yields the matching quadrant. ``atan2`` of that basis
+        vector gives the angle; we normalise to ``[0, 360)`` and snap to a
+        multiple of 90 so a glyph painted with ``Matrix.getRotateInstance``
+        reports exactly 0/90/180/270 the way Apache PDFBox does.
+        """
+        angle = math.degrees(math.atan2(trm.get_shear_y(), trm.get_scale_x()))
+        # Snap to the nearest right angle and fold into [0, 360).
+        quadrant = round(angle / 90.0) * 90
+        return float(quadrant % 360)
+
     def _emit(
         self,
         s: COSString,
@@ -1121,6 +1141,7 @@ class PDFTextStripper:
         y_scale = trm.get_scaling_factor_y()
         x_scale = trm.get_scaling_factor_x()
         effective_font_size = state.font_size * y_scale
+        text_dir = self._text_dir(trm)
         # ``/ActualText`` substitution (PDF §14.9.4): inside a marked-content
         # span carrying ``/ActualText``, the glyph-derived text is replaced
         # and the ``/ActualText`` string is emitted *once* (at the origin of
@@ -1173,6 +1194,7 @@ class PDFTextStripper:
                     width_of_space=width_of_space * x_scale,
                     char_spacing=state.char_spacing,
                     word_spacing=state.word_spacing,
+                    dir=text_dir,
                     text_matrix=[
                         state.tm_a,
                         state.tm_b,
@@ -1224,6 +1246,7 @@ class PDFTextStripper:
         y_scale = trm_scale.get_scaling_factor_y()
         x_scale = trm_scale.get_scaling_factor_x()
         effective_font_size = state.font_size * y_scale
+        text_dir = self._text_dir(trm_scale)
         # ``cursor_x`` tracks the text matrix's translation slot (slot e),
         # so the per-character text-space advance is carried through the
         # horizontal text-matrix scale (``tm_a``) — matching the main
@@ -1259,6 +1282,7 @@ class PDFTextStripper:
                     width_of_space=width_of_space * x_scale,
                     char_spacing=state.char_spacing,
                     word_spacing=state.word_spacing,
+                    dir=text_dir,
                     text_matrix=[
                         state.tm_a,
                         state.tm_b,
@@ -1572,14 +1596,24 @@ class PDFTextStripper:
         # follows content-stream order unless explicit sort is requested.
         # Lite mode follows the same gating.
         if self._sort_by_position:
+            # Upstream's ``TextPositionComparator`` keys on ``getDir()``
+            # first, so glyphs are grouped by text direction (0/90/180/270)
+            # before any positional ordering — a page that mixes runs
+            # rotated by different right angles emits each direction's runs
+            # contiguously, in ascending-direction order, rather than
+            # interleaving them by raw device coordinate. Within a single
+            # direction the positional sort below reproduces the per-group
+            # reading order.
             if self._flip_axes:
                 # Rotated frame: sort by ascending x (top-to-bottom in
                 # the rotated reading order) then ascending y (left-to-
                 # right within a column). Mirrors upstream's flipped
                 # comparator.
-                positions = sorted(positions, key=lambda p: (p.x, p.y))
+                positions = sorted(positions, key=lambda p: (p.dir % 360.0, p.x, p.y))
             else:
-                positions = sorted(positions, key=lambda p: (-p.y, p.x))
+                positions = sorted(
+                    positions, key=lambda p: (p.dir % 360.0, -p.y, p.x)
+                )
 
         # Bead-separation: bucket positions by the bead whose rectangle
         # contains their origin, then emit one bucket at a time. Lite

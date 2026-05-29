@@ -997,8 +997,8 @@ def test_encoding_name_lookup_for_unknown_code_returns_notdef() -> None:
 
 
 def test_get_widths_skips_non_numeric_entries() -> None:
-    """Branch [215, 214]: non-numeric COSArray entry is skipped — loop
-    continues to next item."""
+    """Non-numeric COSArray entry is kept as None in place (index-aligned),
+    matching upstream COSArray.toCOSNumberFloatList (wave 1469)."""
     from pypdfbox.cos.cos_array import COSArray
     from pypdfbox.cos.cos_dictionary import COSDictionary
     from pypdfbox.cos.cos_integer import COSInteger
@@ -1009,14 +1009,14 @@ def test_get_widths_skips_non_numeric_entries() -> None:
     d = COSDictionary()
     arr = COSArray()
     arr.add(COSInteger(500))
-    arr.add(COSString("bogus"))  # non-numeric — skip
+    arr.add(COSString("bogus"))  # non-numeric — kept as None in place
     arr.add(COSInteger(600))
     d.set_item(COSName.get_pdf_name("Widths"), arr)
 
     f = PDFont(d)
     widths = f.get_widths()
-    # Only the two numeric entries survive.
-    assert widths == [500.0, 600.0]
+    # The non-numeric slot is preserved as None (index-aligned).
+    assert widths == [500.0, None, 600.0]
 
 
 # ============================================================

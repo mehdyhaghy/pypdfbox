@@ -59,7 +59,9 @@ def test_wave761_non_terminal_array_value_stringifies_unknown_entries() -> None:
 
     field.set_value(values)
 
-    assert field.get_value_as_string() == f"alpha,Beta,{fallback}"
+    # Upstream PDNonTerminalField.getValueAsString returns getValue().toString()
+    # — for a COSArray that is the array's own to_string (wave 1469).
+    assert field.get_value_as_string() == values.to_string()
 
 
 def test_wave761_non_terminal_value_as_string_falls_back_to_cos_str() -> None:
