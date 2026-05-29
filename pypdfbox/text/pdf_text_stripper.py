@@ -864,6 +864,13 @@ class PDFTextStripper:
         elif op == "Tw":
             if operands and isinstance(operands[0], COSNumber):
                 state.word_spacing = operands[0].float_value()
+        elif op == "Tz":
+            # Horizontal text scaling — operand is a percentage (100 = no
+            # scaling). Stored as a fraction (``Tz/100``); scales the
+            # horizontal glyph displacement the word-gap heuristic measures
+            # (PDF 32000-1 §9.3.4).
+            if operands and isinstance(operands[0], COSNumber):
+                state.horizontal_scaling = operands[0].float_value() / 100.0
         elif op == "q":
             # Save graphics state — push a copy of the current CTM so a
             # later ``Q`` restores it (PDF 1.7 §8.4.2). Text state itself
@@ -986,7 +993,15 @@ class PDFTextStripper:
         # first run, ``None`` for suppressed later runs, and the unchanged
         # ``text`` when no ``/ActualText`` is active.
         emit_text = self._actual_text_for_run(text)
-        run_width = len(text) * per_char
+        # ``Tz`` (horizontal text scaling, stored as ``Tz/100``) scales the
+        # horizontal glyph displacement in text space (PDF 32000-1 §9.3.4),
+        # so the advance the cursor takes — and the run width / space width
+        # the word-gap heuristic measures — are condensed (<1) or expanded
+        # (>1) by it. The rendered space width scales too, so an engine that
+        # honours ``Tz`` segments words differently from one that ignores it.
+        th = getattr(state, "horizontal_scaling", 1.0)
+        run_width = len(text) * per_char * th
+        width_of_space = width_of_space * th
 
         if self._ignore_content_stream_space_glyphs:
             if emit_text is not None:
@@ -996,7 +1011,7 @@ class PDFTextStripper:
                     positions,
                     font,
                     resolved_font_name,
-                    per_char,
+                    per_char * th,
                     width_of_space,
                 )
                 return
@@ -1142,10 +1157,19 @@ class PDFTextStripper:
             elif isinstance(entry, COSNumber):
                 # ``TJ`` numeric adjustments are in thousandths of an em,
                 # subtracted (negative = move forward). The adjustment is
-                # in text space, so (like the show-text advance) it must
-                # be carried through the text-matrix scale/shear before it
-                # moves the translation-space cursor.
-                adj = entry.float_value() * state.font_size / 1000.0
+                # in text space, so (like the show-text advance) it is
+                # scaled horizontally by ``Tz/100`` (PDF 32000-1 §9.3.4)
+                # and then carried through the text-matrix scale/shear
+                # before it moves the translation-space cursor. Honouring
+                # ``Tz`` here makes a ``TJ`` jump condense / expand with the
+                # surrounding text, so word segmentation matches an engine
+                # that scales the gap by ``Tz``.
+                adj = (
+                    entry.float_value()
+                    * state.font_size
+                    / 1000.0
+                    * getattr(state, "horizontal_scaling", 1.0)
+                )
                 state.text_x -= adj * state.tm_a
                 state.text_y -= adj * state.tm_b
 
@@ -2428,6 +2452,7 @@ class _TextState:
         "font_name",
         "char_spacing",
         "word_spacing",
+        "horizontal_scaling",
         "tm_a",
         "tm_b",
         "tm_c",
@@ -2446,6 +2471,14 @@ class _TextState:
         self.font_name: str | None = None
         self.char_spacing: float = 0.0
         self.word_spacing: float = 0.0
+        # Horizontal text scaling (``Tz``), as a fraction (``Tz/100``). PDF
+        # 32000-1 §9.3.4: ``Tz`` is a *percentage* that scales the horizontal
+        # component of every glyph displacement — and of ``Tc`` / ``Tw`` — by
+        # ``Tz/100``. Default 1.0 (i.e. 100%) per ``BT`` text-state reset.
+        # A non-1.0 value condenses (<1) or expands (>1) the horizontal
+        # advance the word-gap heuristic measures, so word segmentation in
+        # ``getText`` is ``Tz``-dependent.
+        self.horizontal_scaling: float = 1.0
         # Text-matrix scale/shear components — only ``Tm`` mutates these
         # (Td/TD/T*/'/" affect translation only, leaving a/b/c/d alone),
         # so tracking them here is enough to recover the run's rotation

@@ -100,15 +100,12 @@ class PDLineAppearanceHandler(PDAbstractAppearanceHandler):
 
             cs.save_graphics_state()
             angle = math.atan2(y2 - y1, x2 - x1)
-            # rotate around (x1, y1)
+            # Matrix.getRotateInstance(angle, x1, y1) — rotation coefficients
+            # with the raw (x1, y1) as the translation row (NOT a
+            # rotate-around-point translation).
             ca = math.cos(angle)
             sa = math.sin(angle)
-            cs.transform(
-                ca, sa,
-                -sa, ca,
-                x1 - x1 * ca + y1 * sa,
-                y1 - x1 * sa - y1 * ca,
-            )
+            cs.transform(ca, sa, -sa, ca, x1, y1)
             line_length = math.hypot(x2 - x1, y2 - y1)
             # Leader lines
             cs.move_to(0.0, llo)
@@ -222,11 +219,7 @@ class PDLineAppearanceHandler(PDAbstractAppearanceHandler):
             if start_style != PDAnnotationLine.LE_NONE:
                 cs.save_graphics_state()
                 if start_style in self.ANGLED_STYLES:
-                    cs.transform(
-                        ca, sa, -sa, ca,
-                        x1 - x1 * ca + y1 * sa,
-                        y1 - x1 * sa - y1 * ca,
-                    )
+                    cs.transform(ca, sa, -sa, ca, x1, y1)
                     self.draw_style(
                         start_style, cs, 0.0, y, line_ending_size,
                         has_stroke, has_background, False,
@@ -242,11 +235,7 @@ class PDLineAppearanceHandler(PDAbstractAppearanceHandler):
 
             if end_style != PDAnnotationLine.LE_NONE:
                 if end_style in self.ANGLED_STYLES:
-                    cs.transform(
-                        ca, sa, -sa, ca,
-                        x2 - x2 * ca + y2 * sa,
-                        y2 - x2 * sa - y2 * ca,
-                    )
+                    cs.transform(ca, sa, -sa, ca, x2, y2)
                     self.draw_style(
                         end_style, cs, 0.0, y, line_ending_size,
                         has_stroke, has_background, True,
