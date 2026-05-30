@@ -3660,6 +3660,27 @@ Backfill of upstream Java paths for source files added in earlier waves (mostly 
 | `tests/xmpbox/oracle/test_xmp_dublin_core_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/XmpDublinCoreProbe.java`, wave 1477 agent J); confirmed dc:title LangAlt / creator Seq / subject Bag / date Seq (UTC + ±offset) round-trip match xmpbox; pypdfbox already matches; no single upstream JUnit source |
 
 
+### Wave 1478 additions
+
+| File | Upstream PDFBox version | Notes |
+|---|---|---|
+| `oracle/probes/CosNumberOverflowProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1478 agent A); `COSNumber.get` / `BaseParser.parseCOSNumber` integer-overflow + numeric-literal edge cases; no single upstream JUnit source |
+| `tests/cos/oracle/test_cos_number_overflow_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/CosNumberOverflowProbe.java`, wave 1478 agent A); FIX — `COSParser._wrap_number` now routes integer literals through `COSNumber.get` so a Long-overflow integer becomes the `OUT_OF_RANGE_MAX/MIN` sentinel (clamped value, `is_valid()==False`, PDFBOX-5176) instead of a valid unbounded `COSInteger`; no single upstream JUnit source |
+| `oracle/probes/BfObjectOffsetsProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1478 agent B); `BruteForceParser.getBFCOSObjectOffsets` raw offset map; no single upstream JUnit source |
+| `tests/pdfparser/oracle/test_bf_dup_objects_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/BfObjectOffsetsProbe.java`, wave 1478 agent B); FIX — `COSParser.bf_search_for_objects` now keeps the LAST occurrence of a duplicated `n g obj` header (upstream's unconditional `Map.put`) instead of `dict.setdefault` first-wins, so brute-force recovery resolves the later redefined object; no single upstream JUnit source |
+| `oracle/probes/OutlineTraversalProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1478 agent C); `PDOutlineNode`/`PDOutlineItem` first/last-child + next/prev-sibling + signed `/Count` + `findDestinationPage`; no single upstream JUnit source |
+| `tests/pdmodel/interactive/documentnavigation/outline/oracle/test_outline_traversal_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/OutlineTraversalProbe.java`, wave 1478 agent C); confirmed a 3-level mixed open/closed outline's sibling links, open/closed count sign, titles, and destination-page indices match PDFBox; pypdfbox already matches; no single upstream JUnit source |
+| `oracle/probes/SortByPositionProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1478 agent E); `PDFTextStripper.setSortByPosition` two-column reading-order; no single upstream JUnit source |
+| `tests/text/oracle/test_sort_by_position_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/SortByPositionProbe.java`, wave 1478 agent E); confirmed sorted + unsorted extraction of an out-of-visual-order two-column page match PDFBox (and genuinely differ); pypdfbox already matches; no single upstream JUnit source |
+| `oracle/probes/CMapCodespaceProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1478 agent F); fontbox `CMap.readCode`/`toCID` mixed 1- and 2-byte codespace ranges; no single upstream JUnit source |
+| `tests/fontbox/cmap/oracle/test_cmap_codespace_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/CMapCodespaceProbe.java`, wave 1478 agent F); confirmed variable-length code decoding (shortest-match-wins) + CID resolution + no-match fallback match PDFBox; pypdfbox already matches; no single upstream JUnit source |
+| `tests/rendering/oracle/test_soft_mask_graduated_oracle.py` | 3.0.7 | hand-written live-oracle differential (reuses `oracle/probes/RenderProbe.java`, wave 1478 agent G); confirmed continuous-tone luminosity `/SMask` (`luminance * coverage`, multi-level partial alpha) matches PDFBox (MAD 0.00); pypdfbox already matches; no single upstream JUnit source |
+| `oracle/probes/LinkDestinationProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1478 agent H); `PDAnnotationLink` `/Dest` (explicit/named) + `/A /GoTo` destination resolution; no single upstream JUnit source |
+| `tests/pdmodel/interactive/annotation/oracle/test_link_destination_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/LinkDestinationProbe.java`, wave 1478 agent H); confirmed 8 destination forms (XYZ/Fit/FitH/FitV, named-via-`/Names /Dests`, unresolved name, GoTo array + named) resolve identically to PDFBox; pypdfbox already matches; no single upstream JUnit source |
+| `oracle/probes/TilingPatternProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1478 agent I); `PDTilingPattern` typed accessors (`/BBox`/`/XStep`/`/YStep`/`/Matrix`/`/PaintType`/`/TilingType`); no single upstream JUnit source |
+| `tests/pdmodel/graphics/pattern/oracle/test_tiling_pattern_accessor_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/TilingPatternProbe.java`, wave 1478 agent I); confirmed tiling-pattern accessors + spec defaults (no `/Matrix`/`/TilingType`) match PDFBox; pypdfbox already matches; no single upstream JUnit source |
+
+
 ## External font assets (runtime-fetched, never bundled)
 
 These are **not** Apache PDFBox ports — they are upstream font binaries

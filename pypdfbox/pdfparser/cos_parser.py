@@ -13,6 +13,7 @@ from pypdfbox.cos import (
     COSInteger,
     COSName,
     COSNull,
+    COSNumber,
     COSObject,
     COSObjectKey,
     COSStream,
@@ -293,10 +294,14 @@ class COSParser(BaseParser):
         return b != RandomAccessRead.EOF and self.is_digit(b)
 
     def _wrap_number(self, value: int | float, start: int) -> COSBase:
-        if isinstance(value, int):
-            cos_int = COSInteger.get(value)
-            return cos_int
-        # Re-read original textual representation so COSFloat preserves it.
+        # Re-read the original token text. Upstream ``BaseParser.parseCOSNumber``
+        # accumulates the literal bytes into a StringBuilder and hands the
+        # string to ``COSNumber.get`` — so an integer beyond Java ``Long`` range
+        # does NOT become a wide integer but the ``OUT_OF_RANGE_*`` sentinel
+        # (value clamped to ``Long.MAX/MIN``, ``is_valid()`` == ``False`` —
+        # PDFBOX-5176), and the same string also drives COSFloat's verbatim
+        # round-trip preservation. Routing both branches through
+        # ``COSNumber.get`` keeps us byte-for-byte with upstream.
         end = self.position
         cur = self.position
         self.seek(start)
@@ -304,7 +309,16 @@ class COSParser(BaseParser):
         while self.position < end:
             text_bytes.append(self.read_byte())
         self.seek(cur)
-        return COSFloat(text_bytes.decode("ascii"))
+        text = text_bytes.decode("ascii")
+        if isinstance(value, int):
+            # Integer literal: dispatch via COSNumber.get so Long-overflow maps
+            # to the OUT_OF_RANGE sentinel exactly as upstream does. A leading
+            # ``+`` is stripped before COSNumber.get (Long.parseLong accepts it
+            # but COSInteger.get does not need it); the text here is already
+            # sign+digits so it is safe to pass through directly.
+            return COSNumber.get(text)
+        # Re-read original textual representation so COSFloat preserves it.
+        return COSFloat(text)
 
     def _make_indirect_reference(self, object_number: int, generation_number: int) -> COSObject:
         """Build (or fetch from the document pool) the ``COSObject``
@@ -1185,10 +1199,15 @@ class COSParser(BaseParser):
                 i = j + 1
                 continue
             key = COSObjectKey(obj_num, gen_num)
-            # First occurrence wins for any given key — matches upstream
-            # behaviour where the brute-force scan records the *earliest*
-            # offset and leaves the resolver to disambiguate.
-            offsets.setdefault(key, num_start)
+            # Last occurrence wins for any given key. Upstream
+            # ``BruteForceParser.bfSearchForObjects`` records each header
+            # offset via an unconditional ``Map.put``, so when the same
+            # ``n g obj`` is defined more than once in the body the LATER
+            # (higher) offset overwrites the earlier one — the later copy
+            # is the authoritative definition (it wins under append /
+            # redefine semantics, the same way the resolver would honour
+            # the most recent revision).
+            offsets[key] = num_start
             i = j + 3
         return offsets
 

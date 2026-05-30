@@ -51,7 +51,7 @@ def test_wave574_last_index_of_handles_empty_and_bounded_searches() -> None:
     assert parser.last_index_of(b"missing", b"aba xx aba", 10) == -1
 
 
-def test_wave574_bf_search_for_objects_ignores_substrings_and_keeps_first_offset() -> None:
+def test_wave574_bf_search_for_objects_ignores_substrings_and_keeps_last_offset() -> None:
     data = (
         b"%PDF-1.4\n"
         b"catalogobj should not match\n"
@@ -62,7 +62,9 @@ def test_wave574_bf_search_for_objects_ignores_substrings_and_keeps_first_offset
 
     offsets = _parser(data).bf_search_for_objects()
 
-    assert offsets == {COSObjectKey(8, 0): data.index(b"8 0 obj")}
+    # Substrings (``catalogobj`` / ``objx``) are rejected; the duplicated
+    # ``8 0 obj`` records the LATER offset (last occurrence wins upstream).
+    assert offsets == {COSObjectKey(8, 0): data.rindex(b"8 0 obj")}
 
 
 def test_wave574_bf_search_for_xref_falls_back_to_xref_stream_object() -> None:

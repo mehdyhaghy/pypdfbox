@@ -34,14 +34,18 @@ import org.apache.pdfbox.tools.WriteDecodedDoc;
  * {@code Callable<Integer>} exit code (0 = success, 4 = I/O error). On success
  * the decoded file is reloaded and one JSON object is printed:
  *
- *   {"exitCode":0,"pages":N,"anyStreamHasFilter":false,"streamCount":K,"text":"..."}
+ *   {"exitCode":0,"pages":N,"anyStreamHasFilter":false,
+ *    "allLengthsMatch":true,"streamCount":K,"text":"..."}
  *
  * The load-bearing parity claims: the decoded output keeps the same page count,
- * keeps the same extracted text, and NO stream object retains a {@code /Filter}
- * entry (every stream was decoded in place and its filter dropped).
+ * keeps the same extracted text, NO stream object retains a {@code /Filter}
+ * entry (every stream was decoded in place and its filter dropped), and every
+ * stream's {@code /Length} entry equals its actual decoded byte count
+ * ({@code allLengthsMatch}) — the tool must rewrite {@code /Length} to the
+ * decoded size, not leave the compressed length behind.
  * {@code streamCount} is the number of stream objects inspected. On a non-zero
  * exit the fields report the failure shape
- * ({@code pages:-1,anyStreamHasFilter:null,streamCount:-1,text:""}).
+ * ({@code pages:-1,anyStreamHasFilter:null,allLengthsMatch:null,streamCount:-1,text:""}).
  */
 public final class WriteDecodedDocProbe {
     public static void main(String[] args) throws Exception {
@@ -60,26 +64,48 @@ public final class WriteDecodedDocProbe {
                 COSDocument cosDoc = doc.getDocument();
                 int streamCount = 0;
                 boolean anyFilter = false;
+                boolean allLengthsMatch = true;
                 for (COSObjectKey key : cosDoc.getXrefTable().keySet()) {
                     COSObject obj = cosDoc.getObjectFromPool(key);
                     COSBase base = obj.getObject();
                     if (base instanceof COSStream) {
                         streamCount++;
+                        COSStream stream = (COSStream) base;
                         COSBase filter =
-                                ((COSDictionary) base).getDictionaryObject(COSName.FILTER);
+                                stream.getDictionaryObject(COSName.FILTER);
                         if (filter != null) {
                             anyFilter = true;
+                        }
+                        // /Length must equal the decoded (now-unfiltered) byte
+                        // count: WriteDecodedDoc rewrites the raw bytes and the
+                        // /Length entry to the decoded size. Compare the dict
+                        // /Length against the actual raw (no filter applied)
+                        // byte count read back from the stream.
+                        int declared = stream.getInt(COSName.LENGTH);
+                        long actual = 0;
+                        try (java.io.InputStream rawIn =
+                                stream.createRawInputStream()) {
+                            byte[] buf = new byte[8192];
+                            int n;
+                            while ((n = rawIn.read(buf)) != -1) {
+                                actual += n;
+                            }
+                        }
+                        if (declared != actual) {
+                            allLengthsMatch = false;
                         }
                     }
                 }
                 String text = new PDFTextStripper().getText(doc);
                 sb.append(",\"pages\":").append(total);
                 sb.append(",\"anyStreamHasFilter\":").append(anyFilter);
+                sb.append(",\"allLengthsMatch\":").append(allLengthsMatch);
                 sb.append(",\"streamCount\":").append(streamCount);
                 sb.append(",\"text\":\"").append(escape(text)).append("\"");
             }
         } else {
             sb.append(",\"pages\":-1,\"anyStreamHasFilter\":null,")
+                    .append("\"allLengthsMatch\":null,")
                     .append("\"streamCount\":-1,\"text\":\"\"");
         }
         sb.append("}");

@@ -6,14 +6,16 @@ compressed, then:
 * drives Apache PDFBox 3.0.7's ``org.apache.pdfbox.tools.WriteDecodedDoc`` CLI
   on that input via the ``WriteDecodedDocProbe`` Java probe, which reloads the
   produced "decoded" output and emits its structural shape as JSON
-  (``exitCode``/``pages``/``anyStreamHasFilter``/``streamCount``/``text``); and
+  (``exitCode``/``pages``/``anyStreamHasFilter``/``allLengthsMatch``/
+  ``streamCount``/``text``); and
 * runs pypdfbox's own ``WriteDecodedDoc`` tool on the *same* compressed input.
 
 The parity claim: both tools decode every stream in place and drop its
 ``/Filter`` entry, so the reloaded output carries NO ``/Filter`` on any stream
-object (``anyStreamHasFilter == False``), preserves the page count, and
-preserves the extracted text. pypdfbox's output is additionally run through
-``qpdf --check`` to prove the produced file is structurally clean.
+object (``anyStreamHasFilter == False``), rewrites every stream's ``/Length``
+to its decoded byte count (``allLengthsMatch == True``), preserves the page
+count, and preserves the extracted text. pypdfbox's output is additionally run
+through ``qpdf --check`` to prove the produced file is structurally clean.
 
 This is the end-to-end WriteDecodedDoc surface: compress -> upstream-decode and
 compress -> pypdfbox-decode must converge on the same uncompressed document.
@@ -96,21 +98,32 @@ def _qpdf_check(path: Path) -> None:
     )
 
 
-def _pypdfbox_summary(out_path: Path) -> tuple[bool, int, int, str]:
-    """Reload a pypdfbox-decoded file; return its probe-shaped fields."""
+def _pypdfbox_summary(out_path: Path) -> tuple[bool, int, int, str, bool]:
+    """Reload a pypdfbox-decoded file; return its probe-shaped fields.
+
+    The trailing ``all_lengths_match`` mirrors the Java probe's
+    ``allLengthsMatch``: every stream's ``/Length`` entry must equal its actual
+    raw (now-unfiltered) byte count, proving WriteDecodedDoc rewrote ``/Length``
+    to the decoded size instead of leaving the compressed length behind.
+    """
     with PDDocument.load(out_path) as doc:
         pages = doc.get_number_of_pages()
         cos_doc = doc.get_document()
         stream_count = 0
         any_filter = False
+        all_lengths_match = True
         for cos_obj in cos_doc.get_objects():
             base = cos_obj.get_object()
             if isinstance(base, COSStream):
                 stream_count += 1
                 if base.get_item(COSName.FILTER) is not None:
                     any_filter = True
+                declared = base.get_int(COSName.LENGTH)
+                actual = len(base.create_raw_input_stream().read())
+                if declared != actual:
+                    all_lengths_match = False
         text = PDFTextStripper().get_text(doc)
-    return any_filter, pages, stream_count, text
+    return any_filter, pages, stream_count, text, all_lengths_match
 
 
 @requires_oracle
@@ -128,6 +141,7 @@ def test_write_decoded_doc_matches_pdfbox(tmp_path: Path) -> None:
     assert java["exitCode"] == 0, f"upstream WriteDecodedDoc failed: {java_raw}"
     assert java["pages"] == 1
     assert java["anyStreamHasFilter"] is False
+    assert java["allLengthsMatch"] is True
     assert _EXPECTED_TEXT in java["text"]
 
     # pypdfbox WriteDecodedDoc on the SAME compressed input.
@@ -135,11 +149,14 @@ def test_write_decoded_doc_matches_pdfbox(tmp_path: Path) -> None:
     rc = WriteDecodedDoc.main([str(src), str(py_out)])
     assert rc == 0
 
-    any_filter, pages, stream_count, text = _pypdfbox_summary(py_out)
+    any_filter, pages, stream_count, text, all_lengths_match = _pypdfbox_summary(
+        py_out
+    )
 
     # Structural parity against upstream's decoded output.
     assert any_filter == java["anyStreamHasFilter"]
     assert pages == java["pages"]
+    assert all_lengths_match == java["allLengthsMatch"]
     assert text == java["text"], (
         "WriteDecodedDoc text divergence:\n"
         f"  java: {java['text']!r}\n"
@@ -147,6 +164,8 @@ def test_write_decoded_doc_matches_pdfbox(tmp_path: Path) -> None:
     )
     # The whole point of the tool: no stream keeps a /Filter after decoding.
     assert any_filter is False
+    # ...and /Length is rewritten to the decoded byte count, not left stale.
+    assert all_lengths_match is True
     assert stream_count >= 1
 
     # pypdfbox's output must be structurally clean.
@@ -162,8 +181,11 @@ def test_write_decoded_doc_output_reloads_without_filter(tmp_path: Path) -> None
     py_out = tmp_path / "dec.pdf"
     rc = WriteDecodedDoc.main([str(src), str(py_out)])
     assert rc == 0
-    any_filter, pages, stream_count, text = _pypdfbox_summary(py_out)
+    any_filter, pages, stream_count, text, all_lengths_match = _pypdfbox_summary(
+        py_out
+    )
     assert pages == 1
     assert any_filter is False
+    assert all_lengths_match is True
     assert stream_count >= 1
     assert _EXPECTED_TEXT in text

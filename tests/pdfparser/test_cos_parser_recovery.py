@@ -102,7 +102,7 @@ def test_bf_search_handles_higher_generation() -> None:
     assert COSObjectKey(5, 7) in offsets
 
 
-def test_bf_search_first_occurrence_wins() -> None:
+def test_bf_search_last_occurrence_wins() -> None:
     pdf = (
         b"%PDF-1.4\n"
         b"1 0 obj\nfirst\nendobj\n"
@@ -111,8 +111,10 @@ def test_bf_search_first_occurrence_wins() -> None:
         b"%%EOF"
     )
     offsets = _parser(pdf).bf_search_for_objects()
-    # The earlier offset wins.
-    assert offsets[COSObjectKey(1, 0)] == pdf.find(b"1 0 obj")
+    # The LATER offset wins: upstream BruteForceParser records every header
+    # via an unconditional Map.put, so the most-recent definition overwrites
+    # the earlier one (verified against the live oracle).
+    assert offsets[COSObjectKey(1, 0)] == pdf.rfind(b"1 0 obj")
 
 
 def test_bf_search_empty_file_returns_empty_map() -> None:

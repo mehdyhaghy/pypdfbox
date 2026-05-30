@@ -69,7 +69,7 @@ def test_wave456_parse_object_dynamically_paths() -> None:
         doc.close()
 
 
-def test_wave456_bf_search_for_objects_keeps_first_valid_header() -> None:
+def test_wave456_bf_search_for_objects_keeps_last_valid_header() -> None:
     data = (
         b"notobj\n"
         b"11 0 obj\n(first)\nendobj\n"
@@ -80,7 +80,9 @@ def test_wave456_bf_search_for_objects_keeps_first_valid_header() -> None:
 
     found = _parser(data).bf_search_for_objects()
 
-    assert found[COSObjectKey(11, 0)] == data.index(b"11 0 obj")
+    # Last occurrence wins (unconditional Map.put upstream): the duplicated
+    # ``11 0 obj`` records the LATER offset, not the first.
+    assert found[COSObjectKey(11, 0)] == data.rindex(b"11 0 obj")
     assert found[COSObjectKey(12, 3)] == data.index(b"12 3 obj")
     assert len(found) == 2
 
