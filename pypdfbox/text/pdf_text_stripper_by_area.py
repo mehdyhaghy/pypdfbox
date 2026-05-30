@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from .pdf_text_stripper import PDFTextStripper
@@ -265,11 +266,47 @@ class PDFTextStripperByArea(PDFTextStripper):
         """
         if not self._binning_active:
             return
-        x = text.get_x()
+        # Upstream's ``PDFTextStripper`` emits one ``TextPosition`` per glyph,
+        # so ``PDFTextStripperByArea.processTextPosition`` tests each glyph's
+        # own origin against every region's ``Rectangle2D`` — a single
+        # show-text run that straddles a region boundary is split per glyph
+        # across the regions it crosses. pypdfbox's lite stripper emits one
+        # ``TextPosition`` per *run* (see ``PDFTextStripper._emit``), so binning
+        # the run by its start origin alone would route the whole run into the
+        # region containing its first glyph and drop the tail glyphs that
+        # actually fall in a neighbouring region. To match upstream's per-glyph
+        # routing we split the run here: each glyph ``i`` of an ``n``-character
+        # run is placed at ``x + (width / n) * i`` (the lite stripper models a
+        # run's advance as a uniform ``width / n`` per glyph — see the
+        # monospace-average ``run_width`` in ``_emit``), and that per-glyph
+        # origin is what gets tested against each region. A glyph routed into a
+        # region contributes its single character to that region's bin via a
+        # one-character ``TextPosition`` so the formatter reassembles the
+        # captured slice in order.
+        run_text = text.get_unicode()
+        n = len(run_text)
+        if n <= 1:
+            self._bin_glyph(text, text.get_x(), text.get_y())
+            return
+        base_x = text.get_x()
         y = text.get_y()
+        # ``width`` is the run's full advance in the same units as ``x``.
+        per_glyph = text.get_width() / n
+        for i, ch in enumerate(run_text):
+            glyph_x = base_x + per_glyph * i
+            glyph = replace(text, text=ch, x=glyph_x, width=per_glyph)
+            self._bin_glyph(glyph, glyph_x, y)
+
+    def _bin_glyph(self, text: TextPosition, x: float, y: float) -> None:
+        """Append ``text`` to every region whose rectangle contains ``(x, y)``.
+
+        Boundary semantics reproduce Java ``Rectangle2D.contains`` exactly:
+        half-open in Java device space (y-down), which the y-flip into PDF
+        user space turns into ``min_x`` inclusive / ``max_x`` exclusive and
+        ``min_y`` *exclusive* / ``max_y`` inclusive. See the
+        ``process_text_position`` docstring.
+        """
         for name, (min_x, min_y, max_x, max_y) in self._region_area.items():
-            # Half-open in Java device space; the y-flip into user space
-            # makes ``min_y`` exclusive and ``max_y`` inclusive.
             if min_x <= x < max_x and min_y < y <= max_y:
                 self._region_character_list[name].append(text)
 

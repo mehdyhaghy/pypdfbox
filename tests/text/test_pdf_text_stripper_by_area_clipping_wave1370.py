@@ -128,19 +128,30 @@ def test_multi_region_distribution_independent() -> None:
 
 
 def test_multi_region_overlapping_shares_position_objects() -> None:
-    """Two overlapping rectangles capturing the same position get the
-    SAME ``TextPosition`` (not a copy) inserted into both bins."""
+    """Two overlapping rectangles capturing the same glyph get the SAME
+    per-glyph ``TextPosition`` instance (not a copy) inserted into both
+    bins.
+
+    ``process_text_position`` splits a run into per-glyph positions so a
+    boundary-straddling run routes glyph-by-glyph (PDFBox parity). Each
+    glyph object is appended *by reference* to every region whose
+    rectangle contains it, so the two overlapping regions share the exact
+    same per-glyph instances. Here both rectangles fully contain the run,
+    so each captures all 6 glyphs of ``shared``, glyph-for-glyph the same
+    objects."""
     doc = PDDocument()
     page = _make_page(doc, b"BT /F0 12 Tf 100 700 Td (shared) Tj ET")
     s = PDFTextStripperByArea()
+    # Both rectangles cover the whole run's x-extent so every glyph lands
+    # in both bins.
     s.add_region("a", (50.0, 680.0, 500.0, 30.0))
-    s.add_region("b", (90.0, 695.0, 200.0, 10.0))
+    s.add_region("b", (50.0, 695.0, 500.0, 10.0))
     s.extract_regions(page)
     a_bin = s._region_character_list["a"]
     b_bin = s._region_character_list["b"]
-    assert len(a_bin) == 1 and len(b_bin) == 1
-    # Same instance, not a clone.
-    assert a_bin[0] is b_bin[0]
+    assert len(a_bin) == len("shared") and len(b_bin) == len("shared")
+    # Same instances, not clones — glyph-for-glyph.
+    assert all(ga is gb for ga, gb in zip(a_bin, b_bin, strict=True))
 
 
 def test_glyph_outside_every_region_is_dropped() -> None:

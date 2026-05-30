@@ -223,7 +223,13 @@ def test_extract_regions_bin_has_no_duplicates() -> None:
     glyph — not one entry per glyph times the number of times the
     formatting hook fires. Guards against the lite-mode subtlety where
     the base stripper calls ``process_text_position`` from both the
-    parser walk and the format walk."""
+    parser walk and the format walk.
+
+    ``process_text_position`` splits each run into per-glyph positions so
+    a run straddling a region boundary routes glyph-by-glyph (PDFBox
+    parity). With the whole run inside one region every glyph lands in
+    that region's bin exactly once, so a 3-character run yields 3 entries
+    — not 3×(number of times the formatting hook re-fires)."""
     doc = PDDocument()
     page = _make_page_with_stream(
         doc, b"BT /F0 12 Tf 100 700 Td (abc) Tj ET"
@@ -231,10 +237,10 @@ def test_extract_regions_bin_has_no_duplicates() -> None:
     s = PDFTextStripperByArea()
     s.add_region("r", (50.0, 690.0, 500.0, 20.0))
     s.extract_regions(page)
-    # Lite stripper emits one TextPosition per show-text run; we should
-    # have exactly one entry in the bin, not two (the Wave-34 scaffold
-    # double-counted because formatting re-fires the hook).
-    assert len(s._region_character_list["r"]) == 1
+    # One entry per glyph (3 chars), each routed exactly once — the format
+    # walk's re-fire must not double the bin (the Wave-34 scaffold did).
+    assert len(s._region_character_list["r"]) == 3
+    assert "".join(p.get_unicode() for p in s._region_character_list["r"]) == "abc"
 
 
 def test_extract_regions_runs_after_no_op_set_should_separate() -> None:

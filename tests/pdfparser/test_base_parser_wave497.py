@@ -65,9 +65,11 @@ def test_literal_string_malformed_escaped_close_can_end_before_name() -> None:
     assert p.read_byte() == ord("\n")
 
 
-def test_hex_string_invalid_digit_reports_parse_error() -> None:
-    with pytest.raises(PDFParseError, match="invalid hex digit"):
-        parser(b"<0G>").read_hex_string()
+def test_hex_string_invalid_digit_recovers_leniently() -> None:
+    # Matches upstream BaseParser.parseCOSHexString leniency (PDFBox 3.0.7):
+    # a non-hex char drops the dangling half-pair ('0') and skips to '>',
+    # leaving no complete pairs → empty bytes.
+    assert parser(b"<0G>").read_hex_string() == b""
 
 
 def test_hex_string_unterminated_reports_parse_error() -> None:

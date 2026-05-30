@@ -1333,6 +1333,24 @@ class COSWriter(ICOSVisitor):
         # any directly-referenced dirty actuals.
         self._enqueue_dirty_objects(doc)
 
+        # 2.1 Offer the trailer's top-level entries (/Root, /Info, /Encrypt)
+        # to the write queue too. A brand-new dictionary wired into the
+        # trailer — most commonly an /Info dict synthesised by
+        # ``PDDocument.get_document_information()`` when the source had none —
+        # is reachable ONLY from the trailer, never from the object pool, so
+        # the pool-only walk above misses it and the appended revision would
+        # silently drop the change. ``_add_object_to_write`` applies the
+        # incremental dirty-filter, so an un-dirtied /Root or /Info is still
+        # skipped; only a dict flagged ``needs_to_be_updated`` is enqueued and
+        # minted a fresh object key. Mirrors upstream ``COSWriter.doWriteBody``,
+        # which seeds the same three trailer entries before draining the queue.
+        trailer = doc.get_trailer()
+        if trailer is not None:
+            for trailer_key in (COSName.ROOT, COSName.INFO, COSName.ENCRYPT):  # type: ignore[attr-defined]
+                entry = trailer.get_item(trailer_key)
+                if entry is not None:
+                    self._add_object_to_write(entry)
+
         if not self._objects_to_write:
             # Nothing to write — match upstream: no extra bytes appended,
             # output is byte-for-byte identical to the source.

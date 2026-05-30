@@ -2573,9 +2573,17 @@ class PDFRenderer(PDFStreamEngine):
 
     def _op_set_dash(self, _op: Any, operands: list[COSBase]) -> None:
         # d — line dash pattern (PDF 32000-1 §8.4.3.6): operands are a
-        # dash array followed by a phase. An empty array (or one whose
-        # entries are all zero) means a solid line — stored as ``None`` to
-        # match the spec default and the ExtGState ``/D`` handler.
+        # dash array followed by a phase.
+        #
+        # An *empty* array means a solid line (spec default) — stored as
+        # ``None`` so downstream code short-circuits to a plain pen.
+        #
+        # A *non-empty but all-zero* array (e.g. ``[0 0] 0 d``) is NOT solid:
+        # Apache PDFBox's ``PageDrawer.getStroke`` detects this via
+        # ``isAllZeroDash`` and returns a stroke whose ``createStrokedShape``
+        # yields an empty ``Area`` — i.e. the stroke paints *nothing*. We
+        # preserve the all-zero tuple here so the stroke sites can mirror that
+        # and skip painting (see ``_dash_paints_nothing``).
         if len(operands) < 2:
             return
         array_obj = operands[0]
@@ -2586,7 +2594,7 @@ class PDFRenderer(PDFStreamEngine):
             phase = _to_float(operands[1])
         except (TypeError, ValueError):
             return
-        if not arr or all(d == 0.0 for d in arr):
+        if not arr:
             self._gs.dash_pattern = None
         else:
             self._gs.dash_pattern = (arr, phase)
@@ -2763,8 +2771,9 @@ class PDFRenderer(PDFStreamEngine):
             except Exception:  # noqa: BLE001
                 arr = None
             else:
-                # Empty dash array means "solid" per spec — store as None
-                # so downstream code can short-circuit cleanly.
+                # Empty dash array means "solid" per spec — store as None so
+                # downstream code short-circuits cleanly. A non-empty all-zero
+                # array is kept (PageDrawer.isAllZeroDash → paints nothing).
                 self._gs.dash_pattern = (
                     None if not arr else (arr, phase)
                 )
@@ -3620,6 +3629,9 @@ class PDFRenderer(PDFStreamEngine):
         dash = self._gs.dash_pattern
         if dash is not None:
             intervals, phase = dash
+            # All-zero dash array → PDFBox paints nothing (isAllZeroDash).
+            if not any(v > 0.0 for v in intervals):
+                return
             dash = ([float(v) * scale for v in intervals], float(phase) * scale)
         self._draw.settransform()
         try:
@@ -3911,6 +3923,10 @@ class PDFRenderer(PDFStreamEngine):
         dash = self._gs.dash_pattern
         if dash is not None:
             intervals, phase = dash
+            # All-zero dash array → PDFBox paints nothing (isAllZeroDash); the
+            # stroke band is empty, so there is nothing to clip the pattern to.
+            if not any(v > 0.0 for v in intervals):
+                return None
             ivals = [float(v) for v in intervals]
             if len(ivals) % 2 == 1:
                 ivals = ivals + ivals

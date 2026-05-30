@@ -702,8 +702,15 @@ class BaseParser:
     # ---------- hex string < ... > ----------
 
     def read_hex_string(self) -> bytes:
-        """Parse a hex string ``< ... >`` per §7.3.4.3. Whitespace inside is
-        ignored; an odd trailing digit is implicitly padded with ``0``."""
+        """Parse a hex string ``< ... >`` per §7.3.4.3.
+
+        Mirrors the leniency of upstream ``BaseParser.parseCOSHexString()``:
+        embedded whitespace (space, LF, CR, HT, BS, FF) is ignored; an odd
+        trailing digit is implicitly padded with ``0``; and a stray non-hex,
+        non-whitespace character triggers recovery — any dangling half-pair is
+        discarded and the parser skips to the closing ``>`` (decoding only the
+        clean leading pairs). EOF before ``>`` is the only hard error.
+        """
         start_pos = self.position
         b = self._src.read()
         if b != 0x3C:  # '<'
@@ -715,13 +722,21 @@ class BaseParser:
                 raise PDFParseError("unterminated hex string", position=start_pos)
             if b == 0x3E:  # '>'
                 break
-            if self.is_whitespace(b):
+            # Upstream skips space/LF/HT/CR/BS/FF between hex digits.
+            if b in (0x20, 0x0A, 0x09, 0x0D, 0x08, 0x0C):
                 continue
-            if not self.is_hex_digit(b):
-                raise PDFParseError(
-                    f"invalid hex digit {b:#04x} in hex string", position=self.position
-                )
-            digits.append(b)
+            if self.is_hex_digit(b):
+                digits.append(b)
+                continue
+            # Non-hex, non-whitespace: discard a dangling half-pair, then read
+            # to the closing '>' (matching upstream's skip-to-close recovery).
+            if len(digits) % 2:
+                digits.pop()
+            while b != 0x3E and b != RandomAccessRead.EOF:
+                b = self._src.read()
+            if b == RandomAccessRead.EOF:
+                raise PDFParseError("unterminated hex string", position=start_pos)
+            break
         if len(digits) % 2:
             digits.append(0x30)  # pad with '0'
         return bytes.fromhex(digits.decode("ascii"))

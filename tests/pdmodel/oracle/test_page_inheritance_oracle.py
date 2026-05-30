@@ -258,6 +258,43 @@ def _build_rotate_inheritance(path: Path) -> None:
         doc.close()
 
 
+def _build_rotate_over_360_and_leaf_box_override(path: Path) -> None:
+    """Case 8: /Rotate > 360 normalisation + leaf /MediaBox overrides ancestor.
+
+    Tree shape:
+      root /Pages  MediaBox=[0 0 612 792]  Rotate=450
+        page0   (inherits Rotate 450 -> normalises to 90; inherits root box)
+        page1   Rotate=720  (own value; 720 -> 0)
+        page2   Rotate=810  MediaBox=[0 0 320 240]
+                            (810 -> 90; own box wins over inherited root box)
+    Exercises the ``((angle % 360) + 360) % 360`` reduction for angles that
+    exceed a full turn (the existing case5 only covers <=360 and a single
+    negative), and confirms the nearest-node-wins box walk resolves the
+    leaf's own /MediaBox ahead of the root's.
+    """
+    doc = PDDocument()
+    try:
+        cat = _catalog(doc)
+        root = COSDictionary()
+        root.set_item(_TYPE, _PAGES)
+        root.set_item(_MEDIA_BOX, _rect(0, 0, 612, 792))
+        root.set_item(_ROTATE, COSInteger.get(450))
+
+        page0 = _empty_page(root)
+
+        page1 = _empty_page(root)
+        page1.set_item(_ROTATE, COSInteger.get(720))
+
+        page2 = _empty_page(root)
+        page2.set_item(_ROTATE, COSInteger.get(810))
+        page2.set_item(_MEDIA_BOX, _rect(0, 0, 320, 240))
+
+        _attach_root_kids(cat, root, [page0, page1, page2])
+        doc.save(path)
+    finally:
+        doc.close()
+
+
 def _build_resources_on_root(path: Path) -> None:
     """Case 6: /Resources on root /Pages — leaf inherits them.
 
@@ -521,6 +558,16 @@ def test_rotate_inheritance_and_sanitisation(tmp_path: Path) -> None:
     normalise via ((angle % 360) + 360) % 360."""
     pdf = tmp_path / "case5_rotate.pdf"
     _build_rotate_inheritance(pdf)
+    _assert_parity(pdf, "PageInheritanceProbe")
+
+
+@requires_oracle
+def test_rotate_over_360_and_leaf_box_override(tmp_path: Path) -> None:
+    """Case 8: /Rotate > 360 normalises via ((angle % 360) + 360) % 360
+    (450 -> 90, 720 -> 0, 810 -> 90) and a leaf's own /MediaBox wins over an
+    inherited ancestor box. Pinned field-for-field against PDFBox."""
+    pdf = tmp_path / "case8_rotate_over_360.pdf"
+    _build_rotate_over_360_and_leaf_box_override(pdf)
     _assert_parity(pdf, "PageInheritanceProbe")
 
 

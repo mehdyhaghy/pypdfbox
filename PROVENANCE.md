@@ -3637,6 +3637,29 @@ Backfill of upstream Java paths for source files added in earlier waves (mostly 
 | `tests/fixtures/fontbox/cff/cid_multifd_localsubr_bias.cff` | 3.0.7 | original (not ported) generated output of `make_cid_fd_localsubr_bias_fixture.py` (wave 1476 agent A); fixture for the per-FD local-subr bias parity pin |
 
 
+### Wave 1477 additions
+
+| File | Upstream PDFBox version | Notes |
+|---|---|---|
+| `oracle/probes/HexStringParseProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1477 agent A); `BaseParser.parseCOSHexString` leniency (odd-length, whitespace, stray non-hex); no single upstream JUnit source |
+| `tests/pdfparser/oracle/test_hex_string_parse_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/HexStringParseProbe.java`, wave 1477 agent A); FIX — `read_hex_string` now mirrors upstream leniency: a stray non-hex char discards the dangling half-pair and skips to `>` instead of raising; no single upstream JUnit source |
+| `oracle/probes/IncrementalXrefDeltaProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1477 agent C); `COSWriter.doWriteIncrement` appended-xref `/Prev` + dirty-object set; no single upstream JUnit source |
+| `tests/pdfwriter/oracle/test_incremental_xref_delta_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/IncrementalXrefDeltaProbe.java`, wave 1477 agent C); FIX — incremental save now emits a trailer-only synthesised `/Info`/`/Root`/`/Encrypt` dict (seeded into the write queue like `doWriteBody`) instead of dropping it; no single upstream JUnit source |
+| `oracle/probes/TextByAreaProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1477 agent F); `PDFTextStripperByArea` disjoint-region extraction + `removeRegion`; no single upstream JUnit source |
+| `tests/text/oracle/test_text_by_area_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/TextByAreaProbe.java`, wave 1477 agent F); FIX — `process_text_position` splits each show-text run into per-glyph positions and routes each glyph by its own origin (boundary-straddling runs now distribute across regions); exact straddle split point bounded by lite-mode avg-advance (DEFERRED); no single upstream JUnit source |
+| `tests/rendering/oracle/test_dash_array_oracle.py` | 3.0.7 | hand-written live-oracle differential (reuses `oracle/probes/RenderProbe.java`, wave 1477 agent H); FIX — an all-zero line-dash array (`[0 0] 0 d`) now paints nothing (matching `PageDrawer.isAllZeroDash` → empty stroked shape) instead of a solid line; empty array `[] 0 d` stays solid; no single upstream JUnit source |
+| `oracle/probes/ObjStmExtendsProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1477 agent B); object-stream `/Extends` chain object resolution; no single upstream JUnit source |
+| `tests/pdfparser/oracle/test_objstm_extends_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/ObjStmExtendsProbe.java`, wave 1477 agent B); confirmed compressed-object lookup is driven by each object's type-2 xref entry (container,index), not by walking `/Extends`; pypdfbox already matches; no single upstream JUnit source |
+| `oracle/probes/InlineImageDictProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1477 agent E); inline-image `BI`/`ID`/`EI` parameter-dict parsing (abbreviated keys/colorspace/filter names, key order, raw data length); no single upstream JUnit source |
+| `tests/contentstream/oracle/test_inline_image_dict_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/InlineImageDictProbe.java`, wave 1477 agent E); confirmed parsed dict key set/order/types + raw data length match PDFBox (`Operator.getImageParameters`/`getImageData`); pypdfbox already matches; no single upstream JUnit source |
+| `oracle/probes/Type1WidthProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1477 agent G); fontbox Type1 `Type1Font.getWidth` (seac composite + hsbw); no single upstream JUnit source |
+| `tests/fontbox/type1/oracle/test_type1_seac_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/Type1WidthProbe.java`, wave 1477 agent G); confirmed advance widths match FontBox across 4 PFB fixtures incl. the `eacute` seac composite; pypdfbox already matches; no single upstream JUnit source |
+| `oracle/probes/ChoiceFieldProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1477 agent I); AcroForm `PDChoice`/`PDListBox`/`PDComboBox` `/Opt`/`/V`/`/I` build-from-scratch round-trip; no single upstream JUnit source |
+| `tests/pdmodel/interactive/form/oracle/test_choice_field_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/ChoiceFieldProbe.java`, wave 1477 agent I); confirmed `[export,display]` split, `/V` insertion order vs `/I` ascending-sorted, value-as-string `Arrays.toString` form, save/reload round-trip match PDFBox; pypdfbox already matches; no single upstream JUnit source |
+| `oracle/probes/XmpDublinCoreProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1477 agent J); xmpbox Dublin Core round-trip via `DomXmpParser`/`XmpSerializer` (xmpbox-3.0.7.jar); no single upstream JUnit source |
+| `tests/xmpbox/oracle/test_xmp_dublin_core_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/XmpDublinCoreProbe.java`, wave 1477 agent J); confirmed dc:title LangAlt / creator Seq / subject Bag / date Seq (UTC + ±offset) round-trip match xmpbox; pypdfbox already matches; no single upstream JUnit source |
+
+
 ## External font assets (runtime-fetched, never bundled)
 
 These are **not** Apache PDFBox ports — they are upstream font binaries

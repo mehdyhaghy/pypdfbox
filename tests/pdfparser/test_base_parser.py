@@ -316,9 +316,12 @@ def test_hex_string_empty() -> None:
     assert parser(b"<>").read_hex_string() == b""
 
 
-def test_hex_string_invalid_digit_raises() -> None:
-    with pytest.raises(PDFParseError):
-        parser(b"<4G>").read_hex_string()
+def test_hex_string_invalid_digit_recovers() -> None:
+    # Upstream BaseParser.parseCOSHexString is lenient: a stray non-hex char
+    # discards any dangling half-pair, then skips to '>'. Here the single
+    # leading '4' is a half-pair → discarded → empty bytes (verified against
+    # PDFBox 3.0.7 via the live oracle).
+    assert parser(b"<4G>").read_hex_string() == b""
 
 
 def test_hex_string_unterminated_raises() -> None:
