@@ -59,6 +59,7 @@ _PDF_FIXTURES = _REPO / "tests" / "fixtures" / "pdmodel" / "font"
 
 _SUBR_CFF = _CFF_FIXTURES / "cid_multifd_subr.cff"
 _THREE_FD_CFF = _CFF_FIXTURES / "cid_multifd_3fd.cff"
+_LOCALSUBR_BIAS_CFF = _CFF_FIXTURES / "cid_multifd_localsubr_bias.cff"
 _CID_PDF = _PDF_FIXTURES / "PDFBOX-3062-005717-p1.pdf"
 
 # pypdfbox draw-command name -> PDFBox java.awt.geom.PathIterator segment type.
@@ -203,6 +204,28 @@ def test_multifd_subr_fdselect_outline_matches_pdfbox() -> None:
     (FD0 draws a horizontal line, FD1 a vertical one)."""
     data = _SUBR_CFF.read_bytes()
     probe = run_probe_text("CffCidFdProbe", "read", str(_SUBR_CFF))
+    _assert_fd_parity(probe, _load_cid(data))
+
+
+@requires_oracle
+def test_multifd_localsubr_bias_outline_matches_pdfbox() -> None:
+    """2-FD CID CFF whose FDs carry **different-size** local /Subrs INDEXes, so
+    each FD has a *different subr bias* (Adobe Technote #5176 §16: 107 for a
+    1-entry INDEX, 1131 for a 1300-entry INDEX).
+
+    This is the sharper sibling of
+    ``test_multifd_subr_fdselect_outline_matches_pdfbox``: there both FDs have a
+    single-entry /Subrs INDEX (shared bias 107), so a wrong-FD lookup still
+    lands on *a* valid subr. Here FD0's ``callsubr -107`` must resolve to subr 0
+    (bias 107, horizontal line) while FD1's ``callsubr 168`` must resolve to its
+    *last* subr (index 1299 under bias 1131, vertical line). The FD1 outline is
+    non-empty only if the interpreter computed the **1131 bias from FD1's own
+    large /Subrs count** and indexed FD1's INDEX — not FD0's, and not a
+    hard-coded 107 bias. A wrong bias or wrong-FD index yields an empty outline
+    for the FD1 CIDs, a sharp divergence. Apache PDFBox 3.0.7 and pypdfbox must
+    agree segment-for-segment."""
+    data = _LOCALSUBR_BIAS_CFF.read_bytes()
+    probe = run_probe_text("CffCidFdProbe", "read", str(_LOCALSUBR_BIAS_CFF))
     _assert_fd_parity(probe, _load_cid(data))
 
 

@@ -3614,6 +3614,29 @@ Backfill of upstream Java paths for source files added in earlier waves (mostly 
 | `tests/pdmodel/font/oracle/test_post_table_gid_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/PostTableGidProbe.java`, wave 1475 agent H); confirmed `post`-table GID→name lookups match PDFBox; pypdfbox already matches; no single upstream JUnit source |
 
 
+### Wave 1476 additions
+
+| File | Upstream PDFBox version | Notes |
+|---|---|---|
+| `oracle/probes/SetColorOperandProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1476 agent C); exercises `org/apache/pdfbox/contentstream/operator/color/SetColor.java` operand handling across DeviceGray/RGB/CMYK, Separation/DeviceN, Pattern; no single upstream JUnit source |
+| `tests/contentstream/oracle/test_set_color_operand_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/SetColorOperandProbe.java`, wave 1476 agent C); FIX — `sc`/`SC` + device color ops now set `PDColor([], None)` on a non-numeric operand in a non-Pattern space (PDFBOX-5851), matching `SetColor.process`; no single upstream JUnit source |
+| `oracle/probes/SeparationDecodeImageProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1476 agent E); Separation image `/Decode` (incl. inverted `[1 0]`) via `PDImageXObject.getImage` / `SampledImageReader`; no single upstream JUnit source |
+| `tests/pdmodel/graphics/image/oracle/test_separation_decode_image_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/SeparationDecodeImageProbe.java`, wave 1476 agent E); FIX — Separation/DeviceN decode now applies `/Decode` to raw tint samples before the tint transform (PDF §8.9.5.2); no single upstream JUnit source |
+| `oracle/probes/FunctionType4OpsProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1476 agent H); `PDFunctionType4` operators (`roll`/`index`/`copy`/`cvi`/`cvr`/`idiv`/`mod`/`bitshift`/comparisons) + `/Domain`/`/Range` clamping; no single upstream JUnit source |
+| `tests/pdmodel/common/function/oracle/test_function_type4_ops_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/FunctionType4OpsProbe.java`, wave 1476 agent H); FIX — `roll` no longer mod-reduces the rotation count; `|j| > n` / `n < 0` now raise (upstream `StackOperators$Roll` EmptyStackException/rangecheck); no single upstream JUnit source |
+| `oracle/probes/BsAccessorProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1476 agent B); `PDBorderStyleDictionary` (`/BS`) typed accessor defaults; no single upstream JUnit source |
+| `tests/pdmodel/interactive/annotation/oracle/test_bs_accessor_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/BsAccessorProbe.java`, wave 1476 agent B); confirmed `get_width`/`get_style`/dash defaults match PDFBox (incl. `/W`-as-name → 0 quirk); pypdfbox already matches; no single upstream JUnit source |
+| `oracle/probes/EncryptToolProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1476 agent F); opens a pypdfbox-encrypted PDF (RC4-40/128, AES-256 + perms) via `Loader.loadPDF`; no single upstream JUnit source |
+| `tests/tools/oracle/test_encrypt_tool_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/EncryptToolProbe.java`, wave 1476 agent F); confirmed Encrypt CLI `/U`/`/O`/`/P`/`/R`/`/Length` round-trip — qpdf accepts with password + rejects wrong, PDFBox reconstructs same perms; pypdfbox already matches; no single upstream JUnit source |
+| `oracle/probes/MergeFormFieldsProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1476 agent I); `PDFMergerUtility` AcroForm field-collision rename (legacy mode); no single upstream JUnit source |
+| `tests/multipdf/oracle/test_merge_form_fields_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/MergeFormFieldsProbe.java`, wave 1476 agent I); confirmed colliding field names rename to `dummyFieldName<N>` via a live `/Fields` lookup matching PDFBox; pypdfbox already matches; no single upstream JUnit source |
+| `oracle/probes/CmapSubtableSelectProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1476 agent J); TrueType `cmap` subtable platform/encoding preference + format-4 segment-gap lookup; no single upstream JUnit source |
+| `tests/fontbox/ttf/oracle/test_cmap_subtable_select_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/CmapSubtableSelectProbe.java`, wave 1476 agent J); confirmed subtable selection order + format-4 GID lookups (incl. gap → GID 0) match PDFBox; pypdfbox already matches; no single upstream JUnit source |
+| `tests/text/oracle/test_type3_text_oracle.py` | 3.0.7 | hand-written live-oracle differential (reuses probes `TextPosGeomProbe.java` + `Type3FontProbe.java`, wave 1476 agent D); FIX — `PDFTextStripper._compute_avg_advance` scales a Type3 font's avg `/Widths` by its `/FontMatrix` x-scale (matching `PDType3Font.getDisplacement`) instead of a fixed `1/1000`; no single upstream JUnit source |
+| `tests/fixtures/fontbox/cff/make_cid_fd_localsubr_bias_fixture.py` | 3.0.7 | original (not ported) synthetic multi-FD CID CFF generator (wave 1476 agent A); fontTools-compiled, two FDs with different-size local-subr INDEXes → different subr biases |
+| `tests/fixtures/fontbox/cff/cid_multifd_localsubr_bias.cff` | 3.0.7 | original (not ported) generated output of `make_cid_fd_localsubr_bias_fixture.py` (wave 1476 agent A); fixture for the per-FD local-subr bias parity pin |
+
+
 ## External font assets (runtime-fetched, never bundled)
 
 These are **not** Apache PDFBox ports — they are upstream font binaries

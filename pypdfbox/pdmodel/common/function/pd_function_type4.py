@@ -500,15 +500,29 @@ def _op_index(s: Stack) -> None:
 def _op_roll(s: Stack) -> None:
     j = _pop_int(s)
     n = _pop_int(s)
-    if n < 0 or n > len(s):
-        raise OSError("roll operand out of range")
-    if n == 0:
-        return
-    j %= n
+    # Mirror upstream PDFBox StackOperators$Roll EXACTLY (parity over the
+    # cleaner PostScript-Reference semantics): it does NOT reduce ``j`` modulo
+    # ``n``. ``j == 0`` is a no-op; ``n < 0`` is a range error. For any other
+    # ``j`` it pops ``j`` (or ``n + j`` when ``j < 0``) elements followed by the
+    # remaining group and re-pushes them rotated. When ``|j| > n`` upstream pops
+    # more entries than the stack holds and throws ``EmptyStackException`` — we
+    # surface the same condition as ``OSError`` (our IOException analogue)
+    # rather than silently rotating like a mod-reduced implementation would.
     if j == 0:
         return
+    if n < 0:
+        raise OSError(f"roll rangecheck: n={n}")
+    if abs(j) > n:
+        # Upstream tries to pop |j| (or n - |j| more) past the top n entries.
+        raise OSError("roll: rotation count out of range (stack underflow)")
+    if n == 0:
+        return
     top = s[-n:]
-    rolled = top[-j:] + top[:-j]
+    # Split point in the top-``n`` window matching upstream StackOperators$Roll:
+    #   j > 0: the top ``j`` entries wrap to the bottom; cut at ``n - j``.
+    #   j < 0: the top ``-j`` entries wrap to the bottom; cut at ``-j``.
+    cut = -j if j < 0 else n - j
+    rolled = top[cut:] + top[:cut]
     s[-n:] = rolled
 
 

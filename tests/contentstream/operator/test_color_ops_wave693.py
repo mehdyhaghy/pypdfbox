@@ -80,7 +80,11 @@ def test_stroking_color_skips_when_operand_count_too_short() -> None:
     assert engine.stroking_colors == []
 
 
-def test_non_stroking_color_skips_when_any_operand_is_not_number() -> None:
+def test_non_stroking_color_sets_invalid_when_any_operand_is_not_number() -> None:
+    # PDFBOX-5851: a non-numeric operand in a non-Pattern colour space sets
+    # an invalid PDColor (empty components, null colour space) rather than
+    # being silently skipped. Verified against the live PDFBox oracle in
+    # tests/contentstream/oracle/test_set_color_operand_oracle.
     engine = _Engine()
     processor = SetNonStrokingColor()
     engine.add_operator(processor)
@@ -90,11 +94,14 @@ def test_non_stroking_color_skips_when_any_operand_is_not_number() -> None:
         [COSFloat(0.1), COSName.get_pdf_name("Bad"), COSFloat(0.3)],
     )
 
-    assert engine.graphics_state.non_stroking_color is None
-    assert engine.non_stroking_colors == []
+    assert len(engine.non_stroking_colors) == 1
+    invalid = engine.non_stroking_colors[0]
+    assert invalid.get_components() == []
+    assert invalid.get_color_space() is None
+    assert engine.graphics_state.non_stroking_color is invalid
 
 
-def test_stroking_color_skips_when_any_operand_is_not_number() -> None:
+def test_stroking_color_sets_invalid_when_any_operand_is_not_number() -> None:
     engine = _Engine()
     processor = SetStrokingColor()
     engine.add_operator(processor)
@@ -104,8 +111,11 @@ def test_stroking_color_skips_when_any_operand_is_not_number() -> None:
         [COSFloat(0.1), COSName.get_pdf_name("Bad"), COSFloat(0.3)],
     )
 
-    assert engine.graphics_state.stroking_color is None
-    assert engine.stroking_colors == []
+    assert len(engine.stroking_colors) == 1
+    invalid = engine.stroking_colors[0]
+    assert invalid.get_components() == []
+    assert invalid.get_color_space() is None
+    assert engine.graphics_state.stroking_color is invalid
 
 
 def test_non_stroking_color_falls_back_to_graphics_state_attribute() -> None:

@@ -1168,7 +1168,11 @@ def decode_pdimage_to_pil(
         # is the decode.
         return color_space.to_rgb_image(data[:lab_len], width, height)
     if color_space_name in ("Separation", "DeviceN") and color_space is not None:
-        return _decode_devicen_to_rgb(color_space, data, width, height)
+        n = color_space.get_number_of_components()
+        decoded = _apply_devicen_decode(data, width, height, n, decode)
+        if decoded is None:
+            return None
+        return _decode_devicen_to_rgb(color_space, decoded, width, height)
     if color_space_name == "ICCBased" and color_space is not None:
         # ICCBased (PDF §8.6.5.5): /N ∈ {1, 3, 4} gives the component count.
         # Mirrors upstream ``PDImageXObject.getImage()`` handing the raw 8-bpc
@@ -1654,6 +1658,53 @@ def _numeric_array_to_floats(value: COSBase | None) -> list[float] | None:
 
 def _has_named_filter(filters: Iterable[COSName], *names: COSName) -> bool:
     return any(filter_name in names for filter_name in filters)
+
+
+def _apply_devicen_decode(
+    data: bytes,
+    width: int,
+    height: int,
+    components: int,
+    decode: Sequence[float] | None,
+) -> bytes | None:
+    """Apply the ``/Decode`` array to a raw 8-bit Separation/DeviceN raster
+    (PDF 32000-1 §8.9.5.2), returning interleaved 8-bit tint samples scaled
+    into the decoded ``[decode_min, decode_max]`` range per component.
+
+    Mirrors upstream ``SampledImageReader`` which maps every raw sample
+    through ``decode[2c] + sample / maxVal * (decode[2c+1] - decode[2c])``
+    *before* the colour space's tint transform runs. The default decode for a
+    Separation/DeviceN component is ``[0 1]`` (identity over the 8-bit range),
+    so an absent or default decode passes the raster through unchanged; an
+    inverted ``[1 0]`` decode flips the tint (raw 0 → tint 1.0), which the
+    downstream :func:`_decode_devicen_to_rgb` (dividing each byte by 255)
+    then feeds to the tint transform — reproducing PDFBox's reversed ramp.
+
+    Returns ``None`` on a short raster or a ``/Decode`` array whose length
+    does not match ``components * 2`` (the caller then aborts the decode)."""
+    if components <= 0:
+        return None
+    expected = width * height * components
+    if len(data) < expected:
+        return None
+    if decode is None:
+        return data[:expected]
+    if len(decode) != components * 2:
+        return None
+    # Skip the work when the decode is the per-component identity [0 1 ...].
+    if all(
+        decode[2 * c] == 0.0 and decode[2 * c + 1] == 1.0 for c in range(components)
+    ):
+        return data[:expected]
+
+    out = bytearray(expected)
+    for i in range(expected):
+        component = i % components
+        dmin = decode[component * 2]
+        dmax = decode[component * 2 + 1]
+        value = dmin + (data[i] / 255.0) * (dmax - dmin)
+        out[i] = int(round(_clamp01(value) * 255.0))
+    return bytes(out)
 
 
 def _decode_devicen_to_rgb(

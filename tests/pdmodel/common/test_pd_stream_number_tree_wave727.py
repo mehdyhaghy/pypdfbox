@@ -119,7 +119,7 @@ def test_wave727_type4_private_error_and_operator_paths() -> None:
     with pytest.raises(OSError, match="expected boolean"):
         type4._pop_bool([1.0])
 
-    with pytest.raises(OSError, match="roll operand out of range"):
+    with pytest.raises(OSError, match="roll rangecheck"):
         type4._op_roll([1.0, -1.0, 1.0])
 
     stack = [1.0, 2.0, 0.0, 0.0]

@@ -1493,10 +1493,14 @@ class PDFTextStripper:
 
     @staticmethod
     def _compute_avg_advance(font: PDFont | None, font_size: float) -> float | None:
-        """Convert a font's average glyph width (thousandths of an em) to
-        a user-space per-character advance at the given ``font_size``.
-        Returns ``None`` when the font has no usable ``/Widths`` array
-        — callers fall back to the legacy 0.5-em-per-char estimate."""
+        """Convert a font's average glyph width to a user-space
+        per-character advance at the given ``font_size``. Returns ``None``
+        when the font has no usable ``/Widths`` array — callers fall back to
+        the legacy 0.5-em-per-char estimate.
+
+        The glyph-space → user-space scale is ``1/1000`` for ordinary simple
+        fonts but the font's ``/FontMatrix`` x-scale for a Type 3 font (see
+        below)."""
         if font is None or font_size <= 0:
             return None
         # Local import to avoid pulling pdmodel.font into module-load
@@ -1505,10 +1509,25 @@ class PDFTextStripper:
 
         if not isinstance(font, PDSimpleFont):
             return None
-        avg_thousandths = font.get_average_font_width()
-        if avg_thousandths <= 0:
+        avg_width = font.get_average_font_width()
+        if avg_width <= 0:
             return None
-        return avg_thousandths / 1000.0 * font_size
+        # ``/Widths`` for most simple fonts are glyph-space thousandths of an
+        # em (the implicit ``[0.001 0 0 0.001 0 0]`` FontMatrix), so the
+        # user-space advance is ``width / 1000 × fontSize``. A Type 3 font is
+        # the exception: its ``/Widths`` are in the glyph space defined by an
+        # explicit ``/FontMatrix`` whose x-scale is rarely 0.001, so the
+        # advance is ``width × fontMatrix[a] × fontSize`` — mirroring upstream
+        # ``PDType3Font.getDisplacement`` (``fontMatrix.transform(width,0).x``)
+        # which the rendering / text engine uses to advance the cursor. Using
+        # the fixed 1/1000 here would mis-scale every Type 3 advance by the
+        # ratio of the real FontMatrix x-scale to 0.001.
+        from pypdfbox.pdmodel.font.pd_type3_font import PDType3Font  # noqa: PLC0415
+
+        if isinstance(font, PDType3Font):
+            x_scale = font.get_font_matrix()[0]
+            return avg_width * x_scale * font_size
+        return avg_width / 1000.0 * font_size
 
     @staticmethod
     def _compute_width_of_space(

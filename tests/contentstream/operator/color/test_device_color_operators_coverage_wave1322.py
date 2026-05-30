@@ -528,7 +528,9 @@ def test_process_without_context_is_safe(
 
 
 # ---------------------------------------------------------------------------
-# Malformed operand types are silently ignored (matching base ``SC`` / ``sc``).
+# Malformed operand types set an invalid (empty, no-colour-space) PDColor,
+# matching upstream ``SetColor.process`` (PDFBOX-5851). Verified against the
+# live PDFBox oracle in tests/contentstream/oracle/test_set_color_operand_oracle.
 # ---------------------------------------------------------------------------
 
 
@@ -537,7 +539,7 @@ def test_process_without_context_is_safe(
     _ALL_CASES,
     ids=_ids(_ALL_CASES),
 )
-def test_process_skips_when_operand_is_non_numeric(
+def test_process_sets_invalid_color_when_operand_is_non_numeric(
     cls: type,
     token: str,
     space_name: str,
@@ -552,15 +554,22 @@ def test_process_skips_when_operand_is_non_numeric(
     )
     handler = cls()
     handler.set_context(ctx)
-    # First operand is a COSString, not a COSNumber — base set_color
-    # silently skips ``set_color``.
+    # First operand is a COSString, not a COSNumber — upstream sets an
+    # invalid PDColor (empty components, null colour space).
     handler.process(
         Operator.get_operator(token),
         [COSString("bad")] + [COSFloat(0.0)] * 3,
     )
 
-    assert ctx.stroking_color_calls == []
-    assert ctx.non_stroking_color_calls == []
+    is_stroking = cls in {cls_ for cls_, *_ in _STROKING_CASES}
+    calls = (
+        ctx.stroking_color_calls if is_stroking else ctx.non_stroking_color_calls
+    )
+    assert len(calls) == 1
+    invalid = calls[0]
+    assert isinstance(invalid, PDColor)
+    assert invalid.get_components() == []
+    assert invalid.get_color_space() is None
 
 
 @pytest.mark.parametrize(

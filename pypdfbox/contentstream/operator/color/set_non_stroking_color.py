@@ -32,9 +32,12 @@ class SetNonStrokingColor(OperatorProcessor):
         component_count = color_space.get_number_of_components()
         if len(operands) < component_count:
             return
-        if component_count and not all(
-            isinstance(operand, COSNumber) for operand in operands
-        ):
+        if not all(isinstance(operand, COSNumber) for operand in operands):
+            # PDFBOX-5851: a non-numeric operand in a non-Pattern colour
+            # space means the Pattern colour space is missing from
+            # /Resources — set an invalid (empty-component, no
+            # colour-space) PDColor, matching upstream SetColor.process.
+            self.set_color(PDColor([], None))  # type: ignore[arg-type]
             return
 
         array = COSArray()
