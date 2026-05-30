@@ -71,6 +71,47 @@ def _matmul(m1: _Matrix, m2: _Matrix) -> _Matrix:
     )
 
 
+def _first_operator_is_d1(data: bytes) -> bool:
+    """Return ``True`` when the first operator token in a Type 3 charproc's
+    decoded content bytes is ``d1`` (the uncoloured-mask form, PDF 32000-1
+    §9.6.5.3). ``d1`` must be the first operator per the spec, preceded only
+    by its numeric operands; we scan past whitespace, comments, and numeric
+    tokens and inspect the first operator. ``d0`` (the coloured form) and a
+    malformed leading sequence both return ``False``."""
+    i = 0
+    n = len(data)
+    while i < n:
+        byte = data[i : i + 1]
+        if byte in (b"\x00", b"\t", b"\n", b"\x0c", b"\r", b" "):
+            i += 1
+            continue
+        if byte == b"%":  # comment — runs to EOL
+            while i < n and data[i : i + 1] not in (b"\n", b"\r"):
+                i += 1
+            continue
+        start = i
+        while i < n:
+            tail = data[i : i + 1]
+            if tail in (
+                b"\x00", b"\t", b"\n", b"\x0c", b"\r", b" ",
+                b"%", b"(", b")", b"<", b">", b"[", b"]", b"{", b"}", b"/",
+            ):
+                break
+            i += 1
+        token = data[start:i]
+        if not token:
+            # A delimiter (string / array / name) before any operator — not
+            # a valid d0/d1 leading sequence.
+            return False
+        # Numeric operand (signed/unsigned int or real) — skip and continue.
+        stripped = token.lstrip(b"+-")
+        if stripped and all(c in b"0123456789." for c in stripped):
+            continue
+        # First non-numeric token is the leading operator.
+        return token == b"d1"
+    return False
+
+
 def _normalise_rotation(rotation: int | None) -> int:
     """Clamp a page ``/Rotate`` value to one of ``{0, 90, 180, 270}``.
 
@@ -968,6 +1009,14 @@ class PDFRenderer(PDFStreamEngine):
         # charproc invocation.
         self._type3_d0_wx: float | None = None
         self._type3_d1_wx: float | None = None
+        # When rendering a ``d1`` Type 3 charproc the glyph is an uncoloured
+        # mask: PDF 32000-1 §9.6.5.3 forbids colour-setting operators inside
+        # it, and PDFBox (``PDFStreamEngine.processType3Stream`` ->
+        # ``isShouldProcessColorOperators() == false``) ignores any that
+        # appear, painting the glyph in the surrounding text-state colour.
+        # The renderer's colour-set handlers early-return while this is set.
+        # ``d0`` glyphs leave it ``False`` (they paint with their own colour).
+        self._type3_ignore_color: bool = False
         # Type 3 glyph cache — (id(font), glyph_name, font_size_q,
         # ctm_scale_q, fill_rgb, stroke_rgb) -> rendered glyph image +
         # bounding box. Allows multi-glyph runs to skip re-dispatching the
@@ -1980,6 +2029,14 @@ class PDFRenderer(PDFStreamEngine):
         handler = _DISPATCH.get(name)
         if handler is None:
             # Unmodelled — silently skip (matches engine default).
+            return
+        # Type 3 ``d1`` uncoloured-mask glyph: ignore colour-setting
+        # operators inside the charproc. The glyph paints in the
+        # surrounding text-state colour (PDF 32000-1 §9.6.5.3), matching
+        # PDFBox's ``isShouldProcessColorOperators() == false`` gating in
+        # ``PDFStreamEngine.processType3Stream``. The ``d1`` operator
+        # itself (a metric setter, not a colour op) still runs.
+        if self._type3_ignore_color and name in _COLOR_OPS:
             return
         # Knockout-group reset: before each top-level painting operator
         # inside a /K=true transparency group, restore the group canvas to
@@ -9592,9 +9649,20 @@ class PDFRenderer(PDFStreamEngine):
             except Exception as exc:  # noqa: BLE001
                 _log.debug("rendering: cannot read Type 3 charproc: %s", exc)
                 data = b""
-            if data:
-                with contextlib.suppress(Exception):
-                    self._process_form_bytes(data)
+            # A leading ``d1`` marks an uncoloured-mask glyph: colour ops
+            # inside the charproc are ignored and the glyph paints in the
+            # text-state colour (PDF 32000-1 §9.6.5.3 / PDFBox
+            # ``isShouldProcessColorOperators() == false``). ``d0`` glyphs
+            # keep their own colour ops. Set the gate before dispatch so a
+            # colour op immediately after ``d1`` is already suppressed.
+            prev_ignore_color = self._type3_ignore_color
+            self._type3_ignore_color = _first_operator_is_d1(data)
+            try:
+                if data:
+                    with contextlib.suppress(Exception):
+                        self._process_form_bytes(data)
+            finally:
+                self._type3_ignore_color = prev_ignore_color
         finally:
             self._resources = prev_resources
             self._subpaths = prev_subpaths
@@ -9944,6 +10012,17 @@ _KNOCKOUT_PAINT_OPS: frozenset[str] = frozenset({
     "BI",
     # text show
     "Tj", "TJ", "'", '"',
+})
+
+
+# Colour-setting operators ignored inside a Type 3 ``d1`` (uncoloured-mask)
+# charproc — PDF 32000-1 §9.6.5.3. Mirrors the operators PDFBox skips when
+# ``PDFStreamEngine.isShouldProcessColorOperators()`` returns ``false``:
+# device colour (RG/rg/G/g/K/k), colour-space selection (CS/cs), and the
+# generic component setters (SC/sc/SCN/scn).
+_COLOR_OPS: frozenset[str] = frozenset({
+    "RG", "rg", "G", "g", "K", "k",
+    "CS", "cs", "SC", "sc", "SCN", "scn",
 })
 
 

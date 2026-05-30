@@ -97,7 +97,10 @@ def test_wave389_missing_sfnt_tables_use_pdfbox_fallbacks_and_cache_none() -> No
     assert font.is_fixed_pitch() is False
     assert font.get_weight() == 400
     assert font.get_width() == 5
-    assert font.get_width("A") == 0.0
+    # getWidth(String) == getAdvanceWidth(nameToGID(name)); the name is
+    # unresolved (no post/cmap) so it falls back to gid 0, and with no hmtx
+    # table getAdvanceWidth returns the default advance (250), not 0.0.
+    assert font.get_width("A") == 250.0
     assert font.get_capabilities() == {}
     assert font.has_table("head") is False
     assert font.is_supported() is False

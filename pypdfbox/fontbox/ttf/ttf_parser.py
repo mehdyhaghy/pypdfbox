@@ -634,7 +634,17 @@ class TTFParser:
         # position so fontTools sees the file from offset 0.
         scaler = int.from_bytes(raw[:4], "big", signed=False)
         self._check_scaler_type(scaler)
-        return self.new_font(data)
+        font = self.new_font(data)
+        # Seed the SFNT scaler-type version the same way upstream's
+        # createFontWithTables does (TTFParser.java L137). This is what lets
+        # OpenTypeFont.set_version flip its hasPostScriptTag fingerprint for an
+        # ``OTTO``-flavoured font; without it isPostScript() would still be true
+        # via the CFF-table fallback, but getGlyph() (which gates on the raw
+        # hasPostScriptTag field, not isPostScript()) would fail to throw on a
+        # PostScript font — diverging from Apache FontBox.
+        # 16.16 fixed → float (same encoding as create_font_with_tables).
+        font.set_version(((scaler >> 16) & 0xFFFF) + (scaler & 0xFFFF) / 65536.0)
+        return font
 
     def _check_scaler_type(self, scaler: int) -> None:
         """Reject a stream whose SFNT magic is not a TTF flavour.

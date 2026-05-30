@@ -123,7 +123,9 @@ def test_true_type_font_glyph_name_helpers_and_width_lookup() -> None:
     assert font.has_glyph("A") is True
     assert font.has_glyph(".notdef") is False
     assert font.get_width("A") == 610.0
-    assert font.get_width("missing") == 0.0
+    # getWidth(String) == getAdvanceWidth(nameToGID(name)); an unresolved name
+    # falls back to gid 0 (.notdef) and reports its advance (500), not 0.0.
+    assert font.get_width("missing") == 500.0
 
 
 def test_true_type_font_get_path_accepts_glyph_names() -> None:

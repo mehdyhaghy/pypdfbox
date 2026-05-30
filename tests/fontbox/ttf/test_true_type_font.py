@@ -337,7 +337,12 @@ def test_get_width_with_name_returns_advance_width(
 ) -> None:
     gid = liberation_sans.name_to_gid("A")
     assert liberation_sans.get_width("A") == float(liberation_sans.get_advance_width(gid))
-    assert liberation_sans.get_width("definitelyNotAGlyphName") == 0.0
+    # Upstream TrueTypeFont.getWidth(String) is unconditionally
+    # getAdvanceWidth(nameToGID(name)) — an unresolved name falls back to gid 0
+    # (.notdef) and reports gid 0's advance, NOT 0.0.
+    assert liberation_sans.get_width("definitelyNotAGlyphName") == float(
+        liberation_sans.get_advance_width(0)
+    )
 
 
 def test_get_bounding_box_alias(liberation_sans: TrueTypeFont) -> None:

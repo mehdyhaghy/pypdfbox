@@ -913,15 +913,14 @@ class TrueTypeFont:
 
         With no argument, returns ``OS/2.usWidthClass`` (1..9), preserving
         the existing table-scalar helper. With a glyph name, mirrors
-        ``FontBoxFont.getWidth(String)`` and returns the glyph advance in
-        font units, or ``0.0`` when the name does not resolve to a real
-        glyph.
+        ``TrueTypeFont.getWidth(String)`` (TrueTypeFont.java line 752) which
+        is unconditionally ``getAdvanceWidth(nameToGID(name))`` cast to a
+        float — there is NO special-case for an unresolved (gid 0) name, so
+        a name that falls back to ``.notdef`` reports gid 0's advance, not
+        ``0.0``.
         """
         if name is not None:
-            gid = self.name_to_gid(name)
-            if gid == 0:
-                return 0.0
-            return float(self.get_advance_width(gid))
+            return float(self.get_advance_width(self.name_to_gid(name)))
         if "OS/2" not in self._tt:
             return 5
         return int(self._tt["OS/2"].usWidthClass)
