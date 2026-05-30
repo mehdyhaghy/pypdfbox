@@ -148,11 +148,32 @@ class XrefTrailerResolver:
 
     def get_xref_table(self) -> dict[COSObjectKey, XrefEntry]:
         """Return the consolidated xref. Sections parsed earlier (i.e.
-        newer in ``/Prev`` walking order) take precedence."""
+        newer in ``/Prev`` walking order) take precedence.
+
+        Free entries (``compressed_index == -1``) are special: upstream
+        PDFBox never inserts a free (``f``) record into its byte-offset map
+        (``COSParser.parseXrefTable`` only calls ``setXRef`` for in-use
+        ``n`` entries). The consequence is that a free entry in a NEWER
+        ``/Prev`` section does NOT shadow an in-use (``n``) entry for the
+        same key from an OLDER section — the object remains reachable at
+        its last in-use offset. We mirror that here: a free entry only
+        survives in the merged map when NO in-use entry exists for the same
+        key anywhere in the chain, so ``populate_document`` still skips a
+        truly-free slot while a free-over-in-use slot keeps the in-use
+        offset (PDFBox parity — see test_prev_chain_oracle)."""
         merged: dict[COSObjectKey, XrefEntry] = {}
         # Walk OLDEST → NEWEST so newer entries overwrite older ones.
         for section in reversed(self._sections):
-            merged.update(section.entries)
+            for key, entry in section.entries.items():
+                existing = merged.get(key)
+                if (
+                    entry.compressed_index == -1
+                    and existing is not None
+                    and existing.compressed_index != -1
+                ):
+                    # Newer free entry must not erase an older in-use entry.
+                    continue
+                merged[key] = entry
         return merged
 
     def get_trailer(self) -> COSDictionary | None:

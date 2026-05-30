@@ -3681,6 +3681,24 @@ Backfill of upstream Java paths for source files added in earlier waves (mostly 
 | `tests/pdmodel/graphics/pattern/oracle/test_tiling_pattern_accessor_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/TilingPatternProbe.java`, wave 1478 agent I); confirmed tiling-pattern accessors + spec defaults (no `/Matrix`/`/TilingType`) match PDFBox; pypdfbox already matches; no single upstream JUnit source |
 
 
+### Wave 1479 additions
+
+| File | Upstream PDFBox version | Notes |
+|---|---|---|
+| `oracle/probes/PrevChainProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1479 agent B); 3-revision incremental `/Prev` chain object resolution; no single upstream JUnit source |
+| `tests/pdfparser/oracle/test_prev_chain_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/PrevChainProbe.java`, wave 1479 agent B); FIX — `XrefTrailerResolver.get_xref_table` no longer lets a `free` entry from a newer `/Prev` section shadow an `in-use` entry for the same key from an older section (matches `COSParser.parseXrefTable` registering only in-use entries); no single upstream JUnit source |
+| `oracle/probes/CosStringWriteProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1479 agent C); `COSWriter.writeString` literal-vs-hex + escaping over a full 0x00-0xFF byte sweep; no single upstream JUnit source |
+| `tests/pdfwriter/oracle/test_cos_string_write_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/CosStringWriteProbe.java`, wave 1479 agent C); confirmed serialized bytes byte-identical to PDFBox (hex iff any byte ≥0x80 or CR/LF; else literal with `(`/`)`/`\` escaped); pypdfbox already matches; no single upstream JUnit source |
+| `oracle/probes/OcgAuthorProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1479 agent E); reads a PDFBox-AUTHORED `/OCProperties` doc (inverts authoring direction to catch reader bugs); no single upstream JUnit source |
+| `tests/pdmodel/graphics/optionalcontent/oracle/test_optional_content_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/OcgAuthorProbe.java`, wave 1479 agent E); confirmed OCG enumeration, `/BaseState`, per-group `is_group_enabled` re-read from upstream-written bytes match PDFBox; pypdfbox already matches; no single upstream JUnit source |
+| `oracle/probes/ToUnicodeSurrogateTextProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1479 agent F); end-to-end `PDFTextStripper` over Type0 `/ToUnicode` surrogate-pair + multi-char destinations; no single upstream JUnit source |
+| `tests/text/oracle/test_tounicode_surrogate_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/ToUnicodeSurrogateTextProbe.java`, wave 1479 agent F); confirmed astral (>U+FFFF) + multi-char `bfchar` destinations decode to the same string as PDFBox (UTF-16BE assembly); pypdfbox already matches; no single upstream JUnit source |
+| `oracle/probes/TextFieldApTokenProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1479 agent I); `PDTextField.setValue` → `/AP /N` byte-level `Tj` payload + `Tf` size; no single upstream JUnit source |
+| `tests/pdmodel/interactive/form/oracle/test_text_field_appearance_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/TextFieldApTokenProbe.java`, wave 1479 agent I); confirmed exact encoded `Tj` bytes + `Tf` size match PDFBox for StandardEncoding-safe values; pins the documented encode-leniency boundary (PDFBox raises on unencodable glyph, pypdfbox substitutes); no single upstream JUnit source |
+| `oracle/probes/RenderDpiProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1479 agent J); `PDFRenderer.renderImageWithDPI` float-DPI pixel dimensions + luminance fingerprint; no single upstream JUnit source |
+| `tests/tools/oracle/test_pdf_to_image_dpi_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/RenderDpiProbe.java`, wave 1479 agent J); confirmed DPI→pixel float32-floor rounding (A4 height 1753 at 150 DPI, not 1754) + cross-DPI content match PDFBox; pypdfbox already matches; no single upstream JUnit source |
+
+
 ## External font assets (runtime-fetched, never bundled)
 
 These are **not** Apache PDFBox ports — they are upstream font binaries

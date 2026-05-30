@@ -41,7 +41,7 @@ from pathlib import Path
 
 import pytest
 
-from pypdfbox.cos import COSArray, COSInteger, COSName, COSNumber
+from pypdfbox.cos import COSArray, COSInteger, COSName, COSNumber, COSString
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.pdmodel.pd_viewer_preferences import PDViewerPreferences
 from tests.oracle.harness import requires_oracle, run_probe_text
@@ -471,6 +471,97 @@ def test_all_booleans_round_trip_through_pdfbox(tmp_path: Path) -> None:
     ):
         assert f"{flag}=true\n" in java
     assert py == java, "all-booleans round-trip diverges from PDFBox"
+
+
+@requires_oracle
+@pytest.mark.parametrize(
+    "bogus_name",
+    ["BogusLayout", "singlepage", "UseNone", ""],
+    ids=["unknown", "wrong_case", "valid_mode_token", "empty"],
+)
+def test_unrecognised_page_layout_falls_back_to_single_page(
+    tmp_path: Path, bogus_name: str
+) -> None:
+    """A present-but-unrecognised (or empty) /PageLayout name: PDFBox 3.0.7
+    logs and falls back to SinglePage (see PDDocumentCatalog.getPageLayout()
+    — IllegalArgumentException from PageLayout.fromString is caught, and an
+    empty string short-circuits). pypdfbox's get_page_layout() returns None for
+    the same input, so get_page_layout_or_default() must yield SinglePage to
+    match Java. Pins the unrecognised-name read path the enum-mapping tests
+    (which only write valid tokens) never reach."""
+    pdf = tmp_path / f"bogus_layout_{bogus_name or 'empty'}.pdf"
+    doc = PDDocument()
+    try:
+        doc.add_page(PDPage(PDRectangle.A4))
+        cat = doc.get_document_catalog()
+        cat.get_cos_object().set_item(
+            COSName.get_pdf_name("PageLayout"), COSName.get_pdf_name(bogus_name)
+        )
+        doc.save(pdf)
+    finally:
+        doc.close()
+    java = run_probe_text("ViewerPrefsProbe", str(pdf))
+    assert "pageLayout=SinglePage\n" in java
+    py = _py_viewer_prefs(pdf)
+    assert py == java, f"bogus /PageLayout {bogus_name!r}: diverges from PDFBox"
+
+
+@requires_oracle
+@pytest.mark.parametrize(
+    "bogus_name",
+    ["BogusMode", "usenone", "SinglePage"],
+    ids=["unknown", "wrong_case", "valid_layout_token"],
+)
+def test_unrecognised_page_mode_falls_back_to_use_none(
+    tmp_path: Path, bogus_name: str
+) -> None:
+    """A present-but-unrecognised /PageMode name: PDFBox 3.0.7 catches the
+    IllegalArgumentException from PageMode.fromString and returns UseNone.
+    pypdfbox's get_page_mode() returns None, so get_page_mode_or_default()
+    must yield UseNone to match. Pins the unrecognised-name read path."""
+    pdf = tmp_path / f"bogus_mode_{bogus_name}.pdf"
+    doc = PDDocument()
+    try:
+        doc.add_page(PDPage(PDRectangle.A4))
+        cat = doc.get_document_catalog()
+        cat.get_cos_object().set_item(
+            COSName.get_pdf_name("PageMode"), COSName.get_pdf_name(bogus_name)
+        )
+        doc.save(pdf)
+    finally:
+        doc.close()
+    java = run_probe_text("ViewerPrefsProbe", str(pdf))
+    assert "pageMode=UseNone\n" in java
+    py = _py_viewer_prefs(pdf)
+    assert py == java, f"bogus /PageMode {bogus_name!r}: diverges from PDFBox"
+
+
+@requires_oracle
+def test_page_layout_mode_as_cos_string_matches_pdfbox(tmp_path: Path) -> None:
+    """Malformed producer output occasionally stores /PageLayout and /PageMode
+    as a COSString rather than the spec-correct COSName. PDFBox 3.0.7's
+    COSDictionary.getNameAsString accepts both, so getPageLayout()/getPageMode()
+    still resolve the enum. pypdfbox's get_page_layout()/get_page_mode() also
+    accept a COSString — this pins that tolerance against the oracle."""
+    pdf = tmp_path / "string_valued_layout_mode.pdf"
+    doc = PDDocument()
+    try:
+        doc.add_page(PDPage(PDRectangle.A4))
+        cat = doc.get_document_catalog()
+        cat.get_cos_object().set_item(
+            COSName.get_pdf_name("PageLayout"), COSString("TwoColumnRight")
+        )
+        cat.get_cos_object().set_item(
+            COSName.get_pdf_name("PageMode"), COSString("UseThumbs")
+        )
+        doc.save(pdf)
+    finally:
+        doc.close()
+    java = run_probe_text("ViewerPrefsProbe", str(pdf))
+    assert "pageLayout=TwoColumnRight\n" in java
+    assert "pageMode=UseThumbs\n" in java
+    py = _py_viewer_prefs(pdf)
+    assert py == java, "COSString-valued /PageLayout|/PageMode diverges from PDFBox"
 
 
 def test_print_page_range_pairs_decode_round_trip() -> None:
