@@ -4562,6 +4562,19 @@ class PDFRenderer(PDFStreamEngine):
         except Exception:  # noqa: BLE001
             cs = None
         cs_name = cs.name if isinstance(cs, COSName) else None
+        # Non-Device colour space (Separation / Indexed / DeviceN / Lab /
+        # ICCBased / Cal*): the function output is the colour space's *input*
+        # (a tint for Separation, an index for Indexed, …), not RGB. Resolve
+        # the typed colour space and run the output through its ``to_rgb`` so
+        # the tint transform / palette lookup is applied — exactly what
+        # PDFBox's AxialShadingContext does via ``shadingColorSpace.toRGB``.
+        # Plain Device names keep the well-tested fast paths below.
+        if cs_name not in ("DeviceGray", "DeviceRGB", "DeviceCMYK") and (
+            cs is not None
+        ):
+            rgb = self._convert_shading_output(shading, list(out))
+            if rgb is not None:
+                return rgb
         if cs_name == "DeviceGray" or len(out) == 1:
             g = float(out[0])
             return (g, g, g)
@@ -4574,6 +4587,40 @@ class PDFRenderer(PDFStreamEngine):
         # DeviceRGB / unknown 3-channel — pad with zeros if too short.
         padded = list(out) + [0.0, 0.0, 0.0]
         return (float(padded[0]), float(padded[1]), float(padded[2]))
+
+    def _convert_shading_output(
+        self, shading: Any, out: list[float]
+    ) -> tuple[float, float, float] | None:
+        """Route a shading ``/Function`` output through its typed
+        ``/ColorSpace`` to sRGB. Used for non-Device colour spaces
+        (Separation tint transform, Indexed palette lookup, DeviceN, Lab,
+        ICCBased, Cal*), mirroring upstream ``AxialShadingContext`` /
+        ``RadialShadingContext`` converting each colour-table entry with
+        ``shadingColorSpace.toRGB(values)``. Returns ``None`` (so the caller
+        falls back to its Device heuristic) when the colour space cannot be
+        resolved or its conversion fails."""
+        try:
+            cs = shading.get_color_space_object(self._resources)
+        except Exception as exc:  # noqa: BLE001
+            _log.debug("rendering: shading colour-space resolve failed: %s", exc)
+            return None
+        if cs is None or not hasattr(cs, "to_rgb"):
+            return None
+        # Clamp each function-output component to [0, 1] before the colour
+        # conversion — upstream ``PDShading.evalFunction`` clamps the raw
+        # function output to the valid colour-value range (PDF §7.10.2)
+        # *before* ``shadingColorSpace.toRGB`` runs. For an Indexed shading
+        # this means the index component saturates at 1, not at /hival, so the
+        # palette sweep stops at the second entry — matching PDFBox exactly.
+        clamped = [0.0 if v < 0.0 else 1.0 if v > 1.0 else float(v) for v in out]
+        try:
+            rgb = cs.to_rgb(clamped)
+        except Exception as exc:  # noqa: BLE001
+            _log.debug("rendering: shading colour-space to_rgb failed: %s", exc)
+            return None
+        if rgb is None:
+            return None
+        return (float(rgb[0]), float(rgb[1]), float(rgb[2]))
 
     def _paint_axial_shading(
         self,

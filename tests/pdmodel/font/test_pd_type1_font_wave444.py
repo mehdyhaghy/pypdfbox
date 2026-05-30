@@ -94,7 +94,13 @@ def test_get_name_in_font_returns_notdef_when_program_lacks_candidates() -> None
     font = _font_with_program()
 
     assert font.get_name_in_font("missingGlyph") == ".notdef"
-    assert font.has_glyph("missingGlyph") is False
+    # ``has_glyph`` mirrors upstream ``genericFont.hasGlyph(getNameInFont(name))``
+    # exactly — there is no ``.notdef`` short-circuit. The substitute program
+    # here carries a ``.notdef`` charstring, so the resolved ``.notdef`` lookup
+    # reports True (matching real PDFBox, whose generic substitute font also
+    # has a ``.notdef`` glyph). ``get_path`` still returns the (empty)
+    # ``.notdef`` outline.
+    assert font.has_glyph("missingGlyph") is True
     assert font.get_path("missingGlyph") == []
 
 

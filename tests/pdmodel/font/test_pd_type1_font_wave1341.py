@@ -18,7 +18,7 @@ Targets the residual uncovered branches:
 * ``repair_length1`` short-buffer + brute-force second pass branches
   (lines 807, 811);
 * ``read_encoding_from_font`` surfacing an embedded program's encoding
-  via :class:`BuiltInEncoding` (lines 911-916).
+  via :class:`Type1Encoding` (lines 911-916).
 """
 
 from __future__ import annotations
@@ -26,7 +26,6 @@ from __future__ import annotations
 from pypdfbox.cos import COSName
 from pypdfbox.fontbox.type1.type1_font import Type1Font
 from pypdfbox.pdmodel.font import PDFontDescriptor, PDType1Font
-from pypdfbox.pdmodel.font.encoding.built_in_encoding import BuiltInEncoding
 
 _BASE_FONT = COSName.get_pdf_name("BaseFont")
 _ENCODING = COSName.get_pdf_name("Encoding")
@@ -250,9 +249,15 @@ def test_repair_length1_brute_force_second_pass() -> None:
 # ---------- read_encoding_from_font: embedded program with /Encoding ----
 
 
-def test_read_encoding_from_font_returns_built_in_encoding_for_program() -> None:
+def test_read_encoding_from_font_returns_type1_encoding_for_program() -> None:
     """Embedded program with a non-empty ``get_encoding()`` map yields
-    a :class:`BuiltInEncoding` (lines 911-916)."""
+    a :class:`Type1Encoding` — upstream ``readEncodingFromFont`` builds the
+    embedded-Type1 branch via ``Type1Encoding.fromFontBox(...)``, not a
+    ``BuiltInEncoding`` (verified against the live PDFBox oracle, which
+    reports ``Type1Encoding`` for a /FontFile font without an /Encoding
+    dict)."""
+    from pypdfbox.pdmodel.font.encoding.type1_encoding import Type1Encoding
+
     font = PDType1Font()
     # No /BaseFont matching a Standard-14, so we skip the AFM branch and
     # hit the program path. Also need is_embedded() True — attach a
@@ -268,7 +273,7 @@ def test_read_encoding_from_font_returns_built_in_encoding_for_program() -> None
     program_encoding = {0x41: "A", 0x42: "B", 0x43: "C"}
     font.set_font_program(_FakeT1Program(encoding=program_encoding))  # type: ignore[arg-type]
     encoding = font.read_encoding_from_font()
-    assert isinstance(encoding, BuiltInEncoding)
+    assert isinstance(encoding, Type1Encoding)
     assert encoding.get_name(0x41) == "A"
 
 

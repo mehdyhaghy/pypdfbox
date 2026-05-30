@@ -887,6 +887,15 @@ class PDFTextStripper:
             # (PDF 32000-1 §9.3.4).
             if operands and isinstance(operands[0], COSNumber):
                 state.horizontal_scaling = operands[0].float_value() / 100.0
+        elif op == "Ts":
+            # Text rise — a vertical baseline shift in unscaled text-space
+            # units (PDF 32000-1 §9.3.7). Positive raises the baseline of
+            # subsequent glyphs (superscript), negative lowers it
+            # (subscript). It is applied to the rendered glyph origin via the
+            # text-rendering matrix (see ``_text_rendering_matrix``) and does
+            # not affect the cursor advance; a later ``0 Ts`` resets it.
+            if operands and isinstance(operands[0], COSNumber):
+                state.text_rise = operands[0].float_value()
         elif op == "q":
             # Save graphics state — push a copy of the current CTM so a
             # later ``Q`` restores it (PDF 1.7 §8.4.2). Text state itself
@@ -1087,10 +1096,25 @@ class PDFTextStripper:
         that fold the point size into ``Tm`` (``14 0 0 14 … Tm`` with a
         ``1 Tf``) and position each line via a per-line ``cm`` are placed
         and scaled correctly instead of collapsing onto one baseline.
+
+        Text rise (``Ts``) is folded in the way upstream
+        ``PDFStreamEngine.showText`` does: as the f-translation of the
+        font-parameter matrix applied *before* the text matrix
+        (``parameterMatrix × textMatrix × ctm``). In this lite port the font
+        size is applied separately, so the rise-bearing parameter matrix is
+        just the translation ``[1, 0, 0, 1, 0, rise]``. Composing it first
+        shifts the glyph origin along the text matrix's local Y axis — so a
+        positive rise lifts a superscript run above the baseline (and a
+        rotated ``Tm`` rotates the shift with it) without touching the
+        glyph's scale or direction.
         """
         text_matrix = Matrix(
             state.tm_a, state.tm_b, state.tm_c, state.tm_d, state.text_x, state.text_y
         )
+        rise = getattr(state, "text_rise", 0.0)
+        if rise:
+            parameter_matrix = Matrix(1.0, 0.0, 0.0, 1.0, 0.0, rise)
+            return parameter_matrix.multiply(text_matrix).multiply(state.ctm)
         return text_matrix.multiply(state.ctm)
 
     @staticmethod
@@ -1261,6 +1285,12 @@ class PDFTextStripper:
             tm = Matrix(
                 state.tm_a, state.tm_b, state.tm_c, state.tm_d, text_x, state.text_y
             )
+            # Fold text rise (``Ts``) in the way the main ``_emit`` path does
+            # — as the f-translation of the font-parameter matrix applied
+            # before the text matrix (``[1, 0, 0, 1, 0, rise] × Tm × ctm``).
+            rise = getattr(state, "text_rise", 0.0)
+            if rise:
+                tm = Matrix(1.0, 0.0, 0.0, 1.0, 0.0, rise).multiply(tm)
             trm = tm.multiply(ctm)
             return trm.get_translate_x(), trm.get_translate_y()
 
@@ -2708,6 +2738,7 @@ class _TextState:
         "char_spacing",
         "word_spacing",
         "horizontal_scaling",
+        "text_rise",
         "tm_a",
         "tm_b",
         "tm_c",
@@ -2734,6 +2765,17 @@ class _TextState:
         # advance the word-gap heuristic measures, so word segmentation in
         # ``getText`` is ``Tz``-dependent.
         self.horizontal_scaling: float = 1.0
+        # Text rise (``Ts``), in unscaled text-space units. PDF 32000-1
+        # §9.3.7: ``Ts`` raises (positive) or lowers (negative) the baseline
+        # of subsequent glyphs by shifting the text-rendering matrix origin
+        # vertically — upstream folds it into the f-translation of the
+        # font-parameter matrix (``[fontSize·Th, 0, 0, fontSize, 0, rise]``),
+        # so it moves the glyph origin without changing the glyph scale or
+        # direction. A superscript run (``4 Ts``) sits above the baseline; a
+        # subscript run sits below. Default 0.0 per the ``BT`` text-state
+        # reset. The rise is *not* part of the cursor advance — it is applied
+        # only to the rendered origin and reset to 0 by a later ``0 Ts``.
+        self.text_rise: float = 0.0
         # Text-matrix scale/shear components — only ``Tm`` mutates these
         # (Td/TD/T*/'/" affect translation only, leaving a/b/c/d alone),
         # so tracking them here is enough to recover the run's rotation

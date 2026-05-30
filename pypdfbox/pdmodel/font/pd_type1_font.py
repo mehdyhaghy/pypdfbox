@@ -699,11 +699,19 @@ class PDType1Font(PDSimpleFont):
     def has_glyph(self, name: str) -> bool:
         """``True`` iff the underlying font program carries a glyph for
         ``name`` (after ``ALT_NAMES`` remapping). Mirrors upstream
-        ``PDType1Font.hasGlyph(String)``.
+        ``PDType1Font.hasGlyph(String)`` exactly —
+        ``genericFont.hasGlyph(getNameInFont(name))``.
+
+        Note there is deliberately **no** ``resolved == ".notdef"``
+        short-circuit: upstream asks the program directly, so an embedded
+        program that carries a ``.notdef`` charstring (the common case)
+        reports ``hasGlyph(".notdef") == True`` (verified against the live
+        PDFBox oracle). The fall-through to ``False`` only applies when no
+        program is loaded — ``getNameInFont`` returns ``name`` unchanged for
+        an embedded font, so without a parsed program we cannot confirm
+        presence either way.
         """
         resolved = self.get_name_in_font(name)
-        if resolved == ".notdef":
-            return False
         program = self._get_type1_font()
         if program is None:
             # is_embedded() short-circuits get_name_in_font to return
@@ -971,14 +979,23 @@ class PDType1Font(PDSimpleFont):
             return WinAnsiEncoding.INSTANCE
 
         # Embedded program: surface its built-in encoding when present.
+        # Upstream ``readEncodingFromFont`` builds a ``Type1Encoding`` via
+        # ``Type1Encoding.fromFontBox(((EncodedFont) genericFont).getEncoding())``
+        # for the embedded-Type1 branch (not a ``BuiltInEncoding`` — that
+        # class is reserved for TrueType/Type3 programs). The class identity
+        # is observable through ``getEncoding().getClass()`` (verified against
+        # the live oracle: PDFBox reports ``Type1Encoding`` for a /FontFile
+        # font with no /Encoding dict), so we mirror it exactly.
         program = self._get_type1_font()
         if program is not None:
             encoding_map = program.get_encoding()
             if encoding_map:
-                # Build a lightweight Encoding wrapper.
-                from .encoding.built_in_encoding import BuiltInEncoding
+                from .encoding.type1_encoding import Type1Encoding
 
-                return BuiltInEncoding(dict(encoding_map))
+                type1_encoding = Type1Encoding()
+                for code, name in dict(encoding_map).items():
+                    type1_encoding.add(code, name)
+                return type1_encoding
         return StandardEncoding.INSTANCE
 
     # ---------- subsetting ----------

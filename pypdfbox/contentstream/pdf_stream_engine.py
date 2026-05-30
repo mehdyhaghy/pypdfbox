@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import zlib
 from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName, COSNumber
@@ -387,17 +388,51 @@ class PDFStreamEngine:
         operands: list[COSBase],
         exception: OSError,
     ) -> None:
-        """Default error policy. Re-raises by default; ``MissingOperandException``
-        and ``Do``-operator failures are demoted to a log line, matching
-        upstream's ``operatorException`` triage. The full upstream branch
-        list (MissingResourceException / EmptyGraphicsStackException /
-        DataFormatException) lands with the cluster that introduces those
-        exception types.
+        """Default error policy — mirrors upstream ``operatorException``
+        triage verbatim. The branch order matches PDFBox's
+        ``PDFStreamEngine.operatorException``:
+
+        1. ``MissingOperandException`` / ``MissingResourceException`` /
+           ``MissingImageReaderException`` → log at error, swallow.
+        2. ``EmptyGraphicsStackException`` → log at warning, swallow. This
+           is the lenient ``Q``-with-empty-stack path (PDFBOX-161): a
+           content stream with more ``Q`` than ``q`` (unbalanced restore)
+           must not abort the stream — the extra ``Q`` is logged and
+           ignored so processing continues.
+        3. operator name ``Do`` → log at warning, swallow.
+        4. exception whose cause is a ``zlib.error`` (upstream's
+           ``DataFormatException``, i.e. a corrupt inline-image / stream
+           inflate) → log at warning, swallow.
+        5. anything else → re-raise.
         """
-        if isinstance(exception, MissingOperandException):
+        from pypdfbox.filter.missing_image_reader_exception import (  # noqa: PLC0415
+            MissingImageReaderException,
+        )
+        from pypdfbox.pdmodel.missing_resource_exception import (  # noqa: PLC0415
+            MissingResourceException,
+        )
+
+        from .operator.state.empty_graphics_stack_exception import (  # noqa: PLC0415
+            EmptyGraphicsStackException,
+        )
+
+        if isinstance(
+            exception,
+            (
+                MissingOperandException,
+                MissingResourceException,
+                MissingImageReaderException,
+            ),
+        ):
             _log.error("%s", exception)
             return
+        if isinstance(exception, EmptyGraphicsStackException):
+            _log.warning("%s", exception)
+            return
         if operator.get_name() == "Do":
+            _log.warning("%s", exception)
+            return
+        if isinstance(exception.__cause__, zlib.error):
             _log.warning("%s", exception)
             return
         raise exception
