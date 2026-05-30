@@ -3600,6 +3600,19 @@ Backfill of upstream Java paths for source files added in earlier waves (mostly 
 | `oracle/probes/ExtractTextRangeProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1474 agent J); `pdfbox/tools/.../ExtractText.java` page-range + `-sort`; no single upstream JUnit source |
 | `tests/tools/oracle/test_extract_text_range_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/ExtractTextRangeProbe.java`, wave 1474 agent J); `-startPage`/`-endPage` (1-based, end-clamp to page count) + `-sort`; confirmed at parity; no single upstream JUnit source |
 
+### Wave 1475 additions
+
+| File | Upstream PDFBox version | Notes |
+|---|---|---|
+| `oracle/probes/ZeroWidthStrokeProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1475 agent A); zero-width (hairline) stroke rendering; no single upstream JUnit source |
+| `tests/rendering/oracle/test_zero_width_stroke_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/ZeroWidthStrokeProbe.java`, wave 1475 agent A); confirmed a `0`-width stroke renders as a 1-device-pixel hairline matching PDFBox; pypdfbox already matches; no single upstream JUnit source |
+| `oracle/probes/XrefIndexSubsectionsProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1475 agent E); xref-stream `/Index` with multiple subsections; no single upstream JUnit source |
+| `tests/pdfparser/oracle/test_xref_index_subsections_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/XrefIndexSubsectionsProbe.java`, wave 1475 agent E); confirmed multi-subsection `/Index` arrays resolve the same object-number→offset map as PDFBox; pypdfbox already matches; no single upstream JUnit source |
+| `oracle/probes/PageAppendModeProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1475 agent G); `PDDocument` page append ordering; no single upstream JUnit source |
+| `tests/pdmodel/oracle/test_page_append_mode_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/PageAppendModeProbe.java`, wave 1475 agent G); confirmed appended-page ordering + kids-tree shape match PDFBox; pypdfbox already matches; no single upstream JUnit source |
+| `oracle/probes/PostTableGidProbe.java` | 3.0.7 | hand-written live-oracle probe (wave 1475 agent H); TrueType `post` table glyph-id→name mapping; no single upstream JUnit source |
+| `tests/pdmodel/font/oracle/test_post_table_gid_oracle.py` | 3.0.7 | hand-written live-oracle differential (probe `oracle/probes/PostTableGidProbe.java`, wave 1475 agent H); confirmed `post`-table GID→name lookups match PDFBox; pypdfbox already matches; no single upstream JUnit source |
+
 
 ## External font assets (runtime-fetched, never bundled)
 
