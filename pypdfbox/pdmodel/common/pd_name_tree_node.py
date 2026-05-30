@@ -166,21 +166,17 @@ class PDNameTreeNode[T](ABC):
     # ---------- /Names ----------
 
     def get_names(self) -> dict[str, T] | None:
+        # Upstream ``PDNameTreeNode.getNames()`` reads ONLY this node's own
+        # ``/Names`` array and returns ``null`` when it is absent — it does
+        # NOT recurse into ``/Kids`` to flatten the whole sub-tree. An
+        # intermediate or root node that carries only ``/Kids`` therefore
+        # returns ``None`` here, matching the live PDFBox oracle. To read
+        # every leaf value across a multi-level tree, walk ``get_kids()``
+        # yourself (or look up individual names via ``get_value``).
         names_array = self._node.get_dictionary_object(_NAMES)
         if isinstance(names_array, COSArray):
             return self._read_names_array(names_array)
-        kids = self.get_kids()
-        if kids is None:
-            return None
-        out = {}
-        for child in kids:
-            child_names = child.get_names()
-            if child_names:  # pragma: no branch
-                # Defensive: empty / None child_names on a non-leaf
-                # name-tree node is a malformed-document edge case
-                # without live test coverage.
-                out.update(child_names)
-        return out
+        return None
 
     def set_names(self, names: dict[str, T] | None) -> None:
         if names is None:
@@ -355,24 +351,43 @@ class PDNameTreeNode[T](ABC):
         self._node.remove_item(_LIMITS)
         self._notify_parent_limits_changed()
 
+    def flatten(self) -> dict[str, T]:
+        """Flatten this entire sub-tree into a single ``{name: value}`` dict.
+
+        ``get_names()`` mirrors upstream and is NON-RECURSIVE — it returns
+        only the current node's own ``/Names`` leaf array. This convenience
+        recurses through ``/Kids`` to materialise every leaf value across a
+        multi-level tree. Upstream PDFBox has no equivalent; callers there
+        walk ``getKids()`` themselves (e.g. ``PDFMergerUtility.getIDTreeAsMap``).
+        """
+        out: dict[str, T] = {}
+        own = self._node.get_dictionary_object(_NAMES)
+        if isinstance(own, COSArray):
+            out.update(self._read_names_array(own))
+        kids = self.get_kids()
+        if kids is not None:
+            for child in kids:
+                out.update(child.flatten())
+        return out
+
     def merge(self, other: PDNameTreeNode[T] | dict[str, T] | None) -> None:
         """Merge ``other`` into this node, overwriting on key collisions.
 
-        Accepts either another ``PDNameTreeNode`` (whose flattened
-        name-to-value mapping is read via ``get_names``) or a plain
-        ``dict[str, T]``. The result is rebalanced through ``set_names``,
-        which preserves the leaf-vs-kids decision based on cardinality.
+        Accepts either another ``PDNameTreeNode`` (whose entire sub-tree is
+        flattened via :meth:`flatten`) or a plain ``dict[str, T]``. The
+        result is rebalanced through ``set_names``, which preserves the
+        leaf-vs-kids decision based on cardinality.
         """
         if other is None:
             return
         other_names = (
-            other.get_names() or {}
+            other.flatten()
             if isinstance(other, PDNameTreeNode)
             else dict(other)
         )
         if not other_names:
             return
-        existing = self.get_names() or {}
+        existing = self.flatten()
         existing.update(other_names)
         self.set_names(existing)
 

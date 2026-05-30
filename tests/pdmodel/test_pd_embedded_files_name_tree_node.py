@@ -72,8 +72,10 @@ def test_get_names_walks_kids() -> None:
     assert root.get_cos_object().get_dictionary_object(_NAMES) is None
     assert isinstance(root.get_cos_object().get_dictionary_object(_KIDS), COSArray)
 
-    # get_names flattens through kids; get_value walks via /Limits.
-    assert set(root.get_names() or {}) == {"a.txt", "z.bin"}
+    # get_names() is non-recursive (mirrors upstream): the kids-only root
+    # returns None. flatten() walks /Kids; get_value walks via /Limits.
+    assert root.get_names() is None
+    assert set(root.flatten()) == {"a.txt", "z.bin"}
     assert root.get_value("a.txt").get_file() == "a.txt"
     assert root.get_value("z.bin").get_file() == "z.bin"
 

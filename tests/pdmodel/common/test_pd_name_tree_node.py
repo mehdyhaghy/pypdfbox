@@ -11,6 +11,26 @@ _NAMES = COSName.get_pdf_name("Names")
 _LIMITS = COSName.get_pdf_name("Limits")
 
 
+def _flatten(node) -> dict:
+    """Flatten a name tree into a single dict by walking own ``/Names`` plus
+    every ``/Kids`` child.
+
+    ``PDNameTreeNode.get_names()`` mirrors upstream and is NON-RECURSIVE — it
+    returns only the current node's own leaf array (``None`` on a kids-only
+    node). Tests that want the whole-tree view flatten with this helper, the
+    same way upstream callers (e.g. ``PDFMergerUtility.getIDTreeAsMap``,
+    ``ExtractText`` kid walks) do."""
+    out: dict = {}
+    leaf = node.get_names()
+    if leaf:
+        out.update(leaf)
+    kids = node.get_kids()
+    if kids is not None:
+        for kid in kids:
+            out.update(_flatten(kid))
+    return out
+
+
 def test_flat_names_round_trip() -> None:
     tree = PDStringNameTreeNode()
     tree.set_names({"a": "alpha", "b": "beta"})
@@ -105,12 +125,16 @@ def test_get_kids_none_when_only_names() -> None:
 
 
 def test_get_names_none_when_only_kids() -> None:
+    # Upstream PDNameTreeNode.getNames() is non-recursive: a kids-only node has
+    # no own /Names array, so get_names() returns None (NOT the flattened kid
+    # entries). The whole-tree view is obtained by walking get_kids().
     leaf = PDStringNameTreeNode()
     leaf.set_names({"x": "X"})
     root = PDStringNameTreeNode()
     root.set_kids([leaf])
-    assert root.get_names() == {"x": "X"}
+    assert root.get_names() is None
     assert root.get_kids() is not None
+    assert _flatten(root) == {"x": "X"}
 
 
 def test_get_names_reads_nested_kids() -> None:
@@ -128,13 +152,18 @@ def test_get_names_reads_nested_kids() -> None:
     root = PDStringNameTreeNode()
     root.set_kids([middle, leaf_three])
 
-    assert root.get_names() == {
+    # Non-recursive: the kids-only root resolves no own names.
+    assert root.get_names() is None
+    # A manual kid-walk flattens the whole multi-level tree.
+    assert _flatten(root) == {
         "alpha": "A",
         "bravo": "B",
         "charlie": "C",
         "delta": "D",
     }
+    # Individual lookups still descend the tree via /Limits.
     assert root.get_value("delta") == "D"
+    assert root.get_value("alpha") == "A"
 
 
 def test_get_kids_from_cos_sets_parent_without_rewriting_limits() -> None:
@@ -210,7 +239,11 @@ def test_set_names_large_map_writes_kids_with_limits() -> None:
     assert PDStringNameTreeNode(first).get_upper_limit() == "k063"
     assert PDStringNameTreeNode(second).get_lower_limit() == "k064"
     assert PDStringNameTreeNode(second).get_upper_limit() == "k064"
-    assert tree.get_names() == names
+    # set_names auto-balanced into /Kids, so the root carries no own /Names;
+    # get_names() (non-recursive) is None and the full map is recovered by a
+    # manual kid-walk.
+    assert tree.get_names() is None
+    assert _flatten(tree) == names
 
 
 def test_set_names_large_map_has_deterministic_leaf_shape() -> None:

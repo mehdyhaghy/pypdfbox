@@ -229,6 +229,22 @@ def _spec_detail(spec: PDComplexFileSpecification | None) -> str:
     )
 
 
+def _collect(node, sink: dict[str, PDComplexFileSpecification]) -> None:
+    """Flatten a name tree into ``sink`` by walking own ``/Names`` + ``/Kids``.
+
+    Mirrors ``EmbeddedFilesMultiProbe.collect``: ``get_names()`` returns only
+    this node's own leaf entries (upstream ``PDNameTreeNode.getNames()`` is
+    non-recursive — see CHANGES.md), so a multi-level tree is flattened by
+    also recursing through ``get_kids()``."""
+    leaf = node.get_names()
+    if leaf:
+        sink.update(leaf)
+    kids = node.get_kids()
+    if kids is not None:
+        for kid in kids:
+            _collect(kid, sink)
+
+
 def _walk_shape(node, counters: dict[str, int]) -> None:
     dict_ = node.get_cos_object()
     if isinstance(dict_.get_dictionary_object(_NAMES), COSArray):
@@ -253,7 +269,7 @@ def _pypdfbox_dump(path: Path) -> str:
         if name_dict is not None:
             root = name_dict.get_embedded_files()
             if root is not None:
-                flat = root.get_names() or {}
+                _collect(root, flat)
         for name in sorted(flat):
             lines.append(f"ef\t{name}\t{_spec_detail(flat[name])}")
 

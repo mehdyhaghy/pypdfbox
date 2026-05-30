@@ -14,8 +14,10 @@ mirrored ``pypdfbox.fontbox.encoding`` path.
 
 The battery covers: common AGL names; the algorithmic ``uniXXXX`` / ``uXXXX``
 synthesis (including the strict upstream length gating that makes ``u1F600``,
-``u00041`` and multi-code-point ``uni...`` runs resolve to ``null``);
-ligatures (``ff`` / ``ffi`` / ``fi``); ``.notdef``; ``name.suffix`` stripping;
+``u01F600``, ``u00010000``, ``u00041`` and multi-code-point ``uni...`` runs
+resolve to ``null``); bare ``gNN`` / ``cidNNNN`` / ``index...`` glyph names
+that have no AGL entry and are not synthesized (-> null); ligatures
+(``ff`` / ``ffi`` / ``fi``); ``.notdef``; ``name.suffix`` stripping;
 multi-code-point AGL entries; surrogate-area rejection; and unknown names
 (-> null). Java PDFBox is the reference; where pypdfbox diverged the
 production code was fixed (see CHANGES.md / wave 1417).
@@ -61,6 +63,16 @@ _BATTERY: tuple[str, ...] = (
     # -- multi-code-point uni runs upstream does NOT synthesize -> null --
     "uni004100420043",
     "uni00410042",
+    # -- uXXXXXX (6/8 hex) forms upstream does NOT synthesize -> null ----
+    "u01F600",
+    "u00010000",
+    # -- bare gNN / cidNNNN glyph names (no AGL entry, no synthesis) ------
+    "g20",
+    "g65",
+    "g123",
+    "cid65",
+    "cid0001",
+    "index123",
     # -- ligatures (multi-code-point AGL values) -------------------------
     "ff",
     "ffi",
