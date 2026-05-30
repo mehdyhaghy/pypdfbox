@@ -324,33 +324,28 @@ class PDStructureElement(PDStructureNode):
 
     def get_standard_structure_type(self) -> str | None:
         """Resolve this element's ``/S`` against the structure-tree-root
-        ``/RoleMap`` until a standard PDF structure type is reached. Returns
-        the resolved name, or ``None`` if ``/S`` is absent.
+        ``/RoleMap`` with a **single** lookup. Returns the resolved name, or
+        ``None`` if ``/S`` is absent.
 
-        Per PDF 32000-1 §14.7.4 a structure element's ``/S`` may be a
-        non-standard name; the catalog's ``/StructTreeRoot/RoleMap`` maps it
-        (potentially through several hops) to a standard structure type.
+        Mirrors upstream ``PDStructureElement.getStandardStructureType()``
+        exactly (PDFBox 3.0.7): it reads ``/S``, looks it up once in the
+        role-map, and — only when the mapped value is a ``/Name`` (Java:
+        ``instanceof String``) — returns that mapped name; otherwise it
+        returns ``/S`` unchanged. Upstream does **not** recurse through a
+        multi-hop role-map chain, and does **not** short-circuit on standard
+        structure types, so neither does this method (verified against the
+        live oracle ``RoleMapResolveProbe``). A non-name mapped value leaves
+        ``/S`` unchanged.
         """
         struct_type = self._dictionary.get_name(_S)
         if struct_type is None:
             return None
 
         role_map = self._find_role_map()
-        if not role_map:
-            return struct_type
-
-        seen: set[str] = set()
-        current = struct_type
-        for _ in range(_MAX_ROLE_MAP_DEPTH):
-            if current in seen:
-                # Cycle — bail with the last value we resolved.
-                return current
-            seen.add(current)
-            mapped = role_map.get(current)
-            if mapped is None:
-                return current
-            current = mapped
-        return current
+        mapped = role_map.get(struct_type)
+        if mapped is not None:
+            return mapped
+        return struct_type
 
     def _find_role_map(self) -> dict[str, str]:
         """Walk the ``/P`` parent chain to the ``StructTreeRoot`` and return

@@ -24,15 +24,11 @@ def test_page_tree_getitem_rejects_non_integer_index() -> None:
         tree["0"]  # type: ignore[index]
 
 
-def test_format_number_normalizes_empty_formatted_text(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        content_stream_module,
-        "format",
-        lambda _value, _spec: "",
-        raising=False,
-    )
-
-    assert content_stream_module._format_number(0.125) == b"0"
+def test_format_number_matches_pdfbox_float_fast_path() -> None:
+    # PDFBox formats operands through float32 + formatFloatFast (max 5 frac
+    # digits, half-up on the narrowed fraction). 0.125 is exactly
+    # representable, so it round-trips as "0.125".
+    assert content_stream_module._format_number(0.125) == b"0.125"
 
 
 def test_dictionary_wrappers_expose_cos_dictionary_aliases() -> None:

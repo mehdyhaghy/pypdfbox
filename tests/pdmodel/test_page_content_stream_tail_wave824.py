@@ -1,18 +1,10 @@
 from __future__ import annotations
 
-import pytest
-
 from pypdfbox.pdmodel import pd_page_content_stream as content_stream_module
 
 
-def test_wave824_format_number_normalizes_degenerate_minus_text(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        content_stream_module,
-        "format",
-        lambda _value, _spec: "-",
-        raising=False,
-    )
-
-    assert content_stream_module._format_number(0.125) == b"0"
+def test_wave824_format_number_preserves_negative_zero() -> None:
+    # A value whose float32 fraction truncates to zero under formatFloatFast
+    # but is negative keeps the leading '-' on the zero integer part, exactly
+    # as PDFBox's buffer writer leaves it (e.g. -0.000005f -> "-0").
+    assert content_stream_module._format_number(-0.000005) == b"-0"

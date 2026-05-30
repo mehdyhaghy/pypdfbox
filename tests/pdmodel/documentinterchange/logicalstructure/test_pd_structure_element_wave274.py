@@ -90,14 +90,18 @@ def test_category_predicates_resolve_custom_types_through_role_map(
     assert _category_flags(elem) == expected_flags
 
 
-def test_category_predicates_resolve_multi_hop_role_map_before_classifying() -> None:
+def test_category_predicates_use_single_hop_role_map_before_classifying() -> None:
+    # Upstream getStandardStructureType() is a single hop: /S=MyBodyCopy maps
+    # to ParagraphAlias and resolution stops there (it does NOT chase
+    # ParagraphAlias -> P). ParagraphAlias is not a standard type, so no
+    # category predicate fires. Verified against the live oracle.
     elem = _attach_to_role_map(
         PDStructureElement(structure_type="MyBodyCopy"),
         {"MyBodyCopy": "ParagraphAlias", "ParagraphAlias": "P"},
     )
 
-    assert elem.get_standard_structure_type() == "P"
-    assert _category_flags(elem) == (False, True, False, False)
+    assert elem.get_standard_structure_type() == "ParagraphAlias"
+    assert _category_flags(elem) == (False, False, False, False)
 
 
 def test_category_predicates_do_not_classify_unresolved_custom_role() -> None:

@@ -34,12 +34,15 @@ def _root_with_role_map(entries: dict[str, str]) -> COSDictionary:
     return root
 
 
-def test_role_map_and_parent_walk_depth_caps_return_current_state() -> None:
+def test_role_map_single_hop_and_parent_walk_depth_cap() -> None:
+    # Upstream getStandardStructureType() does a single role-map lookup, so a
+    # deep Custom0 -> Custom1 -> ... chain resolves only one hop to Custom1
+    # (it never reaches the chain end). Verified against the live oracle.
     role_map = {f"Custom{i}": f"Custom{i + 1}" for i in range(20)}
     elem = PDStructureElement(structure_type="Custom0")
     elem.set_parent(_root_with_role_map(role_map))
 
-    assert elem.get_standard_structure_type() == "Custom16"
+    assert elem.get_standard_structure_type() == "Custom1"
 
     leaf = PDStructureElement(structure_type="P")
     node = leaf.get_cos_object()

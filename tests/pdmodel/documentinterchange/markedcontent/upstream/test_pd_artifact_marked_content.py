@@ -72,6 +72,7 @@ def test_get_b_box_returns_none_when_absent() -> None:
 def test_attached_edges_recognised() -> None:
     props = COSDictionary()
     arr = COSArray()
+    arr.grow_to_size(2)
     arr.set_name(0, "Top")
     arr.set_name(1, "Left")
     props.set_item(COSName.get_pdf_name("Attached"), arr)

@@ -1939,33 +1939,80 @@ def _to_cos_name(name: COSName | str) -> COSName:
     return COSName.get_pdf_name(name)
 
 
-def _format_number(value: float) -> bytes:
-    """Format a numeric operand using up to 5 decimal places with trailing
-    zeros stripped. Matches upstream's
-    ``formatDecimal = NumberFormat.getNumberInstance(Locale.US)`` with
-    ``setMaximumFractionDigits(5)``, ``setGroupingUsed(false)`` and the
-    default ``RoundingMode.HALF_EVEN`` — Python's ``format(f, ".5f")`` also
-    rounds half-to-even and emits no grouping separator, so the two agree.
+_FAST_PATH_LIMIT: float = 9.223372e18
+_MAX_FRACTION_DIGITS: int = 5
+_POWER_OF_TENS: tuple[int, ...] = (1, 10, 100, 1000, 10000, 100000)
 
-    Non-finite values (``inf`` / ``-inf`` / ``nan``) raise
-    :class:`ValueError`, mirroring upstream's ``writeOperand(float)``
-    ``IllegalArgumentException`` guard ("X is not a finite number")."""
-    # Integers stay integer-formatted (no trailing ".0") to match upstream
-    # ``NumberFormat`` behaviour on whole numbers.
+
+def _format_number(value: float) -> bytes:
+    """Format a numeric operand byte-for-byte like upstream PDFBox's
+    ``PDPageContentStream.writeOperand(float)``.
+
+    Upstream routes every numeric operand through ``float`` (the Java drawing
+    API signatures are all ``float``) and formats it with
+    ``NumberFormatUtil.formatFloatFast(value, maxFractionDigits, buffer)``,
+    where ``PDPageContentStream``'s constructor sets ``maxFractionDigits = 5``.
+
+    ``formatFloatFast`` is **not** equivalent to ``format(f, ".5f")`` on the
+    Python ``float`` (a 64-bit double): two divergences matter for byte parity:
+
+    1. **float32 narrowing.** The operand is a Java 32-bit ``float``, so its
+       decimal expansion is taken from the *single-precision* value. e.g.
+       ``12345.6789f`` is ``12345.6787109375`` and formats as ``12345.67871``,
+       not ``12345.6789``.
+    2. **truncating half-up on the narrowed fraction.** ``formatFloatFast``
+       computes ``frac = (long)((|f| - trunc(f)) * 10**5 + 0.5)`` — a half-up
+       round of the *float32* fractional part. Because the float32 value of a
+       decimal literal like ``0.000005`` is ``4.99999987e-06``, the ``+0.5``
+       only reaches ``0.9999…`` and truncates to ``0`` (upstream emits ``0``),
+       whereas a float64 ``.5f`` format would emit ``0.00001``.
+
+    This function reproduces both. Whole-number operands keep their integer
+    spelling (no ``.0``), matching ``NumberFormat`` on integral values, and
+    negative zero is preserved (``-0``) exactly as upstream's buffer writer
+    leaves the leading ``'-'`` before a zero integer part.
+
+    Non-finite values (``inf`` / ``-inf`` / ``nan``) raise :class:`ValueError`,
+    mirroring upstream's ``writeOperand(float)`` ``IllegalArgumentException``
+    guard ("X is not a finite number")."""
+    import math as _math  # noqa: PLC0415
+    import struct as _struct  # noqa: PLC0415
+
+    # Python ``int`` operands print via the integer path (NumberFormat.format
+    # on a long), with no float narrowing — Python ints are unbounded so the
+    # exact decimal is correct.
     if isinstance(value, int) and not isinstance(value, bool):
         return str(value).encode("ascii")
-    f = float(value)
-    # Reject inf / -inf / nan up-front — emitting these into a content
-    # stream would produce unparseable PDF.
-    import math as _math  # noqa: PLC0415
 
-    if not _math.isfinite(f):
+    f64 = float(value)
+    if not _math.isfinite(f64):
         raise ValueError(f"{value!r} is not a finite number")
-    if f.is_integer():
-        return str(int(f)).encode("ascii")
-    text = format(f, ".5f").rstrip("0").rstrip(".")
-    if not text or text == "-":
-        text = "0"
+
+    # Narrow to a Java 32-bit float — this is the value upstream's drawing API
+    # actually formats.
+    f = _struct.unpack("f", _struct.pack("f", f64))[0]
+
+    # Fallback range: outside the fast path, upstream calls
+    # NumberFormat.format((double) f) (HALF_EVEN, max 5 frac digits). These
+    # magnitudes (>9.2e18) never occur as real content-stream operands; format
+    # the (integral, at this magnitude) double directly.
+    if abs(f) > _FAST_PATH_LIMIT:
+        text = format(f, ".5f").rstrip("0").rstrip(".")
+        return (text or "0").encode("ascii")
+
+    integer = int(f)  # truncation toward zero, like Java's (long) cast
+    sign = ""
+    if f < 0.0:
+        sign = "-"
+        integer = -integer
+    scaled = int((abs(f) - float(integer)) * _POWER_OF_TENS[_MAX_FRACTION_DIGITS] + 0.5)
+    if scaled >= _POWER_OF_TENS[_MAX_FRACTION_DIGITS]:
+        integer += 1
+        scaled -= _POWER_OF_TENS[_MAX_FRACTION_DIGITS]
+    text = sign + str(integer)
+    if scaled > 0:
+        frac = str(scaled).rjust(_MAX_FRACTION_DIGITS, "0").rstrip("0")
+        text = f"{text}.{frac}"
     return text.encode("ascii")
 
 

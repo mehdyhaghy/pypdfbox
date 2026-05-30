@@ -166,7 +166,9 @@ class CFFParser:
                     # raw surface — a string for predefined, a 256-name
                     # list for embedded — leaks through, breaking parity
                     # with ``CFFType1Font.getEncoding().getClass()``.
-                    encoding_obj = _resolve_top_dict_encoding(top)
+                    encoding_obj = _resolve_top_dict_encoding(
+                        top, cff_payload
+                    )
                     if encoding_obj is not None:
                         font.set_encoding(encoding_obj)
                 font.set_name(name)
@@ -1058,7 +1060,9 @@ def _extract_cff_table(otf_bytes: bytes) -> bytes:
     raise OSError(msg)
 
 
-def _resolve_top_dict_encoding(top: Any) -> Any | None:
+def _resolve_top_dict_encoding(
+    top: Any, cff_payload: bytes | None = None
+) -> Any | None:
     """Resolve fontTools' raw Top DICT ``Encoding`` value into the
     matching :class:`CFFEncoding` subclass instance.
 
@@ -1069,13 +1073,19 @@ def _resolve_top_dict_encoding(top: Any) -> Any | None:
     * The string ``"ExpertEncoding"``  — Top DICT operand 1; resolves
       to :class:`CFFExpertEncoding` (predefined).
     * A 256-element ``list`` of glyph names — embedded Format0 / Format1
-      table; lifted into a :class:`Format0Encoding` whose ``get_name``
-      mirrors the fontTools-decompiled list. We never re-parse the
-      on-disk Format0/Format1 byte layout here (fontTools already did
-      that during ``decompile``); the wrapper simply re-surfaces the
-      same code-to-name mapping with the upstream class identity so
-      callers branching on ``isinstance(enc, Format0Encoding)`` (or
-      checking ``enc.__class__.__name__``) see the right type.
+      table. fontTools decompiles *both* on-disk encoding formats into
+      the same 256-name list and discards the format byte, but upstream
+      ``CFFParser.readEncoding`` (``CFFParser.java`` line 938) preserves
+      the distinction: ``getEncoding().getClass()`` is
+      :class:`Format0Encoding` for base format 0 and
+      :class:`Format1Encoding` for base format 1. To match that class
+      identity we re-read the single on-disk format byte at the raw
+      ``Encoding`` offset (low 7 bits = base format; the supplement bit
+      0x80 does not change the base type). ``cff_payload`` is the raw
+      CFF program bytes; the offset comes from fontTools'
+      ``top.rawDict["Encoding"]``. The decompiled code-to-name list is
+      always authoritative for the *mapping*; only the wrapper class is
+      format-byte-driven.
 
     Returns ``None`` when the Top DICT has no /Encoding entry — the CFF
     default is StandardEncoding but absence is reported explicitly so
@@ -1097,15 +1107,23 @@ def _resolve_top_dict_encoding(top: Any) -> Any | None:
     if isinstance(encoding, list):
         # Embedded encoding — fontTools has already decompiled the
         # Format0 / Format1 table into a 256-entry list of names. We
-        # wrap that list as a :class:`Format0Encoding` so callers see
-        # the upstream class identity and surface the code-to-name
-        # mapping via the ordinary ``CFFEncoding.get_name`` API.
+        # wrap that list as a :class:`Format0Encoding` or
+        # :class:`Format1Encoding` (matching the on-disk base format
+        # byte) so callers see the upstream class identity and surface
+        # the code-to-name mapping via the ordinary
+        # ``CFFEncoding.get_name`` API.
         from .format0_encoding import Format0Encoding  # noqa: PLC0415
+        from .format1_encoding import Format1Encoding  # noqa: PLC0415
 
         encoded_count = sum(
             1 for name in encoding if name and name != ".notdef"
         )
-        built = Format0Encoding(encoded_count)
+        base_format = _embedded_encoding_base_format(top, cff_payload)
+        built: Any
+        if base_format == 1:
+            built = Format1Encoding(encoded_count)
+        else:
+            built = Format0Encoding(encoded_count)
         for code, name in enumerate(encoding):
             if not name:
                 continue
@@ -1114,6 +1132,34 @@ def _resolve_top_dict_encoding(top: Any) -> Any | None:
             if name not in built._name_to_code:
                 built._name_to_code[name] = code
         return built
+    return None
+
+
+def _embedded_encoding_base_format(
+    top: Any, cff_payload: bytes | None
+) -> int:
+    """Return the on-disk base encoding format (0 or 1) for an embedded
+    CFF encoding, read from the single format byte at the raw
+    ``Encoding`` offset.
+
+    fontTools retains the raw offset in ``top.rawDict["Encoding"]``. The
+    byte at that offset is the format byte; its low 7 bits select the
+    base format (0 = Format0, 1 = Format1) exactly as upstream
+    ``CFFParser.readEncoding`` reads it. Falls back to ``0`` (Format0)
+    when the offset or the payload is unavailable — preserving the prior
+    behaviour rather than raising.
+    """
+    if not cff_payload:
+        return 0
+    raw = getattr(top, "rawDict", None)
+    if not isinstance(raw, dict):
+        return 0
+    offset = raw.get("Encoding")
+    # Predefined ids 0/1 are surfaced as strings, not lists, so any
+    # numeric offset here is a real embedded-table pointer (> 1).
+    if not isinstance(offset, int) or not 0 <= offset < len(cff_payload):
+        return 0
+    return cff_payload[offset] & 0x7F
     return None
 
 

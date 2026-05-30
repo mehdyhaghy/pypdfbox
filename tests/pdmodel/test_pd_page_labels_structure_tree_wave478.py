@@ -75,8 +75,12 @@ def test_page_labels_find_range_and_container_protocols() -> None:
 
 
 def test_structure_tree_root_appends_kid_and_resolves_descendant_roles() -> None:
+    # Single-hop role map (Hero -> P). find_first_by_role compares against the
+    # element's single-hop get_standard_structure_type (matches upstream), so
+    # the role map must reach the standard type in one hop for Hero to be found
+    # under "P".
     root = PDStructureTreeRoot()
-    root.set_role_map({"BodyText": "P", "Hero": "BodyText"})
+    root.set_role_map({"Hero": "P"})
     parent = PDStructureElement(structure_type="Sect")
     child = PDStructureElement(structure_type="Hero")
     parent.append_kid(child)

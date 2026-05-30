@@ -186,6 +186,7 @@ def test_get_type_returns_none_for_unrelated_value_type() -> None:
 def _props_with_attached(*edges: str) -> COSDictionary:
     props = COSDictionary()
     arr = COSArray()
+    arr.grow_to_size(len(edges))
     for i, edge in enumerate(edges):
         arr.set_name(i, edge)
     props.set_item(COSName.get_pdf_name("Attached"), arr)

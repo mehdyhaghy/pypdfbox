@@ -201,11 +201,11 @@ class COSArray(COSBase):
     # ---------- typed convenience accessors ----------
 
     def set_name(self, index: int, value: str) -> None:
-        self._check_non_negative_index(index)
-        self.grow_to_size(index + 1)
-        item = COSName.get_pdf_name(value)
-        self._items[index] = item
-        self._update_state.update(child=item)
+        # Upstream ``COSArray.setName`` delegates to ``set(index, COSName)`` →
+        # ``List.set(index, obj)``, which raises ``IndexOutOfBoundsException``
+        # when ``index >= size`` — it does NOT auto-grow the array. Route
+        # through :meth:`set` so the out-of-range contract matches PDFBox 3.0.7.
+        self.set(index, COSName.get_pdf_name(value))
 
     def get_name(self, index: int, default: str | None = None) -> str | None:
         self._check_non_negative_index(index)

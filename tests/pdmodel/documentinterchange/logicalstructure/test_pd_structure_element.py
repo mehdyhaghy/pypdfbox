@@ -98,11 +98,16 @@ def test_standard_structure_type_resolves_one_hop() -> None:
     assert elem.get_standard_structure_type() == "H2"
 
 
-def test_standard_structure_type_resolves_two_hops() -> None:
+def test_standard_structure_type_resolves_single_hop_only() -> None:
+    # Upstream PDFBox getStandardStructureType() does exactly ONE role-map
+    # lookup — it does NOT chase a multi-hop chain. /S=MyHeader maps to
+    # MyAlias, so resolution stops at MyAlias even though MyAlias would itself
+    # map to the standard type P. Verified against the live oracle
+    # (RoleMapResolveProbe).
     root = _make_root_with_role_map({"MyHeader": "MyAlias", "MyAlias": "P"})
     elem = PDStructureElement(structure_type="MyHeader")
     elem.get_cos_object().set_item(_P, root)
-    assert elem.get_standard_structure_type() == "P"
+    assert elem.get_standard_structure_type() == "MyAlias"
 
 
 def test_standard_structure_type_walks_parent_chain_to_root() -> None:

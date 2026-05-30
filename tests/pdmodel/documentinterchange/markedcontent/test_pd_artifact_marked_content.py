@@ -154,6 +154,7 @@ def test_get_b_box_returns_none_when_value_is_not_an_array() -> None:
 def _attached(*edges: str) -> COSDictionary:
     props = COSDictionary()
     arr = COSArray()
+    arr.grow_to_size(len(edges))
     for i, edge in enumerate(edges):
         arr.set_name(i, edge)
     props.set_item(COSName.get_pdf_name("Attached"), arr)
@@ -270,6 +271,7 @@ def test_get_attached_edges_skips_non_name_entries() -> None:
     result — skip it silently and surface the recognisable names."""
     props = COSDictionary()
     arr = COSArray()
+    arr.grow_to_size(3)
     arr.set_name(0, "Top")
     arr.set_int(1, 99)  # garbage int between names
     arr.set_name(2, "Right")

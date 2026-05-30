@@ -207,7 +207,9 @@ def test_element_parent_resolution_depth_cap_cycle_and_type_predicates() -> None
     role_leaf = PDStructureElement(structure_type="Custom0")
     role_leaf.set_parent(role_root)
 
-    assert role_leaf.get_standard_structure_type() == "Custom16"
+    # Single-hop resolution (matches upstream getStandardStructureType):
+    # Custom0 -> Custom1 and stops; the deep chain is never chased.
+    assert role_leaf.get_standard_structure_type() == "Custom1"
     assert PDStructureElement.is_standard_structure_type(None) is False
     assert PDStructureElement.is_standard_structure_type("P") is True
 

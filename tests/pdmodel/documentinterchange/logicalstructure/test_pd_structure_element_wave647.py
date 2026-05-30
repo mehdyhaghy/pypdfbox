@@ -92,9 +92,13 @@ def test_wave647_role_map_chains_cycles_and_non_name_values_are_handled() -> Non
         "LoopA": "LoopB",
         "LoopB": "LoopA",
     }
-    assert paragraph.get_standard_structure_type() == "P"
-    assert paragraph.is_block_level() is True
-    assert loop.get_standard_structure_type() == "LoopA"
+    # Single-hop resolution (matches upstream getStandardStructureType):
+    # FancyParagraph -> BodyText and stops (does NOT chase BodyText -> P).
+    # BodyText is not a standard type, so it is not block-level.
+    assert paragraph.get_standard_structure_type() == "BodyText"
+    assert paragraph.is_block_level() is False
+    # LoopA -> LoopB (one hop); resolution does not loop.
+    assert loop.get_standard_structure_type() == "LoopB"
     assert loop.is_resolved_structure_type_standard() is False
 
 
