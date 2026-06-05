@@ -12,8 +12,13 @@ def test_wave317_embedded_file_constructor_accepts_filter_array() -> None:
         ]
     )
 
-    embedded = PDEmbeddedFile(None, b"already-encoded", filters)
+    # The embed ctor encodes the decoded payload through the /Filter chain
+    # (upstream createOutputStream(filters)); the recorded body is the
+    # encoded form, and create_input_stream() round-trips back.
+    embedded = PDEmbeddedFile(None, b"decoded payload", filters)
 
     cos = embedded.get_cos_object()
-    assert cos.get_raw_data() == b"already-encoded"
-    assert cos.get_dictionary_object(COSName.get_pdf_name("Filter")) is filters
+    assert cos.get_raw_data() != b"decoded payload"
+    assert embedded.create_input_stream().read() == b"decoded payload"
+    recorded = cos.get_dictionary_object(COSName.get_pdf_name("Filter"))
+    assert [n.name for n in recorded] == ["FlateDecode", "ASCII85Decode"]

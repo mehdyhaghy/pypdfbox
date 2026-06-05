@@ -624,8 +624,33 @@ def test_set_oc_properties_none_removes_entry() -> None:
 
 
 def test_get_acro_form_returns_cached_wrapper_after_set() -> None:
-    """Repeated ``get_acro_form`` calls return the same wrapper instance
-    after the first lookup (parity with upstream ``cachedAcroForm``)."""
+    """Repeated ``get_acro_form(None)`` calls return the same wrapper
+    instance after the first lookup (parity with upstream
+    ``cachedAcroForm``).
+
+    Note: this caching holds for the *same fixup* (or ``None``). Two
+    consecutive **no-arg** ``get_acro_form()`` calls each mint a fresh
+    ``AcroFormDefaultFixup`` which clears the cache, so they return
+    *different* wrapper instances — confirmed against the live PDFBox
+    3.0.7 oracle (``getAcroForm() == getAcroForm()`` is ``false``); see
+    :func:`test_get_acro_form_no_arg_mints_fresh_wrapper_each_call`."""
+    from pypdfbox.pdmodel.interactive.form import PDAcroForm
+
+    doc = PDDocument()
+    cat = doc.get_document_catalog()
+    cat.set_acro_form(PDAcroForm(doc))
+    a = cat.get_acro_form(None)
+    b = cat.get_acro_form(None)
+    assert a is b
+
+
+def test_get_acro_form_no_arg_mints_fresh_wrapper_each_call() -> None:
+    """Two consecutive no-arg ``get_acro_form()`` calls return distinct
+    wrapper instances because each creates a fresh
+    ``AcroFormDefaultFixup`` that clears the cache — mirroring upstream's
+    no-arg ``getAcroForm()`` which is ``getAcroForm(new
+    AcroFormDefaultFixup(document))`` (oracle-confirmed: PDFBox 3.0.7
+    returns ``f1 != f2``). The backing ``/AcroForm`` dict is identical."""
     from pypdfbox.pdmodel.interactive.form import PDAcroForm
 
     doc = PDDocument()
@@ -633,7 +658,8 @@ def test_get_acro_form_returns_cached_wrapper_after_set() -> None:
     cat.set_acro_form(PDAcroForm(doc))
     a = cat.get_acro_form()
     b = cat.get_acro_form()
-    assert a is b
+    assert a is not b
+    assert a.get_cos_object() is b.get_cos_object()
 
 
 def test_set_acro_form_clears_cached_wrapper() -> None:

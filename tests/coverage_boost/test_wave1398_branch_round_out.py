@@ -69,22 +69,28 @@ def test_annotation_border_legacy_dash_slot_not_array() -> None:
 
 
 def test_pd_action_get_next_array_mixed_entries() -> None:
-    """A /Next array containing non-dict entries and an unsupported /S
-    dict triggers both 143->141 and 145->141."""
+    """A /Next array containing a non-dict entry and an unsupported /S dict.
+
+    Mirrors upstream ``PDAction.getNext()`` which dispatches each array slot
+    through ``PDActionFactory.createAction`` (returning ``null`` for a
+    non-dictionary or an unrecognised subtype) and preserves the array
+    length — so the returned list keeps a ``None`` in the slot of every
+    non-dict / unknown member rather than dropping it.
+    """
     from pypdfbox.pdmodel.interactive.action import PDActionNamed
 
     parent = COSDictionary()
     parent.set_item(COSName.get_pdf_name("S"), COSName.get_pdf_name("Named"))
     nxt = COSArray()
-    # 143->141: non-dict entry skipped
+    # non-dict entry → createAction(null) → None slot (length preserved)
     nxt.add(COSInteger.get(0))
-    # 145->141: a dict whose /S is not a recognised action subtype
+    # a dict whose /S is not a recognised action subtype → None slot
     unsupported = COSDictionary()
     unsupported.set_item(
         COSName.get_pdf_name("S"), COSName.get_pdf_name("BogusActionType")
     )
     nxt.add(unsupported)
-    # Plus one valid entry so we still return non-empty
+    # Plus one valid entry that resolves to a typed wrapper.
     valid = COSDictionary()
     valid.set_item(COSName.get_pdf_name("S"), COSName.get_pdf_name("Named"))
     valid.set_item(COSName.get_pdf_name("N"), COSName.get_pdf_name("NextPage"))
@@ -94,8 +100,11 @@ def test_pd_action_get_next_array_mixed_entries() -> None:
     action = PDActionNamed(parent)
     results = action.get_next()
     assert results is not None
-    # both bogus entries are skipped; only the valid named action survives
-    assert len(results) >= 1
+    # Length preserved: [None (non-dict), None (unknown /S), PDActionNamed].
+    assert len(results) == 3
+    assert results[0] is None
+    assert results[1] is None
+    assert isinstance(results[2], PDActionNamed)
 
 
 # -----------------------------------------------------------------------------

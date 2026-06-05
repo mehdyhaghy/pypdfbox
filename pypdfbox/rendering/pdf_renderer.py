@@ -150,6 +150,42 @@ def _page_rotation_matrix(rotation: int, width_pt: float, height_pt: float) -> _
     return _IDENTITY
 
 
+def _no_rotate_matrix(rotation: int, pivot_x: float, pivot_y: float) -> _Matrix:
+    """Counter-rotation a NoRotate annotation pivots through (PDFBOX-4744).
+
+    Mirrors upstream ``PageDrawer.showAnnotation``'s
+    ``graphics.rotate(toRadians(pageRotation), rect.lowerLeftX,
+    rect.upperRightY)`` — a rotation by the page's ``/Rotate`` angle about
+    the annotation rect's **upper-left** corner ``(rect.llx, rect.ury)`` in
+    default user space. Composed onto the user-space side of the appearance
+    transform (which is then carried into the page-rotation device CTM), it
+    cancels the page rotation so the annotation paints upright while staying
+    anchored at its upper-left corner.
+
+    The PDF ``/Rotate`` value is a *clockwise* viewing rotation, so the page
+    content is pre-rotated counter-clockwise by ``rotation`` in default user
+    space before the device flip. To keep the annotation appearance upright
+    on screen its content must spin the opposite way in default user space —
+    i.e. by ``-rotation``. Validated against the live PDFBox 3.0.7 oracle on
+    ``/Rotate`` 90 / 270 (MAD 0.0): the renderer's row-vector convention
+    (``x' = a·x + c·y + e``, ``y' = b·x + d·y + f``) with ``θ = -rotation``
+    gives the 2x2 block ``(cos θ, -sin θ, sin θ, cos θ)``.
+
+    Returned in the renderer's row-vector PDF convention as
+    ``T(px, py)·R(θ)·T(-px, -py)``."""
+    theta = math.radians(-rotation)
+    cos = math.cos(theta)
+    sin = math.sin(theta)
+    # Row-vector rotation block for θ = -rotation: x' = cos·x - sin·y,
+    # y' = sin·x + cos·y.
+    a, b, c, d = cos, -sin, sin, cos
+    # Pivot the rotation around (pivot_x, pivot_y): translate the pivot to
+    # the origin, rotate, translate back.
+    e = pivot_x - (a * pivot_x + c * pivot_y)
+    f = pivot_y - (b * pivot_x + d * pivot_y)
+    return (a, b, c, d, e, f)
+
+
 def _to_pil_affine(m: _Matrix) -> tuple[float, float, float, float, float, float]:
     """Convert a PDF CTM ``(a, b, c, d, e, f)`` to PIL/aggdraw's
     ``(a, b, c, d, e, f)`` row-vector form where ``x' = a*x + b*y + c``,
@@ -431,6 +467,31 @@ def _clamp_byte(v: float) -> int:
 
 def _rgb_bytes(r: float, g: float, b: float) -> tuple[int, int, int]:
     return (_clamp_byte(r), _clamp_byte(g), _clamp_byte(b))
+
+
+_NAN = float("nan")
+
+
+def _ieee_div(numerator: float, denominator: float) -> float:
+    """Divide with IEEE-754 / Java semantics (no ``ZeroDivisionError``).
+
+    ``x / 0`` yields ``±Inf`` (sign of ``x``) and ``0 / 0`` yields ``NaN`` —
+    matching Java float division. Used by the radial-shading root solver so the
+    degenerate ``denom == 0`` cone produces the same roots (and thus the same
+    selected colour) as upstream ``RadialShadingContext.calculateInputValues``.
+    """
+    if denominator != 0.0:
+        return numerator / denominator
+    if numerator == 0.0 or numerator != numerator:
+        return _NAN
+    return math.inf if numerator > 0.0 else -math.inf
+
+
+def _java_max(a: float, b: float) -> float:
+    """``Math.max`` with Java NaN semantics: NaN if either argument is NaN."""
+    if a != a or b != b:
+        return _NAN
+    return a if a >= b else b
 
 
 def _cmyk_to_rgb_bytes(c: float, m: float, y: float, k: float) -> tuple[int, int, int]:
@@ -970,6 +1031,11 @@ class PDFRenderer(PDFStreamEngine):
         self._scale: float = 1.0
         self._page_height_px: float = 0.0
         self._device_ctm: _Matrix = _IDENTITY
+        # Page ``/Rotate`` (0/90/180/270) for the page currently being
+        # rasterised — consulted by ``_render_annotation`` to counter-rotate
+        # a NoRotate annotation around its rect's upper-left corner
+        # (PDFBOX-4744). Reset per page in ``_render_page_into``.
+        self._render_page_rotation: int = 0
         # Graphics-state stack — top-of-stack at index -1.
         self._gs_stack: list[_GState] = []
         # Current path as a list of subpaths; each subpath is a list of
@@ -1399,6 +1465,8 @@ class PDFRenderer(PDFStreamEngine):
         width_pt = page_size.get_width()
         height_pt = page_size.get_height()
         rotation = _normalise_rotation(self._get_render_rotation(page))
+        # Stash for ``_render_annotation`` (NoRotate counter-rotation).
+        self._render_page_rotation = rotation
         # rotate_into_box: translate mediabox to origin, rotate clockwise by
         # ``rotation`` (PDF /Rotate is clockwise), then translate so content
         # lands back in the positive quadrant of the rotated frame.
@@ -4590,6 +4658,46 @@ class PDFRenderer(PDFStreamEngine):
             return
         self._fill_mask_with_rgb(region_mask, _rgb_bytes(*rgb))
 
+    def _shading_background_rgb(
+        self, shading: Any
+    ) -> tuple[int, int, int] | None:
+        """Return the axial/radial shading's ``/Background`` colour as an
+        sRGB byte triple, or ``None`` when the entry is absent / unparseable.
+
+        Mirrors upstream ``ShadingContext`` constructor: when ``/Background``
+        is present it is converted once via the shading colour space and used
+        for every pixel that falls outside the gradient extent and is *not*
+        extended (``AxialShadingContext`` / ``RadialShadingContext`` paint
+        ``getRgbBackground()`` there instead of leaving the pixel untouched).
+        ``/Background`` holds raw colour-space component values (not a
+        function parameter), so it is routed straight through the colour
+        space's ``to_rgb`` (non-Device) or the Device heuristic."""
+        try:
+            bg = shading.get_background()
+        except Exception:  # noqa: BLE001
+            return None
+        if bg is None:
+            return None
+        try:
+            flat = list(bg.to_float_array())
+        except Exception:  # noqa: BLE001
+            return None
+        if not flat:
+            return None
+        cs = None
+        try:
+            cs = shading.get_color_space()
+        except Exception:  # noqa: BLE001
+            cs = None
+        cs_name = cs.name if isinstance(cs, COSName) else None
+        if cs_name not in ("DeviceGray", "DeviceRGB", "DeviceCMYK") and (
+            cs is not None
+        ):
+            rgb = self._convert_shading_output(shading, flat)
+            if rgb is not None:
+                return _rgb_bytes(*rgb)
+        return self._function_output_to_rgb(flat, cs_name)
+
     def _evaluate_shading_rgb(
         self, shading: Any, t: float
     ) -> tuple[float, float, float] | None:
@@ -4720,12 +4828,20 @@ class PDFRenderer(PDFStreamEngine):
         dx = x1 - x0
         dy = y1 - y0
         denom = dx * dx + dy * dy
-        if denom <= 0.0:
-            return
         # Domain — default [0, 1] per spec.
         domain_lo, domain_hi = self._shading_domain(shading)
         # Extend — default [false, false] per spec.
         extend_start, extend_end = self._shading_extend(shading)
+        # /Background — painted where a pixel is outside the gradient extent
+        # and not extended (upstream AxialShadingContext.getRaster). ``None``
+        # leaves such pixels untouched (page colour shows through).
+        bg_rgb = self._shading_background_rgb(shading)
+        if denom <= 0.0:
+            # Degenerate axis (start == end). Upstream paints the background
+            # everywhere when present, else leaves the whole region untouched.
+            if bg_rgb is not None:
+                self._fill_mask_with_rgb(region_mask, bg_rgb)
+            return
 
         # Inverse of the full CTM so device pixels can be mapped back to
         # pattern (user) space for axis projection.
@@ -4742,6 +4858,10 @@ class PDFRenderer(PDFStreamEngine):
         mask_data = region_mask.tobytes()
         # Default fallback colour when function eval fails.
         fallback = (0, 0, 0)
+        # Fill for pixels outside the gradient extent and not extended: the
+        # /Background colour when set (upstream paints getRgbBackground there),
+        # else white so a white page shows through unchanged.
+        out_fill = bg_rgb if bg_rgb is not None else (255, 255, 255)
         # Pre-evaluate a small ramp of colours and lerp. Cheap and
         # reasonably accurate for monotone Type 2 functions like
         # exponential interpolation.
@@ -4769,12 +4889,12 @@ class PDFRenderer(PDFStreamEngine):
                 # Apply /Extend handling per §8.7.4.5.3.
                 if u < 0.0:
                     if not extend_start:
-                        pixels.extend((255, 255, 255))
+                        pixels.extend(out_fill)
                         continue
                     u = 0.0
                 elif u > 1.0:
                     if not extend_end:
-                        pixels.extend((255, 255, 255))
+                        pixels.extend(out_fill)
                         continue
                     u = 1.0
                 # Map u in [0,1] to /Domain.
@@ -4812,11 +4932,12 @@ class PDFRenderer(PDFStreamEngine):
     ) -> None:
         """Type 3 (radial) shading per PDF 32000-1 §8.7.4.5.4.
 
-        ``/Coords`` = ``[x0 y0 r0 x1 y1 r1]`` defines two circles. For
-        each pixel, find the parameter ``s`` such that the pixel sits on
-        the circle ``c(s) = ((1-s)*c0 + s*c1, (1-s)*r0 + s*r1)``. We solve
-        the standard quadratic in ``s`` and pick the larger valid root
-        (matches Adobe / Java2D behaviour).
+        ``/Coords`` = ``[x0 y0 r0 x1 y1 r1]`` defines two circles. For each
+        pixel, solve the quadratic (Adobe Technical Note #5600) giving the two
+        parameter values ``s`` whose interpolated circle passes through the
+        pixel, then select between them and apply ``/Extend`` / ``/Background``
+        exactly as upstream ``RadialShadingContext.getRaster`` /
+        ``calculateInputValues`` do.
         """
         if self._image is None:
             return
@@ -4832,6 +4953,11 @@ class PDFRenderer(PDFStreamEngine):
 
         domain_lo, domain_hi = self._shading_domain(shading)
         extend_start, extend_end = self._shading_extend(shading)
+        # /Background — painted where a pixel is outside the gradient extent
+        # and not extended (upstream RadialShadingContext.getRaster). ``None``
+        # leaves such pixels untouched.
+        bg_rgb = self._shading_background_rgb(shading)
+        out_fill = bg_rgb if bg_rgb is not None else (255, 255, 255)
         inv = self._invert_matrix(self._full_ctm())
         if inv is None:
             return
@@ -4845,11 +4971,13 @@ class PDFRenderer(PDFStreamEngine):
             ramp.append(_rgb_bytes(*rgb) if rgb is not None else (0, 0, 0))
 
         ia, ib, ic, id_, ie, if_ = inv
-        dx = x1 - x0
-        dy = y1 - y0
-        dr = r1 - r0
-        # Quadratic coefficients in s for ((x-cs)^2 + (y-cs')^2 = r(s)^2).
-        a = dx * dx + dy * dy - dr * dr
+        # Upstream constants (RadialShadingContext): x1x0, y1y0, r1r0, r0pow2,
+        # denom = x1x0^2 + y1y0^2 - r1r0^2.
+        x1x0 = x1 - x0
+        y1y0 = y1 - y0
+        r1r0 = r1 - r0
+        r0pow2 = r0 * r0
+        denom = x1x0 * x1x0 + y1y0 * y1y0 - r1r0 * r1r0
 
         pixels: list[int] = []
         mask_data = region_mask.tobytes()
@@ -4861,62 +4989,99 @@ class PDFRenderer(PDFStreamEngine):
                     continue
                 ux = ia * px + ic * py + ie
                 uy = ib * px + id_ * py + if_
-                # Solve a*s^2 + b*s + c = 0 where:
-                # b = -2*((ux-x0)*dx + (uy-y0)*dy + r0*dr)
-                # c = (ux-x0)^2 + (uy-y0)^2 - r0^2
-                bx = ux - x0
-                by = uy - y0
-                bcoef = -2.0 * (bx * dx + by * dy + r0 * dr)
-                ccoef = bx * bx + by * by - r0 * r0
-                s: float | None = None
-                if abs(a) < 1e-12:
-                    # Degenerate (parallel circles, equal radii) — linear.
-                    if abs(bcoef) > 1e-12:
-                        cand = -ccoef / bcoef
-                        s = cand
+                # calculateInputValues: the two roots of the quadratic. The
+                # roots are computed with Java/IEEE-754 division semantics so
+                # the degenerate ``denom == 0`` cone (apex at infinity, where
+                # ``|c1-c0| == |r1-r0|``) produces the same ±Inf / NaN roots
+                # — and the same selected colour — as upstream rather than a
+                # Python ``ZeroDivisionError``.
+                p = -(ux - x0) * x1x0 - (uy - y0) * y1y0 - r0 * r1r0
+                q = (ux - x0) ** 2 + (uy - y0) ** 2 - r0pow2
+                discriminant = p * p - denom * q
+                root = math.sqrt(discriminant) if discriminant >= 0.0 else _NAN
+                in_a = _ieee_div(-p + root, denom)
+                in_b = _ieee_div(-p - root, denom)
+                # Upstream orders the pair by the sign of denom.
+                if denom < 0.0:
+                    in0, in1 = in_a, in_b
                 else:
-                    disc = bcoef * bcoef - 4.0 * a * ccoef
-                    if disc >= 0.0:
-                        sqrt_disc = disc ** 0.5
-                        s_plus = (-bcoef + sqrt_disc) / (2.0 * a)
-                        s_minus = (-bcoef - sqrt_disc) / (2.0 * a)
-                        # Pick the larger root that is in-range, falling
-                        # back to the smaller one when it is.
-                        candidates = sorted(
-                            (s_minus, s_plus), reverse=True
-                        )
-                        for cand in candidates:
-                            # Radius at this parameter must be non-negative.
-                            radius = r0 + cand * dr
-                            if radius < 0.0:
-                                continue
-                            s = cand
-                            break
-                if s is None:
+                    in0, in1 = in_b, in_a
+
+                input_value = -1.0
+                use_background = False
+                # Upstream's first check: BOTH roots NaN (0/0 — the two
+                # circles coincide, p == 0 with denom == 0) → the pixel is
+                # never painted (or takes /Background); the extend ladder is
+                # not consulted. Only a NaN selected *through* an extend
+                # branch (the +/-Inf cone) reaches ``(int)(NaN*factor)==0``.
+                if math.isnan(in0) and math.isnan(in1):
+                    if bg_rgb is None:
+                        pixels.extend((255, 255, 255))
+                        continue
+                    use_background = True
+                # NaN comparisons are all False (Java + Python agree), so a
+                # NaN root never satisfies the in-range tests.
+                elif 0.0 <= in0 <= 1.0:
+                    # in0 in range; if in1 also in range pick the larger.
+                    input_value = (
+                        _java_max(in0, in1) if 0.0 <= in1 <= 1.0 else in0
+                    )
+                elif 0.0 <= in1 <= 1.0:
+                    input_value = in1
+                elif extend_start and extend_end:
+                    input_value = _java_max(in0, in1)
+                elif extend_start:
+                    input_value = in0
+                elif extend_end:
+                    input_value = in1
+                elif bg_rgb is not None:
+                    use_background = True
+                else:
                     pixels.extend((255, 255, 255))
                     continue
-                if s < 0.0:
-                    if not extend_start:
-                        pixels.extend((255, 255, 255))
-                        continue
-                    s = 0.0
-                elif s > 1.0:
-                    if not extend_end:
-                        pixels.extend((255, 255, 255))
-                        continue
-                    s = 1.0
-                t = domain_lo + (domain_hi - domain_lo) * s
-                if domain_hi == domain_lo:
+
+                if not use_background:
+                    # NaN fails both comparisons below; upstream then computes
+                    # ``key = (int)(NaN * factor) == 0`` → the start colour.
+                    if input_value > 1.0:
+                        # Extend past the end circle only with nonzero r1.
+                        if extend_end and r1 > 0.0:
+                            input_value = 1.0
+                        elif bg_rgb is None:
+                            pixels.extend((255, 255, 255))
+                            continue
+                        else:
+                            use_background = True
+                    elif input_value < 0.0:
+                        # Extend before the start circle only with nonzero r0.
+                        if extend_start and r0 > 0.0:
+                            input_value = 0.0
+                        elif bg_rgb is None:
+                            pixels.extend((255, 255, 255))
+                            continue
+                        else:
+                            use_background = True
+
+                if use_background:
+                    pixels.extend(out_fill)
+                    continue
+
+                s = input_value
+                if s != s:  # NaN -> Java (int)(NaN*factor) == 0 (start colour)
                     idx = 0
                 else:
-                    idx = int(round(
-                        (t - domain_lo) / (domain_hi - domain_lo)
-                        * (ramp_steps - 1)
-                    ))
-                if idx < 0:
-                    idx = 0
-                elif idx >= ramp_steps:
-                    idx = ramp_steps - 1
+                    t = domain_lo + (domain_hi - domain_lo) * s
+                    if domain_hi == domain_lo:
+                        idx = 0
+                    else:
+                        idx = int(round(
+                            (t - domain_lo) / (domain_hi - domain_lo)
+                            * (ramp_steps - 1)
+                        ))
+                    if idx < 0:
+                        idx = 0
+                    elif idx >= ramp_steps:
+                        idx = ramp_steps - 1
                 r, g, b = ramp[idx]
                 pixels.extend((r, g, b))
 
@@ -6270,6 +6435,31 @@ class PDFRenderer(PDFStreamEngine):
         # leg ran *before* the rotate leg, pushing the painted region
         # hundreds of points off the page (wave 1391).
         aa = _matmul(m_appear, a_matrix)
+        # PDFBOX-4744: a NoRotate annotation (/F bit 5, value 16) on a
+        # rotated page must paint upright, pivoting around its rect's
+        # upper-left corner. Upstream ``PageDrawer.showAnnotation``
+        # counter-rotates the device graphics by the page ``/Rotate`` angle
+        # about ``(rect.llx, rect.ury)`` *before* the appearance transform is
+        # concatenated. We fold that counter-rotation onto the user-space
+        # side of ``aa`` (which is then carried through the page-rotation
+        # device CTM). On an unrotated page the angle is 0, so this is a
+        # no-op. Upstream additionally re-builds transparency-group
+        # appearances via ``constructAppearances`` so they composite
+        # correctly under the counter-rotation — the lite renderer
+        # composites appearances inline, so the geometric counter-rotation
+        # alone is the parity-relevant behaviour.
+        no_rotate = False
+        try:
+            no_rotate = bool(annotation.is_no_rotate())
+        except Exception:  # noqa: BLE001 — defensive accessor
+            no_rotate = False
+        if no_rotate and self._render_page_rotation:
+            r_matrix = _no_rotate_matrix(
+                self._render_page_rotation,
+                rect.get_lower_left_x(),
+                rect.get_upper_right_y(),
+            )
+            aa = _matmul(aa, r_matrix)
         # Save GS + resources, push the transform, clip to bbox, then
         # walk the appearance stream's bytes.
         self._push_gs()

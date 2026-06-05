@@ -1370,12 +1370,23 @@ class COSWriter(ICOSVisitor):
         # position is seeded with the source length.
         self._do_write_objects()
 
-        # 4. Emit the new xref section. Must include only the changed
-        # objects + the mandatory free-list head (object 0).
-        self._do_write_xref_increment()
-
-        # 5. Emit the trailer with /Prev pointing at the prior startxref.
-        self._do_write_trailer_increment(doc)
+        # 4/5. Emit the new cross-reference + trailer. Mirrors upstream
+        # ``COSWriter.doWriteXRefInc``: a source whose most-recent
+        # cross-reference is an xref STREAM (and is NOT a hybrid file)
+        # receives an appended xref STREAM; everything else gets a classic
+        # ``xref`` table chained via ``/Prev``. Without this branch an
+        # xref-stream source would emit a classic ``xref`` table while the
+        # appended trailer still carried the source's ``/Type /XRef`` (plus
+        # leftover ``/W`` / ``/Index`` / ``/Filter`` keys) — a malformed
+        # mix that diverges from PDFBox.
+        if doc.is_xref_stream() and not doc.has_hybrid_xref():
+            self._do_write_xref_stream_increment(doc)
+        else:
+            # 4. Emit the new xref section. Must include only the changed
+            # objects + the mandatory free-list head (object 0).
+            self._do_write_xref_increment()
+            # 5. Emit the trailer with /Prev pointing at the prior startxref.
+            self._do_write_trailer_increment(doc)
 
         # 6. startxref + %%EOF.
         out.write(STARTXREF)
@@ -1519,6 +1530,147 @@ class COSWriter(ICOSVisitor):
         trailer.remove_item(COSName.get_pdf_name("XRefStm"))
 
         trailer.accept(self)
+
+    def _do_write_xref_stream_increment(self, doc: COSDocument) -> None:
+        """Append an incremental cross-reference STREAM for an xref-stream
+        source. Mirrors the xref-stream arm of upstream
+        ``COSWriter.doWriteXRefInc`` (which builds a ``PDFXRefStream``,
+        feeds it ``getXRefEntries()``, copies the trailer info, and writes
+        the stream as a regular object).
+
+        The appended stream lists ONLY the objects this increment rewrote
+        (already accumulated in ``self._xref_entries`` by the body pass)
+        plus the mandatory free-list head (object 0). Crucially the xref
+        stream's OWN entry is NOT added to its ``/Index`` — upstream's
+        ``PDFXRefStream.getIndexEntry`` only knows about object 0 and the
+        entries fed via ``addEntry``; the reader locates the stream through
+        ``startxref``, not through a self-reference (oracle-confirmed:
+        ``/Index [0 1 33 1]`` for a one-page edit, no self-entry).
+
+        ``/Size`` is the document-wide highest object number + 1 (covering
+        the freshly-minted xref stream object), ``/Prev`` points at the
+        source's previous ``startxref``, and ``/ID[1]`` is refreshed while
+        ``/ID[0]`` is preserved (PDF 32000-1 §14.4)."""
+        out = self._standard_output
+
+        # Mint the xref stream's own number FIRST so /Size can account for
+        # it. It is deliberately kept out of the entry/index set below.
+        xref_key = self._mint_fresh_object_key()
+
+        # Free-list head (object 0). Upstream ``doWriteXRefTable`` /
+        # ``PDFXRefStream.getIndexEntry`` always include object 0; the
+        # incremental xref-stream arm relies on the latter. We do NOT run
+        # ``_fill_gaps_with_free_entries`` — that would re-declare every
+        # untouched object number as free, bloating the increment and
+        # diverging from PDFBox (which feeds the new stream only the changed
+        # entries).
+        records: list[tuple[int, int, int, int]] = [(0, 0, 0, 65535)]
+        max_field2 = 0
+        for entry in self._xref_entries:
+            objnum = entry.key.object_number
+            if entry.free:
+                records.append((objnum, 0, entry.offset, entry.key.generation_number))
+                continue
+            actual = (
+                entry.obj.get_object()
+                if isinstance(entry.obj, COSObject)
+                else entry.obj
+            )
+            comp = (
+                self._compressed_locations.get(id(actual))
+                if actual is not None
+                else None
+            )
+            if comp is not None:
+                objstm_num, idx = comp
+                records.append((objnum, 2, objstm_num, idx))
+            else:
+                records.append((objnum, 1, entry.offset, entry.key.generation_number))
+                max_field2 = max(max_field2, entry.offset)
+
+        # /W widths. The xref stream sits at the current output position;
+        # widen the field-2 estimate so it survives the self-entry's offset.
+        w1 = 1
+        xref_offset = out.get_position()
+        max_field2 = max(max_field2, xref_offset)
+        w2 = max(1, _ceil_log256(max_field2))
+        w3 = 2
+
+        # The xref stream's OWN entry: written into the body so a downstream
+        # reader chasing the chain finds it, but NOT exposed in /Index (it is
+        # reached via startxref). Upstream emits the self NormalXReference
+        # inside doWriteObject AFTER getStream() already serialised the body,
+        # so it never lands in the index either. We mirror that by sorting it
+        # in for the packed body while building /Index from the records list
+        # that excludes it.
+        index_numbers = sorted(r[0] for r in records)
+        records.append((xref_key.object_number, 1, xref_offset, 0))
+        records.sort(key=lambda r: r[0])
+
+        body = bytearray()
+        for _objnum, t, f2, f3 in records:
+            body.extend(_pack_unsigned(t, w1))
+            body.extend(_pack_unsigned(f2, w2))
+            body.extend(_pack_unsigned(f3, w3))
+
+        index_arr = COSArray()
+        index_arr.set_direct(True)
+        for first, count in self._build_int_ranges(index_numbers):
+            index_arr.add(COSInteger.get(first))
+            index_arr.add(COSInteger.get(count))
+
+        w_arr = COSArray()
+        w_arr.set_direct(True)
+        for width in (w1, w2, w3):
+            w_arr.add(COSInteger.get(width))
+
+        xref_stream = COSStream()
+        xref_stream.set_data(bytes(body), [_FLATE_DECODE_NAME])
+        xref_stream.set_item(COSName.TYPE, COSName.get_pdf_name("XRef"))  # type: ignore[attr-defined]
+        # /Size = document-wide highest object number + 1, including the new
+        # xref stream object. Mirrors upstream ``setSize(number + 2)`` where
+        # ``number`` is the highest source object number.
+        doc_keys = {k.object_number for k in doc.get_object_keys()}
+        doc_keys.update(k.object_number for k in self._key_object)
+        size_value = max(doc_keys | {xref_key.object_number}, default=0) + 1
+        xref_stream.set_int(COSName.SIZE, size_value)  # type: ignore[attr-defined]
+        xref_stream.set_item(COSName.get_pdf_name("W"), w_arr)
+        xref_stream.set_item(COSName.get_pdf_name("Index"), index_arr)
+
+        # Trailer info: /Root /Info /Encrypt /ID copied from the source
+        # trailer (upstream ``PDFXRefStream.addTrailerInfo``), /Prev set to
+        # the source's previous startxref, and /ID[1] refreshed.
+        source_trailer = doc.get_trailer()
+        if source_trailer is not None:
+            for tkey in (
+                COSName.ROOT,  # type: ignore[attr-defined]
+                COSName.INFO,  # type: ignore[attr-defined]
+                COSName.ENCRYPT,  # type: ignore[attr-defined]
+                COSName.get_pdf_name("ID"),
+            ):
+                value = source_trailer.get_item(tkey)
+                if value is not None:
+                    xref_stream.set_item(tkey, value)
+        xref_stream.set_int(COSName.PREV, doc.get_start_xref())  # type: ignore[attr-defined]
+        # Refresh /ID[1] (stable /ID[0]) — PDF 32000-1 §14.4. Build a fresh
+        # array so the in-memory document's trailer /ID is left untouched.
+        id_value = xref_stream.get_dictionary_object(COSName.get_pdf_name("ID"))
+        if isinstance(id_value, COSArray) and id_value.size() == 2:
+            new_id = self._regenerate_changing_id(doc, id_value.get_object(0))
+            new_id.set_direct(True)
+            xref_stream.set_item(COSName.get_pdf_name("ID"), new_id)
+        elif isinstance(id_value, COSArray):
+            id_value.set_direct(True)
+
+        # Register the xref stream's key BEFORE emit so internal references
+        # reuse the minted number.
+        self._object_keys[id(xref_stream)] = xref_key
+        self._key_holders[id(xref_stream)] = xref_stream
+        self._key_object[xref_key] = xref_stream
+
+        # startxref points at the xref stream itself.
+        self._startxref = xref_offset
+        self._do_write_object(xref_stream)
 
     def _copy_source_to_output(self) -> None:
         """Stream the original file bytes through to the real output sink

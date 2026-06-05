@@ -8,6 +8,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from .axial_shading_context import _read_extend
 from .shading_context import ShadingContext
 
 
@@ -34,14 +35,7 @@ class RadialShadingContext(ShadingContext):
             self._domain: list[float] = list(domain.to_float_array())
         else:
             self._domain = [0.0, 1.0]
-        extend = shading.get_extend()
-        if extend is not None:
-            self._extend = [
-                bool(extend.get_object(0).get_value()),
-                bool(extend.get_object(1).get_value()),
-            ]
-        else:
-            self._extend = [False, False]
+        self._extend = _read_extend(shading.get_extend())
 
         self._x1x0 = self._coords[3] - self._coords[0]
         self._y1y0 = self._coords[4] - self._coords[1]

@@ -251,6 +251,22 @@ class PDFParser:
         trailer = self._resolver.get_trailer()
         if trailer is not None:
             self._document.set_trailer(trailer)
+        # Record whether the document's most-recent cross-reference is an
+        # xref STREAM (vs a classic table). Mirrors upstream
+        # ``COSParser.parseXref``: ``document.setIsXRefStream(
+        # XRefType.STREAM == xrefTrailerResolver.getXrefType())``. The
+        # resolved type is the kind of the section the last ``startxref``
+        # points to; reading it via ``get_xref_type_at`` avoids the heavier
+        # ``set_startxref`` resolve. The flag drives the incremental writer's
+        # choice of appended xref encoding — an xref-stream source must
+        # receive an xref-stream increment, not a classic table
+        # (``COSWriter.doWriteXRefInc``). Only meaningful on the located-xref
+        # path; a brute-force rebuild has no resolvable section type and
+        # stays at the default (table).
+        if located:
+            section_type = self._resolver.get_xref_type_at(startxref)
+            if section_type is XrefType.STREAM:
+                self._document.set_is_xref_stream(True)
         self.populate_document()
         if full_rebuild:
             # Upstream BruteForceParser.searchForTrailerItems (driven by
@@ -1190,6 +1206,14 @@ class PDFParser:
         # pass would garble the entries.
         stream.set_skip_encryption(True)
         if not is_hybrid:
+            # Tag the section currently being built as an xref STREAM so the
+            # resolved document advertises ``is_xref_stream()``. A hybrid
+            # /XRefStm supplements a traditional table within the SAME logical
+            # section and must NOT flip that section's type — upstream
+            # classifies a hybrid file as a TABLE for incremental-save xref
+            # encoding (``COSWriter.doWriteXRefInc`` treats hasHybridXRef as a
+            # table), so the ``is_hybrid`` guard leaves the type at TABLE.
+            self._resolver.set_current_xref_type(XrefType.STREAM)
             # Treat the xref-stream dict as a trailer fragment so /Encrypt /ID
             # /Root /Size are visible to /Prev walking and the early-handler
             # bootstrap. Existing trailer keys from previously-parsed sections

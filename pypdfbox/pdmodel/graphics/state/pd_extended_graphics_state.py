@@ -150,7 +150,14 @@ class PDExtendedGraphicsState:
                     self._default_if_none(self.get_miter_limit(), 10.0),
                 )
             elif key == _D:
-                self._copy_value(
+                # Upstream calls ``gs.setLineDashPattern(getLineDashPattern())``
+                # unconditionally — a present-but-malformed ``/D`` (size != 2 or
+                # wrong inner types) yields ``None`` from the getter and that
+                # ``None`` *overwrites* any pre-existing dash pattern in the
+                # target graphics state. Use the allow-none copy so an
+                # ExtGState carrying a broken ``/D`` clears the dash, matching
+                # the live PDFBox 3.0.7 oracle (GraphicsStateApplyEdgeProbe).
+                self._copy_value_allow_none(
                     graphics_state,
                     "set_line_dash_pattern",
                     "line_dash_pattern",
@@ -160,8 +167,12 @@ class PDExtendedGraphicsState:
                 # Upstream copies the *typed* RenderingIntent enum
                 # (``setRenderingIntent(getRenderingIntent())``); the raw
                 # string accessor would leave a ``str`` in the graphics
-                # state where a ``RenderingIntent`` is expected.
-                self._copy_value(
+                # state where a ``RenderingIntent`` is expected. The call is
+                # unconditional: a present-but-malformed ``/RI`` (a value that
+                # is neither a name nor a string) yields ``None`` and that
+                # ``None`` overwrites any seeded intent (oracle-confirmed,
+                # GraphicsStateApplyEdgeProbe mode ``wrong_ri``).
+                self._copy_value_allow_none(
                     graphics_state,
                     "set_rendering_intent",
                     "rendering_intent",
@@ -185,11 +196,17 @@ class PDExtendedGraphicsState:
                     self.get_non_stroking_overprint(),
                 )
             elif key == _OPM:
+                # Upstream: ``gs.setOverprintMode(om != null ? om : 0)`` — a
+                # present-but-malformed ``/OPM`` (value not a number) yields
+                # ``None`` from the getter, but upstream substitutes the spec
+                # default 0 and pushes it, overwriting any seeded value
+                # (oracle-confirmed, GraphicsStateApplyEdgeProbe mode
+                # ``wrong_opm``).
                 self._copy_value(
                     graphics_state,
                     "set_overprint_mode",
                     "overprint_mode",
-                    self.get_overprint_mode(),
+                    self._default_if_none(self.get_overprint_mode(), 0),
                 )
             elif key == _FONT:
                 self._copy_font_setting(graphics_state)
@@ -298,11 +315,17 @@ class PDExtendedGraphicsState:
                 # /TR2 branch wins.
                 if self._dict.contains_key(_TR2):
                     continue
-                self._copy_value(
+                # Upstream calls ``gs.setTransfer(getTransfer())``
+                # unconditionally — a present-but-malformed ``/TR`` (a COSArray
+                # whose size != 4) yields ``None`` and that ``None`` overwrites
+                # any existing transfer in the target. Use allow-none copy to
+                # mirror the live oracle (GraphicsStateApplyEdgeProbe).
+                self._copy_value_allow_none(
                     graphics_state, "set_transfer", "transfer", self.get_transfer()
                 )
             elif key == _TR2:
-                self._copy_value(
+                # Same null-overwrite semantics as /TR above.
+                self._copy_value_allow_none(
                     graphics_state, "set_transfer", "transfer", self.get_transfer2()
                 )
 

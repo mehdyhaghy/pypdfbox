@@ -1686,7 +1686,13 @@ class PDDocument:
         from .interactive.form import PDAcroForm
 
         catalog = self.get_document_catalog()
-        acro_form = catalog.get_acro_form()
+        # Read the AcroForm *without* applying the default fixup
+        # (``get_acro_form(None)`` mirrors upstream's ``getAcroForm(null)``).
+        # This widget-field re-attachment helper is a pypdfbox-only
+        # convenience during ``import_page``; seeding Adobe /DA + /DR
+        # defaults here would mutate a form the caller never asked to fix
+        # up (upstream's ``importPage`` does not touch /AcroForm at all).
+        acro_form = catalog.get_acro_form(None)
         if acro_form is None:
             acro_form = PDAcroForm(self)
             catalog.set_acro_form(acro_form)

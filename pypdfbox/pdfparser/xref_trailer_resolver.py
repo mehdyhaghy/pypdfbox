@@ -103,6 +103,18 @@ class XrefTrailerResolver:
         if self._current is not None:
             self._current.xref_type = type_
 
+    def set_current_xref_type(self, type_: XrefType) -> None:
+        """Tag the section currently being built with ``type_`` (TABLE or
+        STREAM). The parser calls :meth:`begin_section` first (which seeds
+        the default ``TABLE``), then stamps the kind here once it has read
+        the section header — mirroring the type-recording effect of upstream
+        ``XrefTrailerResolver.nextXrefObj(long, XRefType)``. Drives
+        :meth:`get_xref_type`, which the incremental writer consults to
+        decide whether the appended cross-reference is a stream or a
+        classic table."""
+        if self._current is not None:
+            self._current.xref_type = type_
+
     # ---------- entry / trailer setters (operate on current section) ----------
 
     def set_entry(self, key: COSObjectKey, entry: XrefEntry) -> None:
@@ -238,6 +250,22 @@ class XrefTrailerResolver:
             return None
         ranked.sort(key=lambda s: s.start_offset)
         return ranked[-1].trailer
+
+    def get_xref_type_at(self, start_offset: int) -> XrefType | None:
+        """Return the xref kind (TABLE or STREAM) of the section registered
+        at ``start_offset``, or ``None`` if no section starts there.
+
+        This is the lightweight equivalent of upstream
+        ``XrefTrailerResolver.getXrefType()``: that getter returns the type
+        of the section the document's last ``startxref`` points to (which is
+        ``resolvedXrefType``, seeded from ``cur_obj.xref_type`` in
+        :meth:`set_startxref`). Reading it directly avoids triggering the
+        full ``set_startxref`` resolve — which warns and refuses to run a
+        second time — on the located-xref load path."""
+        for section in self._sections:
+            if section.start_offset == start_offset:
+                return section.xref_type
+        return None
 
     # ---------- resolved view (set_startxref + getters) ----------
 

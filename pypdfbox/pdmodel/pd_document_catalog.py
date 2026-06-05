@@ -33,6 +33,11 @@ _STRUCT_TREE_ROOT: COSName = COSName.get_pdf_name("StructTreeRoot")
 _MARK_INFO: COSName = COSName.get_pdf_name("MarkInfo")
 _OC_PROPERTIES: COSName = COSName.get_pdf_name("OCProperties")
 _ACRO_FORM: COSName = COSName.get_pdf_name("AcroForm")
+
+# Sentinel distinguishing "no argument supplied" (apply the default fixup,
+# mirroring the upstream no-arg ``getAcroForm()``) from an explicit ``None``
+# (apply no fixup, mirroring ``getAcroForm(null)``).
+_NO_FIXUP_ARG = object()
 _OUTPUT_INTENTS: COSName = COSName.get_pdf_name("OutputIntents")
 _METADATA: COSName = COSName.get_pdf_name("Metadata")
 _AA: COSName = COSName.get_pdf_name("AA")
@@ -381,7 +386,7 @@ class PDDocumentCatalog:
 
     # ---------- /AcroForm ----------
 
-    def get_acro_form(self, acro_form_fixup: Any = None) -> Any:
+    def get_acro_form(self, acro_form_fixup: Any = _NO_FIXUP_ARG) -> Any:
         """Return the document's ``/AcroForm`` as a :class:`PDAcroForm`,
         or ``None`` when absent.
 
@@ -390,20 +395,34 @@ class PDDocumentCatalog:
         any swap that would invalidate the underlying dictionary
         identity.
 
-        ``acro_form_fixup`` mirrors the upstream
-        ``getAcroForm(PDDocumentFixup)`` overload: any object exposing an
-        ``apply()`` method (typically a ``PDDocumentFixup`` subclass) is
-        invoked once and remembered. Subsequent calls with the same fixup
-        object skip re-application; passing ``None`` (the default) leaves
-        any previously-applied fixup state intact. The cache is cleared
-        whenever a fresh fixup is applied so the next read materialises
-        the post-fixup ``/AcroForm`` dictionary.
+        Mirrors the two upstream overloads:
 
-        pypdfbox does not yet ship the ``AcroFormDefaultFixup`` upstream
-        applies in the no-arg overload — passing ``None`` is the documented
-        way to request the unfixed AcroForm (parity with upstream's
-        ``getAcroForm(null)`` contract)."""
+        * ``get_acro_form()`` (no argument) → upstream's no-arg
+          ``getAcroForm()``, which is ``getAcroForm(new
+          AcroFormDefaultFixup(document))``. A fresh
+          :class:`AcroFormDefaultFixup` is applied so the returned form has
+          the Adobe defaults: ``/DA`` seeded to ``/Helv 0 Tf 0 g``,
+          ``/Helv`` + ``/ZaDb`` injected into ``/DR``, and orphan widgets
+          adopted when ``/NeedAppearances`` is set and ``/Fields`` is empty
+          (PDFBOX-4985). A new fixup instance is created on every no-arg
+          call so it is re-applied each time exactly like upstream — the
+          processors are idempotent, so it is a no-op after the first.
+
+        * ``get_acro_form(fixup)`` → upstream's
+          ``getAcroForm(PDDocumentFixup)``: the given fixup (any object
+          exposing ``apply()``) is applied once and remembered when it
+          differs from the last-applied fixup; subsequent calls with the
+          same instance skip re-application. Passing ``None`` applies no
+          fixup at all (parity with upstream's ``getAcroForm(null)`` — used
+          internally by the fixup processors to break the recursion). The
+          cache is cleared whenever a fresh fixup is applied so the next
+          read materialises the post-fixup ``/AcroForm`` dictionary."""
         from .interactive.form import PDAcroForm
+
+        if acro_form_fixup is _NO_FIXUP_ARG:
+            from .fixup import AcroFormDefaultFixup
+
+            acro_form_fixup = AcroFormDefaultFixup(self._document)
 
         if (
             acro_form_fixup is not None
@@ -444,8 +463,15 @@ class PDDocumentCatalog:
         subsequent reads see the same instance.
 
         Unlike :meth:`get_acro_form`, this method always returns a
-        non-``None`` :class:`PDAcroForm`."""
-        existing = self.get_acro_form()
+        non-``None`` :class:`PDAcroForm`.
+
+        Reads use ``get_acro_form(None)`` (no fixup) so the returned
+        wrapper is the stable cached instance — the no-arg
+        ``get_acro_form()`` would mint a fresh wrapper on every call (it
+        applies a new ``AcroFormDefaultFixup`` each time), which would
+        break the "same instance across calls" contract this helper
+        relies on."""
+        existing = self.get_acro_form(None)
         if existing is not None:
             return existing
         from .interactive.form import PDAcroForm
@@ -453,8 +479,8 @@ class PDDocumentCatalog:
         acro_form = PDAcroForm(self._document)
         self.set_acro_form(acro_form)
         # Re-read so the cache is populated and the wrapper is the same
-        # instance subsequent ``get_acro_form`` calls return.
-        return self.get_acro_form()
+        # instance subsequent ``get_acro_form(None)`` calls return.
+        return self.get_acro_form(None)
 
     # ---------- stubs for later clusters ----------
 

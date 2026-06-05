@@ -51,9 +51,8 @@ def test_wave943_process_page_restores_active_text_state_when_extraction_raises(
         doc.close()
 
 
-def test_wave943_bead_partition_emits_residual_bucket_after_valid_beads() -> None:
+def _beaded_stripper() -> tuple[PDFTextStripper, TextPosition, TextPosition, TextPosition]:
     stripper = PDFTextStripper()
-    stripper.set_line_separator("|")
     stripper._active_page = cast(  # noqa: SLF001
         Any,
         SimpleNamespace(
@@ -66,10 +65,27 @@ def test_wave943_bead_partition_emits_residual_bucket_after_valid_beads() -> Non
     first = TextPosition(text="first", x=5.0, y=5.0, font_size=10.0)
     residual = TextPosition(text="outside", x=15.0, y=5.0, font_size=10.0)
     second = TextPosition(text="second", x=25.0, y=5.0, font_size=10.0)
+    return stripper, first, residual, second
+
+
+def test_wave943_bead_partition_emits_residual_bucket_after_valid_beads() -> None:
+    stripper, first, residual, second = _beaded_stripper()
 
     assert stripper._partition_by_beads([first, residual, second]) == [  # noqa: SLF001
         [first],
         [second],
         [residual],
     ]
-    assert stripper._format_positions([first, residual, second]) == "first|second|outside"  # noqa: SLF001
+
+
+def test_wave943_bead_buckets_concatenate_with_no_default_separator() -> None:
+    """Wave 1484: upstream wraps each article (bead bucket) in
+    ``startArticle``/``endArticle`` whose default markers are "" — adjacent
+    bead buckets are therefore concatenated with NO separator between them
+    (oracle-confirmed against PDFBox 3.0.7 ``setShouldSeparateByBeads(true)``).
+    The prior lite behaviour injected a hard line separator between buckets;
+    that diverged from PDFBox and is corrected here."""
+    stripper, first, residual, second = _beaded_stripper()
+    # Bucket order is [first], [second], [residual]; default article markers
+    # are empty, so the three buckets concatenate directly.
+    assert stripper._format_positions([first, residual, second]) == "firstsecondoutside"  # noqa: SLF001

@@ -756,3 +756,55 @@ def test_radial_get_raster_covers_full_grid(xy: tuple[int, int]) -> None:
     )
     img = ctx.get_raster(xy[0], xy[1], 3, 3)
     assert img.size == (3, 3)
+
+
+# ----------------------------------------------------------------------
+# /Extend shape adaptation — accept both the upstream COSArray form and
+# pypdfbox's (start, end) tuple (PDShadingType2/3.get_extend()).
+# ----------------------------------------------------------------------
+def test_axial_context_accepts_tuple_extend() -> None:
+    """A real ``PDShadingType2.get_extend`` returns a ``(start, end)`` tuple,
+    not a COSArray. The context must read it without raising."""
+    ctx = AxialShadingContext(
+        _FakeAxialShading(
+            coords=[0.0, 0.0, 4.0, 0.0],
+            extend=(True, False),
+        ),
+        color_model=None,
+        xform=None,
+        matrix=None,
+        device_bounds=(0, 0, 4, 4),
+    )
+    assert ctx.get_extend() == [True, False]
+
+
+def test_radial_context_accepts_tuple_extend() -> None:
+    ctx = RadialShadingContext(
+        _FakeRadialShading(
+            coords=[0.0, 0.0, 1.0, 4.0, 0.0, 3.0],
+            extend=(False, True),
+        ),
+        color_model=None,
+        xform=None,
+        matrix=None,
+        device_bounds=(0, 0, 4, 4),
+    )
+    assert ctx.get_extend() == [False, True]
+
+
+class _TupleExtendShading(_FakeAxialShading):
+    """Returns the (start, end) tuple shape exactly like PDShadingType2."""
+
+    def get_extend(self) -> Any:
+        return tuple(self._extend) if self._extend is not None else (False, False)
+
+
+def test_axial_context_default_extend_when_none() -> None:
+    ctx = AxialShadingContext(
+        _TupleExtendShading(coords=[0.0, 0.0, 4.0, 0.0], extend=None),
+        color_model=None,
+        xform=None,
+        matrix=None,
+        device_bounds=(0, 0, 4, 4),
+    )
+    assert ctx.get_extend() == [False, False]

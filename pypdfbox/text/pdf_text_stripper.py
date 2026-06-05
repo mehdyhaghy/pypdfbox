@@ -552,9 +552,10 @@ class PDFTextStripper:
         """Walk pages from ``start_page`` (1-based, inclusive) through
         ``min(end_page, page_count)`` and return the concatenated
         extracted text. Each page is wrapped in
-        ``page_start`` / ``page_end``; the whole page body is also
-        wrapped in ``article_start`` / ``article_end`` (lite stripper
-        treats the page as a single article).
+        ``page_start`` / ``page_end``; each article (bead bucket) within a
+        page is wrapped in ``article_start`` / ``article_end`` — mirroring
+        upstream's per-``charactersByArticle`` ``startArticle`` /
+        ``endArticle``. A page with no beads is a single article.
 
         When ``start_bookmark`` / ``end_bookmark`` are set, the
         resolved bookmark page numbers further clamp the range — see
@@ -570,6 +571,16 @@ class PDFTextStripper:
         # leak state from the previous one (subclasses introspecting via
         # ``get_characters_by_article`` rely on this).
         self.reset_engine()
+        # Mirror upstream ``writeText``: when ``add_more_formatting`` is on,
+        # the paragraph-end, page-start and article-start/end markers are all
+        # promoted to the line separator so each structural boundary becomes a
+        # visible break. Markers stay at their explicit (default "") values
+        # otherwise.
+        if self.get_add_more_formatting():
+            self._paragraph_end = self._line_separator
+            self._page_start = self._line_separator
+            self._article_start = self._line_separator
+            self._article_end = self._line_separator
         self._active_document = document
         # Bookmark clamping. Upstream takes the bookmark range as
         # authoritative when set, but only narrows (never widens) the
@@ -641,11 +652,14 @@ class PDFTextStripper:
                 self._current_page_no = one_based
                 self.start_page(page)
                 self.write_page_start(_sink)
-                if self._article_start:
-                    self.write_article_start(_sink)
+                # ``article_start`` / ``article_end`` are emitted per article
+                # (bead bucket) inside ``_format_positions`` — mirroring
+                # upstream's ``startArticle()`` / ``endArticle()`` around each
+                # ``charactersByArticle`` entry — rather than once around the
+                # whole page. For a page with no beads this collapses to a
+                # single article wrap, preserving the prior single-group
+                # behaviour.
                 _sink(self.process_page(page))
-                if self._article_end:
-                    self.write_article_end(_sink)
                 self.write_page_end(_sink)
                 self.end_page(page)
         finally:
@@ -1680,14 +1694,21 @@ class PDFTextStripper:
         def _sink(piece: str) -> None:
             chunks.append(piece)
 
-        for gi, group in enumerate(groups):
-            if gi > 0:
-                # Bead boundary — upstream emits a line separator between
-                # articles when sortByPosition is on so the bead change is
-                # visible. Lite mode does the same unconditionally; the
-                # caller can post-process the line separator if needed.
-                self.write_line_separator(_sink)
+        # Upstream wraps EACH article (bead bucket) in ``startArticle()`` /
+        # ``endArticle()`` — i.e. ``article_start`` before and ``article_end``
+        # after every group — with NO implicit line separator between
+        # consecutive articles. Both markers default to "" (they only become a
+        # line separator when ``add_more_formatting`` is enabled), so by
+        # default adjacent bead buckets are concatenated directly. Emitting a
+        # hardcoded line separator here would diverge from PDFBox, which only
+        # inserts a break between articles when the producer asked for one via
+        # the article separators.
+        for group in groups:
+            if self._article_start:
+                self.write_article_start(_sink)
             self._emit_group(group, _sink)
+            if self._article_end:
+                self.write_article_end(_sink)
         return "".join(chunks)
 
     def _emit_group(

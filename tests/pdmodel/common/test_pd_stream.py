@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import io
-import zlib
 
 from pypdfbox.cos import COSArray, COSName, COSStream
 from pypdfbox.pdmodel.common import PDStream
@@ -35,14 +34,16 @@ def test_set_filters_normalizes_single_name_to_array() -> None:
 
 
 def test_create_input_stream_decodes_registered_filters() -> None:
-    encoded = zlib.compress(b"decoded")
-    stream = PDStream(input_data=encoded, filters=COSName.FLATE_DECODE)  # type: ignore[attr-defined]
+    # The embed ctor encodes the decoded bytes through /Filter (upstream
+    # createOutputStream(filters) semantics), so passing the raw payload
+    # round-trips back through create_input_stream().
+    stream = PDStream(input_data=b"decoded", filters=COSName.FLATE_DECODE)  # type: ignore[attr-defined]
     assert stream.create_input_stream().read() == b"decoded"
 
 
 def test_create_input_stream_stops_before_stop_filter() -> None:
-    encoded = zlib.compress(b"decoded")
-    stream = PDStream(input_data=encoded, filters=COSName.FLATE_DECODE)  # type: ignore[attr-defined]
+    stream = PDStream(input_data=b"decoded", filters=COSName.FLATE_DECODE)  # type: ignore[attr-defined]
+    encoded = stream.create_raw_input_stream().read()
     assert stream.create_input_stream(["FlateDecode"]).read() == encoded
 
 
@@ -220,7 +221,7 @@ def test_get_length_absent_with_no_data_returns_none() -> None:
 
 def test_to_byte_array_delegates_to_cos_stream() -> None:
     payload = b"delegated"
-    stream = PDStream(input_data=zlib.compress(payload), filters=COSName.FLATE_DECODE)  # type: ignore[attr-defined]
+    stream = PDStream(input_data=payload, filters=COSName.FLATE_DECODE)  # type: ignore[attr-defined]
     assert stream.to_byte_array() == payload
 
 
@@ -324,8 +325,11 @@ def test_constructor_with_pd_document_and_input_data_embeds_bytes() -> None:
 
     doc = PDDocument()
     stream = PDStream(doc, b"hello", filters=COSName.FLATE_DECODE)  # type: ignore[attr-defined]
-    # Embed stores the bytes verbatim and records /Filter.
-    assert stream.create_raw_input_stream().read() == b"hello"
+    # Embed encodes the decoded bytes through /Filter (upstream
+    # createOutputStream(filters)); the raw body is the compressed form,
+    # and create_input_stream() round-trips back to the original bytes.
+    assert stream.create_raw_input_stream().read() != b"hello"
+    assert stream.create_input_stream().read() == b"hello"
     assert stream.get_filters() == [COSName.FLATE_DECODE]  # type: ignore[attr-defined]
 
 

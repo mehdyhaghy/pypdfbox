@@ -88,16 +88,19 @@ class PDStream:
         input_data: bytes | bytearray | memoryview | BinaryIO,
         filters: COSName | COSArray | None,
     ) -> None:
-        """Read ``input_data`` and write the bytes into the wrapped
-        ``COSStream``. The ``filters`` argument, if given, populates
-        ``/Filter`` and the bytes are stored as-is (already-encoded form).
+        """Read all bytes from ``input_data`` and embed them into the
+        wrapped ``COSStream``, applying ``filters`` (if given) as an
+        *encoding* chain on the way in.
 
-        Mirrors upstream's ``PDStream(PDDocument, InputStream, COSBase)``
-        which calls ``stream.createOutputStream(filters)``; we keep the
-        same shape but the caller is expected to pass already-encoded
-        bytes when ``filters`` is set (encode-on-embed would force callers
-        to pass the *decoded* form, which breaks every existing call site
-        that hands us pre-compressed bytes)."""
+        Mirrors upstream ``PDStream(PDDocument, InputStream, COSBase)``
+        (PDStream.java line 130-142) which writes the input bytes through
+        ``stream.createOutputStream(filters)`` and closes the input. The
+        bytes you pass are the **decoded** form: when ``filters`` is set,
+        the body is encoded through the chain so a later
+        ``create_input_stream()`` round-trips back to exactly these bytes
+        (e.g. embedding a raw TrueType program under ``/FontFile2`` with
+        ``COSName.FLATE_DECODE`` stores the *compressed* body, not the raw
+        TTF). The input stream is always closed."""
         if isinstance(input_data, (bytes, bytearray, memoryview)):
             data = bytes(input_data)
         else:
@@ -122,9 +125,14 @@ class PDStream:
                     # that exposes close(); the False arm has no live caller.
                     with suppress(Exception):
                         close()
-        self._stream.set_raw_data(data)
-        if filters is not None:
-            self._stream.set_item(_FILTER, filters)
+        if filters is None:
+            self._stream.set_raw_data(data)
+        else:
+            # Encode the decoded bytes through the filter chain, exactly
+            # as upstream's createOutputStream(filters) does. This also
+            # records /Filter on the dictionary.
+            with self._stream.create_output_stream(filters) as out:
+                out.write(data)
 
     # ---------- COS surface ----------
 

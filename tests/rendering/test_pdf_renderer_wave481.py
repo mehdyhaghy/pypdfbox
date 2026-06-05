@@ -65,7 +65,7 @@ def test_knockout_dispatch_restores_snapshot_only_for_top_level_paint() -> None:
         doc.close()
 
 
-def test_radial_shading_linear_degenerate_case_paints_valid_root() -> None:
+def test_radial_shading_origin_cone_extend_ff_paints_nothing() -> None:
     class _Function:
         def eval(self, inputs: list[float]) -> list[float]:
             return [inputs[0], 0.0, 0.0]
@@ -94,9 +94,14 @@ def test_radial_shading_linear_degenerate_case_paints_valid_root() -> None:
         )
         _finish(renderer)
 
+        # Wave 1484: |c1-c0| == |r1-r0| with r0 == 0 makes upstream's
+        # quadratic denominator 0 -> NaN / +Inf roots; with /Extend [false
+        # false] and no /Background the pixel is never painted (oracle-
+        # confirmed white). The old expectation pinned pypdfbox's pre-1484
+        # "valid linear root" gradient, which upstream does not compute.
         assert renderer._image.getpixel((0, 0)) == (255, 255, 255)  # noqa: SLF001
-        assert 60 <= renderer._image.getpixel((1, 0))[0] <= 70  # noqa: SLF001
-        assert 120 <= renderer._image.getpixel((2, 0))[0] <= 135  # noqa: SLF001
+        assert renderer._image.getpixel((1, 0)) == (255, 255, 255)  # noqa: SLF001
+        assert renderer._image.getpixel((2, 0)) == (255, 255, 255)  # noqa: SLF001
     finally:
         doc.close()
 

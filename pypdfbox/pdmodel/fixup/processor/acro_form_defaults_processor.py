@@ -82,7 +82,15 @@ class AcroFormDefaultsProcessor(AbstractProcessor):
                 need_update(True)
 
         # /Helv + /ZaDb fonts (PDFBOX-3732 / PDFBOX-4393)
-        dr_cos = default_resources.get_cos_object()
+        # ``get_cos_object`` may be absent on a duck-typed resources object
+        # (some callers swap ``get_default_resources`` for a minimal font
+        # host); upstream assumes a real ``PDResources`` here, so when the
+        # COS surface is unavailable there is no /DR dictionary to seed —
+        # skip the font injection rather than raising.
+        get_cos = getattr(default_resources, "get_cos_object", None)
+        if get_cos is None:
+            return
+        dr_cos = get_cos()
         font_dict = dr_cos.get_cos_dictionary(font_key)
         if font_dict is None:
             font_dict = COSDictionary()
@@ -109,9 +117,19 @@ class AcroFormDefaultsProcessor(AbstractProcessor):
         if contains is not None and contains(cos_name):
             return
         try:
+            from pypdfbox.cos import COSDictionary, COSName
             from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
 
-            font = PDType1Font(font_name)
+            # Mirror upstream ``new PDType1Font(FontName.HELVETICA)`` /
+            # ``new PDType1Font(FontName.ZAPF_DINGBATS)``: build the
+            # standard-14 /Type1 font dictionary (Type/Subtype/BaseFont)
+            # and wrap it. pypdfbox's ``PDType1Font`` constructor takes a
+            # COS dictionary rather than a FontName enum.
+            font_cos = COSDictionary()
+            font_cos.set_item(COSName.TYPE, COSName.FONT)
+            font_cos.set_item(COSName.SUBTYPE, COSName.get_pdf_name("Type1"))
+            font_cos.set_item(COSName.BASE_FONT, COSName.get_pdf_name(font_name))
+            font = PDType1Font(font_cos)
         except Exception:  # pragma: no cover - defensive parity stub
             return
         put = getattr(default_resources, "put", None)

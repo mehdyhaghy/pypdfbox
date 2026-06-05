@@ -123,28 +123,42 @@ class PDAction:
     def set_sub_type(self, sub_type: str) -> None:
         self._action.set_name(_S, sub_type)
 
-    def get_next(self) -> list[PDAction] | None:
+    def get_next(self) -> list[PDAction | None] | None:
         """Return the ``/Next`` action(s) to be performed after this one.
 
         ``/Next`` may be a single action dictionary or an array of action
         dictionaries (PDF 32000-1 §12.6.2 Table 192). Returns ``None`` if
         no ``/Next`` entry exists. Mirrors upstream ``PDAction.getNext()``.
+
+        Dispatch goes through :meth:`PDActionFactory.create_action` (not
+        :meth:`PDAction.create`), so a ``/Next`` entry whose ``/S`` is an
+        unrecognised subtype — or absent — yields a ``None`` slot rather
+        than a ``PDActionUnknown`` wrapper. This matches upstream, where
+        ``getNext`` builds the list from ``PDActionFactory.createAction``
+        (which returns ``null`` for unknown subtypes), so a single
+        unrecognised ``/Next`` dict becomes a one-element list ``[None]``
+        and an array keeps a ``None`` in the slot of each unrecognised
+        member (preserving list length).
         """
+        from .pd_action_factory import PDActionFactory
+
         nxt = self._action.get_dictionary_object(_NEXT)
         if nxt is None:
             return None
         if isinstance(nxt, COSDictionary):
-            single = PDAction.create(nxt)
-            return [single] if single is not None else []
+            return [PDActionFactory.create_action(nxt)]
         if isinstance(nxt, COSArray):
-            actions: list[PDAction] = []
+            actions: list[PDAction | None] = []
             for i in range(nxt.size()):
                 entry = nxt.get_object(i)
+                # Upstream calls ``createAction((COSDictionary) array.getObject(i))``
+                # for every slot, so a non-dictionary (e.g. a null) member
+                # resolves to ``createAction(null)`` → ``None``, keeping the
+                # list length equal to the array length.
                 if isinstance(entry, COSDictionary):
-                    pd = PDAction.create(entry)
-                    # pragma: create() returns non-None for any dict input
-                    if pd is not None:  # pragma: no branch
-                        actions.append(pd)
+                    actions.append(PDActionFactory.create_action(entry))
+                else:
+                    actions.append(None)
             return actions
         return None
 

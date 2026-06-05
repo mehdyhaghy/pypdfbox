@@ -65,7 +65,12 @@ class _RGBFunction:
         return [1.0, 0.0, 0.0]
 
 
-def test_radial_shading_rejects_negative_start_without_extend() -> None:
+def test_radial_shading_degenerate_cone_paints_start_colour() -> None:
+    # Wave 1484: |c1-c0| == |r1-r0| makes upstream's quadratic denominator 0;
+    # Java float division yields +/-Inf/NaN roots and ``(int)(NaN*factor)==0``
+    # selects the start colour (RadialShadingContext.calculateInputValues).
+    # The old pypdfbox heuristic rejected the root and left the pixel white —
+    # this test used to pin that divergent behaviour.
     class _Radial:
         def get_coords(self) -> _Coords:
             return _Coords(0.0, 0.0, 1.0, 1.0, 0.0, 2.0)
@@ -90,7 +95,7 @@ def test_radial_shading_rejects_negative_start_without_extend() -> None:
         _finish(renderer)
 
         assert renderer._image is not None  # noqa: SLF001
-        assert renderer._image.getpixel((0, 0)) == (255, 255, 255)  # noqa: SLF001
+        assert renderer._image.getpixel((0, 0)) == (255, 0, 0)  # noqa: SLF001
     finally:
         doc.close()
 

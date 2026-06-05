@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import io
-import zlib
 
 from pypdfbox.cos import COSName, COSStream
 from pypdfbox.pdmodel.common import PDStream
@@ -17,8 +16,9 @@ def test_get_byte_array_returns_decoded_body_wave272() -> None:
 
 
 def test_get_byte_array_decodes_through_filter_chain_wave272() -> None:
-    encoded = zlib.compress(b"compressed payload")
-    stream = PDStream(input_data=encoded, filters=COSName.FLATE_DECODE)  # type: ignore[attr-defined]
+    # Embed encodes the decoded payload through /Filter; get_byte_array()
+    # decodes it back.
+    stream = PDStream(input_data=b"compressed payload", filters=COSName.FLATE_DECODE)  # type: ignore[attr-defined]
     assert stream.get_byte_array() == b"compressed payload"
 
 
@@ -47,13 +47,13 @@ def test_get_filtered_stream_length_returns_recorded_length_wave272() -> None:
 def test_get_filtered_stream_length_falls_back_to_buffer_wave272() -> None:
     """Without ``/Length`` recorded, the live raw-buffer length is
     returned (encoded form, so post-filter byte count)."""
-    encoded = zlib.compress(b"hello")
-    stream = PDStream(input_data=encoded, filters=COSName.FLATE_DECODE)  # type: ignore[attr-defined]
-    # /Length was never set on this synthetic stream — it should fall
-    # back to the encoded-buffer length.
+    # Embed unfiltered bytes via set_raw_data (no encoding writer, so no
+    # /Length is recorded) — get_filtered_stream_length() must then fall
+    # back to the live raw-buffer length.
+    stream = PDStream(input_data=b"hello")
     cos = stream.get_cos_object()
     assert not cos.contains_key(COSName.LENGTH)  # type: ignore[attr-defined]
-    assert stream.get_filtered_stream_length() == len(encoded)
+    assert stream.get_filtered_stream_length() == len(b"hello")
 
 
 def test_get_filtered_stream_length_empty_returns_minus_one_wave272() -> None:
@@ -65,8 +65,7 @@ def test_get_filtered_stream_length_empty_returns_minus_one_wave272() -> None:
 
 
 def test_copy_to_writes_decoded_body_to_sink_wave272() -> None:
-    encoded = zlib.compress(b"streamed payload")
-    stream = PDStream(input_data=encoded, filters=COSName.FLATE_DECODE)  # type: ignore[attr-defined]
+    stream = PDStream(input_data=b"streamed payload", filters=COSName.FLATE_DECODE)  # type: ignore[attr-defined]
     sink = io.BytesIO()
     written = stream.copy_to(sink)
     assert written == len(b"streamed payload")
@@ -84,8 +83,8 @@ def test_copy_to_empty_stream_writes_zero_bytes_wave272() -> None:
 
 
 def test_copy_raw_to_writes_encoded_body_verbatim_wave272() -> None:
-    encoded = zlib.compress(b"encoded payload")
-    stream = PDStream(input_data=encoded, filters=COSName.FLATE_DECODE)  # type: ignore[attr-defined]
+    stream = PDStream(input_data=b"encoded payload", filters=COSName.FLATE_DECODE)  # type: ignore[attr-defined]
+    encoded = stream.create_raw_input_stream().read()
     sink = io.BytesIO()
     written = stream.copy_raw_to(sink)
     assert written == len(encoded)

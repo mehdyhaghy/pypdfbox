@@ -368,16 +368,15 @@ def test_annotation_square_circle_init_with_none_subtype_skips_setter() -> None:
 # ----------------------------------------------------------------------
 
 
-def test_pd_action_get_next_array_with_unknown_action_type_returns_pdunknown() -> None:
-    """Sanity check for ``PDAction.get_next``: an entry whose /S subtype
-    is unknown is wrapped in ``PDActionUnknown`` (the False arm at
-    line 145 is provably unreachable — see pragma in source).
+def test_pd_action_get_next_array_with_unknown_action_type_returns_none_slot() -> None:
+    """``PDAction.get_next`` dispatches each /Next array slot through
+    ``PDActionFactory.create_action``, which returns ``None`` for an
+    unrecognised /S subtype — mirroring upstream ``getNext`` (oracle-pinned:
+    a one-element /Next array with an unknown subtype yields a one-element
+    list whose sole element is ``None``, not a ``PDActionUnknown``).
     """
 
     from pypdfbox.pdmodel.interactive.action import PDAction
-    from pypdfbox.pdmodel.interactive.action.pd_action_unknown import (
-        PDActionUnknown,
-    )
 
     parent = COSDictionary()
     arr = COSArray()
@@ -388,7 +387,7 @@ def test_pd_action_get_next_array_with_unknown_action_type_returns_pdunknown() -
 
     base = PDAction(parent)
     nxt = base.get_next()
-    assert nxt is not None and len(nxt) == 1 and isinstance(nxt[0], PDActionUnknown)
+    assert nxt is not None and len(nxt) == 1 and nxt[0] is None
 
 
 # ----------------------------------------------------------------------

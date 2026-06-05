@@ -11,6 +11,24 @@ from typing import Any
 from .shading_context import ShadingContext
 
 
+def _read_extend(extend: Any) -> list[bool]:
+    """Normalise a shading's ``/Extend`` to ``[start, end]`` booleans.
+
+    Upstream ``AxialShadingContext`` reads a raw ``COSArray`` of two
+    ``COSBoolean`` entries (``((COSBoolean) extend.getObject(i)).getValue()``).
+    pypdfbox's ``PDShadingType2.get_extend`` / ``PDShadingType3.get_extend``
+    return a plain ``(start, end)`` tuple of booleans instead, so accept both
+    shapes (plus ``None`` → spec default ``[false false]``)."""
+    if extend is None:
+        return [False, False]
+    if hasattr(extend, "get_object"):
+        return [
+            bool(extend.get_object(0).get_value()),
+            bool(extend.get_object(1).get_value()),
+        ]
+    return [bool(extend[0]), bool(extend[1])]
+
+
 class AxialShadingContext(ShadingContext):
     """Generates the colour table along an axial-gradient line."""
 
@@ -36,14 +54,7 @@ class AxialShadingContext(ShadingContext):
         else:
             self._domain = [0.0, 1.0]
 
-        extend = shading.get_extend()
-        if extend is not None:
-            self._extend = [
-                bool(extend.get_object(0).get_value()),
-                bool(extend.get_object(1).get_value()),
-            ]
-        else:
-            self._extend = [False, False]
+        self._extend = _read_extend(shading.get_extend())
 
         self._x1x0 = self._coords[2] - self._coords[0]
         self._y1y0 = self._coords[3] - self._coords[1]
