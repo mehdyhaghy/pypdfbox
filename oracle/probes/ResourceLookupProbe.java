@@ -38,12 +38,11 @@ public final class ResourceLookupProbe {
             PDResources res = new PDResources(buildResourceDict(), doc.getResourceCache());
 
             // ---- /Font ----
-            // pypdfbox intentionally preserves a raw-COSDictionary surface for
-            // *direct* font entries (typed PDFont only for indirect refs), so
-            // comparing the resolved class would assert a documented
-            // divergence. Instead report presence + the /Subtype both sides
-            // agree on, which exercises the same lookup path faithfully.
+            // getFont always returns a typed PDFont (direct + indirect alike);
+            // pypdfbox matches this from wave 1487 on, so we compare the
+            // resolved class simple-name and the /Subtype both sides agree on.
             root.put("font_F0_present", res.getFont(COSName.getPDFName("F0")) != null);
+            root.put("font_F0_class", fontClass(res, "F0"));
             root.put("font_F0_subtype", fontSubtype(res, "F0"));
             root.put("font_missing_present",
                     res.getFont(COSName.getPDFName("Fx")) != null);
@@ -213,6 +212,12 @@ public final class ResourceLookupProbe {
         r.setItem(COSName.PROPERTIES, props);
 
         return r;
+    }
+
+    private static String fontClass(PDResources res, String name) throws Exception {
+        org.apache.pdfbox.pdmodel.font.PDFont f =
+                res.getFont(COSName.getPDFName(name));
+        return f == null ? "NULL" : f.getClass().getSimpleName();
     }
 
     private static String fontSubtype(PDResources res, String name) throws Exception {

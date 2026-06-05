@@ -305,14 +305,17 @@ class Matrix:
 
     # ---- equality / hashing ------------------------------------------
     def __repr__(self) -> str:
-        # Upstream toString concatenates Float.toString of each cell; route
-        # through the shared float32 formatter so a narrowed value like
-        # 0.9950042f renders "0.9950042" (not Python's float64 repr).
-        from pypdfbox.cos.cos_float import format_float32
+        # Upstream toString concatenates the raw Float.toString of each cell, so
+        # a narrowed value like 0.9950042f renders "0.9950042" (not Python's
+        # float64 repr) and a cell outside [1e-3, 1e7) keeps Java's scientific
+        # form (e.g. "1.0E8"). float_to_string is the raw Float.toString port;
+        # format_float32 would instead strip E-notation to plain decimal (the
+        # COSFloat PDF-serialization step) which Matrix.toString does not do.
+        from pypdfbox.cos.cos_float import float_to_string
 
         s = self._single
         cells = (s[0], s[1], s[3], s[4], s[6], s[7])
-        return "[" + ",".join(format_float32(v) for v in cells) + "]"
+        return "[" + ",".join(float_to_string(v) for v in cells) + "]"
 
     def __eq__(self, other: object) -> bool:
         if self is other:

@@ -27,6 +27,7 @@ _MK = COSName.get_pdf_name("MK")
 _N = COSName.get_pdf_name("N")
 _OFF = COSName.get_pdf_name("Off")
 _RECT = COSName.get_pdf_name("Rect")
+_V = COSName.get_pdf_name("V")
 
 
 def _rect(llx: float, lly: float, urx: float, ury: float) -> COSArray:
@@ -117,7 +118,10 @@ def test_generate_unknown_terminal_field_logs_skip(caplog) -> None:
 def test_generic_button_generates_checkbox_style_appearance() -> None:
     button = PDButton(PDAcroForm())
     button.get_cos_object().set_item(_RECT, _rect(0, 0, 16, 16))
-    button.set_value("Yes")
+    # Write /V directly: upstream PDButton.setValue is strict (checkValue),
+    # so a non-"Off" name can't be set on an AP-less button. This test's
+    # subject is the appearance generator, not the value-validation path.
+    button.get_cos_object().set_name(_V, "Yes")
 
     PDAppearanceGenerator().generate(button)
 
@@ -131,7 +135,7 @@ def test_generic_button_generates_checkbox_style_appearance() -> None:
 
 def test_button_missing_rect_does_not_install_appearance(caplog) -> None:
     cb = PDCheckBox(PDAcroForm())
-    cb.set_value("Yes")
+    cb.get_cos_object().set_name(_V, "Yes")
 
     with caplog.at_level(logging.DEBUG):
         PDAppearanceGenerator().generate(cb)
@@ -145,7 +149,7 @@ def test_button_missing_rect_does_not_install_appearance(caplog) -> None:
 def test_button_degenerate_rect_does_not_install_appearance() -> None:
     cb = PDCheckBox(PDAcroForm())
     cb.get_cos_object().set_item(_RECT, _rect(0, 0, 20, 0))
-    cb.set_value("Yes")
+    cb.get_cos_object().set_name(_V, "Yes")
 
     PDAppearanceGenerator().generate(cb)
 

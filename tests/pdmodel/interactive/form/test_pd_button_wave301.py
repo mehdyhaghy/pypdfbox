@@ -36,13 +36,21 @@ def test_wave301_button_set_value_rejects_unknown_when_on_states_known() -> None
         cb.set_value("Maybe")
 
 
-def test_wave301_button_set_value_accepts_sparse_field_without_on_states() -> None:
+def test_wave301_button_set_value_rejects_unknown_on_sparse_field() -> None:
+    # Wave 1487: upstream PDButton.setValue is strict (checkValue). A sparse
+    # AP-less single-widget box has on-values {""}, so a non-empty name that is
+    # not "Off" is rejected — matching Apache PDFBox (was permissive scaffold).
     form = PDAcroForm()
     cb = PDCheckBox(form)
 
-    cb.set_value("LegacyValue")
+    with pytest.raises(ValueError, match="not a valid option"):
+        cb.set_value("LegacyValue")
 
-    assert cb.get_value() == "LegacyValue"
+    # The computed on-value "" and "Off" are the only accepted names.
+    cb.set_value("")
+    assert cb.get_value() == ""
+    cb.set_value("Off")
+    assert cb.get_value() == "Off"
 
 
 def test_wave301_button_set_value_by_index_still_writes_index_name() -> None:

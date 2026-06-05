@@ -168,7 +168,10 @@ def test_radio_button_get_selected_index_walks_widgets() -> None:
 def test_radio_button_get_selected_export_values_no_opt_returns_value() -> None:
     form = PDAcroForm()
     rb = PDRadioButton(form)
-    rb.set_value("Choice2")
+    # Write /V directly: upstream PDButton.setValue is strict and an AP-less
+    # radio only knows on-value "" — but get_value()/getSelectedExportValues
+    # read /V regardless of what setValue would have accepted.
+    rb.get_cos_object().set_name(COSName.get_pdf_name("V"), "Choice2")
     # No /Opt -> selected export values is [getValue()].
     assert rb.get_selected_export_values() == ["Choice2"]
 

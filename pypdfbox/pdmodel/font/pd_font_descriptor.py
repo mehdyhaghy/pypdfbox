@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
+from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName, COSStream
 from pypdfbox.pdmodel.common.pd_stream import PDStream
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
@@ -70,10 +70,24 @@ class PDFontDescriptor:
     FLAG_SMALL_CAP: int = FLAG_SMALL_CAP
     FLAG_FORCE_BOLD: int = FLAG_FORCE_BOLD
 
+    # Sentinel values mirroring upstream's lazy-cache instance fields
+    # (PDFontDescriptor.java lines 46-48). Upstream caches /Flags (int,
+    # sentinel -1) and /CapHeight, /XHeight (float, sentinel
+    # Float.NEGATIVE_INFINITY) on first read; the setters overwrite the cache
+    # with the raw value. Consequences: (a) a direct mutation of the
+    # underlying dict after the first read is NOT observed, and (b)
+    # set_cap_height/set_x_height with a negative value re-reads as the raw
+    # negative (the abs() workaround only fires on the cache-miss dict read).
+    _FLAGS_UNSET: int = -1
+    _FLOAT_UNSET: float = float("-inf")
+
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
         self._dict = dictionary if dictionary is not None else COSDictionary()
         if dictionary is None and self._dict.get_dictionary_object(_TYPE) is None:
             self._dict.set_item(_TYPE, _FONT_DESCRIPTOR)
+        self._flags: int = self._FLAGS_UNSET
+        self._cap_height: float = self._FLOAT_UNSET
+        self._x_height: float = self._FLOAT_UNSET
 
     def get_cos_object(self) -> COSDictionary:
         return self._dict
@@ -96,10 +110,16 @@ class PDFontDescriptor:
     # ---------- /Flags ----------
 
     def get_flags(self) -> int:
-        return self._dict.get_int(_FLAGS, 0)
+        # Upstream lazily caches the dict value on first read (sentinel -1).
+        # A subsequent direct mutation of /Flags on the underlying dict is
+        # NOT observed — callers must go through set_flags. Mirror exactly.
+        if self._flags == self._FLAGS_UNSET:
+            self._flags = self._dict.get_int(_FLAGS, 0)
+        return self._flags
 
     def set_flags(self, flags: int) -> None:
         self._dict.set_int(_FLAGS, int(flags))
+        self._flags = int(flags)
 
     def clear_flags(self) -> None:
         """Reset /Flags to zero.
@@ -214,11 +234,31 @@ class PDFontDescriptor:
         self._dict.set_item(_FONT_BBOX, bbox)
 
     def get_font_bounding_box(self) -> PDRectangle | None:
-        """Typed accessor mirroring upstream ``getFontBoundingBox()``."""
+        """Typed accessor mirroring upstream ``getFontBoundingBox()``.
+
+        Upstream returns ``new PDRectangle(rect)`` for *any* non-null
+        ``/FontBBox`` COSArray; the ``PDRectangle(COSArray)`` constructor does
+        ``Arrays.copyOf(toFloatArray(), 4)`` — a malformed array with fewer
+        than 4 entries is zero-padded to length 4 rather than rejected (a
+        3-entry ``[0 -200 1000]`` becomes ``[0 -200 1000 0]``), and any
+        non-numeric entry is coerced to ``0`` (``toFloatArray`` semantics).
+        Mirror that leniency: build a 4-float array via
+        :meth:`COSArray.to_float_array` (which already maps non-numbers to
+        ``0``), pad/truncate to 4, then hand it to
+        :meth:`PDRectangle.from_cos_array` for the clamp + corner
+        normalization. A non-array ``/FontBBox`` resolves to ``None`` because
+        upstream's ``dic.getCOSArray`` returns null for it.
+        """
         v = self._dict.get_dictionary_object(_FONT_BBOX)
-        if isinstance(v, COSArray) and len(v) >= 4:
-            return PDRectangle.from_cos_array(v)
-        return None
+        if not isinstance(v, COSArray):
+            return None
+        floats = v.to_float_array()
+        # Arrays.copyOf(toFloatArray(), 4): zero-pad short, truncate long.
+        floats = (floats + [0.0, 0.0, 0.0, 0.0])[:4]
+        padded = COSArray()
+        for value in floats:
+            padded.add(COSFloat(value))
+        return PDRectangle.from_cos_array(padded)
 
     def set_font_bounding_box(self, rect: PDRectangle | None) -> None:
         """Typed setter mirroring upstream ``setFontBoundingBox(PDRectangle)``."""
@@ -254,18 +294,28 @@ class PDFontDescriptor:
 
     def get_cap_height(self) -> float:
         # PDFBOX-429: Scheherazade font ships a negative CapHeight; upstream
-        # returns the absolute value as a workaround. Match that behavior.
-        return abs(self._dict.get_float(_CAP_HEIGHT, 0.0))
+        # returns the absolute value as a workaround — but ONLY on the lazy
+        # cache-miss dict read (sentinel Float.NEGATIVE_INFINITY). The setter
+        # stores the raw value, so after set_cap_height(-100) a re-read
+        # returns -100, not 100. Mirror the cache exactly.
+        if self._cap_height == self._FLOAT_UNSET:
+            self._cap_height = abs(self._dict.get_float(_CAP_HEIGHT, 0.0))
+        return self._cap_height
 
     def set_cap_height(self, value: float) -> None:
         self._dict.set_float(_CAP_HEIGHT, float(value))
+        self._cap_height = float(value)
 
     def get_x_height(self) -> float:
-        # PDFBOX-429: see ``get_cap_height``.
-        return abs(self._dict.get_float(_X_HEIGHT, 0.0))
+        # PDFBOX-429: see ``get_cap_height`` — same lazy-cache + abs-on-read
+        # semantics; the setter caches the raw value.
+        if self._x_height == self._FLOAT_UNSET:
+            self._x_height = abs(self._dict.get_float(_X_HEIGHT, 0.0))
+        return self._x_height
 
     def set_x_height(self, value: float) -> None:
         self._dict.set_float(_X_HEIGHT, float(value))
+        self._x_height = float(value)
 
     def get_italic_angle(self) -> float:
         return self._dict.get_float(_ITALIC_ANGLE, 0.0)

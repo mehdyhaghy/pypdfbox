@@ -174,7 +174,10 @@ def test_wave488_get_font_for_wraps_dictionary_and_caches_failures(
     typed = PDType1Font()
     calls: list[COSDictionary] = []
 
-    def create_font(raw: COSDictionary) -> PDType1Font:
+    # PDResources.get_font now wraps every entry via PDFontFactory.create_font
+    # (passing the resource cache as the second arg, wave 1487); the stub must
+    # accept it. The font is wrapped once and cached by the stripper.
+    def create_font(raw: COSDictionary, resource_cache: object | None = None) -> PDType1Font:
         calls.append(raw)
         return typed
 

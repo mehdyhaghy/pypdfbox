@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from pypdfbox.pdmodel.common.pd_metadata import PDMetadata
     from pypdfbox.pdmodel.graphics.pd_property_list import PDPropertyList
     from pypdfbox.pdmodel.pd_document import PDDocument
+    from pypdfbox.pdmodel.pd_resources import PDResources
 
     from .pd_image import PDImage
 
@@ -30,6 +31,11 @@ _BITS_PER_COMPONENT: COSName = COSName.get_pdf_name("BitsPerComponent")
 _BPC: COSName = COSName.get_pdf_name("BPC")
 _COLORSPACE: COSName = COSName.get_pdf_name("ColorSpace")
 _CS: COSName = COSName.get_pdf_name("CS")
+
+# Sentinel for "no full-region render cached yet" — upstream initialises
+# ``cachedImageSubsampling = Integer.MAX_VALUE`` so the first full-region
+# render at any subsampling level populates the cache.
+_CACHED_IMAGE_SUBSAMPLING_UNSET: int = 2**31 - 1
 _FILTER: COSName = COSName.FILTER  # type: ignore[attr-defined]
 _MASK: COSName = COSName.get_pdf_name("Mask")
 _SMASK: COSName = COSName.get_pdf_name("SMask")
@@ -77,8 +83,35 @@ class PDImageXObject(PDXObject):
     and ``create_input_stream`` over the decoded body via ``PDStream``.
     """
 
-    def __init__(self, stream: PDStream | COSStream) -> None:
+    def __init__(
+        self,
+        stream: PDStream | COSStream,
+        resources: PDResources | None = None,
+    ) -> None:
         super().__init__(stream, _IMAGE)
+        # Mirror upstream ``PDImageXObject(PDStream, PDResources)``: keep the
+        # owning page ``/Resources`` so :meth:`get_color_space` can resolve a
+        # *named* ``/ColorSpace`` against the page's ``/Resources/ColorSpace``
+        # subdictionary and consult the document-level ResourceCache for
+        # indirect colour-space references (PDF 32000-1 §8.9.5.2). ``None`` is
+        # the legacy default — callers that wrap a stream directly (masks,
+        # thumbnails, factory output) pass no resources, matching upstream's
+        # ``resources = null`` constructors.
+        self._resources: PDResources | None = resources
+        # Per-instance decoded-image cache, mirroring upstream's
+        # ``SoftReference<BufferedImage> cachedImage`` +
+        # ``int cachedImageSubsampling = Integer.MAX_VALUE`` pair — only
+        # full-region renders are cached, preferring the lowest subsampling
+        # seen (lower subsampling = higher quality), and :meth:`set_color_space`
+        # invalidates the cache. A plain reference replaces the SoftReference
+        # (no GC-driven eviction; see :class:`DefaultResourceCache` for the
+        # same deliberate deviation).
+        self._cached_image: Image.Image | None = None
+        self._cached_image_subsampling: int = _CACHED_IMAGE_SUBSAMPLING_UNSET
+        # Per-instance typed colour-space cache, mirroring upstream's
+        # ``private PDColorSpace colorSpace`` field — built once on the first
+        # :meth:`get_color_space` call and reset by :meth:`set_color_space`.
+        self._color_space: PDColorSpace | None = None
 
     # ---------- factory helpers ----------
 
@@ -273,14 +306,36 @@ class PDImageXObject(PDXObject):
         return value
 
     def get_color_space(self) -> PDColorSpace | None:
-        """Typed ``/ColorSpace`` wrapper, or ``None`` when absent/unsupported."""
-        value = self.get_color_space_cos_object()
+        """Typed ``/ColorSpace`` wrapper, or ``None`` when absent/unsupported.
+
+        Mirrors upstream ``PDImageXObject.getColorSpace()``: the *raw*
+        ``/ColorSpace`` (falling back to ``/CS``) item is handed to
+        :meth:`PDColorSpace.create` together with this image's owning
+        ``/Resources`` (the value passed to the constructor). Threading
+        ``resources`` lets a bare-name colour space resolve against the
+        page's ``/Resources/ColorSpace`` subdictionary (PDF 32000-1
+        §8.9.5.2) and lets an indirect colour-space reference hit the
+        document-level ResourceCache instead of re-parsing on every call —
+        the behaviour that was dropped when the constructor lost its
+        ``resources`` parameter (DEFERRED.md, wave 1485). The typed wrapper
+        is cached per instance (upstream's ``private PDColorSpace
+        colorSpace`` field) — repeated calls return the same object until
+        :meth:`set_color_space` resets it."""
+        if self._color_space is not None:
+            return self._color_space
+        # Raw item (may be a COSObject indirect ref) — upstream uses
+        # getCOSObject().getItem(COLORSPACE, CS); create() unwraps it and,
+        # given resources, consults/populates the colour-space cache
+        # (PDFBOX-4022).
+        value = self.get_cos_object().get_item(_COLORSPACE, _CS)
         if value is not None:
-            return PDColorSpace.create(value)
+            self._color_space = PDColorSpace.create(value, self._resources)
+            return self._color_space
         if self.is_stencil():
             from pypdfbox.pdmodel.graphics.color import PDDeviceGray  # noqa: PLC0415
 
-            return PDDeviceGray.INSTANCE
+            self._color_space = PDDeviceGray.INSTANCE
+            return self._color_space
         return None
 
     def set_color_space(self, name: PDColorSpace | COSName | str | None) -> None:
@@ -294,12 +349,20 @@ class PDImageXObject(PDXObject):
             value = name if isinstance(name, COSName) else COSName.get_pdf_name(name)
         if value is not None:
             cos.set_item(_COLORSPACE, value)
+        # Upstream ``setColorSpace`` resets both per-instance caches
+        # (``colorSpace = null; cachedImage = null;``).
+        self._color_space = None
+        self._cached_image = None
+        self._cached_image_subsampling = _CACHED_IMAGE_SUBSAMPLING_UNSET
 
     def clear_color_space(self) -> None:
         """Remove both long and short color-space entries. No-op if absent."""
         cos = self.get_cos_object()
         cos.remove_item(_COLORSPACE)
         cos.remove_item(_CS)
+        self._color_space = None
+        self._cached_image = None
+        self._cached_image_subsampling = _CACHED_IMAGE_SUBSAMPLING_UNSET
 
     # ---------- /Filter ----------
 
@@ -780,6 +843,15 @@ class PDImageXObject(PDXObject):
         :meth:`to_pil_image`). When no mask is present the opaque raster is
         returned unchanged.
         """
+        # Upstream caches full-region renders only, returning the cached
+        # raster when the same subsampling level is requested again
+        # (``region == null && subsampling == cachedImageSubsampling``).
+        if (
+            region is None
+            and subsampling == self._cached_image_subsampling
+            and self._cached_image is not None
+        ):
+            return self._cached_image
         image = self.to_pil_image()
         if image is None:
             return None
@@ -792,6 +864,12 @@ class PDImageXObject(PDXObject):
                 (max(1, image.width // subsampling), max(1, image.height // subsampling)),
                 Image.NEAREST,
             )
+        if region is None and subsampling <= self._cached_image_subsampling:
+            # Only cache full-image renders, and prefer lower subsampling
+            # frequency: lower subsampling means higher quality and longer
+            # render times (upstream Java lines 514-519).
+            self._cached_image_subsampling = subsampling
+            self._cached_image = image
         return image
 
     def _apply_image_masks(self, image: Image.Image) -> Image.Image:

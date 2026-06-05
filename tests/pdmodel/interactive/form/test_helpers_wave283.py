@@ -160,7 +160,9 @@ def test_button_and_signature_type_aware_has_and_clear_helpers() -> None:
 
     button_cos.set_item(_V, COSArray())
     assert button.has_value() is False
-    button.set_value("Yes")
+    # set_value is upstream-strict; this AP-less box only accepts "" / "Off".
+    # The subject is the has_value/clear_value helpers, so use "Off".
+    button.set_value("Off")
     assert button.has_value() is True
     button.clear_value()
     assert button.has_value() is False

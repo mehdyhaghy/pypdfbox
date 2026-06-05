@@ -110,7 +110,11 @@ def test_on_values_use_deduped_exports_before_widget_appearances() -> None:
     assert button.get_on_values() == {"A", "B"}
 
 
-def test_on_values_skip_missing_or_off_only_widget_appearances() -> None:
+def test_on_values_include_empty_for_missing_or_off_only_widget_appearances() -> None:
+    # Wave 1487: upstream PDButton.getOnValues adds getOnValueForWidget(widget)
+    # for EVERY widget unconditionally, including the empty string "" for a
+    # widget that lacks a usable /AP /N on-state. The set therefore holds
+    # {"", "Yes"} (was {"Yes"} under the empty-skipping scaffold).
     button = PDButton(PDAcroForm())
     missing_ap = PDAnnotationWidget()
     missing_normal = PDAnnotationWidget()
@@ -119,7 +123,10 @@ def test_on_values_skip_missing_or_off_only_widget_appearances() -> None:
     valid = _widget_with_states("Yes", "Off")
     button.set_widgets([missing_ap, missing_normal, off_only, valid])
 
-    assert button.get_on_values() == {"Yes"}
+    on_values = button.get_on_values()
+    assert on_values == {"", "Yes"}
+    # Insertion order preserved (LinkedHashSet parity): "" first, then "Yes".
+    assert list(on_values) == ["", "Yes"]
 
 
 def test_construct_appearances_sets_matching_state_or_off() -> None:

@@ -203,18 +203,34 @@ def test_set_font_bounding_box_null_clears_entry() -> None:
 # ---------- CapHeight / XHeight PDFBOX-429 abs() workaround ----------
 
 
-def test_cap_height_returns_absolute_value() -> None:
-    # Mirrors: capHeight = Math.abs(dic.getFloat(CAP_HEIGHT, 0))
+def test_cap_height_abs_workaround_only_on_dict_read() -> None:
+    # Mirrors getCapHeight() lines 522-532: the abs() workaround
+    # (capHeight = Math.abs(dic.getFloat(CAP_HEIGHT,0))) fires ONLY on the
+    # lazy cache-miss read (capHeight == Float.NEGATIVE_INFINITY).
+    # setCapHeight (lines 541-544) writes the dict AND caches the RAW value
+    # (this.capHeight = capHeight), so a re-read returns the raw negative.
+    from pypdfbox.cos import COSDictionary, COSName
+
     fd = PDFontDescriptor()
     fd.set_cap_height(-700.0)
-    assert fd.get_cap_height() == pytest.approx(700.0)
+    assert fd.get_cap_height() == pytest.approx(-700.0)  # cached raw, not abs
+
+    d = COSDictionary()
+    d.set_float(COSName.get_pdf_name("CapHeight"), -700.0)
+    assert PDFontDescriptor(d).get_cap_height() == pytest.approx(700.0)  # abs
 
 
-def test_x_height_returns_absolute_value() -> None:
-    # Mirrors: xHeight = Math.abs(dic.getFloat(XHEIGHT, 0))
+def test_x_height_abs_workaround_only_on_dict_read() -> None:
+    # Mirrors getXHeight() lines 552-562 / setXHeight() lines 570-573.
+    from pypdfbox.cos import COSDictionary, COSName
+
     fd = PDFontDescriptor()
     fd.set_x_height(-450.0)
-    assert fd.get_x_height() == pytest.approx(450.0)
+    assert fd.get_x_height() == pytest.approx(-450.0)
+
+    d = COSDictionary()
+    d.set_float(COSName.get_pdf_name("XHeight"), -450.0)
+    assert PDFontDescriptor(d).get_x_height() == pytest.approx(450.0)
 
 
 # ---------- /Widths and /MissingWidth predicates ----------

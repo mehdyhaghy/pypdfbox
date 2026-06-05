@@ -41,9 +41,9 @@ def test_checkbox_generate_without_matching_value_sets_appearance_state_off() ->
 def test_radio_button_generation_uses_vector_dot_appearance() -> None:
     radio = PDRadioButton(PDAcroForm())
     radio.get_cos_object().set_item(_RECT, _rect(0, 0, 20, 20))
-    radio.set_value("Yes")
-
-    PDAppearanceGenerator().generate(radio)
+    # regenerate_appearance generates the /AP /N on-state first, so the strict
+    # PDButton.check_value accepts "Yes" (upstream setValue is strict).
+    radio.set_value("Yes", regenerate_appearance=True)
 
     normal = radio.get_cos_object().get_dictionary_object(_AP).get_dictionary_object(_N)
     on_stream = normal.get_dictionary_object(COSName.get_pdf_name("Yes"))

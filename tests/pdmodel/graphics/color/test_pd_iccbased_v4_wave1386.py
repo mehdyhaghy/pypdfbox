@@ -31,6 +31,7 @@ under the hood). Coverage:
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 
 import pytest
 from PIL import Image, ImageCms
@@ -84,9 +85,13 @@ def _pillow_srgb_profile_bytes(*, version_byte: int) -> bytes:
 
 
 @pytest.fixture(autouse=True)
-def _isolate_caches() -> None:
+def _isolate_caches() -> Iterator[None]:
     """Wave 1386 introduced content-addressed caches. Flush them per
-    test so cache state doesn't leak between cases."""
+    test so cache state doesn't leak between cases — and after each
+    test, so entries cached here don't leak to tests collected later
+    in the session (same hygiene as the wave-668 file; see wave 1487)."""
+    _clear_icc_caches()
+    yield
     _clear_icc_caches()
 
 

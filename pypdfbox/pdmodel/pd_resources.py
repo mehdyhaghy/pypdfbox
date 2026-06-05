@@ -55,9 +55,9 @@ class PDResources:
 
     - name-listing accessors (``get_xobject_names`` etc.) returning a list
       of ``COSName``;
-    - raw accessors for direct font dictionaries and XObjects
-      (``get_font``, ``get_xobject``);
-    - typed accessors (``get_x_object``, ``get_color_space``,
+    - the raw ``/XObject`` accessor ``get_xobject`` (returns the raw COS
+      object; ``get_font`` returns a typed ``PDFont``);
+    - typed accessors (``get_font``, ``get_x_object``, ``get_color_space``,
       ``get_pattern``, ``get_shading``, ``get_ext_gstate``,
       ``get_property_list``) returning the appropriate PD wrapper or ``None``
       for missing/malformed non-XObject entries;
@@ -97,9 +97,10 @@ class PDResources:
         self._resources: COSDictionary = resources if resources is not None else COSDictionary()
         self._document = document
         self._resource_cache = resource_cache
-        # Accepted for constructor parity with PDFBox 3.x. pypdfbox preserves
-        # the historical direct-font raw dictionary surface, so this cache is
-        # intentionally not consulted by get_font().
+        # Accepted for constructor parity with PDFBox 3.x. Direct (inline)
+        # font dictionaries are wrapped fresh on every get_font() call —
+        # matching upstream, which keys its resource cache by indirect
+        # COSObject only — so this cache is intentionally unused.
         self._direct_font_cache = direct_font_cache
         self._resolving_color_spaces: set[COSName] = set()
 
@@ -285,7 +286,11 @@ class PDResources:
                 cache.put_x_object(raw, xobject)
             return xobject
         if subtype == "Image":
-            xobject = PDImageXObject(entry)
+            # Thread this PDResources so the image's /ColorSpace can resolve
+            # named entries against /Resources/ColorSpace and consult the
+            # colour-space cache. Mirrors upstream PDImageXObject(stream,
+            # resources) construction via PDXObject.createXObject.
+            xobject = PDImageXObject(entry, self)
             if cache is not None and isinstance(raw, COSObject):
                 cache.put_x_object(raw, xobject)
             return xobject
@@ -332,31 +337,32 @@ class PDResources:
         sub.set_item(key, cos_object)
         return key
 
-    def get_font(self, name: COSName) -> COSDictionary | PDFont | None:
-        """Return the font resource for ``name``.
+    def get_font(self, name: COSName) -> PDFont | None:
+        """Return the typed ``PDFont`` for ``name``, or ``None`` when the
+        entry is absent or not a font dictionary.
 
-        Direct entries preserve the cluster #1 raw ``COSDictionary`` surface.
-        Indirect entries use ``PDFontFactory`` and the document resource cache,
-        matching upstream's cache hookup for typed font resources.
+        Mirrors upstream ``PDResources.getFont(COSName)``: every entry —
+        direct (inline) or indirect — is wrapped via ``PDFontFactory`` so
+        the return is always a typed ``PDFont``. The document resource cache
+        is consulted and populated only for *indirect* entries (upstream
+        keys the cache by the indirect ``COSObject``); direct entries are
+        wrapped fresh on each lookup, never cached.
         """
         from pypdfbox.pdmodel.font import PDFontFactory  # noqa: PLC0415
 
         raw, base = self._lookup_raw_and_resolved(_FONT, name)
-        if base is None:
+        if not isinstance(base, COSDictionary):
             return None
-        if not isinstance(raw, COSObject):
-            return base if isinstance(base, COSDictionary) else None
         cache = self._cache()
-        if cache is not None:
+        is_indirect = isinstance(raw, COSObject)
+        if cache is not None and is_indirect:
             cached = cache.get_font(raw)
             if cached is not None:
                 return cached
-        if isinstance(base, COSDictionary):
-            font = PDFontFactory.create_font(base)
-            if cache is not None and font is not None:
-                cache.put_font(raw, font)
-            return font
-        return None
+        font = PDFontFactory.create_font(base, cache)
+        if cache is not None and is_indirect and font is not None:
+            cache.put_font(raw, font)
+        return font
 
     # ---------- name-listing accessors ----------
 

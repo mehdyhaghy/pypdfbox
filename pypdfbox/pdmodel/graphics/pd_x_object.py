@@ -91,7 +91,11 @@ class PDXObject:
         )
         subtype = base.get_name(_SUBTYPE)
         if subtype == "Image":
-            return PDImageXObject(base)
+            # Mirror upstream ``new PDImageXObject(new PDStream(stream),
+            # resources)`` — thread the owning /Resources so the image's
+            # /ColorSpace can resolve named entries and hit the colour-space
+            # cache (PDF 32000-1 §8.9.5.2).
+            return PDImageXObject(base, resources)
         if subtype == "Form":
             # When the form carries /Group /S /Transparency, upstream
             # returns a PDTransparencyGroup; otherwise a plain

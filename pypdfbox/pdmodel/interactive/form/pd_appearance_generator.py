@@ -2854,14 +2854,11 @@ class PDAppearanceGenerator:
     def _coerce_to_pd_font(entry: object | None) -> PDFont | None:
         """Coerce a :meth:`PDResources.get_font` return into a :class:`PDFont`.
 
-        ``PDResources.get_font`` returns the typed :class:`PDFont` wrapper
-        for indirect entries (which go through ``PDFontFactory`` + the
-        document resource cache), but yields the raw :class:`COSDictionary`
-        for direct entries (preserving cluster #1's surface). The
-        wave-1375 resolver path needs a uniform :class:`PDFont` either
-        way — so direct dictionaries are wrapped here via
-        :meth:`PDFontFactory.create_font`. Anything else (``None`` /
-        non-dict) returns ``None``.
+        ``PDResources.get_font`` now always returns a typed :class:`PDFont`
+        (or ``None``), matching upstream — direct and indirect entries alike
+        are wrapped via ``PDFontFactory``. A raw :class:`COSDictionary` is
+        still tolerated here defensively in case a caller hands one in
+        directly.
         """
         if isinstance(entry, PDFont):
             return entry

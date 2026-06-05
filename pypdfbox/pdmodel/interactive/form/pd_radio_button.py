@@ -108,12 +108,19 @@ class PDRadioButton(PDButton):
         rebuilds the ``/AP /N`` subdictionary from scratch and would discard
         producer-chosen state keys (e.g. the numeric ``/Opt``-indexed keys in
         PDFBOX-3656).
+
+        Ordering note (wave 1487): like :meth:`PDCheckBox.set_value`, when
+        ``regenerate_appearance`` is set the appearance streams are rebuilt
+        *before* the base :meth:`PDButton.set_value` runs its strict
+        :meth:`PDButton.check_value`, so a freshly built AP-less group (whose
+        on-values would otherwise be ``{""}``) gets its ``/AP /N`` on-states
+        installed first and ``value`` becomes a recognised on-value.
         """
-        super().set_value(value)
         if regenerate_appearance:
             from .pd_appearance_generator import PDAppearanceGenerator
 
             PDAppearanceGenerator().generate(self)
+        super().set_value(value)
 
     def construct_appearances(self) -> None:
         """Rebuild widget appearances for this radio button group.

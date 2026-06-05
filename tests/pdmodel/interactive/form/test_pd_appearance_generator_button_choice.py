@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName, COSStream
 from pypdfbox.pdmodel.interactive.form import PDAcroForm, PDAppearanceGenerator
 from pypdfbox.pdmodel.interactive.form.pd_check_box import PDCheckBox
@@ -98,7 +100,12 @@ def test_check_box_set_value_no_regenerate_skips_ap() -> None:
     form = PDAcroForm()
     cb = PDCheckBox(form)
     cb.get_cos_object().set_item(_RECT, _rect(0, 0, 20, 20))
-    cb.set_value("Yes")
+    # Without regenerate_appearance, set_value is upstream-strict: an AP-less
+    # box only knows the on-value "" (and "Off"), so a non-empty name raises.
+    with pytest.raises(ValueError, match="not a valid option"):
+        cb.set_value("Yes")
+    # "Off" is always valid and, without regenerate, does not draw an /AP.
+    cb.set_value("Off")
     widget_cos = cb.get_widgets()[0].get_cos_object()
     assert widget_cos.get_dictionary_object(_AP) is None
 

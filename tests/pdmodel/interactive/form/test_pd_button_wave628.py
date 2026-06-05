@@ -67,14 +67,20 @@ def test_wave628_set_value_by_index_rejects_empty_and_out_of_range_exports() -> 
         button.set_value_by_index(1)
 
 
-def test_wave628_check_value_is_strict_even_when_sparse_set_value_is_permissive() -> None:
+def test_wave628_check_value_and_set_value_are_both_strict_on_sparse_field() -> None:
+    # Wave 1487: set_value now routes through the same strict check_value as
+    # upstream PDButton.setValue. A sparse AP-less single-widget button has
+    # on-values {""}, so a non-empty unknown name is rejected by both paths.
     button = PDButton(PDAcroForm())
-
-    button.set_value("legacy")
-    assert button.get_value() == "legacy"
 
     with pytest.raises(ValueError, match="not a valid option"):
         button.check_value("legacy")
+    with pytest.raises(ValueError, match="not a valid option"):
+        button.set_value("legacy")
+
+    # "" (the computed on-value) and "Off" are accepted.
+    button.check_value("")
+    button.check_value("Off")
     button.check_value("Off")
 
 

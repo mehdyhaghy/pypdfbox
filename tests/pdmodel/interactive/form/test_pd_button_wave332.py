@@ -33,10 +33,15 @@ def test_wave332_button_set_default_value_rejects_unknown_known_state() -> None:
     assert cb.get_default_value() == "Off"
 
 
-def test_wave332_button_set_default_value_accepts_sparse_field() -> None:
+def test_wave332_button_set_default_value_rejects_unknown_on_sparse_field() -> None:
+    # Wave 1487: upstream PDButton.setDefaultValue routes through the strict
+    # checkValue. A sparse AP-less box has on-values {""}, so a non-empty name
+    # other than "Off" is rejected (was permissive scaffold).
     form = PDAcroForm()
     cb = PDCheckBox(form)
 
-    cb.set_default_value("LegacyDefault")
+    with pytest.raises(ValueError, match="not a valid option"):
+        cb.set_default_value("LegacyDefault")
 
-    assert cb.get_default_value() == "LegacyDefault"
+    cb.set_default_value("Off")
+    assert cb.get_default_value() == "Off"

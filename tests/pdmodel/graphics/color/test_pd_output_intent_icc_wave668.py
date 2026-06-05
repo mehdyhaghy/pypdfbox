@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+from collections.abc import Iterator
 
 import pytest
 from PIL import Image, ImageCms
@@ -16,13 +17,20 @@ from pypdfbox.pdmodel.pd_document import PDDocument
 
 
 @pytest.fixture(autouse=True)
-def _isolate_icc_caches() -> None:
+def _isolate_icc_caches() -> Iterator[None]:
     """Wave 1386 added content-addressed caches for parsed ICC profiles
     and ImageCms transforms inside ``pd_icc_based``. These tests
     monkeypatch ``ImageCms.ImageCmsProfile`` / ``createProfile`` /
     ``buildTransform`` to inject fake objects; flush both caches before
     each test so a fake profile cached by an earlier case doesn't
-    short-circuit the next ``_try_icc_to_rgb`` call."""
+    short-circuit the next ``_try_icc_to_rgb`` call — and AFTER each
+    test, so the last fake in this file doesn't poison the module-level
+    one-slot ``_SRGB_CACHE`` / content-addressed caches for every test
+    collected later in the session (surfaced wave 1487: a leaked
+    ``_FakeProfile`` made the downstream ICC-CMYK oracle test fail with
+    "Invalid type for Profile" under full-tree collection order)."""
+    _clear_icc_caches()
+    yield
     _clear_icc_caches()
 
 

@@ -120,6 +120,81 @@ def _shortest_float32_decimal(value: float) -> str:
     return repr(target)
 
 
+def _scientific_float32(magnitude: float) -> tuple[str, str]:
+    """Render a positive float32-representable ``magnitude`` as Java's
+    ``Float.toString`` scientific regime would, returning ``(mantissa, exponent)``
+    where ``mantissa`` is ``d.ddd`` (single leading digit, >=1 fractional digit)
+    and ``exponent`` is a plain signed decimal integer string.
+
+    Java's ``FloatingDecimal`` always emits a mantissa of **at least two**
+    significant digits in scientific form, then the shortest beyond that which
+    round-trips to the same float32. The two-significant-digit floor is what
+    makes the smallest subnormal render ``1.4E-45`` (the correctly-rounded
+    second digit) rather than the globally-shortest ``1E-45`` a naive
+    shortest-round-trip search picks. Verified byte-exact against the live
+    ``FloatToStringProbe`` oracle (Apache PDFBox 3.0.7 / OpenJDK 21) across the
+    1e7 / 1e-3 boundaries, exact powers of ten, full-mantissa values,
+    subnormals down to ``Float.MIN_VALUE``, and ``Float.MAX_VALUE``.
+    """
+    target = struct.unpack("f", struct.pack("f", magnitude))[0]
+    for precision in range(2, 20):
+        # ``"%.{p-1}e"`` emits ``p`` significant digits in ``d.ddde±NN`` form.
+        candidate = f"{target:.{precision - 1}e}"
+        mantissa, _, exponent = candidate.partition("e")
+        try:
+            round_tripped = struct.unpack("f", struct.pack("f", float(candidate)))[0]
+        except OverflowError:
+            continue
+        if round_tripped != target:
+            continue
+        # Strip non-significant trailing zeros but keep one fractional digit:
+        # Java never emits a bare ``d`` mantissa in scientific form.
+        if "." in mantissa:
+            mantissa = mantissa.rstrip("0")
+            if mantissa.endswith("."):
+                mantissa += "0"
+        return mantissa, str(int(exponent))
+    # Unreachable for finite float32 magnitudes; degrade to a plain repr split.
+    return repr(target), "0"
+
+
+def float_to_string(value: float) -> str:
+    """Byte-for-byte port of Java ``Float.toString(float)`` for a value already
+    holding a float32-representable magnitude.
+
+    This is the *raw* single-precision rendering — exponent notation when the
+    magnitude is ``< 1e-3`` or ``>= 1e7``, plain decimal (with a mandatory
+    ``.0`` on whole numbers) otherwise — used directly by
+    :meth:`pypdfbox.util.Matrix.__str__` / :meth:`pypdfbox.util.Vector.__str__`
+    (upstream ``Matrix.toString`` / ``Vector.toString`` concatenate
+    ``Float.toString`` of each cell, keeping the ``E`` form).
+
+    :func:`format_float32` (the PDF real-number serializer) builds on this and
+    then strips the ``E`` form to plain decimal the way ``COSFloat.formatString``
+    does via ``BigDecimal.toPlainString``.
+    """
+    if math.isnan(value):
+        return "NaN"
+    if math.isinf(value):
+        return "Infinity" if value > 0 else "-Infinity"
+    if value == 0.0:
+        return "-0.0" if struct.pack("f", value)[3] & 0x80 else "0.0"
+    negative = value < 0
+    magnitude = -value if negative else value
+    if magnitude < 1e-3 or magnitude >= 1e7:
+        mantissa, exponent = _scientific_float32(magnitude)
+        text = f"{mantissa}E{exponent}"
+    else:
+        # Inside the window Float.toString is always plain decimal. The shortest
+        # ``%g`` digit string can itself be in ``e`` form for whole magnitudes
+        # near 1e7 (e.g. "1e+06"); expand it to plain text and ensure the
+        # mandatory fractional part (whole numbers keep a trailing ".0").
+        text = format(Decimal(_shortest_float32_decimal(magnitude)), "f")
+        if "." not in text:
+            text += ".0"
+    return ("-" + text) if negative else text
+
+
 def format_float32(value: float) -> str:
     """Canonical PDF real-number serialization, byte-for-byte matching Apache
     PDFBox ``COSFloat.formatString`` (PDFBox 3.0.7) for finite values.
@@ -143,11 +218,11 @@ def format_float32(value: float) -> str:
     writer's ``COSWriter.format_float`` both delegate here, so there is exactly
     one float-formatting implementation in the codebase.
 
-    Note: for the smallest subnormals (e.g. ``Float.MIN_VALUE`` = ``1.4e-45``)
-    Java's legacy ``FloatingDecimal`` can emit a *non-minimal* digit string
-    (``1.4E-45`` where ``1E-45`` also round-trips); we emit the truly-shortest
-    round-tripping form, which is a valid PDF number but may differ in
-    non-significant trailing digits. See CHANGES.md."""
+    The raw ``Float.toString`` rendering — including the scientific-notation
+    regime and its two-significant-digit subnormal floor (so ``Float.MIN_VALUE``
+    is ``1.4E-45``, matching Java byte-for-byte) — lives in
+    :func:`float_to_string`; this function applies the ``BigDecimal`` plain-text
+    step on top of it."""
     # NaN cannot be encoded as a PDF number, but match Java's ``Float.toString``
     # token ("NaN") rather than emitting "nan"/"NaN.0"; the writer raises on
     # NaN before it ever reaches a serialised PDF.
@@ -156,19 +231,15 @@ def format_float32(value: float) -> str:
     # ±0.0 — preserve the sign bit (Float.toString yields "0.0" / "-0.0").
     if value == 0.0:
         return "-0.0" if struct.pack("f", value)[3] & 0x80 else "0.0"
-    negative = value < 0
-    magnitude = -value if negative else value
-    digits = _shortest_float32_decimal(magnitude)
-    decimal_value = Decimal(digits)
-    if magnitude < 1e-3 or magnitude >= 1e7:
-        # Exponent branch: BigDecimal.stripTrailingZeros().toPlainString().
-        text = format(decimal_value.normalize(), "f")
-    else:
-        # Decimal branch: Float.toString keeps it verbatim, always with a
-        # fractional part (e.g. "1000000.0", "100.0").
-        text = format(decimal_value, "f")
-        if "." not in text:
-            text += ".0"
+    raw = float_to_string(value)
+    if "E" not in raw:
+        # ``s.indexOf('E') < 0`` — Float.toString already plain; keep verbatim
+        # (always carries a fractional part, e.g. "1000000.0", "100.0").
+        return raw
+    # Exponent branch: ``new BigDecimal(s).stripTrailingZeros().toPlainString()``.
+    negative = raw.startswith("-")
+    decimal_value = Decimal(raw[1:] if negative else raw)
+    text = format(decimal_value.normalize(), "f")
     return ("-" + text) if negative else text
 
 

@@ -20,11 +20,13 @@ flagged that ``COSFloat.format_string`` carried a SEPARATE formatter (``repr`` +
 ``0.10000000149011612``). That formatter is now unified onto the shared
 ``pypdfbox.cos.cos_float.format_float32``; this oracle is the regression guard.
 
-Documented divergence (NOT asserted against Java): the smallest subnormals
-(``Float.MIN_VALUE`` = ``1.4e-45``) — Java's legacy ``FloatingDecimal`` emits a
-non-minimal ``1.4E-45`` where ``1E-45`` also round-trips to the same float32;
-pypdfbox emits the truly-shortest form. Both are valid PDF numbers. Recorded in
-CHANGES.md. Those two bit patterns are filtered out of the asserted battery.
+Wave 1487 closed the former subnormal divergence: ``Float.MIN_VALUE`` (1.4e-45)
+now serializes byte-for-byte with Java. ``format_float32`` derives from
+``float_to_string`` (the raw ``Float.toString`` port, whose scientific branch
+carries Java's two-significant-digit subnormal floor — ``1.4E-45``, not the
+globally-shortest ``1E-45``) and then strips the ``E`` form to plain decimal the
+way ``COSFloat.formatString`` does. So every float bit pattern the probe emits is
+now asserted against Java with no exclusions.
 """
 
 from __future__ import annotations
@@ -37,14 +39,6 @@ from pypdfbox.cos.cos_integer import COSInteger
 from pypdfbox.cos.cos_name import COSName
 from pypdfbox.cos.cos_null import COSNull
 from tests.oracle.harness import requires_oracle, run_probe_text
-
-# Bit patterns whose Java FloatingDecimal output is non-minimal (subnormal
-# boundary) — documented divergence, parsed-but-not-asserted. See module docstring.
-_DOCUMENTED_FLOAT_BIT_DIVERGENCES: frozenset[int] = frozenset(
-    {
-        1,  # Float.MIN_VALUE 1.4e-45 -> Java "1.4E-45", pypdfbox truly-shortest "1E-45"
-    }
-)
 
 
 def _self_write(obj: object) -> bytes:
@@ -90,8 +84,6 @@ def test_cos_scalar_self_write_matches_pdfbox():
     for kind, arg, java_hex in rows:
         if kind == "float":
             bits = int(arg)
-            if bits in _DOCUMENTED_FLOAT_BIT_DIVERGENCES:
-                continue
             value = struct.unpack(">f", struct.pack(">i", bits))[0]
             py = _self_write(COSFloat(value))
         elif kind == "floats":

@@ -121,13 +121,17 @@ def test_get_on_values_dedupes_export_values_wave494() -> None:
 def test_get_on_values_walks_kid_appearances_and_skips_malformed_wave494() -> None:
     button = PDButton(PDAcroForm())
     kids = COSArray()
-    kids.add(COSDictionary())
-    kids.add(COSString("not-a-widget"))
+    kids.add(COSDictionary())  # widget, no /AP -> contributes "" upstream
+    kids.add(COSString("not-a-widget"))  # not a COSDictionary -> not a widget
     kids.add(COSDictionary())
     kids.get(2).set_item(_AP, _normal_appearance_with_on_state("Accepted"))  # type: ignore[attr-defined]
     button.get_cos_object().set_item(_KIDS, kids)
 
-    assert button.get_on_values() == {"Accepted"}
+    # Wave 1487: upstream getOnValues adds the AP-less widget's empty on-value
+    # unconditionally; the non-dictionary kid is not a widget and is dropped.
+    on_values = button.get_on_values()
+    assert on_values == {"", "Accepted"}
+    assert list(on_values) == ["", "Accepted"]
 
 
 def test_construct_appearances_falls_back_to_off_for_missing_state_wave494() -> None:

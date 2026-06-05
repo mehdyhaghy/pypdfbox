@@ -123,7 +123,14 @@ def test_wave279_bbox_presence_is_separate_from_typed_shape() -> None:
 
     fd.set_font_b_box(COSArray([COSFloat(0.0), COSFloat(1.0), COSFloat(2.0)]))
     assert fd.has_font_bounding_box() is True
-    assert fd.get_font_bounding_box() is None
+    # A 3-entry array is zero-padded to [0,1,2,0] then corner-normalised,
+    # matching upstream Arrays.copyOf(toFloatArray(), 4) (wave 1487).
+    short_rect = fd.get_font_bounding_box()
+    assert short_rect is not None
+    assert short_rect.lower_left_x == pytest.approx(0.0)
+    assert short_rect.lower_left_y == pytest.approx(0.0)
+    assert short_rect.upper_right_x == pytest.approx(2.0)
+    assert short_rect.upper_right_y == pytest.approx(1.0)
 
     fd.set_font_bounding_box(PDRectangle(0.0, 1.0, 2.0, 3.0))
     rect = fd.get_font_bounding_box()

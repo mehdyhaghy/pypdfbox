@@ -7,6 +7,8 @@ from pypdfbox.cos import COSDictionary, COSName
 from .pd_button import PDButton
 
 if TYPE_CHECKING:
+    from collections.abc import KeysView
+
     from .pd_acro_form import PDAcroForm
     from .pd_non_terminal_field import PDNonTerminalField
 
@@ -59,8 +61,10 @@ class PDPushButton(PDButton):
             )
         super().set_export_values(values)
 
-    def get_on_values(self) -> set[str]:
-        return set()
+    def get_on_values(self) -> KeysView[str]:
+        # Upstream PDPushButton.getOnValues returns Collections.emptySet();
+        # an empty dict's keys view is an equivalent empty ordered set.
+        return {}.keys()
 
     # ---------- appearance regeneration ----------
 

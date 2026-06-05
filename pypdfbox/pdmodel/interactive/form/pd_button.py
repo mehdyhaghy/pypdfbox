@@ -7,6 +7,8 @@ from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
 from .pd_terminal_field import PDTerminalField
 
 if TYPE_CHECKING:
+    from collections.abc import KeysView
+
     from pypdfbox.pdmodel.interactive.annotation import PDAnnotationWidget
 
     from .pd_acro_form import PDAcroForm
@@ -24,10 +26,6 @@ class PDButton(PDTerminalField):
     Concrete dispatch (push / radio / check) is performed by
     :class:`PDFieldFactory` based on the ``FLAG_PUSHBUTTON`` and ``FLAG_RADIO``
     bits.
-
-    Deferred upstream behavior: ``get_on_values()`` returns an empty set in this
-    scaffold (full implementation walks widget appearance dictionaries to
-    collect the union of "on" state names).
     """
 
     FT = "Btn"
@@ -106,7 +104,7 @@ class PDButton(PDTerminalField):
         if value is None:
             self._field.remove_item(_V)
             return
-        self._check_value_if_known(value)
+        self.check_value(value)
         if self.get_export_values():
             self.update_by_option(value)
         else:
@@ -148,42 +146,25 @@ class PDButton(PDTerminalField):
     def check_value(self, value: str) -> None:
         """Validate that ``value`` is a permitted on-state name or ``Off``.
 
-        Mirrors upstream ``PDButton.checkValue``. Raises ``ValueError`` if
-        the value is neither ``"Off"`` nor an entry in :meth:`get_on_values`.
+        Mirrors upstream ``PDButton.checkValue`` (``IllegalArgumentException``
+        maps to ``ValueError`` per project convention). Raises if the value
+        is neither ``"Off"`` nor an entry in :meth:`get_on_values`.
+
+        The check is **strict**: there is no permissive fall-through for
+        AP-less fields. Upstream's :meth:`get_on_values` already returns
+        ``{""}`` for a fresh single-widget button with no ``/AP``, so a
+        freshly built button accepts ``""`` (its computed on-value) and
+        ``"Off"`` — but not an arbitrary name. Wave 1487 replaced the
+        previous permissive ``_check_value_if_known`` scaffold with this
+        strict path.
         """
         on_values = self.get_on_values()
         if value != "Off" and value not in on_values:
             raise ValueError(
                 f"value '{value}' is not a valid option for the field "
                 f"{self.get_fully_qualified_name()}, valid values are: "
-                f"{on_values} and Off"
+                f"{set(on_values)} and Off"
             )
-
-    def _check_value_if_known(self, value: str) -> None:
-        """Validate button values when this field exposes known on-states.
-
-        Sparse/fresh fields often lack widget appearances, so keep the legacy
-        permissive path when no states are discoverable. If ``/Opt`` is present,
-        also accept an integer-string index because :meth:`set_value_by_index`
-        stores that representation.
-        """
-        on_values = self.get_on_values()
-        if not on_values or value == "Off" or value in on_values:
-            return
-        export_values = self.get_export_values()
-        if export_values:
-            try:
-                idx = int(value, 10)
-            except ValueError:
-                pass
-            else:
-                if 0 <= idx < len(export_values):
-                    return
-        raise ValueError(
-            f"value '{value}' is not a valid option for the field "
-            f"{self.get_fully_qualified_name()}, valid values are: "
-            f"{on_values} and Off"
-        )
 
     def get_default_value(self) -> str:
         dv_key = COSName.get_pdf_name("DV")
@@ -200,7 +181,7 @@ class PDButton(PDTerminalField):
         if value is None:
             self._field.remove_item(dv_key)
         else:
-            self._check_value_if_known(value)
+            self.check_value(value)
             self._field.set_name(dv_key, value)
 
     def has_default_value(self) -> bool:
@@ -248,32 +229,37 @@ class PDButton(PDTerminalField):
         """Remove this button's local ``/Opt`` export-values entry."""
         self._field.remove_item(_OPT)
 
-    def get_on_values(self) -> set[str]:
+    def get_on_values(self) -> KeysView[str]:
         """Returns the union of widget appearance "on" state names.
 
-        Mirrors upstream ``PDButton.getOnValues``:
-        - If ``/Opt`` is non-empty, returns its entries (preserving order
-          via ``LinkedHashSet`` upstream — we use a list-backed dedupe).
-        - Otherwise walks each widget's ``/AP /N`` subdictionary and
-          collects the first non-``/Off`` name.
+        Mirrors upstream ``PDButton.getOnValues`` (a ``LinkedHashSet`` — an
+        ordered set):
+        - If ``/Opt`` is non-empty, returns its entries (deduped, insertion
+          order preserved).
+        - Otherwise walks each widget and adds
+          :meth:`get_on_value_for_widget`'s result for **every** widget —
+          including the empty string ``""`` for a widget that lacks an
+          ``/AP`` normal-appearance dictionary. Upstream adds that empty
+          string unconditionally (``onValues.add(getOnValueForWidget(...))``);
+          a fresh AP-less button therefore reports ``{""}`` and
+          :meth:`check_value` accepts ``""`` for it. Wave 1487 closed the
+          divergence where this skipped empty on-values.
 
-        Returns a Python ``set`` (membership semantics match upstream
-        callers like :meth:`PDRadioButton.get_selected_export_values`).
+        Returns an ordered set realised as a ``dict_keys`` view — it
+        compares equal to a Python ``set``, supports ``in`` / ``len`` /
+        iteration, and preserves insertion order so callers such as
+        :meth:`PDRadioButton.get_selected_export_values` can iterate it in
+        parallel with ``/Opt`` (matching upstream's ``LinkedHashSet``).
         """
+        ordered: dict[str, None] = {}
         export_values = self.get_export_values()
         if export_values:
-            # preserve insertion order while dedup'ing
-            seen: list[str] = []
             for value in export_values:
-                if value not in seen:
-                    seen.append(value)
-            return set(seen)
-        out: set[str] = set()
+                ordered.setdefault(value, None)
+            return ordered.keys()
         for widget in self.get_widgets():
-            on_value = self.get_on_value_for_widget(widget)
-            if on_value:
-                out.add(on_value)
-        return out
+            ordered.setdefault(self.get_on_value_for_widget(widget), None)
+        return ordered.keys()
 
     @staticmethod
     def get_on_value_for_widget(widget: PDAnnotationWidget) -> str:

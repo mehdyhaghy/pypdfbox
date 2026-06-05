@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
+from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream, COSString
 from pypdfbox.pdmodel.interactive.form import PDAcroForm
 from pypdfbox.pdmodel.interactive.form.pd_check_box import PDCheckBox
 from pypdfbox.pdmodel.interactive.form.pd_combo_box import PDComboBox
@@ -18,6 +18,24 @@ from pypdfbox.pdmodel.interactive.form.pd_text_field import PDTextField
 _V: COSName = COSName.get_pdf_name("V")
 _FT: COSName = COSName.get_pdf_name("FT")
 _I: COSName = COSName.get_pdf_name("I")
+_AP: COSName = COSName.get_pdf_name("AP")
+_N: COSName = COSName.get_pdf_name("N")
+_OFF: COSName = COSName.get_pdf_name("Off")
+
+
+def _install_on_state(field: object, on_state: str) -> None:
+    """Install a minimal /AP /N {on_state: stream, Off: stream} on the field's
+    (single) widget so the strict PDButton.check_value accepts ``on_state``.
+
+    Wave 1487: upstream PDButton.setValue routes through checkValue, which only
+    accepts a name present in getOnValues(); an AP-less button knows only "".
+    """
+    n = COSDictionary()
+    n.set_item(COSName.get_pdf_name(on_state), COSStream())
+    n.set_item(_OFF, COSStream())
+    ap = COSDictionary()
+    ap.set_item(_N, n)
+    field.get_cos_object().set_item(_AP, ap)  # type: ignore[attr-defined]
 
 
 # ---------- Text field ----------
@@ -74,6 +92,7 @@ def test_text_field_own_value_shadows_parent() -> None:
 def test_check_box_set_value_writes_cos_name() -> None:
     form = PDAcroForm()
     cb = PDCheckBox(form)
+    _install_on_state(cb, "Yes")
     cb.set_value("Yes")
     assert cb.get_value() == "Yes"
     assert cb.get_value_as_string() == "Yes"
@@ -97,6 +116,7 @@ def test_check_box_off_value() -> None:
 def test_radio_button_value_round_trip() -> None:
     form = PDAcroForm()
     rb = PDRadioButton(form)
+    _install_on_state(rb, "Choice2")
     rb.set_value("Choice2")
     assert rb.get_value() == "Choice2"
     assert rb.get_value_as_string() == "Choice2"
@@ -108,15 +128,19 @@ def test_radio_button_value_round_trip() -> None:
 # ---------- Push button ----------
 
 
-def test_push_button_value_is_empty_and_does_not_raise() -> None:
+def test_push_button_value_is_empty_and_set_value_is_strict() -> None:
     form = PDAcroForm()
     pb = PDPushButton(form)
     # Per upstream PDFBox: push button has no value, returns "".
     assert pb.get_value() == ""
     assert pb.get_value_as_string() == ""
-    # set_value flows through the inherited PDButton path without raising.
-    pb.set_value("ignored")  # no-op semantically per upstream
-    # get_value still returns "" (PDPushButton overrides the read side).
+    # Wave 1487: PDPushButton.getOnValues() is empty, so the inherited strict
+    # PDButton.setValue rejects any non-"Off" name (verified against the live
+    # oracle — upstream throws IllegalArgumentException here too).
+    with pytest.raises(ValueError, match="not a valid option"):
+        pb.set_value("ignored")
+    # "Off" is always accepted; the read side still reports "".
+    pb.set_value("Off")
     assert pb.get_value() == ""
 
 

@@ -249,19 +249,12 @@ class PDDefaultAppearanceString:
             return
         if not isinstance(base1, COSNumber):
             return
-        from pypdfbox.cos import COSDictionary  # noqa: PLC0415
-        from pypdfbox.pdmodel.font import PDFont, PDFontFactory  # noqa: PLC0415
+        from pypdfbox.pdmodel.font import PDFont  # noqa: PLC0415
 
         font_name = base0
+        # :meth:`PDResources.get_font` returns a typed :class:`PDFont` (or
+        # ``None``) for both direct and indirect entries, matching upstream.
         font = self._default_resources.get_font(font_name)
-        # pypdfbox's :meth:`PDResources.get_font` returns the raw
-        # ``COSDictionary`` for *direct* font entries (cluster #1 surface)
-        # and a typed ``PDFont`` for indirect entries. Upstream's
-        # ``getFont`` always returns a typed ``PDFont``; promote the raw
-        # dictionary via :class:`PDFontFactory` so downstream callers
-        # (e.g. :meth:`write_to`) get a real ``PDFont``.
-        if isinstance(font, COSDictionary):
-            font = PDFontFactory.create_font(font)
         font_size = base1.float_value()
         # PDFBOX-2661 fallback: when the font is missing from /DR, try
         # the well-known Acrobat /DA short alias (e.g. "Helv" → Helvetica,

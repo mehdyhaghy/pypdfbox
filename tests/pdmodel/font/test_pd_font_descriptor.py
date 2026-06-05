@@ -211,29 +211,53 @@ def test_font_bounding_box_via_cos_array_setter() -> None:
     assert rect.upper_right_x == pytest.approx(500.0)
 
 
-def test_font_bounding_box_short_array_returns_none() -> None:
-    """A /FontBBox with fewer than four entries does not crash; it returns None."""
+def test_font_bounding_box_short_array_is_zero_padded() -> None:
+    """A /FontBBox with fewer than four entries is zero-padded to length 4,
+    mirroring upstream's ``new PDRectangle(rect)`` ->
+    ``Arrays.copyOf(toFloatArray(), 4)`` (oracle-confirmed wave 1487)."""
     fd = PDFontDescriptor()
-    short = COSArray([COSFloat(0.0), COSFloat(0.0)])
+    short = COSArray([COSFloat(0.0), COSFloat(-200.0), COSFloat(1000.0)])
     fd.set_font_b_box(short)
-    assert fd.get_font_bounding_box() is None
+    rect = fd.get_font_bounding_box()
+    assert isinstance(rect, PDRectangle)
+    # toFloatArray -> [0, -200, 1000, 0]; PDRectangle normalises corners.
+    assert rect.lower_left_x == pytest.approx(0.0)
+    assert rect.lower_left_y == pytest.approx(-200.0)
+    assert rect.upper_right_x == pytest.approx(1000.0)
+    assert rect.upper_right_y == pytest.approx(0.0)
 
 
-def test_cap_height_negative_value_returns_absolute() -> None:
-    """PDFBOX-429: Scheherazade-style negative CapHeight comes back positive."""
-    fd = PDFontDescriptor()
-    fd.set_cap_height(-700.0)
+def test_cap_height_negative_in_dict_returns_absolute() -> None:
+    """PDFBOX-429: a Scheherazade-style negative CapHeight read from the dict
+    comes back positive. The abs() workaround fires only on the lazy
+    cache-miss dict read; the setter caches the RAW value (wave 1487)."""
+    d = COSDictionary()
+    d.set_float(COSName.get_pdf_name("CapHeight"), -700.0)
+    fd = PDFontDescriptor(d)
     assert fd.get_cap_height() == pytest.approx(700.0)
-    # The raw stored value is still negative (we only abs() on read).
+    # The raw stored value is still negative (we only abs() on the dict read).
     raw = fd.get_cos_object().get_dictionary_object(COSName.get_pdf_name("CapHeight"))
     assert isinstance(raw, COSFloat)
     assert raw.float_value() == pytest.approx(-700.0)
 
 
-def test_x_height_negative_value_returns_absolute() -> None:
+def test_cap_height_setter_caches_raw_negative() -> None:
+    """setCapHeight caches the raw value, so a re-read returns it unchanged."""
+    fd = PDFontDescriptor()
+    fd.set_cap_height(-700.0)
+    assert fd.get_cap_height() == pytest.approx(-700.0)
+
+
+def test_x_height_negative_in_dict_returns_absolute() -> None:
+    d = COSDictionary()
+    d.set_float(COSName.get_pdf_name("XHeight"), -450.0)
+    assert PDFontDescriptor(d).get_x_height() == pytest.approx(450.0)
+
+
+def test_x_height_setter_caches_raw_negative() -> None:
     fd = PDFontDescriptor()
     fd.set_x_height(-450.0)
-    assert fd.get_x_height() == pytest.approx(450.0)
+    assert fd.get_x_height() == pytest.approx(-450.0)
 
 
 def test_font_file_aliases_distinct_keys() -> None:
@@ -524,8 +548,12 @@ def test_has_font_bounding_box_true_for_malformed_short_array() -> None:
     fd = PDFontDescriptor()
     fd.set_font_b_box(COSArray([COSFloat(0.0), COSFloat(0.0)]))  # only 2 entries
     assert fd.has_font_bounding_box() is True
-    # Typed accessor still rejects the short array.
-    assert fd.get_font_bounding_box() is None
+    # Typed accessor zero-pads the short array to [0,0,0,0] (upstream
+    # Arrays.copyOf), yielding a degenerate but non-None rectangle (wave 1487).
+    rect = fd.get_font_bounding_box()
+    assert rect is not None
+    assert rect.lower_left_x == pytest.approx(0.0)
+    assert rect.upper_right_x == pytest.approx(0.0)
 
 
 def test_has_font_bounding_box_clears_when_set_to_none() -> None:

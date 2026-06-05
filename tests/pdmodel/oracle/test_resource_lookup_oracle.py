@@ -152,15 +152,18 @@ def _font_present(res: PDResources, name: str) -> bool:
     return res.get_font(_name(name)) is not None
 
 
+def _font_class(res: PDResources, name: str) -> str:
+    # get_font returns a typed PDFont for both direct and indirect entries
+    # (matching upstream); compare the resolved class simple-name.
+    f = res.get_font(_name(name))
+    return "NULL" if f is None else type(f).__name__
+
+
 def _font_subtype(res: PDResources, name: str) -> str:
-    # pypdfbox returns the raw COSDictionary for a direct font entry; PDFBox
-    # returns a typed PDFont whose getCOSObject() is the same dictionary —
-    # both expose the same /Subtype, which is what we compare.
     f = res.get_font(_name(name))
     if f is None:
         return "NULL"
-    cos = f if isinstance(f, COSDictionary) else f.get_cos_object()
-    subtype = cos.get_name_as_string(_name("Subtype"))
+    subtype = f.get_cos_object().get_name_as_string(_name("Subtype"))
     return "NULL" if subtype is None else subtype
 
 
@@ -215,6 +218,7 @@ def _py_dump() -> dict[str, object]:
         res = PDResources(_build_resource_dict(), document=doc)
         return {
             "font_F0_present": _font_present(res, "F0"),
+            "font_F0_class": _font_class(res, "F0"),
             "font_F0_subtype": _font_subtype(res, "F0"),
             "font_missing_present": _font_present(res, "Fx"),
             "xobject_Im0": _xobject_class(res, "Im0"),

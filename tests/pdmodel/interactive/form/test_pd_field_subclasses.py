@@ -407,9 +407,11 @@ def test_check_box_check_un_check_toggles_value() -> None:
     assert cb.is_radio_button() is False
 
     assert cb.is_checked() is False
+    # Wave 1487: upstream PDCheckBox.check() = setValue(getOnValue()). On a
+    # fresh AP-less box getOnValue() is "" so the value becomes "" — and
+    # isChecked() (getValue() == getOnValue()) is then True.
     cb.check()
-    assert cb.get_value() != ""
-    assert cb.get_value() != "Off"
+    assert cb.get_value() == ""
     assert cb.is_checked() is True
 
     cb.un_check()

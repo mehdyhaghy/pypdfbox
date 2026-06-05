@@ -27,8 +27,14 @@ def test_wave745_button_push_button_clears_radio_bit_and_none_clears_values() ->
     assert button.is_push_button() is True
     assert button.is_radio_button() is False
 
-    button.set_value("temporary")
-    button.set_default_value("temporary")
+    # Seed /V and /DV directly: upstream PDButton.setValue/setDefaultValue are
+    # strict and would reject an arbitrary name on this AP-less button. The
+    # assertion here is about set_value(None)/set_default_value(None) clearing.
+    button.get_cos_object().set_name(COSName.get_pdf_name("V"), "temporary")
+    button.get_cos_object().set_name(COSName.get_pdf_name("DV"), "temporary")
+    assert button.has_value() is True
+    assert button.has_default_value() is True
+
     button.set_value(None)
     button.set_default_value(None)
 

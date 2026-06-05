@@ -98,11 +98,12 @@ def test_public_key_protection_policy_legacy_get_recipients_number_alias() -> No
 
 
 def test_pd_button_accepts_string_index_when_export_values_present() -> None:
-    """Lines 178-179 — ``_check_value_if_known`` short-circuits when the
-    incoming string parses as a valid export-values index.
-
-    Mirrors the ``setValueByIndex`` round-trip (upstream
-    ``PDButton.setValue(int)`` writes ``str(index)`` as ``/V``)."""
+    """Index-form selection routes through ``set_value_by_index`` (upstream
+    ``PDButton.setValue(int)``, which validates the range itself and writes
+    ``str(index)`` as ``/V``); the strict ``check_value`` (wave 1487 —
+    upstream ``checkValue``) rejects any name outside on-values/Off, with no
+    index parsing of its own (the permissive ``_check_value_if_known``
+    scaffold that short-circuited on a parsable index is gone)."""
     from pypdfbox.pdmodel.interactive.annotation import PDAnnotationWidget
     from pypdfbox.pdmodel.interactive.form import PDAcroForm
     from pypdfbox.pdmodel.interactive.form.pd_button import PDButton
@@ -133,17 +134,21 @@ def test_pd_button_accepts_string_index_when_export_values_present() -> None:
     # Verify export_values populated.
     assert button.get_export_values() == ["first", "second"]
 
-    # "1" is a valid index into export_values (size 2) — must not raise.
-    button._check_value_if_known("1")  # noqa: SLF001
+    # 1 is a valid index into export_values (size 2) — must not raise, and
+    # writes the str(index) token as /V (upstream setValue(int) contract).
+    button.set_value_by_index(1)
+    assert button.get_value() == "second"
 
-    # An out-of-range index is rejected.
-    with pytest.raises(ValueError, match="not a valid option"):
-        button._check_value_if_known("9")  # noqa: SLF001
+    # An out-of-range index is rejected by set_value_by_index itself.
+    with pytest.raises(ValueError, match="not a valid index"):
+        button.set_value_by_index(9)
 
-    # A non-numeric, non-on-state, non-Off value is rejected (covers the
-    # ``except ValueError: pass`` arm).
+    # A non-on-state, non-Off name is rejected by the strict check_value —
+    # including a numeric string: checkValue does no index parsing.
     with pytest.raises(ValueError, match="not a valid option"):
-        button._check_value_if_known("bogus")  # noqa: SLF001
+        button.set_value("bogus")
+    with pytest.raises(ValueError, match="not a valid option"):
+        button.set_value("9")
 
 
 # ---------- PDChoice editable-combo escape branch ----------

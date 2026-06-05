@@ -39,10 +39,11 @@ class Vector:
         return Vector(f32(self._x * sxy), f32(self._y * sxy))
 
     def to_string(self) -> str:
-        """Mirror upstream ``Vector.toString``."""
-        from pypdfbox.cos.cos_float import format_float32
+        """Mirror upstream ``Vector.toString`` (raw ``Float.toString`` of each
+        component, keeping Java's scientific form for out-of-window cells)."""
+        from pypdfbox.cos.cos_float import float_to_string
 
-        return f"({format_float32(self._x)}, {format_float32(self._y)})"
+        return f"({float_to_string(self._x)}, {float_to_string(self._y)})"
 
     def __repr__(self) -> str:
         return self.to_string()

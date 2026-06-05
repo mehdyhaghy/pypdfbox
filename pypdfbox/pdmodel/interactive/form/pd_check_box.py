@@ -62,26 +62,22 @@ class PDCheckBox(PDButton):
                 return key.name
         return ""
 
-    def _on_value_for_set(self) -> str:
-        """Like ``get_on_value`` but falls back to ``"Yes"`` when no widget
-        appearance dictionary is present — used by :meth:`check` so a freshly
-        constructed (no-AP) checkbox still toggles a sensible /V.
-        """
-        value = self.get_on_value()
-        return value if value else "Yes"
-
     def is_checked(self) -> bool:
-        on_value = self.get_on_value()
-        current = self.get_value()
-        if on_value:
-            return current == on_value
-        # No appearance dictionary: treat anything other than empty / "Off" as
-        # checked (matches the spirit of upstream's value comparison while
-        # remaining usable in scaffold tests without widget appearances).
-        return bool(current) and current != "Off"
+        """Whether the box is in its On state.
+
+        Mirrors upstream ``PDCheckBox.isChecked``:
+        ``getValue().compareTo(getOnValue()) == 0``. For an AP-less box both
+        :meth:`get_value` (``"Off"``) and :meth:`get_on_value` (``""``) differ,
+        so it reports unchecked until :meth:`check` sets the value.
+        """
+        return self.get_value() == self.get_on_value()
 
     def check(self) -> None:
-        self.set_value(self._on_value_for_set())
+        # Upstream PDCheckBox.check calls setValue(getOnValue()). For a fresh
+        # AP-less box getOnValue() is "" — which getOnValues() now reports as a
+        # valid on-state, so the strict check_value accepts it (no "Yes"
+        # fallback, which would now raise).
+        self.set_value(self.get_on_value())
 
     def un_check(self) -> None:
         self.set_value("Off")
@@ -105,12 +101,24 @@ class PDCheckBox(PDButton):
         rebuilds the ``/AP /N`` subdictionary from scratch and would discard
         producer-chosen state keys (e.g. the numeric ``/Opt``-indexed keys
         in PDFBOX-3656).
+
+        Ordering note (wave 1487): when ``regenerate_appearance`` is set, the
+        on/off appearance streams are rebuilt *before* the base
+        :meth:`PDButton.set_value` runs its strict :meth:`PDButton.check_value`.
+        A freshly built box has no ``/AP``, so its on-values would be ``{""}``
+        and a non-empty ``value`` would fail the strict check; generating the
+        ``/AP /N`` on-state first (default state name ``"Yes"``, or the
+        producer-chosen name preserved from an existing ``/AP``) makes that
+        name a recognised on-value. This is the explicit purpose of the
+        pypdfbox-only ``regenerate_appearance`` extension, which upstream
+        lacks; with it unset, ``set_value`` matches upstream exactly and
+        raises for an unknown name on an AP-less box.
         """
-        super().set_value(value)
         if regenerate_appearance:
             from .pd_appearance_generator import PDAppearanceGenerator
 
             PDAppearanceGenerator().generate(self)
+        super().set_value(value)
 
     def construct_appearances(self) -> None:
         """Rebuild widget appearances for this check box.

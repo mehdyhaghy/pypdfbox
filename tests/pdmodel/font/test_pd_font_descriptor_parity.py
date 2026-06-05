@@ -283,17 +283,30 @@ def test_has_widths_and_has_missing_width() -> None:
 # ---------- CapHeight / XHeight abs() semantics (PDFBOX-429) ----------
 
 
-def test_cap_height_returns_absolute_value() -> None:
+def test_cap_height_abs_workaround_only_on_dict_read() -> None:
+    # PDFBOX-429 abs() fires only on the lazy cache-miss dict read; the setter
+    # caches the RAW value (oracle-confirmed wave 1487). A fresh descriptor's
+    # set_cap_height(-700) therefore re-reads as -700, not 700.
     fd = PDFontDescriptor()
     fd.set_cap_height(-700.0)
-    # Upstream returns abs() to work around buggy fonts (Scheherazade).
-    assert fd.get_cap_height() == pytest.approx(700.0)
+    assert fd.get_cap_height() == pytest.approx(-700.0)
+    # The abs() workaround still applies when the value comes from the dict.
+    from pypdfbox.cos import COSDictionary as _COSDict
+
+    d = _COSDict()
+    d.set_float(COSName.get_pdf_name("CapHeight"), -700.0)
+    assert PDFontDescriptor(d).get_cap_height() == pytest.approx(700.0)
 
 
-def test_x_height_returns_absolute_value() -> None:
+def test_x_height_abs_workaround_only_on_dict_read() -> None:
     fd = PDFontDescriptor()
     fd.set_x_height(-450.0)
-    assert fd.get_x_height() == pytest.approx(450.0)
+    assert fd.get_x_height() == pytest.approx(-450.0)
+    from pypdfbox.cos import COSDictionary as _COSDict
+
+    d = _COSDict()
+    d.set_float(COSName.get_pdf_name("XHeight"), -450.0)
+    assert PDFontDescriptor(d).get_x_height() == pytest.approx(450.0)
 
 
 # ---------- font program streams ----------

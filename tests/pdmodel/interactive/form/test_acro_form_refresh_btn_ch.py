@@ -134,7 +134,9 @@ def test_refresh_appearances_checkbox_value_syncs_as_to_on_state() -> None:
     form = PDAcroForm()
     cb = PDCheckBox(form)
     cb.get_cos_object().set_item(_RECT, _rect(0, 0, 20, 20))
-    cb.set_value("Yes")
+    # regenerate_appearance installs the /AP /N "Yes" on-state first so the
+    # strict PDButton.check_value accepts it (upstream setValue is strict).
+    cb.set_value("Yes", regenerate_appearance=True)
     form.set_fields([cb])
 
     form.refresh_appearances()
@@ -376,11 +378,12 @@ def test_refresh_appearances_mixed_field_types_all_get_ap() -> None:
 
     cb = PDCheckBox(form)
     cb.get_cos_object().set_item(_RECT, _rect(0, 0, 20, 20))
-    cb.set_value("Yes")
+    # regenerate_appearance installs the on-state before the strict check.
+    cb.set_value("Yes", regenerate_appearance=True)
 
     rb = PDRadioButton(form)
     rb.get_cos_object().set_item(_RECT, _rect(30, 0, 50, 20))
-    rb.set_value("Yes")
+    rb.set_value("Yes", regenerate_appearance=True)
 
     pb = PDPushButton(form)
     widget_pb = pb.get_cos_object()

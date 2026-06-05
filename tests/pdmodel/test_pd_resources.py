@@ -72,12 +72,19 @@ def test_get_xobject_resolves_indirect_ref() -> None:
     assert res.get_xobject(name) is s
 
 
-def test_get_font_returns_direct_dictionary() -> None:
+def test_get_font_wraps_direct_dictionary() -> None:
+    # Upstream PDResources.getFont always returns a typed PDFont — direct
+    # (inline) entries are wrapped via PDFontFactory, not handed back raw.
+    from pypdfbox.pdmodel.font import PDFont
+
     res = PDResources()
     font = COSDictionary()
     font.set_name(COSName.TYPE, "Font")  # type: ignore[attr-defined]
+    font.set_name(COSName.SUBTYPE, "Type1")  # type: ignore[attr-defined]
     name = res.add(COSName.get_pdf_name("Font"), font)
-    assert res.get_font(name) is font
+    wrapped = res.get_font(name)
+    assert isinstance(wrapped, PDFont)
+    assert wrapped.get_cos_object() is font
 
 
 def test_get_xobject_missing_returns_none() -> None:
@@ -99,10 +106,15 @@ def test_typed_accessors_return_none_when_missing() -> None:
 
 
 def test_put_places_value() -> None:
+    from pypdfbox.pdmodel.font import PDFont
+
     res = PDResources()
     font = COSDictionary()
+    font.set_name(COSName.SUBTYPE, "Type1")  # type: ignore[attr-defined]
     res.put(COSName.get_pdf_name("Font"), COSName.get_pdf_name("MyFont"), font)
-    assert res.get_font(COSName.get_pdf_name("MyFont")) is font
+    wrapped = res.get_font(COSName.get_pdf_name("MyFont"))
+    assert isinstance(wrapped, PDFont)
+    assert wrapped.get_cos_object() is font
 
 
 def test_get_x_object_dispatches_by_subtype() -> None:
@@ -394,10 +406,15 @@ def test_class_constants_match_resource_dictionary_keys() -> None:
 def test_put_accepts_class_constant_categories() -> None:
     """Round-trip via the new class-level COSName constants — they should be
     interchangeable with ``COSName.get_pdf_name(...)`` calls in user code."""
+    from pypdfbox.pdmodel.font import PDFont
+
     res = PDResources()
     font = COSDictionary()
+    font.set_name(COSName.SUBTYPE, "Type1")  # type: ignore[attr-defined]
     res.put(PDResources.FONT, COSName.get_pdf_name("F0"), font)
-    assert res.get_font(COSName.get_pdf_name("F0")) is font
+    wrapped = res.get_font(COSName.get_pdf_name("F0"))
+    assert isinstance(wrapped, PDFont)
+    assert wrapped.get_cos_object() is font
     assert [n.get_name() for n in res.get_font_names()] == ["F0"]
 
 

@@ -79,8 +79,11 @@ def test_wave761_check_box_non_dictionary_normal_appearance_has_no_on_value() ->
     checkbox.set_widgets([_widget_with_normal_appearance(COSString("bad-normal"))])
 
     assert checkbox.get_on_value() == ""
+    # Wave 1487: upstream PDCheckBox.check() = setValue(getOnValue()); with no
+    # discoverable on-state getOnValue() is "" so the value becomes "" (the
+    # scaffold's "Yes" fallback would now fail the strict check_value).
     checkbox.check()
-    assert checkbox.get_value() == "Yes"
+    assert checkbox.get_value() == ""
 
 
 def test_wave761_check_box_off_only_normal_appearance_has_no_on_value() -> None:
@@ -90,8 +93,10 @@ def test_wave761_check_box_off_only_normal_appearance_has_no_on_value() -> None:
     checkbox.set_widgets([_widget_with_normal_appearance(normal)])
 
     assert checkbox.get_on_value() == ""
+    # Wave 1487: check() sets the value to the discovered on-value "" (no "Yes"
+    # fallback under the strict check_value path).
     checkbox.check()
-    assert checkbox.get_value() == "Yes"
+    assert checkbox.get_value() == ""
 
 
 def test_wave761_check_box_is_checked_uses_discovered_on_value() -> None:
