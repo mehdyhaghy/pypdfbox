@@ -456,9 +456,12 @@ def test_list_box_selected_row_emits_highlight_rect() -> None:
     assert body.count(b"Tj") == 3
     # Selection highlight color (Acrobat default blue) emitted.
     # Upstream HIGHLIGHT_COLOR is exactly {153/255, 193/255, 215/255}
-    # — emitted to five decimal places by the float operand writer,
-    # matching PDFBox formatDecimal.setMaximumFractionDigits(5).
-    assert b"0.6 0.75686 0.84314" in body
+    # — emitted to FOUR decimal places: the appearance content stream
+    # extends PDAbstractContentStream whose formatDecimal is configured
+    # with setMaximumFractionDigits(4), unlike PDPageContentStream's 5.
+    # Oracle-confirmed via PDAppearanceContentStream.setNonStrokingColor:
+    # "0.6 0.7569 0.8431 rg".
+    assert b"0.6 0.7569 0.8431" in body
     # f operator (fill) emitted for the highlight rect.
     assert b"f\n" in body
 
@@ -505,9 +508,10 @@ def test_list_box_selected_indices_drive_highlight() -> None:
     # Two highlight rects = two `f` fill operators (plus background, none).
     # Just check the highlight color was emitted.
     # Upstream HIGHLIGHT_COLOR is exactly {153/255, 193/255, 215/255}
-    # — emitted to five decimal places by the float operand writer,
-    # matching PDFBox formatDecimal.setMaximumFractionDigits(5).
-    assert b"0.6 0.75686 0.84314" in body
+    # — emitted to FOUR decimal places (appearance stream's
+    # PDAbstractContentStream base uses setMaximumFractionDigits(4)).
+    # Oracle-confirmed: "0.6 0.7569 0.8431 rg".
+    assert b"0.6 0.7569 0.8431" in body
 
 
 # ---------- signature unsigned-state placeholder ----------

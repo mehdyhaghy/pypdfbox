@@ -97,7 +97,7 @@ def test_pddocument_load_returns_closeable_context() -> None:
     with PDDocument.load(pdf) as pddoc:
         assert pddoc.get_number_of_pages() == 1
     # After the with block, save() raises (document is closed).
-    with pytest.raises(ValueError, match="closed"):
+    with pytest.raises(OSError, match="Cannot save a document which has been closed"):
         pddoc.save(io.BytesIO())
 
 

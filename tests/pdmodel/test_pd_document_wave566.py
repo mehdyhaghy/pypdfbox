@@ -128,7 +128,7 @@ def test_wave566_split_and_extract_reject_closed_document() -> None:
     doc = PDDocument()
     doc.close()
 
-    with pytest.raises(ValueError, match="closed PDDocument"):
+    with pytest.raises(OSError, match="PDDocument has been closed"):
         doc.split()
-    with pytest.raises(ValueError, match="closed PDDocument"):
+    with pytest.raises(OSError, match="PDDocument has been closed"):
         doc.extract_pages(1, 1)

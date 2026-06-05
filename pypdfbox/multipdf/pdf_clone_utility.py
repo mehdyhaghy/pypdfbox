@@ -97,9 +97,16 @@ class PDFCloneUtility:
         Self-references through indirect refs are detected via
         :meth:`has_self_reference` and rewritten to the new array."""
         new_array = COSArray()
-        # Register the clone before iterating so a self-referential
-        # entry can resolve back to ``new_array`` via the ``hasSelfReference``
-        # check or via the ``_cloned_version`` table during recursion.
+        # DIVERGENCE (hardening): register the clone before iterating.
+        # Upstream ``cloneCOSArray`` does NOT pre-register the in-progress
+        # array clone (only ``cloneCOSDictionary`` / ``cloneCOSStream``
+        # do), so an indirect cycle that loops back to an *array* ancestor
+        # — ``A = [1, B]``, ``B = [ref->A]`` — recurses forever and
+        # PDFBox 3.0.7 throws ``StackOverflowError`` (confirmed live via
+        # oracle/probes/CloneArrayCycleOverflowProbe.java). Registering
+        # here mirrors the dict/stream codepath, terminates the recursion,
+        # and preserves the cycle shape — strictly more robust. ``has_self_
+        # reference`` still handles the direct ``[ref->this-array]`` case.
         self._cloned_version[id(array)] = new_array
         for i in range(array.size()):
             value = array.get(i)

@@ -212,8 +212,7 @@ class COSStream(COSDictionary):
         self._set_raw_data_internal(bytes(data))
 
     def _set_raw_data_internal(self, data: bytes) -> None:
-        if self._closed:
-            raise ValueError("operation on closed COSStream")
+        self.check_closed()
         if self._buffer is None:
             self._buffer = self._scratch.create_buffer()
         else:
@@ -268,8 +267,6 @@ class COSStream(COSDictionary):
         """Return a writable stream; on ``close()`` its contents replace
         this stream's raw body. Raises ``RuntimeError`` if another writer
         is already open (mirrors upstream ``isWriting`` guard)."""
-        if self._closed:
-            raise ValueError("operation on closed COSStream")
         self.check_closed()
         if self._is_writing:
             raise RuntimeError("Cannot have more than one open stream writer.")
@@ -423,8 +420,6 @@ class COSStream(COSDictionary):
           recovers the bytes you wrote. ``/Filter`` is set accordingly.
 
         Raises ``RuntimeError`` if another writer is already open."""
-        if self._closed:
-            raise ValueError("operation on closed COSStream")
         self.check_closed()
         if self._is_writing:
             raise RuntimeError("Cannot have more than one open stream writer.")

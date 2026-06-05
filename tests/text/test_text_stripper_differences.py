@@ -44,6 +44,7 @@ def _make_type1_font(
     differences: list[object],
     widths: list[int] | None = None,
     first_char: int = 0,
+    base_font: str = "Helvetica",
 ) -> COSDictionary:
     """Build a minimal Type1 font dictionary with a DictionaryEncoding.
 
@@ -73,7 +74,7 @@ def _make_type1_font(
     font_dict.set_item(COSName.get_pdf_name("Type"), COSName.get_pdf_name("Font"))
     font_dict.set_item(COSName.get_pdf_name("Subtype"), COSName.get_pdf_name("Type1"))
     font_dict.set_item(
-        COSName.get_pdf_name("BaseFont"), COSName.get_pdf_name("Helvetica")
+        COSName.get_pdf_name("BaseFont"), COSName.get_pdf_name(base_font)
     )
     font_dict.set_item(COSName.get_pdf_name("Encoding"), encoding_dict)
 
@@ -264,6 +265,10 @@ def test_wide_font_suppresses_word_break_for_same_gap() -> None:
         differences=[],
         widths=[1000] * 256,
         first_char=0,
+        # wave 1485: Std14 BaseFont now (correctly) makes the AFM average
+        # win over /Widths; a non-Std14 name keeps these /Widths-driven
+        # spacing scenarios exercising the stripper as intended.
+        base_font="FauxSans",
     )
     _attach_font(page, "F0", font_dict)
 
@@ -308,6 +313,10 @@ def test_text_positions_carry_resolved_font_and_width_metadata() -> None:
         differences=[],
         widths=[600] * 256,
         first_char=0,
+        # wave 1485: Std14 BaseFont now (correctly) makes the AFM average
+        # win over /Widths; a non-Std14 name keeps these /Widths-driven
+        # spacing scenarios exercising the stripper as intended.
+        base_font="FauxSans",
     )
     _attach_font(page, "F0", font_dict)
 
@@ -318,7 +327,7 @@ def test_text_positions_carry_resolved_font_and_width_metadata() -> None:
     assert pos.text == "Hi"
     assert pos.font_name == "F0"
     assert pos.font is not None
-    assert pos.resolved_font_name == "Helvetica"
+    assert pos.resolved_font_name == "FauxSans"  # wave 1485: non-Std14 BaseFont (see builder note)
     assert pos.width == pytest.approx(14.4)
     assert pos.width_of_space == pytest.approx(7.2)
     assert pos.char_spacing == 1.0
@@ -340,6 +349,7 @@ def test_mixed_font_spacing_uses_previous_position_width() -> None:
             differences=[],
             widths=[1000] * 256,
             first_char=0,
+            base_font="FauxSans",  # wave 1485: keep /Widths driving the average
         ),
     )
     resources.put(
@@ -350,6 +360,7 @@ def test_mixed_font_spacing_uses_previous_position_width() -> None:
             differences=[],
             widths=[200] * 256,
             first_char=0,
+            base_font="FauxSans",  # wave 1485: keep /Widths driving the average
         ),
     )
     page.set_resources(resources)
@@ -377,6 +388,10 @@ def test_get_average_font_width_skips_zero_entries() -> None:
         differences=[],
         widths=[0, 500, 0, 700, 0],
         first_char=0,
+        # wave 1485: Std14 BaseFont now (correctly) makes the AFM average
+        # win over /Widths; a non-Std14 name keeps these /Widths-driven
+        # spacing scenarios exercising the stripper as intended.
+        base_font="FauxSans",
     )
     font = PDType1Font(font_dict)
     # (500 + 700) / 2 = 600

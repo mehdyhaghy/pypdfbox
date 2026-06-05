@@ -611,23 +611,24 @@ class PDType1Font(PDSimpleFont):
     def get_average_font_width(self) -> float:
         """Mean glyph advance for this font in 1/1000 em.
 
-        Lookup order:
+        Mirrors upstream ``PDType1Font.getAverageFontWidth`` exactly:
 
-        1. Mean of positive entries in ``/Widths`` (matches
-           :meth:`PDSimpleFont.get_average_font_width`).
-        2. AFM mean for the matching Standard 14 font, when ``/BaseFont``
-           resolves to one. Mirrors upstream ``PDType1Font`` falling back
-           to its bundled ``FontMetrics`` when the dict has no widths.
-        3. ``0.0``.
+        1. When this font resolves to one of the Standard 14 (its bundled
+           AFM is non-null), return the AFM's average character width —
+           **this wins even when the dictionary carries a ``/Widths``
+           array** (verified against the live PDFBox 3.0.7 oracle: a
+           Standard-14 Helvetica with an explicit ``/Widths`` of
+           999/888/777 still reports ``542.7714``, the AFM mean, not
+           ``888``). Upstream's override consults the AFM before it ever
+           reaches the ``/Widths``-mean path in ``PDFont``.
+        2. Otherwise fall back to :meth:`PDFont.get_average_font_width`
+           (the ``super`` call upstream makes) — the mean of positive
+           ``/Widths`` entries, or ``0.0`` when there are none.
         """
-        widths = self.get_widths()
-        non_zero = [w for w in widths if w is not None and w > 0.0]
-        if non_zero:
-            return sum(non_zero) / len(non_zero)
         afm = self.get_standard_14_font_metrics()
         if afm is not None:
             return afm.get_average_width()
-        return 0.0
+        return super().get_average_font_width()
 
     def get_standard_14_font_metrics(self) -> AfmMetrics | None:
         """Return the bundled Adobe AFM metrics for this font when

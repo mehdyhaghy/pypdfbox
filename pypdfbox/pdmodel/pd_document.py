@@ -461,7 +461,7 @@ class PDDocument:
         truthy compression request is silently downgraded to no-compression
         and recorded in CHANGES.md."""
         if self._closed:
-            raise ValueError("operation on closed PDDocument")
+            raise OSError("Cannot save a document which has been closed")
         # Local import — pdfwriter depends on cos and we want the loader-style
         # late binding to keep import-time cycles impossible.
         from pypdfbox.pdfwriter import COSWriter
@@ -537,7 +537,7 @@ class PDDocument:
         registered :class:`SignatureInterface` over the bracketed bytes,
         and splices the resulting PKCS#7 DER blob back into ``/Contents``."""
         if self._closed:
-            raise ValueError("operation on closed PDDocument")
+            raise OSError("Cannot save a document which has been closed")
         source = self._document.get_source()
         if source is None:
             raise ValueError(
@@ -1251,11 +1251,10 @@ class PDDocument:
             seed_value.validate_signature(sig)
 
         if self._signature_added:
-            # Mirrors upstream ``IllegalStateException`` — Java's nearest
-            # equivalent is ``RuntimeError`` here, but we surface it as
-            # ``ValueError`` for symmetry with the rest of the PDDocument
-            # surface (closed-doc / no-source guards both raise ValueError).
-            raise ValueError("Only one signature may be added in a document")
+            # Mirrors upstream ``IllegalStateException`` (PDDocument.java
+            # line 316) → ``RuntimeError`` per the project's
+            # IllegalStateException→RuntimeError convention.
+            raise RuntimeError("Only one signature may be added in a document")
 
         sig_dict = sig.get_cos_object()
 
@@ -1919,7 +1918,7 @@ class PDDocument:
         :meth:`ExternalSigningSupport.set_signature`.
         """
         if self._closed:
-            raise ValueError("operation on closed PDDocument")
+            raise OSError("Cannot save a document which has been closed")
         if self._pending_signature is None:
             raise ValueError(
                 "save_incremental_for_external_signing requires a prior "
@@ -1963,7 +1962,7 @@ class PDDocument:
         Pypdfbox-only convenience — no upstream equivalent on
         ``PDDocument`` itself."""
         if self._closed:
-            raise ValueError("operation on closed PDDocument")
+            raise OSError("PDDocument has been closed")
         try:
             from pypdfbox.multipdf.splitter import Splitter
         except ImportError as exc:  # pragma: no cover — wave-ordering guard
@@ -1986,7 +1985,7 @@ class PDDocument:
         Pypdfbox-only convenience — no upstream equivalent on
         ``PDDocument`` itself."""
         if self._closed:
-            raise ValueError("operation on closed PDDocument")
+            raise OSError("PDDocument has been closed")
         from pypdfbox.multipdf.page_extractor import PageExtractor
 
         return PageExtractor(self, start, end).extract()

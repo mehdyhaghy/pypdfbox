@@ -44,7 +44,7 @@ def test_wave395_closed_writer_rejects_write() -> None:
     writer = COSWriter(io.BytesIO())
     writer.close()
 
-    with pytest.raises(ValueError, match="closed COSWriter"):
+    with pytest.raises(OSError, match="COSWriter already closed"):
         writer.write(COSDocument())
 
 

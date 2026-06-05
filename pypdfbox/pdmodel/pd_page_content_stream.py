@@ -89,6 +89,14 @@ class PDPageContentStream:
         self._buffer: bytearray = bytearray()
         self._compress = bool(compress)
         self._reset_context = bool(reset_context)
+        # Maximum fractional digits for numeric operands. Upstream's
+        # ``PDPageContentStream`` constructor calls
+        # ``setMaximumFractionDigits(5)`` (Java) while the shared
+        # ``PDAbstractContentStream`` base — used by the appearance / form /
+        # pattern writers — leaves it at 4. Subclasses (notably
+        # :class:`PDAppearanceContentStream`) override this to match their
+        # upstream parent's digit count.
+        self._max_fraction_digits: int = _MAX_FRACTION_DIGITS
         # Whether we've started a text block (BT) — used purely as a
         # convenience for users; we don't enforce strict state machines
         # here (upstream tracks ``inTextMode`` for sanity-check exceptions
@@ -781,7 +789,7 @@ class PDPageContentStream:
         """
         self._buffer.append(0x5B)  # [
         for v in dash:
-            self._buffer.extend(_format_number(v))
+            self._buffer.extend(_format_number(v, self._max_fraction_digits))
             self._buffer.append(0x20)
         self._buffer.append(0x5D)  # ]
         self._buffer.append(0x20)
@@ -1000,7 +1008,9 @@ class PDPageContentStream:
                     "numeric; got bool"
                 )
             elif isinstance(item, (int, float)):
-                self._buffer.extend(_format_number(item))
+                self._buffer.extend(
+                    _format_number(item, self._max_fraction_digits)
+                )
                 self._buffer.append(0x20)
             else:
                 raise TypeError(
@@ -1923,7 +1933,7 @@ class PDPageContentStream:
 
     def _write_operands(self, *values: float) -> None:
         for v in values:
-            self._buffer.extend(_format_number(v))
+            self._buffer.extend(_format_number(v, self._max_fraction_digits))
             self._buffer.append(0x20)
 
     def _write_name(self, name: COSName) -> None:

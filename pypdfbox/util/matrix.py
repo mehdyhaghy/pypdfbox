@@ -16,6 +16,7 @@ Java's ``AffineTransform`` shear definitions.
 from __future__ import annotations
 
 import math
+import struct
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -24,6 +25,47 @@ if TYPE_CHECKING:
     from pypdfbox.util.vector import Vector
 
 SIZE = 9
+
+_PACK_F32 = struct.Struct(">f").pack
+_UNPACK_F32 = struct.Struct(">f").unpack
+
+
+def f32(value: float) -> float:
+    """Narrow ``value`` to IEEE-754 single precision, as Java ``(float)`` does.
+
+    Upstream ``Matrix`` stores its cells in a ``float[]`` (32-bit), so every
+    value written to the matrix — and every intermediate in the float-typed
+    arithmetic of ``multiplyArrays`` / ``transformPoint`` / ``translate`` /
+    ``scale`` — is single precision. pypdfbox keeps Python ``float`` (64-bit)
+    objects but rounds each store/operation to the nearest float32 so the
+    matrix's observable element values match Apache PDFBox bit-for-bit (see the
+    ``MatrixFloat32Probe`` oracle).
+
+    A finite double whose magnitude rounds beyond ``Float.MAX_VALUE`` becomes a
+    signed infinity in single precision (Java ``(float)`` cast); ``struct.pack``
+    refuses to encode it, so synthesise the infinity. ``checkFloatValues`` then
+    rejects it exactly as upstream does.
+    """
+    if math.isnan(value) or math.isinf(value):
+        return value
+    try:
+        return _UNPACK_F32(_PACK_F32(value))[0]
+    except OverflowError:
+        return math.inf if value > 0 else -math.inf
+
+
+def _float_compare_nonzero(value: float) -> bool:
+    """True when ``Float.compare(value, 0.0f) != 0`` in Java.
+
+    ``Float.compare`` distinguishes ``-0.0`` from ``+0.0`` (returns ``-1`` for
+    ``-0.0``) and orders ``NaN`` above everything, so the only value that
+    compares *equal* to ``+0.0`` is ``+0.0`` itself. The cheap ``value != 0.0``
+    test would wrongly fold ``-0.0`` into the zero branch.
+    """
+    if value == 0.0:
+        # +0.0 == -0.0 in Python; copysign tells them apart.
+        return math.copysign(1.0, value) < 0.0
+    return True
 
 
 def _is_finite(values: list[float]) -> bool:
@@ -37,16 +79,23 @@ def _check_float_values(values: list[float]) -> list[float]:
 
 
 def _multiply_arrays(a: list[float], b: list[float]) -> list[float]:
+    # Java evaluates each cell in float arithmetic (float*float and float+float
+    # both yield float), left-to-right, so every product and partial sum is
+    # narrowed to single precision. Mirror that exactly with f32() on each step.
+    def cell(i0: int, j0: int, i1: int, j1: int, i2: int, j2: int) -> float:
+        s = f32(f32(a[i0] * b[j0]) + f32(a[i1] * b[j1]))
+        return f32(s + f32(a[i2] * b[j2]))
+
     c = [0.0] * SIZE
-    c[0] = a[0] * b[0] + a[1] * b[3] + a[2] * b[6]
-    c[1] = a[0] * b[1] + a[1] * b[4] + a[2] * b[7]
-    c[2] = a[0] * b[2] + a[1] * b[5] + a[2] * b[8]
-    c[3] = a[3] * b[0] + a[4] * b[3] + a[5] * b[6]
-    c[4] = a[3] * b[1] + a[4] * b[4] + a[5] * b[7]
-    c[5] = a[3] * b[2] + a[4] * b[5] + a[5] * b[8]
-    c[6] = a[6] * b[0] + a[7] * b[3] + a[8] * b[6]
-    c[7] = a[6] * b[1] + a[7] * b[4] + a[8] * b[7]
-    c[8] = a[6] * b[2] + a[7] * b[5] + a[8] * b[8]
+    c[0] = cell(0, 0, 1, 3, 2, 6)
+    c[1] = cell(0, 1, 1, 4, 2, 7)
+    c[2] = cell(0, 2, 1, 5, 2, 8)
+    c[3] = cell(3, 0, 4, 3, 5, 6)
+    c[4] = cell(3, 1, 4, 4, 5, 7)
+    c[5] = cell(3, 2, 4, 5, 5, 8)
+    c[6] = cell(6, 0, 7, 3, 8, 6)
+    c[7] = cell(6, 1, 7, 4, 8, 7)
+    c[8] = cell(6, 2, 7, 5, 8, 8)
     return c
 
 
@@ -68,7 +117,7 @@ class Matrix:
                 return
             raise TypeError("Matrix constructor accepts () or 6 floats")
         if len(args) == 6:
-            a, b, c, d, e, f = (float(v) for v in args)
+            a, b, c, d, e, f = (f32(v) for v in args)
             self._single = [a, b, 0.0, c, d, 0.0, e, f, 1.0]
             return
         raise TypeError(f"Unsupported Matrix constructor: {args!r}")
@@ -78,13 +127,15 @@ class Matrix:
     def _from_cos_array(cls, array: COSArray) -> Matrix:
         from pypdfbox.cos.cos_number import COSNumber
 
+        # COSNumber.floatValue() already returns a Java float (32-bit); narrow
+        # to match before storing into the float[] cells.
         single = [0.0] * SIZE
-        single[0] = float(array.get_object(0).float_value())  # type: ignore[union-attr]
-        single[1] = float(array.get_object(1).float_value())  # type: ignore[union-attr]
-        single[3] = float(array.get_object(2).float_value())  # type: ignore[union-attr]
-        single[4] = float(array.get_object(3).float_value())  # type: ignore[union-attr]
-        single[6] = float(array.get_object(4).float_value())  # type: ignore[union-attr]
-        single[7] = float(array.get_object(5).float_value())  # type: ignore[union-attr]
+        single[0] = f32(array.get_object(0).float_value())  # type: ignore[union-attr]
+        single[1] = f32(array.get_object(1).float_value())  # type: ignore[union-attr]
+        single[3] = f32(array.get_object(2).float_value())  # type: ignore[union-attr]
+        single[4] = f32(array.get_object(3).float_value())  # type: ignore[union-attr]
+        single[6] = f32(array.get_object(4).float_value())  # type: ignore[union-attr]
+        single[7] = f32(array.get_object(5).float_value())  # type: ignore[union-attr]
         single[8] = 1.0
         _ = COSNumber  # ensure import path mirrors upstream
         return cls(single)
@@ -109,7 +160,7 @@ class Matrix:
         return self._single[row * 3 + column]
 
     def set_value(self, row: int, column: int, value: float) -> None:
-        self._single[row * 3 + column] = float(value)
+        self._single[row * 3 + column] = f32(value)
 
     def get_values(self) -> list[list[float]]:
         s = self._single
@@ -125,24 +176,27 @@ class Matrix:
 
     def translate(self, x: float | Vector, y: float | None = None) -> None:
         if y is None:
-            # Vector overload.
+            # Vector overload (Vector components are already float32).
             tx, ty = x.get_x(), x.get_y()  # type: ignore[union-attr]
         else:
-            tx, ty = float(x), float(y)  # type: ignore[arg-type]
+            tx, ty = f32(x), f32(y)  # type: ignore[arg-type]
         s = self._single
-        s[6] += tx * s[0] + ty * s[3]
-        s[7] += tx * s[1] + ty * s[4]
-        s[8] += tx * s[2] + ty * s[5]
+        # Java float arithmetic: each product and the running sum is single
+        # precision (single[6] += tx*single[0] + ty*single[3]).
+        s[6] = f32(s[6] + f32(f32(tx * s[0]) + f32(ty * s[3])))
+        s[7] = f32(s[7] + f32(f32(tx * s[1]) + f32(ty * s[4])))
+        s[8] = f32(s[8] + f32(f32(tx * s[2]) + f32(ty * s[5])))
         _check_float_values(s)
 
     def scale(self, sx: float, sy: float) -> None:
         s = self._single
-        s[0] *= sx
-        s[1] *= sx
-        s[2] *= sx
-        s[3] *= sy
-        s[4] *= sy
-        s[5] *= sy
+        sx, sy = f32(sx), f32(sy)
+        s[0] = f32(s[0] * sx)
+        s[1] = f32(s[1] * sx)
+        s[2] = f32(s[2] * sx)
+        s[3] = f32(s[3] * sy)
+        s[4] = f32(s[4] * sy)
+        s[5] = f32(s[5] * sy)
         _check_float_values(s)
 
     def rotate(self, theta: float) -> None:
@@ -152,8 +206,13 @@ class Matrix:
         return Matrix(_check_float_values(_multiply_arrays(self._single, other._single)))
 
     def transform_point(self, x: float, y: float) -> tuple[float, float]:
+        # Java narrows the inputs to float and evaluates in float arithmetic;
+        # the result is a Point2D.Float (single precision).
         s = self._single
-        return (x * s[0] + y * s[3] + s[6], x * s[1] + y * s[4] + s[7])
+        x, y = f32(x), f32(y)
+        nx = f32(f32(f32(x * s[0]) + f32(y * s[3])) + s[6])
+        ny = f32(f32(f32(x * s[1]) + f32(y * s[4])) + s[7])
+        return (nx, ny)
 
     def transform(self, vector_or_point: Vector | tuple[float, float] | object) -> object:
         from pypdfbox.util.vector import Vector
@@ -184,9 +243,12 @@ class Matrix:
 
     @staticmethod
     def get_rotate_instance(theta: float, tx: float, ty: float) -> Matrix:
-        c = math.cos(theta)
-        s = math.sin(theta)
-        return Matrix(c, s, -s, c, tx, ty)
+        # Java narrows cos/sin to float before constructing; the Matrix ctor
+        # would narrow anyway, but the negation -sinTheta must operate on the
+        # already-narrowed value to match upstream bit-for-bit.
+        cos_theta = f32(math.cos(theta))
+        sin_theta = f32(math.sin(theta))
+        return Matrix(cos_theta, sin_theta, -sin_theta, cos_theta, tx, ty)
 
     @staticmethod
     def concatenate_matrices(a: Matrix, b: Matrix) -> Matrix:
@@ -198,13 +260,16 @@ class Matrix:
 
     # ---- scaling/translation extractors ------------------------------
     def get_scaling_factor_x(self) -> float:
-        if self._single[1] != 0.0:
-            return math.sqrt(self._single[0] ** 2 + self._single[1] ** 2)
+        # Upstream uses Float.compare(single[1], 0.0f) != 0, which (unlike !=)
+        # treats -0.0 as nonzero. The sqrt is computed in double (Math.pow
+        # widens the float cells) then narrowed back to float on return.
+        if _float_compare_nonzero(self._single[1]):
+            return f32(math.sqrt(self._single[0] ** 2 + self._single[1] ** 2))
         return self._single[0]
 
     def get_scaling_factor_y(self) -> float:
-        if self._single[3] != 0.0:
-            return math.sqrt(self._single[3] ** 2 + self._single[4] ** 2)
+        if _float_compare_nonzero(self._single[3]):
+            return f32(math.sqrt(self._single[3] ** 2 + self._single[4] ** 2))
         return self._single[4]
 
     def get_scale_x(self) -> float:
@@ -240,8 +305,14 @@ class Matrix:
 
     # ---- equality / hashing ------------------------------------------
     def __repr__(self) -> str:
+        # Upstream toString concatenates Float.toString of each cell; route
+        # through the shared float32 formatter so a narrowed value like
+        # 0.9950042f renders "0.9950042" (not Python's float64 repr).
+        from pypdfbox.cos.cos_float import format_float32
+
         s = self._single
-        return f"[{s[0]},{s[1]},{s[3]},{s[4]},{s[6]},{s[7]}]"
+        cells = (s[0], s[1], s[3], s[4], s[6], s[7])
+        return "[" + ",".join(format_float32(v) for v in cells) + "]"
 
     def __eq__(self, other: object) -> bool:
         if self is other:

@@ -97,7 +97,15 @@ def test_recipients_round_trip_preserves_key_and_permissions(
     permissions = AccessPermission()
     permissions.set_can_print(False)
     permissions.set_can_modify(False)
-    expected_perm_bits = permissions.get_permission_bytes()
+    # The public-key envelope carries getPermissionBytesForPublicKey() (bit 1
+    # set, bits 7/8 + 13-32 cleared) — NOT the raw /P getPermissionBytes() —
+    # exactly as upstream PublicKeySecurityHandler does. Compute the expected
+    # decoded value from an equivalent throwaway object (the method mutates
+    # in place, so it must not run on the recipient's own permission first).
+    _expected_src = AccessPermission()
+    _expected_src.set_can_print(False)
+    _expected_src.set_can_modify(False)
+    expected_perm_bits = _expected_src.get_permission_bytes_for_public_key()
 
     policy = PublicKeyProtectionPolicy()
     policy.add_recipient(

@@ -5,6 +5,7 @@ from typing import BinaryIO
 
 from pypdfbox.cos import COSArray, COSName
 from pypdfbox.pdmodel.graphics.color.pd_color import PDColor
+from pypdfbox.pdmodel.pd_abstract_content_stream import PDAbstractContentStream
 from pypdfbox.pdmodel.pd_page_content_stream import PDPageContentStream
 from pypdfbox.pdmodel.pd_resources import PDResources
 
@@ -60,6 +61,13 @@ class PDAppearanceContentStream(PDPageContentStream):
         # upstream's ``new PDAppearanceContentStream(...)`` which passes
         # null for the owning document.
         super().__init__(None, appearance, compress=bool(compress))
+
+        # Upstream's ``PDAppearanceContentStream`` extends
+        # ``PDAbstractContentStream`` (not ``PDPageContentStream``), so it
+        # inherits the base ``setMaximumFractionDigits(4)`` rather than the
+        # page writer's ``5``. Numeric operands in appearance / form streams
+        # therefore emit at most 4 fractional digits — match that here.
+        self._max_fraction_digits = PDAbstractContentStream.DEFAULT_MAX_FRACTION_DIGITS
 
         self._appearance = appearance
 

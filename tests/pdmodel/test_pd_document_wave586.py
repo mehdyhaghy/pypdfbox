@@ -65,7 +65,7 @@ def test_wave586_save_incremental_closed_document_raises() -> None:
     doc = PDDocument(COSDocument(source=RandomAccessReadBuffer(b"%PDF-1.4\n%%EOF\n")))
     doc.close()
 
-    with pytest.raises(ValueError, match="closed PDDocument"):
+    with pytest.raises(OSError, match="Cannot save a document which has been closed"):
         doc.save_incremental(io.BytesIO())
 
 
@@ -178,7 +178,7 @@ def test_wave586_closed_external_signing_raises() -> None:
     doc._pending_signature = PDSignature()  # noqa: SLF001
     doc.close()
 
-    with pytest.raises(ValueError, match="closed PDDocument"):
+    with pytest.raises(OSError, match="Cannot save a document which has been closed"):
         doc.save_incremental_for_external_signing(io.BytesIO())
 
 

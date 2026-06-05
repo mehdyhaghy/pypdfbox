@@ -522,14 +522,14 @@ def test_resource_cache_set_round_trips_custom_value() -> None:
 def test_save_on_closed_doc_raises() -> None:
     doc = PDDocument()
     doc.close()
-    with pytest.raises(ValueError):
+    with pytest.raises(OSError, match="Cannot save a document which has been closed"):
         doc.save(io.BytesIO())
 
 
 def test_save_incremental_on_closed_doc_raises() -> None:
     doc = PDDocument()
     doc.close()
-    with pytest.raises(ValueError):
+    with pytest.raises(OSError, match="Cannot save a document which has been closed"):
         doc.save_incremental(io.BytesIO())
 
 
@@ -702,8 +702,8 @@ def test_set_version_no_op_on_equal() -> None:
 def test_add_signature_rejects_second_call() -> None:
     """A second ``add_signature`` on the same document raises — mirrors
     upstream ``IllegalStateException("Only one signature may be added in
-    a document")``. Surfaced as ``ValueError`` for symmetry with other
-    PDDocument guards."""
+    a document")`` → ``RuntimeError`` per the project's
+    IllegalStateException→RuntimeError convention."""
     from pypdfbox.pdmodel.interactive.digitalsignature.pd_signature import (
         PDSignature,
     )
@@ -711,7 +711,7 @@ def test_add_signature_rejects_second_call() -> None:
     doc = PDDocument()
     doc.add_page(PDPage())
     doc.add_signature(PDSignature())
-    with pytest.raises(ValueError, match="Only one signature"):
+    with pytest.raises(RuntimeError, match="Only one signature"):
         doc.add_signature(PDSignature())
     doc.close()
 
@@ -1184,7 +1184,7 @@ def test_is_signature_added_blocks_second_add_signature() -> None:
     doc = PDDocument.load(io.BytesIO(sink.getvalue()))
     doc.add_signature(PDSignature())
     assert doc.is_signature_added() is True
-    with pytest.raises(ValueError, match="Only one signature"):
+    with pytest.raises(RuntimeError, match="Only one signature"):
         doc.add_signature(PDSignature())
     doc.close()
 

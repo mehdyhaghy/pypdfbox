@@ -318,8 +318,11 @@ class PublicKeySecurityHandler(SecurityHandler):
                 )
             # Permissions are stored as a 4-byte two's-complement big-endian
             # integer per §7.6.5 — same on-the-wire shape upstream uses.
+            # Upstream packs ``getPermissionBytesForPublicKey()`` (bit 1 set,
+            # bits 7/8 and 13-32 cleared), NOT the raw ``getPermissionBytes()``;
+            # see PublicKeySecurityHandler#computeRecipientInfo line 449.
             perms_int = (
-                permission_obj.get_permission_bytes() & 0xFFFFFFFF
+                permission_obj.get_permission_bytes_for_public_key() & 0xFFFFFFFF
             )
             if perms_int not in permission_mask_to_recipients:
                 permission_mask_to_recipients[perms_int] = []
@@ -529,7 +532,11 @@ class PublicKeySecurityHandler(SecurityHandler):
                 raise ValueError(
                     "PublicKeyRecipient is missing its AccessPermission"
                 )
-            perms_int = permission_obj.get_permission_bytes() & 0xFFFFFFFF
+            # Upstream uses ``getPermissionBytesForPublicKey()`` here, not the
+            # raw ``getPermissionBytes()`` (PublicKeySecurityHandler line 449).
+            perms_int = (
+                permission_obj.get_permission_bytes_for_public_key() & 0xFFFFFFFF
+            )
             # Per §7.6.5: the 24-byte plaintext is seed (20) || perms (4 BE).
             pkcs7_input = seed + perms_int.to_bytes(4, "big")
 

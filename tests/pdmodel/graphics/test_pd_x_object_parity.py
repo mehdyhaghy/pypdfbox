@@ -238,12 +238,37 @@ def test_create_x_object_missing_subtype_raises_oserror() -> None:
     """A stream with NO ``/Subtype`` entry at all must raise
     ``OSError`` with the upstream-shaped "Invalid XObject Subtype: None"
     message — there's no other branch to fall through to.
+
+    Live PDFBox 3.0.7 raises ``IOException("Invalid XObject Subtype: null")``
+    (Java renders a missing name as ``null``); pypdfbox renders the absent
+    name as Python ``None`` — an accepted Java/Python idiom difference. The
+    message prefix and exception class are identical. (Oracle-confirmed in
+    ``oracle/probes/FormXObjectModelProbe.java`` →
+    ``test_form_xobject_model_oracle.py``.)
     """
     import pytest
 
     stream = COSStream()
-    with pytest.raises(OSError, match="Invalid XObject Subtype"):
+    with pytest.raises(OSError) as excinfo:
         PDXObject.create_x_object(stream)
+    assert str(excinfo.value) == "Invalid XObject Subtype: None"
+
+
+def test_create_x_object_non_stream_base_message_is_exact() -> None:
+    """A non-stream ``base`` raises ``OSError`` whose message reproduces
+    upstream's ``"Unexpected object type: <type>"`` shape. Live PDFBox
+    uses the fully-qualified Java class name
+    (``org.apache.pdfbox.cos.COSDictionary``); pypdfbox uses the Python
+    short class name (``COSDictionary``) — an accepted idiom difference,
+    prefix identical. (Oracle-confirmed.)
+    """
+    import pytest
+
+    from pypdfbox.cos import COSDictionary
+
+    with pytest.raises(OSError) as excinfo:
+        PDXObject.create_x_object(COSDictionary())
+    assert str(excinfo.value) == "Unexpected object type: COSDictionary"
 
 
 # ---------- create_x_object: ResourceCache propagation ----------

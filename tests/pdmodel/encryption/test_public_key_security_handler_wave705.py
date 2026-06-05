@@ -123,9 +123,10 @@ def test_prepare_document_metadata_false_sentinel_participates_in_key_derivation
 
     class FakeEnvelopeBuilder:
         def set_data(self, data: bytes) -> FakeEnvelopeBuilder:
-            assert data == (b"s" * 20) + AccessPermission().get_permission_bytes().to_bytes(
-                4, "big", signed=True
-            )
+            # Upstream packs getPermissionBytesForPublicKey() (bit 1 set,
+            # bits 7/8 + 13-32 cleared), NOT the raw getPermissionBytes().
+            assert data == (b"s" * 20) + AccessPermission()\
+                .get_permission_bytes_for_public_key().to_bytes(4, "big", signed=True)
             return self
 
         def add_recipient(self, _cert: object) -> FakeEnvelopeBuilder:

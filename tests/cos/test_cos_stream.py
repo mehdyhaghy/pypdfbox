@@ -122,9 +122,9 @@ def test_internal_scratch_file_closed_with_stream() -> None:
 def test_operations_on_closed_stream_raise() -> None:
     s = COSStream()
     s.close()
-    with pytest.raises(ValueError):
+    with pytest.raises(OSError, match="COSStream has been closed"):
         s.set_raw_data(b"x")
-    with pytest.raises(ValueError):
+    with pytest.raises(OSError, match="COSStream has been closed"):
         s.create_raw_output_stream()
 
 

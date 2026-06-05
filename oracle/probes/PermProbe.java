@@ -44,6 +44,12 @@ public final class PermProbe {
         if ("decode".equals(mode)) {
             int p = Integer.parseInt(args[1]);
             emit(out, new AccessPermission(p));
+        } else if ("pubkey".equals(mode)) {
+            // Emit getPermissionBytesForPublicKey() for a /P value — the wire
+            // integer the public-key handler packs into each recipient blob.
+            int p = Integer.parseInt(args[1]);
+            out.println("pubKeyBytes="
+                + new AccessPermission(p).getPermissionBytesForPublicKey());
         } else if ("readback".equals(mode)) {
             File in = new File(args[1]);
             String password = args.length > 2 ? args[2] : "";

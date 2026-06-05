@@ -61,7 +61,7 @@ def test_wave485_add_signature_wires_form_field_and_page_annotation() -> None:
         assert field_dict.get_name("FT") == "Sig"
         assert field_dict.get_dictionary_object("V") is signature.get_cos_object()
 
-        with pytest.raises(ValueError, match="Only one signature"):
+        with pytest.raises(RuntimeError, match="Only one signature"):
             doc.add_signature(PDSignature())
     finally:
         doc.close()
@@ -107,9 +107,9 @@ def test_wave485_closed_document_guards_page_convenience_helpers() -> None:
     doc = PDDocument()
     doc.close()
 
-    with pytest.raises(ValueError, match="closed PDDocument"):
+    with pytest.raises(OSError, match="PDDocument has been closed"):
         doc.split()
-    with pytest.raises(ValueError, match="closed PDDocument"):
+    with pytest.raises(OSError, match="PDDocument has been closed"):
         doc.extract_pages(1, 1)
 
 

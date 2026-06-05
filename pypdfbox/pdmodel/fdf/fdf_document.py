@@ -180,7 +180,7 @@ class FDFDocument:
         (FDF and PDF share the wire format).
         """
         if self._closed:
-            raise ValueError("operation on closed FDFDocument")
+            raise OSError("Cannot save a document which has been closed")
         from pypdfbox.pdfwriter import COSWriter
 
         opened: BinaryIO | None = None
@@ -273,7 +273,7 @@ class FDFDocument:
         ``OutputStreamWriter`` over ``StandardCharsets.UTF_8``).
         """
         if self._closed:
-            raise ValueError("operation on closed FDFDocument")
+            raise OSError("Cannot save a document which has been closed")
         if isinstance(target, (str, os.PathLike)):
             with open(target, "w", encoding="utf-8", newline="") as writer:
                 self.write_xml(writer)

@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
+
 from pypdfbox.pdmodel.font.pd_font_descriptor import PDFontDescriptor
 from pypdfbox.pdmodel.font.pd_type3_font import PDType3Font
 from pypdfbox.pdmodel.pd_page import PDPage
@@ -190,5 +192,8 @@ def test_compute_font_height_type3_uses_font_matrix_transform() -> None:
         patch.object(font, "get_font_matrix", return_value=matrix),
     ):
         height = engine.compute_font_height(font)
-    # transform_point(0, 400) -> (0 + 0, 400 * 0.002 + 0) = (0, 0.8)
-    assert height == 0.8
+    # transform_point(0, 400) -> (0 + 0, 400 * 0.002 + 0) = (0, 0.8). The
+    # matrix stores its cells in float32 (mirroring upstream's float[]), so
+    # 0.002f * 400f narrows to the single-precision "0.8" whose double value is
+    # 0.800000011920929 — exactly what Apache PDFBox's Point2D.Float yields.
+    assert height == pytest.approx(0.8, abs=1e-6)

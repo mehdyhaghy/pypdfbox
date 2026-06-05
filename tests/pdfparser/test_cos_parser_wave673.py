@@ -44,7 +44,7 @@ def test_wave673_cos_stream_closed_output_and_idempotent_close() -> None:
 
     assert stream.is_closed() is True
     assert repr(stream) == "COSStream(dict_size=0, body_len=0)"
-    with pytest.raises(ValueError, match="closed COSStream"):
+    with pytest.raises(OSError, match="COSStream has been closed"):
         stream.create_output_stream()
 
     stream.close()

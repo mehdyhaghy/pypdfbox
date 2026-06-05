@@ -35,9 +35,9 @@ def test_closed_document_guards_save_and_external_signing_wave457() -> None:
     doc = PDDocument()
     doc.close()
 
-    with pytest.raises(ValueError, match="closed PDDocument"):
+    with pytest.raises(OSError, match="Cannot save a document which has been closed"):
         doc.save(io.BytesIO())
-    with pytest.raises(ValueError, match="closed PDDocument"):
+    with pytest.raises(OSError, match="Cannot save a document which has been closed"):
         doc.save_incremental_for_external_signing(io.BytesIO())
 
 

@@ -26,7 +26,7 @@ import pytest
 from pypdfbox.cos.cos_array import COSArray
 from pypdfbox.cos.cos_float import COSFloat
 from pypdfbox.cos.cos_name import COSName
-from pypdfbox.util.matrix import Matrix
+from pypdfbox.util.matrix import Matrix, f32
 
 
 def _assert_matrix_values_equal_to(values: list[float], m: Matrix) -> None:
@@ -60,8 +60,11 @@ def test_get_scaling_factor():
     assert m1.get_scaling_factor_y() == pytest.approx(1.0, abs=0)
 
     # 2*2 + 4*4 = 20, sqrt(20) is the scaling factor for both axes.
+    # Upstream asserts against (float) Math.sqrt(20) with delta 0: the result is
+    # narrowed to single precision (Matrix stores a float[]), so compare against
+    # the float32-narrowed value rather than the double sqrt.
     m2 = Matrix(2.0, 4.0, 4.0, 2.0, 0.0, 0.0)
-    expected = math.sqrt(20.0)
+    expected = f32(math.sqrt(20.0))
     assert m2.get_scaling_factor_x() == pytest.approx(expected, abs=0)
     assert m2.get_scaling_factor_y() == pytest.approx(expected, abs=0)
 

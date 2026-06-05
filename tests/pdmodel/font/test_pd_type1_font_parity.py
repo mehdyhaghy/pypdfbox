@@ -188,10 +188,18 @@ def test_get_standard_14_font_metrics_none_when_base_font_absent() -> None:
 # ---------- get_average_font_width fallback ----------
 
 
-def test_get_average_font_width_uses_widths_when_present() -> None:
+def test_get_average_font_width_afm_wins_over_widths_for_standard_14() -> None:
+    """A Standard-14 font reports the AFM average even with a ``/Widths``.
+
+    Mirrors upstream ``PDType1Font.getAverageFontWidth`` (PDFBox 3.0.7):
+    when the bundled AFM is non-null (any Standard-14 ``/BaseFont``) the
+    AFM average wins and ``/Widths`` is ignored. Verified against the live
+    oracle — a Helvetica with ``/Widths`` of 100/200/300 still reports the
+    Helvetica AFM mean, not 200.
+    """
     font = PDType1Font()
     cos = font.get_cos_object()
-    cos.set_name(_BASE_FONT, "Helvetica")  # would have an AFM mean
+    cos.set_name(_BASE_FONT, "Helvetica")
     cos.set_int(_FIRST_CHAR, 32)
     cos.set_int(_LAST_CHAR, 34)
     cos.set_item(
@@ -200,7 +208,30 @@ def test_get_average_font_width_uses_widths_when_present() -> None:
             [COSInteger.get(100), COSInteger.get(200), COSInteger.get(300)]
         ),
     )
-    # /Widths wins over AFM — mean of [100, 200, 300] = 200.
+    afm_mean = font.get_standard_14_font_metrics().get_average_width()  # type: ignore[union-attr]
+    assert font.get_average_font_width() == afm_mean
+    # Oracle-pinned: Helvetica AFM average is 542.7714 (4dp).
+    assert round(font.get_average_font_width(), 4) == 542.7714
+
+
+def test_get_average_font_width_widths_mean_for_non_standard_14() -> None:
+    """A non-Standard-14 font falls back to the ``/Widths`` mean.
+
+    Mirrors upstream's ``super.getAverageFontWidth()`` branch — when the
+    AFM is null (a custom ``/BaseFont``) the average is the mean of the
+    positive ``/Widths`` entries.
+    """
+    font = PDType1Font()
+    cos = font.get_cos_object()
+    cos.set_name(_BASE_FONT, "MyCustomFont")  # not a Standard 14
+    cos.set_int(_FIRST_CHAR, 32)
+    cos.set_int(_LAST_CHAR, 34)
+    cos.set_item(
+        _WIDTHS,
+        COSArray(
+            [COSInteger.get(100), COSInteger.get(200), COSInteger.get(300)]
+        ),
+    )
     assert font.get_average_font_width() == 200.0
 
 

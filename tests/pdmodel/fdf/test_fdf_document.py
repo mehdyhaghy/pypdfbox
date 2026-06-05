@@ -74,7 +74,7 @@ def test_context_manager_closes() -> None:
 def test_save_after_close_raises() -> None:
     fdf = FDFDocument()
     fdf.close()
-    with pytest.raises(ValueError):
+    with pytest.raises(OSError, match="Cannot save a document which has been closed"):
         fdf.save(io.BytesIO())
 
 
@@ -234,7 +234,7 @@ def test_set_catalog_replaces_root() -> None:
 def test_save_xfdf_after_close_raises() -> None:
     fdf = FDFDocument()
     fdf.close()
-    with pytest.raises(ValueError):
+    with pytest.raises(OSError, match="Cannot save a document which has been closed"):
         fdf.save_xfdf(io.StringIO())
 
 

@@ -1009,7 +1009,7 @@ class COSWriter(ICOSVisitor):
         ``write(PDDocument)``.
         """
         if self._closed:
-            raise ValueError("operation on closed COSWriter")
+            raise OSError("COSWriter already closed")
 
         # Accept PDDocument → unwrap to COSDocument and stage encryption.
         # Avoid a hard dependency on pdmodel by duck-typing the wrapper.

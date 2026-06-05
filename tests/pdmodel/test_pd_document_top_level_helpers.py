@@ -74,7 +74,7 @@ def test_extract_pages_empty_range_returns_empty_doc() -> None:
 def test_extract_pages_on_closed_doc_raises() -> None:
     doc = _build_doc(2)
     doc.close()
-    with pytest.raises(ValueError):
+    with pytest.raises(OSError, match="PDDocument has been closed"):
         doc.extract_pages(1, 1)
 
 
@@ -116,7 +116,7 @@ def test_split_on_closed_doc_raises() -> None:
     pytest.importorskip("pypdfbox.multipdf.splitter")
     doc = _build_doc(2)
     doc.close()
-    with pytest.raises(ValueError):
+    with pytest.raises(OSError, match="PDDocument has been closed"):
         doc.split(every=1)
 
 
