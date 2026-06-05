@@ -312,8 +312,16 @@ def test_paragraph_break_emits_paragraph_markers() -> None:
     s.set_paragraph_end("</P>")
     out = s.get_text(doc)
     assert "</P>" in out and "<P>" in out
-    # Markers wrap the paragraph break.
-    assert out.index("</P>") < out.index("<P>")
+    # Upstream ``writePage`` opens a leading page-body paragraph (``<P>`` on
+    # the first glyph) and closes a trailing one (``</P>`` after the last
+    # line). The mid-page break emits ``writeParagraphEnd`` +
+    # ``writeParagraphStart`` (PDFTextStripper.java:700-724, 1697-1700), so the
+    # break shows up as a ``</P>...<P>`` pair between the two lines.
+    assert out.startswith("<P>")
+    assert out.rstrip("\n").endswith("</P>")
+    # The mid-page paragraph separator wraps the break: a close then a reopen.
+    assert "</P>" in out
+    assert out.index("</P>") < out.rindex("<P>")
 
 
 # ---------------------------------------------------------------------------

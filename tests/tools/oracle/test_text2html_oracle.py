@@ -103,6 +103,33 @@ def test_text2html_same_paragraph_lines_match_pdfbox(tmp_path: Path) -> None:
 
 
 @requires_oracle
+def test_text2html_mid_page_paragraph_break_matches_pdfbox(
+    tmp_path: Path,
+) -> None:
+    """A mid-page paragraph break (a vertical drop larger than
+    ``drop_threshold`` × line height) now emits the separator tokens in
+    upstream order — ``writeLineSeparator → writeParagraphEnd →
+    writeParagraphStart`` — so PDFText2HTML produces ``\\n</p>\\n<p>``
+    rather than the previously-emitted ``</p>\\n\\n<p>`` (wave 1490
+    reorder of ``_emit_group``). Two lines 60 user-space units apart at
+    12pt (drop ≈ 60 > 2.5 × 12 = 30) cross the drop threshold so the
+    paragraph separator fires between them; this pins the corrected
+    ordering byte-for-byte against Java PDFBox 3.0.7."""
+    src = tmp_path / "para_break.pdf"
+    with PDDocument() as doc:
+        _text_page(doc, [(72, 700, "first paragraph"), (72, 640, "second paragraph")])
+        doc.save(str(src))
+
+    java = run_probe_text("Text2HtmlProbe", str(src))
+    py = _py_html(src)
+
+    assert py == java, (
+        "PDFText2HTML mid-page paragraph-break divergence:\n"
+        f"  java: {java!r}\n  py:   {py!r}"
+    )
+
+
+@requires_oracle
 def test_text2html_metadata_title_escaping_matches_pdfbox(
     tmp_path: Path,
 ) -> None:

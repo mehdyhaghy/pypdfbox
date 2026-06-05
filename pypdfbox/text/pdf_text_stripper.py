@@ -2073,10 +2073,41 @@ class PDFTextStripper:
         # hardcoded line separator here would diverge from PDFBox, which only
         # inserts a break between articles when the producer asked for one via
         # the article separators.
+        # Upstream ``writePage`` emits the page-body ``writeParagraphStart``
+        # exactly once, on the first character of the first non-empty article
+        # (the ``startOfPage`` flag, set false after the first glyph), and a
+        # ``writeParagraphEnd`` after the last line of *each* article
+        # (PDFTextStripper.java:700-724). ``_emit_group`` reproduces both: it
+        # opens the page paragraph on its first written run when
+        # ``open_page_paragraph`` is set, clearing the page-level flag so a
+        # later article does not re-open it, and always closes the paragraph
+        # after its final line. With the default empty paragraph markers these
+        # emissions are invisible; under ``add_more_formatting`` (both promoted
+        # to the line separator) they supply the trailing per-article and
+        # leading per-page newlines the Java oracle emits.
+        #
+        # A subclass that overrides ``write_article_start`` (e.g.
+        # ``PDFText2HTML``, which brackets each article's body with its own
+        # ``<p>`` / ``</p>`` inside the article hooks) takes over paragraph
+        # bracketing; for those the base ``_emit_group`` wrapping is
+        # suppressed so the markers are not emitted twice. The plain base
+        # stripper keeps the wrapping so its ``add_more_formatting`` cadence
+        # matches the Java oracle.
+        manages_own_paragraph = (
+            type(self).write_article_start is not PDFTextStripper.write_article_start
+        )
+        open_page_paragraph = not manages_own_paragraph
         for group in groups:
             if self._article_start:
                 self.write_article_start(_sink)
-            self._emit_group(group, _sink)
+            wrote = self._emit_group(
+                group,
+                _sink,
+                open_page_paragraph,
+                emit_paragraph_markers=not manages_own_paragraph,
+            )
+            if wrote:
+                open_page_paragraph = False
             if self._article_end:
                 self.write_article_end(_sink)
         return "".join(chunks)
@@ -2085,10 +2116,25 @@ class PDFTextStripper:
         self,
         positions: list[TextPosition],
         sink: Callable[[str], None],
-    ) -> None:
+        open_page_paragraph: bool = False,
+        emit_paragraph_markers: bool = True,
+    ) -> bool:
         """Emit a single ordered list of positions. Splits out from
         ``_format_positions`` so the bead-bucket loop can reuse the same
         line/word/paragraph heuristics for each bucket independently.
+
+        When ``emit_paragraph_markers`` is ``True`` the group reproduces
+        upstream ``writePage``'s page-body paragraph bracketing: a
+        ``write_paragraph_start`` before its first written run when
+        ``open_page_paragraph`` is set (fired once per page, on the first
+        glyph of the first non-empty article), and a ``write_paragraph_end``
+        after its final line when it wrote at least one run (upstream's
+        per-article ``writeParagraphEnd``, PDFTextStripper.java:700-724). A
+        subclass that brackets paragraphs itself (e.g. ``PDFText2HTML`` via
+        its overridden article hooks) passes ``False`` so the markers are not
+        emitted twice. The mid-page paragraph-separation break is emitted in
+        either case. Returns ``True`` when the group wrote at least one run,
+        so the caller can clear its page-level paragraph-open flag.
 
         Wave 1387 buffers each adjacent run of TextPositions (those
         not separated by a line break or word break) into a
@@ -2144,10 +2190,16 @@ class PDFTextStripper:
         max_y_for_line = _MAX_Y_RESET
         max_height_for_line = _MAX_HEIGHT_RESET
 
+        wrote_any = False
         prev: TextPosition | None = None
         for pos in positions:
             position_y = pos.x if self._flip_axes else pos.y
             position_height = pos.get_height_dir()
+            if prev is None and open_page_paragraph and emit_paragraph_markers:
+                # Upstream opens the page-body paragraph on the first glyph
+                # (``startOfPage && lastPosition == null`` →
+                # ``writeParagraphStart``, PDFTextStripper.java:700-703).
+                self.write_paragraph_start(sink)
             if prev is not None:
                 # Flip-axes (rotated-page) extraction keeps the legacy
                 # prev-only line-stepping heuristic — the running-overlap
@@ -2168,8 +2220,18 @@ class PDFTextStripper:
                 if line_broke:
                     _flush_word()
                     if self.is_paragraph_separation(pos, prev):
-                        self.write_paragraph_end(sink)
+                        # Upstream ``handleLineSeparation`` emits the line
+                        # separator *first*, then the paragraph separator
+                        # (``writeParagraphEnd`` + ``writeParagraphStart``)
+                        # for a mid-page paragraph break — i.e.
+                        # ``writeLineSeparator → writeParagraphEnd →
+                        # writeParagraphStart`` (PDFTextStripper.java:1578-
+                        # 1579, where ``writeParagraphSeparator`` expands to
+                        # end+start). In PDFText2HTML this surfaces as
+                        # ``\n</p>\n<p>`` rather than the previously-emitted
+                        # ``</p>\n\n<p>``.
                         self.write_line_separator(sink)
+                        self.write_paragraph_end(sink)
                         self.write_paragraph_start(sink)
                     else:
                         self.write_line_separator(sink)
@@ -2192,8 +2254,15 @@ class PDFTextStripper:
                 max_y_for_line = position_y
             max_height_for_line = max(max_height_for_line, position_height)
             self.write_string_with_positions(pos.text, [pos], _buffered_sink)
+            wrote_any = True
             prev = pos
         _flush_word()
+        if wrote_any and emit_paragraph_markers:
+            # Upstream closes the article's paragraph after its final line
+            # (``writeLine(...); writeParagraphEnd()``,
+            # PDFTextStripper.java:720-724).
+            self.write_paragraph_end(sink)
+        return wrote_any
 
     # Tolerance (user-space units) below which two runs are treated as
     # sharing a baseline. Mirrors upstream ``TextPositionComparator``'s

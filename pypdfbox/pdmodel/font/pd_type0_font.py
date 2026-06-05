@@ -1269,66 +1269,112 @@ class PDType0Font(PDFont):
         # for a full embed; a remap stream after subsetting). Without this,
         # a freshly embedded font renders the wrong glyphs because the
         # content-stream codes would be Unicode codepoints, not glyph ids.
-        gid_lookup = self._embedded_gid_lookup(cmap)
+        use_embedded = self._use_embedded_encode(cmap)
         if isinstance(text, int):
-            if gid_lookup is not None:
-                return self._encode_embedded_codepoint(text, gid_lookup)
+            if use_embedded:
+                return self._encode_embedded_codepoint(text, cmap)
             return self._encode_codepoint(text, cmap)
         out = bytearray()
         for ch in text:
             cp = ord(ch)
-            if gid_lookup is not None:
-                out.extend(self._encode_embedded_codepoint(cp, gid_lookup))
+            if use_embedded:
+                out.extend(self._encode_embedded_codepoint(cp, cmap))
             else:
                 out.extend(self._encode_codepoint(cp, cmap))
         return bytes(out)
 
-    def _embedded_gid_lookup(self, cmap: CMap | None) -> Any | None:
-        """Return the embedded program's unicode cmap lookup when this font
-        should encode codepoints to glyph ids, else ``None``.
+    def _use_embedded_encode(self, cmap: CMap | None) -> bool:
+        """``True`` when this font should encode codepoints through the
+        embedded descendant program (codepoint -> CID via the embedded TTF
+        unicode cmap, with the parent ``/ToUnicode`` fallback), else
+        ``False`` (use the predefined-CMap reverse-lookup in
+        :meth:`_encode_codepoint`).
 
         Matches upstream's ``isEmbedded && parent.getCMap().getName()
         .startsWith("Identity-")`` guard in ``PDCIDFontType2.encode``. Only
         an embedded CIDFontType2 under an Identity- parent CMap goes through
-        the codepoint -> GID path; everything else keeps the predefined-CMap
-        reverse-lookup behaviour in :meth:`_encode_codepoint`.
+        the embedded path. Note the guard is *embedded-ness*, NOT whether the
+        embedded program carries a unicode cmap — a symbolic subset font with
+        only a ``(3,0)`` cmap (or no cmap at all) still takes this branch and
+        relies on the parent ``/ToUnicode`` reverse lookup (the exact path
+        upstream ``PDCIDFontType2.encode`` uses when ``cmap == null``).
         """
         if cmap is None:
-            return None
+            return False
         name_getter = getattr(cmap, "get_name", None)
         name = (name_getter() or "") if callable(name_getter) else ""
         if not name.startswith("Identity"):
-            return None
+            return False
+        from .pd_cid_font_type2 import PDCIDFontType2  # noqa: PLC0415
+
+        descendant = self.get_descendant_font()
+        if not isinstance(descendant, PDCIDFontType2):
+            return False
+        try:
+            return bool(descendant.is_embedded())
+        except Exception:  # noqa: BLE001 — defensive: missing /FontFile2 etc.
+            return False
+
+    def _encode_embedded_codepoint(self, cp: int, cmap: CMap | None) -> bytes:
+        """Encode ``cp`` to its 2-byte CID for an embedded Identity- font.
+
+        Mirrors upstream ``PDCIDFontType2.encode`` (PDCIDFontType2.java
+        357-404) for the embedded Identity- branch:
+
+        1. ``cid = cmap.getGlyphId(unicode)`` via the embedded program's
+           unicode cmap lookup — when present. A symbolic subset font with
+           only a ``(3,0)`` Microsoft-symbol cmap resolves the codepoint
+           through that symbol cmap here (the lookup stores the symbol
+           ``0xF0xx`` keys verbatim, so the F000 convention is already baked
+           into the lookup data — see ``TrueTypeFont.get_unicode_cmap_lookup``).
+        2. When that yields ``-1`` / ``0`` (no embedded cmap, or a miss), fall
+           back to the parent ``/ToUnicode`` CMap's reverse lookup
+           (``getCodesFromUnicode``), which returns the raw descendant byte
+           sequence for this codepoint directly.
+        3. Only when *both* miss does pypdfbox apply its lenient ``.notdef``
+           (CID 0) substitution — a permanent intentional divergence from
+           upstream (which raises ``IllegalArgumentException``); see
+           CHANGES.md "Active divergences".
+
+        The CID is always emitted as a 16-bit big-endian value
+        (``encodeGlyphId``).
+        """
+        cid = -1
+        gid_lookup = self._embedded_cmap_lookup()
+        if gid_lookup is not None:
+            getter = getattr(gid_lookup, "get_glyph_id", None)
+            if callable(getter):
+                try:
+                    cid = int(getter(cp) or 0)
+                except Exception:  # noqa: BLE001 — odd cmaps / surrogate inputs
+                    cid = -1
+        if cid in (-1, 0):
+            # Parent /ToUnicode reverse lookup — upstream's ``cmap == null``
+            # / lookup-miss fallback. Yields the raw descendant byte sequence.
+            to_unicode = self.get_to_unicode_cmap()
+            if to_unicode is not None:
+                try:
+                    codes = to_unicode.get_codes_from_unicode(chr(cp))
+                except Exception:  # noqa: BLE001 — lenient parsers / odd CMaps
+                    codes = None
+                if codes is not None:
+                    return bytes(codes)
+            # Lenient .notdef substitution (intentional divergence).
+            cid = 0
+        return (cid & 0xFFFF).to_bytes(2, "big")
+
+    def _embedded_cmap_lookup(self) -> Any | None:
+        """Return the embedded descendant program's unicode cmap lookup, or
+        ``None`` when the descendant is not a CIDFontType2 or carries no
+        unicode cmap (e.g. a symbolic font with only a ``(3,0)`` cmap that
+        does not resolve the requested codepoint, or no cmap at all).
+        """
         from .pd_cid_font_type2 import PDCIDFontType2  # noqa: PLC0415
 
         descendant = self.get_descendant_font()
         if not isinstance(descendant, PDCIDFontType2):
             return None
-        try:
-            if not descendant.is_embedded():
-                return None
-        except Exception:  # noqa: BLE001 — defensive: missing /FontFile2 etc.
-            return None
         return descendant.get_cmap_lookup()
-
-    @staticmethod
-    def _encode_embedded_codepoint(cp: int, gid_lookup: Any) -> bytes:
-        """Encode ``cp`` to its 2-byte glyph id via an embedded cmap lookup.
-
-        Mirrors upstream ``PDCIDFontType2.encode`` + ``encodeGlyphId``
-        (PDCIDFontType2.java:357-414): ``cid = cmap.getGlyphId(unicode)`` and
-        the CID is always emitted as a 16-bit big-endian value. A lookup miss
-        (GID 0 / no mapping) falls back to ``.notdef`` (CID 0) rather than
-        raising, so a partial codepoint set still produces parsable bytes.
-        """
-        gid = 0
-        getter = getattr(gid_lookup, "get_glyph_id", None)
-        if callable(getter):
-            try:
-                gid = int(getter(cp) or 0)
-            except Exception:  # noqa: BLE001 — odd cmaps / surrogate inputs
-                gid = 0
-        return (gid & 0xFFFF).to_bytes(2, "big")
 
     def encode_string(self, text: str) -> bytes:
         """Encode a Python string with GSUB-aware ligature substitution.

@@ -29,6 +29,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from pypdfbox.jbig2.bitmap import Bitmap
+from pypdfbox.jbig2.image.filter import Filter, FilterType
+from pypdfbox.jbig2.image.resizer import Resizer, _Raster
 from pypdfbox.jbig2.util.combination_operator import CombinationOperator
 
 if TYPE_CHECKING:
@@ -72,16 +74,23 @@ class Bitmaps:
         (``DataBufferByte`` content). The caller (:meth:`as_buffered_image` or
         :class:`JBIG2ImageReader.read_raster`) wraps these into a PIL image.
 
-        Source-region clipping and subsampling are applied exactly as upstream.
-        The scaling (``source_render_size``) branch belongs to the rendering wave
-        (it needs the AWT ``Resizer`` / resampling filters); when a render size
-        that differs from the bitmap size is requested this raises
-        :class:`NotImplementedError`.
+        Source-region clipping, subsampling and scaling
+        (``source_render_size``) are all applied exactly as upstream. When a
+        render size that differs from the bitmap size is requested the bytes are
+        the row-major 8-bit grayscale samples of the resampled raster (the
+        ``DataBufferByte`` content of upstream's interleaved ``TYPE_BYTE``
+        raster); otherwise they are the packed, polarity-inverted 1-bit raster.
+
+        ``filter_type`` selects the resampling kernel for the scaled path; the
+        JBIG2 reader passes :attr:`FilterType.GAUSSIAN`, which is the upstream
+        default for ``read`` / ``read_raster`` and what ``None`` resolves to here.
         """
         if bitmap is None:
             raise ValueError("bitmap must not be null")
         if param is None:
             raise ValueError("param must not be null")
+        if filter_type is None:
+            filter_type = FilterType.GAUSSIAN
 
         scale_x, scale_y = _scale_factors(bitmap, param)
 
@@ -121,7 +130,7 @@ class Bitmaps:
                         param.get_subsampling_y_offset(),
                     )
 
-        return _build_raster(bitmap, scale_x, scale_y)
+        return _build_raster(bitmap, filter_type, scale_x, scale_y)
 
     @staticmethod
     def as_buffered_image(
@@ -138,6 +147,11 @@ class Bitmaps:
         ``IndexColorModel`` ``{0x00, 0xff}`` upstream installs for the unscaled
         case. PIL is imported lazily so the JBIG2 decode path (filter use) never
         pulls in Pillow.
+
+        When ``source_render_size`` requests scaling, the raster is the resampled
+        8-bit grayscale produced by :class:`Resizer`; upstream installs an
+        identity-ramp ``IndexColorModel`` over an 8-bit raster, which is exactly
+        PIL mode ``"L"`` with the raster bytes as pixel values.
         """
         from PIL import Image
 
@@ -149,11 +163,15 @@ class Bitmaps:
         raster = Bitmaps.as_raster(bitmap, param, filter_type)
 
         scale_x, scale_y = _scale_factors(bitmap, param)
-        if scale_x != 1 or scale_y != 1:  # pragma: no cover - rendering wave
-            raise NotImplementedError(
-                "scaled JBIG2 rendering (source_render_size) is deferred to the "
-                "rendering wave"
-            )
+        if scale_x != 1 or scale_y != 1:
+            # The scaled raster's dimensions come from the *region-extracted*
+            # bitmap (the input to buildRaster), scaled by the factors derived
+            # from the full bitmap — mirroring upstream, where the BufferedImage
+            # size is taken from the resampled raster itself.
+            src_w, src_h = _region_dimensions(bitmap, param)
+            width = _round(src_w * scale_x)
+            height = _round(src_h * scale_y)
+            return Image.frombytes("L", (width, height), bytes(raster))
 
         # Determine the post-region/subsampling dimensions the raster was built
         # for so PIL can unpack it (frombytes needs the exact geometry).
@@ -459,6 +477,21 @@ def _scale_factors(bitmap: Bitmap, param: JBIG2ReadParam) -> tuple[float, float]
     return (1, 1)
 
 
+def _region_dimensions(bitmap: Bitmap, param: JBIG2ReadParam) -> tuple[int, int]:
+    """Return the bitmap dims after source-region extraction (pre-subsampling).
+
+    For the scaled path, subsampling is folded into the scale factors (no bitmap
+    shrink), so the input to ``buildRaster`` is the region-extracted bitmap; its
+    width/height are what the scale factors multiply to size the output raster.
+    """
+    width = bitmap.get_width()
+    height = bitmap.get_height()
+    source_region = param.get_source_region()
+    if source_region is not None and bitmap.get_bounds() != source_region:
+        _x, _y, width, height = _intersection(bitmap.get_bounds(), source_region)
+    return (width, height)
+
+
 def _raster_dimensions(bitmap: Bitmap, param: JBIG2ReadParam) -> tuple[int, int]:
     """Replay the region/subsampling geometry to size the unscaled raster.
 
@@ -491,19 +524,41 @@ def _raster_dimensions(bitmap: Bitmap, param: JBIG2ReadParam) -> tuple[int, int]
     return (width, height)
 
 
-def _build_raster(bitmap: Bitmap, scale_x: float, scale_y: float) -> bytes:
-    """Port of ``Bitmaps.buildRaster`` for the unscaled path.
+def _build_raster(
+    bitmap: Bitmap, filter_type: FilterType, scale_x: float, scale_y: float
+) -> bytes:
+    """Port of ``Bitmaps.buildRaster``.
 
-    Returns the packed, polarity-inverted scanline bytes (the content of the
-    ``DataBufferByte`` upstream wraps in a ``Raster.createPackedRaster``). The
-    trailing pad bits of each row's final byte are masked to zero, exactly like
-    upstream's ``(~0xff >> (width & 7)) & 0xff`` mask.
+    For the unscaled path returns the packed, polarity-inverted scanline bytes
+    (the content of the ``DataBufferByte`` upstream wraps in a
+    ``Raster.createPackedRaster``); the trailing pad bits of each row's final
+    byte are masked to zero, exactly like upstream's ``(~0xff >> (width & 7)) &
+    0xff`` mask.
+
+    For the scaled path (``scale_x``/``scale_y`` != 1) it resamples the bitmap
+    via :class:`Resizer` into a single-band 8-bit grayscale raster of size
+    ``round(width*scaleX) x round(height*scaleY)`` and returns its row-major
+    bytes (the ``DataBufferByte`` of upstream's interleaved ``TYPE_BYTE``
+    raster).
     """
-    if scale_x != 1 or scale_y != 1:  # pragma: no cover - rendering wave
-        raise NotImplementedError(
-            "scaled JBIG2 raster (source_render_size) is deferred to the "
-            "rendering wave"
+    height = bitmap.get_height()
+    width = bitmap.get_width()
+
+    if scale_x != 1 or scale_y != 1:
+        bounds_w = _round(width * scale_x)
+        bounds_h = _round(height * scale_y)
+        raster = _Raster(bounds_w, bounds_h)
+        resizer = Resizer(scale_x, scale_y)
+        filter_ = Filter.by_type(filter_type)
+        resizer.resize(
+            bitmap,
+            bitmap.get_bounds(),
+            raster,
+            (0, 0, bounds_w, bounds_h),
+            filter_,
+            filter_,
         )
+        return raster.get_data()
 
     height = bitmap.get_height()
     width = bitmap.get_width()
@@ -521,6 +576,13 @@ def _build_raster(bitmap: Bitmap, scale_x: float, scale_y: float) -> bytes:
             dst[idx] = (~src[idx]) & bits
             idx += 1
     return bytes(dst)
+
+
+def _round(x: float) -> int:
+    """Mirror ``java.lang.Math.round(double)`` — ``floor(x + 0.5)``."""
+    import math
+
+    return math.floor(x + 0.5)
 
 
 def _to_signed_byte(value: int) -> int:

@@ -93,14 +93,16 @@ def test_page_sentinels_fire_once_per_page() -> None:
     reason="Paragraph-token placement: upstream's isParagraphSeparation wraps "
     "every visual line of with_outline.pdf in a [P]…[/P] pair because its "
     "indent test fires on the stair-stepped left margin of the bookmark "
-    "headings (each 'level N' heading is indented further than the last), and "
-    "it emits a leading paragraphStart at page start / trailing paragraphEnd "
-    "at page end. The lite stripper's paragraph heuristic only emits the "
-    "delimiters at a detected vertical-drop break and does not run upstream's "
-    "indent / hanging-indent / list-item paragraph detection — a deferred "
-    "layout feature (PDFTextStripper docstring), same family as the eu-001 "
-    "multi-column and poems-beads xfails. Word/line/page placement is at full "
-    "parity (asserted above).",
+    "headings (each 'level N' heading is indented further than the last). The "
+    "leading paragraphStart at page start and trailing paragraphEnd at page "
+    "end now match (wave 1490 added upstream's page-body paragraph bracketing "
+    "to _emit_group), so the residual is purely the per-line indent wrapping: "
+    "the lite stripper's indent prong compares the current glyph X to the "
+    "immediately-previous glyph rather than to lastLineStartPosition, and does "
+    "not run upstream's hanging-indent / list-item paragraph detection — a "
+    "deferred layout feature (PDFTextStripper docstring), same family as the "
+    "eu-001 multi-column and poems-beads xfails. Word/line/page placement is "
+    "at full parity (asserted above).",
     strict=True,
 )
 def test_paragraph_token_placement_matches_pdfbox() -> None:

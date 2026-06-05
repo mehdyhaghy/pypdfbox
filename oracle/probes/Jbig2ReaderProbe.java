@@ -25,12 +25,15 @@ import org.apache.pdfbox.jbig2.JBIG2ReadParam;
  * {@code Bitmaps.as_raster} return value byte-for-byte.
  *
  * Usage:
- *   java ... Jbig2ReaderProbe &lt;hexbytes&gt; &lt;pageIndex&gt; &lt;rx&gt; &lt;ry&gt; &lt;rw&gt; &lt;rh&gt; &lt;xsub&gt; &lt;ysub&gt; &lt;xoff&gt; &lt;yoff&gt;
+ *   java ... Jbig2ReaderProbe &lt;hexbytes&gt; &lt;pageIndex&gt; &lt;rx&gt; &lt;ry&gt; &lt;rw&gt; &lt;rh&gt; &lt;xsub&gt; &lt;ysub&gt; &lt;xoff&gt; &lt;yoff&gt; [&lt;rrw&gt; &lt;rrh&gt;]
  *
  *   pageIndex   0-based page index.
  *   rx ry rw rh source region; pass rw or rh &lt;= 0 to use no source region.
  *   xsub ysub   subsampling factors (&gt;= 1).
  *   xoff yoff   subsampling offsets.
+ *   rrw rrh     optional source render size; pass rrw or rrh &lt;= 0 (or omit) to
+ *               use no render size. When set, the reader resamples and the
+ *               dumped raster is single-band 8-bit grayscale (1 byte/pixel).
  *
  * Output (UTF-8, single LF-terminated line):
  *   "&lt;numImages&gt; &lt;width&gt; &lt;height&gt; &lt;hexBytes&gt;"
@@ -58,6 +61,8 @@ public final class Jbig2ReaderProbe
         int ysub = Integer.parseInt(args[7]);
         int xoff = Integer.parseInt(args[8]);
         int yoff = Integer.parseInt(args[9]);
+        int rrw = args.length > 10 ? Integer.parseInt(args[10]) : 0;
+        int rrh = args.length > 11 ? Integer.parseInt(args[11]) : 0;
 
         ImageInputStream iis =
                 new MemoryCacheImageInputStream(new ByteArrayInputStream(data));
@@ -70,7 +75,9 @@ public final class Jbig2ReaderProbe
         int height = reader.getHeight(pageIndex);
 
         Rectangle region = (rw > 0 && rh > 0) ? new Rectangle(rx, ry, rw, rh) : null;
-        JBIG2ReadParam param = new JBIG2ReadParam(xsub, ysub, xoff, yoff, region, null);
+        Dimension renderSize = (rrw > 0 && rrh > 0) ? new Dimension(rrw, rrh) : null;
+        JBIG2ReadParam param =
+                new JBIG2ReadParam(xsub, ysub, xoff, yoff, region, renderSize);
 
         Raster raster = reader.readRaster(pageIndex, param);
         java.awt.image.DataBuffer db = raster.getDataBuffer();

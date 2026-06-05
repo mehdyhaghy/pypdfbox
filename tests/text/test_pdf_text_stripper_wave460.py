@@ -89,7 +89,14 @@ def test_wave460_paragraph_drop_emits_paragraph_markers_between_lines() -> None:
     stripper.set_paragraph_end("</p>")
     stripper.set_line_separator("|")
 
-    assert stripper.get_text(doc) == "first</p>|<p>second\n"
+    # Upstream ``writePage`` brackets the page body in a paragraph: a leading
+    # ``writeParagraphStart`` on the first glyph (``<p>``) and a trailing
+    # ``writeParagraphEnd`` after the last line (``</p>``). The mid-page break
+    # emits the line separator first, then the paragraph separator
+    # (``writeParagraphEnd`` + ``writeParagraphStart``): ``writeLineSeparator →
+    # writeParagraphEnd → writeParagraphStart`` (PDFTextStripper.java:700-724,
+    # 1578-1579, 1697-1700). page_end adds the trailing newline.
+    assert stripper.get_text(doc) == "<p>first|</p><p>second</p>\n"
 
 
 def test_wave460_text_matrix_tracks_tm_scale_and_translation_on_positions() -> None:
