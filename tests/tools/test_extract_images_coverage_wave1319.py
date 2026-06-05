@@ -151,6 +151,9 @@ def test_write2file_jpx_suffix_remapped_to_jp2(tmp_path: Path) -> None:
         def get_suffix(self) -> str:
             return "jpx"
 
+        def get_color_space(self) -> Any:  # noqa: ANN401
+            return None  # non-Gray/RGB → converted (decode) path
+
         def get_image(self) -> Any:  # noqa: ANN401
             return None  # skip actual write — exercises only the suffix-remap
 
@@ -163,9 +166,11 @@ def test_write2file_jpx_suffix_remapped_to_jp2(tmp_path: Path) -> None:
     finally:
         import os
         os.chdir(cwd)
-    # With ``get_image() is None``, no file is written but the suffix
-    # branch still ran (j2k.jp2 would have been the target).
-    assert not (tmp_path / "j2k.jp2").exists()
+    # ``jpx`` is remapped to ``jp2``; upstream opens the FileOutputStream
+    # unconditionally (try-with-resources) so an empty ``j2k.jp2`` is created
+    # even though ``get_image() is None`` skips the actual pixel write.
+    assert (tmp_path / "j2k.jp2").exists()
+    assert (tmp_path / "j2k.jp2").stat().st_size == 0
 
 
 def test_write2file_with_masks_forces_png(tmp_path: Path) -> None:
@@ -211,8 +216,11 @@ def test_write2file_get_image_attribute_error_swallowed(
     finally:
         import os
         os.chdir(cwd)
-    # Branch ran (no file emitted).
-    assert not (tmp_path / "x.png").exists()
+    # ``get_image()`` raising AttributeError is swallowed (upstream's
+    # ``getImage() == null`` skip), but the FileOutputStream was already opened
+    # so an empty ``x.png`` is created.
+    assert (tmp_path / "x.png").exists()
+    assert (tmp_path / "x.png").stat().st_size == 0
 
 
 # --------------------------------------------------------------------------

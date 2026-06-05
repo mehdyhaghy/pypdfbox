@@ -172,18 +172,14 @@ def test_bidi_sample_line_layout_matches_pdfbox() -> None:
 
 
 @requires_oracle
-@pytest.mark.xfail(
-    reason="CTM-aware emission (wave 1409) fixes the size/baseline so the body "
-    "extracts in the right order; the residual divergence is multi-column "
-    "table reading order — eu-001.pdf is a wide threshold table whose value "
-    "cells sit on a slightly different baseline than their row label (Y-delta "
-    "< glyph height), and Java groups label+values onto one logical line via "
-    "its vertical-span `overlap` test. The lite stripper's flat 0.5·fontSize "
-    "line-break splits them. Column/overlap reading-order is a deferred "
-    "layout feature (PDFTextStripper docstring), not the CTM root cause.",
-    strict=True,
-)
 def test_eu001_word_spacing_matches_pdfbox() -> None:
+    """eu-001.pdf is a wide threshold table whose value cells sit on a
+    slightly different baseline than their (wrapped) row label (Y-delta <
+    glyph height). Wave 1489 ported upstream ``writePage``'s running
+    vertical-span ``overlap`` line grouping (``maxYForLine`` /
+    ``maxHeightForLine``) plus a real per-font glyph height
+    (``computeFontHeight``), so label+values group onto one logical line
+    exactly as Java does — byte-for-byte parity."""
     fixture = _FIXTURES / "text" / "input" / "eu-001.pdf"
     java = run_probe_text("TextExtractProbe", str(fixture))
     py = _py_text(fixture)

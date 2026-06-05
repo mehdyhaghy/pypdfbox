@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import weakref
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Any
 
@@ -40,9 +41,15 @@ _BASE_ENCODING: COSName = COSName.get_pdf_name("BaseEncoding")
 _LOG = logging.getLogger(__name__)
 
 # Per-encoding (unicode -> code) reverse cache. Keyed by the typed Encoding
-# instance identity so the same singleton is shared across PDSimpleFont
-# instances; DictionaryEncoding instances naturally get their own entry.
-_REVERSE_CACHE: dict[int, dict[str, int]] = {}
+# instance itself (via a WeakKeyDictionary) so the same singleton is shared
+# across PDSimpleFont instances and DictionaryEncoding instances naturally get
+# their own entry. A plain ``id(encoding)`` key is unsafe: CPython recycles
+# id() values once an object is garbage-collected, so a GC'd encoding whose
+# address is reused by a new encoding would return the stale reverse map.
+# WeakKeyDictionary auto-evicts the entry when the encoding is collected.
+_REVERSE_CACHE: weakref.WeakKeyDictionary[Encoding, dict[str, int]] = (
+    weakref.WeakKeyDictionary()
+)
 
 
 def _glyph_list_for(encoding: Encoding) -> GlyphList:
@@ -67,11 +74,10 @@ def _build_unicode_to_code(encoding: Encoding) -> dict[str, int]:
 
 
 def _unicode_to_code_map(encoding: Encoding) -> dict[str, int]:
-    key = id(encoding)
-    cached = _REVERSE_CACHE.get(key)
+    cached = _REVERSE_CACHE.get(encoding)
     if cached is None:
         cached = _build_unicode_to_code(encoding)
-        _REVERSE_CACHE[key] = cached
+        _REVERSE_CACHE[encoding] = cached
     return cached
 
 

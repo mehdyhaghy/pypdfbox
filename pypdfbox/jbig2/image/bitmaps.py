@@ -26,12 +26,231 @@ by masking the stored value to 8 bits before writing it back via
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from pypdfbox.jbig2.bitmap import Bitmap
 from pypdfbox.jbig2.util.combination_operator import CombinationOperator
+
+if TYPE_CHECKING:
+    from pypdfbox.jbig2.jbig2_read_param import JBIG2ReadParam
+
+
+def _intersection(
+    a: tuple[int, int, int, int], b: tuple[int, int, int, int]
+) -> tuple[int, int, int, int]:
+    """Mirror ``java.awt.Rectangle.intersection``.
+
+    Both rectangles are ``(x, y, width, height)``. The result is the
+    overlapping rectangle; a non-overlap yields a rectangle with a
+    non-positive width/height (faithful to AWT, which can return such a
+    rectangle).
+    """
+    ax, ay, aw, ah = a
+    bx, by, bw, bh = b
+    x1 = max(ax, bx)
+    y1 = max(ay, by)
+    x2 = min(ax + aw, bx + bw)
+    y2 = min(ay + ah, by + bh)
+    return (x1, y1, x2 - x1, y2 - y1)
 
 
 class Bitmaps:
     """Static helpers operating on :class:`~pypdfbox.jbig2.bitmap.Bitmap`."""
+
+    @staticmethod
+    def as_raster(
+        bitmap: Bitmap,
+        param: JBIG2ReadParam | None = None,
+        filter_type: object | None = None,
+    ) -> bytes:
+        """Return the bitmap as a packed, JBIG2-polarity-inverted 1-bit raster.
+
+        Mirrors ``Bitmaps.asRaster(Bitmap, ImageReadParam, FilterType)``. Java
+        returns a ``WritableRaster``; the Python image stack is Pillow, which has
+        no public ``Raster`` analogue, so the ported method returns the packed
+        scanline ``bytes`` that ``buildRaster`` produces for the unscaled path
+        (``DataBufferByte`` content). The caller (:meth:`as_buffered_image` or
+        :class:`JBIG2ImageReader.read_raster`) wraps these into a PIL image.
+
+        Source-region clipping and subsampling are applied exactly as upstream.
+        The scaling (``source_render_size``) branch belongs to the rendering wave
+        (it needs the AWT ``Resizer`` / resampling filters); when a render size
+        that differs from the bitmap size is requested this raises
+        :class:`NotImplementedError`.
+        """
+        if bitmap is None:
+            raise ValueError("bitmap must not be null")
+        if param is None:
+            raise ValueError("param must not be null")
+
+        scale_x, scale_y = _scale_factors(bitmap, param)
+
+        source_region = param.get_source_region()
+        if source_region is not None and bitmap.get_bounds() != source_region:
+            # Make sure we don't request an area outside of the source bitmap.
+            source_region = _intersection(bitmap.get_bounds(), source_region)
+            bitmap = Bitmaps.extract(source_region, bitmap)
+
+        requires_scaling = scale_x != 1 or scale_y != 1
+        requires_x_subsampling = param.get_source_x_subsampling() != 1
+        requires_y_subsampling = param.get_source_y_subsampling() != 1
+
+        if requires_x_subsampling and requires_y_subsampling:
+            if requires_scaling:
+                scale_x /= param.get_source_x_subsampling()
+                scale_y /= param.get_source_y_subsampling()
+            else:
+                bitmap = Bitmaps.subsample(bitmap, param)
+        else:
+            if requires_x_subsampling:
+                if requires_scaling:
+                    scale_x /= param.get_source_x_subsampling()
+                else:
+                    bitmap = Bitmaps.subsample_x(
+                        bitmap,
+                        param.get_source_x_subsampling(),
+                        param.get_subsampling_x_offset(),
+                    )
+            if requires_y_subsampling:
+                if requires_scaling:
+                    scale_y /= param.get_source_y_subsampling()
+                else:
+                    bitmap = Bitmaps.subsample_y(
+                        bitmap,
+                        param.get_source_y_subsampling(),
+                        param.get_subsampling_y_offset(),
+                    )
+
+        return _build_raster(bitmap, scale_x, scale_y)
+
+    @staticmethod
+    def as_buffered_image(
+        bitmap: Bitmap,
+        param: JBIG2ReadParam | None = None,
+        filter_type: object | None = None,
+    ) -> object:
+        """Return the bitmap as a PIL ``Image`` (the ``BufferedImage`` analogue).
+
+        Mirrors ``Bitmaps.asBufferedImage(Bitmap, ImageReadParam, FilterType)``.
+        The unscaled path builds a mode ``"1"`` (1-bit) image from the packed
+        raster :meth:`as_raster` produces; the inverted polarity (``~byte``)
+        means decoded sample ``0`` = black, ``1`` = white — the same
+        ``IndexColorModel`` ``{0x00, 0xff}`` upstream installs for the unscaled
+        case. PIL is imported lazily so the JBIG2 decode path (filter use) never
+        pulls in Pillow.
+        """
+        from PIL import Image
+
+        if bitmap is None:
+            raise ValueError("bitmap must not be null")
+        if param is None:
+            raise ValueError("param must not be null")
+
+        raster = Bitmaps.as_raster(bitmap, param, filter_type)
+
+        scale_x, scale_y = _scale_factors(bitmap, param)
+        if scale_x != 1 or scale_y != 1:  # pragma: no cover - rendering wave
+            raise NotImplementedError(
+                "scaled JBIG2 rendering (source_render_size) is deferred to the "
+                "rendering wave"
+            )
+
+        # Determine the post-region/subsampling dimensions the raster was built
+        # for so PIL can unpack it (frombytes needs the exact geometry).
+        width, height = _raster_dimensions(bitmap, param)
+        return Image.frombytes("1", (width, height), bytes(raster))
+
+    @staticmethod
+    def subsample(bitmap: Bitmap, param: JBIG2ReadParam) -> Bitmap:
+        """Apply horizontal and vertical subsampling. Mirrors ``subsample``."""
+        if bitmap is None:
+            raise ValueError("src must not be null")
+        if param is None:
+            raise ValueError("param must not be null")
+
+        x_subsampling = param.get_source_x_subsampling()
+        y_subsampling = param.get_source_y_subsampling()
+        x_offset = param.get_subsampling_x_offset()
+        y_offset = param.get_subsampling_y_offset()
+
+        dst_width = (bitmap.get_width() - x_offset) // x_subsampling
+        dst_height = (bitmap.get_height() - y_offset) // y_subsampling
+
+        dst = Bitmap(dst_width, dst_height)
+
+        y_dst = 0
+        y_src = y_offset
+        while y_dst < dst.get_height():
+            x_dst = 0
+            x_src = x_offset
+            while x_dst < dst.get_width():
+                pixel = bitmap.get_pixel(x_src, y_src)
+                if pixel != 0:
+                    dst.set_pixel(x_dst, y_dst, pixel)
+                x_dst += 1
+                x_src += x_subsampling
+            y_dst += 1
+            y_src += y_subsampling
+
+        return dst
+
+    @staticmethod
+    def subsample_x(
+        bitmap: Bitmap, x_subsampling: int, x_subsampling_offset: int
+    ) -> Bitmap:
+        """Apply horizontal subsampling only. Mirrors ``subsampleX``.
+
+        NOTE: upstream (3.0.7) has a latent bug here — it derives the
+        destination *height* from the width and offset (``(width - offset) //
+        sampling``) and keeps the source width, so an X-only subsampling whose
+        derived height exceeds the source height throws (mirrored as
+        :class:`IndexError`). The port reproduces this exactly so the output
+        matches the bundled jar byte-for-byte.
+        """
+        if bitmap is None:
+            raise ValueError("src must not be null")
+
+        dst_height = (bitmap.get_width() - x_subsampling_offset) // x_subsampling
+        dst = Bitmap(bitmap.get_width(), dst_height)
+
+        for y_dst in range(dst.get_height()):
+            x_dst = 0
+            x_src = x_subsampling_offset
+            while x_dst < dst.get_width():
+                pixel = bitmap.get_pixel(x_src, y_dst)
+                if pixel != 0:
+                    dst.set_pixel(x_dst, y_dst, pixel)
+                x_dst += 1
+                x_src += x_subsampling
+
+        return dst
+
+    @staticmethod
+    def subsample_y(
+        bitmap: Bitmap, y_subsampling: int, y_subsampling_offset: int
+    ) -> Bitmap:
+        """Apply vertical subsampling only. Mirrors ``subsampleY``.
+
+        NOTE: as with :meth:`subsample_x`, upstream derives the destination
+        *width* from the width and offset; the port reproduces it verbatim.
+        """
+        if bitmap is None:
+            raise ValueError("src must not be null")
+
+        dst_width = (bitmap.get_width() - y_subsampling_offset) // y_subsampling
+        dst = Bitmap(dst_width, bitmap.get_height())
+
+        y_dst = 0
+        y_src = y_subsampling_offset
+        while y_dst < dst.get_height():
+            for x_dst in range(dst.get_width()):
+                pixel = bitmap.get_pixel(x_dst, y_src)
+                if pixel != 0:
+                    dst.set_pixel(x_dst, y_dst, pixel)
+            y_dst += 1
+            y_src += y_subsampling
+
+        return dst
 
     @staticmethod
     def extract(roi: tuple[int, int, int, int], src: Bitmap) -> Bitmap:
@@ -225,6 +444,83 @@ class Bitmaps:
                 combination_operator,
                 padding,
             )
+
+
+def _scale_factors(bitmap: Bitmap, param: JBIG2ReadParam) -> tuple[float, float]:
+    """Compute (scaleX, scaleY) from the param's source render size.
+
+    Mirrors the identical block at the head of upstream ``asRaster`` /
+    ``asBufferedImage``.
+    """
+    source_render_size = param.get_source_render_size()
+    if source_render_size is not None:
+        render_w, render_h = source_render_size
+        return (render_w / bitmap.get_width(), render_h / bitmap.get_height())
+    return (1, 1)
+
+
+def _raster_dimensions(bitmap: Bitmap, param: JBIG2ReadParam) -> tuple[int, int]:
+    """Replay the region/subsampling geometry to size the unscaled raster.
+
+    The raster bytes from :meth:`Bitmaps.as_raster` are packed for the bitmap
+    *after* source-region extraction and subsampling, so PIL ``frombytes`` needs
+    those post-transform dimensions. This recomputes them without re-running the
+    pixel work (the unscaled path only).
+    """
+    width = bitmap.get_width()
+    height = bitmap.get_height()
+
+    source_region = param.get_source_region()
+    if source_region is not None and bitmap.get_bounds() != source_region:
+        _x, _y, width, height = _intersection(bitmap.get_bounds(), source_region)
+
+    x_sub = param.get_source_x_subsampling()
+    y_sub = param.get_source_y_subsampling()
+    requires_x = x_sub != 1
+    requires_y = y_sub != 1
+    if requires_x and requires_y:
+        width = (width - param.get_subsampling_x_offset()) // x_sub
+        height = (height - param.get_subsampling_y_offset()) // y_sub
+    elif requires_x:
+        # subsample_x: width unchanged, height = (width - off) // sub (3.0.7 bug)
+        height = (width - param.get_subsampling_x_offset()) // x_sub
+    elif requires_y:
+        # subsample_y: height unchanged, width = (width - off) // sub (3.0.7 bug)
+        width = (width - param.get_subsampling_y_offset()) // y_sub
+
+    return (width, height)
+
+
+def _build_raster(bitmap: Bitmap, scale_x: float, scale_y: float) -> bytes:
+    """Port of ``Bitmaps.buildRaster`` for the unscaled path.
+
+    Returns the packed, polarity-inverted scanline bytes (the content of the
+    ``DataBufferByte`` upstream wraps in a ``Raster.createPackedRaster``). The
+    trailing pad bits of each row's final byte are masked to zero, exactly like
+    upstream's ``(~0xff >> (width & 7)) & 0xff`` mask.
+    """
+    if scale_x != 1 or scale_y != 1:  # pragma: no cover - rendering wave
+        raise NotImplementedError(
+            "scaled JBIG2 raster (source_render_size) is deferred to the "
+            "rendering wave"
+        )
+
+    height = bitmap.get_height()
+    width = bitmap.get_width()
+    full_bytes = width // 8
+    bits = (~0xFF >> (width & 7)) & 0xFF
+    src = bitmap.get_byte_array()
+    dst = bytearray(height * bitmap.get_row_stride())
+
+    idx = 0
+    for _row in range(height):
+        for _count in range(full_bytes):
+            dst[idx] = (~src[idx]) & 0xFF
+            idx += 1
+        if bits != 0:
+            dst[idx] = (~src[idx]) & bits
+            idx += 1
+    return bytes(dst)
 
 
 def _to_signed_byte(value: int) -> int:

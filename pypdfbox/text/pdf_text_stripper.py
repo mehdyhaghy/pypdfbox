@@ -240,6 +240,13 @@ class PDFTextStripper:
         # ``None`` we fall back to the legacy 0.5-em estimate so unknown
         # fonts still produce monotonic text-x advances.
         self._active_avg_advance: float | None = None
+        # Glyph height (text-space fraction of the em) of the active font,
+        # computed via ``_compute_font_height`` and recomputed on every
+        # ``Tf``. ``None`` falls back to the half-em proxy. Cached per font
+        # object in ``_font_height_cache`` for the page lifetime, mirroring
+        # upstream's ``LegacyPDFStreamEngine.fontHeightMap``.
+        self._active_font_height: float | None = None
+        self._font_height_cache: dict[int, float] = {}
         # Output writer captured by ``write_text`` (the lite stripper
         # otherwise routes everything through ``get_text``'s in-memory
         # sink). Mirrors upstream's protected ``output`` field; exposed
@@ -721,6 +728,8 @@ class PDFTextStripper:
         self._active_cmap = None
         self._active_font = None
         self._active_avg_advance = None
+        self._active_font_height = None
+        self._font_height_cache = {}
         try:
             positions = self._extract_positions(body)
             # Stash the per-article TextPositions so subclasses /
@@ -809,6 +818,9 @@ class PDFTextStripper:
                 # same name re-anchors the size).
                 self._active_avg_advance = self._compute_avg_advance(
                     self._active_font, state.font_size
+                )
+                self._active_font_height = self._compute_font_height(
+                    self._active_font
                 )
         elif op == "TL":
             if operands and isinstance(operands[0], COSNumber):
@@ -1011,6 +1023,7 @@ class PDFTextStripper:
         saved_active_cmap = self._active_cmap
         saved_active_font = self._active_font
         saved_avg_advance = self._active_avg_advance
+        saved_font_height = self._active_font_height
         try:
             form_resources = xobject.get_resources()
         except Exception:  # noqa: BLE001 — defensive
@@ -1021,6 +1034,7 @@ class PDFTextStripper:
         self._active_cmap = None
         self._active_font = None
         self._active_avg_advance = None
+        self._active_font_height = None
         self._form_level += 1
 
         form_state = _TextState()
@@ -1045,6 +1059,7 @@ class PDFTextStripper:
             self._active_cmap = saved_active_cmap
             self._active_font = saved_active_font
             self._active_avg_advance = saved_avg_advance
+            self._active_font_height = saved_font_height
 
     @staticmethod
     def _get_form_contents(xobject: object) -> bytes:
@@ -1301,6 +1316,17 @@ class PDFTextStripper:
         y_scale = trm.get_scaling_factor_y()
         x_scale = trm.get_scaling_factor_x()
         effective_font_size = state.font_size * y_scale
+        # Device-space glyph height — upstream ``maxHeight``: the font's
+        # text-space height fraction (``_compute_font_height``) times the
+        # font size times the matrix Y scale. Feeds the line-grouping
+        # vertical-overlap test (see ``_emit_group``). ``None`` (no Tf yet /
+        # unresolved font) leaves it 0.0 so the height accessors fall back
+        # to ``font_size``.
+        font_height_fraction = self._active_font_height
+        if font_height_fraction is None:
+            run_height = 0.0
+        else:
+            run_height = font_height_fraction * effective_font_size
         text_dir = self._text_dir(trm)
         # ``/ActualText`` substitution (PDF §14.9.4): inside a marked-content
         # span carrying ``/ActualText``, the glyph-derived text is replaced
@@ -1383,6 +1409,7 @@ class PDFTextStripper:
                         char_spacing=state.char_spacing,
                         word_spacing=state.word_spacing,
                         dir=text_dir,
+                        height=run_height,
                         text_matrix=[
                             state.tm_a,
                             state.tm_b,
@@ -1593,6 +1620,11 @@ class PDFTextStripper:
                     char_spacing=state.char_spacing,
                     word_spacing=state.word_spacing,
                     dir=text_dir,
+                    height=(
+                        0.0
+                        if self._active_font_height is None
+                        else self._active_font_height * effective_font_size
+                    ),
                     text_matrix=[
                         state.tm_a,
                         state.tm_b,
@@ -1808,6 +1840,79 @@ class PDFTextStripper:
             return avg_width * x_scale * font_size
         return avg_width / 1000.0 * font_size
 
+    def _compute_font_height(self, font: PDFont | None) -> float:
+        """Return the font's glyph height in text-space units (a fraction of
+        the em), mirroring upstream ``LegacyPDFStreamEngine.computeFontHeight``
+        (LegacyPDFStreamEngine.java:324-368).
+
+        Upstream takes half the font bounding box height, then prefers the
+        descriptor's ``/CapHeight`` (or ``(ascent − descent) / 2``) when the
+        bbox is implausibly tall, and finally scales glyph space → text space
+        (``/1000`` for ordinary fonts, the ``/FontMatrix`` for Type 3). The
+        result feeds the line-grouping vertical-overlap test in
+        :meth:`_emit_group`; the caller multiplies it by ``font_size`` (and
+        the text-rendering matrix's Y scale) to get the device-space glyph
+        height. The per-font value is cached for the active page exactly as
+        upstream caches it in its ``fontHeightMap``.
+
+        Returns ``0.5`` (half the em) when the font, its bounding box, and its
+        descriptor are all unavailable — a neutral proxy that keeps the
+        overlap test working for metric-less fonts without the previous
+        full-em (``1.0``) over-grouping.
+        """
+        if font is None:
+            return 0.5
+        cached = self._font_height_cache.get(id(font))
+        if cached is not None:
+            return cached
+        glyph_height = 0.0
+        try:
+            bbox = font.get_bounding_box()
+        except Exception:  # noqa: BLE001 — defensive: malformed font program
+            bbox = None
+        if bbox is not None:
+            lower_left_y = bbox.get_lower_left_y()
+            if lower_left_y < -32768:
+                # PDFBOX-2158 / PDFBOX-3130 over-/under-flowed lower-left Y.
+                bbox_height = bbox.get_upper_right_y() - (-(lower_left_y + 65536))
+            else:
+                bbox_height = bbox.get_height()
+            glyph_height = bbox_height / 2.0
+        try:
+            descriptor = font.get_font_descriptor()
+        except Exception:  # noqa: BLE001 — defensive
+            descriptor = None
+        if descriptor is not None:
+            cap_height = descriptor.get_cap_height()
+            if cap_height != 0 and (cap_height < glyph_height or glyph_height == 0):
+                glyph_height = cap_height
+            ascent = descriptor.get_ascent()
+            descent = descriptor.get_descent()
+            if (
+                cap_height > ascent
+                and ascent > 0
+                and descent < 0
+                and ((ascent - descent) / 2.0 < glyph_height or glyph_height == 0)
+            ):
+                glyph_height = (ascent - descent) / 2.0
+        # Glyph space → text space.
+        from pypdfbox.pdmodel.font.pd_type3_font import PDType3Font  # noqa: PLC0415
+
+        if isinstance(font, PDType3Font):
+            try:
+                height = font.get_font_matrix()[3] * glyph_height
+            except Exception:  # noqa: BLE001 — defensive
+                height = glyph_height / 1000.0
+        else:
+            height = glyph_height / 1000.0
+        if height <= 0:
+            # No usable metrics — fall back to half the em (a neutral proxy
+            # that avoids the full-em over-grouping the line-overlap test had
+            # before real heights were threaded through).
+            height = 0.5
+        self._font_height_cache[id(font)] = height
+        return height
+
     @staticmethod
     def _compute_width_of_space(
         font: PDFont | None,
@@ -2016,10 +2121,51 @@ class PDFTextStripper:
             # this also covers the pure-LTR bidi fast path.
             sink(self.normalize_word(text))
 
+        # Running line-extent accumulators mirroring upstream
+        # ``writePage`` (PDFTextStripper.java:497-501). A position joins
+        # the current line when its vertical glyph span overlaps the
+        # *line's* accumulated span (``max_y_for_line`` / its height) —
+        # not merely the immediately-previous glyph. This is what keeps a
+        # wrapped row label's continuation (e.g. ``(as HCl)``) and its
+        # value cells (``10 000 - -``, painted a few points higher on a
+        # slightly different baseline) on one logical line in a
+        # multi-column table, where the flat prev-only 0.5·fontSize test
+        # split them. The accumulators reset on a line break and on a
+        # horizontal jump larger than one space (a new column whose font
+        # size may differ), matching upstream lines 681-687.
+        #
+        # The lite TextPosition carries Y in the PDF user-space (y-up)
+        # frame, so ``max_y_for_line`` tracks the *highest* baseline seen
+        # on the line (the largest Y) — the y-up mirror of upstream's
+        # y-down ``maxYForLine`` (its smallest device Y). The overlap test
+        # (:meth:`_overlaps_line`) is correspondingly mirrored to y-up.
+        _MAX_Y_RESET = -math.inf
+        _MAX_HEIGHT_RESET = -1.0
+        max_y_for_line = _MAX_Y_RESET
+        max_height_for_line = _MAX_HEIGHT_RESET
+
         prev: TextPosition | None = None
         for pos in positions:
+            position_y = pos.x if self._flip_axes else pos.y
+            position_height = pos.get_height_dir()
             if prev is not None:
-                if self._is_line_break(pos, prev):
+                # Flip-axes (rotated-page) extraction keeps the legacy
+                # prev-only line-stepping heuristic — the running-overlap
+                # model is calibrated for the upright frame where Y is the
+                # line-flow axis and ``get_height_dir`` is the glyph's
+                # vertical extent; in the transposed frame the stepping
+                # axis is X and the relevant extent would be the glyph
+                # width, which the overlap model does not track.
+                if self._flip_axes:
+                    line_broke = self._is_line_break(pos, prev)
+                else:
+                    line_broke = not self._overlaps_line(
+                        position_y,
+                        position_height,
+                        max_y_for_line,
+                        max_height_for_line,
+                    )
+                if line_broke:
                     _flush_word()
                     if self.is_paragraph_separation(pos, prev):
                         self.write_paragraph_end(sink)
@@ -2027,10 +2173,24 @@ class PDFTextStripper:
                         self.write_paragraph_start(sink)
                     else:
                         self.write_line_separator(sink)
+                    max_y_for_line = _MAX_Y_RESET
+                    max_height_for_line = _MAX_HEIGHT_RESET
                 else:
                     if self._is_word_break(pos, prev):
                         _flush_word()
                         self.write_word_separator(sink)
+                    # A horizontal jump of more than one space may mark a
+                    # new column whose font (and thus glyph height) differs
+                    # — reset the line extents so the next glyph re-anchors
+                    # them (upstream PDFTextStripper.java:681-687).
+                    if not self._flip_axes and self._is_column_jump(pos, prev):
+                        max_y_for_line = _MAX_Y_RESET
+                        max_height_for_line = _MAX_HEIGHT_RESET
+            # Accumulate the line's vertical extent (upstream lines
+            # 689-707): track the highest baseline and the tallest glyph.
+            if position_y >= max_y_for_line:
+                max_y_for_line = position_y
+            max_height_for_line = max(max_height_for_line, position_height)
             self.write_string_with_positions(pos.text, [pos], _buffered_sink)
             prev = pos
         _flush_word()
@@ -2105,6 +2265,61 @@ class PDFTextStripper:
             # Rotated frame: line stepping happens along X.
             return abs(pos.x - prev.x) > max(prev.font_size, 0.1) * 0.5
         return abs(pos.y - prev.y) > max(prev.font_size, 0.1) * 0.5
+
+    @staticmethod
+    def _overlaps_line(
+        position_y: float,
+        position_height: float,
+        max_y_for_line: float,
+        max_height_for_line: float,
+    ) -> bool:
+        """True when a glyph's vertical span overlaps the running line span.
+
+        y-up mirror of upstream's private ``overlap``
+        (PDFTextStripper.java:762-766), which in the device (y-down) frame
+        reads::
+
+            within(y1, y2, .1f)
+            || y2 <= y1 && y2 >= y1 - height1
+            || y1 <= y2 && y1 >= y2 - height2
+
+        Here ``y1`` is the glyph baseline (``position_y``) and ``y2`` is the
+        line's accumulated baseline (``max_y_for_line``). Because the lite
+        TextPosition carries Y in PDF user space (y-up: a larger Y is higher
+        on the page), a run's top edge is ``baseline + height`` rather than
+        ``baseline - height``, so the two span-containment clauses flip
+        their sign accordingly. The ``within`` (shared-baseline) clause is
+        sign-agnostic. When the line extents are still at their reset
+        sentinels (no glyph yet), the height clauses correctly report no
+        overlap so the first glyph always opens the line.
+        """
+        if PDFTextStripper.within(position_y, max_y_for_line, 0.1):
+            return True
+        # Glyph baseline sits within the line's [baseline, top] span.
+        if max_y_for_line <= position_y <= max_y_for_line + max_height_for_line:
+            return True
+        # Line baseline sits within the glyph's [baseline, top] span.
+        return position_y <= max_y_for_line <= position_y + position_height
+
+    def _is_column_jump(self, pos: TextPosition, prev: TextPosition) -> bool:
+        """True when ``pos`` starts more than one space past ``prev``'s
+        origin along the flow axis.
+
+        Mirrors upstream PDFTextStripper.java:681-682
+        (``abs(position.getX() - lastPosition.getX()) > wordSpacing +
+        deltaSpace``) — the trigger that resets the running line extents so
+        a new column whose font size differs re-anchors the overlap test.
+        Uses the previous run's space width and the configured spacing
+        tolerance (``deltaSpace = wordSpacing × spacingTolerance``), falling
+        back to the coarse ``font_size`` estimate for a metric-less run.
+        """
+        prev_origin = prev.y if self._flip_axes else prev.x
+        cur_origin = pos.y if self._flip_axes else pos.x
+        word_spacing = prev.width_of_space
+        if word_spacing <= 0.0:
+            word_spacing = prev.font_size * 0.5
+        delta_space = word_spacing * self._spacing_tolerance
+        return abs(cur_origin - prev_origin) > word_spacing + delta_space
 
     def _is_word_break(
         self, pos: TextPosition, prev: TextPosition

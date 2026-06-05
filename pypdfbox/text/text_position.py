@@ -114,6 +114,14 @@ class TextPosition:
     page_height: float = 0.0
     text_matrix: list[float] | None = None
     font_size_in_pt: float | None = None
+    # Device-space glyph height of the run (upstream ``maxHeight`` — the
+    # font bounding box / cap height scaled to device space, NOT the full
+    # font size). ``0.0`` means "unknown": the height accessors then fall
+    # back to :attr:`font_size`, preserving the prior lite behaviour for
+    # synthetic TextPositions constructed without a real font. The stripper
+    # threads the true value (via ``_compute_font_height``) so the
+    # line-grouping vertical-overlap test matches Apache PDFBox.
+    height: float = 0.0
     # Real per-glyph advances (user space) for the glyphs in this run, when
     # the lite stripper could thread them from the font's /Widths. ``None``
     # when only the run-level average width is known (malformed font, or a
@@ -402,16 +410,19 @@ class TextPosition:
     def get_height(self) -> float:
         """Maximum height of all characters in this run.
 
-        Upstream tracks ``maxHeight`` separately from the font size; in
-        lite mode we use the font size as the height proxy (same value
-        :meth:`get_height_dir` returns) so the two accessors agree. See
-        ``CHANGES.md`` for the deferred per-glyph metrics.
+        Upstream tracks ``maxHeight`` separately from the font size — it is
+        the font bounding box (or cap height) scaled to device space, which
+        is typically ~0.5–0.7× the font size. When the stripper threaded a
+        real height (:attr:`height` non-zero) it is returned verbatim;
+        otherwise we fall back to ``font_size`` for synthetic positions
+        built without a font. See ``CHANGES.md``.
         """
-        return self.font_size
+        return self.height if self.height else self.font_size
 
     def get_height_dir(self) -> float:
-        """Directional height. Lite approximation returns ``font_size``."""
-        return self.font_size
+        """Directional height. Returns the threaded :attr:`height` when
+        known, else ``font_size`` (the lite fallback)."""
+        return self.height if self.height else self.font_size
 
     # ------------------------------------------------------------------
     # Geometry

@@ -235,31 +235,46 @@ class PDFText2HTML(PDFTextStripper):
         return ""
 
     def write_article_start(self, sink: Any) -> None:
-        """Hook invoked after the page-start separator and before the
-        page body. We piggy-back on upstream's article-start emission
-        to open the paragraph wrapper that upstream emits at the start
-        of every page (via ``writeParagraphStart`` in the page loop).
+        """Mirror upstream's per-article emission boundary.
 
-        pypdfbox's lite stripper only emits paragraph markers around
-        mid-page line breaks; mirror upstream's open-on-page-start
-        contract here so single-line pages still come out wrapped in
-        ``<p>...</p>``.
+        Upstream PDFBox calls ``startArticle()`` (overridden here to write
+        ``<div>``) at the start of every article/bead, and the first
+        ``TextPosition`` of the page then triggers ``writeParagraphStart``
+        (``<p>``). pypdfbox's lite stripper drives the article boundary
+        through this ``write_article_start`` hook rather than a separate
+        ``start_article`` call, so both emissions happen here:
+
+        * ``<div>`` — upstream ``PDFText2HTML.startArticle`` writes the
+          article ``<div>`` directly via ``super.writeString`` and, unlike
+          the base class, does NOT emit the configured ``articleStart``
+          separator. We mirror that by NOT calling ``super`` here.
+        * ``<p>`` — upstream's page loop opens the paragraph on the first
+          character. pypdfbox's lite stripper only emits paragraph markers
+          around mid-page line breaks, so open the page paragraph here too
+          so single-line pages still come out wrapped in ``<p>...</p>``.
         """
-        super().write_article_start(sink)
+        sink("<div>")
         sink(self.get_paragraph_start())
 
     def write_article_end(self, sink: Any) -> None:
-        """Pair-close the ``<p>`` opened by :meth:`write_article_start`.
+        """Mirror upstream's per-article close boundary.
 
-        Also flushes any open ``<b>`` / ``<i>`` tags via
-        ``FontState.clear`` so a paragraph never leaks its style state
-        across the closing tag.
+        Upstream's page loop runs ``writeParagraphEnd()`` (``</p>`` plus the
+        line separator) for the last line, then ``endArticle()`` —
+        overridden in ``PDFText2HTML`` to call ``super.endArticle()`` (which
+        emits the configured ``articleEnd`` separator) followed by
+        ``super.writeString("</div>")``. We reproduce that exact order:
+
+        ``FontState.clear`` (close any open ``<b>``/``<i>``) → ``</p>`` +
+        line separator (``paragraph_end``) → ``articleEnd`` separator
+        (``super``) → ``</div>``.
         """
         flush_text = self._font_state.clear()
         if flush_text:
             sink(flush_text)
         sink(self.get_paragraph_end())
         super().write_article_end(sink)
+        sink("</div>")
 
     def start_article(self, is_ltr: bool = True) -> None:
         """Mirror of ``startArticle(boolean)``."""

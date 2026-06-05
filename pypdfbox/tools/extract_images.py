@@ -25,6 +25,55 @@ from pypdfbox.pdmodel.pd_document import PDDocument
 from pypdfbox.tools.imageio.image_io_util import ImageIOUtil
 
 JPEG = ["DCTDecode", "DCT"]
+JPX = "JPXDecode"
+
+
+def _copy(src: Any, dst: Any) -> None:
+    """Copy all bytes from ``src`` to ``dst`` (mirror of ``IOUtils.copy``)."""
+    while True:
+        chunk = src.read(8192)
+        if not chunk:
+            break
+        dst.write(chunk)
+
+
+def _close_quietly(stream: Any) -> None:
+    """Mirror of ``IOUtils.closeQuietly`` — close, ignoring failures."""
+    with contextlib.suppress(Exception):
+        stream.close()
+
+
+def _num_data_elements(image: Any) -> int:
+    """Number of channels in a Pillow image (mirror of
+    ``Raster.getNumDataElements()``). Used to pick png vs tiff for the
+    ``-noColorConvert`` raw path: > 3 channels (CMYK) → tiff."""
+    bands = getattr(image, "getbands", None)
+    if bands is not None:
+        try:
+            return len(image.getbands())
+        except (AttributeError, TypeError):
+            pass
+    return 1
+
+
+def _color_space_name(pd_image: Any) -> str | None:
+    """Return the image's colorspace name, or ``None`` when unresolved."""
+    try:
+        cs = pd_image.get_color_space()
+    except (AttributeError, NotImplementedError):
+        return None
+    if cs is None:
+        return None
+    try:
+        return cs.get_name()
+    except (AttributeError, NotImplementedError):
+        return None
+
+
+def _is_device_gray(pd_image: Any) -> bool:
+    """``True`` when the image's colorspace is DeviceGray (mirror of
+    ``pdImage.getColorSpace().equals(PDDeviceGray.INSTANCE)``)."""
+    return _color_space_name(pd_image) == "DeviceGray"
 
 
 @contextlib.contextmanager
@@ -157,22 +206,97 @@ class ImageGraphicsEngine(PDFGraphicsStreamEngine):
     def write2file(
         self, pd_image: Any, prefix: str, direct_jpeg: bool, no_color_convert: bool,
     ) -> None:
-        """Mirror of upstream private ``write2file``."""
-        suffix = pd_image.get_suffix() or "png"
-        if suffix == "jb2":
+        """Mirror of upstream private ``write2file`` (ExtractImages.java:338).
+
+        Writes the image to ``prefix + "." + suffix`` where the suffix is
+        derived from the image's compression filters. The JPEG/JP2 *direct*
+        passthrough (raw DCT/JPX stream bytes copied verbatim) preserves byte
+        parity with the source PDF for RGB/Gray colorspaces (or when
+        ``direct_jpeg`` is forced); other colorspaces and the no-mask path fall
+        back to a decoded re-encode.
+        """
+        suffix = pd_image.get_suffix()
+        if suffix is None or suffix == "jb2":
             suffix = "png"
         elif suffix == "jpx":
+            # use jp2 suffix for file because jpx not known by windows
             suffix = "jp2"
+
         if self.has_masks(pd_image):
+            # TIKA-3040, PDFBOX-4771: can't save ARGB as JPEG
             suffix = "png"
+
+        if no_color_convert:
+            # We write the raw image if in any way possible.
+            # But we have no alpha information here.
+            try:
+                image = pd_image.get_raw_image()
+            except (AttributeError, NotImplementedError):
+                image = None
+            if image is not None:
+                elements = _num_data_elements(image)
+                suffix = "png"
+                if elements > 3:
+                    # More than 3 channels: That's likely CMYK. We use tiff
+                    # here, but a TIFF codec must be available for this to work.
+                    suffix = "tiff"
+                filename = f"{prefix}.{suffix}"
+                with open(filename, "wb") as out:
+                    ImageIOUtil.write_image(image, out, suffix)
+                return
+
         filename = f"{prefix}.{suffix}"
+        with open(filename, "wb") as out:
+            if suffix == "jpg":
+                color_space_name = _color_space_name(pd_image)
+                if direct_jpeg or color_space_name in ("DeviceGray", "DeviceRGB"):
+                    # RGB or Gray colorspace: write the unmodified JPEG stream
+                    data = pd_image.create_input_stream(JPEG)
+                    try:
+                        _copy(data, out)
+                    finally:
+                        _close_quietly(data)
+                else:
+                    # for CMYK and other colorspaces the JPEG is converted
+                    image = self._decode(pd_image)
+                    if image is not None:
+                        ImageIOUtil.write_image(image, out, suffix)
+            elif suffix == "jp2":
+                color_space_name = _color_space_name(pd_image)
+                if direct_jpeg or color_space_name in ("DeviceGray", "DeviceRGB"):
+                    # RGB or Gray colorspace: write the unmodified JPX stream
+                    data = pd_image.create_input_stream([JPX])
+                    try:
+                        _copy(data, out)
+                    finally:
+                        _close_quietly(data)
+                else:
+                    # for CMYK and other colorspaces the image is converted
+                    image = self._decode(pd_image)
+                    if image is not None:
+                        ImageIOUtil.write_image(image, out, "jpeg2000")
+            elif suffix == "tiff" and _is_device_gray(pd_image):
+                image = self._decode(pd_image)
+                if image is None:
+                    return
+                # CCITT compressed images can have a different colorspace, but
+                # this one is B/W. Copy to a 1-bit bitonal image so a G4 TIFF is
+                # produced by ImageIOUtil.write_image().
+                bitonal = image.convert("1")
+                ImageIOUtil.write_image(bitonal, out, suffix)
+            else:
+                image = self._decode(pd_image)
+                if image is not None:
+                    ImageIOUtil.write_image(image, out, suffix)
+
+    @staticmethod
+    def _decode(pd_image: Any) -> Any:
+        """Decode ``pd_image`` to a Pillow image, swallowing decode failures
+        the way upstream lets ``getImage()`` return ``null``."""
         try:
-            image = pd_image.get_image()
+            return pd_image.get_image()
         except (AttributeError, NotImplementedError):
-            image = None
-        if image is not None:
-            with open(filename, "wb") as out:
-                ImageIOUtil.write_image(image, suffix, out)
+            return None
 
     def has_masks(self, pd_image: Any) -> bool:
         """Mirror of upstream private ``hasMasks``."""
