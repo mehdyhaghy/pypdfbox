@@ -7,7 +7,6 @@ _N: COSName = COSName.get_pdf_name("N")
 _P: COSName = COSName.get_pdf_name("P")
 _A: COSName = COSName.get_pdf_name("A")
 _T: COSName = COSName.get_pdf_name("T")
-_C: COSName = COSName.get_pdf_name("C")
 
 
 class PDTargetDirectory:
@@ -26,9 +25,12 @@ class PDTargetDirectory:
     """
 
     def __init__(self, dictionary: COSDictionary | None = None) -> None:
+        # Upstream's no-arg constructor (PDTargetDirectory.java) creates a bare
+        # empty COSDictionary — it does NOT stamp a default /R relationship. A
+        # fresh target therefore reports get_relationship() == None and saves an
+        # empty dictionary, matching Apache PDFBox 3.0.7 exactly.
         if dictionary is None:
             self._dict = COSDictionary()
-            self._dict.set_item(_R, _C)
         else:
             self._dict = dictionary
 

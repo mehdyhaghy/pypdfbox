@@ -284,33 +284,23 @@ def test_first_run_origin_x_matches_pdfbox(content: bytes) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Documented divergence: a large Tc inside a SINGLE Tj string. Java treats
-# each Tc-widened intra-string glyph gap as a per-glyph word break and
-# extracts "A B  C D"; the lite stripper holds the whole string in one
-# TextPosition, never re-examines intra-run glyph gaps, and extracts
-# "AB CD". This is the documented per-glyph-granularity carve-out (see the
-# module docstring and CHANGES.md), not a Tc sign/scale bug — the Tc value
-# is read correctly; the lite port simply does not subdivide a run. xfail
-# strict so a future per-glyph emitter that closes the gap flips this green.
+# Large Tc inside a SINGLE Tj string. Java treats each Tc-widened intra-string
+# glyph gap as a per-glyph word break and extracts "A B  C D" (note the double
+# space around the literal space glyph). Wave 1488 threaded real per-glyph
+# advances through the lite stripper so it now subdivides a run on intra-run
+# Tc-widened gaps; wave 1493 reconciled the final residual by porting upstream's
+# exact word-separator suppression rule (PDFTextStripper.java:670-674): the
+# gap-driven separator is suppressed only when the *previous* glyph's unicode
+# already ends with the configured word-separator string — never on the basis
+# of the *current* glyph being whitespace. So Java emits a gap separator
+# *before* the explicit space glyph (prev 'B' does not end with ' ') and keeps
+# the space glyph (the double space), and suppresses only the redundant
+# separator on the transition *out of* the space glyph (prev ' ' ends with the
+# separator). pypdfbox now extracts "A B  C D" byte-for-byte.
 # ---------------------------------------------------------------------------
 
 
 @requires_oracle
-@pytest.mark.xfail(
-    reason="Wave 1488 threaded real per-glyph advances through the lite "
-    "stripper and now *subdivides* a run on intra-run Tc-widened gaps, so a "
-    "large Tc inside a single Tj string segments into words: pypdfbox extracts "
-    "'A B C D' (was 'AB CD'). The sole residual is the double space Java emits "
-    "around the literal space glyph ('A B  C D'): Java inserts a gap-driven "
-    "separator *and* keeps the explicit space glyph, whereas the lite "
-    "stripper's word-break heuristic suppresses a gap separator adjacent to an "
-    "already-present whitespace glyph (to avoid double-spacing when a producer "
-    "encoded the break). Reconciling the double-space-adjacent-to-explicit-"
-    "space rule is a whitespace-collapse change spanning the whole getText "
-    "suite; the per-glyph intra-run break itself is now correct. Same family "
-    "as the per-run-granularity carve-outs.",
-    strict=True,
-)
 def test_large_char_spacing_intra_run_word_breaks_match_pdfbox() -> None:
     java_text, _jg, py_text, _pr, _ph = _roundtrip(_TC)
-    assert py_text == java_text
+    assert py_text == java_text == "A B  C D\n"

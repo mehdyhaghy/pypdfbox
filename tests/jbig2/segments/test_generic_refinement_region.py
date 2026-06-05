@@ -355,6 +355,57 @@ def test_template1_explicit_and_tpgr_paths_produce_valid_bitmap():
 
 
 # -------------------------------------------------------------------------
+# Template-0 TPGRON (typical-prediction) optimized byte-blit — wave 1493.
+# -------------------------------------------------------------------------
+# The 3.0.7 jar cannot drive TPGRON through setParameters (its `template` field
+# is null on the first SLTP -> NullPointerException), so these byte vectors are
+# pinned Python-deterministically rather than against the live oracle. They drive
+# `_decode_typical_predicted_line_template0` (the §6.3.5.6 3d optimized blit with
+# the per-byte previous/current/next reference-line sliding windows) over a
+# multi-byte-wide region, both with and without a non-zero reference offset, so a
+# regression in that path is caught even without Java. Determinism (same coded
+# bytes + reference -> same output) is what makes the pinned hex meaningful: the
+# MQ decoder is fully deterministic, so the vector is the algorithm's signature.
+
+_TPGR_T0_REF = "8040c030aa5511220ff0a1b2c3d4e5f60718293a"
+_TPGR_T0_CODED = "84c73b00ff12abcd5566778899"
+
+
+def test_tpgr_template0_optimized_blit_is_stable():
+    result = _decode(
+        gr_template=0, width=24, height=8, ref_w=24, ref_h=8, dx=0, dy=0,
+        tpgr=True, ref_hex=_TPGR_T0_REF, coded_hex=_TPGR_T0_CODED,
+    )
+    assert result.bitmap_bytes.hex() == (
+        "03ca9fa8d99c9d97385fbdbe7a11355f78314425bc0eb400"
+    )
+
+
+def test_tpgr_template0_optimized_blit_with_reference_offset_is_stable():
+    result = _decode(
+        gr_template=0, width=24, height=8, ref_w=24, ref_h=8, dx=1, dy=1,
+        tpgr=True, ref_hex=_TPGR_T0_REF, coded_hex=_TPGR_T0_CODED,
+    )
+    assert result.bitmap_bytes.hex() == (
+        "38991870da94d279929f257d6cb15a9e38f60f02d0fbae8d"
+    )
+
+
+def test_tpgr_template0_uniform_reference_predicts_without_decode():
+    # §6.3.5.6 3d-i: when the 9-bit reference neighbourhood is all-ones (0x1FF)
+    # or all-zero (0x00) the pixel is typical-predicted (TPGRPIX) and copied
+    # without consuming coded bits. An all-ones reference + all-zero coded stream
+    # therefore fills the interior with 1s through the prediction branch.
+    result = _decode(
+        gr_template=0, width=24, height=8, ref_w=24, ref_h=8, dx=0, dy=0,
+        tpgr=True, ref_hex="ff" * 24, coded_hex="00" * 12,
+    )
+    # Interior byte (column 8..15 of an interior row) stays all-ones via the
+    # uniform-neighbourhood copy.
+    assert result.get_pixel(12, 4) == 1
+
+
+# -------------------------------------------------------------------------
 # GenericRefinementRegion segment — header parsing (§7.4.7.2 / §7.4.7.3)
 # -------------------------------------------------------------------------
 

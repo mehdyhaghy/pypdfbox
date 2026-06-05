@@ -64,6 +64,24 @@ def _tpgdon_case(template, width, height):
     )
 
 
+# Extended-template (EXTTEMPLATE=1) nominal AT pixels — the 12 adaptive-template
+# coordinates from §6.2.5.3 Figure 7. Used to exercise the GBTEMPLATE-0 extended
+# (template0b) decode body + its 12-pixel override flag computation.
+_NOMINAL_EXT_AT = [
+    (-2, 0), (0, -2), (-2, -1), (-1, -2), (1, -2), (2, -1),
+    (-3, 0), (-4, 0), (2, -2), (3, -1), (-2, -2), (-3, -1),
+]
+
+
+def _ext_case(pairs, width, height):
+    return (
+        _region_info(width, height)
+        + _gen_flags(template=0, ext=1)
+        + _at(pairs)
+        + CODED
+    )
+
+
 # (name, segment_data_factory)
 _ARITH_CASES = [
     ("template0_nominal", lambda: _arith_case(0, NOMINAL_AT[0], 13, 6)),
@@ -82,6 +100,18 @@ _ARITH_CASES = [
     ("template1_tpgdon", lambda: _tpgdon_case(1, 10, 5)),
     ("template2_tpgdon", lambda: _tpgdon_case(2, 10, 5)),
     ("template3_tpgdon", lambda: _tpgdon_case(3, 10, 5)),
+    # Extended-template (template0b) — nominal AT keeps override off; a single
+    # perturbed AT coord flips override on and drives the 12-pixel override path.
+    ("ext_template_nominal", lambda: _ext_case(_NOMINAL_EXT_AT, 13, 6)),
+    ("ext_template_byte_aligned", lambda: _ext_case(_NOMINAL_EXT_AT, 16, 8)),
+    (
+        "ext_template_at_override",
+        lambda: _ext_case(
+            [(-3, 0), (0, -2), (-2, -1), (-1, -2), (1, -2), (2, -1),
+             (-3, 0), (-4, 0), (2, -2), (3, -1), (-2, -2), (-3, -1)],
+            13, 6,
+        ),
+    ),
 ]
 
 

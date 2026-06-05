@@ -10,7 +10,10 @@ from pypdfbox.pdmodel.interactive.action.pd_target_directory import (
 
 def test_default_fresh_target_directory() -> None:
     td = PDTargetDirectory()
-    assert td.get_relationship() == "C"
+    # Upstream's no-arg constructor produces an empty dictionary — no default
+    # /R relationship is stamped (Apache PDFBox 3.0.7, PDTargetDirectory.java).
+    assert td.get_relationship() is None
+    assert td.get_cos_object().size() == 0
     assert td.get_target_filename() is None
     assert td.get_named_destination() is None
     assert td.get_page_number() is None

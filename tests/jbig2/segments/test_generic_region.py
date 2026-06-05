@@ -237,6 +237,41 @@ def test_arithmetic_decode_at_override(template, pairs, width, expected):
     assert bytes(region.get_region_bitmap().get_byte_array()).hex() == expected
 
 
+# Extended-template (EXTTEMPLATE=1) nominal AT pixels — §6.2.5.3 Figure 7.
+NOMINAL_EXT_AT = [
+    (-2, 0), (0, -2), (-2, -1), (-1, -2), (1, -2), (2, -1),
+    (-3, 0), (-4, 0), (2, -2), (3, -1), (-2, -2), (-3, -1),
+]
+
+
+def test_ext_template_decode_nominal():
+    # GBTEMPLATE 0 with EXTTEMPLATE=1 routes the decode through the 16-context
+    # template0b body. Nominal AT pixels keep the override flags off. Bytes
+    # captured from the upstream 3.0.7 GenericRegion (see the ext_template_*
+    # oracle cases for the live differential).
+    data = _region_info(13, 6) + _gen_flags(template=0, ext=1) + _at(NOMINAL_EXT_AT) + CODED
+    region = _decode(data)
+    bitmap = region.get_region_bitmap()
+    assert bitmap.get_width() == 13
+    assert bitmap.get_height() == 6
+    assert region.use_ext_templates_flag() is True
+    assert region.override is False
+    assert bytes(bitmap.get_byte_array()).hex() == "0000512081c84b38b4600458"
+
+
+def test_ext_template_decode_at_override():
+    # Perturbing AT0 from (-2,0) to (-3,0) flips override on and exercises the
+    # 12-pixel template0b override path.
+    pairs = [(-3, 0)] + NOMINAL_EXT_AT[1:]
+    data = _region_info(13, 6) + _gen_flags(template=0, ext=1) + _at(pairs) + CODED
+    region = _decode(data)
+    assert region.use_ext_templates_flag() is True
+    assert region.override is True
+    assert bytes(region.get_region_bitmap().get_byte_array()).hex() == (
+        "00004200c280cf000c084be0"
+    )
+
+
 def test_decode_caches_bitmap():
     data = _region_info(13, 6) + _gen_flags(template=0) + _at(NOMINAL_AT[0]) + CODED
     region = _decode(data)

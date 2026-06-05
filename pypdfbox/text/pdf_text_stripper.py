@@ -2441,9 +2441,20 @@ class PDFTextStripper:
         # ``isParagraphSeparation`` can compare the current X to the
         # *previous line's* left margin rather than to the prior glyph
         # (PDFTextStripper.java:503, 660, 709-713). The lite stripper
-        # mirrors that here. The flip-axes (rotated-page) path keeps the
-        # legacy prev-only indent heuristic — its transposed frame is not
-        # calibrated for the wrapper-based indent test.
+        # mirrors that here. The flip-axes path keeps the legacy prev-only
+        # indent heuristic — its transposed frame is not calibrated for the
+        # wrapper-based indent test, and (verified wave 1493) the
+        # wrapper-based ``_classify_paragraph_separation`` cannot be reused
+        # there: ``set_should_flip_axes`` is a lite-only *manual* X/Y
+        # transpose with NO upstream counterpart (a full scan of
+        # pdfbox-app-3.0.7.jar finds no ``flipAxes`` symbol) and it carries
+        # no rotation in the coordinate matrix, so ``dir`` stays 0 and the
+        # dir-adjusted fields (``get_x_dir_adj`` / ``get_y_dir_adj``) the
+        # classifier reads are pure identity — there is nothing for them to
+        # normalise. (Page ``/Rotate`` parity is a separate surface handled
+        # by the page-rotation CTM fold in ``LegacyPDFStreamEngine``; see
+        # ``tests/text/oracle/test_rotated_page_extraction_oracle.py`` and
+        # DEFERRED.md.)
         last_line_start: PositionWrapper | None = None
         last_wrapper: PositionWrapper | None = None
         if carry is not None and carry:
@@ -2488,13 +2499,18 @@ class PDFTextStripper:
                 cur_wrapper.set_line_start()
                 last_line_start = cur_wrapper
             if prev is not None:
-                # Flip-axes (rotated-page) extraction keeps the legacy
-                # prev-only line-stepping heuristic — the running-overlap
-                # model is calibrated for the upright frame where Y is the
-                # line-flow axis and ``get_height_dir`` is the glyph's
-                # vertical extent; in the transposed frame the stepping
-                # axis is X and the relevant extent would be the glyph
-                # width, which the overlap model does not track.
+                # Flip-axes extraction keeps the legacy prev-only
+                # line-stepping heuristic — the running-overlap model is
+                # calibrated for the upright frame where Y is the line-flow
+                # axis and ``get_height_dir`` is the glyph's vertical extent;
+                # under the lite-only ``set_should_flip_axes`` transpose the
+                # stepping axis is X and the relevant extent would be the
+                # glyph width, which the overlap model does not track. The
+                # overlap model is NOT reusable here via the dir-adjusted
+                # fields: flip-axes carries no rotation in the matrix
+                # (``dir == 0``), so those fields are identity (verified
+                # wave 1493). Page ``/Rotate`` is a separate surface (the
+                # missing page-rotation CTM fold — DEFERRED.md).
                 if self._flip_axes:
                     line_broke = self._is_line_break(pos, prev)
                 else:
@@ -2769,15 +2785,30 @@ class PDFTextStripper:
         governs; we fall back to the same average-char prong, and finally to
         the legacy ``font_size`` estimate when neither metric is available.
         """
-        # When an explicit space glyph already borders the boundary
-        # (the previous run ends in whitespace, or this run begins with
-        # whitespace), a producer has already encoded the word break in
-        # the content stream. Emitting a gap-based separator on top of it
-        # would double the space — Java's stripper collapses to a single
-        # separator here.
-        if prev.text and prev.text[-1].isspace():
-            return False
-        if pos.text and pos.text[0].isspace():
+        # Upstream gates the gap-driven separator on a single, purely
+        # previous-glyph test (PDFTextStripper.java:670-674):
+        #
+        #     (wordSeparator.isEmpty() ||
+        #         (lastPosition.getUnicode() != null &&
+        #          !lastPosition.getUnicode().endsWith(wordSeparator)))
+        #
+        # i.e. emit the separator unless the *previous* glyph's unicode
+        # already ends with the configured word-separator string. There is
+        # NO suppression keyed on the *current* glyph: when a producer
+        # widens the gap *into* an explicit space glyph (a large ``Tc`` over
+        # ``(AB CD)``), Java emits a gap separator *before* the space glyph
+        # AND keeps the space glyph itself — yielding the double space in
+        # ``A B  C D`` — and only suppresses the redundant separator on the
+        # transition *out of* that space glyph (where the previous glyph's
+        # unicode is the separator). Mirror that exactly: never inspect
+        # ``pos`` here, and key the suppression on whether ``prev`` ends with
+        # the word-separator string (not arbitrary whitespace).
+        separator = self._word_separator
+        if (
+            separator
+            and prev.text is not None
+            and prev.text.endswith(separator)
+        ):
             return False
         if prev.width > 0.0:
             prev_right = prev.x + prev.width if not self._flip_axes else prev.y + prev.width
