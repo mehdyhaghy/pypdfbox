@@ -43,12 +43,16 @@ def test_remote_go_to_raw_d_setter_clears_entry() -> None:
     assert action.get_d() is None
 
 
-def test_remote_go_to_destination_returns_none_for_unhandled_cos_shape() -> None:
+def test_remote_go_to_destination_raises_for_unhandled_cos_shape() -> None:
+    # Upstream parity (wave 1491): get_destination delegates to
+    # PDDestination.create, which raises OSError (Java IOException) for a
+    # /D that is neither an array nor a name/string — here a COSInteger.
     action = PDActionRemoteGoTo()
     action.set_d(COSInteger.get(3))
 
     assert action.get_d() == COSInteger.get(3)
-    assert action.get_destination() is None
+    with pytest.raises(OSError, match="can't convert to Destination"):
+        action.get_destination()
 
 
 def test_rendition_action_annotation_and_rendition_accept_raw_cos_entries() -> None:
@@ -76,7 +80,9 @@ def test_go_to_accepts_non_page_destination_subclass() -> None:
     raw = action.get_cos_object().get_dictionary_object(_D)
     assert isinstance(raw, COSString)
     assert raw.get_string() == "named-target"
-    assert action.get_destination() == "named-target"
+    resolved = action.get_destination()
+    assert isinstance(resolved, PDNamedDestination)
+    assert resolved.get_named_destination() == "named-target"
 
 
 def test_go_to_rejects_page_destination_without_page_dictionary() -> None:

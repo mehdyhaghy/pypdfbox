@@ -454,16 +454,16 @@ def _py_report_legacy(path: Path) -> str:
 
 
 def _py_report_inheritance(path: Path) -> str:
-    """Mirror ``PageInheritanceProbe`` — emits sub-resource counts so
-    merge-vs-replace divergence is detectable.
+    """Mirror ``PageInheritanceProbe`` — emits a ``res`` presence flag plus
+    sub-resource counts so both merge-vs-replace divergence AND the
+    null-vs-empty-bag divergence are detectable.
 
-    Note: a "res" presence flag is intentionally NOT emitted. pypdfbox's
-    :meth:`PDPage.get_resources` materialises an empty ``PDResources``
-    wrapper when no ancestor carries ``/Resources`` while upstream PDFBox
-    returns ``null``; that structural divergence is tracked separately
-    (DEFERRED.md / wave 1454 report). The sub-resource counts below
-    capture the substantive content equivalently — both implementations
-    report 0 entries when there really is nothing inherited.
+    Wave 1491: the ``res`` presence flag is now emitted (1 when
+    :meth:`PDPage.get_resources` returns a wrapper, 0 when it returns
+    ``None``). The strict-null contract was restored this wave (was an
+    empty-bag wrapper from wave 1454), so the flag asserts the no-Resources
+    branch differentially against upstream — counts alone could not tell an
+    empty wrapper apart from ``None``.
     """
     lines: list[str] = []
     doc = PDDocument.load(path)
@@ -475,11 +475,12 @@ def _py_report_inheritance(path: Path) -> str:
             crop = page.get_crop_box()
             rotate = page.get_rotation()
             res = page.get_resources()
+            res_flag = 1 if res is not None else 0
             font_count = len(res.get_font_names()) if res is not None else 0
             xobj_count = len(res.get_x_object_names()) if res is not None else 0
             lines.append(
                 f"page {i} media {_box(media)} crop {_box(crop)} "
-                f"rotate {rotate} "
+                f"rotate {rotate} res {res_flag} "
                 f"font_count {font_count} xobj_count {xobj_count}"
             )
     finally:

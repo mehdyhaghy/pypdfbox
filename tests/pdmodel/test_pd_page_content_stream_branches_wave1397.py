@@ -36,9 +36,9 @@ def test_resource_key_for_color_space_walks_populated_dict_no_match() -> None:
     doc, page = _make_doc_and_page()
     # Pre-populate /Resources/ColorSpace with a dummy entry that does
     # NOT match the cos we'll search for. PDPage.get_resources() returns
-    # a detached PDResources when /Resources is absent — so we must
-    # explicitly set_resources() to persist our pre-populated dict.
-    res = page.get_resources()
+    # None when /Resources is absent (wave 1491 strict-null contract), so
+    # we use get_or_create_resources() to materialise + back-write the bag.
+    res = page.get_or_create_resources()
     cs_dict = COSDictionary()
     other_cos = COSDictionary()
     cs_dict.set_item(COSName.get_pdf_name("CsExisting"), other_cos)
@@ -60,14 +60,14 @@ def test_resource_key_for_property_list_walks_populated_dict_no_match() -> None:
     """Closes 1827->1830, 1828->1827 — pre-populate /Resources/Properties
     with an unrelated entry so the loop iterates and fails to match."""
     doc, page = _make_doc_and_page()
-    res = page.get_resources()
+    res = page.get_or_create_resources()
     props_dict = COSDictionary()
     other_prop_cos = COSDictionary()
     props_dict.set_item(COSName.get_pdf_name("MCExisting"), other_prop_cos)
     res.get_cos_object().set_item(_PROPERTIES, props_dict)
-    # Persist the populated resources back onto the page so the
-    # PDPageContentStream constructor sees them (otherwise PDPage's
-    # detached PDResources fallback discards our injection).
+    # get_or_create_resources() already back-wrote the bag onto the page, so
+    # the PDPageContentStream constructor sees our injected entries (wave 1491
+    # replaced PDPage's empty-bag fallback with the strict-null contract).
     page.set_resources(res)
 
     with PDPageContentStream(doc, page) as cs:

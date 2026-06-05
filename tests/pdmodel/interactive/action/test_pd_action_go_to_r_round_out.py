@@ -18,6 +18,7 @@ from pypdfbox.pdmodel.common.filespecification.pd_simple_file_specification impo
 )
 from pypdfbox.pdmodel.interactive.action import PDActionRemoteGoTo
 from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
+    PDNamedDestination,
     PDPageXYZDestination,
 )
 from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_destination import (
@@ -112,7 +113,9 @@ def test_set_destination_with_string_writes_named_destination() -> None:
     action = PDActionRemoteGoTo()
     action.set_destination("Chapter9")
 
-    assert action.get_destination() == "Chapter9"
+    resolved = action.get_destination()
+    assert isinstance(resolved, PDNamedDestination)
+    assert resolved.get_named_destination() == "Chapter9"
     raw = action.get_cos_object().get_dictionary_object(_D)
     assert isinstance(raw, COSString)
 

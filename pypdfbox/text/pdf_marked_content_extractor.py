@@ -235,7 +235,11 @@ class PDFMarkedContentExtractor(PDFTextStripper):
         if isinstance(prop, COSName) and self._active_page is not None:
             try:
                 resources = self._active_page.get_resources()
-                pl = resources.get_property_list(prop)
+                pl = (
+                    resources.get_property_list(prop)
+                    if resources is not None
+                    else None
+                )
                 if pl is not None:
                     return pl.get_cos_object()
             except Exception:  # noqa: BLE001 — defensive: malformed resources

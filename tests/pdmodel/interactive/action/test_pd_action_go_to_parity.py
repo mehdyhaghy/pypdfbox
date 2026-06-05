@@ -3,6 +3,7 @@ from __future__ import annotations
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSString
 from pypdfbox.pdmodel.interactive.action import PDActionGoTo
 from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
+    PDNamedDestination,
     PDPageDestination,
     PDPageXYZDestination,
 )
@@ -32,21 +33,26 @@ def test_get_destination_dispatches_array_to_page_destination_subclass() -> None
     assert isinstance(resolved, PDPageXYZDestination)
 
 
-def test_get_destination_dispatches_string_to_str() -> None:
-    """``/D`` as a ``COSString`` is returned as a plain ``str``."""
+def test_get_destination_dispatches_string_to_named_destination() -> None:
+    """``/D`` as a ``COSString`` dispatches to a ``PDNamedDestination``
+    (upstream parity — PDDestination.create wraps the string form)."""
     action = PDActionGoTo()
     action.get_cos_object().set_item(_D, COSString("Chapter1"))
 
-    assert action.get_destination() == "Chapter1"
+    resolved = action.get_destination()
+    assert isinstance(resolved, PDNamedDestination)
+    assert resolved.get_named_destination() == "Chapter1"
 
 
-def test_get_destination_dispatches_name_to_str() -> None:
-    """``/D`` as a ``COSName`` (also a valid named-destination form) is
-    returned as a plain ``str``."""
+def test_get_destination_dispatches_name_to_named_destination() -> None:
+    """``/D`` as a ``COSName`` (also a valid named-destination form)
+    dispatches to a ``PDNamedDestination``."""
     action = PDActionGoTo()
     action.get_cos_object().set_item(_D, COSName.get_pdf_name("Chapter2"))
 
-    assert action.get_destination() == "Chapter2"
+    resolved = action.get_destination()
+    assert isinstance(resolved, PDNamedDestination)
+    assert resolved.get_named_destination() == "Chapter2"
 
 
 def test_set_destination_pd_page_destination_round_trips() -> None:
@@ -75,7 +81,9 @@ def test_set_destination_named_string_round_trips() -> None:
     raw = action.get_cos_object().get_dictionary_object(_D)
     assert isinstance(raw, COSString)
     assert raw.get_string() == "named-dest"
-    assert action.get_destination() == "named-dest"
+    resolved = action.get_destination()
+    assert isinstance(resolved, PDNamedDestination)
+    assert resolved.get_named_destination() == "named-dest"
 
 
 def test_set_destination_none_clears_d() -> None:

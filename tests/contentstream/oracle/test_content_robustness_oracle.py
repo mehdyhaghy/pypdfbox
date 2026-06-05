@@ -168,7 +168,7 @@ def _add_square_font(page: PDPage) -> str:
     widths.add(COSInteger.get(1000))
     font_dict.set_item(COSName.get_pdf_name("Widths"), widths)
     font = PDTrueTypeFont(font_dict)
-    resources = page.get_resources()
+    resources = page.get_or_create_resources()
     fname = resources.add(font)
     page.set_resources(resources)
     return fname.get_name()

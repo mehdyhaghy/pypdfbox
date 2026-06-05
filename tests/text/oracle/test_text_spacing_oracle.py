@@ -99,7 +99,7 @@ def _build_pdf(content: bytes, path: str) -> None:
         font = PDFontFactory.create_default_font(
             Standard14Fonts.FontName.HELVETICA.value
         )
-        resources = page.get_resources()
+        resources = page.get_or_create_resources()
         font_key = resources.add(font)
         page.set_resources(resources)
         rewritten = content.replace(

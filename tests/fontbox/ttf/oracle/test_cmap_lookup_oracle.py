@@ -106,7 +106,7 @@ def _build_nonsymbolic_pdf(font_bytes: bytes, dest: Path) -> None:
         page = PDPage()
         doc.add_page(page)
         font = PDTrueTypeFont.load(doc, font_bytes, WinAnsiEncoding.INSTANCE)
-        res = page.get_resources()
+        res = page.get_or_create_resources()
         res.put(
             COSName.get_pdf_name("Font"),
             COSName.get_pdf_name("F1"),
@@ -132,7 +132,7 @@ def _build_symbolic_pdf(font_bytes: bytes, dest: Path) -> None:
         descriptor = font.get_font_descriptor()
         descriptor.set_flags(_FLAG_SYMBOLIC)
         font.get_cos_object().set_item(COSName.get_pdf_name("Encoding"), None)
-        res = page.get_resources()
+        res = page.get_or_create_resources()
         res.put(
             COSName.get_pdf_name("Font"),
             COSName.get_pdf_name("F1"),

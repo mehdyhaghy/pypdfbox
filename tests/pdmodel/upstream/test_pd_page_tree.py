@@ -111,4 +111,7 @@ def test_node_loop() -> None:
         PDPageTree.get_inheritable_attribute(raw_page, COSName.RESOURCES)  # type: ignore[attr-defined]
         is None
     )
-    assert page.get_resources().get_cos_object().is_empty()
+    # Wave 1491: with no /Resources reachable (the loop guard stops the walk),
+    # get_resources() returns None per upstream PDPage.getResources()'s
+    # strict-null contract (was an empty-bag wrapper pre-1491).
+    assert page.get_resources() is None

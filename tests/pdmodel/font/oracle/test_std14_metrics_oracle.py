@@ -44,7 +44,6 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
 from tests.oracle.harness import requires_oracle, run_probe_text
 
@@ -89,10 +88,22 @@ def _fmt(v: float) -> str:
 
 def _make_font(base_font: str) -> PDType1Font:
     """Construct a non-embedded Standard-14 font from its canonical name —
-    mirrors the probe's ``new PDType1Font(FontName.X)``."""
-    font_dict = COSDictionary()
-    font_dict.set_name(COSName.get_pdf_name("BaseFont"), base_font)
-    return PDType1Font(font_dict)
+    mirrors the probe's ``new PDType1Font(FontName.X)`` *exactly*.
+
+    ``PDType1Font.standard14`` ports the upstream direct constructor
+    (``PDType1Font(FontName)``, PDType1Font.java lines 104-148): the twelve
+    Latin cores are assigned ``WinAnsiEncoding`` with an explicit
+    ``/Encoding /WinAnsiEncoding`` written into the dict, and Symbol /
+    ZapfDingbats get their FontSpecific built-in encoding assigned in
+    memory. That last detail matters for ZapfDingbats codes 128-141, where
+    the built-in ``ZapfDingbatsEncoding`` returns ``.notdef`` (Java emits
+    width 250) but the AFM's ``Type1Encoding`` would map ``a89``-``a96``
+    (non-zero widths). A core font *parsed from a PDF dict with NO
+    /Encoding* now reads AdobeStandardEncoding from its AFM instead (the
+    toUnicode-vs-WinAnsi split closed in wave 1491) — a different
+    construction path than the one this probe exercises.
+    """
+    return PDType1Font.standard14(base_font)
 
 
 def _py_std14_metrics() -> list[str]:

@@ -243,7 +243,7 @@ def _build_text_clip(path: Path) -> None:
     font_dict.set_item(COSName.get_pdf_name("Widths"), widths)
     font = PDTrueTypeFont(font_dict)
 
-    resources = page.get_resources()
+    resources = page.get_or_create_resources()
     fname = resources.add(font)
     page.set_resources(resources)
     ops = (

@@ -75,7 +75,10 @@ def _build_pdf(content: bytes, path: str, *, win_ansi: bool) -> None:
                 COSName.get_pdf_name("Encoding"),
                 COSName.get_pdf_name("WinAnsiEncoding"),
             )
-        resources = page.get_resources()
+        # A freshly-built page carries no /Resources; use the create-and-attach
+        # accessor (get_resources() returns None for an absent bag since the
+        # wave-1491 strict-null restoration).
+        resources = page.get_or_create_resources()
         font_key = resources.add(font)
         page.set_resources(resources)
         rewritten = content.replace(b"/F1", b"/" + font_key.get_name().encode("ascii"))
@@ -171,25 +174,24 @@ def test_soft_hyphen_preserved_not_stripped(tmp_path: Path) -> None:
 
 
 @requires_oracle
-@pytest.mark.xfail(
-    reason="Non-embedded Standard-14 default-encoding divergence (NOT soft-hyphen "
-    "logic). When a Standard-14 Latin font is loaded from a PDF dict that has NO "
-    "/Encoding entry, Apache PDFBox's PDType1Font.readEncodingFromFont() builds a "
-    "Type1Encoding from the bundled Adobe AFM (EncodingScheme AdobeStandardEncoding "
-    "== StandardEncoding), so byte 0xAD decodes to U+203A guilsinglright (0x27 -> "
-    "U+2018, 0x60 -> U+2018/quoteleft etc.). pypdfbox's read_encoding_from_font() "
-    "returns WinAnsiEncoding.INSTANCE for that same case, so 0xAD decodes to U+00AD "
-    "sfthyphen. The WinAnsi fallback was a deliberate wave-1431 choice because it "
-    "makes the per-code AFM advance widths match Java's *direct* "
-    "new PDType1Font(FontName) construction (which DOES use WinAnsi) — the "
-    "std14-metrics oracle depends on it. Reconciling the two (Type1Encoding-from-AFM "
-    "for toUnicode while keeping WinAnsi advances) is a cross-cutting font-encoding "
-    "change out of this text-extraction wave's scope. Deferred (DEFERRED.md). With "
-    "an explicit /WinAnsiEncoding the soft-hyphen extraction is at full parity "
-    "(asserted above).",
-    strict=True,
-)
 def test_no_encoding_std14_default_matches_pdfbox(tmp_path: Path) -> None:
+    """Non-embedded Standard-14 default-encoding parity (closed wave 1491).
+
+    When a Standard-14 Latin font is loaded from a PDF dict that has NO
+    ``/Encoding`` entry, Apache PDFBox's ``PDType1Font.readEncodingFromFont()``
+    (PDType1Font.java lines 495-498) builds a ``Type1Encoding`` from the
+    bundled Adobe AFM (``EncodingScheme AdobeStandardEncoding``), so byte
+    0xAD decodes to U+203A (guilsinglright), 0x27 -> U+2019 (quoteright),
+    0x60 -> U+2018 (quoteleft) — NOT the WinAnsi spellings. pypdfbox now
+    reads the same AFM-driven ``Type1Encoding`` for that case, so the
+    extracted codepoints match the oracle.
+
+    The WinAnsi default that the *direct* ``new PDType1Font(FontName)``
+    constructor uses is a separate path: that constructor writes an
+    explicit ``/Encoding /WinAnsiEncoding`` into the dict, so the
+    advance-width parity pinned by ``test_std14_metrics_oracle.py`` is
+    preserved (that probe's fonts carry the explicit /Encoding).
+    """
     pdf = tmp_path / "shy_noenc.pdf"
     _build_pdf(_MID_WORD, str(pdf), win_ansi=False)
     java_text, java_cps = _java(str(pdf))

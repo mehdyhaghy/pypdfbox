@@ -25,7 +25,7 @@ from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.font import PDType1Font
 from pypdfbox.pdmodel.font.encoding import (
     DictionaryEncoding,
-    WinAnsiEncoding,
+    Type1Encoding,
 )
 from pypdfbox.pdmodel.font.pd_font_descriptor import (
     FLAG_SYMBOLIC,
@@ -42,7 +42,7 @@ def test_read_encoding_unknown_named_encoding_warns_and_falls_back(
     """An unrecognised name -> warning + read_encoding_from_font fallback."""
     font = PDType1Font()
     # Standard 14 helvetica so the read_encoding_from_font fallback resolves
-    # to WinAnsiEncoding rather than None.
+    # to an AFM-derived Type1Encoding rather than None.
     font.get_cos_object().set_name(COSName.get_pdf_name("BaseFont"), "Helvetica")
     font.get_cos_object().set_item(
         COSName.get_pdf_name("Encoding"),
@@ -50,10 +50,11 @@ def test_read_encoding_unknown_named_encoding_warns_and_falls_back(
     )
     with caplog.at_level(logging.WARNING, logger="pypdfbox.pdmodel.font.pd_simple_font"):
         font.read_encoding()
-    # Fell back to whatever read_encoding_from_font returns (Standard14
-    # Helvetica -> WinAnsiEncoding, the Acrobat default for the unembedded
-    # Latin core fonts; verified against the live PDFBox oracle).
-    assert isinstance(font.get_encoding_typed(), WinAnsiEncoding)
+    # Fell back to whatever read_encoding_from_font returns: a dict-loaded
+    # Standard 14 Helvetica with no usable /Encoding reads its built-in
+    # AdobeStandardEncoding from the bundled AFM as a Type1Encoding
+    # (PDType1Font.java lines 495-498; wave-1491 toUnicode/WinAnsi split).
+    assert isinstance(font.get_encoding_typed(), Type1Encoding)
     assert any("Unknown encoding" in rec.getMessage() for rec in caplog.records)
 
 

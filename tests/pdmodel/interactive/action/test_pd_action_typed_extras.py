@@ -17,6 +17,7 @@ from pypdfbox.pdmodel.interactive.action.pd_action_sound import PDActionSound
 from pypdfbox.pdmodel.interactive.action.pd_action_transition import PDActionTransition
 from pypdfbox.pdmodel.interactive.action.pd_target_directory import PDTargetDirectory
 from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
+    PDNamedDestination,
     PDPageXYZDestination,
 )
 from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_destination import (
@@ -261,12 +262,15 @@ def test_get_destination_array_returns_pd_destination() -> None:
     assert isinstance(resolved, PDPageXYZDestination)
 
 
-def test_get_destination_string_returns_str() -> None:
-    """``/D`` as a ``COSString`` named destination is returned as ``str``."""
+def test_get_destination_string_returns_named_destination() -> None:
+    """``/D`` as a ``COSString`` named destination dispatches to a
+    ``PDNamedDestination`` (upstream parity via PDDestination.create)."""
     action = PDActionRemoteGoTo()
     action.set_d(COSString("Chapter1"))
 
-    assert action.get_destination() == "Chapter1"
+    resolved = action.get_destination()
+    assert isinstance(resolved, PDNamedDestination)
+    assert resolved.get_named_destination() == "Chapter1"
 
 
 def test_get_destination_none_when_absent() -> None:

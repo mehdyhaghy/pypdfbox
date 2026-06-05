@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.interactive.action import PDActionGoTo
 
@@ -32,7 +34,12 @@ def test_goto_has_destination_reports_malformed_d_presence() -> None:
     raw.set_item(_D, COSDictionary())
     action = PDActionGoTo(raw)
 
-    assert action.get_destination() is None
+    # Upstream parity (wave 1491): get_destination delegates to
+    # PDDestination.create, which raises OSError for a malformed /D (here a
+    # bare COSDictionary). has_destination / is_empty / clear_destination
+    # still track presence regardless of the malformed shape.
+    with pytest.raises(OSError, match="can't convert to Destination"):
+        action.get_destination()
     assert action.has_destination() is True
     assert action.is_empty() is False
 

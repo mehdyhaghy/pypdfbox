@@ -13,6 +13,9 @@ from pypdfbox.pdmodel.interactive.action import (
     PDActionJavaScript,
     PDActionURI,
 )
+from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_named_destination import (
+    PDNamedDestination,
+)
 from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_xyz_destination import (
     PDPageXYZDestination,
 )
@@ -57,7 +60,9 @@ def test_set_destination_named_string_unchanged() -> None:
     action = PDActionGoTo()
     action.set_destination("MySection")
 
-    assert action.get_destination() == "MySection"
+    resolved = action.get_destination()
+    assert isinstance(resolved, PDNamedDestination)
+    assert resolved.get_named_destination() == "MySection"
 
 
 # ---------------------------------------------------------------------------

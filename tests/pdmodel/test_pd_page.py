@@ -92,6 +92,92 @@ def test_set_resources_replaces_dict() -> None:
     assert page.get_resources().get_cos_object() is new_res
 
 
+def test_get_resources_none_when_no_ancestor_carries_resources() -> None:
+    """Wave 1491 strict-null contract: a freshly-built page whose tree has no
+    /Resources anywhere returns None from get_resources() (matches upstream
+    PDPage.getResources()), and does NOT back-write an empty bag onto the
+    page dict."""
+    page = PDPage()
+    assert page.get_resources() is None
+    # No back-write side effect: the page COS dict still lacks /Resources.
+    assert not page.get_cos_object().contains_key(COSName.RESOURCES)  # type: ignore[attr-defined]
+    # Idempotent — a second call also returns None and leaves the dict clean.
+    assert page.get_resources() is None
+    assert not page.get_cos_object().contains_key(COSName.RESOURCES)  # type: ignore[attr-defined]
+
+
+def test_get_resources_none_when_resources_value_not_a_dict() -> None:
+    """A non-dictionary /Resources value resolves to None (upstream casts to
+    COSDictionary; a non-dict cast yields null)."""
+    page_dict = COSDictionary()
+    page_dict.set_item(COSName.TYPE, COSName.PAGE)  # type: ignore[attr-defined]
+    page_dict.set_item(COSName.RESOURCES, COSInteger.get(7))  # type: ignore[attr-defined]
+    page = PDPage(page_dict)
+    assert page.get_resources() is None
+
+
+def test_get_or_create_resources_materialises_and_back_writes() -> None:
+    """get_or_create_resources() creates an empty PDResources and attaches it
+    to the page exactly like upstream's inline
+    ``if (resources == null) { resources = new PDResources();
+    page.setResources(resources); }`` idiom."""
+    page = PDPage()
+    assert page.get_resources() is None
+    res = page.get_or_create_resources()
+    assert res is not None
+    # Back-written onto the page dict.
+    assert page.get_cos_object().contains_key(COSName.RESOURCES)  # type: ignore[attr-defined]
+    assert page.get_cos_object().get_dictionary_object(  # type: ignore[attr-defined]
+        COSName.RESOURCES  # type: ignore[attr-defined]
+    ) is res.get_cos_object()
+    # get_resources() now resolves the freshly-attached bag.
+    again = page.get_resources()
+    assert again is not None
+    assert again.get_cos_object() is res.get_cos_object()
+
+
+def test_get_or_create_resources_returns_existing_without_overwriting() -> None:
+    """When the page already carries /Resources, get_or_create_resources()
+    returns the existing wrapper and does not replace the dict."""
+    page = PDPage()
+    own_res = COSDictionary()
+    page.set_resources(own_res)
+    res = page.get_or_create_resources()
+    assert res.get_cos_object() is own_res
+
+
+def test_get_or_create_resources_resolves_inherited_without_back_write() -> None:
+    """When an ancestor carries /Resources, get_or_create_resources() returns
+    the inherited dict and does NOT shadow the parent by back-writing onto the
+    leaf (it only creates+attaches when the resolved value is None)."""
+    parent_res = COSDictionary()
+    parent = COSDictionary()
+    parent.set_item(COSName.RESOURCES, parent_res)  # type: ignore[attr-defined]
+    child_dict = COSDictionary()
+    child_dict.set_item(COSName.TYPE, COSName.PAGE)  # type: ignore[attr-defined]
+    child_dict.set_item(COSName.PARENT, parent)  # type: ignore[attr-defined]
+    page = PDPage(child_dict)
+    res = page.get_or_create_resources()
+    assert res.get_cos_object() is parent_res
+    # Leaf dict still has no own /Resources entry — parent not shadowed.
+    assert not child_dict.contains_key(COSName.RESOURCES)  # type: ignore[attr-defined]
+
+
+def test_get_resources_inherited_still_resolved() -> None:
+    """Sanity: inherited /Resources still resolve through get_resources() after
+    the strict-null flip (the production-real path is unaffected)."""
+    parent_res = COSDictionary()
+    parent = COSDictionary()
+    parent.set_item(COSName.RESOURCES, parent_res)  # type: ignore[attr-defined]
+    child_dict = COSDictionary()
+    child_dict.set_item(COSName.TYPE, COSName.PAGE)  # type: ignore[attr-defined]
+    child_dict.set_item(COSName.PARENT, parent)  # type: ignore[attr-defined]
+    page = PDPage(child_dict)
+    resolved = page.get_resources()
+    assert resolved is not None
+    assert resolved.get_cos_object() is parent_res
+
+
 def test_get_contents_empty_when_absent() -> None:
     page = PDPage()
     assert page.get_contents() == b""

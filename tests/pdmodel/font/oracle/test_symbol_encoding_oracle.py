@@ -33,7 +33,6 @@ jar / JDK. Hand-authored (not ported from upstream JUnit).
 
 from __future__ import annotations
 
-from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.font.pd_type1_font import PDType1Font
 from tests.oracle.harness import requires_oracle, run_probe_text
 
@@ -43,10 +42,15 @@ _FONT_NAMES = [PDType1Font.SYMBOL, PDType1Font.ZAPF_DINGBATS]
 
 def _make_font(base_font: str) -> PDType1Font:
     """Construct a non-embedded Standard-14 font from its canonical name —
-    mirrors the probe's ``new PDType1Font(FontName.X)``."""
-    font_dict = COSDictionary()
-    font_dict.set_name(COSName.get_pdf_name("BaseFont"), base_font)
-    return PDType1Font(font_dict)
+    mirrors the probe's *direct* ``new PDType1Font(FontName.X)`` constructor
+    via :meth:`PDType1Font.standard14`. That constructor assigns the
+    FontSpecific built-in ``SymbolEncoding`` / ``ZapfDingbatsEncoding``
+    singletons in memory (so ``getEncoding().getClass()`` reports those
+    class names, and ZapfDingbats codes 128-141 stay ``.notdef``). A
+    dict-loaded core with NO /Encoding instead reads the AFM's
+    ``Type1Encoding`` (wave-1491 toUnicode split), where those codes map to
+    real ``a89``-``a96`` glyphs — a different construction path."""
+    return PDType1Font.standard14(base_font)
 
 
 def _fmt_unicode(uni: str | None) -> str:

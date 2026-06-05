@@ -359,10 +359,17 @@ class PDFontFactory:
         canonical = Standard14Fonts.get_mapped_font_name(name)
         if canonical is None:
             canonical = Standard14Fonts.HELVETICA
-        font_dict = COSDictionary()
-        font_dict.set_name(_SUBTYPE, PDType1Font.SUB_TYPE)
-        font_dict.set_name(_BASE_FONT, canonical)
-        return PDType1Font(font_dict)
+        # Mirror the upstream *direct* ``PDType1Font(FontName)`` constructor
+        # (PDType1Font.java lines 104-148) via ``PDType1Font.standard14``:
+        # the two FontSpecific cores (Symbol / ZapfDingbats) get their
+        # built-in encoding assigned in memory, every other core font is
+        # assigned ``WinAnsiEncoding`` AND has an explicit
+        # ``/Encoding /WinAnsiEncoding`` written into the dict. This is what
+        # keeps a default-constructed core font on the WinAnsi advance-width
+        # / glyph-name path; a core *parsed from a PDF dict with NO
+        # /Encoding* instead reads its built-in AdobeStandardEncoding from
+        # the AFM (the toUnicode-vs-WinAnsi split closed in wave 1491).
+        return PDType1Font.standard14(canonical)
 
     # ---------- font-mapper hooks ----------
 

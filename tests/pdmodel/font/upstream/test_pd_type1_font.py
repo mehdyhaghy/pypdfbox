@@ -188,44 +188,63 @@ def test_get_bounding_box_cached() -> None:
 # ---------- read_encoding_from_font (Standard 14 family-default) ----------
 
 
-def test_read_encoding_from_font_standard_14_returns_win_ansi_encoding() -> None:
-    """Non-embedded Standard 14 (non-Symbol/Dingbats) → WinAnsiEncoding.
+def test_read_encoding_from_font_standard_14_returns_afm_type1_encoding() -> None:
+    """Non-embedded Standard 14 (dict-loaded, no /Encoding) →
+    ``Type1Encoding`` built from the bundled Adobe AFM.
 
-    Verified against the live PDFBox 3.0.7 oracle (Std14MetricsProbe):
-    ``new PDType1Font(FontName.HELVETICA).getEncoding()`` is
-    ``WinAnsiEncoding``, not StandardEncoding — Acrobat treats the
-    unembedded Latin core fonts as WinAnsi, so code 39 -> ``quotesingle``
-    (191) and code 96 -> ``grave`` (333). Using StandardEncoding mapped
-    those to ``quoteright`` (222) / ``quoteleft`` (222) and broke the AFM
-    per-glyph advance for every disagreeing code."""
-    from pypdfbox.pdmodel.font.encoding.win_ansi_encoding import WinAnsiEncoding
+    Mirrors upstream ``PDType1Font.readEncodingFromFont`` (PDType1Font.java
+    lines 495-498): ``new Type1Encoding(getStandard14AFM())``. The AFM's
+    ``EncodingScheme`` is ``AdobeStandardEncoding`` for the Latin cores, so
+    code 0x27 -> ``quoteright`` and 0x60 -> ``quoteleft`` (NOT the WinAnsi
+    ``quotesingle`` / ``grave``). The *direct* ``PDType1Font(FontName)``
+    constructor — ported as :meth:`PDType1Font.standard14` — uses WinAnsi
+    instead; that split is closed in wave 1491."""
+    from pypdfbox.pdmodel.font.encoding.type1_encoding import Type1Encoding
 
     font = PDType1Font()
     font.get_cos_object().set_name(_BASE_FONT, "Helvetica")
     enc = font.read_encoding_from_font()
-    assert enc is WinAnsiEncoding.INSTANCE
+    assert isinstance(enc, Type1Encoding)
+    # AdobeStandardEncoding code points, not WinAnsi.
+    assert enc.get_name(0x27) == "quoteright"
+    assert enc.get_name(0x60) == "quoteleft"
+    assert enc.get_name(0xAD) == "guilsinglright"
 
 
-def test_read_encoding_from_font_symbol_returns_symbol_encoding() -> None:
-    """Standard 14 Symbol → SymbolEncoding (the AFM's built-in encoding)."""
+def test_read_encoding_from_font_symbol_returns_afm_type1_encoding() -> None:
+    """Standard 14 Symbol (dict-loaded) → AFM ``Type1Encoding``.
+
+    Upstream takes the same ``new Type1Encoding(getStandard14AFM())`` path
+    for Symbol; the Symbol AFM's FontSpecific codes are byte-for-byte
+    identical to ``SymbolEncoding`` over the full code range."""
     from pypdfbox.pdmodel.font.encoding.symbol_encoding import SymbolEncoding
+    from pypdfbox.pdmodel.font.encoding.type1_encoding import Type1Encoding
 
     font = PDType1Font()
     font.get_cos_object().set_name(_BASE_FONT, "Symbol")
     enc = font.read_encoding_from_font()
-    assert enc is SymbolEncoding.INSTANCE
+    assert isinstance(enc, Type1Encoding)
+    # The AFM-derived table matches SymbolEncoding exactly.
+    ref = SymbolEncoding.INSTANCE
+    assert all(enc.get_name(c) == ref.get_name(c) for c in range(256))
 
 
-def test_read_encoding_from_font_zapf_dingbats_returns_dingbats_encoding() -> None:
-    """Standard 14 ZapfDingbats → ZapfDingbatsEncoding."""
-    from pypdfbox.pdmodel.font.encoding.zapf_dingbats_encoding import (
-        ZapfDingbatsEncoding,
-    )
+def test_read_encoding_from_font_zapf_dingbats_returns_afm_type1_encoding() -> None:
+    """Standard 14 ZapfDingbats (dict-loaded) → AFM ``Type1Encoding``.
+
+    Upstream uses ``new Type1Encoding(getStandard14AFM())`` here too. The
+    ZapfDingbats AFM maps codes 128-141 to real glyphs (``a89``-``a96``)
+    that the built-in ``ZapfDingbatsEncoding`` leaves as ``.notdef`` — so
+    the dict-loaded encoding genuinely differs from the direct-constructor
+    encoding at those codes."""
+    from pypdfbox.pdmodel.font.encoding.type1_encoding import Type1Encoding
 
     font = PDType1Font()
     font.get_cos_object().set_name(_BASE_FONT, "ZapfDingbats")
     enc = font.read_encoding_from_font()
-    assert enc is ZapfDingbatsEncoding.INSTANCE
+    assert isinstance(enc, Type1Encoding)
+    # AFM-only glyph the built-in ZapfDingbatsEncoding lacks.
+    assert enc.get_name(128) == "a89"
 
 
 def test_read_encoding_from_font_no_program_returns_standard() -> None:

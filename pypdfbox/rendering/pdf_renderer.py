@@ -6191,6 +6191,14 @@ class PDFRenderer(PDFStreamEngine):
             # PDF spec §11.6.5: an image XObject with /SMask carries a
             # separate grayscale alpha mask. Decode it and convert the
             # paste image to RGBA so the paste path can honour the alpha.
+            #
+            # Mask precedence mirrors upstream PDImageXObject.getImage /
+            # applyMask (Java lines 487-512, 679): when /SMask is present it
+            # overwrites the alpha band wholesale, so any color-key /Mask array
+            # is discarded (the SMask wins) — verified against the 3.0.7 live
+            # oracle (tests/.../oracle/test_color_key_mask_smask_oracle.py).
+            # Only with NO /SMask does an explicit-stencil /Mask stream or a
+            # standalone color-key /Mask array take effect.
             try:
                 smask = xobject.get_soft_mask()
             except Exception:  # noqa: BLE001

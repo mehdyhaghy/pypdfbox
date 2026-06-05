@@ -13,6 +13,9 @@ import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 from pypdfbox.pdmodel.interactive.action.pd_action_go_to import PDActionGoTo
+from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_named_destination import (
+    PDNamedDestination,
+)
 from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_page_fit_destination import (
     PDPageFitDestination,
 )
@@ -65,10 +68,14 @@ def test_set_destination_rejects_non_page_dict_first_element():
 def test_set_destination_with_named_destination_string():
     # /D may be a string (named destination). Upstream stores via
     # ``setItem`` of the raw string; pypdfbox uses set_string. Either way
-    # the round-trip recovers the name.
+    # the round-trip recovers the name. getDestination dispatches the
+    # string form through PDDestination.create → PDNamedDestination
+    # (PDActionGoTo.java line 66-69), matching upstream exactly.
     action = PDActionGoTo()
     action.set_destination("Chapter1")
-    assert action.get_destination() == "Chapter1"
+    resolved = action.get_destination()
+    assert isinstance(resolved, PDNamedDestination)
+    assert resolved.get_named_destination() == "Chapter1"
 
 
 def test_set_destination_with_cos_array_passthrough():
@@ -85,7 +92,9 @@ def test_set_destination_with_cos_array_passthrough():
 def test_set_destination_none_removes_entry():
     action = PDActionGoTo()
     action.set_destination("Foo")
-    assert action.get_destination() == "Foo"
+    resolved = action.get_destination()
+    assert isinstance(resolved, PDNamedDestination)
+    assert resolved.get_named_destination() == "Foo"
     action.set_destination(None)
     assert action.get_destination() is None
 

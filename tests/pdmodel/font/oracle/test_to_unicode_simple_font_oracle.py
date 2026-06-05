@@ -105,7 +105,7 @@ def _build_pdf(path: Path) -> None:
     try:
         page = PDPage(PDRectangle(0, 0, 200, 200))
         doc.add_page(page)
-        res = page.get_resources()
+        res = page.get_or_create_resources()
         res.put(_name("Font"), _name("F1"), _build_font_dict())
         page.set_resources(res)
         shown = bytes(_SHOWN_CODES)

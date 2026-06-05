@@ -15,14 +15,22 @@ import org.apache.pdfbox.text.PDFTextStripper;
  * identical in shape to TextExtractProbe but exists as a named entry point for
  * the vertical-writing-mode reading-order surface.
  *
- * Usage: java -cp <pdfbox-app.jar>:<build> VerticalTextStripProbe input.pdf
+ * Usage: java -cp <pdfbox-app.jar>:<build> VerticalTextStripProbe input.pdf [sort]
  * Output: the extracted text, UTF-8, to stdout (no extra framing).
+ *
+ * When the optional second argument equals "sort", the stripper is run with
+ * setSortByPosition(true) so the multi-column reading order (columns ordered
+ * right-to-left) can be checked against the Python comparator.
  */
 public final class VerticalTextStripProbe {
     public static void main(String[] args) throws Exception {
         PrintStream out = new PrintStream(System.out, true, "UTF-8");
         try (PDDocument doc = Loader.loadPDF(new File(args[0]))) {
-            out.print(new PDFTextStripper().getText(doc));
+            PDFTextStripper stripper = new PDFTextStripper();
+            if (args.length > 1 && "sort".equals(args[1])) {
+                stripper.setSortByPosition(true);
+            }
+            out.print(stripper.getText(doc));
         }
     }
 }

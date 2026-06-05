@@ -53,10 +53,12 @@ def test_item_named_destination_unresolved_skips_page(capsys) -> None:
     assert "Destination page:" not in out
 
 
-def test_goto_action_named_destination_lands_in_class_fallback(capsys) -> None:
-    """A GoTo action with a named destination surfaces as a ``str`` from
-    ``get_destination`` (not a ``PDNamedDestination``), so it lands in the
-    class-name fallback rather than the (unreachable) named-destination arm.
+def test_goto_action_named_destination_resolves_via_named_arm(capsys) -> None:
+    """A GoTo action with a named destination surfaces as a
+    ``PDNamedDestination`` from ``get_destination`` (upstream parity, wave
+    1491), so it lands in the named-destination arm. The name does not
+    resolve to any page in the document, so no ``Destination page:`` line
+    is emitted — but it is *not* a class-name fallback for ``str`` either.
     """
     doc = PDDocument()
     try:
@@ -74,4 +76,5 @@ def test_goto_action_named_destination_lands_in_class_fallback(capsys) -> None:
         doc.close()
     out = capsys.readouterr().out
     assert "Goto Named\n" in out
-    assert "Destination class: str\n" in out
+    assert "Destination class: str\n" not in out
+    assert "Destination page:" not in out

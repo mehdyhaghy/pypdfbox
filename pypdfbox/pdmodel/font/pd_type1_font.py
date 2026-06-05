@@ -138,6 +138,64 @@ class PDType1Font(PDSimpleFont):
         PDType1FontEmbedder(document, font_dict, pfb_stream, encoding)
         return cls(font_dict)
 
+    @classmethod
+    def standard14(cls, base_font: str) -> PDType1Font:
+        """Build a non-embedded Standard 14 font from its canonical
+        PostScript name, mirroring upstream's *direct*
+        ``PDType1Font(FontName)`` constructor (PDType1Font.java lines
+        104-148).
+
+        The direct constructor assigns the font's encoding **in memory**:
+
+        * ``ZapfDingbats`` -> ``ZapfDingbatsEncoding.INSTANCE`` (line 113),
+        * ``Symbol`` -> ``SymbolEncoding.INSTANCE`` (line 116),
+        * every other (Latin) core -> ``WinAnsiEncoding.INSTANCE`` *and*
+          an explicit ``/Encoding /WinAnsiEncoding`` written into the dict
+          (lines 119-120).
+
+        This is deliberately distinct from loading the *same* base font
+        from a PDF dict that carries **no** ``/Encoding`` entry: that path
+        reads the built-in ``Type1Encoding`` from the bundled AFM (see
+        :meth:`read_encoding_from_font`), which for ZapfDingbats differs
+        from ``ZapfDingbatsEncoding`` at codes 128-141 (a89-a96 etc.) and
+        for the Latin cores yields AdobeStandardEncoding rather than
+        WinAnsi. Callers that want the Acrobat-default core font (the
+        ``PDFontFactory.create_default_font`` behaviour) use this
+        constructor; callers parsing a real PDF font dict use
+        ``cls(font_dict)``.
+        """
+        from .encoding.symbol_encoding import SymbolEncoding
+        from .encoding.zapf_dingbats_encoding import ZapfDingbatsEncoding
+
+        canonical = Standard14Fonts.get_mapped_font_name(base_font) or base_font
+        font_dict = COSDictionary()
+        font_dict.set_name(COSName.get_pdf_name("Subtype"), cls.SUB_TYPE)
+        font_dict.set_name(_BASE_FONT_KEY, canonical)
+        font = cls(font_dict)
+        if canonical == "ZapfDingbats":
+            font.set_encoding(ZapfDingbatsEncoding.INSTANCE)
+        elif canonical == "Symbol":
+            font.set_encoding(SymbolEncoding.INSTANCE)
+        else:
+            # Latin core: write the named /Encoding into the dict, exactly
+            # as the upstream constructor does (line 120). ``read_encoding``
+            # then resolves it to WinAnsiEncoding via the named-encoding path.
+            font_dict.set_item(COSName.ENCODING, COSName.WIN_ANSI_ENCODING)
+        return font
+
+    def set_encoding(self, encoding: Encoding) -> None:
+        """Assign the font's typed encoding in memory, bypassing
+        ``/Encoding`` resolution.
+
+        Mirrors the way upstream's direct ``PDType1Font(FontName)``
+        constructor sets its ``encoding`` field for the two FontSpecific
+        cores (Symbol / ZapfDingbats), which have no named PDF /Encoding
+        to write into the dict. Marks the encoding as resolved so the
+        lazy :meth:`get_encoding_typed` path returns this instance.
+        """
+        self._encoding_typed = encoding
+        self._encoding_resolved = True
+
     # ---------- Type 1 program access ----------
 
     def _get_type1_font(self) -> Type1Font | None:
@@ -952,32 +1010,36 @@ class PDType1Font(PDSimpleFont):
         Returns ``None`` only when nothing is resolvable.
         """
         from .encoding.standard_encoding import StandardEncoding
-        from .encoding.symbol_encoding import SymbolEncoding
-        from .encoding.win_ansi_encoding import WinAnsiEncoding
-        from .encoding.zapf_dingbats_encoding import ZapfDingbatsEncoding
+        from .encoding.type1_encoding import Type1Encoding
 
-        # Non-embedded Standard 14: pick the family-default encoding.
-        # The two FontSpecific fonts (Symbol / ZapfDingbats) use their own
-        # built-in encodings; the twelve Latin text fonts default to
-        # WinAnsiEncoding. This mirrors upstream PDFBox, whose standard-14
-        # PDType1Font constructor assigns ``WinAnsiEncoding.INSTANCE`` for the
-        # non-symbolic fonts even though the bundled Adobe AFM declares
-        # ``EncodingScheme AdobeStandardEncoding`` — Acrobat treats the
-        # unembedded core fonts as WinAnsi by default, so code 39 maps to
-        # ``quotesingle`` (191) rather than ``quoteright`` (222), code 96 to
-        # ``grave`` (333), code 128 to ``Euro`` (556), code 160 to
-        # ``nbspace`` -> ``space`` (278), etc. Using StandardEncoding here
-        # produced the wrong per-glyph AFM advance for every code that the
-        # two encodings disagree on.
+        # Non-embedded Standard 14: read the built-in encoding from the
+        # bundled Adobe AFM, exactly as upstream
+        # ``PDType1Font.readEncodingFromFont`` does (Java lines 495-498):
+        #
+        #     if (!isEmbedded() && getStandard14AFM() != null)
+        #         return new Type1Encoding(getStandard14AFM());
+        #
+        # ``new Type1Encoding(FontMetrics)`` walks the AFM ``CharMetric``
+        # list and maps each ``C`` (character code) to its ``N`` (glyph
+        # name) — for the twelve Latin cores that is AdobeStandardEncoding
+        # (the AFM header reads ``EncodingScheme AdobeStandardEncoding``),
+        # and for Symbol / ZapfDingbats it is their own FontSpecific code
+        # table. So code 0x27 -> ``quoteright`` (U+2019), 0x60 ->
+        # ``quoteleft`` (U+2018), 0xAD -> ``guilsinglright`` (U+203A) —
+        # NOT the WinAnsi spellings (``quotesingle`` / ``grave`` /
+        # ``sfthyphen``). This drives the ``/ToUnicode`` fallback for a
+        # dict-loaded core font that ships no /Encoding entry.
+        #
+        # The WinAnsi default that the *direct* ``new PDType1Font(FontName)``
+        # constructor uses (Java line 119) is a different code path:
+        # that constructor writes an explicit ``/Encoding /WinAnsiEncoding``
+        # into the dict (Java line 120), so ``read_encoding`` picks WinAnsi
+        # up as a named base encoding and never reaches this AFM fallback.
+        # See ``PDFontFactory.create_default_font`` which mirrors that
+        # explicit /Encoding write for the direct-construction path.
         afm = self.get_standard_14_font_metrics()
         if not self.is_embedded() and afm is not None:
-            base = self.get_name() or ""
-            canonical = Standard14Fonts.get_mapped_font_name(base)
-            if canonical == "Symbol":
-                return SymbolEncoding.INSTANCE
-            if canonical == "ZapfDingbats":
-                return ZapfDingbatsEncoding.INSTANCE
-            return WinAnsiEncoding.INSTANCE
+            return Type1Encoding(afm)
 
         # Embedded program: surface its built-in encoding when present.
         # Upstream ``readEncodingFromFont`` builds a ``Type1Encoding`` via
@@ -991,8 +1053,6 @@ class PDType1Font(PDSimpleFont):
         if program is not None:
             encoding_map = program.get_encoding()
             if encoding_map:
-                from .encoding.type1_encoding import Type1Encoding
-
                 type1_encoding = Type1Encoding()
                 for code, name in dict(encoding_map).items():
                     type1_encoding.add(code, name)

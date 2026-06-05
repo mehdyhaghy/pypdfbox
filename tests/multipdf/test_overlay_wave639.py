@@ -105,6 +105,10 @@ def test_overlay_clones_page_resources_without_aliasing_source_dict() -> None:
     base = _doc_with_pages(1)
     source = _overlay_doc()
     source_page = source.get_page(0)
+    # Seed an explicit /Resources so the no-aliasing assertion below is
+    # meaningful: a bare overlay page carries no /Resources and
+    # PDPage.get_resources() returns None (wave 1491 strict-null contract).
+    source_page.set_resources(COSDictionary())
     source_resources = source_page.get_resources()
     assert source_resources is not None
 

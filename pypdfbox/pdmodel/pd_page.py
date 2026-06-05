@@ -168,35 +168,60 @@ class PDPage:
 
     # ---------- resources ----------
 
-    def get_resources(self) -> PDResources:
-        """Resolve ``/Resources`` walking parents. If absent everywhere,
-        returns an empty resource dict and does **not** attach it (matches
-        upstream's lazy behaviour — set_resources is required to persist).
+    def get_resources(self) -> PDResources | None:
+        """Resolve ``/Resources`` walking parents, or ``None`` if absent
+        everywhere.
 
         The page's resource cache is threaded through to the returned
         wrapper, matching PDFBox's ``new PDResources(resources, resourceCache)``
         path so indirect resource wrappers can be reused.
 
-        **Divergence note (wave 1454).** Upstream PDFBox 3.0.7 returns
-        ``null`` from ``PDPage.getResources()`` when the inheritable walk
-        yields no ``/Resources`` dictionary; pypdfbox returns an empty
-        :class:`PDResources` wrapper instead. The blast radius of matching
-        upstream exactly (50+ test files use the
-        ``res = page.get_resources(); res.put(...)`` pattern that relies on
-        the empty-bag fallback) makes the strict-null fix a project-wide
-        sweep rather than a single-class change; the divergence is tracked
-        in DEFERRED.md and the differential probe
-        :file:`oracle/probes/PageInheritanceProbe.java` deliberately
-        excludes a ``res`` presence flag — emitting only sub-resource
-        counts — so the substantive parts of the contract (counts,
-        media/crop/rotate) stay testable while the structural mismatch
-        is documented and deferred to a follow-up sweep wave.
+        Mirrors upstream ``PDPage.getResources()`` (PDFBox 3.0.7,
+        ``PDPage.java``)::
+
+            COSDictionary resources = (COSDictionary)
+                PDPageTree.getInheritableAttribute(page, COSName.RESOURCES);
+            if (resources != null) {
+                return new PDResources(resources, resourceCache);
+            }
+            return null;
+
+        Strict-null contract restored in wave 1491 (was an empty-bag wrapper
+        from wave 1454). Callers that need the "create-and-attach if absent"
+        behaviour use :meth:`get_or_create_resources` instead — that is the
+        ``page.getResources() == null ? new PDResources() : ...`` idiom
+        upstream call-sites spell out inline.
         """
         resolved = self._get_inheritable(_RESOURCES)
         cache = self.get_resource_cache()
         if isinstance(resolved, COSDictionary):
             return PDResources(resolved, resource_cache=cache)
-        return PDResources(resource_cache=cache)
+        return None
+
+    def get_or_create_resources(self) -> PDResources:
+        """Return the page's resolved :class:`PDResources`, materialising and
+        back-writing an empty one onto this page when neither the page nor any
+        ancestor ``/Pages`` node carries ``/Resources``.
+
+        This is **not** an upstream method — upstream call-sites spell the
+        idiom inline as::
+
+            PDResources resources = page.getResources();
+            if (resources == null) {
+                resources = new PDResources();
+                page.setResources(resources);
+            }
+
+        pypdfbox factors that recurring pattern into a single helper so the
+        many internal callers that need a guaranteed-non-null resource bag
+        don't each re-implement the create-and-attach dance (and so
+        :meth:`get_resources` can keep upstream's strict-null contract).
+        """
+        resources = self.get_resources()
+        if resources is None:
+            resources = PDResources(resource_cache=self.get_resource_cache())
+            self.set_resources(resources)
+        return resources
 
     def set_resources(self, resources: PDResources | COSDictionary | None) -> None:
         if resources is None:

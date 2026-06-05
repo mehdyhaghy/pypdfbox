@@ -121,7 +121,9 @@ def test_create_dictionary_with_only_d_named_destination_shorthand() -> None:
     d.set_string(COSName.get_pdf_name("D"), "MyTarget")
     result = PDDestinationOrAction.create(d)
     assert isinstance(result, PDActionGoTo)
-    assert result.get_destination() == "MyTarget"
+    resolved = result.get_destination()
+    assert isinstance(resolved, PDNamedDestination)
+    assert resolved.get_named_destination() == "MyTarget"
 
 
 def test_create_dictionary_with_s_takes_precedence_over_d() -> None:

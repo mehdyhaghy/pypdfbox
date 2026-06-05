@@ -26,7 +26,7 @@ import org.apache.pdfbox.pdmodel.common.PDRectangle;
  * Output (UTF-8, to stdout):
  *   line 1: "count <getNumberOfPages>"
  *   then one line per page index i (document /Kids traversal order):
- *     "page <i> media <4f> crop <4f> rotate <int>"
+ *     "page <i> media <4f> crop <4f> rotate <int> res <0|1>"
  *     "  font_count <n> xobj_count <n>"
  *
  * Each value is read through public PDPage / PDResources accessors so every
@@ -34,11 +34,17 @@ import org.apache.pdfbox.pdmodel.common.PDRectangle;
  * resource counts (font_count / xobj_count) make the test sensitive to
  * merge-vs-replace semantics: PDFBox does NOT merge inherited Resources, it
  * returns the first one found walking up. A "merging" implementation would
- * over-report counts; a "stops too early" one would under-report. We
- * deliberately do NOT emit a "res" presence flag — pypdfbox materialises an
- * empty PDResources wrapper when no ancestor has /Resources while upstream
- * returns null, a structural divergence tracked separately (DEFERRED.md).
- * Counts capture the substantive content either way.
+ * over-report counts; a "stops too early" one would under-report.
+ *
+ * Wave 1491: we now ALSO emit a "res" presence flag (1 when
+ * getResources() != null, else 0). pypdfbox formerly materialised an empty
+ * PDResources wrapper when no ancestor carried /Resources while upstream
+ * returns null; that structural divergence (DEFERRED.md, wave 1454) is closed
+ * in wave 1491 by restoring PDPage.get_resources()'s strict-null contract, so
+ * the flag is now safe to assert differentially — it catches the no-Resources
+ * branch (cases 3/5/7) that the counts alone could not distinguish from an
+ * empty-bag wrapper. Counts capture inherited content; the flag captures
+ * presence.
  *
  * Floats are rendered canonically (see fmt) so the Python side compares
  * resolved coordinates exactly; Locale.ROOT keeps '.' as the separator.
@@ -56,6 +62,7 @@ public final class PageInheritanceProbe {
                 PDRectangle crop = page.getCropBox();
                 int rotate = page.getRotation();
                 PDResources res = page.getResources();
+                int resFlag = res != null ? 1 : 0;
                 int fontCount = 0;
                 int xobjCount = 0;
                 if (res != null) {
@@ -70,6 +77,7 @@ public final class PageInheritanceProbe {
                     + " media " + box(media)
                     + " crop " + box(crop)
                     + " rotate " + rotate
+                    + " res " + resFlag
                     + " font_count " + fontCount
                     + " xobj_count " + xobjCount);
                 i++;

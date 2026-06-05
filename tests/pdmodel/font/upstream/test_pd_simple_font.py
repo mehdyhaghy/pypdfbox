@@ -87,14 +87,19 @@ def test_read_encoding_dictionary_with_differences() -> None:
 
 
 def test_read_encoding_missing_falls_back_to_read_encoding_from_font() -> None:
-    """No ``/Encoding`` entry → the program/AFM default encoding (Type 1
-    falls back to ``WinAnsiEncoding`` for a non-embedded Standard 14 Latin
-    font — the Acrobat default, verified against the live PDFBox oracle)."""
+    """No ``/Encoding`` entry → ``read_encoding_from_font``: a dict-loaded
+    non-embedded Standard 14 Latin font reads its built-in
+    AdobeStandardEncoding from the bundled AFM as a ``Type1Encoding``
+    (PDType1Font.java lines 495-498; wave-1491 toUnicode/WinAnsi split)."""
+    from pypdfbox.pdmodel.font.encoding.type1_encoding import Type1Encoding
+
     font = PDType1Font()
     font.get_cos_object().set_name(COSName.get_pdf_name("BaseFont"), "Helvetica")
     font.read_encoding()
     typed = font.get_encoding_typed()
-    assert isinstance(typed, WinAnsiEncoding)
+    assert isinstance(typed, Type1Encoding)
+    # AdobeStandardEncoding code points, not WinAnsi.
+    assert typed.get_name(0x27) == "quoteright"
 
 
 # ---------- assign_glyph_list (PDSimpleFont.java:470) ----------

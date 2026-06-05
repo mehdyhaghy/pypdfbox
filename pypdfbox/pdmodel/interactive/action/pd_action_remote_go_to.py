@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSBase, COSBoolean, COSDictionary, COSName, COSString
+from pypdfbox.cos import COSBase, COSBoolean, COSDictionary, COSName, COSString
 from pypdfbox.pdmodel.common.filespecification.pd_file_specification import (
     PDFileSpecification,
 )
@@ -84,24 +84,24 @@ class PDActionRemoteGoTo(PDAction):
             return d.get_string()
         return None
 
-    def get_destination(self) -> PDDestination | str | None:
-        """Return ``/D`` dispatched to its appropriate type:
+    def get_destination(self) -> PDDestination | None:
+        """Return ``/D`` dispatched to its appropriate :class:`PDDestination`
+        subclass:
 
-        - ``PDDestination`` instance for explicit page-target arrays
-          (``COSArray`` form);
-        - ``str`` for named destinations (``COSString`` or ``COSName`` form);
+        - a concrete :class:`PDPageDestination` subclass for explicit
+          page-target arrays (``COSArray`` form);
+        - a :class:`PDNamedDestination` for named destinations encoded as
+          ``COSString`` or ``COSName``;
         - ``None`` when ``/D`` is absent.
+
+        Upstream ``PDActionRemoteGoTo`` exposes only the raw
+        :meth:`get_d`; this typed accessor mirrors the dispatch
+        ``PDActionGoTo#getDestination`` performs (PDActionGoTo.java line
+        66-69) via :meth:`PDDestination.create`. The named-destination name
+        is available through :meth:`PDNamedDestination.get_named_destination`
+        (or the convenience :meth:`get_named_destination` on this class).
         """
-        d = self._action.get_dictionary_object(_D)
-        if d is None:
-            return None
-        if isinstance(d, COSArray):
-            return PDDestination.create(d)
-        if isinstance(d, COSString):
-            return d.get_string()
-        if isinstance(d, COSName):
-            return d.get_name()
-        return None
+        return PDDestination.create(self._action.get_dictionary_object(_D))
 
     def set_destination(
         self, destination: PDDestination | str | COSBase | None

@@ -68,7 +68,7 @@ def test_has_blend_mode_returns_false_when_no_resources() -> None:
 
 def test_has_blend_mode_returns_false_for_normal_blends() -> None:
     doc, page = _make_doc()
-    resources = page.get_resources()
+    resources = page.get_or_create_resources()
     extg = PDExtendedGraphicsState()
     extg.set_blend_mode(BlendMode.NORMAL)
     resources.put(COSName.get_pdf_name("ExtG1"), extg)
@@ -79,7 +79,7 @@ def test_has_blend_mode_returns_false_for_normal_blends() -> None:
 
 def test_has_blend_mode_returns_true_when_any_extg_is_non_normal() -> None:
     doc, page = _make_doc()
-    resources = page.get_resources()
+    resources = page.get_or_create_resources()
     extg_normal = PDExtendedGraphicsState()
     extg_normal.set_blend_mode(BlendMode.NORMAL)
     extg_multiply = PDExtendedGraphicsState()
@@ -97,7 +97,7 @@ def test_has_blend_mode_skips_null_extg_entries() -> None:
     doc, page = _make_doc()
     # Inject a stub /ExtGState entry that has no /BM key (BlendMode is
     # None on the PDExtendedGraphicsState wrapping it).
-    resources = page.get_resources()
+    resources = page.get_or_create_resources()
     extg = PDExtendedGraphicsState()  # default → no /BM in the dict
     resources.put(COSName.get_pdf_name("Empty"), extg)
     page.set_resources(resources)

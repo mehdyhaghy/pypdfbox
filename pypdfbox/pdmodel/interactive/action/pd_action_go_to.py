@@ -24,24 +24,22 @@ class PDActionGoTo(PDAction):
     def __init__(self, action: COSDictionary | None = None) -> None:
         super().__init__(action, None if action is not None else self.SUB_TYPE)
 
-    def get_destination(self) -> PDDestination | str | None:
-        """Return ``/D`` dispatched to its appropriate type:
+    def get_destination(self) -> PDDestination | None:
+        """Return ``/D`` dispatched to its appropriate :class:`PDDestination`
+        subclass:
 
-        - ``PDDestination`` instance for explicit page-target arrays
-          (``COSArray`` form);
-        - ``str`` for named destinations (``COSString`` or ``COSName`` form);
+        - a concrete :class:`PDPageDestination` subclass for explicit
+          page-target arrays (``COSArray`` form);
+        - a :class:`PDNamedDestination` for named destinations encoded as
+          ``COSString`` or ``COSName``;
         - ``None`` when ``/D`` is absent.
+
+        Mirrors upstream ``PDActionGoTo#getDestination`` (PDActionGoTo.java
+        line 66-69): ``return PDDestination.create(getCOSObject()
+        .getDictionaryObject(COSName.D));``. The named-destination name is
+        then available via :meth:`PDNamedDestination.get_named_destination`.
         """
-        d = self._action.get_dictionary_object(_D)
-        if d is None:
-            return None
-        if isinstance(d, COSArray):
-            return PDDestination.create(d)
-        if isinstance(d, COSString):
-            return d.get_string()
-        if isinstance(d, COSName):
-            return d.get_name()
-        return None
+        return PDDestination.create(self._action.get_dictionary_object(_D))
 
     def set_destination(self, destination: PDDestination | str | COSBase | None) -> None:
         """Write ``/D`` from a typed destination, a named-destination

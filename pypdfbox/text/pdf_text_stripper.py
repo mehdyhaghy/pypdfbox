@@ -1280,6 +1280,205 @@ class PDFTextStripper:
                     pass
         return code_bytes.decode("latin-1", errors="replace")
 
+    @staticmethod
+    def _is_vertical_font(font: PDFont | None) -> bool:
+        """``True`` when ``font`` paints glyphs in vertical writing mode
+        (WMode 1).
+
+        Mirrors upstream ``PDFont.isVertical`` — only composite (Type 0)
+        fonts can be vertical, and only when their ``/Encoding`` CMap
+        declares ``/WMode 1`` (e.g. ``/Identity-V``). Defensive: a font
+        without an ``is_vertical`` predicate (every simple font) is treated
+        as horizontal.
+        """
+        if font is None:
+            return False
+        is_vertical = getattr(font, "is_vertical", None)
+        if not callable(is_vertical):
+            return False
+        try:
+            return bool(is_vertical())
+        except Exception:  # noqa: BLE001 — defensive: malformed CMap
+            return False
+
+    def _emit_vertical(
+        self,
+        raw_bytes: bytes,
+        text: str,
+        state: _TextState,
+        positions: list[TextPosition],
+        font: PDFont,
+        resolved_font_name: str | None,
+    ) -> None:
+        """Per-glyph emission for a vertical (WMode 1) Type0 font.
+
+        Ports upstream ``PDFStreamEngine.showText`` (PDFStreamEngine.java:
+        430-470) vertical branch: each character code is read off
+        ``raw_bytes`` via the font's ``read_code``, its origin is offset by
+        the font's *position vector* (``font.get_position_vector(code)`` — in
+        em, already negated per PDF 32000-1 §9.7.3) scaled by the font size,
+        and the text cursor then advances DOWN the column by the *vertical
+        displacement* ``ty = w1y·fontSize + Tc + Tw`` (where
+        ``w1y = font.get_displacement(code)[1]`` is the negative ``/W2`` /
+        ``/DW2`` advance in em). One :class:`TextPosition` is emitted per
+        glyph, so the line-grouping heuristic (each glyph on a successive
+        baseline, vertically disjoint) breaks a line after every glyph —
+        reproducing Apache PDFBox's one-glyph-per-line vertical reading order
+        (top-to-bottom within a column; the comparator orders columns
+        right-to-left when ``sort_by_position`` is on, see
+        :meth:`_compare_reading_order_vertical`).
+
+        The text cursor lives in the text matrix's translation slots, so the
+        text-space ``(0, ty)`` and position-vector deltas are carried through
+        the text-matrix scale/shear ``(a, b, c, d)`` before they move
+        ``text_x`` / ``text_y`` — matching the horizontal path's
+        ``run_width × (tm_a, tm_b)`` cursor carry. Each glyph's device-space
+        origin is the composed ``textMatrix × CTM`` translation.
+        """
+        font_size = state.font_size
+        char_spacing = state.char_spacing
+        word_spacing = state.word_spacing
+        # Effective font size / glyph height / direction are matrix-scaled the
+        # same way the horizontal path does (the run's scale comes from the
+        # text-rendering matrix, independent of the per-glyph translation).
+        trm = self._text_rendering_matrix(state)
+        y_scale = trm.get_scaling_factor_y()
+        effective_font_size = font_size * y_scale
+        font_height_fraction = self._active_font_height
+        run_height = (
+            0.0 if font_height_fraction is None
+            else font_height_fraction * effective_font_size
+        )
+        text_dir = self._text_dir(trm)
+        # ``/ActualText`` substitution still applies per show-text run: inside
+        # an ``/ActualText`` span the whole replacement string is emitted once
+        # (at the span's first glyph), and every later glyph's text is
+        # suppressed (the cursor still advances). ``actual_text`` is the
+        # replacement for the first run / ``None`` for a suppressed later run,
+        # and ``None`` (with ``has_actual_text`` False) when no span is active —
+        # the latter is the common case where each glyph emits its own piece.
+        has_actual_text = self._actual_text is not None
+        actual_text = self._actual_text_for_run(text) if has_actual_text else None
+
+        offset = 0
+        n = len(raw_bytes)
+        try:
+            read_code = font.read_code
+        except AttributeError:
+            read_code = None
+        emitted_any = False
+        while offset < n:
+            if read_code is None:
+                break
+            try:
+                code, consumed = read_code(raw_bytes, offset)
+            except Exception:  # noqa: BLE001 — defensive: malformed font / bytes
+                break
+            if consumed <= 0:
+                break
+            piece = self._decode_code_to_unicode(
+                raw_bytes[offset : offset + consumed], code, font
+            )
+            offset += consumed
+            # Position vector (em) — offsets the glyph origin so the vertical
+            # baseline lands where the ``/W2`` / ``/DW2`` ``v`` component
+            # places it (PDF 32000-1 §9.7.4.3). ``(0, 0)`` for fonts without
+            # ``/W2``.
+            try:
+                v_x, v_y = font.get_position_vector(code)
+            except Exception:  # noqa: BLE001 — defensive
+                v_x, v_y = 0.0, 0.0
+            # Vertical displacement (em); ``w1y`` is negative (advance down).
+            try:
+                _w0, w1y = font.get_displacement(code)
+            except Exception:  # noqa: BLE001 — defensive
+                w1y = -1.0
+            # Glyph origin in text space = cursor + positionVector·fontSize,
+            # carried through the text-matrix scale/shear into the
+            # translation slots.
+            glyph_tx = v_x * font_size
+            glyph_ty = v_y * font_size
+            origin_x = (
+                state.text_x + glyph_tx * state.tm_a + glyph_ty * state.tm_c
+            )
+            origin_y = (
+                state.text_y + glyph_tx * state.tm_b + glyph_ty * state.tm_d
+            )
+            # Under an ``/ActualText`` span the replacement is emitted once at
+            # the first glyph (``actual_text``); later glyphs in the span carry
+            # no text. Without a span each glyph emits its own decoded piece.
+            if has_actual_text:
+                glyph_text = actual_text or ""
+                actual_text = ""  # emit the span replacement only once
+            else:
+                glyph_text = piece
+            if glyph_text:
+                origin = self._origin_matrix(state, origin_x, origin_y)
+                positions.append(
+                    TextPosition(
+                        text=glyph_text,
+                        x=origin.get_translate_x(),
+                        y=origin.get_translate_y(),
+                        font_size=effective_font_size,
+                        font_name=state.font_name,
+                        font=font,
+                        resolved_font_name=resolved_font_name,
+                        width=0.0,
+                        width_of_space=0.0,
+                        char_spacing=char_spacing,
+                        word_spacing=word_spacing,
+                        dir=text_dir,
+                        height=run_height,
+                        text_matrix=[
+                            state.tm_a,
+                            state.tm_b,
+                            state.tm_c,
+                            state.tm_d,
+                            origin_x,
+                            origin_y,
+                        ],
+                    )
+                )
+                emitted_any = True
+            # Advance the cursor down the column by the vertical displacement
+            # ``ty = w1y·fontSize + Tc (+ Tw on single-byte code 32)``.
+            ty = w1y * font_size + char_spacing
+            if consumed == 1 and code == 32:
+                ty += word_spacing
+            state.text_x += ty * state.tm_c
+            state.text_y += ty * state.tm_d
+        # When the font could not read any code (defensive), fall back to one
+        # collapsed run at the cursor so no text is silently dropped.
+        if not emitted_any:
+            fallback_text = actual_text if has_actual_text else text
+            if fallback_text:
+                origin = self._origin_matrix(state, state.text_x, state.text_y)
+                positions.append(
+                    TextPosition(
+                        text=fallback_text,
+                        x=origin.get_translate_x(),
+                        y=origin.get_translate_y(),
+                        font_size=effective_font_size,
+                        font_name=state.font_name,
+                        font=font,
+                        resolved_font_name=resolved_font_name,
+                        width=0.0,
+                        width_of_space=0.0,
+                        char_spacing=char_spacing,
+                        word_spacing=word_spacing,
+                        dir=text_dir,
+                        height=run_height,
+                        text_matrix=[
+                            state.tm_a,
+                            state.tm_b,
+                            state.tm_c,
+                            state.tm_d,
+                            state.text_x,
+                            state.text_y,
+                        ],
+                    )
+                )
+
     def _emit(
         self,
         s: COSString,
@@ -1292,6 +1491,20 @@ class PDFTextStripper:
             return
         font = self._active_font
         resolved_font_name = font.get_name() if font is not None else None
+        # Vertical writing mode (WMode 1): when the active font's encoding
+        # CMap declares vertical writing, each glyph advances DOWN the page
+        # by its vertical displacement vector rather than along the text
+        # matrix's horizontal axis. Upstream ``PDFStreamEngine.showText``
+        # (PDFStreamEngine.java:430-470) offsets each glyph origin by the
+        # font's position vector and steps the text cursor by
+        # ``(0, w1y·fontSize + Tc + Tw)`` per glyph, so consecutive glyphs
+        # land on successive baselines and the line-grouping heuristic emits
+        # one glyph per line (top-to-bottom within a column). Delegate to the
+        # per-glyph vertical emitter, which never goes through the
+        # horizontal run-width / word-gap machinery below.
+        if self._is_vertical_font(font):
+            self._emit_vertical(raw_bytes, text, state, positions, font, resolved_font_name)
+            return
         per_char = self._active_avg_advance
         if per_char is None:
             per_char = state.font_size * 0.5

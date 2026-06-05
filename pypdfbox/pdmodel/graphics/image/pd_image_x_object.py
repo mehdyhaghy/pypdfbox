@@ -878,13 +878,27 @@ class PDImageXObject(PDXObject):
         unchanged). Mirrors the mask precedence in upstream ``getImage`` —
         ``/SMask`` first, then explicit-mask ``/Mask`` stream, then color-key
         ``/Mask`` array. Each step is best-effort: a mask that fails to decode
-        leaves the opaque raster in place rather than raising."""
+        leaves the opaque raster in place rather than raising.
+
+        Upstream ordering (``PDImageXObject.getImage`` → ``applyMask``, Java
+        lines 487-512): ``getRGBImage`` does bake a color-key ``/Mask`` array
+        into the base ARGB alpha, but when a ``/SMask`` (or stencil ``/Mask``)
+        is also present ``applyMask`` then **overwrites band 3 (alpha) outright**
+        with the mask samples (``raster.setSamples(...,3,samples)``, Java line
+        679) — it does NOT multiply with the color-key alpha. So a color-key
+        ``/Mask`` array has no net effect when ``/SMask`` is present: the SMask
+        wins and the color-key is discarded. Verified against the 3.0.7 live
+        oracle (``test_color_key_mask_smask_oracle.py``). Hence the precedence
+        below mirrors upstream exactly — ``/SMask`` first (color-key skipped),
+        then explicit-stencil ``/Mask``, then a standalone color-key array."""
         soft_mask = None
         try:
             soft_mask = self.get_soft_mask()
         except Exception:  # noqa: BLE001 - best-effort; opaque raster on failure
             soft_mask = None
         if soft_mask is not None:
+            # /SMask replaces the alpha band wholesale (Java applyMask line 679),
+            # so the color-key array is discarded — do not apply it here.
             return _apply_soft_mask(image, soft_mask, self)
 
         explicit_mask = None
@@ -893,6 +907,8 @@ class PDImageXObject(PDXObject):
         except Exception:  # noqa: BLE001
             explicit_mask = None
         if explicit_mask is not None:
+            # Stencil /Mask likewise replaces band 3 (Java line 663/679),
+            # discarding any color-key array.
             return _apply_explicit_mask(image, explicit_mask)
 
         color_key = None
@@ -1310,6 +1326,9 @@ def _apply_soft_mask(
         resample = Image.BICUBIC if interpolate else Image.NEAREST
         mask_image = mask_image.resize(image.size, resample)
     rgba = image.convert("RGBA")
+    # Upstream applyMask (Java line 679) overwrites the alpha band wholesale
+    # with the SMask samples, so any pre-existing color-key alpha is discarded
+    # — putalpha (replace, not multiply) matches that exactly.
     rgba.putalpha(mask_image)
     return _unpremultiply_matte(rgba, mask_image, base, smask)
 

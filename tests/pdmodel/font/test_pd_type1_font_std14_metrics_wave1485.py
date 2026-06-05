@@ -25,10 +25,14 @@ _WIDTHS = COSName.get_pdf_name("Widths")
 
 
 def _font(base_font: str) -> PDType1Font:
-    d = COSDictionary()
-    d.set_item(_SUBTYPE, COSName.get_pdf_name("Type1"))
-    d.set_item(_BASE_FONT, COSName.get_pdf_name(base_font))
-    return PDType1Font(d)
+    # The oracle (Std14HeightWidthProbe) builds each font via the *direct*
+    # ``new PDType1Font(FontName)`` constructor, which assigns WinAnsi to the
+    # Latin cores (with an explicit /Encoding write) and the FontSpecific
+    # built-in encoding to Symbol / ZapfDingbats. ``PDType1Font.standard14``
+    # ports that constructor. A dict-loaded core with NO /Encoding instead
+    # reads AdobeStandardEncoding from its AFM (wave-1491 toUnicode split), a
+    # different path with different code -> glyph -> metric resolution.
+    return PDType1Font.standard14(base_font)
 
 
 # ---------- get_height (AFM CharMetric BBox height) ----------

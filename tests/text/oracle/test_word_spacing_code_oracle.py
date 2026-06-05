@@ -124,7 +124,7 @@ def _build_simple_pdf(content: bytes, path: str) -> None:
         font = PDFontFactory.create_default_font(
             Standard14Fonts.FontName.HELVETICA.value
         )
-        resources = page.get_resources()
+        resources = page.get_or_create_resources()
         font_key = resources.add(font)
         page.set_resources(resources)
         rewritten = content.replace(
@@ -152,7 +152,7 @@ def _build_type0_pdf(text: str, tw: float, path: str) -> None:
         page = PDPage(PDRectangle(0, 0, 400, 200))
         doc.add_page(page)
         font = PDType0Font.load(doc, str(_TTF), False)
-        resources = page.get_resources()
+        resources = page.get_or_create_resources()
         font_key = resources.add(font)
         page.set_resources(resources)
         codes = font.encode(text)

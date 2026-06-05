@@ -78,14 +78,11 @@ class PrintBookmarks:
                         f"{indentation}Destination page: "
                         f"{action_dest.retrieve_page_number() + 1}\n",
                     )
-                elif isinstance(  # pragma: no cover - unreachable; see note
-                    action_dest, PDNamedDestination
-                ):
-                    # Unreachable in pypdfbox: ``PDActionGoTo.get_destination``
-                    # returns a plain ``str`` for named destinations (not a
-                    # ``PDNamedDestination``), so this arm never fires and the
-                    # str falls into the ``else`` class-name branch below. Kept
-                    # as a parity mirror of upstream's typed-destination return.
+                elif isinstance(action_dest, PDNamedDestination):
+                    # ``PDActionGoTo.get_destination`` returns a
+                    # ``PDNamedDestination`` for the name/string form
+                    # (upstream parity, wave 1491), so this arm mirrors
+                    # upstream ``PrintBookmarks`` exactly.
                     pd = document.get_document_catalog().find_named_destination_page(action_dest)
                     if pd is not None:
                         sys.stdout.write(

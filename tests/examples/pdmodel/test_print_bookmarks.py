@@ -206,8 +206,10 @@ def test_print_bookmark_handles_gotoaction_with_named_destination(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """A GoTo action whose ``/D`` entry is a name string surfaces as a
-    plain ``str`` from ``get_destination`` — neither PDPageDestination
-    nor PDNamedDestination — landing in the action-class fallback."""
+    ``PDNamedDestination`` from ``get_destination`` (upstream parity, wave
+    1491), landing in the named-destination arm. The name doesn't resolve
+    to any page here, so no ``Destination page:`` line is emitted — but the
+    old ``Destination class: str`` fallback no longer fires."""
     doc = PDDocument()
     try:
         doc.add_page(PDPage(PDRectangle(0.0, 0.0, 612.0, 792.0)))
@@ -226,9 +228,8 @@ def test_print_bookmark_handles_gotoaction_with_named_destination(
     finally:
         doc.close()
     out = capsys.readouterr().out
-    # The str branch is neither PDPageDestination nor PDNamedDestination, so
-    # the helper logs the action-dest's class (which is ``str``).
-    assert "Destination class: str\n" in out
+    assert "Destination class: str\n" not in out
+    assert "Destination page:" not in out
     assert "Goto Named\n" in out
 
 

@@ -253,15 +253,21 @@ def test_read_encoding_from_font_returns_standard_for_unembedded_non_standard14(
 
 
 def test_read_encoding_from_font_uses_parent_path_for_standard_14() -> None:
-    """Non-embedded Standard 14 -> defer to PDType1Font's encoding
-    path (which selects Symbol/ZapfDingbats/Standard based on family)."""
+    """Non-embedded Standard 14 -> defer to PDType1Font's encoding path,
+    which (PDType1Font.java lines 495-498) builds a ``Type1Encoding`` from
+    the bundled AFM. For Symbol the AFM's FontSpecific code table is
+    byte-for-byte identical to ``SymbolEncoding`` (wave-1491 toUnicode
+    split: dict-loaded cores read AdobeStandard/FontSpecific from the AFM,
+    not the direct-constructor WinAnsi/built-in encoding)."""
     font = PDType1CFont()
     font.get_cos_object().set_name(_BASE_FONT, "Symbol")
     enc = font.read_encoding_from_font()
-    # SymbolEncoding singleton.
     from pypdfbox.pdmodel.font.encoding.symbol_encoding import SymbolEncoding
+    from pypdfbox.pdmodel.font.encoding.type1_encoding import Type1Encoding
 
-    assert enc is SymbolEncoding.INSTANCE
+    assert isinstance(enc, Type1Encoding)
+    ref = SymbolEncoding.INSTANCE
+    assert all(enc.get_name(c) == ref.get_name(c) for c in range(256))
 
 
 def test_read_encoding_from_font_with_embedded_program_returns_some_encoding() -> None:

@@ -1027,11 +1027,12 @@ class Splitter:
         # modified, e.g. 0xAD becomes 0, see file 410609.pdf where the
         # name no longer matches with the entry in the new name tree".
         #
-        # PDActionGoTo.get_destination() in our port returns ``str`` for
-        # name/string ``/D`` (parity with our local API choice — see tests
-        # in test_pd_action_go_to_parity.py); wrap that back into a
-        # PDNamedDestination before resolving so we can reuse the catalog
-        # helper without diverging from upstream's resolution semantics.
+        # PDActionGoTo.get_destination() / PDAnnotationLink.get_destination()
+        # return a ``PDNamedDestination`` for a name/string ``/D`` (upstream
+        # parity — see wave 1491). Resolve it through the catalog's
+        # /Names /Dests name tree so it becomes a concrete PDPageDestination.
+        # (A bare ``str`` is tolerated defensively for any caller still
+        # handing one in.)
         if isinstance(src_destination, str):
             src_destination = PDNamedDestination(src_destination)
         if isinstance(src_destination, PDNamedDestination):

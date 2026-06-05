@@ -94,7 +94,7 @@ def _make_fixture(tmp_path: Path) -> Path:
     try:
         page = PDPage()
         doc.add_page(page)
-        res = page.get_resources()
+        res = page.get_or_create_resources()
         # full — matrix + extgstate present; bare — both absent.
         res.put(
             _PATTERN,

@@ -78,6 +78,11 @@ def test_wrap_in_save_restore_extends_existing_array() -> None:
 
 def test_import_page_as_form_returns_form_xobject_with_resources_and_bbox() -> None:
     src = _make_doc_with_one_page()
+    # Seed an explicit /Resources on the source page so the deep-clone
+    # (new-dict, not aliased) assertion below is genuinely exercised. Without
+    # it the page carries no /Resources and PDPage.get_resources() returns None
+    # (wave 1491 strict-null contract), making the aliasing check vacuous.
+    src.get_page(0).set_resources(COSDictionary())
     target = PDDocument()
     target.add_page(PDPage())
     util = LayerUtility(target)

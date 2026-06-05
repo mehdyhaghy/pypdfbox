@@ -77,7 +77,9 @@ class CreatePatternsPDF:
                 # The pattern colour space carries no underlying CS for
                 # the colored form — the cell's content stream sets its
                 # own colours.
-                pattern_cs1 = PDPattern(None, resources=page.get_resources())
+                pattern_cs1 = PDPattern(
+                    None, resources=page.get_or_create_resources()
+                )
 
                 tiling_pattern1 = PDTilingPattern()
                 tiling_pattern1.set_b_box(PDRectangle(0, 0, 10, 10))
@@ -102,7 +104,9 @@ class CreatePatternsPDF:
                     "S\n",
                 )
 
-                pattern_name1 = page.get_resources().add(tiling_pattern1)
+                pattern_name1 = page.get_or_create_resources().add(
+                    tiling_pattern1
+                )
 
                 pattern_color1 = PDColor(pattern_name1, pattern_cs1)
                 pcs.set_non_stroking_color(pattern_color1)
@@ -127,13 +131,15 @@ class CreatePatternsPDF:
                     "0 5 m\n10 5 l\n5 0 m\n5 10 l\nS\n",
                 )
 
-                pattern_name2 = page.get_resources().add(tiling_pattern2)
+                pattern_name2 = page.get_or_create_resources().add(
+                    tiling_pattern2
+                )
 
                 # Uncolored Pattern colour space needs an underlying CS for
                 # the tint components supplied at paint time.
                 pattern_cs2 = PDPattern(
                     PDDeviceRGB.INSTANCE,
-                    resources=page.get_resources(),
+                    resources=page.get_or_create_resources(),
                 )
 
                 # Same uncolored pattern painted twice — first green, then

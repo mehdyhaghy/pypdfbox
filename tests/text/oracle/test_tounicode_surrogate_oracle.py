@@ -131,7 +131,7 @@ def _build_pdf(path: Path) -> None:
             out.write(cmap_text.encode("latin-1"))
         font.get_cos_object().set_item(_TO_UNICODE, to_unicode)
 
-        resources = page.get_resources()
+        resources = page.get_or_create_resources()
         resources.add(font)
         page.set_resources(resources)
 

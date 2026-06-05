@@ -243,31 +243,39 @@ def test_tj_payload_is_exact_ascii_bytes(py_file: Path) -> None:
 
 
 @requires_oracle
-def test_unencodable_glyph_divergence_is_documented(tmp_path: Path) -> None:
-    """Regression guard for the documented encode-leniency boundary.
+def test_accented_glyph_encodes_via_winansi_in_both_engines(tmp_path: Path) -> None:
+    """``café`` (eacute) round-trips through the WinAnsi default font in
+    BOTH engines — closed wave 1491.
 
-    A value carrying ``é`` (eacute) — absent from the no-``/Encoding``
-    Standard-14 Helvetica's built-in encoding — makes upstream PDFBox 3.0.7
-    raise ``IllegalArgumentException`` from ``PDType1Font.encode`` while
-    composing the appearance, whereas pypdfbox leniently substitutes and
-    produces a stream. This asymmetry is the deferred divergence recorded in
-    DEFERRED.md / CHANGES.md (wave 1408); the test pins it so a future change
-    to either side surfaces here rather than silently.
+    The form's ``/Helv`` default font is built by
+    ``PDFontFactory.create_default_font``, which now mirrors the upstream
+    *direct* ``PDType1Font(FontName)`` constructor and writes an explicit
+    ``/Encoding /WinAnsiEncoding`` into the dict (PDType1Font.java line 120).
+    WinAnsi maps ``é`` to byte 0xE9, so the appearance generator can encode
+    it on both sides — ``café`` -> ``636166e9``.
+
+    Before wave 1491 the font carried NO ``/Encoding`` and pypdfbox's
+    ``read_encoding_from_font`` returned WinAnsi *only in memory*; the saved
+    dict had no /Encoding, so on reload upstream PDFBox fell back to the
+    AFM's AdobeStandardEncoding (no eacute byte) and ``PDType1Font.encode``
+    raised ``IllegalArgumentException`` while pypdfbox leniently substituted.
+    Writing the explicit /Encoding (as the direct constructor does) closes
+    that asymmetry: the accented glyph is now genuinely encodable for both.
     """
     fields = (("Acc", "/Helv 12 Tf 0 g", "café"),)
     py_out = tmp_path / "py_acc.pdf"
 
-    # pypdfbox: set_value succeeds (lenient encode) and writes an /AP /N.
+    # pypdfbox: set_value composes an /AP /N with WinAnsi-encoded "café".
     _build_form(py_out, fields)
     doc = PDDocument.load(str(py_out))
     try:
         tok = _py_tokens(doc, "Acc")
-        assert tok.tj_hex != ""  # a stream payload was produced
+        assert tok.tj_hex == "café".encode("cp1252").hex()  # 636166e9
     finally:
         doc.close()
 
-    # PDFBox: re-running setValue raises (eacute not in built-in encoding), so
-    # the probe's `set` mode exits non-zero with the IllegalArgumentException.
+    # PDFBox: re-running setValue now SUCCEEDS (WinAnsi has eacute), exits 0,
+    # and composes the identical WinAnsi byte sequence.
     _ensure_compiled(_PROBE)
     java_out = tmp_path / "java_acc.pdf"
     result = subprocess.run(
@@ -278,6 +286,6 @@ def test_unencodable_glyph_divergence_is_documented(tmp_path: Path) -> None:
         capture_output=True,
         text=True,
     )
-    assert result.returncode != 0
-    assert "IllegalArgumentException" in result.stderr
-    assert "eacute" in result.stderr or "U+00E9" in result.stderr
+    assert result.returncode == 0, result.stderr
+    java_tok = _java_tokens(java_out, "Acc")["Acc"]
+    assert java_tok.tj_hex == "café".encode("cp1252").hex()

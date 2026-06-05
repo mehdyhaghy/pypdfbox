@@ -11,6 +11,7 @@ from __future__ import annotations
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSString
 from pypdfbox.pdmodel.interactive.action import PDActionGoTo
 from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
+    PDNamedDestination,
     PDPageXYZDestination,
 )
 from pypdfbox.pdmodel.interactive.documentnavigation.destination.pd_destination import (
@@ -51,7 +52,9 @@ def test_set_destination_with_string_writes_named_destination() -> None:
     action = PDActionGoTo()
     action.set_destination("Chapter1")
 
-    assert action.get_destination() == "Chapter1"
+    resolved = action.get_destination()
+    assert isinstance(resolved, PDNamedDestination)
+    assert resolved.get_named_destination() == "Chapter1"
     raw = action.get_cos_object().get_dictionary_object(_D)
     assert isinstance(raw, COSString)
 
@@ -75,12 +78,15 @@ def test_set_destination_none_removes_d() -> None:
     assert action.get_destination() is None
 
 
-def test_get_destination_dispatches_cos_name_to_str() -> None:
-    """``/D`` written as a ``COSName`` is also returned as a plain ``str``."""
+def test_get_destination_dispatches_cos_name_to_named_destination() -> None:
+    """``/D`` written as a ``COSName`` dispatches to a ``PDNamedDestination``
+    (upstream parity — PDDestination.create wraps the name form)."""
     action = PDActionGoTo()
     action.get_cos_object().set_item(_D, COSName.get_pdf_name("Outline1"))
 
-    assert action.get_destination() == "Outline1"
+    resolved = action.get_destination()
+    assert isinstance(resolved, PDNamedDestination)
+    assert resolved.get_named_destination() == "Outline1"
 
 
 def test_get_d_returns_raw_cos_base_for_array_form() -> None:

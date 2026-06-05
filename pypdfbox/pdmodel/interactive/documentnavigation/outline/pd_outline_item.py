@@ -411,15 +411,11 @@ class PDOutlineItem(PDOutlineNode):
         if destination is None:
             action = self.get_action()
             if isinstance(action, PDActionGoTo):
-                resolved_action_dest = action.get_destination()
-                if isinstance(resolved_action_dest, str):
-                    # Upstream's PDActionGoTo returns a `PDNamedDestination`
-                    # for the string form; our PDActionGoTo returns the bare
-                    # string (see CHANGES.md). Re-wrap so the named-destination
-                    # resolution path below kicks in.
-                    destination = PDNamedDestination(resolved_action_dest)
-                else:
-                    destination = resolved_action_dest
+                # PDActionGoTo.get_destination() returns a PDNamedDestination
+                # for the name/string form (upstream parity, wave 1491), so
+                # the named-destination resolution path below handles it
+                # directly.
+                destination = action.get_destination()
         if destination is None:
             return None
         # PDNamedDestination → catalog lookup.
