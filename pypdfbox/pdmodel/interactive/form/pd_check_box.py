@@ -7,13 +7,14 @@ from pypdfbox.cos import COSDictionary, COSName
 from .pd_button import PDButton
 
 if TYPE_CHECKING:
+    from pypdfbox.pdmodel.interactive.annotation.pd_appearance_stream import (
+        PDAppearanceStream,
+    )
+
     from .pd_acro_form import PDAcroForm
     from .pd_non_terminal_field import PDNonTerminalField
 
 _FT_KEY: COSName = COSName.get_pdf_name("FT")
-_AP: COSName = COSName.get_pdf_name("AP")
-_N: COSName = COSName.get_pdf_name("N")
-_OFF: COSName = COSName.get_pdf_name("Off")
 
 
 class PDCheckBox(PDButton):
@@ -42,24 +43,36 @@ class PDCheckBox(PDButton):
 
     # ---------- on/off helpers ----------
 
-    def _widget_appearance_dict(self) -> COSDictionary | None:
+    def _widget_normal_sub_dictionary(self) -> dict[str, PDAppearanceStream] | None:
+        """Return the first widget's ``/AP /N`` state -> appearance-stream
+        mapping, filtered to stream-valued entries only.
+
+        Mirrors upstream ``PDCheckBox.getOnValue`` (PDCheckBox.java): it goes
+        through ``widget.getAppearance().getNormalAppearance()
+        .getSubDictionary()``, and ``PDAppearanceEntry.getSubDictionary`` only
+        surfaces keys whose VALUE is a ``COSStream``. Wave 1488 threaded that
+        stream-filter through here (previously it iterated the raw ``/N`` keys
+        via ``_widget_appearance_dict``, accepting any non-``/Off`` key
+        regardless of value type).
+        """
         widgets = self.get_widgets()
-        candidate = widgets[0].get_cos_object() if widgets else self._field
-        ap = candidate.get_dictionary_object(_AP)
-        if not isinstance(ap, COSDictionary):
+        if not widgets:
             return None
-        n = ap.get_dictionary_object(_N)
-        if isinstance(n, COSDictionary):
-            return n
-        return None
+        appearance = widgets[0].get_appearance()
+        if appearance is None:
+            return None
+        normal = appearance.get_normal_appearance()
+        if normal is None or not normal.is_sub_dictionary():
+            return None
+        return normal.get_sub_dictionary()
 
     def get_on_value(self) -> str:
-        n_dict = self._widget_appearance_dict()
-        if n_dict is None:
+        sub = self._widget_normal_sub_dictionary()
+        if sub is None:
             return ""
-        for key in n_dict.key_set():
-            if key != _OFF:
-                return key.name
+        for entry in sub:
+            if entry != "Off":
+                return entry
         return ""
 
     def is_checked(self) -> bool:

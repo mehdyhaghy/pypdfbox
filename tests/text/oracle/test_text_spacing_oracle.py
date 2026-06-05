@@ -297,14 +297,18 @@ def test_first_run_origin_x_matches_pdfbox(content: bytes) -> None:
 
 @requires_oracle
 @pytest.mark.xfail(
-    reason="per-glyph-granularity carve-out: a large Tc widens the gaps "
-    "between glyphs *inside a single Tj string*, which Java (one TextPosition "
-    "per glyph) turns into per-glyph word breaks ('A B  C D'). The lite "
-    "stripper emits one TextPosition per show-text run and never re-examines "
-    "intra-run glyph gaps, so it extracts 'AB CD'. Documented average-advance "
-    "/ per-run-granularity limitation, not a Tc bug — Tc-driven breaks land "
-    "correctly when they fall on a run boundary (TJ array). Same family as the "
-    "test_text_position_oracle.py intra-line x-drift carve-out.",
+    reason="Wave 1488 threaded real per-glyph advances through the lite "
+    "stripper and now *subdivides* a run on intra-run Tc-widened gaps, so a "
+    "large Tc inside a single Tj string segments into words: pypdfbox extracts "
+    "'A B C D' (was 'AB CD'). The sole residual is the double space Java emits "
+    "around the literal space glyph ('A B  C D'): Java inserts a gap-driven "
+    "separator *and* keeps the explicit space glyph, whereas the lite "
+    "stripper's word-break heuristic suppresses a gap separator adjacent to an "
+    "already-present whitespace glyph (to avoid double-spacing when a producer "
+    "encoded the break). Reconciling the double-space-adjacent-to-explicit-"
+    "space rule is a whitespace-collapse change spanning the whole getText "
+    "suite; the per-glyph intra-run break itself is now correct. Same family "
+    "as the per-run-granularity carve-outs.",
     strict=True,
 )
 def test_large_char_spacing_intra_run_word_breaks_match_pdfbox() -> None:

@@ -290,11 +290,33 @@ class PDFTextStripperByArea(PDFTextStripper):
             return
         base_x = text.get_x()
         y = text.get_y()
+        # Prefer the real per-glyph advances threaded from the font's
+        # ``/Widths`` (wave 1488) so a run straddling a region boundary is
+        # split at the true glyph position Java would test — not at the
+        # uniform ``width / n`` estimate. ``get_individual_widths`` returns
+        # the real list when present, falling back to the even split. We only
+        # use it when its length matches the decoded character count (a 1:1
+        # code↔char run); ligature/multi-char codes fall back to uniform so
+        # the per-character routing stays well-defined.
+        widths = text.get_individual_widths()
+        if len(widths) == n:
+            offset = 0.0
+            for i, ch in enumerate(run_text):
+                glyph_x = base_x + offset
+                glyph = replace(
+                    text, text=ch, x=glyph_x, width=widths[i],
+                    individual_widths=None,
+                )
+                self._bin_glyph(glyph, glyph_x, y)
+                offset += widths[i]
+            return
         # ``width`` is the run's full advance in the same units as ``x``.
         per_glyph = text.get_width() / n
         for i, ch in enumerate(run_text):
             glyph_x = base_x + per_glyph * i
-            glyph = replace(text, text=ch, x=glyph_x, width=per_glyph)
+            glyph = replace(
+                text, text=ch, x=glyph_x, width=per_glyph, individual_widths=None
+            )
             self._bin_glyph(glyph, glyph_x, y)
 
     def _bin_glyph(self, text: TextPosition, x: float, y: float) -> None:

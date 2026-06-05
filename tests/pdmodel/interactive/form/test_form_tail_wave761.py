@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
+from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream, COSString
 from pypdfbox.pdmodel.interactive.annotation import PDAnnotationWidget
 from pypdfbox.pdmodel.interactive.form import PDAcroForm
 from pypdfbox.pdmodel.interactive.form.pd_check_box import PDCheckBox
@@ -102,8 +102,10 @@ def test_wave761_check_box_off_only_normal_appearance_has_no_on_value() -> None:
 def test_wave761_check_box_is_checked_uses_discovered_on_value() -> None:
     checkbox = PDCheckBox(PDAcroForm())
     normal = COSDictionary()
-    normal.set_item(COSName.get_pdf_name("Accepted"), COSDictionary())
-    normal.set_item(_OFF, COSDictionary())
+    # On-state must be COSStream-valued: get_on_value routes through
+    # PDAppearanceEntry.get_sub_dictionary() (wave 1488).
+    normal.set_item(COSName.get_pdf_name("Accepted"), COSStream())
+    normal.set_item(_OFF, COSStream())
     checkbox.set_widgets([_widget_with_normal_appearance(normal)])
 
     checkbox.set_value("Accepted")

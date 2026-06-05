@@ -114,6 +114,12 @@ class TextPosition:
     page_height: float = 0.0
     text_matrix: list[float] | None = None
     font_size_in_pt: float | None = None
+    # Real per-glyph advances (user space) for the glyphs in this run, when
+    # the lite stripper could thread them from the font's /Widths. ``None``
+    # when only the run-level average width is known (malformed font, or a
+    # subdivided sub-run). Mirrors upstream's per-glyph displacement array;
+    # consumed by :meth:`get_individual_widths` and the by-area splitter.
+    individual_widths: list[float] | None = None
 
     # ------------------------------------------------------------------
     # Decoded text
@@ -461,10 +467,15 @@ class TextPosition:
     def get_individual_widths(self) -> list[float]:
         """Per-character widths.
 
-        Upstream tracks one displacement per glyph; in this lite port we
-        evenly distribute :attr:`width` across the decoded characters.
+        Returns the real per-glyph advances threaded from the font's
+        ``/Widths`` (:attr:`individual_widths`) when available — mirroring
+        upstream's one-displacement-per-glyph array. Falls back to evenly
+        distributing :attr:`width` across the decoded characters when only
+        the run-level width is known (malformed font / subdivided sub-run).
         Returns an empty list when there is no text.
         """
+        if self.individual_widths is not None:
+            return list(self.individual_widths)
         n = len(self.text)
         if n == 0:
             return []

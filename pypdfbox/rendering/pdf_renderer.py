@@ -4886,27 +4886,35 @@ class PDFRenderer(PDFStreamEngine):
                 ux = ia * px + ic * py + ie
                 uy = ib * px + id_ * py + if_
                 u = ((ux - x0) * dx + (uy - y0) * dy) / denom
-                # Apply /Extend handling per §8.7.4.5.3.
+                # Apply /Extend handling per §8.7.4.5.3, mirroring upstream
+                # AxialShadingContext.getRaster. ``frac`` is the parametric
+                # value upstream feeds into ``key = (int)(inputValue*factor)``.
+                # For an in-range pixel that is ``u`` (the [0,1] axis
+                # projection). On the extend branches upstream substitutes the
+                # raw ``domain[0]`` / ``domain[1]`` value for ``inputValue`` —
+                # NOT 0 / 1 — so for a /Domain that is not [0,1] the looked-up
+                # colour is taken at fraction domain[i] of the ramp, a quirk
+                # the spec-literal ``u = 0 / 1`` clamp would miss (PDFBOX axial
+                # uses domain endpoints where radial uses 0 / 1).
                 if u < 0.0:
                     if not extend_start:
                         pixels.extend(out_fill)
                         continue
-                    u = 0.0
+                    frac = domain_lo
                 elif u > 1.0:
                     if not extend_end:
                         pixels.extend(out_fill)
                         continue
-                    u = 1.0
-                # Map u in [0,1] to /Domain.
-                t = domain_lo + (domain_hi - domain_lo) * u
-                # Lerp into pre-evaluated ramp.
-                if domain_hi == domain_lo:
-                    idx = 0
+                    frac = domain_hi
                 else:
-                    idx = int(round(
-                        (t - domain_lo) / (domain_hi - domain_lo)
-                        * (ramp_steps - 1)
-                    ))
+                    frac = u
+                # Look up the ramp at ``frac`` with upstream's truncating
+                # ``(int)(frac*factor)`` index (factor == ramp_steps-1 here).
+                # Upstream does NOT clamp this index, so a /Domain endpoint
+                # outside [0,1] would raise IndexError in Java; we clamp into
+                # range instead (documented divergence) so the library never
+                # crashes on a malformed-but-renderable shading.
+                idx = int(frac * (ramp_steps - 1))
                 if idx < 0:
                     idx = 0
                 elif idx >= ramp_steps:

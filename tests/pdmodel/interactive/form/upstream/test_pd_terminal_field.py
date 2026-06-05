@@ -16,7 +16,14 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSString
+from pypdfbox.cos import (
+    COSArray,
+    COSDictionary,
+    COSInteger,
+    COSName,
+    COSStream,
+    COSString,
+)
 from pypdfbox.pdmodel.fdf.fdf_field import FDFField
 from pypdfbox.pdmodel.interactive.annotation import PDAnnotationWidget
 from pypdfbox.pdmodel.interactive.form import PDAcroForm
@@ -107,8 +114,10 @@ def test_import_fdf_name_value_via_button(acro_form: PDAcroForm) -> None:
     widget = cb.get_widgets()[0]
     ap = COSDictionary()
     n = COSDictionary()
-    n.set_item(COSName.get_pdf_name("Yes"), COSDictionary())
-    n.set_item(COSName.get_pdf_name("Off"), COSDictionary())
+    # On-state must be COSStream-valued: set_value -> check_value -> on-value
+    # discovery filters to stream entries (wave 1488).
+    n.set_item(COSName.get_pdf_name("Yes"), COSStream())
+    n.set_item(COSName.get_pdf_name("Off"), COSStream())
     ap.set_item(COSName.get_pdf_name("N"), n)
     widget.get_cos_object().set_item(COSName.get_pdf_name("AP"), ap)
 

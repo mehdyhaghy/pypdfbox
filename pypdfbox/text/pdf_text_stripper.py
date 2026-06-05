@@ -1150,13 +1150,129 @@ class PDFTextStripper:
         quadrant = round(angle / 90.0) * 90
         return float(quadrant % 360)
 
+    def _glyph_segments(
+        self,
+        text_bytes: bytes,
+        state: _TextState,
+        font: PDFont | None,
+        fallback_advance: float,
+    ) -> list[tuple[str, float, float]] | None:
+        """Decode ``text_bytes`` into per-glyph ``(unicode, advance, width)``.
+
+        Threads real per-glyph advances through the lite stripper: each
+        character code is read via the font's ``read_code`` (1–4 bytes for
+        Type0/CID composite fonts, single byte for simple fonts), decoded to
+        its Unicode piece, and assigned its true displacement
+
+            ``w0 / 1000 × fontSize + Tc (+ Tw on single-byte code 32)``
+
+        in unscaled text space (the caller applies horizontal scaling
+        ``Th``). ``w0`` is the font's per-code width from ``PDFont.get_width``
+        (the ``/Widths`` array or the embedded font program — oracle-verified
+        wave 1408). Mirrors upstream ``PDFStreamEngine.showText`` /
+        ``PDFont.getDisplacement`` (PDF 32000-1 §9.4.4).
+
+        Returns ``None`` when the font is unavailable or cannot decode the
+        bytes, so the caller falls back to the average-advance path that keeps
+        malformed PDFs producing monotonic cursor steps.
+        """
+        if font is None:
+            return None
+        read_code = getattr(font, "read_code", None)
+        get_width = getattr(font, "get_width", None)
+        if not callable(read_code) or not callable(get_width):
+            return None
+        try:
+            from pypdfbox.pdmodel.font import PDType3Font  # noqa: PLC0415
+
+            type3_scale = (
+                font.get_font_matrix()[0]
+                if isinstance(font, PDType3Font)
+                else None
+            )
+        except Exception:  # noqa: BLE001 — defensive
+            type3_scale = None
+        font_size = state.font_size
+        char_spacing = state.char_spacing
+        word_spacing = state.word_spacing
+        segments: list[tuple[str, float, float]] = []
+        offset = 0
+        n = len(text_bytes)
+        try:
+            while offset < n:
+                code, consumed = read_code(text_bytes, offset)
+                if consumed <= 0:
+                    return None
+                # Decode this single code to its Unicode piece, reusing the
+                # same resolution order ``_decode_show_text`` follows.
+                piece = self._decode_code_to_unicode(
+                    text_bytes[offset : offset + consumed], code, font
+                )
+                w0 = float(get_width(code))
+                if type3_scale is not None:
+                    glyph_width = w0 * type3_scale * font_size
+                else:
+                    glyph_width = w0 / 1000.0 * font_size
+                advance = glyph_width + char_spacing
+                # ``Tw`` (word spacing) applies only to the single-byte code
+                # 32 (PDF 32000-1 §9.3.3) — never to a 2-byte composite code.
+                if consumed == 1 and code == 32:
+                    advance += word_spacing
+                segments.append((piece, advance, glyph_width))
+                offset += consumed
+        except Exception:  # noqa: BLE001 — defensive: malformed font / decode
+            return None
+        if not segments:
+            return None
+        # When the per-code decode yields nothing useful (every width zero
+        # and no advance), let the caller fall back to the average path.
+        if all(w == 0.0 for _piece, _adv, w in segments) and fallback_advance > 0:
+            return None
+        return segments
+
+    def _decode_code_to_unicode(
+        self, code_bytes: bytes, code: int, font: PDFont | None
+    ) -> str:
+        """Decode a single character code to its Unicode piece.
+
+        Resolution order matches :meth:`_decode_show_text`: ``/ToUnicode``
+        CMap first, then the typed font's own ``to_unicode`` / simple-font
+        decode, then a Latin-1 fallback. Returns ``""`` for a code that
+        resolves to nothing (a non-spacing/absent glyph still carries its
+        advance via :meth:`_glyph_segments`).
+        """
+        if self._active_cmap is not None:
+            piece = self._active_cmap.to_unicode(code)
+            if piece is None and font is not None:
+                try:
+                    piece = font.to_unicode(code)
+                except Exception:  # noqa: BLE001 — defensive
+                    piece = None
+            return piece if piece is not None else ""
+        if font is not None:
+            try:
+                piece = font.to_unicode(code)
+                if piece is not None:
+                    return piece
+            except Exception:  # noqa: BLE001 — defensive
+                pass
+            from pypdfbox.pdmodel.font import PDSimpleFont  # noqa: PLC0415
+
+            if isinstance(font, PDSimpleFont):
+                try:
+                    return font.decode(code_bytes)
+                except Exception:  # noqa: BLE001 — defensive
+                    pass
+        return code_bytes.decode("latin-1", errors="replace")
+
     def _emit(
         self,
         s: COSString,
         state: _TextState,
         positions: list[TextPosition],
     ) -> None:
-        text = self._decode_show_text(s.get_bytes())
+        raw_bytes = s.get_bytes()
+        text = self._decode_show_text(raw_bytes)
         if not text:
             return
         font = self._active_font
@@ -1167,6 +1283,10 @@ class PDFTextStripper:
         width_of_space = self._compute_width_of_space(
             font, state.font_size, fallback=per_char
         )
+        # Real per-glyph advances from the font's /Widths (wave 1408 per-code
+        # lookups), decoded code-by-code via the font's encoding. ``None``
+        # falls back to the average-advance path below for malformed fonts.
+        segments = self._glyph_segments(raw_bytes, state, font, per_char)
         # Resolve the device-space origin and effective glyph size from
         # the full text-rendering matrix. ``font_size`` (the ``Tf``
         # operand) is scaled by the matrix's Y scaling so the line-break
@@ -1175,8 +1295,9 @@ class PDFTextStripper:
         # scaling so it lands in the same device-space units as the
         # origin.
         trm = self._text_rendering_matrix(state)
-        device_x = trm.get_translate_x()
-        device_y = trm.get_translate_y()
+        # The device-space origin per (sub-)run is computed from the run's own
+        # cursor via ``_origin_matrix`` below; here we only need the matrix's
+        # scaling factors and rotation for the effective font size and dir.
         y_scale = trm.get_scaling_factor_y()
         x_scale = trm.get_scaling_factor_x()
         effective_font_size = state.font_size * y_scale
@@ -1198,7 +1319,22 @@ class PDFTextStripper:
         # (>1) by it. The rendered space width scales too, so an engine that
         # honours ``Tz`` segments words differently from one that ignores it.
         th = getattr(state, "horizontal_scaling", 1.0)
-        run_width = len(text) * per_char * th
+        if segments is not None:
+            # Real per-glyph advances (text space), scaled by Th. The run
+            # width is their sum — replacing the ``len(text) × average``
+            # estimate so ``prev_right`` and the average-char-width prong of
+            # the word-break threshold use true metrics. ``glyph_width`` is
+            # the bare glyph advance (no Tc/Tw), used to size each glyph's
+            # right edge for the intra-run word-break test.
+            glyph_text = [piece for piece, _adv, _w in segments]
+            glyph_adv = [adv * th for _piece, adv, _w in segments]
+            glyph_width = [w * th for _piece, _adv, w in segments]
+            run_width = sum(glyph_adv)
+        else:
+            glyph_text = list(text)
+            glyph_adv = [per_char * th] * len(text)
+            glyph_width = list(glyph_adv)
+            run_width = len(text) * per_char * th
         width_of_space = width_of_space * th
 
         if self._ignore_content_stream_space_glyphs:
@@ -1220,30 +1356,48 @@ class PDFTextStripper:
             return
 
         if emit_text is not None:
-            positions.append(
-                TextPosition(
-                    text=emit_text,
-                    x=device_x,
-                    y=device_y,
-                    font_size=effective_font_size,
-                    font_name=state.font_name,
-                    font=font,
-                    resolved_font_name=resolved_font_name,
-                    width=run_width * x_scale,
-                    width_of_space=width_of_space * x_scale,
-                    char_spacing=state.char_spacing,
-                    word_spacing=state.word_spacing,
-                    dir=text_dir,
-                    text_matrix=[
-                        state.tm_a,
-                        state.tm_b,
-                        state.tm_c,
-                        state.tm_d,
-                        state.text_x,
-                        state.text_y,
-                    ],
-                )
+            # Subdivide the run on any *intra-run* glyph gap wide enough to
+            # be a word break — matching upstream's per-glyph emission, which
+            # turns a large ``Tc`` (or a sparse positioning advance) inside a
+            # single ``Tj`` string into a word separator. ``emit_text`` is the
+            # decoded run text (or the ``/ActualText`` replacement, which is
+            # never subdivided — it is a single semantic unit).
+            sub_runs = self._split_run_on_word_gaps(
+                emit_text, text, glyph_text, glyph_adv, glyph_width, width_of_space
             )
+            for sub_text, start_offset, _sub_advance, sub_width in sub_runs:
+                sub_text_x = state.text_x + start_offset * state.tm_a
+                sub_text_y = state.text_y + start_offset * state.tm_b
+                sub_trm = self._origin_matrix(state, sub_text_x, sub_text_y)
+                positions.append(
+                    TextPosition(
+                        text=sub_text,
+                        x=sub_trm.get_translate_x(),
+                        y=sub_trm.get_translate_y(),
+                        font_size=effective_font_size,
+                        font_name=state.font_name,
+                        font=font,
+                        resolved_font_name=resolved_font_name,
+                        width=sub_width * x_scale,
+                        width_of_space=width_of_space * x_scale,
+                        char_spacing=state.char_spacing,
+                        word_spacing=state.word_spacing,
+                        dir=text_dir,
+                        text_matrix=[
+                            state.tm_a,
+                            state.tm_b,
+                            state.tm_c,
+                            state.tm_d,
+                            sub_text_x,
+                            sub_text_y,
+                        ],
+                    )
+                )
+            # When no subdivision occurred, the single emitted run carries the
+            # full glyph advance list so consumers (PDFTextStripperByArea) can
+            # route per glyph with true offsets.
+            if len(sub_runs) == 1 and positions:
+                positions[-1].individual_widths = [a * x_scale for a in glyph_adv]
         # Advance the text origin by an approximation of the run width.
         # If the active font has a ``/Widths`` array, we use its average
         # glyph advance (already scaled to user-space units in
@@ -1262,6 +1416,117 @@ class PDFTextStripper:
         # collapse onto its neighbour.
         state.text_x += run_width * state.tm_a
         state.text_y += run_width * state.tm_b
+
+    @staticmethod
+    def _origin_matrix(state: _TextState, text_x: float, text_y: float) -> Matrix:
+        """Text-rendering matrix for a glyph origin at ``(text_x, text_y)``.
+
+        Like :meth:`_text_rendering_matrix` but for an explicit translation
+        (a subdivided sub-run starts partway through the parent run). Folds
+        text rise (``Ts``) in the same parameter-matrix-first way.
+        """
+        tm = Matrix(state.tm_a, state.tm_b, state.tm_c, state.tm_d, text_x, text_y)
+        rise = getattr(state, "text_rise", 0.0)
+        if rise:
+            tm = Matrix(1.0, 0.0, 0.0, 1.0, 0.0, rise).multiply(tm)
+        return tm.multiply(state.ctm)
+
+    def _split_run_on_word_gaps(
+        self,
+        emit_text: str,
+        run_text: str,
+        glyph_text: list[str],
+        glyph_adv: list[float],
+        glyph_width: list[float],
+        width_of_space: float,
+    ) -> list[tuple[str, float, float, float]]:
+        """Subdivide a show-text run into word-separated sub-runs.
+
+        Mirrors upstream ``PDFStreamEngine``/``PDFTextStripper`` emitting one
+        ``TextPosition`` per glyph and inserting a word separator whenever the
+        gap between one glyph's right edge and the next glyph's origin exceeds
+        the space-width-relative threshold (the intra-run analogue of
+        :meth:`_is_word_break`). A large ``Tc`` (or a sparse positioning
+        advance) inside a single ``Tj`` string therefore segments into words
+        exactly the way Java does — closing the documented
+        per-glyph-granularity / intra-run word-break carve-out.
+
+        Returns a list of ``(sub_text, start_offset, sub_advance,
+        sub_width)`` tuples in text-space units (already scaled by ``Th``):
+        ``start_offset`` is the cumulative advance to the sub-run's first
+        glyph, ``sub_advance`` the sum of its glyphs' advances (so the offsets
+        tile the parent run's full advance and drive the cursor), and
+        ``sub_width`` the sum of its glyphs' *bare* widths (excluding the
+        trailing inter-glyph ``Tc``/``Tw``) — which is what the emitted
+        ``TextPosition.width`` must carry so the inter-position gap that the
+        word-break heuristic measures reflects the real ``Tc`` spacing, the
+        way Java's per-glyph widths do. A single-element result means no
+        break fired.
+
+        Subdivision is suppressed when the run carries an ``/ActualText``
+        replacement (``emit_text != run_text``) — that string is one semantic
+        unit and must not be split mid-replacement.
+        """
+        # No metrics, single glyph, an ActualText replacement, or a decode
+        # mismatch (the per-code join disagrees with the run text — e.g. a
+        # ligature or NFKC-normalised run) → emit one run unchanged so the
+        # subdivided text never diverges from the non-subdivided path.
+        n = len(glyph_adv)
+        # A run/segment's visual right edge (Java ``endX``) is the last
+        # glyph's origin + its *bare* width — i.e. the sum of advances minus
+        # the trailing inter-glyph spacing carried in the last glyph's
+        # advance. This is the width the inter-run word-break heuristic must
+        # measure against.
+        full_width = (
+            sum(glyph_adv) - (glyph_adv[-1] - glyph_width[-1]) if glyph_adv else 0.0
+        )
+        single = [(emit_text, 0.0, sum(glyph_adv), full_width)]
+        if (
+            n <= 1
+            or emit_text != run_text
+            or not glyph_text
+            or "".join(glyph_text) != run_text
+        ):
+            return single
+        # Threshold mirrors ``_is_word_break``: the smaller of the
+        # space-width and average-char-width prongs.
+        delta_space = (
+            width_of_space * self._spacing_tolerance
+            if width_of_space > 0.0
+            else math.inf
+        )
+        positive_widths = [w for w in glyph_width if w > 0.0]
+        if positive_widths:
+            avg_char_width = sum(positive_widths) / len(positive_widths)
+            delta_char = avg_char_width * self._average_char_tolerance
+        else:
+            delta_char = math.inf
+        threshold = min(delta_space, delta_char)
+        if not math.isfinite(threshold):
+            return single
+        sub_runs: list[tuple[str, float, float, float]] = []
+        seg_start = 0.0  # cumulative advance to the start of the segment
+        seg_text: list[str] = []
+        seg_adv = 0.0
+        for i in range(n):
+            seg_text.append(glyph_text[i])
+            seg_adv += glyph_adv[i]
+            # Gap after this glyph = advance beyond the bare glyph width
+            # (i.e. Tc, plus Tw on a space). Compare to the threshold.
+            gap = glyph_adv[i] - glyph_width[i]
+            # The segment ends here (at the last glyph or before a break);
+            # its visual width is the advance up to here minus this glyph's
+            # own trailing inter-glyph spacing (Java ``endX``).
+            seg_width = seg_adv - gap
+            if i == n - 1:
+                sub_runs.append(("".join(seg_text), seg_start, seg_adv, seg_width))
+            elif gap > threshold:
+                sub_runs.append(("".join(seg_text), seg_start, seg_adv, seg_width))
+                seg_start += seg_adv
+                seg_text = []
+                seg_adv = 0.0
+        # Drop any empty segment (defensive).
+        return [s for s in sub_runs if s[0] != ""] or single
 
     def _emit_ignoring_space_glyphs(
         self,
@@ -1845,7 +2110,32 @@ class PDFTextStripper:
         self, pos: TextPosition, prev: TextPosition
     ) -> bool:
         """True when ``pos`` is far enough past ``prev``'s right edge to
-        warrant a word separator."""
+        warrant a word separator.
+
+        Mirrors upstream ``PDFTextStripper.writeString``'s word-segmentation
+        gate (PDF 32000-1 text-layout reconstruction): a separator is
+        inserted when the horizontal gap between the previous run's right
+        edge and this run's origin exceeds the *space-glyph-width-relative*
+        threshold
+
+            ``min(widthOfSpace × spacingTolerance,
+                  averageCharWidth × averageCharTolerance)``
+
+        with the default ``spacingTolerance = 0.5`` and
+        ``averageCharTolerance = 0.3``. This replaces the legacy coarse
+        ``font_size × 1.5`` heuristic, which fired ~36pt later than Java for a
+        24pt font and missed mid-size positioning gaps (DEFERRED.md
+        "word-break gap-threshold calibration"). The space width and average
+        char width are now real per-glyph metrics threaded through ``_emit``
+        from the font's ``/Widths`` (wave 1408 per-code lookups), so the
+        threshold tracks the active font's metrics the way upstream does.
+
+        When the font supplies no usable space width (``width_of_space`` is
+        zero — a malformed font with no metrics), upstream sets
+        ``deltaSpace = Float.MAX_VALUE`` so only the average-char-width prong
+        governs; we fall back to the same average-char prong, and finally to
+        the legacy ``font_size`` estimate when neither metric is available.
+        """
         # When an explicit space glyph already borders the boundary
         # (the previous run ends in whitespace, or this run begins with
         # whitespace), a producer has already encoded the word break in
@@ -1862,7 +2152,30 @@ class PDFTextStripper:
             stretch = len(prev.text) * prev.font_size * 0.5
             prev_right = (prev.x + stretch) if not self._flip_axes else (prev.y + stretch)
         gap = (pos.x - prev_right) if not self._flip_axes else (pos.y - prev_right)
-        return gap > prev.font_size * self._WORD_GAP_FACTOR
+        # The space-width-relative threshold is only trustworthy when the
+        # previous run carries *real* font metrics (a resolved ``PDFont`` whose
+        # ``/Widths`` fed the run width and space width — wave 1408/1488). For a
+        # malformed / font-less run both metrics are the coarse 0.5-em estimate,
+        # so the fine threshold would over-segment; fall back to the legacy
+        # ``font_size × 1.5`` estimate there (preserving pre-1488 behaviour for
+        # streams whose font could not be resolved).
+        if prev.font is None or prev.width_of_space <= 0.0 or prev.width <= 0.0:
+            return gap > prev.font_size * self._WORD_GAP_FACTOR
+        # Space-width-relative threshold (upstream ``deltaSpace`` prong).
+        word_spacing = prev.width_of_space
+        delta_space = word_spacing * self._spacing_tolerance
+        # Average-char-width prong (upstream ``averageCharWidth``). Derived
+        # from the previous run's true advance / glyph count.
+        n_prev = len(prev.text)
+        if n_prev > 0:
+            average_char_width = prev.width / n_prev
+            delta_char = average_char_width * self._average_char_tolerance
+        else:
+            delta_char = math.inf
+        threshold = min(delta_space, delta_char)
+        if not math.isfinite(threshold):
+            threshold = prev.font_size * self._WORD_GAP_FACTOR
+        return gap > threshold
 
     def is_paragraph_separation(
         self, pos: TextPosition, prev: TextPosition

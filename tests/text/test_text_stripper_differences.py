@@ -244,16 +244,18 @@ def test_narrow_font_keeps_close_runs_joined() -> None:
     assert out == "foo bar\n"
 
 
-def test_wide_font_suppresses_word_break_for_same_gap() -> None:
-    """A *wide* font (avg width 1000/1000 em) consumes the whole
-    inter-Tj distance with its glyphs, so the same physical x jump
-    that produced a word break for the narrow font now leaves no gap.
+def test_wide_font_word_break_uses_space_relative_threshold() -> None:
+    """Wave 1488 — word-break threshold is now space/avg-char-width relative.
 
-    Two Tj at x=100 and x=140, font_size=12, wide font → per-char
-    advance = 1000/1000*12 = 12 user units. With a 3-char word the
-    right edge sits at 100 + 3*12 = 136; the gap to the next origin
-    (140) is only 4 units — well below the 18 threshold — so the runs
-    concatenate.
+    Two Tj at x=100 and x=140, font_size=12, wide font (1000/1000 em) →
+    per-char advance = 12 user units. With a 3-char word the right edge sits
+    at 100 + 3*12 = 136; the gap to the next origin (140) is 4 units. The
+    wave-1488 recalibration replaces the coarse ``font_size × 1.5`` (=18)
+    threshold with upstream's ``min(widthOfSpace × 0.5, averageCharWidth ×
+    0.3)``; here ``averageCharWidth × 0.3 = 12 × 0.3 = 3.6``, so the 4-unit
+    gap now crosses it and a separator is inserted — matching Apache PDFBox
+    (gap/avgChar ≈ 0.33 > 0.3). (Pre-1488 the same gap concatenated, because
+    18 > 4.)
     """
     doc = PDDocument()
     page = _make_page_with_stream(
@@ -273,10 +275,7 @@ def test_wide_font_suppresses_word_break_for_same_gap() -> None:
     _attach_font(page, "F0", font_dict)
 
     out = PDFTextStripper().get_text(doc)
-    # Same content stream as the narrow-font test, different /Widths →
-    # different word-break decision. This is the load-bearing assertion
-    # the upgrade is meant to enable.
-    assert out == "foobar\n"
+    assert out == "foo bar\n"
 
 
 def test_widths_zero_falls_back_to_half_em_estimate() -> None:
@@ -328,7 +327,12 @@ def test_text_positions_carry_resolved_font_and_width_metadata() -> None:
     assert pos.font_name == "F0"
     assert pos.font is not None
     assert pos.resolved_font_name == "FauxSans"  # wave 1485: non-Std14 BaseFont (see builder note)
-    assert pos.width == pytest.approx(14.4)
+    # Wave 1488: the run width is now the sum of real per-glyph advances
+    # (each 600/1000*12 = 7.2 plus the 1pt Tc) minus the last glyph's
+    # trailing Tc — i.e. ``(8.2 + 8.2) - 1.0 = 15.4``. Pre-1488 the width
+    # was the Tc-ignoring average ``2 * 7.2 = 14.4``. Tw does not apply (no
+    # code 32 in "Hi"), so width_of_space stays 7.2.
+    assert pos.width == pytest.approx(15.4)
     assert pos.width_of_space == pytest.approx(7.2)
     assert pos.char_spacing == 1.0
     assert pos.word_spacing == 3.0
@@ -366,7 +370,13 @@ def test_mixed_font_spacing_uses_previous_position_width() -> None:
     page.set_resources(resources)
 
     stripper = _CapturingTextStripper()
-    assert stripper.get_text(doc) == "foobar\n"
+    # Wave 1488: the space-relative word-break threshold (avgCharWidth × 0.3
+    # = 12 × 0.3 = 3.6 for the wide previous run) fires on the 4-unit gap
+    # between "foo" (right edge 136) and "bar" (origin 140), so a separator
+    # is inserted — matching Apache PDFBox. Pre-1488 the coarse font_size*1.5
+    # (=18) threshold suppressed it ("foobar"). The per-run widths below are
+    # unchanged (no Tc), exercising the per-font /Widths advance.
+    assert stripper.get_text(doc) == "foo bar\n"
     assert [pos.text for pos in stripper.positions] == ["foo", "bar"]
     assert [pos.font_name for pos in stripper.positions] == ["Fwide", "Fnarrow"]
     assert [pos.width for pos in stripper.positions] == pytest.approx([36.0, 7.2])

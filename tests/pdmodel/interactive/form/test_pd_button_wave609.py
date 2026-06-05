@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
+from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream, COSString
 from pypdfbox.pdmodel.interactive.annotation import PDAnnotationWidget
 from pypdfbox.pdmodel.interactive.form import PDAcroForm
 from pypdfbox.pdmodel.interactive.form.pd_button import PDButton
@@ -18,7 +18,9 @@ _V = COSName.get_pdf_name("V")
 def _normal_appearance(*states: str) -> COSDictionary:
     normal = COSDictionary()
     for state in states:
-        normal.set_item(COSName.get_pdf_name(state), COSDictionary())
+        # Stream-valued states: on-value discovery filters to COSStream
+        # entries via PDAppearanceEntry.get_sub_dictionary() (wave 1488).
+        normal.set_item(COSName.get_pdf_name(state), COSStream())
     ap = COSDictionary()
     ap.set_item(_N, normal)
     return ap

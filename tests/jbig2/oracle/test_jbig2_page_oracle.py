@@ -58,6 +58,12 @@ _STANDALONE_CASES = [
     ("003", "003.jb2", 1, None),
     ("005", "005.jb2", 1, None),
     ("006_page1", "006.jb2", 1, None),
+    # Large (805-symbol) dictionary + text region whose refinement instances
+    # carry a negative reference offset ((RDW >> 1) + RDX < 0). Exercises the
+    # Java truncated-remainder semantics of ``referenceDX % 8`` in the generic
+    # refinement region decoder (regression: pypdfbox previously desynced the
+    # arithmetic stream here and raised IndexError on an out-of-range symbol id).
+    ("20123110001", "20123110001.jb2", 1, None),
 ]
 
 

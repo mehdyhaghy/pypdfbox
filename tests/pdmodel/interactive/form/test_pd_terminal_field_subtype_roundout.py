@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.cos import COSArray, COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel.interactive.form import PDAcroForm
 from pypdfbox.pdmodel.interactive.form.pd_combo_box import PDComboBox
 from pypdfbox.pdmodel.interactive.form.pd_list_box import PDListBox
@@ -135,8 +135,10 @@ def _make_widget_with_on_state(on_value: str, *, is_on: bool) -> COSDictionary:
     widget = COSDictionary()
     ap = COSDictionary()
     n = COSDictionary()
-    n.set_item(COSName.get_pdf_name(on_value), COSDictionary())
-    n.set_item(COSName.get_pdf_name("Off"), COSDictionary())
+    # Stream-valued states: on-value discovery filters to COSStream entries
+    # via PDAppearanceEntry.get_sub_dictionary() (wave 1488).
+    n.set_item(COSName.get_pdf_name(on_value), COSStream())
+    n.set_item(COSName.get_pdf_name("Off"), COSStream())
     ap.set_item(_N, n)
     widget.set_item(_AP, ap)
     widget.set_item(_AS, COSName.get_pdf_name(on_value if is_on else "Off"))

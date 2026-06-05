@@ -263,24 +263,28 @@ class PDButton(PDTerminalField):
 
     @staticmethod
     def get_on_value_for_widget(widget: PDAnnotationWidget) -> str:
-        """Return the first non-``/Off`` key in this widget's ``/AP /N``
-        subdictionary, or ``""`` if no normal-appearance subdictionary
-        exists.
+        """Return the first non-``/Off`` *stream-valued* state in this widget's
+        ``/AP /N`` subdictionary, or ``""`` if no normal-appearance
+        subdictionary exists.
 
         Mirrors upstream private helper ``PDButton.getOnValueForWidget``
-        (PDButton.java line 353).
+        (PDButton.java line 353): upstream iterates
+        ``normalAppearance.getSubDictionary().keySet()`` — and
+        ``PDAppearanceEntry.getSubDictionary`` only surfaces keys whose VALUE
+        is a ``COSStream``. A ``/N`` holding a non-stream placeholder (a plain
+        dict or a name) therefore contributes no on-value. Wave 1488 threaded
+        that stream-filter through this helper (previously it iterated the raw
+        ``/N`` keys, accepting any non-``/Off`` key regardless of value type).
         """
-        cos = widget.get_cos_object()
-        ap = cos.get_dictionary_object(COSName.get_pdf_name("AP"))
-        if not isinstance(ap, COSDictionary):
+        appearance = widget.get_appearance()
+        if appearance is None:
             return ""
-        n = ap.get_dictionary_object(COSName.get_pdf_name("N"))
-        if not isinstance(n, COSDictionary):
+        normal = appearance.get_normal_appearance()
+        if normal is None or not normal.is_sub_dictionary():
             return ""
-        off = COSName.get_pdf_name("Off")
-        for key in n.key_set():
-            if key != off:
-                return key.name
+        for entry in normal.get_sub_dictionary():
+            if entry != "Off":
+                return entry
         return ""
 
     def get_on_value_at_index(self, index: int) -> str:

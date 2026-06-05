@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.cos import COSArray, COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel.interactive.form import PDAcroForm
 from pypdfbox.pdmodel.interactive.form.pd_check_box import PDCheckBox
 from pypdfbox.pdmodel.interactive.form.pd_radio_button import PDRadioButton
@@ -17,8 +17,11 @@ def _widget_with_on_state(on_value: str) -> COSDictionary:
     widget = COSDictionary()
     ap = COSDictionary()
     normal = COSDictionary()
-    normal.set_item(COSName.get_pdf_name(on_value), COSDictionary())
-    normal.set_item(_OFF, COSDictionary())
+    # On/Off states must be COSStream-valued: get_on_value_for_widget routes
+    # through PDAppearanceEntry.get_sub_dictionary(), which surfaces only
+    # stream-valued state keys (wave 1488, mirroring upstream).
+    normal.set_item(COSName.get_pdf_name(on_value), COSStream())
+    normal.set_item(_OFF, COSStream())
     ap.set_item(_N, normal)
     widget.set_item(_AP, ap)
     return widget

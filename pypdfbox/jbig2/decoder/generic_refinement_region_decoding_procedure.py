@@ -41,6 +41,22 @@ if TYPE_CHECKING:
 
 _MASK32 = 0xFFFFFFFF
 
+
+def _java_mod(a: int, b: int) -> int:
+    """Java ``%`` (remainder, truncated toward zero).
+
+    Python's ``%`` follows the sign of the divisor, so ``-1 % 8 == 7``, whereas
+    Java's remainder follows the sign of the dividend, so ``-1 % 8 == -1``. The
+    refinement template's ``referenceDX % 8`` (and the values derived from it)
+    must use Java semantics: a negative ``referenceDX`` (which arises when the
+    text-region refinement reference offset ``(RDW >> 1) + RDX`` is negative,
+    e.g. on large symbol dictionaries) selects a different context-shift branch
+    under Java's truncated remainder, and matching that is required for
+    bit-exact decode.
+    """
+    r = abs(a) % abs(b)
+    return -r if a < 0 else r
+
 # §6.3.5.6, Figure 14
 _SLTP_CONTEXT_TEMPLATE0 = 0x100
 # §6.3.5.6, Figure 15
@@ -410,7 +426,7 @@ class GenericRefinementRegionDecodingProcedure:
             w4 = reg.get_byte_as_integer(byte_index - row_stride)
         byte_index += 1
 
-        mod_reference_dx = self.reference_dx % 8
+        mod_reference_dx = _java_mod(self.reference_dx, 8)
         shift_offset = 6 + mod_reference_dx
         mod_ref_byte_idx = ref_byte_index % ref_row_stride
 
@@ -461,7 +477,11 @@ class GenericRefinementRegionDecodingProcedure:
         c4 = (w4 >> 6) & 0xFFFF
         c5 = 0
 
-        mod_bits_to_trim = (2 - mod_reference_dx) % 8
+        # Java's ``int <<`` masks the shift count to its low 5 bits, so a
+        # negative ``modBitsToTrim`` (which Java's truncated remainder can yield
+        # when ``modReferenceDX`` exceeds 2) shifts by ``count & 0x1F`` rather
+        # than raising; mirror that here.
+        mod_bits_to_trim = _java_mod(2 - mod_reference_dx, 8) & 0x1F
         w1 = (w1 << mod_bits_to_trim) & _MASK32
         w2 = (w2 << mod_bits_to_trim) & _MASK32
         w3 = (w3 << mod_bits_to_trim) & _MASK32
@@ -494,7 +514,7 @@ class GenericRefinementRegionDecodingProcedure:
             c4 = (((c4 << 1) | (0x01 & (w4 >> 7))) & 0x07) & 0xFFFF
             c5 = bit & 0xFFFF
 
-            if (x - self.reference_dx) % 8 == 5:
+            if _java_mod(x - self.reference_dx, 8) == 5:
                 if ((x - self.reference_dx) // 8) + 1 >= ref.get_row_stride():
                     w1 = w2 = w3 = 0
                 else:

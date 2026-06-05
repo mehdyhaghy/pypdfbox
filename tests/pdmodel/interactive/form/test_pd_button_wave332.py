@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.cos import COSDictionary, COSName
+from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel.interactive.form import PDAcroForm
 from pypdfbox.pdmodel.interactive.form.pd_check_box import PDCheckBox
 
@@ -14,8 +14,10 @@ _OFF: COSName = COSName.get_pdf_name("Off")
 def _normal_appearance_with_on_state(on_value: str) -> COSDictionary:
     ap = COSDictionary()
     normal = COSDictionary()
-    normal.set_item(COSName.get_pdf_name(on_value), COSDictionary())
-    normal.set_item(_OFF, COSDictionary())
+    # Stream-valued states: get_on_value_for_widget routes through
+    # PDAppearanceEntry.get_sub_dictionary() (wave 1488).
+    normal.set_item(COSName.get_pdf_name(on_value), COSStream())
+    normal.set_item(_OFF, COSStream())
     ap.set_item(_N, normal)
     return ap
 

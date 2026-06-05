@@ -261,35 +261,18 @@ def test_tz_scales_run_width_and_gap() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Deferred divergence — word-break-threshold calibration. For a *mid-size* TJ
-# jump (gap 8–34pt across Tz 50/100/200) Java inserts a separator (its
-# threshold is relative to the space-glyph width, and the gap-to-space ratio
-# is Tz-invariant ≈ 2.5, above it); the lite stripper's coarser
-# ``font_size × 1.5`` gap threshold does not fire until ~36pt, so it omits the
-# break and extracts "ABCD". This is NOT a Tz bug — the gap is correctly
-# Tz-scaled (see test_tz_scales_run_width_and_gap); it is the pre-existing
-# space-relative-threshold gap, which also fails at Tz 100 (no scaling). Same
-# family as the per-run-granularity carve-outs. Recalibrating _is_word_break to
-# PDFBox's wordSpacing-relative formula is a headline-heuristic change across
-# the whole extraction suite — deferred. xfail strict so closing it flips green.
+# Word-break-threshold calibration (wave 1488 — formerly DEFERRED). For a
+# *mid-size* TJ jump (gap 8–34pt across Tz 50/100/200) Java inserts a separator
+# because its threshold is relative to the space-glyph width (the gap-to-space
+# ratio is Tz-invariant ≈ 2.5, above it). Wave 1488 recalibrated
+# ``_is_word_break`` to upstream's space-width-relative formula
+# (``min(widthOfSpace × spacingTolerance, averageCharWidth ×
+# averageCharTolerance)``) using the real per-glyph widths threaded through
+# ``_emit``, so the break now fires across all three Tz values — matching Java.
 # ---------------------------------------------------------------------------
 
 
 @requires_oracle
-@pytest.mark.xfail(
-    reason="word-break-threshold calibration: for a mid-size TJ jump (gap "
-    "8-34pt) Java inserts a separator (threshold relative to the space-glyph "
-    "width; gap/space ratio is Tz-invariant ~2.5, above it) but the lite "
-    "stripper's coarser font_size*1.5 gap threshold (~36pt) does not fire, so "
-    "it extracts 'ABCD' not 'AB CD'. The gap IS Tz-scaled correctly (see "
-    "test_tz_scales_run_width_and_gap); this is the pre-existing space-relative "
-    "threshold divergence (also present at Tz 100, no scaling), not a Tz bug. "
-    "Recalibrating _is_word_break to PDFBox's wordSpacing-relative formula is a "
-    "headline word-segmentation change spanning the whole extraction suite — "
-    "deferred (see DEFERRED.md). Same family as the per-run-granularity "
-    "carve-outs.",
-    strict=True,
-)
 @pytest.mark.parametrize(
     "content",
     [_TJ_MID_TZ_100, _TJ_MID_TZ_50, _TJ_MID_TZ_200],

@@ -214,44 +214,40 @@ def test_with_outline_line_origins_match_pdfbox() -> None:
 
 
 @requires_oracle
-def test_with_outline_intra_line_x_drift_is_horizontal_only() -> None:
-    """Document (don't weaken) the intra-line x divergence: it is the
-    average-advance width approximation, not a coordinate-frame bug.
+def test_with_outline_intra_line_x_origin_matches_pdfbox() -> None:
+    """Intra-line X parity (wave 1488): each run's origin X now matches the
+    Java glyph at the run's start index, within coordinate epsilon.
 
-    The proof that the divergence is purely horizontal: along a whole line
-    the flipped y and the font size stay *exact* (within epsilon) at every
-    run even where x has drifted by many points. A real geometry/frame bug
-    would perturb y too. The x drift is bounded (it cannot exceed the line
-    length) and is reset at every line origin — the signature of an advance
-    accumulation error, not a re-anchoring error.
+    Formerly ``test_with_outline_intra_line_x_drift_is_horizontal_only`` —
+    that test *documented* the intra-line X drift caused by the lite
+    stripper's font-wide average glyph advance. Wave 1488 threaded real
+    per-glyph advances (the font's ``/Widths``, decoded code-by-code) through
+    ``_emit``, so the X cursor now steps exactly the way
+    ``PDFStreamEngine.showText`` does and the drift is gone (it was ~0.005pt
+    across the whole fixture, down from many points). Each run's origin X
+    therefore lands on the Java glyph at its first-character index, and the
+    flipped Y / font size stay exact as before.
     """
     glyphs = _java_glyphs("pdmodel/with_outline.pdf")
     runs, _pw, ph = _py_runs("pdmodel/with_outline.pdf")
 
     idx = 0
-    prev_y: float | None = None
     max_dx_seen = 0.0
-    line_origin_dx = 0.0
     for run in runs:
         first = glyphs[idx]
-        is_new_line = prev_y is None or abs(run.y - prev_y) > 0.5 * run.font_size
         dx = abs(run.x - first.x_dir_adj)
-        # y stays exact even where x has drifted — proves the divergence is
-        # purely a horizontal advance error, never a frame/rotation bug.
+        # X origin now tracks the real per-glyph advance — at parity with
+        # the Java glyph at this run's start.
+        assert run.x == pytest.approx(first.x_dir_adj, abs=_COORD_EPS)
+        # Flipped Y stays exact (the frame/rotation was never the issue).
         assert (ph - run.y) == pytest.approx(first.y_dir_adj, abs=_COORD_EPS)
-        if is_new_line:
-            # Each line re-anchors: its origin x is close to Java again.
-            line_origin_dx = dx
-            assert dx <= 2.0
         max_dx_seen = max(max_dx_seen, dx)
-        prev_y = run.y
         idx += len(run.text)
 
-    # The drift is real (so this fixture genuinely exercises the
-    # approximation) but stays within one text line's worth of points.
-    assert max_dx_seen > _COORD_EPS, "expected the documented average-advance drift"
-    assert max_dx_seen < ph, "drift must stay bounded by the page extent"
-    assert line_origin_dx <= 2.0
+    # Drift is now within coordinate epsilon across the whole fixture.
+    assert max_dx_seen <= _COORD_EPS, (
+        "real per-glyph advances should eliminate the intra-line X drift"
+    )
 
 
 # ---------------------------------------------------------------------------

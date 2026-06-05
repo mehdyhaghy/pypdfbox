@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.cos import COSDictionary, COSName
+from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel.interactive.annotation import PDAnnotationWidget
 from pypdfbox.pdmodel.interactive.form import PDAcroForm
 from pypdfbox.pdmodel.interactive.form.pd_button import PDButton
@@ -43,7 +43,10 @@ _V = COSName.get_pdf_name("V")
 def _widget_with_states(*states: str) -> PDAnnotationWidget:
     normal = COSDictionary()
     for state in states:
-        normal.set_item(COSName.get_pdf_name(state), COSDictionary())
+        # On-value discovery filters to COSStream-valued state keys via
+        # PDAppearanceEntry.get_sub_dictionary() (wave 1488, mirroring
+        # upstream's getOnValueForWidget through getSubDictionary).
+        normal.set_item(COSName.get_pdf_name(state), COSStream())
     ap = COSDictionary()
     ap.set_item(_N, normal)
     widget = PDAnnotationWidget()

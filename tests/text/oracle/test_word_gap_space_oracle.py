@@ -158,27 +158,15 @@ def test_very_large_gap_emits_exactly_one_separator() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Mid-size gap — the documented, already-DEFERRED word-break-threshold
-# calibration divergence. Java breaks (space-width-relative threshold); the
-# lite stripper's font_size*1.5 (~36pt) threshold misses a ~34pt gap. Pinned
-# strict-xfail so a future wordSpacing-relative recalibration flips it green.
+# Mid-size gap — word-break-threshold calibration (wave 1488, formerly
+# DEFERRED). Java breaks (space-width-relative threshold); wave 1488
+# recalibrated ``_is_word_break`` to upstream's space-width-relative formula
+# using real per-glyph widths, so the lite stripper now fires the same
+# separator for a ~34pt gap (gap/space ratio ~5 > spacingTolerance 0.5).
 # ---------------------------------------------------------------------------
 
 
 @requires_oracle
-@pytest.mark.xfail(
-    reason="word-break gap-threshold calibration (DEFERRED.md, surfaced wave "
-    "1465): for a mid-size positioning gap (~34pt at 24pt font, gap/space "
-    "ratio ~5) Java inserts a word separator because its threshold is "
-    "space-glyph-width-relative (gap > wordSpacing * spacingTolerance ≈ "
-    "3.3pt), but the lite stripper's coarser font_size*1.5 (~36pt) gap "
-    "threshold does not fire, so it extracts 'ABCD' not 'AB|W|CD'. "
-    "Recalibrating _is_word_break to PDFBox's wordSpacing-relative formula is "
-    "a headline word-segmentation change spanning the whole getText suite — "
-    "deferred. Same family as the per-run-granularity carve-outs and the "
-    "test_horiz_scaling_oracle.py mid-size-TJ-jump xfail.",
-    strict=True,
-)
 def test_mid_size_gap_word_break_matches_pdfbox() -> None:
     java_text, py_text = _roundtrip(_GAP_ONE)
     assert java_text.count("|W|") == 1
