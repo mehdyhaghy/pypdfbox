@@ -18,6 +18,7 @@ from pypdfbox.cos.cos_dictionary import COSDictionary
 from pypdfbox.cos.cos_name import COSName
 from pypdfbox.cos.cos_object_key import COSObjectKey
 from pypdfbox.examples.signature.sig_utils import SigUtils
+from pypdfbox.pdmodel import PDPage
 from pypdfbox.pdmodel.interactive.digitalsignature.pd_signature import PDSignature
 from pypdfbox.pdmodel.pd_document import PDDocument
 
@@ -336,6 +337,9 @@ def test_get_mdp_permission_returns_zero_for_non_docmdp_transform():
 def test_set_mdp_permission_writes_perms_and_reference():
     doc = PDDocument()
     try:
+        # wave 1486: add_signature refuses a page-less document (upstream
+        # IllegalStateException) — give the fixture a page.
+        doc.add_page(PDPage())
         signature = PDSignature()
         doc.add_signature(signature)
 
@@ -358,6 +362,9 @@ def test_set_mdp_permission_writes_perms_and_reference():
 def test_set_mdp_permission_reuses_existing_perms_dict():
     doc = PDDocument()
     try:
+        # wave 1486: add_signature refuses a page-less document (upstream
+        # IllegalStateException) — give the fixture a page.
+        doc.add_page(PDPage())
         signature = PDSignature()
         doc.add_signature(signature)
 
@@ -379,6 +386,9 @@ def test_set_mdp_permission_reuses_existing_perms_dict():
 def test_set_mdp_permission_rejects_when_approval_signature_present():
     doc = PDDocument()
     try:
+        # wave 1486: add_signature refuses a page-less document (upstream
+        # IllegalStateException) — give the fixture a page.
+        doc.add_page(PDPage())
         existing = PDSignature()
         existing.get_cos_object().set_string(COSName.CONTENTS, "X")
         doc.add_signature(existing)
@@ -393,6 +403,9 @@ def test_set_mdp_permission_rejects_when_approval_signature_present():
 def test_set_mdp_permission_skips_doctimestamp_when_scanning():
     doc = PDDocument()
     try:
+        # wave 1486: add_signature refuses a page-less document (upstream
+        # IllegalStateException) — give the fixture a page.
+        doc.add_page(PDPage())
         tsa_sig = PDSignature()
         tsa_sig.get_cos_object().set_item(COSName.TYPE, COSName.DOC_TIME_STAMP)
         tsa_sig.get_cos_object().set_string(COSName.CONTENTS, "X")
@@ -423,6 +436,9 @@ def test_get_last_relevant_signature_returns_none_when_empty():
 def test_get_last_relevant_signature_returns_last_sig():
     doc = PDDocument()
     try:
+        # wave 1486: add_signature refuses a page-less document (upstream
+        # IllegalStateException) — give the fixture a page.
+        doc.add_page(PDPage())
         signature = PDSignature()
         signature.set_byte_range([0, 1, 2, 100])
         doc.add_signature(signature)
@@ -436,6 +452,9 @@ def test_get_last_relevant_signature_returns_last_sig():
 def test_get_last_relevant_signature_returns_none_for_unknown_type():
     doc = PDDocument()
     try:
+        # wave 1486: add_signature refuses a page-less document (upstream
+        # IllegalStateException) — give the fixture a page.
+        doc.add_page(PDPage())
         signature = PDSignature()
         signature.set_byte_range([0, 1, 2, 100])
         # Override /Type with a non-signature value.
@@ -451,6 +470,9 @@ def test_get_last_relevant_signature_returns_none_for_unknown_type():
 def test_get_last_relevant_signature_accepts_doctimestamp():
     doc = PDDocument()
     try:
+        # wave 1486: add_signature refuses a page-less document (upstream
+        # IllegalStateException) — give the fixture a page.
+        doc.add_page(PDPage())
         signature = PDSignature()
         signature.set_byte_range([0, 1, 2, 100])
         signature.get_cos_object().set_item(COSName.TYPE, COSName.DOC_TIME_STAMP)

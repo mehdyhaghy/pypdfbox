@@ -78,13 +78,17 @@ def test_wave628_check_value_is_strict_even_when_sparse_set_value_is_permissive(
     button.check_value("Off")
 
 
-def test_wave628_default_value_uses_string_and_name_but_ignores_other_cos_types() -> None:
+def test_wave628_default_value_reads_only_cosname_token() -> None:
     button = PDButton(PDAcroForm())
     dv = COSName.get_pdf_name("DV")
 
+    # has_default_value still detects a COSString token, but get_default_value
+    # mirrors upstream PDButton.getDefaultValue (PDButton.java line 205): only
+    # an instanceof COSName token is read; a COSString /DV reads back as "".
+    # Oracle PDFBox 3.0.7 returns "" for a COSString /DV.
     button.get_cos_object().set_string(dv, "string-default")
     assert button.has_default_value() is True
-    assert button.get_default_value() == "string-default"
+    assert button.get_default_value() == ""
 
     button.get_cos_object().set_name(dv, "NameDefault")
     assert button.get_default_value() == "NameDefault"

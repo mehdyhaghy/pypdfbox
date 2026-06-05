@@ -74,7 +74,10 @@ def test_button_local_value_presence_and_clear_helpers_wave494() -> None:
     assert button.has_value() is False
     assert button.has_default_value() is True
     assert button.has_export_values() is True
-    assert button.get_default_value() == "Fallback"
+    # has_default_value detects the COSString /DV token, but get_default_value
+    # mirrors upstream (only an instanceof COSName token is read) and returns
+    # "" for a COSString /DV. Oracle PDFBox 3.0.7 returns "".
+    assert button.get_default_value() == ""
     assert button.get_export_values() == ["Export"]
 
     button.set_value("Export")

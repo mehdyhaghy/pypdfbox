@@ -74,7 +74,10 @@ def test_ink_list_get_path_rejects_non_array_entry() -> None:
 
 
 def test_destination_factory_rejects_unhandled_cos_type() -> None:
-    with pytest.raises(OSError, match="Cannot convert to PDDestination"):
+    # Mirrors upstream's final else branch ("Error: can't convert to
+    # Destination ..."); a bare COSFloat is neither COSArray nor a
+    # COSString/COSName named-destination form.
+    with pytest.raises(OSError, match="can't convert to Destination"):
         PDDestination.create(COSFloat(1.25))
 
 

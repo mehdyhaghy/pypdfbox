@@ -289,7 +289,11 @@ def test_wave576_decrypt_sets_stream_handlers_and_invalidates_permission(
 
 
 def test_wave576_add_signature_creates_fields_array_when_missing() -> None:
+    from pypdfbox.pdmodel import PDPage
+
     doc = PDDocument()
+    # add_signature refuses a page-less document upstream.
+    doc.add_page(PDPage())
     acro_form = doc.get_document_catalog().get_acro_form()
     if acro_form is not None:
         acro_form.get_cos_object().remove_item(COSName.get_pdf_name("Fields"))
@@ -313,7 +317,11 @@ def test_wave576_add_signature_creates_fields_array_when_missing() -> None:
 
 
 def test_wave576_add_signature_replaces_malformed_fields_entry() -> None:
+    from pypdfbox.pdmodel import PDPage
+
     doc = PDDocument()
+    # add_signature refuses a page-less document upstream.
+    doc.add_page(PDPage())
     from pypdfbox.pdmodel.interactive.form import PDAcroForm
 
     acro_form = PDAcroForm(doc)

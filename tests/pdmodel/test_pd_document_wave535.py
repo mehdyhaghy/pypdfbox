@@ -118,6 +118,9 @@ def test_wave535_extract_bracketed_concatenates_declared_slices() -> None:
 
 def test_wave535_add_signature_uses_next_available_signature_field_name() -> None:
     doc = PDDocument()
+    # Upstream refuses to sign a page-less document ("Cannot sign an empty
+    # document"), so a page is required before add_signature.
+    doc.add_page(PDPage())
     try:
         existing_field = COSDictionary()
         existing_field.set_string(_T, "Signature1")

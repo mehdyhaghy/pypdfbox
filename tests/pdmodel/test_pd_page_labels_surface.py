@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pytest
-
 from pypdfbox.cos import COSDictionary
 from pypdfbox.pdmodel import (
     PDDocument,
@@ -44,18 +42,20 @@ def test_is_valid_style_rejects_unknown_and_none() -> None:
     assert PDPageLabelRange.is_valid_style("DR") is False
 
 
-def test_is_valid_style_predicate_matches_set_style_acceptance() -> None:
-    """The predicate is consistent with :meth:`set_style`'s validation —
-    every code accepted by ``is_valid_style`` is also accepted by
-    ``set_style`` and vice versa."""
+def test_set_style_stores_any_string_like_upstream() -> None:
+    """``set_style`` mirrors Apache PDFBox 3.0.7 ``setStyle``: it stores ANY
+    non-None string verbatim (no validation against the STYLE_* codes), and
+    ``None`` removes the entry. ``is_valid_style`` is an independent
+    input-validation predicate, NOT a gate on ``set_style``. Confirmed via
+    PageLabelRangeAccessorProbe: setStyle("Q") -> getStyle()=="Q"."""
     r = PDPageLabelRange()
     for code in ("D", "R", "r", "A", "a", "X", "z", "DD"):
-        if PDPageLabelRange.is_valid_style(code):
-            r.set_style(code)
-            assert r.get_style() == code
-        else:
-            with pytest.raises(ValueError):
-                r.set_style(code)
+        r.set_style(code)
+        assert r.get_style() == code
+    # is_valid_style still distinguishes the five canonical codes for callers
+    # that want to pre-validate, independent of what set_style accepts.
+    assert PDPageLabelRange.is_valid_style("X") is False
+    assert PDPageLabelRange.is_valid_style("D") is True
 
 
 # ---------- PDPageLabels.is_default_only ----------

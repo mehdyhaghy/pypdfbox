@@ -146,7 +146,12 @@ def test_wave586_external_signing_guards_and_success(
     doc = PDDocument(COSDocument(source=RandomAccessReadBuffer(b"%PDF-1.4\n%%EOF\n")))
 
     try:
-        with pytest.raises(ValueError, match="prior add_signature"):
+        # Source is present, so the signature-fields check fires. Upstream
+        # raises IllegalStateException → RuntimeError "document does not
+        # contain signature fields".
+        with pytest.raises(
+            RuntimeError, match="document does not contain signature fields"
+        ):
             doc.save_incremental_for_external_signing(io.BytesIO())
 
         signature = PDSignature()

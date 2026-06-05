@@ -540,10 +540,11 @@ class PDDocument:
             raise OSError("Cannot save a document which has been closed")
         source = self._document.get_source()
         if source is None:
-            raise ValueError(
-                "save_incremental requires a loaded document with a source "
-                "(use Loader.load_pdf or PDDocument.load)"
-            )
+            # Mirrors upstream ``IllegalStateException`` (PDDocument.java
+            # line 1089) → ``RuntimeError`` per the project's
+            # IllegalStateException→RuntimeError convention. Oracle-confirmed
+            # message against PDFBox 3.0.7 (PDDocumentSignStateProbe).
+            raise RuntimeError("document was not loaded from a file or a stream")
 
         # Mirror upstream's second saveIncremental overload: stamp every
         # dict in ``objects_to_write`` as dirty so the writer emits it.
@@ -1265,6 +1266,14 @@ class PDDocument:
         if sig.get_sub_filter() is None:
             sig.set_sub_filter("adbe.pkcs7.detached")
 
+        # Refuse to sign a page-less document. Mirrors upstream
+        # ``IllegalStateException`` (PDDocument.java line 345) → ``RuntimeError``
+        # per the project's IllegalStateException→RuntimeError convention.
+        # Oracle-confirmed message against PDFBox 3.0.7
+        # (PDDocumentSignStateProbe).
+        if self.get_pages().get_count() == 0:
+            raise RuntimeError("Cannot sign an empty document")
+
         # Wire the signature dict into /AcroForm /Fields so the writer reaches
         # it from the catalog. We attach via an invisible signature field
         # widget containing the sig dict in /V.
@@ -1919,11 +1928,16 @@ class PDDocument:
         """
         if self._closed:
             raise OSError("Cannot save a document which has been closed")
+        # Upstream order (PDDocument.java line 1174 then 1190): the source
+        # check fires before the signature-field check. Both are
+        # ``IllegalStateException`` → ``RuntimeError`` per the project's
+        # convention. Oracle-confirmed messages against PDFBox 3.0.7
+        # (PDDocumentSignStateProbe): a created (no-source) document raises the
+        # source message even when it carries no signature.
+        if self._document.get_source() is None:
+            raise RuntimeError("document was not loaded from a file or a stream")
         if self._pending_signature is None:
-            raise ValueError(
-                "save_incremental_for_external_signing requires a prior "
-                "add_signature(...) call"
-            )
+            raise RuntimeError("document does not contain signature fields")
         signed_bytes, contents_span, byte_range = (
             self._render_incremental_with_placeholder()
         )

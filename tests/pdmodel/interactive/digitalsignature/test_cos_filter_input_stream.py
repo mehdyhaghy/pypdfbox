@@ -107,11 +107,21 @@ def test_nested_entry_wrong_arity_rejected():
         COSFilterInputStream(PAYLOAD, [(0, 30, 40)])
 
 
-def test_read_after_close_raises():
+def test_read_after_close_does_not_raise():
+    # Upstream COSFilterInputStream extends FilterInputStream over a
+    # ByteArrayInputStream (byte[] overload), whose close() is a no-op and
+    # whose read() keeps working afterwards. So a read after a fresh close()
+    # returns the next in-range byte rather than throwing. Oracle-confirmed
+    # against PDFBox 3.0.7 (COSFilterInputStreamClosedProbe).
     stream = COSFilterInputStream(PAYLOAD, BYTE_RANGE)
     stream.close()
-    with pytest.raises(ValueError, match="closed"):
-        stream.read(1)
+    assert stream.read(1) == EXPECTED[:1]
+
+
+def test_full_read_after_close_matches_expected():
+    stream = COSFilterInputStream(PAYLOAD, BYTE_RANGE)
+    stream.close()
+    assert stream.read_all() == EXPECTED
 
 
 def test_read_zero_returns_empty():
@@ -137,8 +147,10 @@ def test_concatenated_bytes_match_expected_sha256():
 def test_context_manager_closes_stream():
     with COSFilterInputStream(PAYLOAD, BYTE_RANGE) as stream:
         assert stream.read_all() == EXPECTED
-    with pytest.raises(ValueError, match="closed"):
-        stream.read(1)
+    # After close the ranges are already exhausted, so a further read returns
+    # b"" (EOF) — not an error, matching upstream's no-op ByteArrayInputStream
+    # close().
+    assert stream.read(1) == b""
 
 
 def test_readable_writable_seekable_flags():
@@ -147,7 +159,9 @@ def test_readable_writable_seekable_flags():
     assert not stream.writable()
     assert not stream.seekable()
     stream.close()
-    assert not stream.readable()
+    # A byte[]-backed stream stays readable after close (its backing
+    # ByteArrayInputStream close() is a no-op), matching upstream.
+    assert stream.readable()
 
 
 def test_non_seekable_source_uses_read_and_discard():

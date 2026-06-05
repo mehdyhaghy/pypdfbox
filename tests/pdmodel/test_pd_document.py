@@ -95,7 +95,9 @@ def test_save_incremental_requires_source() -> None:
     with the same error path as upstream."""
     doc = PDDocument()
     doc.add_page(PDPage())
-    with pytest.raises(ValueError, match="requires a loaded document"):
+    with pytest.raises(
+        RuntimeError, match="document was not loaded from a file or a stream"
+    ):
         doc.save_incremental(io.BytesIO())
 
 

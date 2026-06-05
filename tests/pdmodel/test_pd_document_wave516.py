@@ -26,7 +26,9 @@ def test_wave516_context_manager_closes_owned_cos_document_once() -> None:
 def test_wave516_save_incremental_requires_loaded_source_before_writing() -> None:
     doc = PDDocument()
 
-    with pytest.raises(ValueError, match="requires a loaded document with a source"):
+    with pytest.raises(
+        RuntimeError, match="document was not loaded from a file or a stream"
+    ):
         doc.save_incremental(io.BytesIO())
 
     doc.close()
@@ -66,8 +68,14 @@ def test_wave516_get_encryption_wraps_raw_trailer_dictionary_once() -> None:
     doc.close()
 
 
-def test_wave516_add_signature_without_pages_still_stages_field_tree() -> None:
+def test_wave516_add_signature_stages_field_tree() -> None:
+    from pypdfbox.pdmodel import PDPage
+
     doc = PDDocument()
+    # Upstream refuses to sign a page-less document ("Cannot sign an empty
+    # document", PDDocument.java line 345), so a page is required before
+    # add_signature can wire the field tree.
+    doc.add_page(PDPage())
     signature = PDSignature()
 
     doc.add_signature(signature)
@@ -81,10 +89,16 @@ def test_wave516_add_signature_without_pages_still_stages_field_tree() -> None:
     doc.close()
 
 
-def test_wave516_external_signing_requires_pending_signature() -> None:
+def test_wave516_external_signing_requires_source() -> None:
+    # A created (no-source) document hits the source check first, matching
+    # upstream order (PDDocument.java line 1174 before 1190). Upstream raises
+    # IllegalStateException → RuntimeError with the upstream-exact message
+    # (oracle-confirmed against PDFBox 3.0.7, PDDocumentSignStateProbe).
     doc = PDDocument()
 
-    with pytest.raises(ValueError, match="requires a prior add_signature"):
+    with pytest.raises(
+        RuntimeError, match="document was not loaded from a file or a stream"
+    ):
         doc.save_incremental_for_external_signing(io.BytesIO())
 
     doc.close()

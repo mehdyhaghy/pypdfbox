@@ -214,7 +214,10 @@ def _py_facts(path: Path) -> _Facts:
     """Reproduce the probe's facts from a reloaded pypdfbox document."""
     doc = PDDocument.load(str(path))
     try:
-        form = doc.get_document_catalog().get_acro_form()
+        # Mirror the probe's getAcroForm(null): no default fixup, so both
+        # sides report the dictionary exactly as parsed (wave 1484 made the
+        # no-arg form apply AcroFormDefaultFixup like upstream).
+        form = doc.get_document_catalog().get_acro_form(None)
         facts = _Facts()
         if form is None:
             facts.form_present = "false"

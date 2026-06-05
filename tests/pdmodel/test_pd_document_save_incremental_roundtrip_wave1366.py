@@ -121,12 +121,13 @@ def test_save_incremental_rejects_non_dictionary_in_set() -> None:
 
 def test_save_incremental_requires_source() -> None:
     """A synthesised (non-loaded) document has no source — incremental
-    save raises ``ValueError`` (mirrors upstream's "missing original"
-    guard)."""
+    save raises ``RuntimeError`` (wave 1486: mirrors upstream
+    ``IllegalStateException("document was not loaded from a file or a
+    stream")``, PDDocument.java L1089)."""
     with PDDocument() as doc:
         doc.add_page(PDPage())
         sink = io.BytesIO()
-        with pytest.raises(ValueError, match="source"):
+        with pytest.raises(RuntimeError, match="was not loaded from a file or a stream"):
             doc.save_incremental(sink)
 
 

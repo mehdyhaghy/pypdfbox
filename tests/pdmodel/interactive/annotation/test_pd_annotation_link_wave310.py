@@ -12,7 +12,7 @@ def test_has_destination_ignores_malformed_dest_entry() -> None:
     annotation = PDAnnotationLink(dictionary)
 
     assert annotation.has_destination() is False
-    with pytest.raises(OSError, match="Cannot convert to PDDestination"):
+    with pytest.raises(OSError, match="can't convert to Destination"):
         annotation.get_destination()
 
 

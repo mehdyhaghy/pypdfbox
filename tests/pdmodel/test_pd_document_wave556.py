@@ -89,6 +89,8 @@ def test_wave556_save_incremental_marks_extra_objects_and_rejects_non_dict(
 
 def test_wave556_add_signature_preserves_existing_filter_values() -> None:
     doc = PDDocument()
+    # add_signature refuses a page-less document upstream.
+    doc.add_page(PDPage())
     signature = PDSignature()
     signature.set_filter("Custom.Filter")
     signature.set_sub_filter("custom.subfilter")

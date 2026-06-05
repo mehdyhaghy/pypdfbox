@@ -32,14 +32,18 @@ class PDDestination:
 
         if base is None:
             return None
-        if isinstance(base, COSArray):
-            if base.size() < 2:
-                raise OSError(f"Destination array too short: {base.size()}")
+        # Upstream's array branch is gated on size() > 1 AND item[1] being a
+        # COSName; a COSArray that fails either test falls through the else-if
+        # chain to the final "can't convert" error (it is neither COSString nor
+        # COSName). Mirror that fall-through exactly so a malformed destination
+        # array raises the same OSError as upstream rather than a bespoke
+        # "too short"/"not a name" message.
+        if (
+            isinstance(base, COSArray)
+            and base.size() > 1
+            and isinstance(base.get_object(1), COSName)
+        ):
             type_entry = base.get_object(1)
-            if not isinstance(type_entry, COSName):
-                raise OSError(
-                    f"Destination array entry [1] must be a name; got {type(type_entry).__name__}"
-                )
             type_str = type_entry.get_name()
             if type_str == PDPageFitDestination.TYPE:
                 return PDPageFitDestination(base)
@@ -74,7 +78,9 @@ class PDDestination:
             return PDNamedDestination(base)
         if isinstance(base, COSName):
             return PDNamedDestination(base)
-        raise OSError(f"Cannot convert to PDDestination: {type(base).__name__}")
+        # Mirrors upstream's final ``else`` — a malformed destination array
+        # (size <= 1 or item[1] not a name) lands here too.
+        raise OSError(f"Error: can't convert to Destination {base}")
 
     def get_cos_object(self) -> Any:
         raise NotImplementedError

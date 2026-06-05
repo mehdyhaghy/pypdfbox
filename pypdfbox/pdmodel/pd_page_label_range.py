@@ -43,8 +43,8 @@ class PDPageLabelRange:
 
         ``None`` returns ``False`` (the absence of /S is legal but is not a
         "valid style", it's "no style"). Useful for callers that want to
-        validate user input before calling :meth:`set_style`, which raises
-        on unknown codes.
+        validate user input before calling :meth:`set_style` (which, like
+        upstream, stores any string verbatim without validating).
         """
         return style in cls._VALID_STYLES
 
@@ -75,15 +75,15 @@ class PDPageLabelRange:
         return self._root.get_name(_KEY_STYLE)
 
     def set_style(self, style: str | None) -> None:
-        if style is None:
+        # Mirror upstream ``PDPageLabelRange.setStyle`` exactly: a non-null
+        # value is stored verbatim via ``setName`` (NO validation against the
+        # STYLE_* codes — upstream accepts any string and the label generator
+        # falls back to decimal for unrecognised codes), and ``None`` removes
+        # the ``/S`` entry. Use :meth:`is_valid_style` to pre-validate input.
+        if style is not None:
+            self._root.set_name(_KEY_STYLE, style)
+        else:
             self._root.remove_item(_KEY_STYLE)
-            return
-        if style not in self._VALID_STYLES:
-            raise ValueError(
-                f"Invalid page label style {style!r}; must be one of "
-                f"{sorted(self._VALID_STYLES)}"
-            )
-        self._root.set_name(_KEY_STYLE, style)
 
     def clear_style(self) -> None:
         """Remove the ``/S`` numbering style entry."""

@@ -450,7 +450,25 @@ class PDFreeTextAppearanceHandler(PDAbstractAppearanceHandler):
                             except Exception:  # noqa: BLE001
                                 font = None
                             if font is not None:
-                                return font
+                                # PDResources.get_font preserves the raw
+                                # COSDictionary surface for DIRECT entries
+                                # (legacy cluster #1 contract; upstream
+                                # always wraps via PDFontFactory). The
+                                # wave-1484 AcroForm default fixup injects
+                                # /Helv as a direct entry, so wrap here
+                                # before handing to set_font.
+                                from pypdfbox.cos import (  # noqa: PLC0415
+                                    COSDictionary,
+                                )
+
+                                if isinstance(font, COSDictionary):
+                                    from pypdfbox.pdmodel.font import (  # noqa: PLC0415
+                                        PDFontFactory,
+                                    )
+
+                                    font = PDFontFactory.create_font(font)
+                                if font is not None:
+                                    return font
         return self.get_default_font()
 
     def generate_rollover_appearance(self) -> None:

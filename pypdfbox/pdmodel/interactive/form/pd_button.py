@@ -84,10 +84,12 @@ class PDButton(PDTerminalField):
                 if 0 <= idx < len(export_values):
                     return export_values[idx]
             return string_value
-        if isinstance(item, COSString):
-            return item.get_string()
-        # Off is the default value when /V is not set. Per PDF spec.
-        return "Off" if item is None else ""
+        # Off is the default value for any non-COSName /V (including a
+        # COSString or a missing entry). Mirrors upstream
+        # ``PDButton.getValue`` (PDButton.java line 105): only the
+        # ``instanceof COSName`` branch reads the stored token; every other
+        # case — COSString, COSNumber, null — returns ``"Off"``.
+        return "Off"
 
     def set_value(self, value: str | None) -> None:
         """Set the selected option's name and update each widget's ``/AS``.
@@ -188,8 +190,9 @@ class PDButton(PDTerminalField):
         item = self.get_inheritable_attribute(dv_key)
         if isinstance(item, COSName):
             return item.name
-        if isinstance(item, COSString):
-            return item.get_string()
+        # Mirrors upstream ``PDButton.getDefaultValue`` (PDButton.java line
+        # 205): only the ``instanceof COSName`` branch reads the token; any
+        # other case — COSString, COSNumber, null — returns ``""``.
         return ""
 
     def set_default_value(self, value: str | None) -> None:

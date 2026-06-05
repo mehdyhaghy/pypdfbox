@@ -239,7 +239,9 @@ def _py_facts(path: Path) -> _Facts:
     non-terminals — the same as PDFBox's ``getFieldFlags``)."""
     doc = PDDocument.load(str(path))
     try:
-        form = doc.get_document_catalog().get_acro_form()
+        # Mirror the probe's getAcroForm(null): no default fixup (wave 1484
+        # made the no-arg form apply AcroFormDefaultFixup like upstream).
+        form = doc.get_document_catalog().get_acro_form(None)
         facts = _Facts()
 
         for field in form.get_field_tree():

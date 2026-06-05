@@ -275,12 +275,16 @@ def test_save_incremental_without_interface_after_add_signature_errors(
 
 
 def test_external_signing_requires_prior_add_signature(tmp_path: Path) -> None:
+    # A loaded document (has a source) with no signature field reaches the
+    # signature-fields check. Upstream raises IllegalStateException →
+    # RuntimeError "document does not contain signature fields" (oracle-
+    # confirmed message family against PDFBox 3.0.7, PDDocumentSignStateProbe).
     src = _build_tiny_pdf(tmp_path / "in.pdf")
     out_path = tmp_path / "x.pdf"
     with (
         PDDocument.load(src) as doc,
         open(out_path, "wb") as fh,
-        pytest.raises(ValueError, match="add_signature"),
+        pytest.raises(RuntimeError, match="document does not contain signature fields"),
     ):
         doc.save_incremental_for_external_signing(fh)
 

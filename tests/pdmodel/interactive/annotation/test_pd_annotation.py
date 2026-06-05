@@ -652,6 +652,30 @@ def test_create_annotation_raises_oserror_for_non_dict() -> None:
         PDAnnotation.create_annotation(COSName.get_pdf_name("Annot"))
 
 
+def test_create_dispatches_cosstring_subtype() -> None:
+    """Upstream ``createAnnotation`` reads /Subtype via ``getNameAsString``
+    (PDAnnotation.java line 111), so a subtype stored as a COSString (a
+    malformed-but-parseable shape) still dispatches to the typed subclass
+    rather than falling back to PDAnnotationUnknown. Oracle-confirmed on
+    PDFBox 3.0.7: a COSString "Link" subtype -> PDAnnotationLink."""
+    d = COSDictionary()
+    d.set_item(COSName.SUBTYPE, COSString("Link"))  # type: ignore[attr-defined]
+    ann = PDAnnotation.create(d)
+    assert isinstance(ann, PDAnnotationLink)
+    ann2 = PDAnnotation.create_annotation(d)
+    assert isinstance(ann2, PDAnnotationLink)
+
+
+def test_get_subtype_reads_cosstring() -> None:
+    """``getSubtype()`` upstream (PDAnnotation.java line 245) also goes
+    through ``getNameAsString``, so a COSString subtype is returned as text
+    rather than None."""
+    d = COSDictionary()
+    d.set_item(COSName.SUBTYPE, COSString("Link"))  # type: ignore[attr-defined]
+    ann = PDAnnotation.create(d)
+    assert ann.get_subtype() == "Link"
+
+
 # ---------- equals / hash_code (upstream-named aliases) ----------
 
 
@@ -884,5 +908,109 @@ def test_repr_contains_subtype() -> None:
     assert "Text" in rep
 
 
-# Ensure unused imports stay referenced (suppresses linter chatter).
-_ = COSString
+# ---------- per-subtype no-arg constructor dict shape ----------
+#
+# Oracle-confirmed against Apache PDFBox 3.0.7: each no-arg annotation
+# constructor seeds exactly /Type /Annot, /Subtype <name>, plus a small
+# set of subtype-specific keys (Line seeds /L=[0,0,0,0]; the four
+# text-markup types seed an empty /QuadPoints array). The subtype strings
+# follow the PDF spec exactly, incl. the capitalisation quirks "PolyLine"
+# and "StrikeOut".
+
+
+def _ctor_classes() -> dict[str, type]:
+    from pypdfbox.pdmodel.interactive.annotation import (
+        PDAnnotationCaret,
+        PDAnnotationFileAttachment,
+        PDAnnotationFreeText,
+        PDAnnotationHighlight,
+        PDAnnotationInk,
+        PDAnnotationLine,
+        PDAnnotationPolygon,
+        PDAnnotationPolyline,
+        PDAnnotationPopup,
+        PDAnnotationRubberStamp,
+        PDAnnotationSound,
+        PDAnnotationSquiggly,
+        PDAnnotationStrikeout,
+        PDAnnotationUnderline,
+        PDAnnotationWidget,
+    )
+
+    return {
+        "Text": PDAnnotationText,
+        "Link": PDAnnotationLink,
+        "FreeText": PDAnnotationFreeText,
+        "Line": PDAnnotationLine,
+        "Square": PDAnnotationSquare,
+        "Circle": PDAnnotationCircle,
+        "Polygon": PDAnnotationPolygon,
+        "PolyLine": PDAnnotationPolyline,
+        "Highlight": PDAnnotationHighlight,
+        "Underline": PDAnnotationUnderline,
+        "Squiggly": PDAnnotationSquiggly,
+        "StrikeOut": PDAnnotationStrikeout,
+        "Stamp": PDAnnotationRubberStamp,
+        "Caret": PDAnnotationCaret,
+        "Ink": PDAnnotationInk,
+        "Popup": PDAnnotationPopup,
+        "FileAttachment": PDAnnotationFileAttachment,
+        "Sound": PDAnnotationSound,
+        "Widget": PDAnnotationWidget,
+    }
+
+
+@pytest.mark.parametrize(
+    ("subtype", "extra_keys"),
+    [
+        ("Text", set()),
+        ("Link", set()),
+        ("FreeText", set()),
+        ("Line", {"L"}),
+        ("Square", set()),
+        ("Circle", set()),
+        ("Polygon", set()),
+        ("PolyLine", set()),
+        ("Highlight", {"QuadPoints"}),
+        ("Underline", {"QuadPoints"}),
+        ("Squiggly", {"QuadPoints"}),
+        ("StrikeOut", {"QuadPoints"}),
+        ("Stamp", set()),
+        ("Caret", set()),
+        ("Ink", set()),
+        ("Popup", set()),
+        ("FileAttachment", set()),
+        ("Sound", set()),
+        ("Widget", set()),
+    ],
+)
+def test_no_arg_constructor_seeds_expected_keys(
+    subtype: str, extra_keys: set[str]
+) -> None:
+    cls = _ctor_classes()[subtype]
+    ann = cls()
+    d = ann.get_cos_object()
+    keys = {k.get_name() for k in d.key_set()}
+    assert keys == {"Type", "Subtype"} | extra_keys
+    assert d.get_name(COSName.TYPE) == "Annot"  # type: ignore[attr-defined]
+    assert ann.get_subtype() == subtype
+
+
+def test_line_constructor_seeds_zero_line() -> None:
+    from pypdfbox.pdmodel.interactive.annotation import PDAnnotationLine
+
+    ann = PDAnnotationLine()
+    line = ann.get_cos_object().get_dictionary_object(COSName.get_pdf_name("L"))
+    assert isinstance(line, COSArray)
+    assert [float(v.value) for v in line] == [0.0, 0.0, 0.0, 0.0]
+
+
+def test_text_markup_constructor_seeds_empty_quadpoints() -> None:
+    from pypdfbox.pdmodel.interactive.annotation import PDAnnotationHighlight
+
+    ann = PDAnnotationHighlight()
+    qp = ann.get_cos_object().get_dictionary_object(
+        COSName.get_pdf_name("QuadPoints")
+    )
+    assert isinstance(qp, COSArray)
+    assert qp.size() == 0

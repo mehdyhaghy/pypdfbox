@@ -64,10 +64,15 @@ def test_string_values_and_defaults_can_be_detected_and_cleared() -> None:
     button.get_cos_object().set_string(_V, "string-value")
     button.get_cos_object().set_string(_DV, "default-value")
 
+    # The has_* helpers still detect a COSString token, but the value
+    # readers mirror upstream PDButton.getValue / getDefaultValue: only an
+    # ``instanceof COSName`` token is read. A COSString /V therefore reads
+    # back as the default "Off" (getValue) / "" (getDefaultValue). Oracle:
+    # PDFBox 3.0.7 returns "Off" and "" respectively for COSString tokens.
     assert button.has_value()
-    assert button.get_value() == "string-value"
+    assert button.get_value() == "Off"
     assert button.has_default_value()
-    assert button.get_default_value() == "default-value"
+    assert button.get_default_value() == ""
 
     button.clear_value()
     button.clear_default_value()

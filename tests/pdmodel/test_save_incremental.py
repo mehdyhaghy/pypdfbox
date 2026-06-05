@@ -170,9 +170,13 @@ def test_save_incremental_chained_twice() -> None:
 
 def test_save_incremental_synthesised_doc_raises() -> None:
     """A document built from scratch has no source — incremental save
-    must reject it (matches upstream ``IOException``)."""
+    must reject it. Upstream raises ``IllegalStateException`` →
+    ``RuntimeError`` with the upstream-exact message (oracle-confirmed against
+    PDFBox 3.0.7, PDDocumentSignStateProbe)."""
     doc = PDDocument()
     doc.add_page(PDPage())
-    with pytest.raises(ValueError, match="requires a loaded document"):
+    with pytest.raises(
+        RuntimeError, match="document was not loaded from a file or a stream"
+    ):
         doc.save_incremental(io.BytesIO())
     doc.close()

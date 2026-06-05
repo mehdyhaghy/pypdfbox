@@ -34,10 +34,16 @@ class COSFilterInputStream:
         source: BinaryIO | bytes | bytearray | memoryview,
         byte_range: Sequence[int] | Sequence[Sequence[int]],
     ) -> None:
+        # The ``byte[]`` constructor wraps a ByteArrayInputStream upstream,
+        # whose ``close()`` is a no-op and whose ``read()`` keeps working after
+        # close. Track that so :meth:`close` mirrors the no-op semantics for the
+        # bytes overload while still releasing a caller-supplied stream.
         if isinstance(source, (bytes, bytearray, memoryview)):
             self._source: BinaryIO = BytesIO(bytes(source))
+            self._source_is_byte_array = True
         else:
             self._source = source
+            self._source_is_byte_array = False
 
         # Normalise ``byte_range`` into a list of (start, length) pairs.
         pairs: list[tuple[int, int]] = []
@@ -140,10 +146,18 @@ class COSFilterInputStream:
 
         ``size < 0`` reads everything that remains in all ranges. Returns
         ``b""`` at EOF, matching the file-object protocol.
-        """
-        if self._closed:
-            raise ValueError("read on closed COSFilterInputStream")
 
+        A read after :meth:`close` does **not** raise. Upstream
+        ``COSFilterInputStream`` extends ``java.io.FilterInputStream`` and its
+        ``close()`` is inherited, delegating to the underlying stream's
+        ``close()``. On the ``byte[]`` constructor the backing stream is a
+        ``ByteArrayInputStream`` whose ``close()`` is a no-op and whose
+        ``read()`` keeps working afterwards, so a read after ``close()`` simply
+        continues returning the next in-range bytes (and ``b""`` once the
+        configured ranges are exhausted). Oracle-confirmed against PDFBox
+        3.0.7 (``COSFilterInputStreamClosedProbe``): ``read()`` after a fresh
+        ``close()`` returns the next byte rather than throwing.
+        """
         if size == 0:
             return b""
 
@@ -230,7 +244,9 @@ class COSFilterInputStream:
         return False
 
     def readable(self) -> bool:
-        return not self._closed
+        # A byte[]-backed stream stays readable after close() (its
+        # ByteArrayInputStream close() is a no-op), matching upstream.
+        return self._source_is_byte_array or not self._closed
 
     def writable(self) -> bool:
         return False
@@ -242,8 +258,14 @@ class COSFilterInputStream:
         if self._closed:
             return
         self._closed = True
-        with suppress(Exception):
-            self._source.close()
+        # Mirror FilterInputStream.close() -> in.close(). For the ``byte[]``
+        # overload the backing stream is a ByteArrayInputStream whose close()
+        # is a no-op, so we leave our internal BytesIO open and read() keeps
+        # working afterwards (oracle-confirmed). For a caller-supplied stream
+        # we propagate close() as FilterInputStream does.
+        if not self._source_is_byte_array:
+            with suppress(Exception):
+                self._source.close()
 
     # Context-manager support, since callers naturally `with` filter streams.
     def __enter__(self) -> COSFilterInputStream:

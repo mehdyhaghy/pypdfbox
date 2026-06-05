@@ -57,10 +57,14 @@ def test_compute_label_no_style_emits_prefix_only() -> None:
     assert r.compute_label_for_offset(0) == "Cover"
 
 
-def test_set_style_rejects_invalid() -> None:
+def test_set_style_stores_arbitrary_value_like_upstream() -> None:
+    # Upstream PDPageLabelRange.setStyle stores ANY string verbatim via
+    # setName (no validation); the label generator falls back to decimal for
+    # unrecognised codes. Confirmed against Apache PDFBox 3.0.7
+    # (PageLabelRangeAccessorProbe: setStyle("Q") -> getStyle()=="Q").
     r = PDPageLabelRange()
-    with pytest.raises(ValueError):
-        r.set_style("X")
+    r.set_style("X")
+    assert r.get_style() == "X"
 
 
 def test_set_style_none_clears() -> None:

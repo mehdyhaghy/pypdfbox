@@ -99,7 +99,10 @@ class PDAnnotation:
     # ---------- /Subtype ----------
 
     def get_subtype(self) -> str | None:
-        return self._dict.get_name(_SUBTYPE)
+        # Upstream PDAnnotation.getSubtype() (Java line 245) reads via
+        # getNameAsString, so a /Subtype stored as a COSString (malformed
+        # but parseable) is returned as text rather than None.
+        return self._dict.get_name_as_string(_SUBTYPE)
 
     def set_subtype(self, subtype: str | None) -> None:
         """Public ``/Subtype`` setter. Upstream PDFBox keeps this protected
@@ -180,7 +183,10 @@ class PDAnnotation:
         from .pd_annotation_watermark import PDAnnotationWatermark
         from .pd_annotation_widget import PDAnnotationWidget
 
-        subtype = cos_dict.get_name(_SUBTYPE)
+        # Upstream createAnnotation (Java line 111) reads the subtype via
+        # getNameAsString, so a /Subtype stored as a COSString still
+        # dispatches to the right subclass.
+        subtype = cos_dict.get_name_as_string(_SUBTYPE)
         if subtype is None:
             return PDAnnotationUnknown(cos_dict)
         if subtype == PDAnnotationLink.SUB_TYPE:

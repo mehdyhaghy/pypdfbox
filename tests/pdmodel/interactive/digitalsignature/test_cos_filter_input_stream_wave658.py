@@ -69,4 +69,6 @@ def test_close_is_idempotent() -> None:
     stream.close()
     stream.close()
 
-    assert not stream.readable()
+    # Wave 1486: a byte[]-backed stream mirrors upstream's ByteArrayInputStream
+    # no-op close() — it stays readable after (idempotent) close.
+    assert stream.readable()
