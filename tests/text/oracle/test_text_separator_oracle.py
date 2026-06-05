@@ -16,17 +16,18 @@ sentinel-separator config additionally pins the *placement* of every
 word / line / page break — i.e. that those hooks fire at the same
 boundaries in both engines, not merely that whitespace happens to coincide.
 
-The one separator whose placement diverges is the *paragraph* delimiter
-(``setParagraphStart`` / ``setParagraphEnd``): upstream wraps every
-visual line of this fixture in a paragraph because its
-``isParagraphSeparation`` indent test fires on the stair-stepped left
-margin of the bookmark headings ("First level 1" / "First level 2" / …
-each indented further). That indent / hanging-indent / list-item
-paragraph-detection heuristic is a deferred layout feature of the lite
-stripper (see ``PDFTextStripper`` docstring and the eu-001 / poems-beads
-xfails); it is pinned as ``xfail`` here with a precise reason rather than
-weakened. Word / line / page placement — everything *except* the
-paragraph tokens — is at full parity and asserted positively below.
+The *paragraph* delimiter (``setParagraphStart`` / ``setParagraphEnd``)
+now matches byte-for-byte too. Upstream wraps every visual line of this
+fixture in a paragraph because its ``isParagraphSeparation`` indent test
+fires on the stair-stepped left margin of the bookmark headings ("First
+level 1" / "First level 2" / … each indented further). Wave 1492 ported
+that classifier faithfully into the lite stripper's ``_emit_group``:
+``lastLineStartPosition`` tracking, the indent prong measured against the
+previous *line start* (not the immediately-previous glyph), and the
+hanging-indent / list-item paragraph detection
+(``PDFTextStripper.java:1611-1683``). All four separator families —
+word / line / page / paragraph — are now at full placement parity and
+asserted positively below.
 
 ``@requires_oracle`` so it skips cleanly without Java + the jar.
 Hand-written (not ported from upstream JUnit).
@@ -34,16 +35,46 @@ Hand-written (not ported from upstream JUnit).
 
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 
-import pytest
-
+from pypdfbox.cos import COSStream
 from pypdfbox.pdmodel import PDDocument
+from pypdfbox.pdmodel.common import PDRectangle
+from pypdfbox.pdmodel.font import PDFontFactory, Standard14Fonts
+from pypdfbox.pdmodel.pd_page import PDPage
 from pypdfbox.text.pdf_text_stripper import PDFTextStripper
 from tests.oracle.harness import requires_oracle, run_probe_text
 
 _FIXTURES = Path(__file__).resolve().parents[2] / "fixtures"
 _FIXTURE = _FIXTURES / "pdmodel" / "with_outline.pdf"
+
+
+def _build_pdf(content: bytes, path: str) -> None:
+    """Build a one-page Letter-ish PDF whose content is exactly ``content``.
+
+    The ``/F1`` token is rewritten to the embedded Helvetica font key.
+    """
+    doc = PDDocument()
+    try:
+        page = PDPage(PDRectangle(0, 0, 400, 400))
+        doc.add_page(page)
+        font = PDFontFactory.create_default_font(
+            Standard14Fonts.FontName.HELVETICA.value
+        )
+        resources = page.get_or_create_resources()
+        font_key = resources.add(font)
+        page.set_resources(resources)
+        rewritten = content.replace(
+            b"/F1", b"/" + font_key.get_name().encode("ascii")
+        )
+        stream = COSStream()
+        with stream.create_output_stream() as out:
+            out.write(rewritten)
+        page.set_contents(stream)
+        doc.save(path)
+    finally:
+        doc.close()
 
 
 def _py_text_with_sentinels(path: Path) -> str:
@@ -89,23 +120,74 @@ def test_page_sentinels_fire_once_per_page() -> None:
 
 
 @requires_oracle
-@pytest.mark.xfail(
-    reason="Paragraph-token placement: upstream's isParagraphSeparation wraps "
-    "every visual line of with_outline.pdf in a [P]…[/P] pair because its "
-    "indent test fires on the stair-stepped left margin of the bookmark "
-    "headings (each 'level N' heading is indented further than the last). The "
-    "leading paragraphStart at page start and trailing paragraphEnd at page "
-    "end now match (wave 1490 added upstream's page-body paragraph bracketing "
-    "to _emit_group), so the residual is purely the per-line indent wrapping: "
-    "the lite stripper's indent prong compares the current glyph X to the "
-    "immediately-previous glyph rather than to lastLineStartPosition, and does "
-    "not run upstream's hanging-indent / list-item paragraph detection — a "
-    "deferred layout feature (PDFTextStripper docstring), same family as the "
-    "eu-001 multi-column and poems-beads xfails. Word/line/page placement is "
-    "at full parity (asserted above).",
-    strict=True,
-)
 def test_paragraph_token_placement_matches_pdfbox() -> None:
+    """Paragraph-token placement now matches Java byte-for-byte.
+
+    Wave 1492 ported upstream's ``isParagraphSeparation``
+    (PDFTextStripper.java:1611-1683) into the lite stripper's
+    ``_emit_group``: the indent prong is measured against the previous
+    *line start* (``lastLineStartPosition``) rather than the
+    immediately-previous glyph, and the hanging-indent / list-item prongs
+    are wired in. On ``with_outline.pdf`` upstream wraps each
+    further-indented bookmark heading in a ``[P]…[/P]`` pair; the lite
+    stripper now emits the identical bracketing, so the full sentinel
+    stream — word / line / page / paragraph — matches exactly.
+    """
     java = run_probe_text("TextSeparatorProbe", str(_FIXTURE))
     py = _py_text_with_sentinels(_FIXTURE)
     assert py == java
+
+
+# ---------------------------------------------------------------------------
+# Synthetic fixtures exercising the list-item and hanging-indent prongs of
+# upstream's isParagraphSeparation (PDFTextStripper.java:1611-1683) directly.
+# ---------------------------------------------------------------------------
+
+# A numbered list. Each item starts at the same left margin (x=40) one line
+# below the last (Td uses text-space line stepping). Upstream's list-item
+# prong: when a line lines up with the previous *paragraph-start* line
+# (within 1/4 char) and both match the same list-item regex, the new line is
+# itself a paragraph start. So every "N." item opens a fresh [P].
+_LIST_ITEMS = (
+    b"BT /F1 14 Tf 40 360 Td (1. First item) Tj "
+    b"0 -20 Td (2. Second item) Tj "
+    b"0 -20 Td (3. Third item) Tj ET"
+)
+
+# A hanging indent: the marker line "* Bullet text" sits at x=40 and is a
+# paragraph start; its wrapped continuation "wraps here" is indented to x=58
+# (> indentThreshold*space past the line start), so upstream flags it a
+# hanging indent rather than a new paragraph (it stays inside the same [P]).
+_HANGING_INDENT = (
+    b"BT /F1 14 Tf 40 360 Td (Bullet text that) Tj "
+    b"18 -18 Td (wraps here indented) Tj "
+    b"-18 -18 Td (Next paragraph flush) Tj ET"
+)
+
+
+@requires_oracle
+def test_list_item_paragraph_placement_matches_pdfbox() -> None:
+    """A numbered list: upstream opens a new ``[P]`` at each list item via
+    the list-item prong of ``isParagraphSeparation`` (lines line up with the
+    previous paragraph start and share a list-item regex). The lite stripper
+    now reproduces the identical paragraph-token placement."""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = str(Path(tmp) / "list.pdf")
+        _build_pdf(_LIST_ITEMS, path)
+        java = run_probe_text("TextSeparatorProbe", path)
+        py = _py_text_with_sentinels(Path(path))
+        assert py == java
+
+
+@requires_oracle
+def test_hanging_indent_paragraph_placement_matches_pdfbox() -> None:
+    """A hanging-indent block: the wrapped continuation line is indented
+    under a paragraph start, so upstream flags it ``isHangingIndent`` and
+    keeps it in the same ``[P]`` rather than opening a new one. The lite
+    stripper now reproduces the identical paragraph-token placement."""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = str(Path(tmp) / "hanging.pdf")
+        _build_pdf(_HANGING_INDENT, path)
+        java = run_probe_text("TextSeparatorProbe", path)
+        py = _py_text_with_sentinels(Path(path))
+        assert py == java

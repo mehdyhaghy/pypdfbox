@@ -2222,10 +2222,12 @@ class PDFTextStripper:
         for fake bold) and the duplicate is dropped before formatting.
 
         When ``should_separate_by_beads`` is enabled and the active page
-        carries thread beads, positions are bucketed into the bead whose
-        rectangle contains the run's origin (with a residual bucket for
-        runs outside any bead). Buckets are emitted in bead-chain order,
-        matching upstream's ``setShouldSeparateByBeads(true)`` semantics.
+        carries thread beads, positions are bucketed into upstream's
+        per-article ``charactersByArticle`` slots (``2*N + 1`` for ``N``
+        beads; see :meth:`_partition_by_beads`) and the slots are emitted in
+        index order, matching upstream's ``setShouldSeparateByBeads(true)``
+        semantics. The running line state carries across the slot boundaries
+        the way ``writePage`` declares it outside the article loop.
         """
         if not positions:
             return ""
@@ -2262,10 +2264,12 @@ class PDFTextStripper:
                     positions, key=cmp_to_key(self._compare_reading_order)
                 )
 
-        # Bead-separation: bucket positions by the bead whose rectangle
-        # contains their origin, then emit one bucket at a time. Lite
-        # mode preserves the upstream invariant that text outside any
-        # bead falls into a residual bucket emitted last.
+        # Bead-separation: bucket positions into upstream's per-article
+        # ``charactersByArticle`` slots (``2*N + 1`` for ``N`` beads), then
+        # emit one slot at a time in index order — the gap slots interleave
+        # between the bead columns, reproducing the reading flow. Text outside
+        # every bead lands in the first gap slot it is left-of / above (see
+        # :meth:`_partition_by_beads`), not a single trailing residual.
         groups: list[list[TextPosition]] = []
         if self._should_separate_by_beads and self._active_page is not None:
             groups = self._partition_by_beads(positions)
@@ -2310,6 +2314,21 @@ class PDFTextStripper:
             type(self).write_article_start is not PDFTextStripper.write_article_start
         )
         open_page_paragraph = not manages_own_paragraph
+        # Upstream's ``writePage`` declares the running line-extent /
+        # previous-glyph state (``lastPosition``, ``maxYForLine``,
+        # ``maxHeightForLine``, ``lastLineStartPosition``) *outside* the
+        # ``for (List<TextPosition> textList : charactersByArticle)`` loop
+        # (PDFTextStripper.java:497-503), so that state persists across
+        # article boundaries: the first glyph of a new article is line-broken
+        # against the *last* glyph of the previous article whenever their
+        # vertical spans do not overlap. Only ``startOfArticle`` resets per
+        # article. The lite emitter mirrors that by threading a shared carry
+        # dict through each ``_emit_group`` call rather than re-seeding the
+        # line state for every bead bucket. Without it, a glyph that fell
+        # into a trailing residual slot (e.g. a final line below the last
+        # bead) would be concatenated onto the previous article's last line
+        # instead of starting its own.
+        carry: dict[str, object] | None = {} if len(groups) > 1 else None
         for group in groups:
             if self._article_start:
                 self.write_article_start(_sink)
@@ -2318,6 +2337,7 @@ class PDFTextStripper:
                 _sink,
                 open_page_paragraph,
                 emit_paragraph_markers=not manages_own_paragraph,
+                carry=carry,
             )
             if wrote:
                 open_page_paragraph = False
@@ -2331,6 +2351,7 @@ class PDFTextStripper:
         sink: Callable[[str], None],
         open_page_paragraph: bool = False,
         emit_paragraph_markers: bool = True,
+        carry: dict[str, object] | None = None,
     ) -> bool:
         """Emit a single ordered list of positions. Splits out from
         ``_format_positions`` so the bead-bucket loop can reuse the same
@@ -2400,19 +2421,72 @@ class PDFTextStripper:
         # (:meth:`_overlaps_line`) is correspondingly mirrored to y-up.
         _MAX_Y_RESET = -math.inf
         _MAX_HEIGHT_RESET = -1.0
+        # When a ``carry`` dict is supplied the running line state persists
+        # across article (bead-bucket) boundaries — mirroring upstream's
+        # ``writePage``, which declares this state outside the per-article
+        # loop (PDFTextStripper.java:497-503). The first bucket seeds an
+        # empty carry; later buckets resume from the previous bucket's final
+        # glyph so an inter-article line break fires when their vertical
+        # spans do not overlap. ``open_page_paragraph`` already guards the
+        # once-per-page paragraph open, so resuming ``prev`` does not re-open
+        # the page paragraph.
         max_y_for_line = _MAX_Y_RESET
         max_height_for_line = _MAX_HEIGHT_RESET
 
         wrote_any = False
         prev: TextPosition | None = None
+        # Upstream tracks the wrapper of the first glyph of the previous
+        # line (``lastLineStartPosition``) and the wrapper of the
+        # immediately-previous glyph (``lastPosition``) so
+        # ``isParagraphSeparation`` can compare the current X to the
+        # *previous line's* left margin rather than to the prior glyph
+        # (PDFTextStripper.java:503, 660, 709-713). The lite stripper
+        # mirrors that here. The flip-axes (rotated-page) path keeps the
+        # legacy prev-only indent heuristic — its transposed frame is not
+        # calibrated for the wrapper-based indent test.
+        last_line_start: PositionWrapper | None = None
+        last_wrapper: PositionWrapper | None = None
+        if carry is not None and carry:
+            max_y_for_line = carry.get("max_y_for_line", _MAX_Y_RESET)  # type: ignore[assignment]
+            max_height_for_line = carry.get(  # type: ignore[assignment]
+                "max_height_for_line", _MAX_HEIGHT_RESET
+            )
+            prev = carry.get("prev")  # type: ignore[assignment]
+            last_line_start = carry.get("last_line_start")  # type: ignore[assignment]
+            last_wrapper = carry.get("last_wrapper")  # type: ignore[assignment]
+        # Upstream resets ``startOfArticle = true`` at the head of every
+        # article iteration (PDFTextStripper.java:534); the first glyph of an
+        # article with a non-null ``lastPosition`` then flags that previous
+        # glyph as the article start (line 641-645). The lite emitter only
+        # carries ``last_wrapper`` across buckets, so this flag governs the
+        # one inter-article transition handled inside this call.
+        start_of_article = True
         for pos in positions:
             position_y = pos.x if self._flip_axes else pos.y
             position_height = pos.get_height_dir()
+            cur_wrapper = PositionWrapper(pos)
+            if (
+                start_of_article
+                and last_wrapper is not None
+                and not self._flip_axes
+            ):
+                # ``lastPosition.setArticleStart()`` — the previous bucket's
+                # final glyph becomes the article-start anchor consulted by
+                # the article-start branch of ``handleLineSeparation``.
+                last_wrapper.set_article_start()
+            start_of_article = False
             if prev is None and open_page_paragraph and emit_paragraph_markers:
                 # Upstream opens the page-body paragraph on the first glyph
                 # (``startOfPage && lastPosition == null`` →
                 # ``writeParagraphStart``, PDFTextStripper.java:700-703).
                 self.write_paragraph_start(sink)
+            if prev is None and not self._flip_axes:
+                # Upstream marks the first glyph of the page as both a
+                # paragraph start and a line start, seeding
+                # ``lastLineStartPosition`` (PDFTextStripper.java:709-713).
+                cur_wrapper.set_paragraph_start()
+                cur_wrapper.set_line_start()
+                last_line_start = cur_wrapper
             if prev is not None:
                 # Flip-axes (rotated-page) extraction keeps the legacy
                 # prev-only line-stepping heuristic — the running-overlap
@@ -2432,7 +2506,56 @@ class PDFTextStripper:
                     )
                 if line_broke:
                     _flush_word()
-                    if self.is_paragraph_separation(pos, prev):
+                    # Mark the new line's first glyph and run upstream's
+                    # paragraph-separation classifier against the *previous*
+                    # line's start glyph (``handleLineSeparation``,
+                    # PDFTextStripper.java:1559-1587). The flip-axes path
+                    # keeps the legacy prev-only indent test.
+                    cur_wrapper.set_line_start()
+                    if self._flip_axes:
+                        para_break = self.is_paragraph_separation(pos, prev)
+                    else:
+                        self._classify_paragraph_separation(
+                            cur_wrapper,
+                            last_wrapper,  # type: ignore[arg-type]
+                            last_line_start,
+                            max_height_for_line
+                            if max_height_for_line > 0.0
+                            else position_height,
+                        )
+                        para_break = cur_wrapper.is_paragraph_start()
+                    # Faithful port of upstream ``handleLineSeparation``'s
+                    # emission tree (PDFTextStripper.java:1566-1585). When the
+                    # previous glyph was flagged an article start (the first
+                    # glyph of a new bead bucket whose ``lastPosition`` is the
+                    # prior bucket's tail), a *paragraph* break across that
+                    # boundary collapses to just ``writeParagraphStart`` (plus
+                    # a line separator only if that tail was itself a line
+                    # start) — i.e. NO inter-article line break is emitted for
+                    # a large vertical jump between columns. Only a non-article
+                    # paragraph break expands to ``writeLineSeparator +
+                    # writeParagraphSeparator`` (= end+start). A plain
+                    # (non-paragraph) line break between two articles, by
+                    # contrast, still emits a single line separator — which is
+                    # what splits a column's trailing line from a residual
+                    # final line one row below it (the ``mon Dieu`` case).
+                    last_is_article_start = (
+                        last_wrapper is not None and last_wrapper.is_article_start()
+                    )
+                    if para_break and last_is_article_start:
+                        # Upstream's inner ``if (lastPosition.isLineStart())
+                        # writeLineSeparator()`` (PDFTextStripper.java:1570-
+                        # 1573) keys on the *last glyph* of the previous
+                        # article. The lite stripper emits one TextPosition per
+                        # show-text run rather than per glyph (the documented
+                        # run-vs-glyph carve-out), so its ``last_wrapper`` is
+                        # the whole final run; a multi-glyph final line's last
+                        # glyph is never a line start in Java, so the run-level
+                        # ``is_line_start`` would over-fire here. Mirror Java's
+                        # effective behaviour for multi-glyph runs by emitting
+                        # only the paragraph start.
+                        self.write_paragraph_start(sink)
+                    elif para_break:
                         # Upstream ``handleLineSeparation`` emits the line
                         # separator *first*, then the paragraph separator
                         # (``writeParagraphEnd`` + ``writeParagraphStart``)
@@ -2448,6 +2571,9 @@ class PDFTextStripper:
                         self.write_paragraph_start(sink)
                     else:
                         self.write_line_separator(sink)
+                    # The new line's first glyph becomes the next
+                    # ``lastLineStartPosition`` (PDFTextStripper.java:1565).
+                    last_line_start = cur_wrapper
                     max_y_for_line = _MAX_Y_RESET
                     max_height_for_line = _MAX_HEIGHT_RESET
                 else:
@@ -2469,12 +2595,22 @@ class PDFTextStripper:
             self.write_string_with_positions(pos.text, [pos], _buffered_sink)
             wrote_any = True
             prev = pos
+            last_wrapper = cur_wrapper
         _flush_word()
         if wrote_any and emit_paragraph_markers:
             # Upstream closes the article's paragraph after its final line
             # (``writeLine(...); writeParagraphEnd()``,
             # PDFTextStripper.java:720-724).
             self.write_paragraph_end(sink)
+        if carry is not None:
+            # Persist the running line state for the next bead bucket so the
+            # inter-article line-break test resumes from this bucket's final
+            # glyph (upstream's loop-scoped ``lastPosition`` / ``maxYForLine``).
+            carry["max_y_for_line"] = max_y_for_line
+            carry["max_height_for_line"] = max_height_for_line
+            carry["prev"] = prev
+            carry["last_line_start"] = last_line_start
+            carry["last_wrapper"] = last_wrapper
         return wrote_any
 
     # Tolerance (user-space units) below which two runs are treated as
@@ -2702,6 +2838,73 @@ class PDFTextStripper:
         indent = pos.y - prev.y if self._flip_axes else pos.x - prev.x
         return indent > space_width * self._indent_threshold
 
+    def _classify_paragraph_separation(
+        self,
+        position: PositionWrapper,
+        last_position: PositionWrapper,
+        last_line_start: PositionWrapper | None,
+        max_height_for_line: float,
+    ) -> None:
+        """Faithful port of upstream ``isParagraphSeparation``
+        (PDFTextStripper.java:1611-1683).
+
+        Unlike the public 2-arg :meth:`is_paragraph_separation` (which
+        compares the current glyph to the *immediately-previous* glyph and
+        is kept for the existing unit API), this mirrors upstream exactly:
+        the y-gap drop prong compares ``position`` to ``last_position``,
+        but the indent / hanging-indent / list-item prongs compare
+        ``position``'s X to ``last_line_start`` — the first glyph of the
+        *previous line*. It toggles ``set_paragraph_start`` /
+        ``set_hanging_indent`` on ``position`` rather than returning a bool,
+        matching upstream's flag-mutating contract.
+        """
+        result = False
+        if last_line_start is None:
+            result = True
+        else:
+            pos_tp = position.get_text_position()
+            last_tp = last_position.get_text_position()
+            lls_tp = last_line_start.get_text_position()
+            # y-gap drop prong vs the immediately-previous glyph
+            # (PDFTextStripper.java:1621-1623).
+            y_gap = abs(pos_tp.get_y_dir_adj() - last_tp.get_y_dir_adj())
+            new_y_val = self.multiply_float(
+                self.get_drop_threshold(), max_height_for_line
+            )
+            # indent prong vs the previous line's start glyph
+            # (PDFTextStripper.java:1625-1629).
+            x_gap = pos_tp.get_x_dir_adj() - lls_tp.get_x_dir_adj()
+            new_x_val = self.multiply_float(
+                self.get_indent_threshold(), pos_tp.get_width_of_space()
+            )
+            position_width = self.multiply_float(0.25, pos_tp.get_width())
+
+            if y_gap > new_y_val:
+                result = True
+            elif x_gap > new_x_val:
+                # text is indented, but try to screen for hanging indent
+                if not last_line_start.is_paragraph_start():
+                    result = True
+                else:
+                    position.set_hanging_indent()
+            elif x_gap < -pos_tp.get_width_of_space():
+                # text is left of previous line. Was it a hanging indent?
+                if not last_line_start.is_paragraph_start():
+                    result = True
+            elif abs(x_gap) < position_width:
+                # within 1/4 char of the last line start — lined up.
+                if last_line_start.is_hanging_indent():
+                    position.set_hanging_indent()
+                elif last_line_start.is_paragraph_start():
+                    # previous line looks like a list item?
+                    li_pattern = self.match_list_item_pattern(last_line_start)
+                    if li_pattern is not None:
+                        current_pattern = self.match_list_item_pattern(position)
+                        if li_pattern is current_pattern:
+                            result = True
+        if result:
+            position.set_paragraph_start()
+
     def is_para_break_indented(self, pos: TextPosition, prev: TextPosition) -> bool:
         """Convenience predicate: only the indent prong of
         :meth:`is_paragraph_separation`. Mirrors upstream's helper used
@@ -2724,12 +2927,27 @@ class PDFTextStripper:
     def _partition_by_beads(
         self, positions: list[TextPosition]
     ) -> list[list[TextPosition]]:
-        """Bucket ``positions`` by the bead whose rectangle covers each
-        run's origin. Returns a list of buckets in bead-chain order; the
-        last bucket holds positions that fell outside every bead.
+        """Bucket ``positions`` into the per-article ``charactersByArticle``
+        slots upstream maintains when ``shouldSeparateByBeads`` is enabled.
 
-        Returns an empty list when the active page has no thread beads
-        (callers fall back to a single all-positions group)."""
+        Faithful port of the article-assignment logic from upstream
+        ``processPage`` (sizing, PDFTextStripper.java:349-377) and
+        ``processTextPosition`` (assignment, PDFTextStripper.java:954-1020).
+        For ``N`` thread beads upstream allocates ``2*N + 1`` slots: slot
+        ``i*2 + 1`` holds glyphs *inside* bead ``i``, slot ``i*2`` is the
+        "gap" before bead ``i`` (glyphs left-of / above the bead that did
+        not land inside an earlier one), and the final slot
+        (``charactersByArticle.size() - 1``) catches everything else. The
+        slots are emitted in index order, which interleaves the gap runs
+        between the bead columns and reproduces the reading flow — e.g. an
+        inline stage-direction painted between two column beads stays
+        adjacent to the text it follows rather than being shunted to a
+        trailing residual bucket.
+
+        Returns the non-empty slots in index order; an empty list when the
+        active page has no usable thread beads (callers fall back to a
+        single all-positions group).
+        """
         page = self._active_page
         if page is None:
             return []
@@ -2739,6 +2957,21 @@ class PDFTextStripper:
             return []
         if not beads:
             return []
+        # Bead rectangles, kept in the PDF user-space (y-up) frame the lite
+        # TextPosition origins live in. Upstream flips them into image
+        # (y-down) space (fillBeadRectangles, PDFTextStripper.java:386-420)
+        # and compares against ``text.getY()`` there; working consistently
+        # in y-up is equivalent for the ``contains`` test, and the gap-slot
+        # fallbacks below are mirrored accordingly (see ``_bead_above``).
+        # CropBox lower-left offsets are subtracted to mirror upstream's
+        # cropbox adjustment (lines 410-417).
+        try:
+            crop = page.get_crop_box()
+            crop_llx = float(crop.get_lower_left_x())
+            crop_lly = float(crop.get_lower_left_y())
+        except Exception:  # noqa: BLE001 — defensive: missing/odd CropBox
+            crop_llx = 0.0
+            crop_lly = 0.0
         rects: list[tuple[float, float, float, float] | None] = []
         for bead in beads:
             if bead is None:
@@ -2752,36 +2985,62 @@ class PDFTextStripper:
             if r is None:
                 rects.append(None)
                 continue
-            # PDRectangle stores (lower_left_x, lower_left_y, upper_right_x,
-            # upper_right_y) — keep that form for membership tests.
             rects.append(
                 (
-                    float(r.get_lower_left_x()),
-                    float(r.get_lower_left_y()),
-                    float(r.get_upper_right_x()),
-                    float(r.get_upper_right_y()),
+                    float(r.get_lower_left_x()) - crop_llx,
+                    float(r.get_lower_left_y()) - crop_lly,
+                    float(r.get_upper_right_x()) - crop_llx,
+                    float(r.get_upper_right_y()) - crop_lly,
                 )
             )
         if not any(r is not None for r in rects):
             return []
-        buckets: list[list[TextPosition]] = [[] for _ in rects]
-        residual: list[TextPosition] = []
+        # Upstream allocates ``2 * beadRectangles.size() + 1`` slots.
+        slots: list[list[TextPosition]] = [[] for _ in range(len(rects) * 2 + 1)]
+        last_index = len(slots) - 1
         for pos in positions:
-            placed = False
-            for idx, rect in enumerate(rects):
+            x = pos.x
+            y = pos.y
+            found = -1
+            left_above = -1
+            left = -1
+            above = -1
+            for i, rect in enumerate(rects):
+                if found != -1:
+                    break
                 if rect is None:
+                    # Upstream: a null bead rectangle short-circuits the
+                    # glyph into slot 0 (PDFTextStripper.java:988-991).
+                    found = 0
                     continue
                 llx, lly, urx, ury = rect
-                if llx <= pos.x <= urx and lly <= pos.y <= ury:
-                    buckets[idx].append(pos)
-                    placed = True
-                    break
-            if not placed:
-                residual.append(pos)
-        result = [b for b in buckets if b]
-        if residual:
-            result.append(residual)
-        return result
+                inside = llx <= x <= urx and lly <= y <= ury
+                # Upstream image-space ``x < lowerLeftX`` is the same test in
+                # either frame; ``y < upperRightY`` (image, y-down) is, in
+                # PDF y-up space, ``y > lowerLeftY`` (the glyph baseline sits
+                # above the bead's bottom edge).
+                cond_left = x < llx
+                cond_above = y > lly
+                if inside:
+                    found = i * 2 + 1
+                elif (cond_left or cond_above) and left_above == -1:
+                    left_above = i * 2
+                elif cond_left and left == -1:
+                    left = i * 2
+                elif cond_above and above == -1:
+                    above = i * 2
+            if found != -1:
+                idx = found
+            elif left_above != -1:
+                idx = left_above
+            elif left != -1:
+                idx = left
+            elif above != -1:
+                idx = above
+            else:
+                idx = last_index
+            slots[idx].append(pos)
+        return [s for s in slots if s]
 
     @staticmethod
     def _drop_overlapping_duplicates(

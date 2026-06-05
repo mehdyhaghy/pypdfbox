@@ -83,6 +83,21 @@ class PDFTextStripperByArea(PDFTextStripper):
         # ``_format_positions`` invocation, which calls the hook a second
         # time via ``write_string`` and would otherwise double-bin).
         self._binning_active: bool = False
+        # Shared page-wide duplicate-suppression map, mirroring upstream's
+        # private ``Map<String, TreeMap<Float, TreeSet<Float>>>
+        # characterListMapping`` in ``PDFTextStripper``. Upstream's
+        # ``PDFTextStripperByArea.processTextPosition`` (Java L137-147)
+        # repoints ``charactersByArticle`` per matching region and delegates
+        # to the base ``PDFTextStripper.processTextPosition`` (Java L897-951),
+        # which dedups every offered glyph against this ONE page-wide map
+        # before binning. A glyph inside two overlapping regions is therefore
+        # recorded by the FIRST region iterated (in ``regionArea``'s HashMap
+        # order) and SUPPRESSED as a coincident duplicate when offered to the
+        # second — so an overlap glyph lands in exactly one region. We
+        # reproduce that here: the map is keyed by the glyph's unicode string,
+        # value maps x -> set of recorded y's for that character. Reset per
+        # ``extract_regions`` run. See ``CHANGES.md`` (wave 1492 convergence).
+        self._character_list_mapping: dict[str, dict[float, set[float]]] = {}
 
     # ---------- bead override ----------
 
@@ -171,6 +186,11 @@ class PDFTextStripperByArea(PDFTextStripper):
         for name in self._regions:
             self._region_character_list[name] = []
             self._region_text[name] = ""
+        # Reset the shared page-wide dedup map so a prior page's recorded
+        # glyphs can't suppress this page's. Mirrors upstream's
+        # ``characterListMapping.clear()`` at the top of each
+        # ``processPage`` (PDFTextStripper.java L378).
+        self._character_list_mapping = {}
 
         contents = page.get_contents()
         if not contents:
@@ -208,26 +228,53 @@ class PDFTextStripperByArea(PDFTextStripper):
             # so any decode work the formatter triggers (word-gap font
             # widths, suppress-duplicate threshold) sees the same state
             # the parser walk used.
-            for name in self._regions:
-                bin_positions = self._region_character_list.get(name, [])
-                formatted = self._format_positions(bin_positions)
-                # Upstream's region writer runs the standard ``writePage``
-                # loop once per region, which terminates the page with
-                # ``getLineSeparator()`` whether or not the region captured
-                # any glyphs. The Java oracle therefore returns exactly one
-                # trailing ``"\n"`` for an *extracted* region — including an
-                # empty one (``getTextForRegion`` over a region that matched
-                # nothing returns ``"\n"``, not ``""``; verified against the
-                # live PDFBox oracle, wave 1439). ``_format_positions`` only
-                # writes separators *between* lines, so append the trailing
-                # separator unconditionally here to match.
-                formatted += self.get_line_separator()
-                self._region_text[name] = formatted
+            # Upstream's per-region ``writePage`` (PDFTextStripperByArea.java
+            # L156-164) calls the base ``writePage`` once per region but does
+            # NOT re-run duplicate suppression — the dedup already happened in
+            # ``processTextPosition`` against the shared ``characterListMapping``
+            # while binning (above). The lite ``_format_positions`` would
+            # otherwise dedup each bin a SECOND time (per-bin), which both
+            # double-counts the work and, with independent per-bin maps, can
+            # drop a legitimately-distinct same-text glyph differently than
+            # upstream. Suppress the format-time dedup for the byArea path so
+            # the bins flow through verbatim; the bin-time shared dedup in
+            # ``_bin_glyph`` is the single source of truth.
+            saved_suppress = self._suppress_duplicate_overlapping_text
+            self._suppress_duplicate_overlapping_text = False
+            try:
+                self._format_region_text()
+            finally:
+                self._suppress_duplicate_overlapping_text = saved_suppress
         finally:
             self._active_page = None
             self._active_cmap = None
             self._active_font = None
             self._active_avg_advance = None
+
+    def _format_region_text(self) -> None:
+        """Format each region's binned positions into its output string.
+
+        Mirrors upstream's ``writePage`` override which iterates
+        ``regionArea.keySet()`` and re-runs the base formatter per region.
+        The active page / font caches stay valid here so any decode work the
+        formatter triggers (word-gap font widths) sees the same state the
+        parser walk used.
+        """
+        for name in self._regions:
+            bin_positions = self._region_character_list.get(name, [])
+            formatted = self._format_positions(bin_positions)
+            # Upstream's region writer runs the standard ``writePage``
+            # loop once per region, which terminates the page with
+            # ``getLineSeparator()`` whether or not the region captured
+            # any glyphs. The Java oracle therefore returns exactly one
+            # trailing ``"\n"`` for an *extracted* region — including an
+            # empty one (``getTextForRegion`` over a region that matched
+            # nothing returns ``"\n"``, not ``""``; verified against the
+            # live PDFBox oracle, wave 1439). ``_format_positions`` only
+            # writes separators *between* lines, so append the trailing
+            # separator unconditionally here to match.
+            formatted += self.get_line_separator()
+            self._region_text[name] = formatted
 
     def process_text_position(self, text: TextPosition) -> None:
         """Route a single text position into every region that contains
@@ -320,7 +367,23 @@ class PDFTextStripperByArea(PDFTextStripper):
             self._bin_glyph(glyph, glyph_x, y)
 
     def _bin_glyph(self, text: TextPosition, x: float, y: float) -> None:
-        """Append ``text`` to every region whose rectangle contains ``(x, y)``.
+        """Bin ``text`` into the matching region(s), reproducing upstream's
+        shared duplicate-suppression so an overlap glyph lands in exactly
+        one region.
+
+        Upstream's ``PDFTextStripperByArea.processTextPosition`` (Java
+        L137-147) walks ``regionArea`` in ``HashMap`` iteration order and,
+        for each region whose ``Rectangle2D.contains(x, y)`` is true,
+        repoints ``charactersByArticle`` to that region's list and delegates
+        to the base ``PDFTextStripper.processTextPosition`` (Java L897-951).
+        The base method dedups the glyph against the ONE page-wide
+        ``characterListMapping``: the first region to be offered the glyph
+        records it (text, x, y) and bins it; when the SAME glyph is offered
+        to a later overlapping region, ``suppressDuplicateOverlappingText``
+        finds the coincident (text, x, y) in the shared map and drops it —
+        so it never reaches the later region's bin. We reproduce that here:
+        iterate matching regions in Java-HashMap order (:func:`_hashmap_order`),
+        and bin a glyph only if it survives the shared dedup.
 
         Boundary semantics reproduce Java ``Rectangle2D.contains`` exactly:
         half-open in Java device space (y-down), which the y-flip into PDF
@@ -328,9 +391,127 @@ class PDFTextStripperByArea(PDFTextStripper):
         ``min_y`` *exclusive* / ``max_y`` inclusive. See the
         ``process_text_position`` docstring.
         """
-        for name, (min_x, min_y, max_x, max_y) in self._region_area.items():
-            if min_x <= x < max_x and min_y < y <= max_y:
-                self._region_character_list[name].append(text)
+        suppress = self._suppress_duplicate_overlapping_text
+        for name in _hashmap_order(self._region_area.keys()):
+            min_x, min_y, max_x, max_y = self._region_area[name]
+            if not (min_x <= x < max_x and min_y < y <= max_y):
+                continue
+            if suppress and self._is_suppressed_duplicate(text, x, y):
+                # The shared page-wide map already recorded a coincident
+                # same-text glyph (from an earlier region in HashMap order or
+                # an earlier glyph). Drop it for THIS region — upstream's
+                # base ``processTextPosition`` returns without binning.
+                continue
+            self._region_character_list[name].append(text)
+
+    def _is_suppressed_duplicate(
+        self, text: TextPosition, x: float, y: float
+    ) -> bool:
+        """Port of the ``suppressDuplicateOverlappingText`` block in
+        ``PDFTextStripper.processTextPosition`` (Java L913-950).
+
+        Consults the shared ``self._character_list_mapping``. Returns
+        ``True`` when a previously-recorded same-text glyph lies within the
+        coincidence tolerance (``width / len / 3.0`` per Java L932) of
+        ``(x, y)`` — meaning upstream would suppress this offer. Otherwise
+        records ``(x, y)`` under the glyph's unicode and returns ``False``.
+        """
+        text_character = text.get_unicode()
+        same_text = self._character_list_mapping.setdefault(text_character, {})
+        # Java L932: tolerance = width / textCharacter.length() / 3.0f.
+        char_len = max(len(text_character), 1)
+        tolerance = text.get_width() / char_len / 3.0
+        # Java L934-944: scan the x-submap within [x-tol, x+tol) for any
+        # recorded y within [y-tol, y+tol). subMap/subSet are half-open on
+        # the upper bound; we match that with ``< x + tolerance`` etc.
+        for rec_x, rec_ys in same_text.items():
+            if not (x - tolerance <= rec_x < x + tolerance):
+                continue
+            for rec_y in rec_ys:
+                if y - tolerance <= rec_y < y + tolerance:
+                    return True
+        # Java L945-950: not suppressed — record (x, y) and show.
+        same_text.setdefault(x, set()).add(y)
+        return False
+
+
+def _java_string_hash_code(s: str) -> int:
+    """Compute ``java.lang.String.hashCode()`` for ``s``.
+
+    JLS-specified (stable across all JVMs):
+    ``h = s[0]*31^(n-1) + s[1]*31^(n-2) + ... + s[n-1]`` evaluated in 32-bit
+    signed ``int`` arithmetic (overflow wraps). The result is returned as a
+    Python int in the signed 32-bit range. Java iterates UTF-16 code units;
+    for the BMP region names this loop matches by iterating Python code
+    points (a non-BMP name would need surrogate-pair expansion, but region
+    names are short ASCII identifiers in practice).
+    """
+    h = 0
+    for ch in s:
+        h = (h * 31 + ord(ch)) & 0xFFFFFFFF
+    # Reinterpret as signed 32-bit.
+    if h >= 0x80000000:
+        h -= 0x100000000
+    return h
+
+
+def _java_hashmap_index(key: str, capacity: int) -> int:
+    """Bucket index for ``key`` in a ``java.util.HashMap`` of the given
+    table ``capacity``.
+
+    HashMap spreads the hash with ``h ^ (h >>> 16)`` (Java 8+ ``HashMap.hash``)
+    then masks with ``capacity - 1`` (capacity is always a power of two).
+    The ``>>> 16`` is an unsigned shift, so operate on the unsigned 32-bit
+    form of the hash.
+    """
+    h = _java_string_hash_code(key) & 0xFFFFFFFF
+    h ^= h >> 16
+    return h & (capacity - 1)
+
+
+def _java_hashmap_capacity(count: int) -> int:
+    """Table capacity a default ``java.util.HashMap`` settles at after
+    ``count`` distinct ``put`` calls.
+
+    Default initial capacity is 16, load factor 0.75 — the table doubles
+    when ``size > capacity * 0.75``. ``regionArea`` is ``new HashMap<>()``
+    (PDFTextStripperByArea.java L36) and filled by ``addRegion`` puts, so
+    its capacity is determined solely by the region count. For the realistic
+    region counts (<= 12) capacity stays 16; the loop below handles larger
+    sets faithfully so a future many-region caller still matches.
+    """
+    capacity = 16
+    # Resize threshold is capacity*0.75; HashMap resizes when size EXCEEDS it
+    # (size > threshold) after the put that crosses the boundary.
+    while count > capacity * 3 // 4:
+        capacity <<= 1
+    return capacity
+
+
+def _hashmap_order(keys) -> list[str]:  # noqa: ANN001 - keys is a str iterable
+    """Return ``keys`` in ``java.util.HashMap`` iteration order.
+
+    HashMap iterates buckets ``0 .. capacity-1``; within a bucket, entries are
+    a linked list in insertion order (no treeification below 8 colliding
+    entries, which region-name sets never reach). We therefore sort by
+    ``(bucket_index, insertion_position)``. This reproduces the *non-spec but
+    deterministic* order upstream's ``regionArea.forEach`` (and ``keySet``)
+    walks — verified empirically against the live PDFBox oracle for several
+    region-name sets (wave 1492): the surviving overlap region is fixed by the
+    region name's ``String.hashCode`` bucket, independent of insertion order.
+
+    NOTE: this is a deliberate Java-emulation. We accept the brittleness
+    (it assumes default HashMap capacity growth and no treeification) because
+    it is the only faithful way to pick the surviving region for an
+    overlap glyph; the alternative is a documented divergence (rejected in
+    favour of convergence — see ``CHANGES.md``).
+    """
+    key_list = list(keys)
+    capacity = _java_hashmap_capacity(len(key_list))
+    return sorted(
+        key_list,
+        key=lambda k: (_java_hashmap_index(k, capacity), key_list.index(k)),
+    )
 
 
 def _normalize_rect(

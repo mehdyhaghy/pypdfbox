@@ -172,6 +172,59 @@ def test_bidi_sample_line_layout_matches_pdfbox() -> None:
 
 
 @requires_oracle
+def test_bidi_sample_sorted_and_unsorted_match_pdfbox() -> None:
+    """BidiSample.pdf extracted with ``set_sort_by_position`` toggled both
+    ways matches Java PDFBox byte-for-byte.
+
+    ``TextSortInlineProbe`` emits Java's ``SORTED:`` and ``UNSORTED:``
+    ``getText`` payloads (newlines escaped) for the same PDF. Sorted mode
+    is the parity-sensitive one: the geometric ``TextPositionComparator``
+    re-sort must group glyphs onto the same logical lines Java does
+    *before* the UAX #9 BiDi reorder runs, otherwise a mixed-direction
+    bracketed Arabic run ('«إختبار ذاتي»') lands one codepoint off (the
+    former wave-1409 sorted residual). With the CTM-aware emission +
+    running vertical-span line grouping (waves 1409–1491) both modes are
+    now exact. The probe frames each payload with a trailing ``"\\n"``, so
+    compare against the body with that framing newline stripped."""
+    fixture = _FIXTURES / "text" / "BidiSample.pdf"
+    out = run_probe_text("TextSortInlineProbe", str(fixture))
+    sorted_java = (
+        out.split("SORTED:", 1)[1]
+        .rsplit("\nUNSORTED:", 1)[0]
+        .replace("\\r", "\r")
+        .replace("\\n", "\n")
+        .replace("\\\\", "\\")
+    )
+    unsorted_java = (
+        out.rsplit("UNSORTED:", 1)[1]
+        .replace("\\r", "\r")
+        .replace("\\n", "\n")
+        .replace("\\\\", "\\")
+    )
+
+    doc = PDDocument.load(str(fixture))
+    try:
+        sorted_stripper = PDFTextStripper()
+        sorted_stripper.set_sort_by_position(True)
+        py_sorted = sorted_stripper.get_text(doc)
+    finally:
+        doc.close()
+
+    doc = PDDocument.load(str(fixture))
+    try:
+        unsorted_stripper = PDFTextStripper()
+        unsorted_stripper.set_sort_by_position(False)
+        py_unsorted = unsorted_stripper.get_text(doc)
+    finally:
+        doc.close()
+
+    # ``rstrip("\n")`` only drops the probe's framing newline; the bodies
+    # both end in exactly one ``getText`` line separator that survives.
+    assert py_sorted == sorted_java.rstrip("\n") + "\n"
+    assert py_unsorted == unsorted_java.rstrip("\n") + "\n"
+
+
+@requires_oracle
 def test_eu001_word_spacing_matches_pdfbox() -> None:
     """eu-001.pdf is a wide threshold table whose value cells sit on a
     slightly different baseline than their (wrapped) row label (Y-delta <
@@ -187,18 +240,19 @@ def test_eu001_word_spacing_matches_pdfbox() -> None:
 
 
 @requires_oracle
-@pytest.mark.xfail(
-    reason="CTM-aware emission (wave 1409) fixes the per-line `cm` size/baseline "
-    "(same producer pattern as BidiSample), but PDFBOX-3110-poems-beads.pdf "
-    "additionally relies on article-thread (/B bead) reading order: Java "
-    "stitches the two bead columns so a column's last line continues onto the "
-    "next column's first line, and clips glyphs to bead rectangles using true "
-    "per-glyph widths. The lite extractor's bead bucketing + average-advance "
-    "width estimate do not reproduce that stitch/clip. Article-thread reading "
-    "order and per-glyph metrics are deferred features, not the CTM root cause.",
-    strict=True,
-)
 def test_poems_beads_order_matches_pdfbox() -> None:
+    """Wave 1492 ported upstream's full ``charactersByArticle`` slot scheme:
+    ``2*N + 1`` slots for ``N`` thread beads (slot ``i*2+1`` = inside bead
+    ``i``, slot ``i*2`` = the gap before it), the richer
+    inside/left/above/left-and-above assignment from ``processTextPosition``
+    (PDFTextStripper.java:954-1020), the running line state (``maxYForLine`` /
+    ``lastPosition`` / ``lastLineStartPosition``) carried *across* article
+    boundaries the way ``writePage`` declares it outside the article loop
+    (lines 497-503), and the article-start branch of ``handleLineSeparation``
+    (lines 1566-1585) so a large vertical jump between columns collapses to a
+    bare ``writeParagraphStart`` (no inter-article line break) while a plain
+    one-row drop into a residual final line still emits a single line
+    separator. Result is byte-for-byte parity with Java PDFBox."""
     fixture = _FIXTURES / "pdfwriter" / "PDFBOX-3110-poems-beads.pdf"
     java = run_probe_text("TextExtractProbe", str(fixture))
     py = _py_text(fixture)

@@ -128,20 +128,26 @@ def test_multi_region_distribution_independent() -> None:
 
 
 def test_multi_region_overlapping_shares_position_objects() -> None:
-    """Two overlapping rectangles capturing the same glyph get the SAME
-    per-glyph ``TextPosition`` instance (not a copy) inserted into both
-    bins.
+    """With duplicate-suppression OFF, two overlapping rectangles capturing
+    the same glyph get the SAME per-glyph ``TextPosition`` instance (not a
+    copy) inserted into both bins.
 
     ``process_text_position`` splits a run into per-glyph positions so a
-    boundary-straddling run routes glyph-by-glyph (PDFBox parity). Each
-    glyph object is appended *by reference* to every region whose
-    rectangle contains it, so the two overlapping regions share the exact
-    same per-glyph instances. Here both rectangles fully contain the run,
-    so each captures all 6 glyphs of ``shared``, glyph-for-glyph the same
-    objects."""
+    boundary-straddling run routes glyph-by-glyph (PDFBox parity). With
+    suppression off (``setSuppressDuplicateOverlappingText(false)``) each
+    glyph object is appended *by reference* to every region whose rectangle
+    contains it, so the two overlapping regions share the exact same per-glyph
+    instances. Here both rectangles fully contain the run, so each captures
+    all 6 glyphs of ``shared``, glyph-for-glyph the same objects.
+
+    (With suppression ON — the default — the shared page-wide dedup routes the
+    overlap glyph into exactly one region; see
+    ``test_pdf_text_stripper_by_area.py::
+    test_extract_regions_overlapping_regions_dedup_to_one``.)"""
     doc = PDDocument()
     page = _make_page(doc, b"BT /F0 12 Tf 100 700 Td (shared) Tj ET")
     s = PDFTextStripperByArea()
+    s.set_suppress_duplicate_overlapping_text(False)
     # Both rectangles cover the whole run's x-extent so every glyph lands
     # in both bins.
     s.add_region("a", (50.0, 680.0, 500.0, 30.0))

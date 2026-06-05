@@ -9,24 +9,26 @@ surface that file does not exercise:
     capturing only the glyphs whose origin falls inside it. The remaining
     glyphs (outside every rectangle) are dropped from all regions.
 
-  - **overlapping regions** (documented divergence): two rectangles
+  - **overlapping regions** (converged, wave 1492): two or more rectangles
     sharing a zone, with a glyph whose origin lands in the overlap.
     Upstream's ``processTextPosition`` repoints a *single* page-wide
-    ``charactersByArticle`` list per matching region and delegates to the
-    base ``PDFTextStripper.processTextPosition``, whose
+    ``charactersByArticle`` list per matching region (walking ``regionArea``
+    in ``HashMap`` order) and delegates to the base
+    ``PDFTextStripper.processTextPosition``, whose
     ``suppressDuplicateOverlappingText`` dedup (on by default) is backed by
-    one page-wide ``characterListMapping``. The first region iterated (in
-    ``regionArea``'s ``HashMap`` order) records the glyph in that shared
-    map; when the *same* glyph is offered to the second overlapping region
-    the dedup recognises the coincident (text, x, y) and drops it. Net
-    effect: a glyph in an overlap lands in **exactly one** region, not all
-    of them. pypdfbox's lite stripper bins each region independently
-    (per-region dedup, no shared map), so the glyph lands in **every**
-    overlapping region. This is a recorded divergence (CHANGES.md):
-    faithfully matching upstream would require replicating Java's
-    non-spec ``HashMap`` iteration order to decide the surviving region.
-    The test pins both sides so the divergence is observable and any
-    future convergence is caught.
+    one page-wide ``characterListMapping``. The first region iterated records
+    the glyph in that shared map; when the *same* glyph is offered to the
+    second overlapping region the dedup recognises the coincident (text, x, y)
+    and drops it. Net effect: an overlap glyph lands in **exactly one**
+    region. pypdfbox now reproduces this faithfully: it iterates matching
+    regions in Java-HashMap order (``_hashmap_order``) and applies the same
+    shared page-wide dedup, so the surviving region is byte-identical to
+    Java's. Empirically the surviving region is fixed by the region name's
+    ``String.hashCode`` bucket index (deterministic across JVMs), independent
+    of insertion order — verified live for ``{a,b}`` (→a), ``{r1,r2}`` (→r2,
+    *not* insertion order), ``{left,right}`` (→left), and 3-way overlaps.
+    With ``setSuppressDuplicateOverlappingText(false)`` the shared dedup is
+    off and the glyph lands in **every** matching region on both sides.
 
   - **region ordering**: ``getRegions`` / ``get_regions`` returns the
     region names in insertion order, and the per-region text is keyed by
@@ -112,11 +114,20 @@ def _awt_to_user(rect: _AwtRect) -> tuple[float, float, float, float]:
 
 
 def _run_parity(
-    pdf: Path, regions: list[tuple[str, _AwtRect]]
+    pdf: Path,
+    regions: list[tuple[str, _AwtRect]],
+    *,
+    suppress: bool = True,
 ) -> tuple[dict[str, str], dict[str, str]]:
     """Run the Java probe and pypdfbox over the same regions; return
-    (java_by_name, py_by_name)."""
+    (java_by_name, py_by_name).
+
+    When ``suppress`` is False both engines disable
+    ``setSuppressDuplicateOverlappingText`` so an overlap glyph lands in
+    every matching region (no shared dedup)."""
     probe_args: list[str] = [str(pdf)]
+    if not suppress:
+        probe_args.append("--no-suppress")
     for name, (ax, ay, w, h) in regions:
         probe_args += [name, str(ax), str(ay), str(w), str(h)]
     java = _parse_probe(run_probe_text("TextMultiRegionProbe", *probe_args))
@@ -125,6 +136,8 @@ def _run_parity(
     try:
         s = PDFTextStripperByArea()
         s.set_sort_by_position(True)
+        if not suppress:
+            s.set_suppress_duplicate_overlapping_text(False)
         for name, awt in regions:
             s.add_region(name, _awt_to_user(awt))
         s.extract_regions(doc.get_page(0))
@@ -162,16 +175,16 @@ def test_disjoint_regions_match_pdfbox(tmp_path: Path) -> None:
 
 
 @requires_oracle
-def test_overlapping_regions_divergence_pinned(tmp_path: Path) -> None:
-    """Overlap-suppression divergence is explicitly pinned.
+def test_overlapping_regions_converge_with_pdfbox(tmp_path: Path) -> None:
+    """Overlap glyph lands in EXACTLY the same single region as PDFBox.
 
-    A glyph whose origin lands in the overlap of two regions is routed to
-    *every* overlapping region by pypdfbox's lite stripper (independent
-    per-region binning), but to *exactly one* region by Apache PDFBox
-    (shared page-wide ``suppressDuplicateOverlappingText`` dedup). The test
-    asserts pypdfbox's documented behaviour and asserts Java diverges in
-    the documented way, so a future change on either side is caught. See
-    the module docstring + CHANGES.md."""
+    A glyph whose origin lands in the overlap of two regions is routed to a
+    single region by Apache PDFBox (shared page-wide
+    ``suppressDuplicateOverlappingText`` dedup, default on) — the FIRST region
+    in ``regionArea``'s ``HashMap`` iteration order. pypdfbox now reproduces
+    both the shared dedup and the HashMap order, so per-region output is
+    byte-identical to Java. See the module docstring + CHANGES.md (wave 1492
+    convergence)."""
     pdf = tmp_path / "overlap.pdf"
     # Single run sitting where two regions will overlap.
     _build_doc([(200.0, 400.0, "SHARED")], pdf)
@@ -184,20 +197,69 @@ def test_overlapping_regions_divergence_pinned(tmp_path: Path) -> None:
     ]
     java, py = _run_parity(pdf, regions)
 
-    # pypdfbox: the overlap glyph lands in BOTH regions (no shared dedup).
-    assert "SHARED" in py["a"]
-    assert "SHARED" in py["b"]
+    # Full per-region parity.
+    assert py == java
 
-    # Apache PDFBox: the shared dedup map suppresses the duplicate, so the
-    # glyph lands in EXACTLY ONE region (which one depends on Java's HashMap
-    # order — we assert the count, not the identity, to stay JVM-stable).
+    # The overlap glyph survives in exactly one region on BOTH sides, and it
+    # is the SAME region. ``a`` wins (HashMap bucket index 1 < ``b``'s 2).
     java_hits = [name for name, text in java.items() if "SHARED" in text]
-    assert len(java_hits) == 1, f"expected exactly one Java region hit, got {java_hits}"
-
-    # The two engines therefore disagree on the overlap glyph — this is the
-    # recorded divergence.
     py_hits = [name for name, text in py.items() if "SHARED" in text]
-    assert py_hits != java_hits
+    assert java_hits == py_hits == ["a"]
+
+
+@requires_oracle
+def test_overlapping_survivor_not_insertion_order(tmp_path: Path) -> None:
+    """The surviving overlap region follows Java's HashMap bucket order, not
+    insertion order — pinned with a region set where the two disagree.
+
+    For ``{"r1", "r2"}`` the HashMap iterates ``r2`` before ``r1`` (bucket
+    index 0 < 15), so ``r2`` wins even though ``r1`` was inserted first. The
+    swapped-insertion run confirms the winner is insertion-order-independent.
+    """
+    pdf = tmp_path / "overlap_hash.pdf"
+    _build_doc([(200.0, 400.0, "SHARED")], pdf)
+    rect_a = (150.0, 360.0, 100.0, 60.0)
+    rect_b = (180.0, 380.0, 120.0, 50.0)
+
+    for order in ([("r1", rect_a), ("r2", rect_b)], [("r2", rect_b), ("r1", rect_a)]):
+        java, py = _run_parity(pdf, order)
+        assert py == java
+        java_hits = [name for name, text in java.items() if "SHARED" in text]
+        assert java_hits == ["r2"], f"insertion {[n for n, _ in order]}: {java_hits}"
+
+
+@requires_oracle
+def test_three_way_overlap_converges(tmp_path: Path) -> None:
+    """A glyph inside three overlapping regions lands in exactly one region
+    (the HashMap-first one) on both engines."""
+    pdf = tmp_path / "tri_overlap.pdf"
+    _build_doc([(200.0, 400.0, "X")], pdf)
+    regions = [
+        ("p", (150.0, 360.0, 120.0, 60.0)),
+        ("q", (160.0, 370.0, 130.0, 55.0)),
+        ("s", (170.0, 380.0, 140.0, 50.0)),
+    ]
+    java, py = _run_parity(pdf, regions)
+    assert py == java
+    java_hits = [name for name, text in java.items() if "X" in text]
+    assert len(java_hits) == 1
+
+
+@requires_oracle
+def test_overlap_suppress_off_glyph_in_every_region(tmp_path: Path) -> None:
+    """With suppression OFF the overlap glyph lands in EVERY matching region
+    on both engines (the shared dedup is disabled)."""
+    pdf = tmp_path / "tri_no_suppress.pdf"
+    _build_doc([(200.0, 400.0, "X")], pdf)
+    regions = [
+        ("p", (150.0, 360.0, 120.0, 60.0)),
+        ("q", (160.0, 370.0, 130.0, 55.0)),
+        ("s", (170.0, 380.0, 140.0, 50.0)),
+    ]
+    java, py = _run_parity(pdf, regions, suppress=False)
+    assert py == java
+    java_hits = sorted(name for name, text in java.items() if "X" in text)
+    assert java_hits == ["p", "q", "s"]
 
 
 @requires_oracle

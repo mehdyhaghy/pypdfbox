@@ -68,13 +68,23 @@ def _beaded_stripper() -> tuple[PDFTextStripper, TextPosition, TextPosition, Tex
     return stripper, first, residual, second
 
 
-def test_wave943_bead_partition_emits_residual_bucket_after_valid_beads() -> None:
+def test_wave943_bead_partition_uses_upstream_slot_ordering() -> None:
+    """Wave 1492 ported upstream's ``charactersByArticle`` slot scheme
+    (``2*N + 1`` slots for ``N`` beads; slot ``i*2+1`` = inside bead ``i``,
+    slot ``i*2`` = the gap before it). A glyph outside every bead lands in the
+    first gap slot it is left-of / above, not in a single trailing residual.
+
+    Here ``first`` (x=5,y=5) is inside bead 0 -> slot 1; ``second`` (x=25,y=5)
+    is inside bead 1 -> slot 3; ``outside`` (x=15,y=5) is above bead 0's
+    bottom edge -> gap slot 0 (before bead 0). Non-empty slots emit in index
+    order, so the run between the two beads precedes them — matching upstream
+    ``processTextPosition`` (PDFTextStripper.java:954-1020)."""
     stripper, first, residual, second = _beaded_stripper()
 
     assert stripper._partition_by_beads([first, residual, second]) == [  # noqa: SLF001
+        [residual],
         [first],
         [second],
-        [residual],
     ]
 
 
@@ -84,8 +94,10 @@ def test_wave943_bead_buckets_concatenate_with_no_default_separator() -> None:
     bead buckets are therefore concatenated with NO separator between them
     (oracle-confirmed against PDFBox 3.0.7 ``setShouldSeparateByBeads(true)``).
     The prior lite behaviour injected a hard line separator between buckets;
-    that diverged from PDFBox and is corrected here."""
+    that diverged from PDFBox and is corrected here. Wave 1492 fixed the slot
+    ordering: the inter-bead run emits in its upstream gap slot (slot 0, before
+    bead 0), so the buckets concatenate as ``outside`` + ``first`` + ``second``."""
     stripper, first, residual, second = _beaded_stripper()
-    # Bucket order is [first], [second], [residual]; default article markers
-    # are empty, so the three buckets concatenate directly.
-    assert stripper._format_positions([first, residual, second]) == "firstsecondoutside"  # noqa: SLF001
+    # Slot order is [outside](slot 0), [first](slot 1), [second](slot 3);
+    # default article markers are empty, so the three buckets concatenate.
+    assert stripper._format_positions([first, residual, second]) == "outsidefirstsecond"  # noqa: SLF001

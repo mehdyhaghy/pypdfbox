@@ -4,14 +4,23 @@ Upstream baseline: PDFBox 3.0.x. Fixtures ``BidiSample.pdf``,
 ``BidiSample.pdf.txt``, and ``BidiSample.pdf-sorted.txt`` bundled under
 ``tests/fixtures/text/``.
 
-Wave 1387 unskipped ``test_sorted`` / ``test_not_sorted`` after the
-stdlib-only UAX #9 implementation landed at
-:mod:`pypdfbox.text.bidi`. The forgiving line-comparator
-(``_strings_equal``) is faithful to upstream's ``stringsEqual``
-algorithm — whitespace + non-ASCII codepoints collapse — which gives
-us tolerance for the residual glyph-substitution differences between
-the bundled DejaVu Sans substitute and the upstream font set without
-losing parity on the bidi reorder itself.
+Wave 1387 unskipped ``test_not_sorted`` after the stdlib-only UAX #9
+implementation landed at :mod:`pypdfbox.text.bidi`. The forgiving
+line-comparator (``_strings_equal``) is faithful to upstream's
+``stringsEqual`` algorithm — whitespace + non-ASCII codepoints
+collapse — which gives us tolerance for the residual
+glyph-substitution differences between the bundled DejaVu Sans
+substitute and the upstream font set without losing parity on the bidi
+reorder itself.
+
+Wave 1492 unskipped ``test_sorted``: the former sorted-mode residual (a
+mixed-direction bracketed Arabic run, '«إختبار ذاتي»', that landed one
+codepoint off from upstream's visual order) is gone. The CTM-aware
+emission and running-vertical-span line grouping ported in waves
+1409–1491 make the geometric re-sort group glyphs onto the same logical
+lines as Java before the BiDi reorder runs, so sorted output now matches
+``BidiSample.pdf-sorted.txt`` byte-for-byte (verified against the live
+``TextSortInlineProbe`` oracle).
 """
 from __future__ import annotations
 
@@ -115,17 +124,6 @@ def doc_and_stripper():
     document.close()
 
 
-@pytest.mark.skip(
-    reason=(
-        "Wave 1409: CTM-aware emission fixed the line layout (the former "
-        "line-break gap), so ``test_not_sorted`` now passes. In sorted mode "
-        "a single residual remains: the geometric re-sort interleaves the "
-        "mirrored Arabic run of one mixed-direction case ('«إختبار ذاتي»') "
-        "one codepoint off from upstream's visual order. That is a "
-        "sort-vs-BiDi-reorder interaction, not a layout gap; tracked "
-        "separately."
-    )
-)
 def test_sorted(doc_and_stripper) -> None:
     document, stripper = doc_and_stripper
     _do_test_file(_FIXTURES / _NAME_OF_PDF, True, stripper, document)

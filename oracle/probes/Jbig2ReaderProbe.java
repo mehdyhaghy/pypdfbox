@@ -1,14 +1,20 @@
 import java.awt.Dimension;
 import java.awt.Rectangle;
+import java.awt.image.DataBufferByte;
 import java.awt.image.Raster;
 import java.io.ByteArrayInputStream;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 
 import javax.imageio.stream.ImageInputStream;
 import javax.imageio.stream.MemoryCacheImageInputStream;
 
+import org.apache.pdfbox.jbig2.Bitmap;
 import org.apache.pdfbox.jbig2.JBIG2ImageReader;
 import org.apache.pdfbox.jbig2.JBIG2ImageReaderSpi;
 import org.apache.pdfbox.jbig2.JBIG2ReadParam;
+import org.apache.pdfbox.jbig2.image.Bitmaps;
+import org.apache.pdfbox.jbig2.image.FilterType;
 
 /**
  * Live oracle probe for the upstream {@code JBIG2ImageReader} public API.
@@ -34,6 +40,15 @@ import org.apache.pdfbox.jbig2.JBIG2ReadParam;
  *   rrw rrh     optional source render size; pass rrw or rrh &lt;= 0 (or omit) to
  *               use no render size. When set, the reader resamples and the
  *               dumped raster is single-band 8-bit grayscale (1 byte/pixel).
+ *   filterName  optional resampling-kernel name (a {@code FilterType} member
+ *               such as {@code Lanczos}, {@code Catrom}, {@code Mitchell}).
+ *               When present the probe bypasses {@code readRaster} (which always
+ *               uses the Gaussian kernel), decodes the page bitmap directly via
+ *               the package-private {@code JBIG2Document} -&gt; {@code JBIG2Page}
+ *               pipeline (reflection), and dumps
+ *               {@code Bitmaps.asRaster(bitmap, param, FilterType.valueOf(name))}
+ *               so a parity test can exercise each kernel byte-for-byte. A render
+ *               size (rrw/rrh) must be supplied for the kernel to matter.
  *
  * Output (UTF-8, single LF-terminated line):
  *   "&lt;numImages&gt; &lt;width&gt; &lt;height&gt; &lt;hexBytes&gt;"
@@ -63,6 +78,7 @@ public final class Jbig2ReaderProbe
         int yoff = Integer.parseInt(args[9]);
         int rrw = args.length > 10 ? Integer.parseInt(args[10]) : 0;
         int rrh = args.length > 11 ? Integer.parseInt(args[11]) : 0;
+        String filterName = args.length > 12 ? args[12] : null;
 
         ImageInputStream iis =
                 new MemoryCacheImageInputStream(new ByteArrayInputStream(data));
@@ -79,10 +95,21 @@ public final class Jbig2ReaderProbe
         JBIG2ReadParam param =
                 new JBIG2ReadParam(xsub, ysub, xoff, yoff, region, renderSize);
 
-        Raster raster = reader.readRaster(pageIndex, param);
-        java.awt.image.DataBuffer db = raster.getDataBuffer();
-        java.awt.image.DataBufferByte dbb = (java.awt.image.DataBufferByte) db;
-        byte[] bytes = dbb.getData();
+        byte[] bytes;
+        if (filterName != null && !filterName.isEmpty())
+        {
+            // Bypass readRaster (hardwired to FilterType.GAUSSIAN) and resample
+            // the page bitmap with the requested kernel via Bitmaps.asRaster.
+            Bitmap bitmap = decodePageBitmap(data, pageIndex + 1);
+            FilterType filterType = FilterType.valueOf(filterName);
+            Raster raster = Bitmaps.asRaster(bitmap, param, filterType);
+            bytes = ((DataBufferByte) raster.getDataBuffer()).getData();
+        }
+        else
+        {
+            Raster raster = reader.readRaster(pageIndex, param);
+            bytes = ((DataBufferByte) raster.getDataBuffer()).getData();
+        }
 
         StringBuilder sb = new StringBuilder();
         sb.append(numImages).append(' ')
@@ -96,6 +123,32 @@ public final class Jbig2ReaderProbe
 
         System.out.print(sb);
         System.out.flush();
+    }
+
+    /**
+     * Decode the composed page {@link Bitmap} via the package-private
+     * {@code JBIG2Document} -&gt; {@code JBIG2Page.getBitmap()} pipeline (reached
+     * by reflection from the default package), mirroring {@code Jbig2PageProbe}.
+     */
+    private static Bitmap decodePageBitmap(byte[] data, int pageNumber)
+            throws Exception
+    {
+        MemoryCacheImageInputStream iis =
+                new MemoryCacheImageInputStream(new ByteArrayInputStream(data));
+
+        Class<?> docClass = Class.forName("org.apache.pdfbox.jbig2.JBIG2Document");
+        Constructor<?> ctor = docClass.getDeclaredConstructor(ImageInputStream.class);
+        ctor.setAccessible(true);
+        Object document = ctor.newInstance(iis);
+
+        Method getPage = docClass.getDeclaredMethod("getPage", int.class);
+        getPage.setAccessible(true);
+        Object page = getPage.invoke(document, pageNumber);
+
+        Class<?> pageClass = Class.forName("org.apache.pdfbox.jbig2.JBIG2Page");
+        Method getBitmap = pageClass.getDeclaredMethod("getBitmap");
+        getBitmap.setAccessible(true);
+        return (Bitmap) getBitmap.invoke(page);
     }
 
     private static byte[] hex(String s)

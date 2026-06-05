@@ -132,9 +132,15 @@ def test_extract_regions_multiple_regions_independent() -> None:
     assert s.get_text_for_region("bot").strip() == "gamma"
 
 
-def test_extract_regions_overlapping_regions_share_text() -> None:
-    """A position whose origin falls inside two regions must land in
-    both — overlapping regions are allowed."""
+def test_extract_regions_overlapping_regions_dedup_to_one() -> None:
+    """With suppression ON (the upstream default) an overlap glyph lands in
+    exactly ONE region — the first in Java HashMap order.
+
+    This mirrors Apache PDFBox: ``processTextPosition`` walks ``regionArea``
+    in HashMap order and the shared ``characterListMapping`` dedups the
+    coincident glyph so only the first matching region keeps it. For region
+    names ``{"a", "b"}`` the HashMap iterates ``a`` (bucket 1) before ``b``
+    (bucket 2), so ``a`` wins. See CHANGES.md (wave 1492 convergence)."""
     doc = PDDocument()
     page = _make_page_with_stream(
         doc, b"BT /F0 12 Tf 100 700 Td (shared) Tj ET"
@@ -146,7 +152,45 @@ def test_extract_regions_overlapping_regions_share_text() -> None:
     s.extract_regions(page)
 
     assert s.get_text_for_region("a").strip() == "shared"
+    assert s.get_text_for_region("b").strip() == ""
+
+
+def test_extract_regions_overlapping_suppress_off_shares_text() -> None:
+    """With suppression OFF the overlap glyph lands in EVERY matching region
+    (the shared dedup is disabled), matching PDFBox's
+    ``setSuppressDuplicateOverlappingText(false)``."""
+    doc = PDDocument()
+    page = _make_page_with_stream(
+        doc, b"BT /F0 12 Tf 100 700 Td (shared) Tj ET"
+    )
+
+    s = PDFTextStripperByArea()
+    s.set_suppress_duplicate_overlapping_text(False)
+    s.add_region("a", (50.0, 690.0, 200.0, 20.0))
+    s.add_region("b", (90.0, 695.0, 200.0, 10.0))
+    s.extract_regions(page)
+
+    assert s.get_text_for_region("a").strip() == "shared"
     assert s.get_text_for_region("b").strip() == "shared"
+
+
+def test_hashmap_order_matches_java() -> None:
+    """``_hashmap_order`` reproduces ``java.util.HashMap`` iteration order
+    for the region-name sets used in the oracle (verified live, wave 1492):
+    order is fixed by ``String.hashCode`` bucket index, independent of
+    insertion order."""
+    from pypdfbox.text.pdf_text_stripper_by_area import _hashmap_order
+
+    # {a,b}: buckets 1,2 -> a,b regardless of insertion order.
+    assert _hashmap_order(["a", "b"]) == ["a", "b"]
+    assert _hashmap_order(["b", "a"]) == ["a", "b"]
+    # {r1,r2}: buckets r2=0, r1=15 -> r2 first even though r1 inserted first.
+    assert _hashmap_order(["r1", "r2"]) == ["r2", "r1"]
+    assert _hashmap_order(["r2", "r1"]) == ["r2", "r1"]
+    # {left,right}: buckets left=5, right=11 -> left first.
+    assert _hashmap_order(["left", "right"]) == ["left", "right"]
+    # 4 quadrant names: buckets br=0, tl=8, bl=10, tr=14.
+    assert _hashmap_order(["tl", "tr", "bl", "br"]) == ["br", "tl", "bl", "tr"]
 
 
 def test_extract_regions_drops_text_outside_region() -> None:

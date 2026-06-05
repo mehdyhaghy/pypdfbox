@@ -16,7 +16,13 @@ import org.apache.pdfbox.text.PDFTextStripperByArea;
  * so a single glyph can be binned into several regions at once.
  *
  * Usage:
- *   java ... TextMultiRegionProbe input.pdf name1 x1 y1 w1 h1 [name2 x2 y2 w2 h2 ...]
+ *   java ... TextMultiRegionProbe input.pdf [--no-suppress] name1 x1 y1 w1 h1 \
+ *        [name2 x2 y2 w2 h2 ...]
+ *
+ * When the optional first flag is --no-suppress the probe disables
+ * setSuppressDuplicateOverlappingText so an overlap glyph lands in EVERY
+ * matching region (the shared page-wide dedup is off). Without the flag the
+ * upstream default (suppression ON) applies.
  *
  * Each rect is an AWT Rectangle2D (top-left origin, y-down), matching the AWT
  * convention the upstream API takes directly.
@@ -36,7 +42,12 @@ public final class TextMultiRegionProbe {
         try (PDDocument doc = Loader.loadPDF(new File(args[0]))) {
             PDFTextStripperByArea stripper = new PDFTextStripperByArea();
             stripper.setSortByPosition(true);
-            for (int i = 1; i + 4 < args.length; i += 5) {
+            int start = 1;
+            if (args.length > 1 && "--no-suppress".equals(args[1])) {
+                stripper.setSuppressDuplicateOverlappingText(false);
+                start = 2;
+            }
+            for (int i = start; i + 4 < args.length; i += 5) {
                 String name = args[i];
                 double x = Double.parseDouble(args[i + 1]);
                 double y = Double.parseDouble(args[i + 2]);

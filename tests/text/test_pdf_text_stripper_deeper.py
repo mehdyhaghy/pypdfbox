@@ -207,15 +207,20 @@ def test_bead_separation_no_beads_means_no_bucketing() -> None:
     assert s.get_text(doc) == "only\n"
 
 
-def test_bead_separation_residual_bucket_emitted_last() -> None:
-    """Runs outside every bead's rectangle should land in a residual
-    bucket emitted after every bead bucket."""
+def test_bead_separation_out_of_bead_run_lands_in_upstream_gap_slot() -> None:
+    """A run outside every bead lands in the first gap slot it is left-of /
+    above, per upstream's ``2*N + 1`` ``charactersByArticle`` layout (slot
+    ``i*2`` is the gap before bead ``i``). Here ``out`` (x=10, far left of the
+    bead) is left-of the bead -> gap slot 0 (before bead 0), so it emits
+    *before* the in-bead run ``in`` (slot 1) — matching upstream
+    ``processTextPosition`` (PDFTextStripper.java:954-1020), not a trailing
+    residual bucket."""
     doc = PDDocument()
     page = _make_page_with_stream(
         doc,
         (
             b"BT /F0 12 Tf "
-            # Outside any bead.
+            # Outside any bead, left of the column.
             b"1 0 0 1 10 10 Tm (out) Tj "
             # Inside the bead.
             b"1 0 0 1 100 700 Tm (in) Tj "
@@ -225,7 +230,64 @@ def test_bead_separation_residual_bucket_emitted_last() -> None:
     _attach_bead(page, PDRectangle(50.0, 600.0, 250.0, 750.0))
     s = PDFTextStripper()
     out = s.get_text(doc)
-    assert out.index("in") < out.index("out")
+    assert out.index("out") < out.index("in")
+
+
+def test_bead_partition_two_beads_uses_2n_plus_1_slots() -> None:
+    """``_partition_by_beads`` allocates ``2*N + 1`` slots for ``N`` beads and
+    assigns each glyph to slot ``i*2+1`` (inside bead ``i``) or to the first
+    gap slot ``i*2`` it is left-of / above — the upstream
+    ``charactersByArticle`` layout (PDFTextStripper.java:954-1020). A run
+    between two beads lands in the gap slot, so non-empty slots emit in index
+    order: gap-before-bead-0, bead-0, bead-1."""
+    s = PDFTextStripper()
+    page = PDPage(PDRectangle(0.0, 0.0, 612.0, 792.0))
+    _attach_beads(
+        page,
+        [
+            PDRectangle(50.0, 600.0, 250.0, 750.0),  # bead 0 (left)
+            PDRectangle(350.0, 600.0, 550.0, 750.0),  # bead 1 (right)
+        ],
+    )
+    s._active_page = page  # noqa: SLF001
+    in0 = TextPosition(text="A", x=100.0, y=700.0, font_size=12.0)
+    in1 = TextPosition(text="B", x=400.0, y=700.0, font_size=12.0)
+    # x between the two beads, above their bottom edge -> gap slot before
+    # bead 1 (it is left of bead 1). It is NOT left of bead 0 (x>250) but IS
+    # above bead 0 -> qualifies for bead 0's gap slot (slot 0) first.
+    between = TextPosition(text="C", x=300.0, y=700.0, font_size=12.0)
+    buckets = s._partition_by_beads([in0, in1, between])  # noqa: SLF001
+    assert buckets == [[between], [in0], [in1]]
+
+
+def test_bead_separation_inter_article_line_break_into_residual() -> None:
+    """A run that falls just *below* the only bead (outside it) lands in the
+    trailing residual slot and, because the running line state carries across
+    article boundaries (upstream declares it outside the ``writePage`` article
+    loop, lines 497-503), a one-row vertical drop between the in-bead run and
+    the residual run emits a single line separator — not a silent
+    concatenation."""
+    doc = PDDocument()
+    page = _make_page_with_stream(
+        doc,
+        (
+            b"BT /F0 12 Tf "
+            # Inside the bead, lower line.
+            b"1 0 0 1 60 610 Tm (inbead) Tj "
+            # Just below the bead's bottom edge (y < 600), one row down.
+            b"1 0 0 1 60 596 Tm (below) Tj "
+            b"ET"
+        ),
+    )
+    _attach_bead(page, PDRectangle(50.0, 600.0, 550.0, 760.0))
+    s = PDFTextStripper()
+    out = s.get_text(doc)
+    try:
+        assert out.index("inbead") < out.index("below")
+        between = out[out.index("inbead") + len("inbead") : out.index("below")]
+        assert "\n" in between
+    finally:
+        doc.close()
 
 
 # ---------------------------------------------------------------------------
