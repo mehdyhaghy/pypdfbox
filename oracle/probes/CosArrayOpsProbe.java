@@ -166,6 +166,33 @@ public final class CosArrayOpsProbe {
                 boolean r = a.remove(COSInteger.get(99));
                 return "r=" + r + "|" + dump(a);
             }
+            case "setInt_inrange2": {
+                COSArray a = new COSArray();
+                a.add(COSInteger.get(1));
+                a.add(COSInteger.get(2));
+                a.setInt(0, 99);
+                return dump(a);
+            }
+            case "setString_inrange": {
+                COSArray a = new COSArray();
+                a.add(COSName.getPDFName("a"));
+                a.add(COSName.getPDFName("b"));
+                a.setString(1, "hello");
+                return dump(a);
+            }
+            case "setString_oob": {
+                COSArray a = new COSArray();
+                a.add(COSName.getPDFName("a"));
+                a.setString(2, "hello");
+                return dump(a);
+            }
+            case "setString_null_inrange": {
+                COSArray a = new COSArray();
+                a.add(COSName.getPDFName("a"));
+                a.add(COSName.getPDFName("b"));
+                a.setString(1, null);
+                return dump(a);
+            }
             case "setName_inrange": {
                 COSArray a = new COSArray();
                 a.add(COSName.getPDFName("a"));

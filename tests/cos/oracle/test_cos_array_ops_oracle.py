@@ -5,13 +5,15 @@ NOT ``COSNull``), ``add`` / ``set`` / ``remove(int)`` / ``remove(COSBase)``,
 ``setName`` / ``getName``, and ``toList``.
 
 The load-bearing contract pinned here is the **out-of-range setter** behaviour:
-upstream ``COSArray.setName`` / ``setInt`` / ``set`` all delegate to
-``List.set(index, obj)``, which raises ``IndexOutOfBoundsException`` when
-``index >= size``. They do NOT auto-grow the array. pypdfbox's ``set_name``
-previously auto-grew (via ``grow_to_size``); this wave routes it through
-``set`` so an out-of-range index raises ``IndexError`` exactly as upstream
-throws. The ``CosArrayOpsProbe`` Java oracle drives PDFBox 3.0.7 directly and
-emits a per-scenario signal (``throws:<SimpleName>`` for the exception cases).
+upstream ``COSArray.setName`` / ``setInt`` / ``setString`` / ``set`` all
+delegate to ``List.set(index, obj)``, which raises ``IndexOutOfBoundsException``
+when ``index >= size``. They do NOT auto-grow the array. pypdfbox's ``set_name``
+(wave 1480), then ``set_int`` / ``set_string`` (and the pypdfbox-only
+``set_float`` / ``set_boolean``) all previously auto-grew via ``grow_to_size``;
+they now route through ``set`` so an out-of-range index raises ``IndexError``
+exactly as upstream throws. The ``CosArrayOpsProbe`` Java oracle drives PDFBox
+3.0.7 directly and emits a per-scenario signal (``throws:<SimpleName>`` for the
+exception cases).
 """
 
 from __future__ import annotations
@@ -146,6 +148,40 @@ def _run(scenario: str) -> str:  # noqa: PLR0911, PLR0912, C901 — flat dispatc
         a.add(COSInteger.get(1))
         r = a.remove(COSInteger.get(99))
         return f"r={'true' if r else 'false'}|{_dump(a)}"
+    if scenario == "setInt_inrange":
+        a = COSArray()
+        a.add(COSInteger.get(0))
+        a.add(COSInteger.get(0))
+        a.set_int(1, 42)
+        return _dump(a)
+    if scenario == "setInt_inrange2":
+        a = COSArray()
+        a.add(COSInteger.get(1))
+        a.add(COSInteger.get(2))
+        a.set_int(0, 99)
+        return _dump(a)
+    if scenario == "setInt_oob":
+        a = COSArray()
+        a.add(COSInteger.get(0))
+        a.set_int(3, 42)
+        return _dump(a)
+    if scenario == "setString_inrange":
+        a = COSArray()
+        a.add(COSName.get_pdf_name("a"))
+        a.add(COSName.get_pdf_name("b"))
+        a.set_string(1, "hello")
+        return _dump(a)
+    if scenario == "setString_oob":
+        a = COSArray()
+        a.add(COSName.get_pdf_name("a"))
+        a.set_string(2, "hello")
+        return _dump(a)
+    if scenario == "setString_null_inrange":
+        a = COSArray()
+        a.add(COSName.get_pdf_name("a"))
+        a.add(COSName.get_pdf_name("b"))
+        a.set_string(1, None)
+        return _dump(a)
     if scenario == "setName_inrange":
         a = COSArray()
         a.add(COSName.get_pdf_name("a"))
@@ -192,6 +228,12 @@ _SCENARIOS: list[str] = [
     "remove_int_oob",
     "remove_obj_present",
     "remove_obj_absent",
+    "setInt_inrange",
+    "setInt_inrange2",
+    "setInt_oob",
+    "setString_inrange",
+    "setString_oob",
+    "setString_null_inrange",
     "setName_inrange",
     "setName_oob",
     "getName_present",
@@ -218,3 +260,48 @@ def test_set_name_out_of_range_raises() -> None:
     with pytest.raises(IndexError):
         a.set_name(4, "z")
     assert a.size() == 1
+
+
+def test_set_int_out_of_range_raises() -> None:
+    """``set_int`` past the end raises ``IndexError`` — upstream
+    ``COSArray.setInt`` → ``List.set`` throws (no auto-grow)."""
+    a = COSArray()
+    a.add(COSInteger.get(0))
+    with pytest.raises(IndexError):
+        a.set_int(3, 42)
+    assert a.size() == 1
+
+
+def test_set_string_out_of_range_raises() -> None:
+    """``set_string`` past the end raises ``IndexError`` — upstream
+    ``COSArray.setString`` → ``List.set`` throws (no auto-grow)."""
+    a = COSArray()
+    a.add(COSName.get_pdf_name("a"))
+    with pytest.raises(IndexError):
+        a.set_string(2, "hello")
+    assert a.size() == 1
+
+
+def test_set_string_in_range_and_none() -> None:
+    """``set_string`` replaces in-range; ``None`` stores a Java-``null`` slot
+    (upstream ``setString(i, null)`` → ``set(i, null)``)."""
+    a = COSArray()
+    a.add(COSName.get_pdf_name("a"))
+    a.add(COSName.get_pdf_name("b"))
+    a.set_string(1, "hello")
+    assert isinstance(a.get(1), COSString)
+    assert a.get(1).get_string() == "hello"
+    a.set_string(0, None)
+    assert a.get(0) is None
+    assert a.size() == 2
+
+
+def test_set_float_set_boolean_out_of_range_raises() -> None:
+    """pypdfbox-only ``set_float`` / ``set_boolean`` route through ``set`` too —
+    out-of-range raises ``IndexError`` rather than auto-growing."""
+    a = COSArray()
+    with pytest.raises(IndexError):
+        a.set_float(2, 1.5)
+    with pytest.raises(IndexError):
+        a.set_boolean(1, True)
+    assert a.size() == 0

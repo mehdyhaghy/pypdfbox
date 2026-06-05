@@ -176,7 +176,13 @@ class PDType3CharProc(PDStream):
         of raising).
         """
         op_name, operands = self._first_metric_operator()
-        if op_name != _D1 or len(operands) < 6:
+        # Upstream ``getGlyphBBox`` only computes a bbox when the leading
+        # operator is ``d1`` AND it has *exactly* six operands
+        # (``arguments.size() == 6``); a ``d1`` with any other operand
+        # count falls through upstream's ``else`` branch and returns
+        # ``null``. Use ``!= 6`` (not ``< 6``) so a ``d1`` with seven or
+        # more operands also yields ``None``, matching upstream.
+        if op_name != _D1 or len(operands) != 6:
             return None
         try:
             llx = float(operands[2])

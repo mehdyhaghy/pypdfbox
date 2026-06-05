@@ -126,11 +126,14 @@ def test_close_idempotent_and_post_close_raises() -> None:
         r = RandomAccessReadMemoryMapped(path)
         r.close()
         r.close()  # idempotent
-        with pytest.raises(ValueError):
+        # Upstream RandomAccessReadMemoryMappedFile#checkClosed →
+        # IOException(simpleName + " already closed") → OSError (wave 1483).
+        msg = "RandomAccessReadMemoryMappedFile already closed"
+        with pytest.raises(OSError, match=msg):
             r.read()
-        with pytest.raises(ValueError):
+        with pytest.raises(OSError, match=msg):
             r.seek(0)
-        with pytest.raises(ValueError):
+        with pytest.raises(OSError, match=msg):
             r.length()
     finally:
         path.unlink()
@@ -174,7 +177,9 @@ def test_create_view_after_close_raises() -> None:
     try:
         r = RandomAccessReadMemoryMapped(path)
         r.close()
-        with pytest.raises(ValueError):
+        with pytest.raises(
+            OSError, match="RandomAccessReadMemoryMappedFile already closed"
+        ):
             r.create_view(0, 1)
     finally:
         path.unlink()

@@ -73,6 +73,7 @@ def test_get_subtype_returns_none_when_absent() -> None:
 def test_get_b_box_returns_rectangle_when_present() -> None:
     props = COSDictionary()
     bbox = COSArray()
+    bbox.grow_to_size(4)  # wave 1483: set_int no longer auto-grows (upstream List.set)
     bbox.set_int(0, 10)
     bbox.set_int(1, 20)
     bbox.set_int(2, 110)
@@ -107,6 +108,7 @@ def test_get_bbox_alias_matches_get_b_box() -> None:
     the mechanical-translation form ``get_b_box``."""
     props = COSDictionary()
     bbox = COSArray()
+    bbox.grow_to_size(4)  # wave 1483: set_int no longer auto-grows (upstream List.set)
     bbox.set_int(0, 1)
     bbox.set_int(1, 2)
     bbox.set_int(2, 3)

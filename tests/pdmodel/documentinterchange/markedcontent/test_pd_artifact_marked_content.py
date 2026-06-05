@@ -122,6 +122,7 @@ def test_get_subtype_returns_none_when_absent() -> None:
 def test_get_b_box_returns_rectangle_when_present() -> None:
     props = COSDictionary()
     bbox = COSArray()
+    bbox.grow_to_size(4)  # wave 1483: set_int no longer auto-grows (upstream List.set)
     bbox.set_int(0, 5)
     bbox.set_int(1, 10)
     bbox.set_int(2, 105)
@@ -309,6 +310,7 @@ def test_has_attached_false_when_array_only_holds_non_name_entries() -> None:
     ``False`` even though the array exists."""
     props = COSDictionary()
     arr = COSArray()
+    arr.grow_to_size(2)  # wave 1483: set_int no longer auto-grows (upstream List.set)
     arr.set_int(0, 1)
     arr.set_int(1, 2)
     props.set_item(COSName.get_pdf_name("Attached"), arr)
@@ -353,6 +355,7 @@ def test_has_b_box_false_when_value_is_not_array() -> None:
 def test_has_b_box_true_when_array_present() -> None:
     props = COSDictionary()
     bbox = COSArray()
+    bbox.grow_to_size(4)  # wave 1483: set_int no longer auto-grows (upstream List.set)
     bbox.set_int(0, 0)
     bbox.set_int(1, 0)
     bbox.set_int(2, 612)

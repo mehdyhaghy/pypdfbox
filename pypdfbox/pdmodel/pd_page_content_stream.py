@@ -1944,24 +1944,28 @@ _MAX_FRACTION_DIGITS: int = 5
 _POWER_OF_TENS: tuple[int, ...] = (1, 10, 100, 1000, 10000, 100000)
 
 
-def _format_number(value: float) -> bytes:
+def _format_number(value: float, max_fraction_digits: int = _MAX_FRACTION_DIGITS) -> bytes:
     """Format a numeric operand byte-for-byte like upstream PDFBox's
-    ``PDPageContentStream.writeOperand(float)``.
+    ``PDAbstractContentStream.writeOperand(float)``.
 
     Upstream routes every numeric operand through ``float`` (the Java drawing
     API signatures are all ``float``) and formats it with
-    ``NumberFormatUtil.formatFloatFast(value, maxFractionDigits, buffer)``,
-    where ``PDPageContentStream``'s constructor sets ``maxFractionDigits = 5``.
+    ``NumberFormatUtil.formatFloatFast(value, maxFractionDigits, buffer)``.
+    ``PDPageContentStream``'s constructor sets ``maxFractionDigits = 5`` while
+    the shared ``PDAbstractContentStream`` constructor (used by appearance /
+    form / pattern streams) sets ``maxFractionDigits = 4``;
+    ``setMaximumFractionDigits`` may change it at runtime. The digit count is
+    therefore a parameter here (default 5 for the page writer's call sites).
 
-    ``formatFloatFast`` is **not** equivalent to ``format(f, ".5f")`` on the
+    ``formatFloatFast`` is **not** equivalent to ``format(f, ".Nf")`` on the
     Python ``float`` (a 64-bit double): two divergences matter for byte parity:
 
     1. **float32 narrowing.** The operand is a Java 32-bit ``float``, so its
        decimal expansion is taken from the *single-precision* value. e.g.
-       ``12345.6789f`` is ``12345.6787109375`` and formats as ``12345.67871``,
-       not ``12345.6789``.
+       ``12345.6789f`` is ``12345.6787109375`` and (at 5 digits) formats as
+       ``12345.67871``, not ``12345.6789``.
     2. **truncating half-up on the narrowed fraction.** ``formatFloatFast``
-       computes ``frac = (long)((|f| - trunc(f)) * 10**5 + 0.5)`` — a half-up
+       computes ``frac = (long)((|f| - trunc(f)) * 10**N + 0.5)`` — a half-up
        round of the *float32* fractional part. Because the float32 value of a
        decimal literal like ``0.000005`` is ``4.99999987e-06``, the ``+0.5``
        only reaches ``0.9999…`` and truncates to ``0`` (upstream emits ``0``),
@@ -1971,6 +1975,13 @@ def _format_number(value: float) -> bytes:
     spelling (no ``.0``), matching ``NumberFormat`` on integral values, and
     negative zero is preserved (``-0``) exactly as upstream's buffer writer
     leaves the leading ``'-'`` before a zero integer part.
+
+    When ``max_fraction_digits`` exceeds ``MAX_FRACTION_DIGITS`` (5), upstream's
+    ``formatFloatFast`` returns ``-1`` and the caller falls back to
+    ``NumberFormat.format((double) real)`` — Locale.US grouping-off HALF_EVEN
+    rounding of the float32 value widened to a double. We reproduce that with
+    :func:`round` (Python's banker's rounding is HALF_EVEN) on the widened
+    value.
 
     Non-finite values (``inf`` / ``-inf`` / ``nan``) raise :class:`ValueError`,
     mirroring upstream's ``writeOperand(float)`` ``IllegalArgumentException``
@@ -1988,16 +1999,19 @@ def _format_number(value: float) -> bytes:
     if not _math.isfinite(f64):
         raise ValueError(f"{value!r} is not a finite number")
 
+    n = max(0, int(max_fraction_digits))
+
     # Narrow to a Java 32-bit float — this is the value upstream's drawing API
     # actually formats.
     f = _struct.unpack("f", _struct.pack("f", f64))[0]
 
-    # Fallback range: outside the fast path, upstream calls
-    # NumberFormat.format((double) f) (HALF_EVEN, max 5 frac digits). These
-    # magnitudes (>9.2e18) never occur as real content-stream operands; format
-    # the (integral, at this magnitude) double directly.
-    if abs(f) > _FAST_PATH_LIMIT:
-        text = format(f, ".5f").rstrip("0").rstrip(".")
+    # Fallback range: upstream's ``formatFloatFast`` returns -1 (forcing the
+    # ``NumberFormat.format((double) real)`` path) when the magnitude exceeds
+    # Long.MAX_VALUE or the requested digit count exceeds MAX_FRACTION_DIGITS
+    # (5). NumberFormat is Locale.US, grouping off, default HALF_EVEN.
+    if abs(f) > _FAST_PATH_LIMIT or n > _MAX_FRACTION_DIGITS:
+        rounded = round(f, n) if n > 0 else round(f)
+        text = format(float(rounded), f".{n}f").rstrip("0").rstrip(".")
         return (text or "0").encode("ascii")
 
     integer = int(f)  # truncation toward zero, like Java's (long) cast
@@ -2005,13 +2019,14 @@ def _format_number(value: float) -> bytes:
     if f < 0.0:
         sign = "-"
         integer = -integer
-    scaled = int((abs(f) - float(integer)) * _POWER_OF_TENS[_MAX_FRACTION_DIGITS] + 0.5)
-    if scaled >= _POWER_OF_TENS[_MAX_FRACTION_DIGITS]:
+    power = _POWER_OF_TENS[n]
+    scaled = int((abs(f) - float(integer)) * power + 0.5)
+    if scaled >= power:
         integer += 1
-        scaled -= _POWER_OF_TENS[_MAX_FRACTION_DIGITS]
+        scaled -= power
     text = sign + str(integer)
-    if scaled > 0:
-        frac = str(scaled).rjust(_MAX_FRACTION_DIGITS, "0").rstrip("0")
+    if scaled > 0 and n > 0:
+        frac = str(scaled).rjust(n, "0").rstrip("0")
         text = f"{text}.{frac}"
     return text.encode("ascii")
 

@@ -26,10 +26,12 @@ from pypdfbox.pdmodel.common.function import PDFunction, PDFunctionType2
 def test_default_construction_starts_empty() -> None:
     fn = PDFunctionType2()
     assert isinstance(fn.get_cos_object(), COSDictionary)
-    # Spec defaults — no keys present means C0=[0], C1=[1], N=1.
+    # Spec defaults — no keys present means C0=[0], C1=[1]. /N is required
+    # by the spec; on its absence upstream's cached exponent is -1.0 (the
+    # single-arg getFloat default), and pypdfbox mirrors that.
     assert fn.get_c0() == [0.0]
     assert fn.get_c1() == [1.0]
-    assert fn.get_n() == pytest.approx(1.0)
+    assert fn.get_n() == pytest.approx(-1.0)
 
 
 def test_get_function_type_is_2() -> None:
@@ -124,9 +126,11 @@ def test_set_n_round_trips() -> None:
     assert fn.get_n() == pytest.approx(2.5)
 
 
-def test_get_n_default_is_one() -> None:
+def test_get_n_default_is_minus_one() -> None:
+    # Upstream PDFunctionType2 caches exponent = getFloat(COSName.N), whose
+    # single-arg form defaults to -1 on a missing key. getN() returns that.
     fn = PDFunctionType2()
-    assert fn.get_n() == pytest.approx(1.0)
+    assert fn.get_n() == pytest.approx(-1.0)
 
 
 def test_set_n_uses_cosfloat_storage() -> None:
@@ -306,17 +310,36 @@ def test_eval_no_range_no_clip() -> None:
 # --------------------------------------------------------------------------
 
 
-def test_eval_with_default_c0_c1_n_is_identity() -> None:
-    """No /C0, /C1, or /N → defaults C0=[0], C1=[1], N=1 → eval(x) = [x]."""
+def test_eval_with_default_c0_c1_is_identity_when_n_one() -> None:
+    """No /C0 or /C1 → defaults C0=[0], C1=[1]. With an explicit /N=1 this is
+    the identity. (/N is required by the spec; when it is absent the cached
+    exponent is -1, not 1 — see test_eval_with_missing_n_uses_minus_one.)"""
     raw = COSDictionary()
     raw.set_int("FunctionType", 2)
     domain = COSArray()
     domain.set_float_array([0.0, 1.0])
     raw.set_item("Domain", domain)
+    raw.set_item("N", COSFloat(1.0))
     fn = PDFunctionType2(raw)
     assert fn.eval([0.0]) == pytest.approx([0.0])
     assert fn.eval([0.5]) == pytest.approx([0.5])
     assert fn.eval([1.0]) == pytest.approx([1.0])
+
+
+def test_eval_with_missing_n_uses_minus_one() -> None:
+    """A Type 2 dictionary with /C0=[0] /C1=[1] but no /N evaluates as
+    ``x**-1`` (= 1/x) — the cached exponent defaults to -1, matching
+    upstream. Oracle-confirmed: x=0.25 -> 4.0, x=0.5 -> 2.0, x=2 -> 0.5."""
+    raw = COSDictionary()
+    raw.set_int("FunctionType", 2)
+    domain = COSArray()
+    domain.set_float_array([0.0, 4.0])
+    raw.set_item("Domain", domain)
+    fn = PDFunctionType2(raw)
+    assert fn.eval([0.25]) == pytest.approx([4.0])
+    assert fn.eval([0.5]) == pytest.approx([2.0])
+    assert fn.eval([1.0]) == pytest.approx([1.0])
+    assert fn.eval([2.0]) == pytest.approx([0.5])
 
 
 # --------------------------------------------------------------------------
@@ -343,8 +366,9 @@ def test_str_includes_default_c0_c1_n_when_keys_absent() -> None:
     rendered = str(fn)
     assert "C0:" in rendered
     assert "C1:" in rendered
-    # N defaults to 1.0 — accept either "1.0" or "1" in rendering.
-    assert "N: 1" in rendered
+    # N defaults to -1.0 (cached exponent on missing /N), mirroring upstream
+    # toString "N: -1.0". Accept either "-1.0" or "-1" in rendering.
+    assert "N: -1" in rendered
 
 
 # --------------------------------------------------------------------------
@@ -392,8 +416,8 @@ def test_has_c1_true_after_set_c1() -> None:
 def test_has_n_false_when_key_absent() -> None:
     fn = PDFunctionType2()
     assert fn.has_n() is False
-    # Default is documented at 1.0 in this port.
-    assert fn.get_n() == pytest.approx(1.0)
+    # Default is -1.0 (the upstream cached-exponent value on a missing key).
+    assert fn.get_n() == pytest.approx(-1.0)
 
 
 def test_has_n_true_after_set_n() -> None:

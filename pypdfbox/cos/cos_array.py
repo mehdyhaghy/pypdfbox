@@ -220,11 +220,11 @@ class COSArray(COSBase):
         return default
 
     def set_int(self, index: int, value: int) -> None:
-        self._check_non_negative_index(index)
-        self.grow_to_size(index + 1)
-        item = COSInteger.get(value)
-        self._items[index] = item
-        self._update_state.update(child=item)
+        # Upstream ``COSArray.setInt`` delegates to ``set(index, COSInteger)`` →
+        # ``List.set(index, obj)``, which raises ``IndexOutOfBoundsException``
+        # when ``index >= size`` — it does NOT auto-grow the array. Route
+        # through :meth:`set` so the out-of-range contract matches PDFBox 3.0.7.
+        self.set(index, COSInteger.get(value))
 
     def get_int(self, index: int, default: int = -1) -> int:
         self._check_non_negative_index(index)
@@ -242,11 +242,10 @@ class COSArray(COSBase):
         return default
 
     def set_float(self, index: int, value: float) -> None:
-        self._check_non_negative_index(index)
-        self.grow_to_size(index + 1)
-        item = COSFloat(value)
-        self._items[index] = item
-        self._update_state.update(child=item)
+        # No upstream ``COSArray.setFloat`` exists (pypdfbox extension); keep it
+        # consistent with the typed siblings — route through :meth:`set` so an
+        # out-of-range index raises ``IndexError`` rather than auto-growing.
+        self.set(index, COSFloat(value))
 
     def get_float(self, index: int, default: float = -1.0) -> float:
         self._check_non_negative_index(index)
@@ -258,11 +257,10 @@ class COSArray(COSBase):
         return default
 
     def set_boolean(self, index: int, value: bool) -> None:
-        self._check_non_negative_index(index)
-        self.grow_to_size(index + 1)
-        item = COSBoolean.get(value)
-        self._items[index] = item
-        self._update_state.update(child=item)
+        # No upstream ``COSArray.setBoolean`` exists (pypdfbox extension); keep
+        # it consistent with the typed siblings — route through :meth:`set` so
+        # an out-of-range index raises ``IndexError`` rather than auto-growing.
+        self.set(index, COSBoolean.get(value))
 
     def get_boolean(self, index: int, default: bool = False) -> bool:
         self._check_non_negative_index(index)
@@ -273,12 +271,13 @@ class COSArray(COSBase):
             return item.value
         return default
 
-    def set_string(self, index: int, value: str) -> None:
-        self._check_non_negative_index(index)
-        self.grow_to_size(index + 1)
-        item = COSString(value)
-        self._items[index] = item
-        self._update_state.update(child=item)
+    def set_string(self, index: int, value: str | None) -> None:
+        # Upstream ``COSArray.setString`` delegates to ``set(index, COSString)``
+        # (or ``set(index, null)`` when ``value`` is ``None``) →
+        # ``List.set(index, obj)``, which raises ``IndexOutOfBoundsException``
+        # when ``index >= size`` — it does NOT auto-grow the array. Route
+        # through :meth:`set` so the out-of-range contract matches PDFBox 3.0.7.
+        self.set(index, COSString(value) if value is not None else None)  # type: ignore[arg-type]
 
     def get_string(self, index: int, default: str | None = None) -> str | None:
         self._check_non_negative_index(index)

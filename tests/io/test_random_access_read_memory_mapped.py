@@ -55,7 +55,10 @@ def test_close_releases_mmap(sample_file: Path) -> None:
     r = RandomAccessReadMemoryMapped(sample_file)
     r.close()
     assert r.is_closed()
-    with pytest.raises(ValueError):
+    # Upstream parity: RandomAccessReadMemoryMappedFile#checkClosed →
+    # IOException(simpleName + " already closed"); mapped to OSError with the
+    # exact upstream simple-name message (oracle-confirmed, wave 1483).
+    with pytest.raises(OSError, match="RandomAccessReadMemoryMappedFile already closed"):
         r.read()
 
 
@@ -98,5 +101,5 @@ def test_create_view_close_does_not_close_parent(sample_file: Path) -> None:
 def test_create_view_on_closed_parent_raises(sample_file: Path) -> None:
     r = RandomAccessReadMemoryMapped(sample_file)
     r.close()
-    with pytest.raises(ValueError):
+    with pytest.raises(OSError, match="RandomAccessReadMemoryMappedFile already closed"):
         r.create_view(0, 5)

@@ -180,6 +180,74 @@ def test_remove_group_returns_false_for_unknown() -> None:
     assert props.get_group_names() == ["A"]
 
 
+# ---------- multiple same-named groups (upstream loops over ALL) ----------
+
+
+def test_set_group_enabled_by_name_toggles_all_matching() -> None:
+    """Upstream ``setGroupEnabled(String, boolean)`` loops over EVERY OCG
+    whose /Name matches and toggles each. Two distinct OCGs sharing a name
+    must therefore BOTH move to /D /OFF, and the name-level
+    ``is_group_enabled`` then reports false for the whole name."""
+    props = PDOptionalContentProperties()
+    dup1 = PDOptionalContentGroup("Dup")
+    dup2 = PDOptionalContentGroup("Dup")
+    solo = PDOptionalContentGroup("Solo")
+    for g in (dup1, dup2, solo):
+        props.add_group(g)
+
+    # Neither "Dup" group had a prior on/off setting → upstream returns False.
+    assert props.set_group_enabled("Dup", False) is False
+
+    off = _state_array(props, "OFF")
+    assert off.size() == 2
+    assert {
+        id(props.to_dictionary(off.get(i))) for i in range(off.size())
+    } == {id(dup1.get_cos_object()), id(dup2.get_cos_object())}
+
+    assert props.is_group_enabled("Dup") is False
+    assert props.is_group_enabled("Solo") is True
+
+    # Re-enabling by name moves BOTH back to /ON; both had an /OFF setting
+    # → upstream returns True.
+    assert props.set_group_enabled("Dup", True) is True
+    assert _state_array(props, "OFF").size() == 0
+    assert _state_array(props, "ON").size() == 2
+    assert props.is_group_enabled("Dup") is True
+
+
+def test_set_group_enabled_unknown_name_returns_false_no_side_effect() -> None:
+    """Enabling a name that matches no OCG returns False and writes nothing
+    to /D /ON (the array is created lazily but stays empty)."""
+    props, (a,) = _build("A")
+    props.set_visible(a)  # seed /ON with one real entry
+    on_before = _state_array(props, "ON").size()
+    assert props.set_group_enabled("Ghost", True) is False
+    assert _state_array(props, "ON").size() == on_before
+
+
+# ---------- BaseState OFF interaction ----------
+
+
+def test_set_group_enabled_under_base_state_off_writes_to_on() -> None:
+    """``set_group_enabled(group, True)`` ignores /BaseState and always
+    writes to /D /ON. Under BaseState OFF an unlisted group resolves to
+    disabled (``enabled = base_state != OFF``); an explicitly enabled group
+    flips to true via its /ON membership."""
+    props, (a, b) = _build("A", "B")
+    props.set_base_state("OFF")
+
+    # Unlisted group under BaseState OFF → disabled.
+    assert props.is_group_enabled(b) is False
+
+    props.set_group_enabled(a, True)
+    on = _state_array(props, "ON")
+    assert on.size() == 1
+    assert on.get_object(0) is a.get_cos_object()
+    assert props.is_group_enabled(a) is True
+    # B still unlisted → still disabled under BaseState OFF.
+    assert props.is_group_enabled(b) is False
+
+
 # ---------- get_group_names (upstream parity) ----------
 
 

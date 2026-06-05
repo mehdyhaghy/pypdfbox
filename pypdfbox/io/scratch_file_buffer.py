@@ -200,7 +200,10 @@ class ScratchFileBuffer(RandomAccessRead, RandomAccessWrite):
         self._position = position
 
     def length(self) -> int:
-        self.check_closed()
+        # Upstream parity: ScratchFileBuffer#length() (line 134) does NOT call
+        # checkClosed() — it returns the cached size even after close(). Oracle
+        # (RandomAccessWriteScratchSemanticsProbe: sbuf.lengthBufClosed=NO_THROW)
+        # confirms no exception on a closed buffer. Do not add a close guard.
         return self._length
 
     def is_eof(self) -> bool:

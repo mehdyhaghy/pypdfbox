@@ -23,8 +23,13 @@ class RandomAccessWriteBuffer(RandomAccessWrite):
         self._closed = False
 
     def _check_open(self) -> None:
+        # Upstream parity: the write-capable in-memory buffer
+        # (RandomAccessReadWriteBuffer) inherits checkClosed() from
+        # RandomAccessReadBuffer, which throws
+        # ``IOException("RandomAccessBuffer already closed")``. We map
+        # IOException → OSError with the exact upstream message.
         if self._closed:
-            raise ValueError("operation on closed RandomAccessWriteBuffer")
+            raise OSError("RandomAccessBuffer already closed")
 
     def write(self, b: int) -> None:
         self._check_open()

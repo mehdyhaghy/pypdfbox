@@ -7,7 +7,9 @@ Per PDF 32000-1 §7.10.3, a Type 2 function is
 
     y[j] = C0[j] + x**N * (C1[j] - C0[j])
 
-with /N defaulting to 1.0. This file walks the common /N values used in
+where /N is a required key (the port's accessor defaults to -1.0 on a
+missing key, matching upstream's cached exponent). This file walks the
+common /N values used in
 real PDFs (square, cube, sqrt, identity, fourth-root) and verifies they
 land on the exact closed-form values at characteristic input points
 (0, 1/4, 1/2, 3/4, 1) using ``math.isclose``.

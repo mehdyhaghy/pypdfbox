@@ -271,11 +271,13 @@ def test_close_idempotent() -> None:
     sf.close()
     sf.close()  # idempotent
     assert sf.is_closed() is True
-    with pytest.raises(ValueError):
+    # Upstream checkClosed() → IOException("Scratch file already closed") →
+    # OSError in pypdfbox (wave 1483).
+    with pytest.raises(OSError, match="Scratch file already closed"):
         sf.get_new_page()
-    with pytest.raises(ValueError):
+    with pytest.raises(OSError, match="Scratch file already closed"):
         sf.dequeue_page()
-    with pytest.raises(ValueError):
+    with pytest.raises(OSError, match="Scratch file already closed"):
         sf.create_buffer()
 
 

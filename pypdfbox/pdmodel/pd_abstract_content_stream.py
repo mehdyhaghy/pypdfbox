@@ -8,16 +8,17 @@ The concrete subclass :class:`PDPageContentStream` (and its siblings
 ``PDPatternContentStream``) inherits from this base and may override
 individual operator methods. The base provides default implementations
 that emit operator bytes directly to ``self._output_stream`` using the
-same number-formatting rules as upstream (``setMaximumFractionDigits(5)``
-with trailing zeros trimmed).
+same number-formatting rules as upstream (``setMaximumFractionDigits(4)``
+in the shared base constructor, with trailing zeros trimmed).
 """
 
 from __future__ import annotations
 
 import logging
-import math
 from collections import deque
 from typing import TYPE_CHECKING, Any, BinaryIO
+
+from .pd_page_content_stream import _format_number
 
 if TYPE_CHECKING:
     from .pd_document import PDDocument
@@ -29,22 +30,23 @@ _LF = b"\n"
 _SPACE = b" "
 
 
-def _format_decimal(value: float, max_fraction_digits: int = 5) -> bytes:
-    """Format a numeric operand. Mirrors upstream's ``formatDecimal``
-    (``NumberFormat.getNumberInstance(Locale.US)`` with
-    ``setMaximumFractionDigits(5)``, grouping off, default
-    ``RoundingMode.HALF_EVEN``)."""
-    if isinstance(value, int) and not isinstance(value, bool):
-        return str(value).encode("ascii")
-    f = float(value)
-    if not math.isfinite(f):
-        raise ValueError(f"{value!r} is not a finite number")
-    if f.is_integer():
-        return str(int(f)).encode("ascii")
-    text = f"{f:.{max_fraction_digits}f}"
-    if "." in text:
-        text = text.rstrip("0").rstrip(".")
-    return text.encode("ascii") if text else b"0"
+def _format_decimal(value: float, max_fraction_digits: int = 4) -> bytes:
+    """Format a numeric operand byte-for-byte like upstream's
+    ``PDAbstractContentStream.writeOperand(float)``.
+
+    Upstream's shared base constructor configures the formatter via
+    ``NumberFormatUtil.formatFloatFast(real, formatDecimal.getMaximumFractionDigits(), buffer)``
+    with ``setMaximumFractionDigits(4)`` (Java line 112) — note this is **4**,
+    not the **5** used by the concrete ``PDPageContentStream``. The operand is
+    a Java 32-bit ``float``, so the decimal expansion is taken from the
+    single-precision value and the fraction is half-up rounded on the narrowed
+    value (see :func:`pypdfbox.pdmodel.pd_page_content_stream._format_number`
+    for the full algorithm). This helper shares that implementation, only
+    pinning the default digit count to the base class's 4.
+
+    Non-finite values raise :class:`ValueError`, mirroring upstream's
+    ``writeOperand(float)`` ``IllegalArgumentException`` guard."""
+    return _format_number(value, max_fraction_digits)
 
 
 class PDAbstractContentStream:
@@ -58,9 +60,9 @@ class PDAbstractContentStream:
     """
 
     #: Default maximum number of fractional digits emitted for floating
-    #: numeric tokens. Mirrors upstream's ``formatDecimal.setMaximumFractionDigits(5)``
+    #: numeric tokens. Mirrors upstream's ``formatDecimal.setMaximumFractionDigits(4)``
     #: at Java line 112.
-    DEFAULT_MAX_FRACTION_DIGITS: int = 5
+    DEFAULT_MAX_FRACTION_DIGITS: int = 4
 
     def __init__(
         self,

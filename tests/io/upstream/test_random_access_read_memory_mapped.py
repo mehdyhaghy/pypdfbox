@@ -57,7 +57,8 @@ def test_seek_eof() -> None:
     assert r.read() == -1
     assert r.read_into(bytearray(1), 0, 1) == -1
     r.close()
-    with pytest.raises(ValueError):
+    # Upstream checkClosed() throws IOException → OSError in pypdfbox.
+    with pytest.raises(OSError, match="RandomAccessReadMemoryMappedFile already closed"):
         r.read()
 
 

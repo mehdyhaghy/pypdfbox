@@ -114,7 +114,9 @@ def test_close_scratchfile_closes_all_buffers() -> None:
 def test_create_buffer_after_close_raises() -> None:
     sf = ScratchFile()
     sf.close()
-    with pytest.raises(ValueError):
+    # Upstream ScratchFile#checkClosed → IOException("Scratch file already
+    # closed") → OSError in pypdfbox (oracle-confirmed, wave 1483).
+    with pytest.raises(OSError, match="Scratch file already closed"):
         sf.create_buffer()
 
 
@@ -171,7 +173,7 @@ def test_get_new_page_returns_sequential_indices() -> None:
 def test_get_new_page_after_close_raises() -> None:
     sf = ScratchFile()
     sf.close()
-    with pytest.raises(ValueError):
+    with pytest.raises(OSError, match="Scratch file already closed"):
         sf.get_new_page()
 
 
@@ -382,13 +384,15 @@ def test_close_releases_pages_and_buffers() -> None:
     sf.create_buffer()
     sf.close()
     # All page-API operations must reject calls on a closed scratch file.
-    with pytest.raises(ValueError):
+    # Upstream checkClosed() → IOException("Scratch file already closed") →
+    # OSError in pypdfbox (wave 1483).
+    with pytest.raises(OSError, match="Scratch file already closed"):
         sf.get_new_page()
-    with pytest.raises(ValueError):
+    with pytest.raises(OSError, match="Scratch file already closed"):
         sf.read_page(0, bytearray(8))
-    with pytest.raises(ValueError):
+    with pytest.raises(OSError, match="Scratch file already closed"):
         sf.write_page(0, b"x" * 8)
-    with pytest.raises(ValueError):
+    with pytest.raises(OSError, match="Scratch file already closed"):
         sf.mark_pages_as_free([0])
-    with pytest.raises(ValueError):
+    with pytest.raises(OSError, match="Scratch file already closed"):
         sf.dequeue_page()

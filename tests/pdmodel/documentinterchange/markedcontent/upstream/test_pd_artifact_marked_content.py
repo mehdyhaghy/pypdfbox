@@ -50,6 +50,7 @@ def test_get_subtype_round_trip() -> None:
 def test_get_b_box_parses_four_element_array() -> None:
     props = COSDictionary()
     bbox = COSArray()
+    bbox.grow_to_size(4)  # wave 1483: set_int no longer auto-grows (upstream List.set)
     bbox.set_int(0, 0)
     bbox.set_int(1, 0)
     bbox.set_int(2, 612)

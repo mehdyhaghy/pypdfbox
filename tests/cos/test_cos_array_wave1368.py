@@ -211,12 +211,19 @@ def test_retain_all_returns_false_when_no_change() -> None:
     assert arr.retain_all([one, two, COSInteger.get(99)]) is False
 
 
-def test_typed_setters_grow_array_as_needed() -> None:
+def test_typed_setters_do_not_auto_grow() -> None:
+    # Upstream COSArray.setInt delegates to set(index, ...) -> List.set, which
+    # raises IndexOutOfBoundsException past the end. The typed setters must NOT
+    # auto-grow; callers grow_to_size() first (the upstream COSArrayTest idiom).
     arr = COSArray()
+    with pytest.raises(IndexError):
+        arr.set_int(3, 42)
+    assert arr.size() == 0
+
+    arr.grow_to_size(4)
     arr.set_int(3, 42)
     assert arr.size() == 4
-    # First three slots are the placeholder, last slot is the integer.
-    assert arr.get_int(0) == -1  # default for absent
+    assert arr.get_int(0) == -1  # default for absent (placeholder slot)
     assert arr.get_int(3) == 42
 
 

@@ -45,8 +45,13 @@ class RandomAccessReadMemoryMapped(RandomAccessRead):
         return self._path
 
     def _check_open(self) -> None:
+        # Upstream parity: RandomAccessReadMemoryMappedFile#checkClosed throws
+        # ``IOException(getClass().getSimpleName() + " already closed")``. We map
+        # IOException → OSError and reproduce the exact upstream simple-name
+        # message (which still reads "...MappedFile" even though our class drops
+        # the File suffix) so callers comparing messages stay byte-identical.
         if self._closed:
-            raise ValueError("operation on closed RandomAccessReadMemoryMapped")
+            raise OSError("RandomAccessReadMemoryMappedFile already closed")
 
     def read(self) -> int:
         self._check_open()
@@ -80,7 +85,7 @@ class RandomAccessReadMemoryMapped(RandomAccessRead):
     def seek(self, position: int) -> None:
         self._check_open()
         if position < 0:
-            raise OSError(f"invalid seek position {position}")
+            raise OSError(f"Invalid position {position}")
         # PDFBox semantics: seeking past end clamps to end, leaving stream at EOF.
         self._position = min(position, self._length)
 

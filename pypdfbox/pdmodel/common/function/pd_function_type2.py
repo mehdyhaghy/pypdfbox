@@ -97,8 +97,19 @@ class PDFunctionType2(PDFunction):
     # ---------- /N ----------
 
     def get_n(self) -> float:
-        """Return ``/N`` (the interpolation exponent), defaulting to ``1.0``."""
-        return self.get_cos_object().get_float(_N, 1.0)
+        """Return ``/N`` (the interpolation exponent).
+
+        Defaults to ``-1.0`` when ``/N`` is absent, mirroring upstream
+        ``PDFunctionType2`` exactly: the Java constructor caches
+        ``exponent = getCOSObject().getFloat(COSName.N)`` and the single-arg
+        ``COSDictionary.getFloat(COSName)`` returns ``-1`` on a missing key.
+        ``getN()`` returns that cached value, so a Type 2 dictionary with no
+        ``/N`` evaluates as ``x**-1`` (= ``1/x``) and ``toString`` shows
+        ``N: -1.0``. ``/N`` is a required key per PDF 32000-1 §7.10.3; this
+        default only governs malformed input, but it must match PDFBox for
+        eval / ``__str__`` parity on such input (oracle-confirmed: missing
+        ``/N``, C0=0/C1=1, input 0.25 returns ``4.0``, not ``0.25``)."""
+        return self.get_cos_object().get_float(_N, -1.0)
 
     def set_n(self, n: float) -> None:
         """Set ``/N`` (the interpolation exponent)."""
@@ -131,9 +142,8 @@ class PDFunctionType2(PDFunction):
 
     def has_n(self) -> bool:
         """``True`` iff ``/N`` is explicitly present in the underlying
-        dictionary. ``False`` when :meth:`get_n` is falling back to the
-        documented ``1.0`` default (see :meth:`get_n` for the divergence
-        from upstream's ``-1.0``)."""
+        dictionary. ``False`` when :meth:`get_n` is falling back to its
+        ``-1.0`` default (the upstream-parity value — see :meth:`get_n`)."""
         return self.get_cos_object().contains_key(_N)
 
     # ---------- output dimensionality ----------

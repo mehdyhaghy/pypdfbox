@@ -59,9 +59,12 @@ def test_close_makes_operations_raise() -> None:
     w = RandomAccessWriteBuffer()
     w.close()
     assert w.is_closed()
-    with pytest.raises(ValueError):
+    # Upstream parity: RandomAccessReadWriteBuffer inherits checkClosed() from
+    # RandomAccessReadBuffer → IOException("RandomAccessBuffer already closed");
+    # mapped to OSError with the exact message (oracle-confirmed, wave 1483).
+    with pytest.raises(OSError, match="RandomAccessBuffer already closed"):
         w.write(0x41)
-    with pytest.raises(ValueError):
+    with pytest.raises(OSError, match="RandomAccessBuffer already closed"):
         w.write_bytes(b"x")
 
 
@@ -97,7 +100,7 @@ def test_is_empty_after_clear() -> None:
 def test_is_empty_raises_when_closed() -> None:
     w = RandomAccessWriteBuffer()
     w.close()
-    with pytest.raises(ValueError):
+    with pytest.raises(OSError, match="RandomAccessBuffer already closed"):
         w.is_empty()
 
 
@@ -141,5 +144,5 @@ def test_tell_resets_with_clear() -> None:
 def test_tell_raises_when_closed() -> None:
     w = RandomAccessWriteBuffer()
     w.close()
-    with pytest.raises(ValueError):
+    with pytest.raises(OSError, match="RandomAccessBuffer already closed"):
         w.tell()

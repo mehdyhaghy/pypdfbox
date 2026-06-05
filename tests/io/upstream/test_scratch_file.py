@@ -112,7 +112,9 @@ def test_enqueue_dequeue_round_trip() -> None:
 def test_close_then_get_new_page_throws() -> None:
     sf = ScratchFile()
     sf.close()
-    with pytest.raises(ValueError):
+    # Upstream getNewPage on a closed ScratchFile throws IOException("Scratch
+    # file already closed") → OSError in pypdfbox.
+    with pytest.raises(OSError, match="Scratch file already closed"):
         sf.get_new_page()
 
 
@@ -146,12 +148,12 @@ def test_buffers_closed_when_scratch_file_closes() -> None:
 
 def test_check_closed_raises_after_close() -> None:
     # Upstream's ``checkClosed`` (line 428) is package-private but exposed here
-    # for parity. After close, calling it must raise (matches upstream's
-    # ``IOException`` -> we raise ``ValueError`` per the rest of this class).
+    # for parity. After close, calling it must raise — upstream's
+    # ``IOException("Scratch file already closed")`` → ``OSError`` in pypdfbox.
     sf = ScratchFile()
     sf.check_closed()  # before close: no-op
     sf.close()
-    with pytest.raises(ValueError):
+    with pytest.raises(OSError, match="Scratch file already closed"):
         sf.check_closed()
 
 

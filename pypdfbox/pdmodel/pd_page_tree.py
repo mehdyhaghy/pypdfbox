@@ -206,16 +206,78 @@ class PDPageTree:
     def __getitem__(self, index: int) -> PDPage:
         if not isinstance(index, int):
             raise TypeError(f"PDPageTree indices must be int, got {type(index).__name__}")
-        n = len(self)
+        # Python list-style negative indexing is a pypdfbox extension on top of
+        # upstream's 0-based ``get(int)``. Resolve it against the *walked* page
+        # count (so ``tree[-1]`` is the last reachable leaf) before delegating
+        # to the upstream-faithful, ``/Count``-trusting descent.
         if index < 0:
-            index += n
-        if index < 0 or index >= n:
-            raise IndexError(f"page index out of range: {index}")
-        for i, page in enumerate(self):
-            if i == index:
-                self._sanitize_type(page.get_cos_object())
-                return page
-        raise IndexError(f"page index out of range: {index}")  # pragma: no cover
+            index += sum(1 for _ in self)
+        dict_ = self._get_cos(index + 1, self._root, 0, set())
+        self._sanitize_type(dict_)
+        return PDPage(dict_)
+
+    def _get_cos(
+        self,
+        page_num: int,
+        node: COSDictionary,
+        encountered: int,
+        seen: set[int],
+    ) -> COSDictionary:
+        """Return the COS page dict for 1-based ``page_num`` via a depth-first
+        search that **trusts the stored ``/Count``** at each intermediate node.
+
+        Faithful port of upstream's private recursive
+        ``PDPageTree.get(pageNum, node, encountered)`` (PDPageTree.java
+        L308-L379). The descent uses each node's ``/Count`` to decide whether
+        the requested page can possibly live under that subtree; this is what
+        makes a *lying* ``/Count`` observable:
+
+        * ``page_num`` below 1 → :class:`IndexError`
+          (``"Index out of bounds: <page_num>"``);
+        * a node revisited during descent → :class:`RuntimeError`
+          (``"Possible recursion found when searching for page <page_num>"``);
+        * ``page_num`` exceeding the node's declared ``/Count`` →
+          :class:`IndexError` (``"1-based index out of bounds: <page_num>"``);
+        * ``/Count`` claims the page exists but the ``/Kids`` walk runs out →
+          :class:`RuntimeError` (``"1-based index not found: <page_num>"``).
+
+        ``IndexOutOfBoundsException`` maps to ``IndexError`` and
+        ``IllegalStateException`` to ``RuntimeError`` per the project-wide
+        Java-exception convention.
+        """
+        if page_num < 1:
+            raise IndexError(f"Index out of bounds: {page_num}")
+        if id(node) in seen:
+            seen.clear()
+            raise RuntimeError(
+                f"Possible recursion found when searching for page {page_num}"
+            )
+        seen.add(id(node))
+
+        if _is_page_tree_node(node):
+            count = self._node_count(node)
+            if page_num <= encountered + count:
+                for kid in self.get_kids(node):
+                    if _is_page_tree_node(kid):
+                        kid_count = self._node_count(kid)
+                        if page_num <= encountered + kid_count:
+                            return self._get_cos(page_num, kid, encountered, seen)
+                        encountered += kid_count
+                    else:
+                        encountered += 1
+                        if page_num == encountered:
+                            return self._get_cos(page_num, kid, encountered, seen)
+                raise RuntimeError(f"1-based index not found: {page_num}")
+            raise IndexError(f"1-based index out of bounds: {page_num}")
+        if encountered == page_num:
+            seen.clear()
+            return node
+        raise RuntimeError(f"1-based index not found: {page_num}")
+
+    @staticmethod
+    def _node_count(node: COSDictionary) -> int:
+        count = node.get_dictionary_object(_COUNT)
+        return count.value if isinstance(count, COSInteger) else 0
 
     def __contains__(self, page: object) -> bool:
         """Return ``True`` when ``page`` (a :class:`PDPage` or its backing

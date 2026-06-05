@@ -345,8 +345,11 @@ class ScratchFile:
     # ----- internals -----
 
     def _check_open(self) -> None:
+        # Upstream parity: ScratchFile#checkClosed throws
+        # ``IOException("Scratch file already closed")``. We map IOException →
+        # OSError with the exact upstream message.
         if self._closed:
-            raise ValueError("operation on closed ScratchFile")
+            raise OSError("Scratch file already closed")
 
     def _init_pages(self) -> None:
         """

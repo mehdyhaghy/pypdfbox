@@ -124,6 +124,7 @@ def test_index_of_object_returns_minus_one_for_missing() -> None:
 
 def test_float_accessors_round_trip_and_default() -> None:
     a = COSArray()
+    a.grow_to_size(3)  # set_float does NOT auto-grow (matches upstream List.set)
     a.set_float(2, 1.25)
 
     assert a.get_float(0, 9.0) == 9.0
@@ -140,6 +141,7 @@ def test_get_float_accepts_integer_values() -> None:
 
 def test_boolean_accessors_round_trip_and_default() -> None:
     a = COSArray()
+    a.grow_to_size(2)  # set_boolean does NOT auto-grow (matches upstream List.set)
     a.set_boolean(1, True)
 
     assert a.get_boolean(0) is False

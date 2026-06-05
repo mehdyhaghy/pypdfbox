@@ -169,6 +169,45 @@ def test_many_ocgs_sorted_dump_matches_pdfbox(tmp_path: Path) -> None:
 
 
 @requires_oracle
+def test_two_same_named_groups_both_off_matches_pdfbox(tmp_path: Path) -> None:
+    """Two *distinct* OCGs sharing the /Name "Dup", both turned OFF by a
+    single ``set_group_enabled("Dup", False)`` call. Upstream
+    ``setGroupEnabled(String, boolean)`` loops over EVERY matching OCG, so
+    both dictionaries land in /D /OFF — and ``isGroupEnabled("Dup")`` is then
+    false for the whole name. The dump (sorted, one line per OCG) must agree
+    across libraries: two ``OCG name=Dup enabled=false`` lines plus the solo
+    group."""
+    pdf = tmp_path / "ocg_same_named.pdf"
+    doc = PDDocument()
+    try:
+        doc.add_page(PDPage())
+        props = PDOptionalContentProperties()
+        # Two distinct OCG objects, identical /Name.
+        for _ in range(2):
+            props.add_group(PDOptionalContentGroup("Dup"))
+        props.add_group(PDOptionalContentGroup("Solo"))
+        props.set_base_state("ON")
+        # Name-based toggle must hit BOTH "Dup" groups.
+        result = props.set_group_enabled("Dup", False)
+        # Neither had a prior on/off setting → upstream returns False.
+        assert result is False
+        props.get_default_configuration().set_name("Cfg")
+        doc.get_document_catalog().set_oc_properties(props)
+        doc.save(str(pdf))
+    finally:
+        doc.close()
+    java = run_probe_text("OcgProbe", str(pdf))
+    py = _dump_py(pdf)
+    assert py == java
+    assert py == (
+        "CONFIG name=Cfg baseState=ON\n"
+        "OCG name=Dup enabled=false\n"
+        "OCG name=Dup enabled=false\n"
+        "OCG name=Solo enabled=true\n"
+    )
+
+
+@requires_oracle
 def test_no_ocproperties_matches_pdfbox(tmp_path: Path) -> None:
     """A plain document with no /OCProperties: both libraries report the
     sentinel line, confirming the catalog->OCProperties lookup agrees on the
