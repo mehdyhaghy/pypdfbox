@@ -91,9 +91,11 @@ def test_format_pdf_date_string_passthrough() -> None:
     assert _format_pdf_date("D:20240101") == "D:20240101"
 
 
-def test_format_pdf_date_datetime_with_zero_offset_uses_z() -> None:
+def test_format_pdf_date_datetime_with_zero_offset_uses_plus_zero() -> None:
+    # Upstream DateConverter.toString renders UTC as +00'00', never a bare Z
+    # (DateConverter.java line 234: "For offset of 0 millis ... never Z").
     dt = _dt.datetime(2024, 1, 1, 12, 0, 0, tzinfo=_dt.UTC)
-    assert _format_pdf_date(dt) == "D:20240101120000Z"
+    assert _format_pdf_date(dt) == "D:20240101120000+00'00'"
 
 
 def test_format_pdf_date_datetime_with_positive_offset() -> None:

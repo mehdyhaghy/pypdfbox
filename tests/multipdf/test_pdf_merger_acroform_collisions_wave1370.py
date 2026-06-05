@@ -215,11 +215,12 @@ def test_ignore_acro_form_errors_allows_merge_to_continue(
     assert out.stat().st_size > 0
 
 
-def test_join_form_fields_mode_keeps_all_three_dups_no_renames(
+def test_join_form_fields_mode_renames_collisions_like_legacy(
     tmp_path: Path,
 ) -> None:
-    """Join-fields mode: three sources with field 'A' yield three /Fields
-    entries all named 'A' (no rename)."""
+    """Join-fields mode delegates to legacy mode in PDFBox 3.0.x, so three
+    sources with field 'A' yield 'A', 'dummyFieldName1', 'dummyFieldName2'
+    (oracle-confirmed via MergeFormFieldsModeProbe JOIN over 3x 'A')."""
     a = tmp_path / "a.pdf"
     b = tmp_path / "b.pdf"
     c = tmp_path / "c.pdf"
@@ -236,8 +237,9 @@ def test_join_form_fields_mode_keeps_all_three_dups_no_renames(
     util.merge_documents()
 
     with PDDocument.load(str(out)) as merged:
-        names = _partial_names(merged)
-        assert names.count("A") == 3
+        names = sorted(_partial_names(merged))
+        assert names == ["A", "dummyFieldName1", "dummyFieldName2"]
+        assert names.count("A") == 1
 
 
 def test_legacy_mode_preserves_already_distinct_names_verbatim(

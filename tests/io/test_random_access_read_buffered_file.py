@@ -92,7 +92,9 @@ def test_close_makes_operations_raise(sample_file: Path) -> None:
     rab = RandomAccessReadBufferedFile(sample_file)
     rab.close()
     assert rab.is_closed()
-    with pytest.raises(ValueError):
+    # Upstream checkClosed throws IOException -> OSError (project convention),
+    # with the fully-qualified class name in the message.
+    with pytest.raises(OSError, match="RandomAccessReadBufferedFile already closed"):
         rab.read()
 
 
@@ -146,5 +148,5 @@ def test_create_view_close_parent_releases_sibling(sample_file: Path) -> None:
 def test_create_view_on_closed_parent_raises(sample_file: Path) -> None:
     rab = RandomAccessReadBufferedFile(sample_file)
     rab.close()
-    with pytest.raises(ValueError):
+    with pytest.raises(OSError, match="RandomAccessReadBufferedFile already closed"):
         rab.create_view(0, 5)

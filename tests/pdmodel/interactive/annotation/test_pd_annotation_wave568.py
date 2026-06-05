@@ -71,7 +71,8 @@ def test_wave568_annotation_name_title_and_modified_date_clear() -> None:
 
     assert annotation.get_annotation_name() == "annot-1"
     assert annotation.get_title_popup() == "Reviewer"
-    assert annotation.get_modified_date() == "D:20240102030405Z00'00'"
+    # Upstream DateConverter.toString renders UTC as +00'00', never Z.
+    assert annotation.get_modified_date() == "D:20240102030405+00'00'"
 
     annotation.set_annotation_name(None)
     annotation.set_title_popup(None)

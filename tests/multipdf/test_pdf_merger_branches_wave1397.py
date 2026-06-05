@@ -420,9 +420,13 @@ def test_merge_acro_form_install_skipped_when_clone_returns_none() -> None:
     )
 
 
-def test_acro_form_join_fields_mode_skips_none_cloned() -> None:
-    """Join-fields mode where the cloner returns None for some entries
-    skips them (line 1132->1130 false path)."""
+def test_acro_form_join_fields_mode_delegates_to_legacy() -> None:
+    """In PDFBox 3.0.x ``acroFormJoinFieldsMode`` delegates verbatim to
+    ``acroFormLegacyMode`` (confirmed against the live oracle). So join
+    mode shares legacy mode's contract: the cloned source field is
+    asserted to be a ``COSDictionary`` and a destination FQ-name collision
+    is renamed to ``dummyFieldNameN``. A cloner that returns ``None`` thus
+    trips the same assertion legacy mode would."""
 
     class _Form:
         def __init__(self, fields: list[object]) -> None:
@@ -435,21 +439,41 @@ def test_acro_form_join_fields_mode_skips_none_cloned() -> None:
         def get_fields(self) -> list[object]:
             return self._fields
 
+        def get_field_tree(self) -> list[object]:
+            return []
+
+        def get_field(self, _name: str) -> None:
+            return None
+
     class _Field:
         def __init__(self, name: str) -> None:
             self._cos = COSDictionary()
             self._cos.set_string(_T, name)
+            self._name = name
 
         def get_cos_object(self) -> COSDictionary:
             return self._cos
 
+        def get_partial_name(self) -> str:
+            return self._name
+
+        def get_fully_qualified_name(self) -> str:
+            return self._name
+
     util = PDFMergerUtility()
     src = _Form([_Field("f1"), _Field("f2")])
     dst = _Form([])
-    util._acro_form_join_fields_mode(_NoneCloner(), dst, src)  # noqa: SLF001
-    fields = dst.get_cos_object().get_dictionary_object(_FIELDS)
+    # None clone trips legacy mode's COSDictionary assertion (no silent skip).
+    with pytest.raises(AssertionError):
+        util._acro_form_join_fields_mode(_NoneCloner(), dst, src)  # noqa: SLF001
+
+    # With a real cloner and no collision, both fields land verbatim.
+    dst2 = _Form([])
+    util._acro_form_join_fields_mode(_IdentityCloner(), dst2, _Form([_Field("g1")]))  # noqa: SLF001
+    fields = dst2.get_cos_object().get_dictionary_object(_FIELDS)
     assert isinstance(fields, COSArray)
-    assert fields.size() == 0
+    assert fields.size() == 1
+    assert fields.get_object(0).get_string(_T) == "g1"
 
 
 # ---------- _merge_role_map: cloner-None / duplicate-key warning ----------

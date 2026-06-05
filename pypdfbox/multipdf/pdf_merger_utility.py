@@ -1121,21 +1121,15 @@ class PDFMergerUtility:
         dest_form: Any,
         src_form: Any,
     ) -> None:
-        """Join-fields mode: append source fields verbatim. Upstream's
-        version walks both trees to merge same-named non-terminals; we
-        keep the simpler concatenation and document the divergence in
-        ``CHANGES.md``."""
-        src_fields = src_form.get_fields()
-        if not src_fields:
-            return
-        dest_dict = dest_form.get_cos_object()
-        base = dest_dict.get_item(_FIELDS)
-        dest_fields_array = base if isinstance(base, COSArray) else COSArray()
-        for src_field in src_fields:
-            cloned = cloner.clone_for_new_document(src_field.get_cos_object())
-            if cloned is not None:
-                dest_fields_array.add(cloned)
-        dest_dict.set_item(_FIELDS, dest_fields_array)
+        """Join-fields mode.
+
+        In PDFBox 3.0.x ``acroFormJoinFieldsMode`` is a thin delegate to
+        ``acroFormLegacyMode`` (verified against the live oracle: a
+        destination field-name collision is renamed to ``dummyFieldNameN``
+        under JOIN exactly as under LEGACY). We mirror that delegation so
+        the two modes are byte-for-byte identical, matching upstream.
+        """
+        self._acro_form_legacy_mode(cloner, dest_form, src_form)
 
     def _merge_threads(
         self,

@@ -30,14 +30,18 @@ class RandomAccessReadBufferedFile(RandomAccessRead):
         return self._path
 
     def _check_open(self) -> None:
-        if self._closed:
-            raise ValueError("operation on closed RandomAccessReadBufferedFile")
+        self.check_closed()
 
     # Upstream parity: Java RandomAccessReadBufferedFile#checkClosed (line 265)
-    # is package-private and raises IOException. We surface a same-named
-    # snake_case wrapper so the API mirrors upstream; semantics unchanged.
+    # is package-private and raises ``IOException(getClass().getName() +
+    # " already closed")`` → ``OSError`` per the project's IOException
+    # mapping. The message reproduces the fully-qualified upstream class
+    # name so a caller inspecting the message sees the same string.
     def check_closed(self) -> None:
-        self._check_open()
+        if self._closed:
+            raise OSError(
+                "org.apache.pdfbox.io.RandomAccessReadBufferedFile already closed"
+            )
 
     def read(self) -> int:
         self._check_open()
@@ -67,13 +71,15 @@ class RandomAccessReadBufferedFile(RandomAccessRead):
     def seek(self, position: int) -> None:
         self._check_open()
         if position < 0:
-            raise OSError(f"invalid seek position {position}")
+            raise OSError(f"Invalid position {position}")
         # PDFBox semantics: seeking past end clamps to end, leaving stream at EOF.
         target = min(position, self._length)
         self._buf.seek(target)
 
     def length(self) -> int:
-        self._check_open()
+        # Upstream RandomAccessReadBufferedFile.length() (Java line 237) does
+        # NOT call checkClosed() — it returns the cached file length even
+        # after close(). Mirror that: no close guard here.
         return self._length
 
     def close(self) -> None:

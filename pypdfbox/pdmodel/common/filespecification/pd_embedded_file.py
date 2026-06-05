@@ -82,18 +82,13 @@ def _parse_pdf_date(value: str) -> _dt.datetime | None:
 
 
 def _format_pdf_date(value: _dt.datetime) -> str:
-    base = value.strftime("D:%Y%m%d%H%M%S")
-    offset = value.utcoffset()
-    if offset is None:
-        return base + "Z00'00'"
-    total_seconds = int(offset.total_seconds())
-    if total_seconds == 0:
-        return base + "Z00'00'"
-    sign = "+" if total_seconds > 0 else "-"
-    total_seconds = abs(total_seconds)
-    hours = total_seconds // 3600
-    minutes = (total_seconds % 3600) // 60
-    return f"{base}{sign}{hours:02d}'{minutes:02d}'"
+    # Upstream PDEmbeddedFile.setCreationDate/setModDate delegate to
+    # COSDictionary.setEmbeddedDate -> DateConverter.toString, which renders the
+    # zone as (+|-)HH'mm' — UTC becomes +00'00', never Z (DateConverter.java
+    # line 234). Reuse the shared formatter to stay 1:1.
+    from pypdfbox.pdmodel.pd_document_information import _format_pdf_date as _fmt  # noqa: PLC0415
+
+    return _fmt(value)
 
 
 def _get_or_create_dict(parent: COSDictionary, key: COSName) -> COSDictionary:

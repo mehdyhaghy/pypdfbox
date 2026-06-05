@@ -9,6 +9,7 @@ from PIL import Image
 from pypdfbox.cos import (
     COSArray,
     COSBase,
+    COSBoolean,
     COSDictionary,
     COSFloat,
     COSInteger,
@@ -67,11 +68,16 @@ def _two_key_int(
 ) -> int:
     """Read an integer entry from ``parameters``, preferring the short
     abbreviation but falling back to the long form. Mirrors upstream's
-    ``COSDictionary#getInt(firstKey, secondKey, default)``.
+    ``COSDictionary#getInt(firstKey, secondKey, default)``, which resolves
+    ``getDictionaryObject(short, long)`` (so a ``COSNull`` short value
+    resolves to ``None`` and the long key is consulted), then returns the
+    default when the resolved value is not a number — without re-consulting
+    the long key in that case.
     """
-    if parameters.contains_key(short):
-        return parameters.get_int(short, default)
-    return parameters.get_int(long, default)
+    obj = parameters.get_dictionary_object(short, long)
+    if isinstance(obj, (COSInteger, COSFloat)):
+        return int(obj.value)
+    return default
 
 
 def _two_key_boolean(
@@ -81,10 +87,14 @@ def _two_key_boolean(
     default: bool,
 ) -> bool:
     """Two-key boolean lookup mirroring upstream
-    ``COSDictionary#getBoolean(firstKey, secondKey, default)``."""
-    if parameters.contains_key(short):
-        return parameters.get_boolean(short, default)
-    return parameters.get_boolean(long, default)
+    ``COSDictionary#getBoolean(firstKey, secondKey, default)`` — resolves
+    ``getDictionaryObject(short, long)`` (a ``COSNull`` short value falls
+    through to the long key), then returns the default when the resolved
+    value is not a boolean."""
+    obj = parameters.get_dictionary_object(short, long)
+    if isinstance(obj, COSBoolean):
+        return obj.value
+    return default
 
 
 def _two_key_object(

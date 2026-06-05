@@ -122,8 +122,9 @@ def test_wave629_naive_datetime_is_formatted_as_utc_marker() -> None:
 
     params = embedded.get_cos_object().get_dictionary_object(_PARAMS)
     assert isinstance(params, COSDictionary)
+    # Upstream DateConverter.toString renders UTC as +00'00', never Z.
     assert params.get_string(COSName.get_pdf_name("ModDate")) == (
-        "D:20260509010203Z00'00'"
+        "D:20260509010203+00'00'"
     )
     assert embedded.get_mod_date() == dt.datetime(2026, 5, 9, 1, 2, 3, tzinfo=dt.UTC)
 

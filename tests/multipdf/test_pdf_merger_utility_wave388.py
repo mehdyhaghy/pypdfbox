@@ -181,9 +181,16 @@ def test_wave388_acroform_join_mode_appends_verbatim_fields() -> None:
         def __init__(self, name: str) -> None:
             self._dict = COSDictionary()
             self._dict.set_string(COSName.get_pdf_name("T"), name)
+            self._name = name
 
         def get_cos_object(self) -> COSDictionary:
             return self._dict
+
+        def get_partial_name(self) -> str:
+            return self._name
+
+        def get_fully_qualified_name(self) -> str:
+            return self._name
 
     class Form:
         def __init__(self, fields: list[Field]) -> None:
@@ -193,6 +200,14 @@ def test_wave388_acroform_join_mode_appends_verbatim_fields() -> None:
         def get_fields(self) -> list[Field]:
             return self._fields
 
+        # JOIN delegates to legacy mode in PDFBox 3.0.x; legacy mode walks
+        # the destination field tree and looks up by FQ name for collisions.
+        def get_field_tree(self) -> list[Field]:
+            return []
+
+        def get_field(self, _name: str) -> None:
+            return None
+
         def get_cos_object(self) -> COSDictionary:
             return self._dict
 
@@ -201,6 +216,7 @@ def test_wave388_acroform_join_mode_appends_verbatim_fields() -> None:
     dest_form = Form([])
     src_fields = [Field("A"), Field("B")]
 
+    # No collision (dest empty) → both fields appended verbatim under both modes.
     util._acro_form_join_fields_mode(_IdentityCloner(), dest_form, Form(src_fields))  # noqa: SLF001
 
     fields = dest_form.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Fields"))

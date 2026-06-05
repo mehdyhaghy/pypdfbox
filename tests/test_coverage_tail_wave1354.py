@@ -556,7 +556,9 @@ def test_random_access_read_buffered_file_check_closed_after_close(tmp_path) -> 
     r = RandomAccessReadBufferedFile(str(p))
     r.check_closed()  # Not closed — no exception.
     r.close()
-    with pytest.raises(ValueError):
+    # Wave 1482: closed-state errors are OSError with the upstream message
+    # (upstream checkClosed() throws IOException), no longer ValueError.
+    with pytest.raises(OSError, match="already closed"):
         r.check_closed()
 
 

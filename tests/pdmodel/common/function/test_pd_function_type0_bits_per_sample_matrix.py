@@ -92,7 +92,11 @@ _BIT_WIDTH_CASES = [
     (12, [0, 2047, 4095]),
     (16, [0, 32767, 65535]),
     (24, [0, 8388607, 16777215]),
-    (32, [0, 2147483647, 4294967295]),
+    # 32-bit "high" capped at 0x7FFFFFFF (max positive signed int): upstream
+    # stores each code via ``(int) readBits(32)``, so a code >= 2^31 would be
+    # truncated to a NEGATIVE int. Codes with the top bit clear round-trip
+    # losslessly; the sign-extension edge is pinned separately below.
+    (32, [0, 0x3FFFFFFF, 0x7FFFFFFF]),
 ]
 
 
@@ -141,7 +145,10 @@ def test_eval_interior_grid_point_matches_middle_sample(
         (12, [0, 4095], 2047.5),
         (16, [0, 65535], 32767.5),
         (24, [0, 16777215], 8388607.5),
-        (32, [0, 4294967295], 2147483647.5),
+        # 32-bit "high" capped at 0x7FFFFFFF — see _BIT_WIDTH_CASES note: a
+        # code >= 2^31 sign-extends to a negative int upstream, so the
+        # midpoint blend would clamp; the signed-cast edge is pinned below.
+        (32, [0, 0x7FFFFFFF], 1073741823.5),
     ],
     ids=[
         "linear-mid-4bit",
@@ -182,7 +189,12 @@ def test_2d_table_first_dim_varies_fastest(bits: int) -> None:
         samples = [0, 1, 1, 0]
         expected = [(0.0, 0.0, 0.0), (1.0, 0.0, 1.0), (0.0, 1.0, 1.0), (1.0, 1.0, 0.0)]
     else:
-        a, b, c, d = 0, sample_max // 4, sample_max // 2, sample_max
+        # Cap the "high" corner at 0x7FFFFFFF for 32-bit so every code keeps
+        # the top bit clear — upstream stores each via ``(int) readBits(32)``
+        # and a code >= 2^31 would sign-extend to a negative int (pinned in
+        # the dedicated 32-bit-sign test). Narrower widths can't overflow int.
+        high = min(sample_max, 0x7FFFFFFF)
+        a, b, c, d = 0, high // 4, high // 2, high
         samples = [a, b, c, d]
         expected = [
             (0.0, 0.0, float(a)),

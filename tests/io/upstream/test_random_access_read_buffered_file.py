@@ -52,7 +52,7 @@ def test_seek_eof() -> None:
     assert r.read() == -1
     assert r.read_into(bytearray(1), 0, 1) == -1
     r.close()
-    with pytest.raises(ValueError):
+    with pytest.raises(OSError, match="RandomAccessReadBufferedFile already closed"):
         r.read()
 
 

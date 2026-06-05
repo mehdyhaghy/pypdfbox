@@ -186,7 +186,8 @@ def test_chunk_size_defaults_for_empty_bytes_source() -> None:
 def test_create_view_after_close_raises() -> None:
     rar = RandomAccessReadBuffer(b"abc")
     rar.close()
-    with pytest.raises(ValueError):
+    # Upstream checkClosed throws IOException -> OSError (project convention).
+    with pytest.raises(OSError, match="RandomAccessBuffer already closed"):
         rar.create_view(0, 3)
 
 

@@ -527,7 +527,7 @@ def test_pd_signature_set_sign_date_as_datetime_round_trip_utc() -> None:
     when = dt.datetime(2026, 5, 1, 12, 30, 0, tzinfo=dt.UTC)
     sig.set_sign_date_as_datetime(when)
     # Stored as PDF date string.
-    assert sig.get_sign_date() == "D:20260501123000Z00'00'"
+    assert sig.get_sign_date() == "D:20260501123000+00'00'"
     # Round-trip through the typed accessor preserves the instant.
     got = sig.get_sign_date_as_datetime()
     assert got == when

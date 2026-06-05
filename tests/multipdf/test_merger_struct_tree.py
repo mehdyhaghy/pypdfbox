@@ -376,8 +376,9 @@ def test_acro_form_merge_mode_is_honoured_at_merge_time(tmp_path: Path) -> None:
     """Setting the AcroForm merge mode picks which strategy runs.
 
     PDFBOX_LEGACY_MODE: same-named source field gets a ``dummyFieldNameN``
-    rename. JOIN_FORM_FIELDS_MODE: source field is appended verbatim, so
-    *both* fields with the original name end up in the dest /Fields array.
+    rename. JOIN_FORM_FIELDS_MODE delegates to legacy mode in PDFBox 3.0.x
+    (oracle-confirmed), so it renames the collision identically — it does
+    NOT keep two fields named ``name``.
     """
     a = tmp_path / "a.pdf"
     b = tmp_path / "b.pdf"
@@ -407,11 +408,12 @@ def test_acro_form_merge_mode_is_honoured_at_merge_time(tmp_path: Path) -> None:
     util.set_acro_form_merge_mode(AcroFormMergeMode.JOIN_FORM_FIELDS_MODE)
     util.merge_documents()
     with PDDocument.load(str(out_join)) as merged:
-        names = [
+        names = sorted(
             f.get_partial_name() for f in merged.get_document_catalog().get_acro_form().get_fields()
-        ]
-        # Join-fields mode: append verbatim, so both fields keep "name".
-        assert names.count("name") == 2
+        )
+        # Join mode delegates to legacy: collision renamed, not duplicated.
+        assert names == ["dummyFieldName1", "name"]
+        assert names.count("name") == 1
 
 
 def test_document_merge_mode_optimize_does_not_log_fallback(

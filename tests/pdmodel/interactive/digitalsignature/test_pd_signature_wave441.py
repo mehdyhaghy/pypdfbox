@@ -130,7 +130,7 @@ def test_sign_date_datetime_helpers_round_trip_and_clear() -> None:
 
     sig.set_sign_date_as_datetime(value)
 
-    assert sig.get_sign_date() == "D:20260508143045Z00'00'"
+    assert sig.get_sign_date() == "D:20260508143045+00'00'"
     assert sig.get_sign_date_as_datetime() == value
 
     sig.set_sign_date("not-a-pdf-date")

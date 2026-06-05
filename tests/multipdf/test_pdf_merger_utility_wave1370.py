@@ -254,10 +254,14 @@ def test_acroform_legacy_mode_skips_next_num_past_existing_dummy(
         assert "dummyFieldName7" in partials
 
 
-def test_acroform_join_fields_mode_concatenates_duplicates(
+def test_acroform_join_fields_mode_renames_duplicate_like_legacy(
     tmp_path: Path,
 ) -> None:
-    """Join-fields mode appends source fields verbatim, so 'name' appears twice."""
+    """JOIN_FORM_FIELDS_MODE delegates to legacy mode in PDFBox 3.0.x, so a
+    destination field-name collision is renamed to ``dummyFieldName1`` —
+    exactly as legacy mode does (oracle-confirmed via MergeFormFieldsModeProbe:
+    both modes emit ``dummyFieldName1`` + ``name``). It does NOT keep two
+    fields both named ``name``."""
     a = tmp_path / "a.pdf"
     b = tmp_path / "b.pdf"
     out = tmp_path / "out.pdf"
@@ -273,8 +277,10 @@ def test_acroform_join_fields_mode_concatenates_duplicates(
 
     with PDDocument.load(str(out)) as merged:
         form = merged.get_document_catalog().get_acro_form()
-        names = [f.get_partial_name() for f in form.get_fields()]
-        assert names.count("name") == 2
+        names = sorted(f.get_partial_name() for f in form.get_fields())
+        # Original kept; collision renamed to dummyFieldName1 (not a 2nd "name").
+        assert names == ["dummyFieldName1", "name"]
+        assert names.count("name") == 1
 
 
 def test_acroform_first_source_only_carries_acroform_unchanged(

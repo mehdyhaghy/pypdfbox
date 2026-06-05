@@ -115,12 +115,12 @@ class RandomAccessReadBuffer(RandomAccessRead):
         if self._closed:
             raise OSError("RandomAccessBuffer already closed")
 
-    # Internal alias used elsewhere in this file; keeps the original
-    # ``_check_open`` name for backward compatibility with existing
-    # tests/callers that asserted on a ValueError.
+    # Internal alias kept for backward compatibility with callers that
+    # reference the original ``_check_open`` name. Delegates to
+    # ``check_closed`` so the exception type/message matches upstream
+    # (Java ``IOException("RandomAccessBuffer already closed")`` → OSError).
     def _check_open(self) -> None:
-        if self._closed:
-            raise ValueError("operation on closed RandomAccessReadBuffer")
+        self.check_closed()
 
     def expand_buffer(self) -> None:
         """
@@ -210,7 +210,7 @@ class RandomAccessReadBuffer(RandomAccessRead):
     def seek(self, position: int) -> None:
         self._check_open()
         if position < 0:
-            raise OSError(f"invalid seek position {position}")
+            raise OSError(f"Invalid position {position}")
         # PDFBox semantics: seeking past end clamps to end, leaving stream at EOF.
         target = min(position, self._length)
         self._buf.seek(target)

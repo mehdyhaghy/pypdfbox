@@ -125,8 +125,10 @@ def _format_pdf_date(value: _dt.date | _dt.datetime | str | None) -> str | None:
         if value.tzinfo is None or value.utcoffset() is None:
             return base
         offset = value.utcoffset() or _dt.timedelta()
-        if offset == _dt.timedelta():
-            return base + "Z"
+        # Upstream ``DateConverter.toString`` (and hence ``COSDictionary.setDate``)
+        # always renders the zone as ``(+|-)HH'mm'`` via ``formatTZoffset`` —
+        # "For offset of 0 millis, the String returned is +00'00', never Z"
+        # (DateConverter.java line 234). Do NOT emit a bare ``Z`` for UTC.
         sign = "+" if offset >= _dt.timedelta() else "-"
         offset = abs(offset)
         total_minutes = int(offset.total_seconds() // 60)

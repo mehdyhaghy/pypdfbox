@@ -47,7 +47,7 @@ def test_naive_datetime_sign_date_is_stored_as_utc() -> None:
 
     sig.set_sign_date_as_datetime(dt.datetime(2026, 5, 8, 14, 30, 45))
 
-    assert sig.get_sign_date() == "D:20260508143045Z00'00'"
+    assert sig.get_sign_date() == "D:20260508143045+00'00'"
     assert sig.get_sign_date_as_datetime() == dt.datetime(
         2026, 5, 8, 14, 30, 45, tzinfo=dt.UTC
     )

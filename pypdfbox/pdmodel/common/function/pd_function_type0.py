@@ -377,7 +377,18 @@ class PDFunctionType0(PDFunction):
         # the leading bits that belonged to the previous sample.
         trailing = span * 8 - bit_in_byte - bits
         value >>= trailing
-        return value & ((1 << bits) - 1)
+        value &= (1 << bits) - 1
+        # Upstream stores each code with ``(int) mciis.readBits(bitsPerSample)``
+        # (PDFunctionType0.java getSamples()). For bits < 32 the read value is
+        # < 2^31 so the cast is lossless, but at bits == 32 a code with the top
+        # bit set is truncated to a NEGATIVE signed-32 int before the /Decode
+        # mapping. Replicate that sign-extension so 32-bit samples >= 2^31 feed
+        # the same negative value into interpolate() as Java does (eval then
+        # clamps to /Range). See the upstream "TODO will this cast work
+        # properly for 32 bitsPerSample" comment.
+        if bits == 32 and value >= 0x80000000:
+            value -= 0x100000000
+        return value
 
     def decode_sample_grid(self) -> list[list[float]]:
         """Decode the bit-packed sample stream into a flat list of cells.

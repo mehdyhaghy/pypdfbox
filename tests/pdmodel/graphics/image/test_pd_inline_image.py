@@ -62,6 +62,110 @@ def test_setters_use_short_form() -> None:
     assert cos.get_int(COSName.get_pdf_name("BPC")) == 2
 
 
+# ---------- two-key precedence + COSNull fallback ----------
+# Oracle-pinned against Apache PDFBox 3.0.7 (InlineImageKeyResolveProbe):
+# PDInlineImage scalar getters resolve via COSDictionary#getInt/getBoolean
+# (firstKey, secondKey, default), which delegate to
+# getDictionaryObject(firstKey, secondKey). That overload (a) resolves a
+# COSNull first-key value to None and falls back to the second key, and
+# (b) returns the default — without re-consulting the long key — when the
+# first key resolves to a non-null value of the wrong type.
+
+
+def test_two_key_short_form_wins_when_both_present() -> None:
+    """Both ``/W`` and ``/Width`` present → short abbreviation wins.
+    Oracle: ``both_W_Width=7``."""
+    d = COSDictionary()
+    d.set_item(COSName.get_pdf_name("W"), COSInteger.get(7))
+    d.set_item(COSName.get_pdf_name("Width"), COSInteger.get(99))
+    img = PDInlineImage(d, b"", None)
+    assert img.get_width() == 7
+
+
+def test_two_key_int_cosnull_short_falls_back_to_long() -> None:
+    """``/W`` = COSNull resolves to None, so the long ``/Width`` is used.
+    Oracle: ``Wnull_Width13=13``."""
+    from pypdfbox.cos.cos_null import COSNull
+
+    d = COSDictionary()
+    d.set_item(COSName.get_pdf_name("W"), COSNull.NULL)
+    d.set_item(COSName.get_pdf_name("Width"), COSInteger.get(13))
+    img = PDInlineImage(d, b"", None)
+    assert img.get_width() == 13
+
+
+def test_two_key_int_cosnull_short_only_yields_default() -> None:
+    """``/W`` = COSNull with no long form → default ``-1``.
+    Oracle: ``Wnull_only=-1``."""
+    from pypdfbox.cos.cos_null import COSNull
+
+    d = COSDictionary()
+    d.set_item(COSName.get_pdf_name("W"), COSNull.NULL)
+    img = PDInlineImage(d, b"", None)
+    assert img.get_width() == -1
+
+
+def test_two_key_int_wrong_type_short_does_not_fall_back() -> None:
+    """``/H`` = a COSName (non-number) resolves non-null but is not a
+    number → default ``-1``; the long ``/Height`` is NOT consulted.
+    Oracle: ``Hname_Height21=-1``."""
+    d = COSDictionary()
+    d.set_item(COSName.get_pdf_name("H"), COSName.get_pdf_name("Foo"))
+    d.set_item(COSName.get_pdf_name("Height"), COSInteger.get(21))
+    img = PDInlineImage(d, b"", None)
+    assert img.get_height() == -1
+
+
+def test_two_key_bpc_cosnull_short_falls_back_to_long() -> None:
+    """``/BPC`` = COSNull → long ``/BitsPerComponent`` used (non-stencil).
+    Oracle: ``BPCnull_BPCfull4=4``."""
+    from pypdfbox.cos.cos_null import COSNull
+
+    d = COSDictionary()
+    d.set_item(COSName.get_pdf_name("BPC"), COSNull.NULL)
+    d.set_item(COSName.get_pdf_name("BitsPerComponent"), COSInteger.get(4))
+    img = PDInlineImage(d, b"", None)
+    assert img.get_bits_per_component() == 4
+
+
+def test_two_key_boolean_cosnull_short_falls_back_to_long() -> None:
+    """``/IM`` = COSNull → long ``/ImageMask`` used.
+    Oracle: ``IMnull_ImageMaskTrue=true``."""
+    from pypdfbox.cos import COSBoolean
+    from pypdfbox.cos.cos_null import COSNull
+
+    d = COSDictionary()
+    d.set_item(COSName.get_pdf_name("IM"), COSNull.NULL)
+    d.set_item(COSName.get_pdf_name("ImageMask"), COSBoolean.TRUE)
+    img = PDInlineImage(d, b"", None)
+    assert img.is_stencil() is True
+
+
+def test_two_key_boolean_short_false_wins_over_long_true() -> None:
+    """``/IM`` explicitly false beats long ``/ImageMask`` true.
+    Oracle: ``IMfalse_ImageMaskTrue=false``."""
+    from pypdfbox.cos import COSBoolean
+
+    d = COSDictionary()
+    d.set_item(COSName.get_pdf_name("IM"), COSBoolean.FALSE)
+    d.set_item(COSName.get_pdf_name("ImageMask"), COSBoolean.TRUE)
+    img = PDInlineImage(d, b"", None)
+    assert img.is_stencil() is False
+
+
+def test_two_key_interpolate_cosnull_short_falls_back_to_long() -> None:
+    """``/I`` = COSNull → long ``/Interpolate`` used.
+    Oracle: ``Inull_InterpolateTrue=true``."""
+    from pypdfbox.cos import COSBoolean
+    from pypdfbox.cos.cos_null import COSNull
+
+    d = COSDictionary()
+    d.set_item(COSName.get_pdf_name("I"), COSNull.NULL)
+    d.set_item(COSName.get_pdf_name("Interpolate"), COSBoolean.TRUE)
+    img = PDInlineImage(d, b"", None)
+    assert img.get_interpolate() is True
+
+
 # ---------- /CS color space ----------
 
 

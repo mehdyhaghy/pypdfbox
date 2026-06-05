@@ -69,9 +69,16 @@ class _Field:
     def __init__(self, name: str) -> None:
         self._dict = COSDictionary()
         self._dict.set_string(_T, name)
+        self._name = name
 
     def get_cos_object(self) -> COSDictionary:
         return self._dict
+
+    def get_partial_name(self) -> str:
+        return self._name
+
+    def get_fully_qualified_name(self) -> str:
+        return self._name
 
 
 class _Form:
@@ -83,6 +90,15 @@ class _Form:
 
     def get_fields(self) -> list[_Field]:
         return self._fields
+
+    # Legacy-mode AcroForm merge (which JOIN delegates to in PDFBox 3.0.x)
+    # walks the destination's field tree and looks up by FQ name to detect
+    # collisions. These destinations carry no existing fields, so no rename.
+    def get_field_tree(self) -> list[_Field]:
+        return []
+
+    def get_field(self, _name: str) -> None:
+        return None
 
     def get_cos_object(self) -> COSDictionary:
         return self._dict

@@ -185,6 +185,49 @@ def _build_kid_tree_pdf(path: Path) -> None:
         doc.close()
 
 
+# Number of attachments that forces ``set_names`` past its 64-name leaf cap so
+# the auto-balancing /Kids split fires (upstream ``setNames`` would write a
+# single flat /Names array regardless — see the divergence note below).
+_AUTO_SPLIT_COUNT = 100
+
+
+def _auto_split_payload(i: int) -> bytes:
+    return f"auto-split payload #{i:03d}\n".encode() * (i % 5 + 1)
+
+
+def _build_auto_split_pdf(path: Path) -> None:
+    """Register ``_AUTO_SPLIT_COUNT`` attachments via a single ``set_names``
+    call so pypdfbox's auto-balancing kicks in and the embedded-files tree is
+    written as a multi-level /Kids structure.
+
+    pypdfbox's ``PDNameTreeNode.set_names`` splits any map larger than 64 names
+    into a balanced /Kids tree (deliberate divergence from upstream PDFBox
+    ``setNames``, which always emits one flat /Names array). The oracle must
+    still read every attachment back from the resulting tree."""
+    doc = PDDocument()
+    try:
+        doc.add_page(PDPage())
+        names: dict[str, PDComplexFileSpecification] = {}
+        for i in range(_AUTO_SPLIT_COUNT):
+            tree_name = f"file{i:03d}"
+            payload = _auto_split_payload(i)
+            ef = _make_ef(doc, payload)
+            spec = PDComplexFileSpecification()
+            spec.set_file(f"{tree_name}.txt")
+            spec.set_file_unicode(f"{tree_name}.txt")
+            spec.set_embedded_file(ef)
+            names[tree_name] = spec
+        tree = PDEmbeddedFilesNameTreeNode()
+        tree.set_names(names)
+        catalog = doc.get_document_catalog()
+        name_dict = PDDocumentNameDictionary(catalog)
+        name_dict.set_embedded_files(tree)
+        catalog.set_names(name_dict)
+        doc.save(path)
+    finally:
+        doc.close()
+
+
 # --------------------------------------------------------------------------
 # Python-side dump mirroring the probe's output line-for-line.
 
@@ -402,3 +445,60 @@ def test_kid_tree_shape_is_two_leaves(tmp_path):
     assert int(cols[1]) == 2  # two leaf nodes
     assert int(cols[2]) == 1  # one internal node with /Kids
     assert int(cols[3]) == len(_ATTACHMENTS)
+
+
+@requires_oracle
+def test_auto_split_tree_is_readable_by_pdfbox(tmp_path):
+    """DIVERGENCE PIN: pypdfbox's ``set_names`` auto-splits a >64-name map into
+    a balanced /Kids tree (upstream ``setNames`` always writes one flat /Names
+    array). Verify the auto-balanced multi-level tree pypdfbox produces is read
+    back identically by Java PDFBox 3.0.7 — the dumps must be byte-for-byte
+    equal across every flattened attachment and the structural shape line."""
+    pdf = tmp_path / "embedded_auto_split.pdf"
+    _build_auto_split_pdf(pdf)
+    java = run_probe_text("EmbeddedFilesMultiProbe", str(pdf))
+    py = _pypdfbox_dump(pdf)
+    assert py == java
+
+
+@requires_oracle
+def test_auto_split_tree_oracle_reads_all_names(tmp_path):
+    """Oracle-confirmed: every one of the ``_AUTO_SPLIT_COUNT`` attachments is
+    enumerated by PDFBox from the auto-balanced tree, and the structural shape
+    line reports a real /Kids split (kidCount >= 1, leafCount > 1)."""
+    pdf = tmp_path / "embedded_auto_split.pdf"
+    _build_auto_split_pdf(pdf)
+    java = run_probe_text("EmbeddedFilesMultiProbe", str(pdf))
+    ef_lines = [ln for ln in java.splitlines() if ln.startswith("ef\t")]
+    assert len(ef_lines) == _AUTO_SPLIT_COUNT
+    # Names enumerated by PDFBox cover the full set, sorted.
+    names = [ln.split("\t")[1] for ln in ef_lines]
+    assert names == [f"file{i:03d}" for i in range(_AUTO_SPLIT_COUNT)]
+    tree_line = next(ln for ln in java.splitlines() if ln.startswith("tree\t"))
+    cols = tree_line.split("\t")
+    # tree leafCount kidCount totalNames — a genuine multi-level split.
+    assert int(cols[1]) > 1  # more than one leaf
+    assert int(cols[2]) >= 1  # at least one internal /Kids node
+    assert int(cols[3]) == _AUTO_SPLIT_COUNT
+
+
+def test_auto_split_write_shape_is_kids_tree_not_flat(tmp_path):
+    """Non-oracle pin of the deliberate write-shape divergence: ``set_names``
+    with >64 embedded files writes a root carrying /Kids (no own /Names),
+    NOT a single flat /Names array the way upstream ``setNames`` would. The
+    saved file round-trips through pypdfbox's own reader to all names."""
+    pdf = tmp_path / "embedded_auto_split.pdf"
+    _build_auto_split_pdf(pdf)
+    doc = PDDocument.load(pdf)
+    try:
+        root = doc.get_document_catalog().get_names().get_embedded_files()
+        root_dict = root.get_cos_object()
+        # Root is a /Kids node, not a flat /Names leaf.
+        assert isinstance(root_dict.get_dictionary_object(COSName.KIDS), COSArray)
+        assert root_dict.get_dictionary_object(_NAMES) is None
+        # All attachments are still reachable via the flatten walk.
+        flat: dict[str, PDComplexFileSpecification] = {}
+        _collect(root, flat)
+        assert sorted(flat) == [f"file{i:03d}" for i in range(_AUTO_SPLIT_COUNT)]
+    finally:
+        doc.close()

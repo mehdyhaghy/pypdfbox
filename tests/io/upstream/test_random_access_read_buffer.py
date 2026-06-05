@@ -51,8 +51,9 @@ def test_seek_eof() -> None:
     assert r.read() == -1
     assert r.read_into(bytearray(1), 0, 1) == -1
     r.close()
-    with pytest.raises(ValueError):
-        # check_closed: subsequent operations on a closed reader raise
+    with pytest.raises(OSError, match="RandomAccessBuffer already closed"):
+        # checkClosed: subsequent operations on a closed reader throw
+        # IOException -> OSError (project convention).
         r.read()
 
 

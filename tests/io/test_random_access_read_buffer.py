@@ -132,9 +132,11 @@ def test_close_makes_operations_raise() -> None:
     rab = RandomAccessReadBuffer(b"abc")
     rab.close()
     assert rab.is_closed()
-    with pytest.raises(ValueError):
+    # Upstream checkClosed throws IOException -> OSError (project convention),
+    # message "RandomAccessBuffer already closed".
+    with pytest.raises(OSError, match="RandomAccessBuffer already closed"):
         rab.read()
-    with pytest.raises(ValueError):
+    with pytest.raises(OSError, match="RandomAccessBuffer already closed"):
         rab.length()
 
 

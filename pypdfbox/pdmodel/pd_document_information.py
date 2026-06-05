@@ -124,12 +124,14 @@ def _format_pdf_date(value: _dt.datetime) -> str:
     """Format a ``datetime`` as a PDF date string (``D:YYYYMMDDHHmmSSOHH'mm'``)."""
     base = value.strftime("D:%Y%m%d%H%M%S")
     offset = value.utcoffset()
-    if offset is None:
-        return base + "Z00'00'"
-    total_seconds = int(offset.total_seconds())
-    if total_seconds == 0:
-        return base + "Z00'00'"
-    sign = "+" if total_seconds > 0 else "-"
+    # Upstream ``PDDocumentInformation.setCreationDate`` delegates to
+    # ``COSDictionary.setDate`` -> ``DateConverter.toString``, which always
+    # renders the zone as ``(+|-)HH'mm'`` via ``formatTZoffset`` — "For offset
+    # of 0 millis, the String returned is +00'00', never Z"
+    # (DateConverter.java line 234). A naive (tz-less) datetime is treated as
+    # UTC, matching upstream's GMT default. Never emit ``Z`` or ``Z00'00'``.
+    total_seconds = 0 if offset is None else int(offset.total_seconds())
+    sign = "+" if total_seconds >= 0 else "-"
     total_seconds = abs(total_seconds)
     hours = total_seconds // 3600
     minutes = (total_seconds % 3600) // 60

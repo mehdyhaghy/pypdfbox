@@ -107,16 +107,20 @@ def test_close_idempotent_and_post_close_ops_raise() -> None:
         r.close()
         r.close()  # idempotent
         assert r.is_closed() is True
-        with pytest.raises(ValueError):
+        # Upstream checkClosed throws IOException -> OSError (project
+        # convention); message carries the fully-qualified class name.
+        msg = "RandomAccessReadBufferedFile already closed"
+        with pytest.raises(OSError, match=msg):
             r.read()
-        with pytest.raises(ValueError):
+        with pytest.raises(OSError, match=msg):
             r.seek(0)
-        with pytest.raises(ValueError):
-            r.length()
-        with pytest.raises(ValueError):
+        with pytest.raises(OSError, match=msg):
             r.check_closed()
-        with pytest.raises(ValueError):
+        with pytest.raises(OSError, match=msg):
             r.read_page()
+        # Upstream RandomAccessReadBufferedFile.length() (Java line 237) does
+        # NOT check closed — it returns the cached file length post-close.
+        assert r.length() == 3
     finally:
         path.unlink()
 
