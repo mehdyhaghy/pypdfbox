@@ -334,10 +334,11 @@ def test_geometric_handlers_operator_sequence_exact() -> None:
 
 @requires_oracle
 def test_squiggly_filewattach_freetext_bbox_and_draw_present() -> None:
-    """Squiggly (tiling-pattern vs inline zig-zag), FileAttachment (glyph vs
-    stylized icon) and FreeText (text layout) are documented draw-form
-    divergences. Assert the contract that survives: an ``/AP /N`` stream with
-    the exact bbox and a non-empty drawing-operator sequence on both sides."""
+    """FileAttachment (glyph vs stylized icon) and FreeText (text layout) are
+    documented draw-form divergences (Squiggly reached full tiling-pattern
+    parity in wave 1499). Assert the contract that survives: an ``/AP /N``
+    stream with the exact bbox and a non-empty drawing-operator sequence on
+    both sides."""
     java = _java_records()
     battery = {sub: ann for ann, sub in _build_battery()}
     for subtype in ("Squiggly", "FileAttachment", "FreeText"):
@@ -362,10 +363,14 @@ def test_squiggly_draws_a_path_freetext_lays_text() -> None:
 
     squiggly = _py_fingerprint(battery["Squiggly"], "Squiggly")
     sq_ops = list(squiggly["ops"])  # type: ignore[arg-type]
-    # Lite handler strokes an inline zig-zag (m + many l + S); upstream uses
-    # a tiling pattern (cm Do).
-    assert "S" in sq_ops and sq_ops.count("l") >= 1, sq_ops
+    # Wave 1499: pypdfbox now paints the zig-zag from a tiling pattern wrapped
+    # in a form XObject exactly like upstream — the outer stream ends in Do and
+    # matches PDFBox's own operator sequence.
+    assert sq_ops[-1:] == ["Do"], sq_ops
     assert java["Squiggly"]["ops"][-1:] == ["Do"], java["Squiggly"]["ops"]
+    assert sq_ops == list(java["Squiggly"]["ops"]), (
+        f"Squiggly operator sequence {sq_ops} != PDFBox {java['Squiggly']['ops']}"
+    )
 
     free_text = _py_fingerprint(battery["FreeText"], "FreeText")
     ft_ops = list(free_text["ops"])  # type: ignore[arg-type]

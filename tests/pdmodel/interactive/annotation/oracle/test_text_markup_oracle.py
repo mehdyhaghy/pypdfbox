@@ -54,22 +54,17 @@ Documented (NOT a bug — legitimate lite-surface differences, render-identical)
   handler applies the same alpha + Multiply ``ExtGState`` inline and fills the
   quad directly (``gs gs rg <path> f``). ``/BBox`` matches exactly; the rendered
   fill is pixel-equivalent (MAD ~0).
-* **Underline colour-set operator**: upstream emits the colour-space pair
-  ``CS SC`` (typed ``PDColor`` with explicit DeviceRGB space); the lite colour
-  surface emits the device shorthand ``RG``. Identical colour, identical
-  path-drawing operators ``w m l S``. (StrikeOut and Squiggly were converted to
-  the typed-PDColor ``CS SC`` form in wave 1467, so only Underline still
-  differs here.)
-* **Squiggly tiling pattern**: upstream paints the zig-zag via a tiling pattern
-  wrapped in a form XObject (outer stream ``CS SC cm Do``). Pattern / form
-  XObject emission isn't ported, so the lite handler draws the zig-zag polyline
-  inline (``CS SC w m l ... l S``). The colour ops (``CS SC``) and ``/BBox`` now
-  match exactly; the rendered zig-zag is perceptually equivalent at 72 DPI (the
-  high-value render gate confirms it).
+  (StrikeOut, Underline and Squiggly all emit the typed-PDColor ``CS SC`` form
+  and match the upstream operator sequence exactly — see the Underline /
+  Squiggly notes below; only Highlight's transparency-group form XObject
+  remains a documented structural divergence.)
 
 Every ``/QuadPoints`` value, every ``/C`` component, every ``/BBox``, and the
-whole rendered page are asserted against Apache PDFBox; only the operator
-SPELLING differences above are normalised.
+whole rendered page are asserted against Apache PDFBox. The Underline,
+StrikeOut and Squiggly operator sequences now match Apache PDFBox exactly
+(wave 1499 ported the Underline typed-colour spelling and the Squiggly
+tiling-pattern construction); only Highlight's transparency-group form XObject
+is normalised below.
 """
 
 from __future__ import annotations
@@ -266,18 +261,6 @@ def _qpdf_ok(path: Path) -> bool:
     return result.returncode in (0, 3)
 
 
-# Documented operator-spelling divergences (see module docstring). The colour-set
-# operator differs; path-drawing operators must match exactly.
-_LINE_COLOR_OPS_JAVA = ["CS", "SC"]
-_LINE_COLOR_OPS_PY = ["RG"]
-
-
-def _drop_prefix(ops: list[str], prefix: list[str]) -> list[str]:
-    if ops[: len(prefix)] == prefix:
-        return ops[len(prefix) :]
-    return ops
-
-
 # ---------------------------------------------------------------------------
 # tests
 # ---------------------------------------------------------------------------
@@ -350,20 +333,19 @@ def test_appearance_operator_sequence_matches_pdfbox(tmp_path: Path) -> None:
                 f"StrikeOut operator sequence diverges: {py_ops} vs {jr_ops}"
             )
         elif subtype == "Underline":
-            # Documented colour-set spelling divergence (Underline still emits
-            # the device shorthand RG); the line-drawing ops must match.
-            assert _drop_prefix(py_ops, _LINE_COLOR_OPS_PY) == _drop_prefix(
-                jr_ops, _LINE_COLOR_OPS_JAVA
-            ), f"{subtype} path operators diverge: {py_ops} vs {jr_ops}"
+            # Underline now emits the typed-PDColor colour (CS SC) like upstream
+            # (wave 1499 ported the typed-colour spelling); the whole operator
+            # sequence matches exactly.
+            assert py_ops == jr_ops, (
+                f"Underline operator sequence diverges: {py_ops} vs {jr_ops}"
+            )
         elif subtype == "Squiggly":
-            # Documented tiling-pattern divergence: PDFBox paints the zig-zag
-            # from a tiling pattern in a form XObject (CS SC cm Do); the lite
-            # handler strokes the zig-zag polyline inline. Assert PDFBox uses the
-            # form path and that pypdfbox draws a multi-segment stroked polyline.
-            assert jr_ops[-1] == "Do", f"PDFBox squiggly not Do form: {jr_ops}"
-            assert py_ops[-1] == "S", f"pypdfbox squiggly did not stroke: {py_ops}"
-            assert py_ops.count("l") >= 2, (
-                f"pypdfbox squiggly is not a zig-zag polyline: {py_ops}"
+            # Squiggly now paints the zig-zag from an uncolored tiling pattern
+            # wrapped in a form XObject exactly like upstream (wave 1499 ported
+            # the tiling-pattern construction); the outer operator sequence
+            # (CS SC cm Do) matches PDFBox exactly.
+            assert py_ops == jr_ops, (
+                f"Squiggly operator sequence diverges: {py_ops} vs {jr_ops}"
             )
 
 

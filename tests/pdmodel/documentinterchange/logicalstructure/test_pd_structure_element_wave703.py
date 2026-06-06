@@ -68,14 +68,19 @@ def test_single_non_name_class_revision_is_written_as_name() -> None:
     )
 
 
-def test_class_names_as_strings_keeps_raw_string_entries() -> None:
+def test_class_names_only_cos_name_entries_decode() -> None:
+    # Upstream parity: getClassNames() iterates the /C array and only treats
+    # COSName items as class names (PDStructureElement.java L341). A bare
+    # Python str smuggled into the COSArray is not a valid PDF entry and
+    # upstream would never produce one, so it is dropped — only the COSName
+    # survives.
     elem = PDStructureElement(structure_type="P")
     raw = COSArray()
     raw.add(COSName.get_pdf_name("NameClass"))
     raw.add("StringClass")  # type: ignore[arg-type]
     elem.get_cos_object().set_item(_C, raw)
 
-    assert elem.get_class_names_as_strings() == ["NameClass", "StringClass"]
+    assert elem.get_class_names_as_strings() == ["NameClass"]
 
 
 def test_typed_append_null_guards_are_noops() -> None:

@@ -268,9 +268,11 @@ def test_attributes_set_none_removes_a_entry() -> None:
 
 
 def test_attributes_bare_dict_fallback() -> None:
-    # Defensive: /A may be a bare dict (single attribute object) rather
-    # than an array. Upstream wraps as a single-entry Revisions using
-    # the element's current /R.
+    # Defensive: /A may be a bare dict (single attribute object) rather than
+    # an array. Upstream parity (PDStructureElement.java L186-L188, verified
+    # against StructAttrMutateProbe): the bare-dict form is added at revision
+    # **0**, NOT the element's current /R — getAttributes() does not consult
+    # /R for the bare-dict path.
     elem = PDStructureElement(structure_type="P")
     elem.set_revision_number(4)
     bare = COSDictionary()
@@ -279,7 +281,7 @@ def test_attributes_bare_dict_fallback() -> None:
 
     got = elem.get_attributes()
     assert got.size() == 1
-    assert got.get_revision_number_at(0) == 4
+    assert got.get_revision_number_at(0) == 0
 
 
 # ---------- /Alt alternate description ----------

@@ -851,9 +851,10 @@ def test_pd_structure_element_remove_attribute_with_unowned_attribute_object() -
 
     with contextlib.suppress(Exception):
         elt.remove_attribute(attr)
-    # After remove, the attribute's owner stays `other` because the 1001
-    # arm was False — closes the arrow.
-    assert attr.get_structure_element() is other
+    # Wave 1499 (agent D) aligned remove_attribute to upstream
+    # PDStructureElement.java L283: the removed attribute's back-pointer is
+    # cleared UNCONDITIONALLY, regardless of the prior owner.
+    assert attr.get_structure_element() is None
 
 
 # ----------------------------------------------------------------------

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 from typing import TYPE_CHECKING
 
 from .annotation_border import AnnotationBorder
@@ -18,15 +17,13 @@ class PDSquigglyAppearanceHandler(PDAbstractAppearanceHandler):
     """Generate the appearance stream for a squiggly annotation. Mirrors
     ``org.apache.pdfbox.pdmodel.interactive.annotation.handlers.PDSquigglyAppearanceHandler``.
 
-    Documented deviation from upstream (see ``CHANGES.md``): upstream
-    paints the squiggly via a tiling pattern (zig-zag) wrapped in a
-    form XObject. That path depends on :class:`PDFormContentStream` and
-    :class:`PDPatternContentStream`, neither of which exist in the
-    pypdfbox port yet. Until that infrastructure lands we draw a direct
-    equivalent — one zig-zag polyline per quad, stroked in the
-    annotation color — that is visually equivalent to the upstream
-    output at typical resolutions and produces a parseable content
-    stream.
+    The squiggly sawtooth is painted exactly like upstream: for each quad
+    a form XObject is drawn whose body fills a rectangle with an *uncolored
+    tiling pattern* (``/PaintType 2``) whose one-cell content stream strokes
+    the single zig-zag tooth ``0 1 m 5 11 l 10 1 l S``. The annotation
+    colour is supplied through the ``/Pattern`` colour space
+    (``patternName scn``). See
+    ``PDSquigglyAppearanceHandler.java:106-163`` (PDFBox 3.0.7).
     """
 
     def __init__(
@@ -80,47 +77,109 @@ class PDSquigglyAppearanceHandler(PDAbstractAppearanceHandler):
         rect.set_upper_right_y(max(max_y + ab.width / 2, rect.get_upper_right_y()))
         annotation.set_rectangle(rect)
 
-        # Documented deviation (see class docstring): we emit the
-        # zig-zag directly into the appearance content stream instead of
-        # wrapping it in a tiling pattern + form XObject, because those
-        # support classes don't exist yet in the pypdfbox port.
+        from ....graphics.color.pd_color import PDColor
+        from ....graphics.color.pd_device_rgb import PDDeviceRGB
+        from ....graphics.color.pd_pattern import PDPattern
+        from ....graphics.form.pd_form_x_object import PDFormXObject
+        from ....graphics.pattern.pd_tiling_pattern import PDTilingPattern
+        from ....pd_form_content_stream import PDFormContentStream
+        from ....pd_pattern_content_stream import PDPatternContentStream
+        from ....pd_rectangle import PDRectangle
+        from ....pd_resources import PDResources
+
+        # Mirrors upstream PDSquigglyAppearanceHandler.java:106-163. The
+        # zig-zag is painted via an uncolored tiling pattern wrapped in a
+        # form XObject, one per quad.
         with self.get_normal_appearance_as_content_stream() as cs:
             self.set_opacity(cs, annotation.get_constant_opacity())
+
             # Upstream passes the typed PDColor to setStrokingColor, so the
             # appearance stream emits "/DeviceRGB CS r g b SC" (color-space
-            # select + components + SC), not the device-shorthand RG. Mirror
-            # that exactly by wrapping the raw /C components first.
-            cs.set_stroking_color(self._pd_color_from_components(stroke_components))
-            cs.set_line_width(ab.width)
-            # Lite approximation: draw a simple zig-zag along the baseline
-            # of each quad. The tiling-pattern version preserves better
-            # spacing at sub-pixel resolutions but the basic shape is
-            # adequate for parity tests.
+            # select + components + SC), not the device-shorthand RG.
+            color = self._pd_color_from_components(stroke_components)
+            cs.set_stroking_color(color)
+
+            # quadpoints spec is incorrect
+            # https://stackoverflow.com/questions/9855814/pdf-spec-vs-acrobat-creation-quadpoints
             for i in range(len(paths_array) // 8):
                 base = i * 8
-                x_left = paths_array[base + 4]
-                y_left = paths_array[base + 5]
-                x_right = paths_array[base + 6]
-                y_right = paths_array[base + 7]
-                length = math.hypot(x_right - x_left, y_right - y_left)
-                if length == 0:
-                    continue
-                # 10-pt zig-zag step (matches the upstream pattern XStep).
-                step = 10.0
-                amplitude = 2.0
-                segments = max(1, int(length / step))
-                dx = (x_right - x_left) / segments
-                dy = (y_right - y_left) / segments
-                # Unit perpendicular for the zig-zag amplitude.
-                nx = -dy / (length / segments) if length else 0
-                ny = dx / (length / segments) if length else 0
-                cs.move_to(x_left, y_left)
-                for s in range(1, segments + 1):
-                    px = x_left + dx * s
-                    py = y_left + dy * s
-                    sign = 1 if s % 2 == 1 else -1
-                    cs.line_to(px + nx * amplitude * sign, py + ny * amplitude * sign)
-                cs.stroke()
+                # Adobe uses a fixed pattern that assumes a height of 40 and
+                # transforms to that height horizontally and the same / 1.8
+                # vertically. Translation based on bottom left, but slightly
+                # different in Adobe (Java:123-124).
+                height = paths_array[base + 1] - paths_array[base + 5]
+                cs.transform(
+                    height / 40.0,
+                    0.0,
+                    0.0,
+                    height / 40.0 / 1.8,
+                    paths_array[base + 4],
+                    paths_array[base + 5],
+                )
+
+                # Create the form; BBox is mostly fixed, except for the
+                # horizontal size (Java:129-133).
+                form = PDFormXObject(self.create_cos_stream())
+                # Upstream ``new PDRectangle(-0.5f, -0.5f, w, 13)`` where the
+                # 4-arg Java ctor is (x, y, width, height); ``from_xywh``
+                # matches that signature exactly (Java:130).
+                form.set_bbox(
+                    PDRectangle.from_xywh(
+                        -0.5,
+                        -0.5,
+                        (paths_array[base + 2] - paths_array[base])
+                        / height
+                        * 40.0
+                        + 0.5,
+                        13.0,
+                    )
+                )
+                form.set_resources(PDResources())
+                form.set_matrix([1.0, 0.0, 0.0, 1.0, 0.5, 0.5])
+                cs.draw_form(form)
+
+                with PDFormContentStream(form) as form_cs:
+                    pattern = PDTilingPattern()
+                    pattern.set_b_box(PDRectangle.from_xywh(0, 0, 10, 12))
+                    pattern.set_x_step(10)
+                    pattern.set_y_step(13)
+                    pattern.set_tiling_type(
+                        PDTilingPattern.TILING_TYPE_CONSTANT_SPACING_AND_FASTER_TILING
+                    )
+                    pattern.set_paint_type(PDTilingPattern.PAINT_TYPE_UNCOLORED)
+                    with PDPatternContentStream(pattern) as pattern_cs:
+                        # from Adobe (Java:145-152)
+                        pattern_cs.set_line_cap_style(1)
+                        pattern_cs.set_line_join_style(1)
+                        pattern_cs.set_line_width(1)
+                        pattern_cs.set_miter_limit(10)
+                        pattern_cs.move_to(0, 1)
+                        pattern_cs.line_to(5, 11)
+                        pattern_cs.line_to(10, 1)
+                        pattern_cs.stroke()
+                    pattern_name = form.get_resources().add(pattern)
+                    # Upstream ``new PDPattern(null, PDDeviceRGB.INSTANCE)``
+                    # (Java:155); the lite ``PDPattern`` ctor takes the
+                    # underlying colour space as its sole positional arg.
+                    pattern_color_space = PDPattern(PDDeviceRGB.INSTANCE)
+                    pattern_color = PDColor(
+                        list(stroke_components),
+                        pattern_name,
+                        pattern_color_space,
+                    )
+                    form_cs.set_non_stroking_color(pattern_color)
+
+                    # With Adobe the horizontal size is slightly different,
+                    # don't know why (Java:159-161).
+                    form_cs.add_rect(
+                        0,
+                        0,
+                        (paths_array[base + 2] - paths_array[base])
+                        / height
+                        * 40.0,
+                        12,
+                    )
+                    form_cs.fill()
 
     def generate_rollover_appearance(self) -> None:
         # No rollover appearance (PDSquigglyAppearanceHandler.java:172)

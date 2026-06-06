@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
-from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSInteger, COSName
 
 from .pd_structure_node import PDStructureNode
 
@@ -638,15 +638,48 @@ class PDStructureElement(PDStructureNode):
     # ---------- /A attributes ----------
 
     def get_attributes(self) -> Revisions[PDAttributeObject]:
+        """Return the ``/A`` attribute objects paired with revision numbers.
+
+        Mirrors upstream ``PDStructureElement.getAttributes()`` (PDFBox
+        3.0.7 ``PDStructureElement.java`` L159-L191) *exactly*: the COSArray
+        form is parsed **statefully** — each ``COSDictionary`` adds a typed
+        :class:`PDAttributeObject` at revision ``0``, and a following
+        ``COSInteger`` updates the *most-recently-added* object's revision
+        (``Revisions.setRevisionNumber(ao, intValue)``). A leading or
+        orphan integer (no preceding dictionary, ``ao`` still ``null``) is
+        therefore dropped, and consecutive integers overwrite the same
+        object's revision (last wins). The bare-dictionary form adds a
+        single object at revision ``0`` (note: upstream uses ``0`` here, not
+        ``getRevisionNumber()``).
+
+        This is a *pure read projection*: the returned :class:`Revisions`
+        is backed by a fresh array and is not wired to the live ``/A`` slot.
+        Mutating ``/A`` goes through :meth:`add_attribute` /
+        :meth:`remove_attribute` / :meth:`attribute_changed`, which operate
+        on the live COSArray directly (matching upstream).
+        """
         from .pd_attribute_object import PDAttributeObject
         from .revisions import Revisions
 
+        revs: Revisions[PDAttributeObject] = Revisions()
         a = self._dictionary.get_dictionary_object(_A)
         if isinstance(a, COSArray):
-            return Revisions(a)
-        revs: Revisions[PDAttributeObject] = Revisions()
+            ao: PDAttributeObject | None = None
+            for i in range(a.size()):
+                item = a.get_object(i)
+                if isinstance(item, COSDictionary):
+                    ao = PDAttributeObject.create(item)
+                    ao.set_structure_element(self)
+                    revs.add_object(ao, 0)
+                elif isinstance(item, COSInteger):
+                    # PDF 32000-1 §14.7.5.3 attribute revision numbers.
+                    if ao is not None:
+                        revs.set_revision_number(ao, item.int_value())
+            return revs
         if isinstance(a, COSDictionary):
-            revs.add_object(PDAttributeObject(a), self.get_revision_number())
+            ao = PDAttributeObject.create(a)
+            ao.set_structure_element(self)
+            revs.add_object(ao, 0)
         return revs
 
     def get_attribute_objects(self) -> list[PDAttributeObject]:
@@ -690,14 +723,36 @@ class PDStructureElement(PDStructureNode):
     # ---------- /C class names ----------
 
     def get_class_names(self) -> Revisions[COSName]:
+        """Return the ``/C`` class names paired with revision numbers.
+
+        Mirrors upstream ``PDStructureElement.getClassNames()`` (PDFBox
+        3.0.7 ``PDStructureElement.java`` L325-L355) *exactly*: the COSArray
+        form is parsed **statefully** — each ``COSName`` adds a class name at
+        revision ``0`` and a following ``COSInteger`` updates the
+        most-recently-added name's revision. An orphan integer with no
+        preceding name is dropped; consecutive integers overwrite (last
+        wins). A bare ``COSName`` adds a single entry at revision ``0``.
+
+        Pure read projection (not wired to the live ``/C`` slot); the
+        mutators :meth:`add_class_name` / :meth:`remove_class_name` /
+        :meth:`class_name_changed` edit the live COSArray directly.
+        """
         from .revisions import Revisions
 
-        c = self._dictionary.get_dictionary_object(_C)
-        if isinstance(c, COSArray):
-            return Revisions(c)
         revs: Revisions[COSName] = Revisions()
+        c = self._dictionary.get_dictionary_object(_C)
         if isinstance(c, COSName):
             revs.add_object(c, 0)
+            return revs
+        if isinstance(c, COSArray):
+            name: COSName | None = None
+            for i in range(c.size()):
+                item = c.get_object(i)
+                if isinstance(item, COSName):
+                    name = item
+                    revs.add_object(name, 0)
+                elif isinstance(item, COSInteger) and name is not None:
+                    revs.set_revision_number(name, item.int_value())
         return revs
 
     def set_class_names(self, class_names: Revisions[COSName] | None) -> None:
@@ -962,59 +1017,69 @@ class PDStructureElement(PDStructureNode):
         """
         if attribute_object is None:
             return
-        revision = self.get_revision_number()
         attribute_object.set_structure_element(self)
-        revs: Revisions[PDAttributeObject] = self.get_attributes()
-        revs.add_object(attribute_object, revision)
-        # ``Revisions`` shares the underlying COSArray on the ``/A`` slot
-        # only when ``/A`` was already an array; for the bare-dict and empty
-        # cases we have to write the array back.
-        existing = self._dictionary.get_dictionary_object(_A)
-        if not isinstance(existing, COSArray):
-            self._dictionary.set_item(_A, revs.to_cos_array())
+        a = self._dictionary.get_dictionary_object(_A)
+        if isinstance(a, COSArray):
+            array = a
+        else:
+            array = COSArray()
+            if a is not None:
+                array.add(a)
+                array.add(COSInteger.get(0))
+        self._dictionary.set_item(_A, array)
+        array.add(attribute_object.get_cos_object())
+        array.add(COSInteger.get(self.get_revision_number()))
 
     def remove_attribute(self, attribute_object: Any) -> None:
         """Remove ``attribute_object`` from ``/A`` and clear its
         structure-element back-pointer.
 
-        Mirrors upstream ``removeAttribute(PDAttributeObject)``. Silently
-        returns when the attribute isn't present.
+        Mirrors upstream ``removeAttribute(PDAttributeObject)``
+        (``PDStructureElement.java`` L258-L284): removes the attribute's
+        COSDictionary from the ``/A`` array, then **collapses** the array
+        back to a bare dictionary when it shrinks to a single
+        revision-``0`` entry (``size()==2 && getInt(1)==0``). The
+        bare-dictionary form clears ``/A`` outright when the dict matches.
         """
         if attribute_object is None:
             return
-        revs: Revisions[PDAttributeObject] = self.get_attributes()
-        idx = revs.index_of(attribute_object)
-        if idx == -1:
-            return
-        revs.remove_at(idx)
-        if revs.is_empty():
-            self._dictionary.remove_item(_A)
+        a = self._dictionary.get_dictionary_object(_A)
+        attr_cos = attribute_object.get_cos_object()
+        if isinstance(a, COSArray):
+            a.remove(attr_cos)
+            if a.size() == 2 and a.get_int(1) == 0:
+                self._dictionary.set_item(_A, a.get_object(0))
         else:
-            # Always rewrite the slot — the underlying array may have shrunk
-            # below the bare-dict heuristic upstream uses.
-            self._dictionary.set_item(_A, revs.to_cos_array())
-        if attribute_object.get_structure_element() is self:
-            attribute_object.set_structure_element(None)
+            if a is not None and attr_cos == a:
+                self._dictionary.remove_item(_A)
+        attribute_object.set_structure_element(None)
 
     def attribute_changed(self, attribute_object: Any) -> None:
         """Mark ``attribute_object`` as changed at the current revision.
 
-        Mirrors upstream ``attributeChanged(PDAttributeObject)``: bumps the
-        attribute object's revision to match the structure element's
-        current ``/R``. Silently returns when the attribute isn't present
-        in ``/A``.
+        Mirrors upstream ``attributeChanged(PDAttributeObject)``
+        (``PDStructureElement.java`` L291-L318): for the array form, finds
+        the attribute's COSDictionary and overwrites the *following*
+        ``COSInteger`` revision slot with the element's current ``/R``; for
+        the bare-dictionary form, promotes ``/A`` to a two-element array
+        ``[dict, revision]``.
         """
         if attribute_object is None:
             return
-        revision = self.get_revision_number()
-        revs: Revisions[PDAttributeObject] = self.get_attributes()
-        idx = revs.index_of(attribute_object)
-        if idx == -1:
-            return
-        revs.set_revision_number_at(idx, revision)
-        existing = self._dictionary.get_dictionary_object(_A)
-        if not isinstance(existing, COSArray):
-            self._dictionary.set_item(_A, revs.to_cos_array())
+        a = self._dictionary.get_dictionary_object(_A)
+        attr_cos = attribute_object.get_cos_object()
+        if isinstance(a, COSArray):
+            for i in range(a.size()):
+                entry = a.get_object(i)
+                if entry == attr_cos:
+                    nxt = a.get(i + 1) if i + 1 < a.size() else None
+                    if isinstance(nxt, COSInteger):
+                        a.set(i + 1, COSInteger.get(self.get_revision_number()))
+        else:
+            array = COSArray()
+            array.add(a)
+            array.add(COSInteger.get(self.get_revision_number()))
+            self._dictionary.set_item(_A, array)
 
     # ---------- /C class-name maintenance ----------
 
@@ -1026,51 +1091,65 @@ class PDStructureElement(PDStructureNode):
         """
         if class_name is None:
             return
-        revision = self.get_revision_number()
-        revs: Revisions[COSName] = self.get_class_names()
-        revs.add_object(COSName.get_pdf_name(class_name), revision)
-        existing = self._dictionary.get_dictionary_object(_C)
-        if not isinstance(existing, COSArray):
-            self._dictionary.set_item(_C, revs.to_cos_array())
+        c = self._dictionary.get_dictionary_object(_C)
+        if isinstance(c, COSArray):
+            array = c
+        else:
+            array = COSArray()
+            if c is not None:
+                array.add(c)
+                array.add(COSInteger.get(0))
+        self._dictionary.set_item(_C, array)
+        array.add(COSName.get_pdf_name(class_name))
+        array.add(COSInteger.get(self.get_revision_number()))
 
     def remove_class_name(self, class_name: str | None) -> None:
         """Remove ``class_name`` from ``/C``.
 
-        Mirrors upstream ``removeClassName(String)``. Silently returns
-        when the name isn't present.
+        Mirrors upstream ``removeClassName(String)``
+        (``PDStructureElement.java`` L427-L457): removes the class-name
+        COSName from the ``/C`` array, then collapses the array back to a
+        bare name when it shrinks to a single revision-``0`` entry; the
+        bare-name form clears ``/C`` outright when the name matches.
         """
         if class_name is None:
             return
-        target = COSName.get_pdf_name(class_name)
-        revs: Revisions[COSName] = self.get_class_names()
-        idx = revs.index_of(target)
-        if idx == -1:
-            return
-        revs.remove_at(idx)
-        if revs.is_empty():
-            self._dictionary.remove_item(_C)
+        name = COSName.get_pdf_name(class_name)
+        c = self._dictionary.get_dictionary_object(_C)
+        if isinstance(c, COSArray):
+            c.remove(name)
+            if c.size() == 2 and c.get_int(1) == 0:
+                self._dictionary.set_item(_C, c.get_object(0))
         else:
-            self._dictionary.set_item(_C, revs.to_cos_array())
+            if name == c:
+                self._dictionary.remove_item(_C)
 
     def class_name_changed(self, class_name: str | None) -> None:
         """Mark ``class_name`` as changed at the current revision.
 
-        Mirrors upstream ``classNameChanged(String)``: bumps the class
-        name's revision to match the structure element's current ``/R``.
-        Silently returns when the name isn't present in ``/C``.
+        pypdfbox addition (upstream has no ``classNameChanged``); modelled
+        on upstream ``attributeChanged`` (``PDStructureElement.java``
+        L291-L318) for ``/C`` symmetry: for the array form, finds the
+        class-name COSName and overwrites the following ``COSInteger``
+        revision slot with the element's current ``/R``; for the bare-name
+        form, promotes ``/C`` to a two-element array ``[name, revision]``.
         """
         if class_name is None:
             return
-        target = COSName.get_pdf_name(class_name)
-        revision = self.get_revision_number()
-        revs: Revisions[COSName] = self.get_class_names()
-        idx = revs.index_of(target)
-        if idx == -1:
-            return
-        revs.set_revision_number_at(idx, revision)
-        existing = self._dictionary.get_dictionary_object(_C)
-        if not isinstance(existing, COSArray):
-            self._dictionary.set_item(_C, revs.to_cos_array())
+        name = COSName.get_pdf_name(class_name)
+        c = self._dictionary.get_dictionary_object(_C)
+        if isinstance(c, COSArray):
+            for i in range(c.size()):
+                entry = c.get_object(i)
+                if entry == name:
+                    nxt = c.get(i + 1) if i + 1 < c.size() else None
+                    if isinstance(nxt, COSInteger):
+                        c.set(i + 1, COSInteger.get(self.get_revision_number()))
+        elif name == c:
+            array = COSArray()
+            array.add(c)
+            array.add(COSInteger.get(self.get_revision_number()))
+            self._dictionary.set_item(_C, array)
 
     # ---------- marked-content reference enumeration ----------
 

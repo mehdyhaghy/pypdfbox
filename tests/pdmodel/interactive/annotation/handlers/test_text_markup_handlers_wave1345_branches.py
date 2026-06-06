@@ -247,7 +247,13 @@ def test_squiggly_handler_zero_width_border_uses_default() -> None:
     annotation.set_border(_zero_width_border())
     PDSquigglyAppearanceHandler(annotation).generate_normal_appearance()
     body = _appearance_bytes(annotation)
-    assert b"1.5 w" in body
+    # Upstream's squiggly handler ignores the line width in the outer stream
+    # (PDSquigglyAppearanceHandler.java:112 "we ignore dash pattern and line
+    # width for now"): the zig-zag is painted from a tiling pattern in a form
+    # XObject, so no "1.5 w" is emitted. The default-1.5 width is still applied
+    # to the /Rect padding. Verify the form XObject path was taken instead.
+    assert b"1.5 w" not in body
+    assert b"cm" in body and b"Do" in body
 
 
 # ---------------------------------------------------------------------------

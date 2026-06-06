@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_element import (
     PDStructureElement,
 )
@@ -540,7 +540,15 @@ def test_remove_attribute_clears_a_when_empty() -> None:
     elem.add_attribute(a1)
     elem.remove_attribute(a1)
     assert elem.get_attributes().size() == 0
-    assert elem.get_cos_object().get_dictionary_object(_A) is None
+    # Upstream parity (verified against StructAttrMutateProbe): removing the
+    # only attribute from [dict, 0] leaves an orphan [0] array — upstream's
+    # removeAttribute only drops the dict, and the size==2/getInt(1)==0
+    # collapse never fires (size is now 1). getAttributes() drops the
+    # orphan integer, so the projection is empty while the COS slot is [0].
+    leftover = elem.get_cos_object().get_dictionary_object(_A)
+    assert isinstance(leftover, COSArray)
+    assert leftover.size() == 1
+    assert leftover.get_int(0) == 0
 
 
 def test_remove_attribute_silent_when_missing() -> None:
@@ -635,7 +643,12 @@ def test_remove_class_name_clears_c_when_empty() -> None:
     elem.add_class_name("Bold")
     elem.remove_class_name("Bold")
     assert elem.get_class_names().size() == 0
-    assert elem.get_cos_object().get_dictionary_object(COSName.get_pdf_name("C")) is None
+    # Upstream parity: removing the only class name from [name, 0] leaves the
+    # orphan [0] array (size==2/getInt(1)==0 collapse never fires at size 1).
+    leftover = elem.get_cos_object().get_dictionary_object(COSName.get_pdf_name("C"))
+    assert isinstance(leftover, COSArray)
+    assert leftover.size() == 1
+    assert leftover.get_int(0) == 0
 
 
 def test_remove_class_name_silent_when_missing() -> None:

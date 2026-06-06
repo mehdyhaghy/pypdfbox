@@ -33,14 +33,14 @@ The Java probe ``StrikeoutSquigglyProbe`` runs in two modes:
   annotation: ``ANNOT`` / ``BBOX`` / ``COLOROP`` / ``COLORCS`` / ``STROKEY`` /
   ``OPS`` / ``END``.
 
-Documented (NOT a bug — render-equivalent lite-surface difference)
-------------------------------------------------------------------
-* **Squiggly tiling pattern.** Upstream paints the zig-zag via a tiling pattern
-  wrapped in a form XObject (``cm Do`` after the colour ops); pattern / form
-  XObject emission isn't ported, so the lite handler strokes the zig-zag
-  polyline inline (``w m l ... l S``). The colour ops (``CS SC``) and ``/BBox``
-  now match exactly; the rendered zig-zag is perceptually equivalent at 72 DPI
-  (the render gate below confirms it).
+Squiggly tiling pattern (wave 1499 — now at full parity)
+--------------------------------------------------------
+Upstream paints the zig-zag via an uncolored tiling pattern wrapped in a form
+XObject (``CS SC cm Do`` outer stream). Wave 1499 ported that construction
+faithfully (``PDFormContentStream`` / ``PDPatternContentStream`` +
+``PDAppearanceContentStream.draw_form``), so the outer appearance operator
+sequence and ``/BBox`` are byte-equivalent to Apache PDFBox; the render gate
+below confirms the painted result.
 """
 
 from __future__ import annotations
@@ -247,16 +247,18 @@ def test_squiggly_appearance_matches_pdfbox(tmp_path: Path) -> None:
         f"pypdfbox Squiggly colour space {py['colorcs']!r} != 'DeviceRGB'"
     )
 
-    # Documented divergence: upstream uses a form XObject (cm Do); the lite
-    # handler strokes the zig-zag polyline inline. Both start with CS SC.
+    # Wave 1499 ported the tiling-pattern construction faithfully: upstream and
+    # pypdfbox both paint the zig-zag from an uncolored tiling pattern wrapped in
+    # a form XObject. The outer appearance stream is byte-equivalent — colour set
+    # via CS SC, then per quad a cm transform + Do draws the form XObject.
     py_ops = py["ops"].split()
     java_ops = java["ops"].split()
     assert py_ops[:2] == ["CS", "SC"], f"pypdfbox squiggly colour ops: {py_ops}"
     assert java_ops[:2] == ["CS", "SC"], f"PDFBox squiggly colour ops: {java_ops}"
     assert java_ops[-1] == "Do", f"PDFBox squiggly not a form XObject: {java_ops}"
-    assert py_ops[-1] == "S", f"pypdfbox squiggly did not stroke: {py_ops}"
-    assert py_ops.count("l") >= 2, (
-        f"pypdfbox squiggly is not a zig-zag polyline: {py_ops}"
+    assert py_ops == java_ops, (
+        f"Squiggly operator sequence {py_ops} != PDFBox {java_ops} — the "
+        "zig-zag must be painted from a tiling pattern in a form XObject"
     )
 
 

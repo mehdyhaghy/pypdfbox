@@ -305,6 +305,17 @@ class MMRDecompressor:
         white_run = True  # Always start with a white run
         code: Code | None = None  # Storage var for current code being processed
 
+        # Java arrays reject negative indices with ArrayIndexOutOfBoundsException
+        # (MMRDecompressor.java:303-304), but Python lists silently wrap a
+        # negative index to the tail. When a previous line returned EOL the caller
+        # passes ref_run_length == MMRConstants.EOL (-1) here; reproduce Java's
+        # uncaught throw rather than scribbling on the wrong slot and decoding on.
+        if ref_run_length < 0:
+            raise IndexError(
+                f"Index {ref_run_length} out of bounds for length "
+                f"{len(reference_offsets)}"
+            )
+
         reference_offsets[ref_run_length] = reference_offsets[ref_run_length + 1] = width
         reference_offsets[ref_run_length + 2] = reference_offsets[ref_run_length + 3] = (
             width + 1

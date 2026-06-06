@@ -2297,16 +2297,17 @@ class COSWriter(ICOSVisitor):
         if not in_hybrid:
             self._fill_gaps_with_free_entries()
 
-        # 3. Build the table of (objnum, type, field2, field3) tuples.
+        # 3. Build the table of (objnum, type, field2, field3, is_free) tuples.
         # Type 0 = free (next-free, gen)
         # Type 1 = uncompressed (offset, gen)
         # Type 2 = compressed (objstm_num, index_in_objstm)
-        records: list[tuple[int, int, int, int]] = []
-        max_field2 = 0
+        records: list[tuple[int, int, int, int, bool]] = []
         for entry in self._xref_entries:
             objnum = entry.key.object_number
             if entry.free:
-                records.append((objnum, 0, entry.offset, entry.key.generation_number))
+                records.append(
+                    (objnum, 0, entry.offset, entry.key.generation_number, True)
+                )
                 continue
             actual = (
                 entry.obj.get_object()
@@ -2320,34 +2321,56 @@ class COSWriter(ICOSVisitor):
             )
             if comp is not None:
                 objstm_num, idx = comp
-                records.append((objnum, 2, objstm_num, idx))
+                records.append((objnum, 2, objstm_num, idx, False))
             else:
-                records.append((objnum, 1, entry.offset, entry.key.generation_number))
-                max_field2 = max(max_field2, entry.offset)
+                records.append(
+                    (objnum, 1, entry.offset, entry.key.generation_number, False)
+                )
 
-        # 4. Compute /W widths.
-        # w1: 1 byte (only need values 0/1/2)
-        # w2: enough bytes to hold the max offset
-        # w3: 2 bytes (covers 16-bit gen plus reasonable index counts)
-        w1 = 1
-        # The xref stream itself will sit at ``out.get_position()`` or
-        # later; widen the estimate so the field width survives the self-
-        # entry insertion below.
-        max_field2 = max(max_field2, out.get_position() + 4096)
-        w2 = max(1, _ceil_log256(max_field2))
-        w3 = 2
-
-        # 5. Self-entry: the xref stream's own offset goes into the body.
+        # 4. Self-entry: the xref stream's own offset goes into the body.
+        # Append it BEFORE the width scan (mirroring upstream, where the
+        # ``NormalXReference`` for the xref stream object is registered via
+        # ``doWriteObject``/``addXRefEntry`` and so DOES feed
+        # ``PDFXRefStream.getWEntry`` — unlike the incremental path).
         xref_offset = out.get_position()
-        records.append((xref_key.object_number, 1, xref_offset, 0))
+        records.append((xref_key.object_number, 1, xref_offset, 0, False))
         records.sort(key=lambda r: r[0])
 
-        # Pack the body: each record = w1 + w2 + w3 big-endian bytes.
+        # 5. Compute /W widths exactly as ``PDFXRefStream.getWEntry`` does
+        # (PDFBox 3.0.7 ``org.apache.pdfbox.pdfparser.PDFXRefStream``,
+        # bytecode getWEntry 0-126): each field width is the byte count of the
+        # MAX value in that column across ``streamData``, and a column whose
+        # max is 0 yields width **0** (``while (w[i] > 0) { count++; w[i] >>= 8 }``).
+        # The implicit object-0 ``FreeXReference.NULL_ENTRY`` leading row is
+        # emitted by ``writeStreamData`` (always) but is NOT scanned — its gen
+        # 65535 never widens w3. pypdfbox additionally fills inter-object gaps
+        # with explicit free entries (gen 65535) for self-consistency; those
+        # NULL-style generations are likewise excluded from the field-3 scan so
+        # they don't force the over-wide column upstream never has. The
+        # third column of a type-2 object-stream row carries the in-objstm
+        # INDEX (``ObjectStreamXReference.getThirdColumnValue``) and IS scanned,
+        # so a compressed save with object streams correctly widens w3 to that
+        # max index while an all-uncompressed all-gen-0 save yields ``/W [1 3 0]``.
+        max_field1 = max((t for _n, t, _f2, _f3, _fr in records), default=0)
+        max_field2 = max((f2 for _n, _t, f2, _f3, _fr in records), default=0)
+        max_field3 = max(
+            (f3 for _n, _t, _f2, f3, fr in records if not fr), default=0
+        )
+        w1 = _xref_field_width(max_field1)
+        w2 = _xref_field_width(max_field2)
+        w3 = _xref_field_width(max_field3)
+
+        # Pack the body: each record = w1 + w2 + w3 big-endian bytes. A free
+        # entry's gen 65535 is written truncated to the computed w3 (when w3 is
+        # 0 it drops to zero bytes, exactly as ``writeNumber`` does upstream for
+        # the NULL_ENTRY row).
         body = bytearray()
-        for _objnum, t, f2, f3 in records:
+        for _objnum, t, f2, f3, _fr in records:
             body.extend(_pack_unsigned(t, w1))
             body.extend(_pack_unsigned(f2, w2))
-            body.extend(_pack_unsigned(f3, w3))
+            body.extend(
+                _pack_unsigned(f3 & ((1 << (8 * w3)) - 1) if w3 else 0, w3)
+            )
 
         # /Index — list of (first, count) ranges. PDFBox always emits
         # /Index even for the single-range case; readers tolerate either.

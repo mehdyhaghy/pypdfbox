@@ -293,11 +293,33 @@ def test_squiggly_handler_paints_zigzag_per_quad() -> None:
     handler = PDSquigglyAppearanceHandler(annotation)
     handler.generate_normal_appearance()
     body = _stream_body(annotation)
-    # Must contain m, l, and S (stroke).
-    assert b"m" in body
-    assert b"l" in body
-    # any stroke operator
-    assert b"S" in body or b"B" in body or b"b" in body
+    # The zig-zag is now painted from a tiling pattern wrapped in a form
+    # XObject (faithful upstream port): the outer stream sets the colour and
+    # draws the form (cm + Do), matching PDFBox.
+    assert b"cm" in body
+    assert b"Do" in body
+    # The zig-zag tooth itself lives in the pattern cell content stream
+    # (0 1 m 5 11 l 10 1 l S) — registered under the form's /Resources/Pattern.
+    ap = annotation.get_appearance_dictionary().get_normal_appearance()
+    form_stream = ap.get_appearance_stream()
+    xobjects = form_stream.get_resources().get_cos_object().get_dictionary_object(
+        "XObject"
+    )
+    assert xobjects is not None, "squiggly outer stream did not register a form"
+    form_cos = next(iter(xobjects.values()))
+    if hasattr(form_cos, "get_object"):
+        form_cos = form_cos.get_object()
+    pattern_dict = form_cos.get_dictionary_object("Resources").get_dictionary_object(
+        "Pattern"
+    )
+    assert pattern_dict is not None, "form did not register a tiling pattern"
+    pattern_cos = next(iter(pattern_dict.values()))
+    if hasattr(pattern_cos, "get_object"):
+        pattern_cos = pattern_cos.get_object()
+    cell = pattern_cos.create_input_stream().read()
+    assert b"m" in cell and b"l" in cell and b"S" in cell, (
+        f"tiling-pattern cell did not stroke the zig-zag tooth: {cell!r}"
+    )
 
 
 def test_squiggly_handler_no_color_is_silent_noop() -> None:

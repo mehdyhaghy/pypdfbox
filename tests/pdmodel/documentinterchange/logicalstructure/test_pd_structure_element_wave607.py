@@ -28,7 +28,15 @@ def test_wave607_add_attribute_sets_back_pointer_and_current_revision() -> None:
     assert isinstance(elem.get_cos_object().get_dictionary_object(_A), COSArray)
 
 
-def test_wave607_remove_attribute_clears_slot_and_back_pointer_only_when_present() -> None:
+def test_wave607_remove_attribute_collapses_and_clears_back_pointer_upstream() -> None:
+    # Upstream parity (PDStructureElement.java L258-L284, verified against
+    # StructAttrMutateProbe): removeAttribute always clears the attribute's
+    # back-pointer (line 283 is unconditional) AND, for the array form,
+    # collapses [dict, 0] back to a bare dict whenever size()==2 &&
+    # getInt(1)==0 — even when the removed attribute wasn't actually present
+    # (the remove is a no-op but the collapse check still fires).
+    from pypdfbox.cos import COSDictionary
+
     elem = PDStructureElement(structure_type="P")
     attr = PDAttributeObject()
     attr.set_owner("Layout")
@@ -39,13 +47,18 @@ def test_wave607_remove_attribute_clears_slot_and_back_pointer_only_when_present
 
     elem.remove_attribute(missing)
 
-    assert missing.get_structure_element() is elem
+    # Back-pointer is cleared unconditionally (upstream line 283).
+    assert missing.get_structure_element() is None
+    # [Layout, 0] collapses to a bare Layout dict.
+    collapsed = elem.get_cos_object().get_dictionary_object(_A)
+    assert isinstance(collapsed, COSDictionary)
     assert elem.get_attributes().size() == 1
 
     elem.remove_attribute(attr)
 
     assert attr.get_structure_element() is None
     assert elem.get_attributes().is_empty()
+    # Bare-dict form: a matching remove clears /A outright.
     assert elem.get_cos_object().get_dictionary_object(_A) is None
 
 
@@ -85,4 +98,8 @@ def test_wave607_class_name_maintenance_uses_current_revision_and_compacts() -> 
     elem.remove_class_name("Emphasis")
     elem.remove_class_name(None)
     assert elem.get_class_names().is_empty()
-    assert elem.get_cos_object().get_dictionary_object(_C) is None
+    # Upstream parity: removing the only class name from [name, rev] leaves
+    # the orphan [rev] array; getClassNames() drops the orphan integer.
+    leftover_c = elem.get_cos_object().get_dictionary_object(_C)
+    assert isinstance(leftover_c, COSArray)
+    assert leftover_c.size() == 1

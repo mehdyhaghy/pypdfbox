@@ -4,7 +4,7 @@ import logging
 
 import pytest
 
-from pypdfbox.cos import COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_attribute_object import (
     PDAttributeObject,
 )
@@ -54,7 +54,12 @@ def test_remove_from_structure_element_removes_attribute_and_clears_parent_wave2
     attr.remove_from_structure_element()
 
     assert elem.get_attributes().is_empty()
-    assert elem.get_cos_object().get_dictionary_object(_A) is None
+    # Upstream parity: removing the only attribute from [dict, 0] leaves an
+    # orphan [0] array (the size==2 collapse never fires at size 1).
+    leftover = elem.get_cos_object().get_dictionary_object(_A)
+    assert isinstance(leftover, COSArray)
+    assert leftover.size() == 1
+    assert leftover.get_int(0) == 0
     assert attr.get_structure_element() is None
 
 

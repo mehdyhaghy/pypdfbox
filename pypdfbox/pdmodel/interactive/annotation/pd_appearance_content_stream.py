@@ -262,6 +262,39 @@ class PDAppearanceContentStream(PDPageContentStream):
             self.set_line_width(float(line_width))
 
     # ------------------------------------------------------------------
+    # form XObject painting
+    # ------------------------------------------------------------------
+
+    def draw_form(self, form_xobject: object) -> None:
+        """Emit ``/<key> Do`` — paint a form XObject, registering it under
+        ``/Resources/XObject`` if needed.
+
+        Overrides :meth:`PDPageContentStream.draw_form` (which wraps the
+        ``Do`` in a ``q ... Q`` save/restore pair and accepts an ``x``/``y``
+        offset). Upstream's ``PDAbstractContentStream.drawForm(PDFormXObject)``
+        (PDAbstractContentStream.java:558) emits ONLY ``resources.add(form)``
+        + the ``Do`` operator, with no graphics-state wrapping — the caller is
+        responsible for the surrounding ``cm`` (see
+        :class:`PDSquigglyAppearanceHandler`). Mirror that byte-for-byte so the
+        appearance/form streams match Apache PDFBox.
+        """
+        from pypdfbox.pdmodel.graphics.form.pd_form_x_object import PDFormXObject
+
+        if not isinstance(form_xobject, PDFormXObject):
+            raise TypeError(
+                "PDAppearanceContentStream.draw_form expects PDFormXObject; "
+                f"got {type(form_xobject).__name__}"
+            )
+        if self._in_text_mode:
+            raise RuntimeError(
+                "draw_form is not allowed within a text block (BT/ET)."
+            )
+        key = self._resource_key_for_xobject(form_xobject)
+        self._write_name(key)
+        self._buffer.append(0x20)
+        self._write_operator(b"Do")
+
+    # ------------------------------------------------------------------
     # shape painting
     # ------------------------------------------------------------------
 
