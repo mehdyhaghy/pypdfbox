@@ -70,10 +70,11 @@ class PDVisibleSignDesigner:
     _read_image_stream = read_image_stream
 
     def set_image(self, image: Any) -> None:
-        """Mirrors upstream ``setImage(BufferedImage)`` (Java line 455).
+        """Mirrors upstream ``setImage(BufferedImage)`` (Java line 453).
 
         Stores the supplied (already-decoded) image object and records its
-        dimensions when available.
+        dimensions when available. Upstream also writes the integer width
+        and height into ``formatterRectangleParameters[2]`` / ``[3]``.
         """
         self._image = image
         width = getattr(image, "get_width", None) or getattr(image, "width", None)
@@ -81,8 +82,10 @@ class PDVisibleSignDesigner:
         try:
             if width is not None:
                 self._image_width = float(width() if callable(width) else width)
+                self._formatter_rectangle_parameters[2] = int(self._image_width)
             if height is not None:
                 self._image_height = float(height() if callable(height) else height)
+                self._formatter_rectangle_parameters[3] = int(self._image_height)
         except (TypeError, ValueError):  # pragma: no cover - defensive
             pass
 
@@ -130,13 +133,26 @@ class PDVisibleSignDesigner:
 
     def calculate_page_size(self, document: Any, page: int) -> None:
         """Mirrors upstream ``calculatePageSize(PDDocument, int)``
-        (Java line 195)."""
+        (Java line 195).
+
+        Upstream raises ``IllegalArgumentException`` when ``page < 1``, then
+        records the media-box dimensions and sets ``imageSizeInPercents`` to
+        100 and ``rotation`` to ``page.getRotation() % 360``.
+        """
+        if page < 1:
+            raise ValueError(f"First page of pdf is 1, not {page}")
         try:
             pages = document.get_pages()
             target = pages[page - 1]
             box = target.get_media_box()
-            self._page_width = float(box.get_width())
             self._page_height = float(box.get_height())
+            self._page_width = float(box.get_width())
+            self._image_size_in_percents = 100.0
+            rotation = getattr(target, "get_rotation", None)
+            if rotation is not None:
+                self._rotation = int(rotation()) % 360
+        except ValueError:
+            raise
         except Exception:  # pragma: no cover - defensive parity stub
             return
 
@@ -146,11 +162,49 @@ class PDVisibleSignDesigner:
     # ------------------------------------------------------ rotation handling
 
     def adjust_for_rotation(self) -> PDVisibleSignDesigner:
-        """Mirrors ``adjustForRotation`` (Java line 216)."""
-        # The upstream version rotates the formatter rectangle when the
-        # underlying page rotation isn't a multiple of 360; the Python
-        # stub records the rotation but does not yet redraw — this is
-        # parity for the API surface only.
+        """Mirrors ``adjustForRotation`` (Java line 216).
+
+        Rotates the placement coordinates and builds the corresponding
+        ``AffineTransform`` for page rotations of 90/180/270 degrees. The
+        90 and 270 cases additionally swap ``imageWidth`` and
+        ``imageHeight``. Rotation 0 (and any other value) is a no-op.
+        """
+        width = self._image_width if self._image_width is not None else 0.0
+        height = self._image_height if self._image_height is not None else 0.0
+        if self._rotation == 90:
+            temp = self._y_axis
+            self._y_axis = self._page_height - self._x_axis - width
+            self._x_axis = temp
+            self._affine_transform = _IdentityAffineTransform(
+                0,
+                height / width if width else 0.0,
+                -width / height if height else 0.0,
+                0,
+                width,
+                0,
+            )
+            self._image_height, self._image_width = width, height
+        elif self._rotation == 180:
+            new_x = self._page_width - self._x_axis - width
+            new_y = self._page_height - self._y_axis - height
+            self._x_axis = new_x
+            self._y_axis = new_y
+            self._affine_transform = _IdentityAffineTransform(
+                -1, 0, 0, -1, width, height
+            )
+        elif self._rotation == 270:
+            temp = self._x_axis
+            self._x_axis = self._page_width - self._y_axis - height
+            self._y_axis = temp
+            self._affine_transform = _IdentityAffineTransform(
+                0,
+                -height / width if width else 0.0,
+                width / height if height else 0.0,
+                0,
+                0,
+                height,
+            )
+            self._image_height, self._image_width = width, height
         return self
 
     def signature_image(self, path: str) -> PDVisibleSignDesigner:
@@ -160,11 +214,17 @@ class PDVisibleSignDesigner:
         return self
 
     def zoom(self, percent: float) -> PDVisibleSignDesigner:
-        """Mirrors ``zoom`` (Java line 285)."""
-        if self._image_width is not None:
-            self._image_width = self._image_width + (self._image_width * percent / 100)
+        """Mirrors ``zoom`` (Java line 285).
+
+        Scales width and height by ``percent`` and writes the resulting
+        integer dimensions into ``formatterRectangleParameters[2]`` / ``[3]``.
+        """
         if self._image_height is not None:
             self._image_height = self._image_height + (self._image_height * percent / 100)
+            self._formatter_rectangle_parameters[3] = int(self._image_height)
+        if self._image_width is not None:
+            self._image_width = self._image_width + (self._image_width * percent / 100)
+            self._formatter_rectangle_parameters[2] = int(self._image_width)
         return self
 
     def coordinates(self, x: float, y: float) -> PDVisibleSignDesigner:
@@ -205,14 +265,20 @@ class PDVisibleSignDesigner:
         return self._image_width
 
     def width(self, width: float) -> PDVisibleSignDesigner:
+        """Mirrors ``width(float)`` (Java line 360). Also writes the integer
+        width into ``formatterRectangleParameters[2]``."""
         self._image_width = width
+        self._formatter_rectangle_parameters[2] = int(width)
         return self
 
     def get_height(self) -> float | None:
         return self._image_height
 
     def height(self, height: float) -> PDVisibleSignDesigner:
+        """Mirrors ``height(float)`` (Java line 381). Also writes the integer
+        height into ``formatterRectangleParameters[3]``."""
         self._image_height = height
+        self._formatter_rectangle_parameters[3] = int(height)
         return self
 
     def get_template_height(self) -> float:
@@ -289,13 +355,24 @@ class _IdentityAffineTransform:
     test scaffolds.
     """
 
-    def __init__(self) -> None:
-        self.m00 = 1.0
-        self.m10 = 0.0
-        self.m01 = 0.0
-        self.m11 = 1.0
-        self.m02 = 0.0
-        self.m12 = 0.0
+    def __init__(
+        self,
+        m00: float = 1.0,
+        m10: float = 0.0,
+        m01: float = 0.0,
+        m11: float = 1.0,
+        m02: float = 0.0,
+        m12: float = 0.0,
+    ) -> None:
+        # Argument order mirrors ``java.awt.geom.AffineTransform(m00, m10,
+        # m01, m11, m02, m12)`` so the rotation cases in
+        # :meth:`PDVisibleSignDesigner.adjust_for_rotation` map 1:1.
+        self.m00 = float(m00)
+        self.m10 = float(m10)
+        self.m01 = float(m01)
+        self.m11 = float(m11)
+        self.m02 = float(m02)
+        self.m12 = float(m12)
 
 
 __all__ = ["PDVisibleSignDesigner"]

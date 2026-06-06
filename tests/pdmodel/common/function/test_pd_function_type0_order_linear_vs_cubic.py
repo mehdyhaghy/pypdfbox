@@ -1,25 +1,13 @@
-"""Wave 1369 — PDFunctionType0 ``/Order`` (linear vs cubic) parity.
+"""PDFunctionType0 ``/Order`` parity — upstream always interpolates linearly.
 
-The sampled-function spec (PDF 32000-1 §7.10.2) defines two valid
-interpolation orders:
-
-* ``/Order = 1`` — n-linear blend of the 2^n surrounding samples (default).
-* ``/Order = 3`` — Catmull-Rom cubic Hermite over 4 surrounding samples
-  per axis (clamped at the table edges).
-
-Coverage already lives in ``test_pd_function.py`` and
-``test_pd_function_type0_eval.py`` for the basic linear vs cubic
-discrimination, but this file rounds out:
-
-* The shape contract — cubic and linear agree exactly at every grid index.
-* Cubic monotonicity isn't required, but cubic and linear must agree to
-  within the cubic-overshoot envelope of [min, max] of the surrounding
-  samples after ``/Range`` clipping.
-* /Order fallback semantics — any value other than 1 or 3 must fall back
-  to linear with no error (logged-warning behaviour, but eval still works).
-* /Order interaction with /Decode — the cubic-overshoot clamp happens
-  after the decode-map, so a cubic overshoot outside [0, sample_max]
-  still maps to a /Range-clipped result.
+Originally (wave 1369) this file pinned a Catmull-Rom cubic spline for
+``/Order = 3``. Wave 1500's parity audit (round 7) verified against the live
+PDFBox 3.0.7 jar that upstream ``PDFunctionType0.eval`` has **no cubic
+branch**: it reads neither honours ``/Order`` — every input is interpolated
+n-linearly regardless. pypdfbox was reverted to match (parity is the metric,
+CLAUDE.md "Behavior over style"), so this file now pins the corrected
+contract: ``/Order = 1`` and ``/Order = 3`` (and every other value) produce
+byte-identical linear output.
 """
 
 from __future__ import annotations
@@ -80,13 +68,12 @@ def _build(
     return PDFunctionType0(raw)
 
 
-# ---------- /Order discriminator: 1 vs 3 produce same value at grid points ----------
+# ---------- /Order is ignored: 1 and 3 agree everywhere ----------
 
 
-@pytest.mark.parametrize("order", [1, 3], ids=["order-1-linear", "order-3-cubic"])
+@pytest.mark.parametrize("order", [1, 3], ids=["order-1", "order-3"])
 def test_order_agrees_at_grid_points(order: int) -> None:
-    """Linear and cubic agree exactly at every grid index — interpolation
-    only matters strictly between samples."""
+    """Linear and "cubic" agree exactly at every grid index."""
     fn = _build(
         domain=[0.0, 1.0],
         range_=[0.0, 255.0],
@@ -95,8 +82,6 @@ def test_order_agrees_at_grid_points(order: int) -> None:
         samples=[0, 64, 128, 192, 255],
         order=order,
     )
-    # 5-cell grid: x maps to encoded coord i = x * 4. Grid indices at
-    # x in {0, 0.25, 0.5, 0.75, 1.0} land exactly on samples [0..4].
     for i, x in enumerate([0.0, 0.25, 0.5, 0.75, 1.0]):
         out = fn.eval([x])[0]
         assert math.isclose(
@@ -104,13 +89,12 @@ def test_order_agrees_at_grid_points(order: int) -> None:
         ), f"order={order} x={x} got {out}"
 
 
-def test_cubic_differs_from_linear_at_non_grid_point() -> None:
-    """Cubic interpolation on a curved sample sequence must produce a
-    different value than linear at a between-grid point.
+def test_order3_equals_order1_at_non_grid_point() -> None:
+    """Upstream ignores /Order, so /Order = 3 produces the SAME linear value
+    as /Order = 1 at a between-grid point — there is no cubic divergence.
 
-    Sample sequence ``[0, 100, 50, 200, 150]`` has enough curvature that
-    the Catmull-Rom blend at a quarter-cell offset will not equal the
-    pure linear midpoint.
+    (Verified against the PDFBox 3.0.7 jar: a sample sequence with curvature
+    yields identical output for /Order 1 and 3.)
     """
     samples = [0, 100, 50, 200, 150]
     lin = _build(
@@ -129,55 +113,26 @@ def test_cubic_differs_from_linear_at_non_grid_point() -> None:
         samples=samples,
         order=3,
     )
-    # Pick a point that doesn't fall on a sample index — encoded coord
-    # 1.5 = x = 0.375.
     a = lin.eval([0.375])[0]
     b = cub.eval([0.375])[0]
-    assert not math.isclose(a, b, rel_tol=1e-3, abs_tol=1e-3), (
-        f"cubic ({b}) must differ from linear ({a}) at non-grid point"
+    assert math.isclose(a, b, rel_tol=1e-9, abs_tol=1e-9), (
+        f"/Order=3 ({b}) must equal /Order=1 ({a}) — upstream ignores /Order"
     )
 
 
-# ---------- Catmull-Rom Hermite numeric parity ----------
-
-
-def test_cubic_midpoint_matches_hand_computed_hermite() -> None:
-    """The cubic interpolant at the midpoint between samples 1 and 2 of
-    ``[0, 64, 128, 192]`` is computable by hand via the Catmull-Rom
-    Hermite basis:
-
-    * ``t = 0.5``
-    * ``m1 = (s2 - s0) / 2 = (128 - 0) / 2 = 64``
-    * ``m2 = (s3 - s1) / 2 = (192 - 64) / 2 = 64``
-    * basis: h00=0.5, h10=0.125, h01=0.5, h11=-0.125
-    * result = 0.5 * 64 + 0.125 * 64 + 0.5 * 128 + (-0.125) * 64 = 96
-    """
-    fn = _build(
-        domain=[0.0, 1.0],
-        range_=[0.0, 255.0],
-        size=[4],
-        bits=8,
-        samples=[0, 64, 128, 192],
-        order=3,
-    )
-    # 4-cell grid: encoded coord 1.5 = x = 0.5.
-    out = fn.eval([0.5])[0]
-    assert math.isclose(out, 96.0, rel_tol=1e-9, abs_tol=1e-9)
-
-
-# ---------- /Order fallback ----------
+# ---------- every /Order value behaves linearly ----------
 
 
 @pytest.mark.parametrize(
     "order",
-    [0, 2, 4, 5, -1, 100],
-    ids=[f"fallback-order-{o}" for o in [0, 2, 4, 5, -1, 100]],
+    [0, 2, 3, 4, 5, -1, 100],
+    ids=[f"order-{o}" for o in [0, 2, 3, 4, 5, -1, 100]],
 )
-def test_unsupported_order_falls_back_to_linear(order: int) -> None:
-    """Any /Order other than {1, 3} must fall back to linear blending —
-    eval still works, the result equals the /Order=1 result."""
+def test_any_order_behaves_linearly(order: int) -> None:
+    """Any /Order value (including 3) interpolates linearly — the result
+    equals the /Order = 1 result at every probed input."""
     samples = [0, 100, 50, 200, 150]
-    fb = _build(
+    other = _build(
         domain=[0.0, 1.0],
         range_=[0.0, 255.0],
         size=[5],
@@ -194,22 +149,34 @@ def test_unsupported_order_falls_back_to_linear(order: int) -> None:
         order=1,
     )
     for x in [0.0, 0.1, 0.35, 0.5, 0.65, 0.9, 1.0]:
-        a = fb.eval([x])[0]
+        a = other.eval([x])[0]
         b = linear.eval([x])[0]
         assert math.isclose(a, b, rel_tol=1e-9, abs_tol=1e-9), (
-            f"fallback /Order={order} at x={x} got {a} but linear is {b}"
+            f"/Order={order} at x={x} got {a} but linear is {b}"
         )
 
 
-# ---------- Cubic overshoot is /Range-clipped ----------
+def test_order3_on_linear_data_is_exact_linear() -> None:
+    """Linear sample data interpolates linearly under any /Order. The cell
+    midpoint between samples 1 and 2 of ``[0, 64, 128, 192]`` is the linear
+    average 96 — the same value linear interpolation gives."""
+    fn = _build(
+        domain=[0.0, 1.0],
+        range_=[0.0, 255.0],
+        size=[4],
+        bits=8,
+        samples=[0, 64, 128, 192],
+        order=3,
+    )
+    out = fn.eval([0.5])[0]
+    assert math.isclose(out, 96.0, rel_tol=1e-9, abs_tol=1e-9)
 
 
-def test_cubic_overshoot_is_clipped_to_range() -> None:
-    """Catmull-Rom can overshoot the surrounding sample envelope; the
-    /Range clipping step must catch any over/undershoot so the final
-    output stays inside the declared output domain."""
-    # A sample pattern (0, 255, 0) creates a sharp peak; the cubic
-    # interpolant near sample 1 may overshoot the [0, 255] envelope.
+# ---------- /Range clipping still applies ----------
+
+
+def test_output_is_range_clipped() -> None:
+    """Every interpolated output stays inside the declared /Range."""
     fn = _build(
         domain=[0.0, 1.0],
         range_=[0.0, 255.0],
@@ -218,22 +185,18 @@ def test_cubic_overshoot_is_clipped_to_range() -> None:
         samples=[0, 255, 0],
         order=3,
     )
-    # Sweep across the curve — every value must be within /Range.
     for k in range(0, 101):
         x = k / 100.0
         out = fn.eval([x])[0]
         assert 0.0 <= out <= 255.0, f"x={x} produced out-of-range {out}"
 
 
-# ---------- /Order = 3 with 2D table ----------
+# ---------- 2D /Order = 3 corners ----------
 
 
-def test_cubic_2d_smoke_at_corners() -> None:
-    """For a 4x4 2D table with /Order=3, the corner inputs still hit the
-    expected corner samples — the edge-clamped neighbour lookup makes
-    boundary cells behave as if the neighbour-1 cell were the same as
-    the corner cell."""
-    # Plane increasing diagonally with integer codes.
+def test_order3_2d_smoke_at_corners() -> None:
+    """For a 4x4 2D table the corner inputs hit the expected corner samples
+    under /Order = 3 (linear interpolation, edge-clamped)."""
     samples = [
         0, 16, 32, 48,
         64, 80, 96, 112,
@@ -248,29 +211,19 @@ def test_cubic_2d_smoke_at_corners() -> None:
         samples=samples,
         order=3,
     )
-    # Four corners
     assert math.isclose(fn.eval([0.0, 0.0])[0], 0.0, rel_tol=1e-9, abs_tol=1e-9)
     assert math.isclose(fn.eval([1.0, 0.0])[0], 48.0, rel_tol=1e-9, abs_tol=1e-9)
     assert math.isclose(fn.eval([0.0, 1.0])[0], 192.0, rel_tol=1e-9, abs_tol=1e-9)
     assert math.isclose(fn.eval([1.0, 1.0])[0], 240.0, rel_tol=1e-9, abs_tol=1e-9)
 
 
-# ---------- /Order with /Decode mapping ----------
+# ---------- /Decode mapping ----------
 
 
-def test_cubic_result_is_decoded_then_clipped() -> None:
-    """Order=3 evaluates the cubic over raw sample codes; the per-output
-    /Decode then maps the (possibly overshooting) sample to a Range pair
-    and finally /Range clips the result. Build a table where the cubic
-    result is well inside the surrounding-sample envelope so we can
-    predict the decoded value exactly.
-
-    Samples ``[10, 20, 30, 40]`` are linear; cubic on linear data is
-    exact linear (Catmull-Rom reproduces lines). So eval at the cell
-    midpoint between 1 and 2 must equal 25 in sample space, then map
-    through /Decode = [0, 100] to ``25 / sample_max * 100`` with
-    ``sample_max=255`` → ``9.803921...``.
-    """
+def test_result_is_decoded_then_clipped() -> None:
+    """Linear sample data decoded through /Decode = [0, 100]: the midpoint of
+    samples 1 and 2 of ``[10, 20, 30, 40]`` is 25 in sample space, mapped to
+    ``25 / 255 * 100``."""
     fn = _build(
         domain=[0.0, 1.0],
         range_=[0.0, 100.0],
@@ -280,7 +233,6 @@ def test_cubic_result_is_decoded_then_clipped() -> None:
         decode=[0.0, 100.0],
         order=3,
     )
-    # Encoded coord 1.5 = x = 0.5
     out = fn.eval([0.5])[0]
     expected = 25.0 / 255.0 * 100.0
     assert math.isclose(out, expected, rel_tol=1e-9, abs_tol=1e-9)

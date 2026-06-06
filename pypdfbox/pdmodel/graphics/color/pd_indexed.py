@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from pypdfbox.cos import (
@@ -405,7 +406,14 @@ class PDIndexed(PDSpecialColorSpace):
         rgb_table = self.init_rgb_color_table()
         if not rgb_table:
             return [0.0, 0.0, 0.0]
-        index = int(round(value[0]))
+        # Upstream uses ``Math.round(value[0])`` (PDIndexed.java line 182),
+        # which is ``(int) Math.floor(a + 0.5f)`` — round-half-UP, NOT
+        # Python's banker's ``round``. The two disagree on every
+        # half-integer tint (Java ``0.5 -> 1``, ``2.5 -> 3``; Python
+        # ``round(0.5) == 0``, ``round(2.5) == 2``). Mirror Java exactly so
+        # fractional indices dereference the same palette slot (the next
+        # clamp pins negatives to 0, matching ``Math.max(index, 0)``).
+        index = math.floor(value[0] + 0.5)
         if index < 0:
             index = 0
         max_index = len(rgb_table) - 1

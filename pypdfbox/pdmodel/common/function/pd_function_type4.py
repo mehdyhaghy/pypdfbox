@@ -343,8 +343,19 @@ def _op_mul(s: Stack) -> None:
 def _op_div(s: Stack) -> None:
     b = _pop_num(s)
     a = _pop_num(s)
-    if b == 0:
-        raise OSError("division by zero")
+    # Upstream ArithmeticOperators$Div is plain ``num1.floatValue() /
+    # num2.floatValue()`` — IEEE-754 float division, so a zero divisor yields
+    # +/-Infinity (or NaN for 0/0), which the subsequent /Range clip clamps to
+    # the range bound. Mirror that instead of raising: a Type 4 program that
+    # divides by zero must produce the same clamped output as Java, not an
+    # exception (verified against the jar: ``{ 1 0 div }`` over /Range [-1000,
+    # 1000] returns 1000.0).
+    if b == 0.0:
+        if a == 0.0:
+            s.append(math.nan)
+        else:
+            s.append(math.inf if a > 0.0 else -math.inf)
+        return
     s.append(a / b)
 
 
@@ -433,21 +444,43 @@ def _op_atan(s: Stack) -> None:
 def _op_exp(s: Stack) -> None:
     exponent = _pop_num(s)
     base = _pop_num(s)
-    s.append(math.pow(base, exponent))
+    # Upstream ArithmeticOperators$Exp == ``(float) Math.pow(base, exp)``.
+    # Java's Math.pow returns NaN for a negative base with a non-integer
+    # exponent (and for other indeterminate forms) rather than throwing;
+    # Python's math.pow raises ValueError on the same inputs. Catch and emit
+    # NaN so the /Range clip handles it exactly as Java does (jar: ``{ -2 0.5
+    # exp }`` returns NaN).
+    try:
+        s.append(math.pow(base, exponent))
+    except ValueError:
+        s.append(math.nan)
 
 
 def _op_ln(s: Stack) -> None:
     a = _pop_num(s)
-    if a <= 0:
-        raise OSError("ln of non-positive number")
-    s.append(math.log(a))
+    # Upstream ArithmeticOperators$Ln is plain ``(float) Math.log(...)`` with no
+    # domain guard: Math.log(0) == -Infinity and Math.log(negative) == NaN. The
+    # subsequent /Range clip turns -Infinity into the range min and passes NaN
+    # through, so mirror Java rather than raising (jar: ``{ 0 ln }`` clamps to
+    # the range min).
+    if a == 0.0:
+        s.append(-math.inf)
+    elif a < 0.0:
+        s.append(math.nan)
+    else:
+        s.append(math.log(a))
 
 
 def _op_log(s: Stack) -> None:
     a = _pop_num(s)
-    if a <= 0:
-        raise OSError("log of non-positive number")
-    s.append(math.log10(a))
+    # Mirrors upstream ArithmeticOperators$Log == ``(float) Math.log10(...)``;
+    # same -Infinity / NaN edge behaviour as ``ln`` (see above).
+    if a == 0.0:
+        s.append(-math.inf)
+    elif a < 0.0:
+        s.append(math.nan)
+    else:
+        s.append(math.log10(a))
 
 
 def _op_cvi(s: Stack) -> None:

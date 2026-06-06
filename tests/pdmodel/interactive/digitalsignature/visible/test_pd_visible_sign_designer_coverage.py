@@ -94,6 +94,33 @@ def test_zoom_scales_width_and_height_by_percentage() -> None:
     designer.zoom(50.0)
     assert designer.get_width() == 150.0
     assert designer.get_height() == 75.0
+    # Upstream zoom writes the new integer dimensions into the formatter
+    # rectangle (Java PDVisibleSignDesigner.zoom, line 285).
+    params = designer.get_formatter_rectangle_parameters()
+    assert params[2] == 150
+    assert params[3] == 75
+
+
+def test_width_height_update_formatter_rectangle() -> None:
+    # Java width(float)/height(float) cast into formatterRectangleParameters
+    # [2]/[3] (lines 360/381).
+    designer = PDVisibleSignDesigner()
+    designer.width(123.7).height(45.9)
+    params = designer.get_formatter_rectangle_parameters()
+    assert params[2] == 123
+    assert params[3] == 45
+
+
+def test_set_image_updates_formatter_rectangle() -> None:
+    class _Img:
+        width = 64
+        height = 32
+
+    designer = PDVisibleSignDesigner()
+    designer.set_image(_Img())
+    params = designer.get_formatter_rectangle_parameters()
+    assert params[2] == 64
+    assert params[3] == 32
 
 
 def test_zoom_no_op_when_dimensions_unset() -> None:
@@ -172,6 +199,60 @@ def test_adjust_for_rotation_returns_self() -> None:
     assert designer.adjust_for_rotation() is designer
 
 
+def _designer_at_rotation(rotation: int) -> PDVisibleSignDesigner:
+    designer = PDVisibleSignDesigner()
+    designer.page_width(600.0).page_height(800.0)
+    designer.width(100.0).height(40.0)
+    designer.coordinates(10.0, 20.0)
+    designer._rotation = rotation
+    return designer
+
+
+def test_adjust_for_rotation_90() -> None:
+    # Java case 90 (lines 222-233): yAxis = pageHeight - xAxis - imageWidth,
+    # xAxis = old yAxis, width/height swap, affine = (0, h/w, -w/h, 0, w, 0).
+    d = _designer_at_rotation(90)
+    d.adjust_for_rotation()
+    assert d.get_x_axis() == 20.0
+    assert d.get_y_axis() == 800.0 - 10.0 - 100.0  # 690.0
+    assert d.get_width() == 40.0  # swapped
+    assert d.get_height() == 100.0
+    t = d.get_transform()
+    assert (t.m00, t.m10, t.m01, t.m11, t.m02, t.m12) == (
+        0.0, 40.0 / 100.0, -100.0 / 40.0, 0.0, 100.0, 0.0,
+    )
+
+
+def test_adjust_for_rotation_180() -> None:
+    # Java case 180 (lines 236-242): xAxis = pageWidth - xAxis - imageWidth,
+    # yAxis = pageHeight - yAxis - imageHeight, affine = (-1, 0, 0, -1, w, h).
+    d = _designer_at_rotation(180)
+    d.adjust_for_rotation()
+    assert d.get_x_axis() == 600.0 - 10.0 - 100.0  # 490.0
+    assert d.get_y_axis() == 800.0 - 20.0 - 40.0  # 740.0
+    assert d.get_width() == 100.0
+    assert d.get_height() == 40.0
+    t = d.get_transform()
+    assert (t.m00, t.m10, t.m01, t.m11, t.m02, t.m12) == (
+        -1.0, 0.0, 0.0, -1.0, 100.0, 40.0,
+    )
+
+
+def test_adjust_for_rotation_270() -> None:
+    # Java case 270 (lines 245-256): xAxis = pageWidth - yAxis - imageHeight,
+    # yAxis = old xAxis, width/height swap, affine = (0, -h/w, w/h, 0, 0, h).
+    d = _designer_at_rotation(270)
+    d.adjust_for_rotation()
+    assert d.get_x_axis() == 600.0 - 20.0 - 40.0  # 540.0
+    assert d.get_y_axis() == 10.0
+    assert d.get_width() == 40.0  # swapped
+    assert d.get_height() == 100.0
+    t = d.get_transform()
+    assert (t.m00, t.m10, t.m01, t.m11, t.m02, t.m12) == (
+        0.0, -40.0 / 100.0, 100.0 / 40.0, 0.0, 0.0, 40.0,
+    )
+
+
 # ---------------------------------------------------------------------------
 # file / document page-size discovery
 # ---------------------------------------------------------------------------
@@ -188,11 +269,15 @@ class _MediaBox:
 
 
 class _FakePage:
-    def __init__(self, width: float, height: float) -> None:
+    def __init__(self, width: float, height: float, rotation: int = 0) -> None:
         self._box = _MediaBox(width, height)
+        self._rotation = rotation
 
     def get_media_box(self) -> _MediaBox:
         return self._box
+
+    def get_rotation(self) -> int:
+        return self._rotation
 
 
 class _FakeDocument:
@@ -205,10 +290,22 @@ class _FakeDocument:
 
 def test_calculate_page_size_records_dimensions() -> None:
     designer = PDVisibleSignDesigner()
-    doc = _FakeDocument([_FakePage(595.0, 842.0)])
+    doc = _FakeDocument([_FakePage(595.0, 842.0, rotation=450)])
     designer.calculate_page_size(doc, 1)
     assert designer.get_page_width() == 595.0
     assert designer.get_page_height() == 842.0
+    # Upstream sets imageSizeInPercents to 100 and rotation to
+    # getRotation() % 360 (Java calculatePageSize, lines 195-207).
+    assert designer.get_image_size_in_percents() == 100.0
+    assert designer._rotation == 90
+
+
+def test_calculate_page_size_rejects_page_below_one() -> None:
+    # Upstream throws IllegalArgumentException for page < 1.
+    designer = PDVisibleSignDesigner()
+    doc = _FakeDocument([_FakePage(595.0, 842.0)])
+    with pytest.raises(ValueError, match="First page of pdf is 1"):
+        designer.calculate_page_size(doc, 0)
 
 
 def test_calculate_page_size_swallows_exceptions() -> None:

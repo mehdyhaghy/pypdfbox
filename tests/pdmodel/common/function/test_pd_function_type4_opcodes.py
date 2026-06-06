@@ -13,6 +13,8 @@ the inputs untouched. Outputs go through ``clip_output`` only when
 
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from pypdfbox.cos import COSArray, COSStream
@@ -71,9 +73,11 @@ def test_div() -> None:
     assert _run("{ 4 2 div }") == pytest.approx([2.0])
 
 
-def test_div_by_zero_raises() -> None:
-    with pytest.raises(OSError):
-        _run("{ 1 0 div }")
+def test_div_by_zero_yields_infinity() -> None:
+    # IEEE float division (no /Range here to clip): 1/0 == +Infinity. pypdfbox
+    # mirrors upstream rather than raising (wave 1500 parity fix).
+    [r] = _run("{ 1 0 div }")
+    assert r == math.inf
 
 
 def test_idiv() -> None:
@@ -178,9 +182,14 @@ def test_ln() -> None:
     assert _run("{ 100 ln }") == pytest.approx([4.60517018], rel=1e-6)
 
 
-def test_ln_non_positive_raises() -> None:
-    with pytest.raises(OSError):
-        _run("{ 0 ln }")
+def test_ln_non_positive_yields_special() -> None:
+    # Upstream Math.log has no domain guard: log(0) == -Infinity (clamped to
+    # /Range min downstream), log(negative) == NaN. pypdfbox mirrors this
+    # (wave 1500 parity fix) rather than raising.
+    [r] = _run("{ 0 ln }")
+    assert r == -math.inf
+    [r2] = _run("{ -5 ln }")
+    assert math.isnan(r2)
 
 
 def test_log() -> None:
@@ -188,9 +197,12 @@ def test_log() -> None:
     assert _run("{ 100 log }") == pytest.approx([2.0])
 
 
-def test_log_non_positive_raises() -> None:
-    with pytest.raises(OSError):
-        _run("{ -1 log }")
+def test_log_non_positive_yields_special() -> None:
+    # log10(negative) == NaN, log10(0) == -Infinity (wave 1500 parity fix).
+    [r] = _run("{ -1 log }")
+    assert math.isnan(r)
+    [r2] = _run("{ 0 log }")
+    assert r2 == -math.inf
 
 
 def test_cvi() -> None:

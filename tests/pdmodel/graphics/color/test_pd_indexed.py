@@ -465,3 +465,34 @@ def test_wave1262_actual_max_index_negative_for_empty_lookup() -> None:
     assert cs.get_actual_max_index() == -1
     assert cs.get_color_table() == []
     assert cs.get_rgb_color_table() == []
+
+
+# ---------- wave1500: Math.round half-UP index parity ----------
+
+
+def test_wave1500_to_rgb_half_integer_index_rounds_half_up() -> None:
+    """``PDIndexed.to_rgb`` mirrors Java ``Math.round(value[0])`` —
+    round-half-UP — not Python's banker's ``round``. For a 4-entry
+    DeviceRGB palette (black/red/green/blue), tint ``0.5`` dereferences
+    slot 1 (red) and ``2.5`` dereferences slot 3 (blue); Python's
+    ``round`` would have picked slots 0 and 2 (PDIndexed.java line 182).
+    """
+    # palette: 0=black 1=red 2=green 3=blue
+    palette = bytes([0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255])
+    cs = _make_indexed(3, COSString(palette))
+
+    def slot(value: float) -> tuple[int, int, int]:
+        r, g, b = cs.to_rgb([value])
+        return (round(r * 255.0), round(g * 255.0), round(b * 255.0))
+
+    # half-integers round UP (the cases where banker's rounding diverges)
+    assert slot(0.5) == (255, 0, 0)  # -> 1 red  (Python round -> 0)
+    assert slot(1.5) == (0, 255, 0)  # -> 2 green
+    assert slot(2.5) == (0, 0, 255)  # -> 3 blue (Python round -> 2)
+    # plain rounding either side
+    assert slot(0.4) == (0, 0, 0)  # -> 0 black
+    assert slot(0.6) == (255, 0, 0)  # -> 1 red
+    # clamping: negatives pinned to 0, overflow pinned to actual_max_index
+    assert slot(-0.5) == (0, 0, 0)
+    assert slot(3.5) == (0, 0, 255)  # would round to 4, clamped to 3
+    assert slot(100.0) == (0, 0, 255)

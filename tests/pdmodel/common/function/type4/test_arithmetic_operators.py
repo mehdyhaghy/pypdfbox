@@ -119,9 +119,14 @@ def test_div():
     assert _exec(Div(), 10.0, 4.0) == [2.5]
 
 
-def test_div_by_zero_raises():
-    with pytest.raises(OSError):
-        _exec(Div(), 1.0, 0.0)
+def test_div_by_zero_yields_infinity():
+    # Upstream ArithmeticOperators$Div is plain IEEE float division: a zero
+    # divisor yields +/-Infinity (NaN for 0/0), absorbed by the later /Range
+    # clip. pypdfbox mirrors this rather than raising (wave 1500 parity fix).
+    assert _exec(Div(), 1.0, 0.0) == [math.inf]
+    assert _exec(Div(), -1.0, 0.0) == [-math.inf]
+    [r] = _exec(Div(), 0.0, 0.0)
+    assert math.isnan(r)
 
 
 def test_exp():
@@ -150,11 +155,12 @@ def test_ln():
     assert math.isclose(r, 1.0, abs_tol=1e-9)
 
 
-def test_ln_non_positive_raises():
-    with pytest.raises(OSError):
-        _exec(Ln(), 0.0)
-    with pytest.raises(OSError):
-        _exec(Ln(), -1.0)
+def test_ln_non_positive_yields_special():
+    # Upstream Math.log(0) == -Infinity, Math.log(negative) == NaN — no domain
+    # guard. pypdfbox mirrors this (wave 1500 parity fix).
+    assert _exec(Ln(), 0.0) == [-math.inf]
+    [r] = _exec(Ln(), -1.0)
+    assert math.isnan(r)
 
 
 def test_log():
@@ -162,9 +168,11 @@ def test_log():
     assert math.isclose(r, 2.0, abs_tol=1e-9)
 
 
-def test_log_non_positive_raises():
-    with pytest.raises(OSError):
-        _exec(Log(), 0.0)
+def test_log_non_positive_yields_special():
+    # Upstream Math.log10(0) == -Infinity, Math.log10(negative) == NaN.
+    assert _exec(Log(), 0.0) == [-math.inf]
+    [r] = _exec(Log(), -1.0)
+    assert math.isnan(r)
 
 
 def test_mod():
