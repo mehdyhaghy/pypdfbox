@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.cos import COSInteger, COSObjectKey, COSStream
+from pypdfbox.cos import COSObjectKey, COSStream
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser import PDFParseError, PDFParser
 
@@ -88,7 +88,13 @@ def test_wave505_strict_parse_rejects_shifted_startxref_without_recovery() -> No
         parser.parse()
 
 
-def test_wave505_lazy_load_tolerates_header_object_number_mismatch() -> None:
+def test_wave505_lazy_load_rejects_header_object_number_mismatch() -> None:
+    # Wave 1503: upstream ``COSParser.parseFileObject`` throws on a header /
+    # xref object-number mismatch (Java line 729-734), so lazily resolving an
+    # object whose xref offset points at a differently-numbered ``n g obj``
+    # header raises rather than silently returning the wrong object. Verified
+    # against the live 3.0.7 oracle (ok=false). The previous wave-505 pin
+    # asserted pypdfbox's lenient ``pass``, which diverged from upstream.
     out = bytearray(b"%PDF-1.4\n")
     target_offset = len(out)
     out += b"2 0 obj\n42\nendobj\n"
@@ -101,7 +107,7 @@ def test_wave505_lazy_load_tolerates_header_object_number_mismatch() -> None:
     doc = parser.parse()
 
     try:
-        loaded = doc.get_object_from_pool(COSObjectKey(1, 0)).get_object()
-        assert loaded is COSInteger.get(42)
+        with pytest.raises(PDFParseError, match="points to wrong object"):
+            doc.get_object_from_pool(COSObjectKey(1, 0)).get_object()
     finally:
         doc.close()

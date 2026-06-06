@@ -68,7 +68,8 @@ def _lattice_stream(
 def test_two_row_three_column_lattice_decodes_four_triangles() -> None:
     """A 2-row x 3-column lattice yields ``2 * (3 - 1) == 4`` triangles. Each
     2x2 cell ``(v1=top-left, v2=top-right, v3=bottom-left, v4=bottom-right)``
-    splits into ``(v1, v2, v3)`` and ``(v2, v4, v3)``."""
+    splits into ``(v1, v2, v3)`` and ``(v2, v3, v4)`` — the same vertex order
+    as upstream ``PDShadingType5.createShadedTriangleList``."""
     data = (
         _vtx(0, 0, 1, 0, 0)
         + _vtx(50, 0, 0, 1, 0)
@@ -82,10 +83,10 @@ def test_two_row_three_column_lattice_decodes_four_triangles() -> None:
 
     # Cell 0 (columns 0..1): v1=(0,0) v2=(50,0) v3=(0,100) v4=(50,100).
     assert tris[0][0] == ((0.0, 0.0), (_MID, 0.0), (0.0, 100.0))
-    assert tris[1][0] == ((_MID, 0.0), (_MID, 100.0), (0.0, 100.0))
+    assert tris[1][0] == ((_MID, 0.0), (0.0, 100.0), (_MID, 100.0))
     # Cell 1 (columns 1..2): v1=(50,0) v2=(100,0) v3=(50,100) v4=(100,100).
     assert tris[2][0] == ((_MID, 0.0), (100.0, 0.0), (_MID, 100.0))
-    assert tris[3][0] == ((100.0, 0.0), (100.0, 100.0), (_MID, 100.0))
+    assert tris[3][0] == ((100.0, 0.0), (_MID, 100.0), (100.0, 100.0))
 
 
 def test_lattice_carries_per_vertex_colors() -> None:

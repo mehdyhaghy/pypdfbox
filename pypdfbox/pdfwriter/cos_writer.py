@@ -1756,34 +1756,72 @@ class COSWriter(ICOSVisitor):
         for width in (w1, w2, w3):
             w_arr.add(COSInteger.get(width))
 
+        # Build the xref-stream dictionary in upstream's EXACT key-insertion
+        # order so the appended tail is byte-identical to PDFBox. Upstream's
+        # COSStream keySet is insertion-ordered (LinkedHashMap), and the
+        # serialiser emits keys in that order. The insertion sequence in
+        # PDFBox is:
+        #   1. ``/Length 0`` — seeded by the ``COSStream`` constructor.
+        #   2. ``addTrailerInfo`` — the trailer's ``/Info /Root /Encrypt /ID
+        #      /Prev`` subset, copied IN TRAILER-ITERATION ORDER (the
+        #      ``forEach`` over the trailer's own LinkedHashMap). Upstream
+        #      sets the new ``/Prev`` onto the trailer (``trailer.setLong``)
+        #      BEFORE ``addTrailerInfo`` runs, so ``/Prev`` rides along at its
+        #      existing trailer position.
+        #   3. ``getStream`` — ``/Type /Size /Index /W`` in that order.
+        #   4. ``createOutputStream`` — ``/Filter`` appended last; ``/Length``
+        #      is then updated in place and stays at the front.
+        # pypdfbox's ``COSStream.__init__`` does not pre-seed ``/Length``, so
+        # we seed it explicitly to reproduce step (1)'s front position.
         xref_stream = COSStream()
-        xref_stream.set_data(bytes(body), [_FLATE_DECODE_NAME])
-        xref_stream.set_item(COSName.TYPE, COSName.get_pdf_name("XRef"))  # type: ignore[attr-defined]
+        xref_stream.set_int(COSName.LENGTH, 0)  # type: ignore[attr-defined]
+
         # /Size = document-wide highest object number + 1, including the new
         # xref stream object. Mirrors upstream ``setSize(number + 2)`` where
-        # ``number`` is the highest source object number.
+        # ``number`` is the highest source object number. Computed up front but
+        # inserted in step (3) below.
         doc_keys = {k.object_number for k in doc.get_object_keys()}
         doc_keys.update(k.object_number for k in self._key_object)
         size_value = max(doc_keys | {xref_key.object_number}, default=0) + 1
-        xref_stream.set_int(COSName.SIZE, size_value)  # type: ignore[attr-defined]
-        xref_stream.set_item(COSName.get_pdf_name("W"), w_arr)
-        xref_stream.set_item(COSName.get_pdf_name("Index"), index_arr)
 
-        # Trailer info: /Root /Info /Encrypt /ID copied from the source
-        # trailer (upstream ``PDFXRefStream.addTrailerInfo``), /Prev set to
-        # the source's previous startxref, and /ID[1] refreshed.
+        # Step (2): ``addTrailerInfo`` — copy the ``/Info /Root /Encrypt /ID
+        # /Prev`` subset from the source trailer IN ITS OWN ITERATION ORDER,
+        # substituting the freshly-computed ``/Prev`` value (upstream had
+        # already overwritten it on the trailer before this call).
+        prev_value = doc.get_start_xref()
         source_trailer = doc.get_trailer()
+        _info_subset = {
+            COSName.INFO,  # type: ignore[attr-defined]
+            COSName.ROOT,  # type: ignore[attr-defined]
+            COSName.ENCRYPT,  # type: ignore[attr-defined]
+            COSName.get_pdf_name("ID"),
+            COSName.PREV,  # type: ignore[attr-defined]
+        }
         if source_trailer is not None:
-            for tkey in (
-                COSName.ROOT,  # type: ignore[attr-defined]
-                COSName.INFO,  # type: ignore[attr-defined]
-                COSName.ENCRYPT,  # type: ignore[attr-defined]
-                COSName.get_pdf_name("ID"),
-            ):
-                value = source_trailer.get_item(tkey)
-                if value is not None:
-                    xref_stream.set_item(tkey, value)
-        xref_stream.set_int(COSName.PREV, doc.get_start_xref())  # type: ignore[attr-defined]
+            for tkey in source_trailer.key_set():
+                if tkey not in _info_subset:
+                    continue
+                if tkey == COSName.PREV:  # type: ignore[attr-defined]
+                    xref_stream.set_int(COSName.PREV, prev_value)  # type: ignore[attr-defined]
+                else:
+                    xref_stream.set_item(tkey, source_trailer.get_item(tkey))
+        # ``/Prev`` may be absent from the source trailer (a first-revision
+        # synthesised document); upstream still writes it because COSWriter
+        # set it on the trailer before ``addTrailerInfo``. Append it if the
+        # iteration above didn't already.
+        if not xref_stream.contains_key(COSName.PREV):  # type: ignore[attr-defined]
+            xref_stream.set_int(COSName.PREV, prev_value)  # type: ignore[attr-defined]
+
+        # Step (3): ``getStream`` — /Type /Size /Index /W in that order.
+        xref_stream.set_item(COSName.TYPE, COSName.get_pdf_name("XRef"))  # type: ignore[attr-defined]
+        xref_stream.set_int(COSName.SIZE, size_value)  # type: ignore[attr-defined]
+        xref_stream.set_item(COSName.get_pdf_name("Index"), index_arr)
+        xref_stream.set_item(COSName.get_pdf_name("W"), w_arr)
+
+        # Step (4): write the body through the FlateDecode chain. This appends
+        # ``/Filter`` last and updates the pre-seeded ``/Length`` in place.
+        xref_stream.set_data(bytes(body), [_FLATE_DECODE_NAME])
+
         # Refresh /ID[1] (stable /ID[0]) — PDF 32000-1 §14.4. Build a fresh
         # array so the in-memory document's trailer /ID is left untouched.
         id_value = xref_stream.get_dictionary_object(COSName.get_pdf_name("ID"))

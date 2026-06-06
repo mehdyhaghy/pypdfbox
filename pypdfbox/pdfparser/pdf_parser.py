@@ -323,6 +323,16 @@ class PDFParser:
             # that here (full-rebuild only — the lazy fixtures take the
             # located-xref branch and are untouched).
             self._reject_full_rebuild_without_root()
+            # initialParse also runs checkPages(root) right after the /Root
+            # validation. On the rebuilt-trailer path this prunes /Kids whose
+            # targets are missing or truncated (a page object cut off mid-body
+            # by a truncation that landed past its ``n g obj`` header but before
+            # ``endobj``) and rewrites /Count, so the recovered page tally
+            # matches upstream. Without it the dangling kid would still be
+            # counted (pypdfbox defers initial_parse on the located-xref path,
+            # but the full rebuild mirrors initialParse end-to-end). The
+            # located-xref path is untouched — its kids are valid.
+            self._check_pages_after_full_rebuild()
         elif self._lenient:
             # PDFBox's COSParser.checkXrefOffsets: in lenient mode every
             # parsed xref offset is verified to point at its ``n g obj``
@@ -1538,6 +1548,15 @@ class PDFParser:
             self._resolver.set_entry(
                 key, XrefEntry(type=XrefType.TABLE, offset=offset)
             )
+        # When the plain-object scan recovered no /Root, the catalog may be
+        # packed inside an object stream — mirror upstream
+        # ``BruteForceParser.rebuildTrailer`` (BruteForceParser.java line 840-848):
+        # ``if (!bfSearchForTrailer && !searchForTrailerItems) {
+        # bfSearchForObjStreams(); searchForTrailerItems(); }``. Recover the
+        # ObjStm members, register them as COMPRESSED entries, and re-derive
+        # /Root + /Info from the now-reachable compressed catalog candidate.
+        if trailer.get_item(COSName.ROOT) is None:
+            self._recover_obj_stream_trailer_items(offsets, trailer)
         self._resolver.set_trailer(trailer)
         self._cos_parser.set_trailer_was_rebuild(True)
         # ``startxref`` is unknown after a full rebuild. Leave the
@@ -1546,6 +1565,73 @@ class PDFParser:
         # "synthesised / unsaved"); the setter rejects the upstream -1
         # sentinel, and a bogus positive offset would mislead a later
         # incremental /Prev chain.
+
+    _INFO_KEYS = (
+        "CreationDate",
+        "ModDate",
+        "Producer",
+        "Creator",
+        "Title",
+        "Author",
+        "Subject",
+        "Keywords",
+    )
+
+    def _recover_obj_stream_trailer_items(
+        self, offsets: dict[COSObjectKey, int], trailer: COSDictionary
+    ) -> None:
+        """Recover a /Root (and /Info) packed inside an object stream.
+
+        Mirrors the upstream ``bfSearchForObjStreams`` + second
+        ``searchForTrailerItems`` pass in ``BruteForceParser.rebuildTrailer``:
+        the catalog of a PDF whose xref stream was lost (truncated /missing
+        ``startxref``) lives compressed inside a ``/Type /ObjStm`` object, so
+        the plain ``n g obj`` scan never sees it. We parse every recovered
+        object stream, register its members as ``COMPRESSED`` xref entries
+        (container number + inner index), pin each member into the document
+        pool, and then classify the catalog / info candidates exactly as
+        :meth:`COSParser.rebuild_trailer` does for plain objects."""
+        assert self._cos_parser is not None and self._document is not None
+        members = self._cos_parser.bf_search_for_obj_stream_members(offsets)
+        if not members:
+            return
+        catalog_name = COSName.get_pdf_name("Catalog")
+        type_name = COSName.get_pdf_name("Type")
+        fdf_name = COSName.get_pdf_name("FDF")
+        info_names = [COSName.get_pdf_name(k) for k in self._INFO_KEYS]
+        root_set = trailer.get_item(COSName.ROOT) is not None
+        info_set = trailer.get_item(COSName.get_pdf_name("Info")) is not None
+        for key, (container, inner_index, parsed) in members.items():
+            # Register the compressed member so its loader resolves later and
+            # pin the already-parsed object into the pool.
+            self._resolver.set_entry(
+                key,
+                XrefEntry(
+                    type=XrefType.COMPRESSED,
+                    offset=container,
+                    compressed_index=inner_index,
+                ),
+            )
+            holder = self._document.get_object_from_pool(key)
+            holder.set_object(parsed)
+            if not isinstance(parsed, COSDictionary):
+                continue
+            is_catalog = (
+                parsed.get_item(type_name) is catalog_name
+                or parsed.contains_key(fdf_name)
+            )
+            if not root_set and is_catalog:
+                ref = self._document.get_object_from_pool(key)
+                trailer.set_item(COSName.ROOT, ref)
+                root_set = True
+            elif (
+                not info_set
+                and not is_catalog
+                and any(parsed.get_item(k) is not None for k in info_names)
+            ):
+                ref = self._document.get_object_from_pool(key)
+                trailer.set_item(COSName.get_pdf_name("Info"), ref)
+                info_set = True
 
     def _rebuild_trailer_for_missing_root(self) -> None:
         """Brute-force-rebuild the trailer when a cleanly parsed xref's
@@ -1587,20 +1673,36 @@ class PDFParser:
         self._cos_parser.set_trailer_was_rebuild(True)
 
     def _resolve_recovered_objects(self) -> None:
-        """Eagerly dereference every brute-force-recovered object.
+        """Dereference every brute-force-recovered object, tolerating
+        per-object body defects exactly as upstream does.
 
         Mirrors the eager resolution upstream
         ``BruteForceParser.searchForTrailerItems`` performs while rebuilding
-        the trailer: each recovered object is dereferenced (full parse,
-        including stream bodies) so a body-level defect — a stream missing
-        its ``endstream`` marker, a truncated object — surfaces as a
-        ``PDFParseError`` at load time, exactly as PDFBox surfaces the
-        equivalent ``IOException`` out of ``Loader.loadPDF``. Without this,
-        the rebuild would "succeed" and only fail lazily, diverging from
-        PDFBox's load-time PARSE_FAIL."""
+        the trailer: it loops over every recovered object and calls
+        ``cosObject.getObject()`` to classify catalog / info candidates.
+        Crucially, upstream ``COSObject.getObject`` *catches* the
+        ``IOException`` a broken body throws (``COSObject.java`` line 120:
+        ``catch (IOException e) { LOG.error(...); }``) and leaves that one
+        object null — it does NOT abort the load. So a stream truncated mid
+        body (no ``endstream``), a garbled ``obj`` keyword, or any other
+        body-level defect on an object that isn't itself the catalog leaves
+        the rest of the document fully loadable.
+
+        Wave 1503 (mutation-fuzz parity): the previous implementation let the
+        loader exception propagate, turning every such mutant into a load-time
+        failure while PDFBox recovered. We now swallow the per-object
+        ``PDFParseError`` / ``OSError`` here, matching upstream's
+        ``getObject`` contract. The catalog itself is still validated by
+        :meth:`_reject_full_rebuild_without_root` (an unresolvable /Root
+        candidate stays absent, so the rootless rejection still fires)."""
         assert self._document is not None
         for cos_obj in self._document.get_objects():
-            cos_obj.get_object()
+            try:
+                cos_obj.get_object()
+            except (PDFParseError, OSError):
+                # Upstream COSObject.getObject swallows the dereference
+                # IOException and leaves this object null; the load continues.
+                continue
 
     def _reject_full_rebuild_without_root(self) -> None:
         """Surface upstream's "Missing root" rejection on the full-rebuild path.
@@ -1621,6 +1723,38 @@ class PDFParser:
             root = trailer.get_dictionary_object(COSName.ROOT)  # type: ignore[attr-defined]
         if not isinstance(root, COSDictionary):
             raise PDFParseError("Missing root object specification in trailer.")
+
+    def _check_pages_after_full_rebuild(self) -> None:
+        """Run upstream ``initialParse``'s ``checkPages(root)`` on the rebuilt
+        trailer's catalog so dangling / truncated /Kids are pruned and /Count
+        is rewritten — matching the recovered page tally PDFBox produces.
+
+        Only the full brute-force rebuild calls this (it mirrors
+        ``initialParse`` end-to-end); the located-xref path defers
+        ``initial_parse`` and keeps its valid kids untouched. The /Root was
+        already validated by :meth:`_reject_full_rebuild_without_root`, so the
+        catalog resolves here."""
+        if self._cos_parser is None:
+            return
+        trailer = self._resolver.get_trailer()
+        if trailer is None:
+            return
+        root = trailer.get_dictionary_object(COSName.ROOT)  # type: ignore[attr-defined]
+        if not isinstance(root, COSDictionary):
+            return
+        if self._lenient and not root.contains_key(COSName.TYPE):
+            root.set_item(COSName.TYPE, COSName.CATALOG)
+        # Prune dangling / truncated kids and rewrite /Count, but ONLY when a
+        # page tree exists. We deliberately call ``check_pages_dictionary``
+        # rather than ``check_pages`` here: ``check_pages`` additionally raises
+        # "Page tree root must be a dictionary" when /Pages is absent, which is
+        # legitimate for the FDF catalogs pypdfbox also loads through this
+        # generic ``load_pdf`` path (upstream routes FDF through a separate
+        # parser that never reaches checkPages). The /Root presence was already
+        # validated by ``_reject_full_rebuild_without_root``.
+        pages = root.get_dictionary_object(COSName.get_pdf_name("Pages"))
+        if isinstance(pages, COSDictionary):
+            self._cos_parser.check_pages_dictionary(pages, set())
 
     def _check_xref_offsets_lenient(self) -> None:
         """Verify every parsed xref offset points at its ``n g obj`` header
@@ -1783,8 +1917,18 @@ class PDFParser:
                 position=self._base.position,
             )
         if on != obj.object_number or gn != obj.generation_number:
-            # Tolerable: PDFBox warns and uses what it found. We follow.
-            pass
+            # Upstream COSParser.parseFileObject (COSParser.java line 729-734)
+            # throws — unconditionally, in lenient mode too — when the object's
+            # own ``n g obj`` header disagrees with the xref key it was reached
+            # by ("XREF for N:G points to wrong object"). A definition whose
+            # generation was bumped (e.g. ``1 5 obj`` where the xref / /Root
+            # references ``1 0 R``) leaves that reference unresolvable; the
+            # caller's lazy ``COSObject.get_object`` swallows the error and the
+            # object stays null, so a bumped catalog surfaces as "Missing root".
+            raise PDFParseError(
+                f"XREF for {obj.object_number}:{obj.generation_number} points "
+                f"to wrong object: {on}:{gn} at offset {offset}"
+            )
         assert self._cos_parser is not None
         body = self._cos_parser.parse_direct_object()
         # The top-level body of an indirect object is itself the indirect

@@ -226,6 +226,10 @@ class PDShadingType5(PDShading):
                 comps.append(
                     _interpolate(c, max_src_color, col_range[k][0], col_range[k][1])
                 )
+            # PDF 32000-1 §8.7.4.5.6: each lattice vertex's data occupies a
+            # whole number of bytes; trailing partial bits are padding to be
+            # skipped. Mirrors upstream readVertex's getBitOffset() alignment.
+            reader.align_to_byte()
             return (px, py), comps
 
         # Read all vertices row-major into a list of rows, then stitch each
@@ -247,11 +251,17 @@ class PDShadingType5(PDShading):
                 v2 = rows[i][j + 1]
                 v3 = rows[i + 1][j]
                 v4 = rows[i + 1][j + 1]
+                # Vertex order mirrors upstream
+                # PDShadingType5.createShadedTriangleList: cell (v1,v2,v3)
+                # then (v2,v3,v4) — the second triangle is (v2, v3, v4), not
+                # (v2, v4, v3). Gouraud fill is winding-independent so this
+                # does not change the raster, but it keeps the decoded
+                # triangle structure byte-identical to PDFBox.
                 triangles.append(
                     ((v1[0], v2[0], v3[0]), (v1[1], v2[1], v3[1]))
                 )
                 triangles.append(
-                    ((v2[0], v4[0], v3[0]), (v2[1], v4[1], v3[1]))
+                    ((v2[0], v3[0], v4[0]), (v2[1], v3[1], v4[1]))
                 )
         return triangles
 

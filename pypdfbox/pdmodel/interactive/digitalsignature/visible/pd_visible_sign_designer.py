@@ -11,8 +11,42 @@ upstream fluent shape.
 
 from __future__ import annotations
 
+import copy
+import struct
 from pathlib import Path
 from typing import Any, BinaryIO
+
+_AFFINE_COMPONENTS = ("m00", "m10", "m01", "m11", "m02", "m12")
+
+
+def _f32(value: float) -> float:
+    """Narrow ``value`` to IEEE-754 single precision.
+
+    Upstream stores ``imageWidth`` / ``imageHeight`` as ``java.lang.Float``
+    (32-bit), so the arithmetic in ``zoom`` and the ``(int) …`` casts that
+    populate ``formatterRectangleParameters`` are single-precision. The
+    Python port computes in 64-bit; narrowing the stored dimensions to
+    float32 keeps the integer casts bit-exact with Java.
+    """
+    return struct.unpack("f", struct.pack("f", value))[0]
+
+
+def _copy_affine_transform(at: Any) -> Any:
+    """Return a defensive copy of an affine transform.
+
+    Mirrors upstream's ``new AffineTransform(affineTransform)`` copy. See
+    :meth:`PDVisibleSignDesigner.transform` for the three-tier rationale.
+    """
+    if at is None:
+        return at
+    if all(hasattr(at, component) for component in _AFFINE_COMPONENTS):
+        return _IdentityAffineTransform(
+            at.m00, at.m10, at.m01, at.m11, at.m02, at.m12
+        )
+    try:
+        return copy.copy(at)
+    except Exception:  # pragma: no cover - opaque, uncopyable handle
+        return at
 
 
 class PDVisibleSignDesigner:
@@ -81,10 +115,14 @@ class PDVisibleSignDesigner:
         height = getattr(image, "get_height", None) or getattr(image, "height", None)
         try:
             if width is not None:
-                self._image_width = float(width() if callable(width) else width)
+                self._image_width = _f32(
+                    float(width() if callable(width) else width)
+                )
                 self._formatter_rectangle_parameters[2] = int(self._image_width)
             if height is not None:
-                self._image_height = float(height() if callable(height) else height)
+                self._image_height = _f32(
+                    float(height() if callable(height) else height)
+                )
                 self._formatter_rectangle_parameters[3] = int(self._image_height)
         except (TypeError, ValueError):  # pragma: no cover - defensive
             pass
@@ -219,11 +257,21 @@ class PDVisibleSignDesigner:
         Scales width and height by ``percent`` and writes the resulting
         integer dimensions into ``formatterRectangleParameters[2]`` / ``[3]``.
         """
+        # Java's ``percent`` parameter is a 32-bit ``float``; narrow it so the
+        # whole arithmetic chain is single-precision (matches Java bit-exactly).
+        percent = _f32(percent)
         if self._image_height is not None:
-            self._image_height = self._image_height + (self._image_height * percent / 100)
+            # Mirror Java's float32 ``Float`` arithmetic: each intermediate is
+            # narrowed so the ``(int) imageHeight.floatValue()`` cast that
+            # populates the formatter rectangle matches Java bit-for-bit.
+            self._image_height = _f32(
+                self._image_height + _f32(_f32(self._image_height * percent) / 100)
+            )
             self._formatter_rectangle_parameters[3] = int(self._image_height)
         if self._image_width is not None:
-            self._image_width = self._image_width + (self._image_width * percent / 100)
+            self._image_width = _f32(
+                self._image_width + _f32(_f32(self._image_width * percent) / 100)
+            )
             self._formatter_rectangle_parameters[2] = int(self._image_width)
         return self
 
@@ -267,8 +315,8 @@ class PDVisibleSignDesigner:
     def width(self, width: float) -> PDVisibleSignDesigner:
         """Mirrors ``width(float)`` (Java line 360). Also writes the integer
         width into ``formatterRectangleParameters[2]``."""
-        self._image_width = width
-        self._formatter_rectangle_parameters[2] = int(width)
+        self._image_width = _f32(width)
+        self._formatter_rectangle_parameters[2] = int(self._image_width)
         return self
 
     def get_height(self) -> float | None:
@@ -277,8 +325,8 @@ class PDVisibleSignDesigner:
     def height(self, height: float) -> PDVisibleSignDesigner:
         """Mirrors ``height(float)`` (Java line 381). Also writes the integer
         height into ``formatterRectangleParameters[3]``."""
-        self._image_height = height
-        self._formatter_rectangle_parameters[3] = int(height)
+        self._image_height = _f32(height)
+        self._formatter_rectangle_parameters[3] = int(self._image_height)
         return self
 
     def get_template_height(self) -> float:
@@ -307,7 +355,28 @@ class PDVisibleSignDesigner:
         return self._affine_transform
 
     def transform(self, affine_transform: Any) -> PDVisibleSignDesigner:
-        self._affine_transform = affine_transform
+        """Mirrors ``transform(AffineTransform)`` (Java line 477).
+
+        Upstream stores a *defensive copy* — ``this.affineTransform = new
+        AffineTransform(affineTransform)`` — so a later mutation of the
+        caller's object cannot leak into the designer. We reproduce that
+        copy semantics in three tiers, most-faithful first:
+
+        1. If the supplied transform exposes the six ``java.awt.geom.
+           AffineTransform`` components (``m00``/``m10``/``m01``/``m11``/
+           ``m02``/``m12``), snapshot them into a fresh
+           :class:`_IdentityAffineTransform`. This is upstream-faithful for
+           every conforming transform (including the ones the rotation path
+           builds) — the stored object is a distinct copy that holds the
+           same matrix.
+        2. Otherwise fall back to :func:`copy.copy` for any object that
+           supports shallow copying.
+        3. If the object is uncopyable (e.g. an opaque C handle), store it
+           by reference. Python cannot defensively copy an arbitrary opaque
+           object; this residual case is documented and affects only
+           non-conforming externally-supplied transforms.
+        """
+        self._affine_transform = _copy_affine_transform(affine_transform)
         return self
 
     def get_formatter_rectangle_parameters(self) -> list[int]:

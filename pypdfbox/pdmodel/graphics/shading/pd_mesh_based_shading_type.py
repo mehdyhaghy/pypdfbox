@@ -76,6 +76,26 @@ class _PatchBitReader:
                 self._byte_idx += 1
         return value
 
+    def get_bit_offset(self) -> int:
+        """Current bit position within the active byte (0..7), matching
+        ``javax.imageio.stream.ImageInputStream.getBitOffset``."""
+        return self._bit_idx
+
+    def align_to_byte(self) -> None:
+        """Skip any partial bits so the next read starts on a byte boundary.
+
+        Mirrors the per-vertex padding upstream applies in
+        ``PDTriangleBasedShadingType.readVertex`` (PDF 32000-1 §8.7.4.5.5:
+        "Each set of vertex data shall occupy a whole number of bytes. If
+        the total number of bits required is not divisible by 8, the last
+        data byte for each vertex is padded at the end with extra bits,
+        which shall be ignored."). Triangle vertices (Types 4/5) are
+        byte-aligned; patch control points (Types 6/7) are **not**, so this
+        is only invoked by the Gouraud readers."""
+        if self._bit_idx != 0:
+            self._bit_idx = 0
+            self._byte_idx += 1
+
 
 def _interpolate(src: int, src_max: int, dst_min: float, dst_max: float) -> float:
     """Map ``src`` from ``[0, src_max]`` into ``[dst_min, dst_max]``.

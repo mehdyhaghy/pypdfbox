@@ -188,10 +188,17 @@ def test_image_size_in_percents_round_trip() -> None:
 
 def test_transform_round_trip() -> None:
     designer = PDVisibleSignDesigner()
-    sentinel = object()
-    result = designer.transform(sentinel)
+    # An _IdentityAffineTransform exposes the six affine components, so the
+    # defensive-copy path snapshots them into a fresh, distinct instance
+    # (mirrors upstream's ``new AffineTransform(at)``).
+    supplied = _IdentityAffineTransform(2.0, 0.0, 0.0, 3.0, 5.0, 7.0)
+    result = designer.transform(supplied)
     assert result is designer
-    assert designer.get_transform() is sentinel
+    stored = designer.get_transform()
+    assert stored is not supplied
+    assert (stored.m00, stored.m10, stored.m01, stored.m11, stored.m02, stored.m12) == (
+        2.0, 0.0, 0.0, 3.0, 5.0, 7.0,
+    )
 
 
 def test_adjust_for_rotation_returns_self() -> None:

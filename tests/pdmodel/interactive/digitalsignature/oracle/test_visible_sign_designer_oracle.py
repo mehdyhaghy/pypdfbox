@@ -94,3 +94,53 @@ def test_adjust_for_rotation_matches_pdfbox(case: tuple) -> None:
         java_f32 = struct.unpack("f", struct.pack("f", java[k]))[0]
         assert py_f32 == java_f32, f"{k}: py={py[k]} java={java[k]}"
     assert py["rect"] == java["rect"]
+
+
+# image_w, image_h, percent — chosen so the float32 (int) cast in zoom
+# straddles an integer boundary that a naive float64 path would round the
+# other way (see DEFERRED/CHANGES wave 1503). The first three are plain.
+_ZOOM_CASES = [
+    (100.0, 50.0, 50.0),
+    (255.0, 0.0, 0.392157),
+    (7.0, 13.0, 14.2857),
+    (393.70135, 200.0, -98.73),
+    (621.1739, 300.0, 66.62),
+    (806.45154, 100.0, -77.68),
+    (550.1618, 120.0, -22.75),
+    (504.934, 90.0, -21.97),
+]
+
+
+def _python_zoom(case: tuple) -> dict[str, float | tuple[int, ...]]:
+    image_w, image_h, percent = case
+    d = PDVisibleSignDesigner()
+    d.width(image_w).height(image_h)
+    d.zoom(percent)
+    return {
+        "w": float(d.get_width()),
+        "h": float(d.get_height()),
+        "rect": tuple(d.get_formatter_rectangle_parameters()),
+    }
+
+
+@requires_oracle
+@pytest.mark.parametrize(
+    "case",
+    _ZOOM_CASES,
+    ids=[f"zoom_{c[0]:.0f}x{c[1]:.0f}_{c[2]:.2f}" for c in _ZOOM_CASES],
+)
+def test_zoom_formatter_rectangle_matches_pdfbox(case: tuple) -> None:
+    java = _parse(
+        run_probe_text("VisibleSignDesignerProbe", "zoom", *(str(v) for v in case))
+    )
+    py = _python_zoom(case)
+
+    # The (int) formatter-rectangle cast is the parity-critical surface — it
+    # must agree exactly (Java zooms in single precision; the port narrows to
+    # float32 so the cast lands on the same integer).
+    assert py["rect"] == java["rect"]
+    # The stored single-precision dimensions also agree at float32 width.
+    for k in ("w", "h"):
+        py_f32 = struct.unpack("f", struct.pack("f", py[k]))[0]
+        java_f32 = struct.unpack("f", struct.pack("f", java[k]))[0]
+        assert py_f32 == java_f32, f"{k}: py={py[k]} java={java[k]}"

@@ -11,6 +11,7 @@ from pypdfbox.cos import (
     COSName,
     COSObject,
 )
+from pypdfbox.pdfparser.parse_error import PDFParseError
 
 from .pd_page import PDPage, _unwrap_page_dict
 
@@ -575,7 +576,18 @@ class PDPageTree:
             return []
         result: list[COSDictionary] = []
         for i in range(kids.size()):
-            entry = kids.get_object(i)
+            # Upstream reaches each kid through ``COSObject.getObject``, which
+            # swallows the dereference IOException and yields null for a kid
+            # whose definition is broken (a garbled ``n g obj`` header, a
+            # truncated body). pypdfbox's get_object propagates, so tolerate
+            # the failure here and fall into the null-kid repair branch below —
+            # the same "replaced null entry with an empty page" path upstream
+            # takes, so a page whose backing object can't be parsed still
+            # contributes a default-MediaBox placeholder page.
+            try:
+                entry = kids.get_object(i)
+            except (PDFParseError, OSError):
+                entry = None
             if isinstance(entry, COSDictionary):
                 result.append(entry)
                 continue

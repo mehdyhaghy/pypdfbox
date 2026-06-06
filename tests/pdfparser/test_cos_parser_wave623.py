@@ -57,17 +57,23 @@ def test_wave623_parse_object_stream_rejects_bad_metadata_shapes() -> None:
         doc.close()
 
 
-def test_wave623_parse_object_stream_rejects_truncated_header() -> None:
+def test_wave623_parse_object_stream_tolerates_inflated_n() -> None:
+    # Wave 1503: upstream ``PDFObjectStreamParser`` reads at most /N pairs but
+    # stops at the /First boundary, so an /N larger than the actual header pair
+    # count (here /N=2 with a single ``10 0`` pair) no longer raises "header
+    # truncated" — the lone member parses. The header region is ``decoded[:5]``
+    # = ``"10 0 "`` and the payload at /First is ``42``.
     doc = COSDocument()
     try:
         obj_stream = COSStream()
         obj_stream.set_item(COSName.TYPE, COSName.get_pdf_name("ObjStm"))
         obj_stream.set_item(COSName.get_pdf_name("N"), COSInteger.get(2))
         obj_stream.set_item(COSName.get_pdf_name("First"), COSInteger.get(5))
-        obj_stream.set_raw_data(b"10 0 Z")
+        obj_stream.set_raw_data(b"10 0 42")
         doc.get_object_from_pool(COSObjectKey(5, 0)).set_object(obj_stream)
 
-        with pytest.raises(PDFParseError, match="header truncated at pair 1"):
-            _parser(b"", document=doc).parse_object_stream(5)
+        parsed = _parser(b"", document=doc).parse_object_stream(5)
+        assert parsed == [COSInteger.get(42)]
+        assert doc.has_object(COSObjectKey(10, 0))
     finally:
         doc.close()

@@ -132,13 +132,18 @@ def test_object_stream_negative_first_raises() -> None:
         doc.close()
 
 
-def test_object_stream_header_truncated_relative_to_n_raises() -> None:
-    """``/N`` says two pairs but the header only holds one. The
-    truncated-header guard must fire."""
+def test_object_stream_header_truncated_relative_to_n_is_tolerated() -> None:
+    """``/N`` says two pairs but the header only holds one.
+
+    Wave 1503: aligned with upstream ``PDFObjectStreamParser`` (Java
+    ``privateReadObjectOffsets``), which reads at most /N pairs but breaks at
+    the /First boundary. An inflated /N is bounded by the header region instead
+    of raising — only the single ``4 0`` pair is read."""
     # Header text is just "4 0 " — only one pair; /N declares 2.
     stream, doc = _make_objstm(n=2, first=4, header=b"4 0 ", payload=b"(a)(b)")
     try:
-        with pytest.raises(PDFParseError, match="header truncated"):
-            _read_object_stream_offsets(stream, 11)
+        _decoded, pairs, first = _read_object_stream_offsets(stream, 11)
+        assert pairs == [(4, 0)]
+        assert first == 4
     finally:
         doc.close()

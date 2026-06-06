@@ -9,6 +9,7 @@ from pypdfbox.cos import (
     COSObject,
     COSObjectKey,
     COSStream,
+    COSString,
 )
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser import COSParser, PDFParseError
@@ -119,15 +120,26 @@ def test_wave379_parse_object_stream_rejects_negative_first() -> None:
         doc.close()
 
 
-def test_wave379_parse_object_stream_rejects_truncated_header_pairs() -> None:
+def test_wave379_parse_object_stream_tolerates_inflated_n() -> None:
+    # Wave 1503: aligned with upstream ``PDFObjectStreamParser`` (Java
+    # ``privateReadObjectOffsets``), which reads at most /N pairs but breaks as
+    # soon as the cursor reaches the /First boundary. An /N larger than the
+    # actual number of header pairs (here /N=2 with a single ``10 0`` pair) is
+    # bounded by the header region rather than raising — the lone member (obj
+    # 10) still parses. The previous wave-379 pin asserted an over-strict
+    # "header truncated" reject that upstream does not produce.
     doc = COSDocument()
     body = b"10 0 (x)"
     parser = _parser(_objstm_source(body, n=2, first=len(b"10 0 ")), document=doc)
 
     try:
         parser.parse_indirect_object_definition()
-        with pytest.raises(PDFParseError, match="header truncated at pair 1"):
-            _parser(b"", document=doc).parse_object_stream(1)
+        parsed = _parser(b"", document=doc).parse_object_stream(1)
+
+        assert len(parsed) == 1
+        assert isinstance(parsed[0], COSString)
+        assert parsed[0].get_string() == "x"
+        assert doc.has_object(COSObjectKey(10, 0))
     finally:
         doc.close()
 

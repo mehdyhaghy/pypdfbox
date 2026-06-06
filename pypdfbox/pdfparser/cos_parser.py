@@ -1211,6 +1211,88 @@ class COSParser(BaseParser):
             i = j + 3
         return offsets
 
+    def bf_search_for_obj_stream_members(
+        self, object_offsets: dict[COSObjectKey, int]
+    ) -> dict[COSObjectKey, tuple[int, int, COSBase]]:
+        """Recover the members compressed inside object streams found by the
+        brute-force ``n g obj`` scan.
+
+        Mirrors upstream ``BruteForceParser.bfSearchForObjStreams``: when the
+        plain-object scan recovered no document catalog (because it lives
+        inside a ``/Type /ObjStm`` object stream — common with a truncated /
+        missing xref-stream trailer), each recovered ``ObjStm`` is parsed and
+        its packed members are registered so the catalog search can reach them.
+        Upstream encodes such a member's xref entry with a *negative* offset
+        equal to ``-container_object_number``; here we return the richer
+        ``{member_key: (container_object_number, inner_index, parsed_member)}``
+        map the resolver needs to build a ``COMPRESSED`` entry plus the already
+        parsed member object (so the trailer ``/Root`` / ``/Info`` search can
+        classify it without a wired loader). ``inner_index`` is the member's
+        position within the ObjStm header (PDF 32000-1 §7.5.7).
+
+        Requires a bound document (object streams are materialised through the
+        pool); returns an empty map when no document is bound or no ObjStm is
+        found. Members whose key already appears among the plain objects (their
+        own uncompressed definition wins) are skipped — matching upstream's
+        "object with the bigger offset is the newer one" precedence (a plain
+        object always outranks a compressed one here)."""
+        members: dict[COSObjectKey, tuple[int, int, COSBase]] = {}
+        if self._document is None:
+            return members
+        type_name = COSName.get_pdf_name("Type")
+        objstm_name = COSName.get_pdf_name("ObjStm")
+        for key, offset in object_offsets.items():
+            self.seek(offset)
+            try:
+                self.read_int()
+                self.skip_whitespace()
+                self.read_int()
+                self.skip_whitespace()
+                if self.read_keyword() != b"obj":
+                    continue
+                self.skip_whitespace()
+                if self.peek_byte() != 0x3C:
+                    continue
+                d = self.parse_cos_dictionary()
+            except (PDFParseError, NotImplementedError, ValueError):
+                continue
+            if not isinstance(d, COSDictionary):
+                continue
+            if d.get_item(type_name) is not objstm_name:
+                continue
+            container = key.object_number
+            # Parse the ObjStm body directly from the byte offset (the brute
+            # force pool has no loader wired yet — upstream
+            # ``bfSearchForObjStreams`` likewise parses the stream straight off
+            # ``source``). ``parse_cos_dictionary`` left the cursor on the
+            # ``stream`` keyword.
+            try:
+                objstm_body = self.parse_cos_stream(d)
+                decoded, pairs, first = _read_object_stream_offsets(
+                    objstm_body, container
+                )
+            except (PDFParseError, NotImplementedError, ValueError, OSError):
+                # Skip a corrupt object stream — upstream logs and continues.
+                continue
+            for inner_index, (stored_obj_num, byte_offset) in enumerate(pairs):
+                member_key = COSObjectKey(stored_obj_num, 0)
+                if member_key in object_offsets:
+                    # the member has its own uncompressed definition; that wins
+                    continue
+                body_view = RandomAccessReadBuffer(decoded[first + byte_offset :])
+                body_parser = COSParser(body_view, document=self._document)
+                try:
+                    parsed = body_parser.parse_direct_object()
+                except (PDFParseError, NotImplementedError, ValueError, OSError):
+                    body_view.close()
+                    continue
+                body_view.close()
+                if isinstance(parsed, (COSArray, COSDictionary)):
+                    parsed.set_direct(False)
+                    parsed.set_key(member_key)
+                members[member_key] = (container, inner_index, parsed)
+        return members
+
     def bf_search_for_xref(self, start_xref_offset: int) -> int:
         """Brute-force scan the source for an ``xref`` keyword (or an
         xref-stream object header) near ``start_xref_offset`` and return
@@ -1656,7 +1738,17 @@ class COSParser(BaseParser):
                 if not isinstance(kid, COSObject) or kid in seen:
                     removals.append(kid)
                     continue
-                kid_obj = kid.get_object()
+                # Upstream ``checkPagesDictionary`` reaches each kid via
+                # ``COSObject.getObject``, which swallows the dereference
+                # IOException and yields null for a broken / truncated kid; the
+                # null kid is then pruned. pypdfbox's get_object propagates, so
+                # tolerate the failure here to keep the same prune-on-broken-kid
+                # outcome.
+                try:
+                    kid_obj = kid.get_object()
+                except (PDFParseError, OSError):
+                    removals.append(kid)
+                    continue
                 if kid_obj is None or kid_obj is COSNull.NULL:
                     removals.append(kid)
                     continue
@@ -2425,10 +2517,21 @@ def _read_object_stream_offsets(
     header_view = RandomAccessReadBuffer(decoded[:first])
     header_parser = BaseParser(header_view)
     pairs: list[tuple[int, int]] = []
+    # Upstream PDFObjectStreamParser.privateReadObjectOffsets reads at most
+    # /N pairs but breaks as soon as the cursor reaches the /First boundary
+    # (``firstObjectPosition = position + first - 1``). An inflated /N (larger
+    # than the actual number of header pairs — a common corruption) is thus
+    # naturally bounded by the header region instead of failing. We mirror that
+    # break so /N-too-large recovers at parity rather than raising
+    # "header truncated".
+    first_object_position = first - 1
     try:
         for pair_index in range(object_count):
+            header_parser.skip_whitespace()
+            if header_parser.position >= first_object_position:
+                # reached the /First boundary — stop reading object-number pairs
+                break
             try:
-                header_parser.skip_whitespace()
                 stored_obj_num = header_parser.read_int()
                 header_parser.skip_whitespace()
                 byte_offset = header_parser.read_int()

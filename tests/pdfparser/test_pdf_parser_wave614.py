@@ -6,7 +6,6 @@ from pypdfbox.cos import (
     COSArray,
     COSDocument,
     COSInteger,
-    COSName,
     COSObject,
     COSObjectKey,
     COSStream,
@@ -76,15 +75,21 @@ def test_wave614_handle_xref_stream_requires_stream_keyword() -> None:
         doc.close()
 
 
-def test_wave614_load_indirect_object_tolerates_mismatched_header_numbers() -> None:
+def test_wave614_load_indirect_object_rejects_mismatched_header_numbers() -> None:
+    # Wave 1503: aligned with upstream ``COSParser.parseFileObject`` (Java line
+    # 729-734), which throws — unconditionally, lenient mode included — when the
+    # object's own ``n g obj`` header disagrees with the xref key it was reached
+    # by ("XREF for N:G points to wrong object"). Verified against the live
+    # 3.0.7 oracle: a /Root reference resolved through a mismatched header fails
+    # to load (ok=false). The previous wave-614 pin codified pypdfbox's lenient
+    # ``pass`` here, which was a divergence.
     parser = _parser(b"2 0 obj\n/Name\nendobj")
     doc = COSDocument()
     parser._document = doc  # noqa: SLF001
     parser._cos_parser = COSParser(parser._src, document=doc)  # noqa: SLF001
 
     try:
-        parsed = parser._load_indirect_object_at(0, COSObject(1, 0))  # noqa: SLF001
-
-        assert parsed is COSName.get_pdf_name("Name")
+        with pytest.raises(PDFParseError, match="points to wrong object"):
+            parser._load_indirect_object_at(0, COSObject(1, 0))  # noqa: SLF001
     finally:
         doc.close()

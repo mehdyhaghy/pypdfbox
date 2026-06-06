@@ -233,6 +233,10 @@ class PDShadingType4(PDShading):
                 comps.append(
                     _interpolate(c, max_src_color, col_range[k][0], col_range[k][1])
                 )
+            # PDF 32000-1 §8.7.4.5.5: each vertex's coord+colour data occupies
+            # a whole number of bytes; trailing partial bits are padding to be
+            # skipped. Mirrors upstream readVertex's getBitOffset() alignment.
+            reader.align_to_byte()
             return flag, (px, py), comps
 
         triangles: list[Any] = []
