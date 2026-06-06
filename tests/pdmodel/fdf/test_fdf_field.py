@@ -317,6 +317,22 @@ def test_write_xml_escapes_special_characters() -> None:
     assert "&lt;a&amp;b&quot;c&apos;d&gt;" in out
 
 
+def test_write_xml_escapes_non_ascii_as_numeric_entity() -> None:
+    """Upstream ``escapeXML`` emits ``&#NNN;`` for any char above 0x7e
+    (``if (c > 0x7e)``); ASCII passes through. A BMP accented char and a
+    multi-byte symbol both become numeric character references."""
+    f = FDFField()
+    f.set_partial_field_name("accent")
+    # é = U+00E9 (233), € = U+20AC (8364) — both > 0x7e.
+    f.set_value("café€")
+
+    buf = io.StringIO()
+    f.write_xml(buf)
+    out = buf.getvalue()
+
+    assert "<value>caf&#233;&#8364;</value>" in out
+
+
 def test_write_xml_emits_list_values_and_richtext() -> None:
     f = FDFField()
     f.set_partial_field_name("multi")

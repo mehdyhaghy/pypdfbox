@@ -62,7 +62,7 @@ from pypdfbox.pdmodel.interactive.form.pd_text_field import PDTextField
 from pypdfbox.pdmodel.pd_document import PDDocument
 from pypdfbox.pdmodel.pd_page import PDPage
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
-from tests.oracle.harness import requires_oracle, run_probe_text
+from tests.oracle.harness import requires_oracle, run_probe, run_probe_text
 
 # --------------------------------------------------------------- fixture build
 
@@ -246,6 +246,35 @@ def test_xfdf_does_not_carry_annotations(tmp_path: Path) -> None:
         doc.close()
     # No <annots> element in the XFDF → get_annotations() returns None.
     assert annots is None
+
+
+@requires_oracle
+def test_xfdf_serialised_bytes_match_pdfbox(tmp_path: Path) -> None:
+    """Byte-exact XFDF export parity: PDFBox's ``FDFDocument.writeXML`` and
+    pypdfbox's ``write_xml`` produce identical bytes for the same in-memory
+    FDF (same element/attribute order, the ``xfdf`` namespace + ``xml:space``,
+    the ``<f>`` / ``<fields>`` sections, ``\\n`` line separators, and UTF-8).
+
+    Drives the saved FDF through PDFBox (``xfdfbytes`` mode emits the raw
+    writer bytes verbatim) and through pypdfbox's own ``save_xfdf`` to a file,
+    then compares the bytes directly. Annotations are absent from both outputs
+    (upstream ``FDFDictionary.writeXML`` does not emit ``<annots>``)."""
+    fdf_path = tmp_path / "built.fdf"
+    xfdf_path = tmp_path / "built.xfdf"
+    _build_fdf(fdf_path, xfdf_path)
+
+    java_bytes = run_probe("FdfProbe", "xfdfbytes", "fdf", str(fdf_path))
+
+    # pypdfbox writes the same XFDF from its own reload of the FDF.
+    doc = Loader.load_fdf(str(fdf_path))
+    py_out = tmp_path / "py.xfdf"
+    try:
+        doc.save_xfdf(str(py_out))
+    finally:
+        doc.close()
+    py_bytes = py_out.read_bytes()
+
+    assert py_bytes == java_bytes
 
 
 @requires_oracle

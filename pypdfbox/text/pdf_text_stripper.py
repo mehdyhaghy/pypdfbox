@@ -941,9 +941,15 @@ class PDFTextStripper:
             state.tm_b = 0.0
             state.tm_c = 0.0
             state.tm_d = 1.0
+            # Mark the text object open — text matrix + line matrix are now
+            # non-null, so the show/move operators are permitted (upstream
+            # ``BeginText`` sets both matrices to identity).
+            state.in_text_object = True
         elif op == "ET":
-            # End text object — nothing to flush in lite mode; positions
-            # are emitted as Tj/TJ/'/" operators run.
+            # End text object — clears the text + line matrices (upstream
+            # ``EndText`` sets both to null). Subsequent text/positioning
+            # operators stranded outside a BT…ET pair are ignored.
+            state.in_text_object = False
             return
         elif op == "Tf":
             if len(operands) >= 2:
@@ -973,6 +979,10 @@ class PDFTextStripper:
             if operands and isinstance(operands[0], COSNumber):
                 state.leading = operands[0].float_value()
         elif op == "Td":
+            # Upstream ``MoveText`` ignores ``Td`` when the text-line matrix
+            # is null (outside a BT…ET pair).
+            if not state.in_text_object:
+                return
             tx, ty = _two_numbers(operands)
             # Translate the line matrix by (tx, ty), then reset the text
             # matrix to the new line origin (PDF 1.7 §9.4.2). ``(tx, ty)``
@@ -985,6 +995,8 @@ class PDFTextStripper:
             state.text_x = state.line_x
             state.text_y = state.line_y
         elif op == "TD":
+            if not state.in_text_object:
+                return
             tx, ty = _two_numbers(operands)
             # ``TD`` = ``-ty TL`` then ``tx ty Td``.
             state.leading = -ty
@@ -1001,6 +1013,12 @@ class PDFTextStripper:
             # ``AngleCollector`` for ``-rotationMagic``).
             values = _six_numbers(operands)
             if values is not None:
+                # ``Tm`` sets both the text matrix and the text-line matrix to
+                # the supplied affine — making both non-null even when no
+                # ``BT`` is open (upstream ``SetMatrix`` does not gate). So a
+                # ``Tj`` after a stray ``Tm`` would render; mark the text
+                # object effectively open to mirror that.
+                state.in_text_object = True
                 a, b, c, d, e, f = values
                 state.tm_a = a
                 state.tm_b = b
@@ -1011,6 +1029,8 @@ class PDFTextStripper:
                 state.text_x = e
                 state.text_y = f
         elif op == "T*":
+            if not state.in_text_object:
+                return
             # Move to start of next line — equivalent to ``0 -leading Td``.
             # The ``(0, -leading)`` text-space delta is carried through the
             # text-matrix scale/shear before moving the line origin.
@@ -1019,12 +1039,24 @@ class PDFTextStripper:
             state.text_x = state.line_x
             state.text_y = state.line_y
         elif op == "Tj":
+            # Upstream ``ShowText`` ignores ``Tj`` when the text matrix is null
+            # (outside a BT…ET pair).
+            if not state.in_text_object:
+                return
             if operands and isinstance(operands[0], COSString):
                 self._emit(operands[0], state, positions)
         elif op == "TJ":
+            # Upstream ``ShowTextAdjusted`` ignores ``TJ`` when the text matrix
+            # is null (outside a BT…ET pair).
+            if not state.in_text_object:
+                return
             if operands and isinstance(operands[0], COSArray):
                 self._emit_tj_array(operands[0], state, positions)
         elif op == "'":
+            # ``'`` = ``T*`` then ``Tj``; both halves are no-ops outside a
+            # text object (text-line / text matrix null).
+            if not state.in_text_object:
+                return
             # Move to next line then show string.
             state.line_x += -state.leading * state.tm_c
             state.line_y += -state.leading * state.tm_d
@@ -1034,6 +1066,9 @@ class PDFTextStripper:
                 self._emit(operands[0], state, positions)
         elif op == '"':
             # ``aw ac string "`` — set word + char spacing, next line, show.
+            # Upstream runs ``Tw`` / ``Tc`` unconditionally, then a gated
+            # ``T*`` + ``Tj`` (no-ops outside a text object). Set the spacing
+            # first, then skip the show when no text object is open.
             if (
                 len(operands) >= 3
                 and isinstance(operands[0], COSNumber)
@@ -1042,6 +1077,8 @@ class PDFTextStripper:
             ):
                 state.word_spacing = operands[0].float_value()
                 state.char_spacing = operands[1].float_value()
+                if not state.in_text_object:
+                    return
                 state.line_x += -state.leading * state.tm_c
                 state.line_y += -state.leading * state.tm_d
                 state.text_x = state.line_x
@@ -4134,6 +4171,7 @@ class _TextState:
         "tm_d",
         "ctm",
         "gs_stack",
+        "in_text_object",
     )
 
     def __init__(self) -> None:
@@ -4182,6 +4220,18 @@ class _TextState:
         # correctly instead of collapsing to a single baseline at size 1.
         self.ctm: Matrix = Matrix()
         self.gs_stack: list[Matrix] = []
+        # Whether a text object (``BT`` … ``ET``) is currently open. Upstream
+        # gates the text-showing and text-positioning operators on a non-null
+        # text matrix / text-line matrix (both set to identity by ``BT`` and
+        # to ``null`` by ``ET`` and at stream start): ``Tj`` / ``TJ`` skip when
+        # ``getTextMatrix() == null`` (``ShowText`` / ``ShowTextAdjusted``) and
+        # ``Td`` / ``TD`` / ``T*`` skip when ``getTextLineMatrix() == null``
+        # (``MoveText``). A single open/closed flag captures both, since ``BT``
+        # sets both matrices and ``ET`` clears both. Without this gate the lite
+        # stripper would extract glyphs from text operators stranded outside a
+        # ``BT`` … ``ET`` pair (e.g. after a truncated stream drops the ``BT``),
+        # diverging from Apache PDFBox which silently ignores them.
+        self.in_text_object: bool = False
 
 
 def _two_numbers(operands: list[COSBase]) -> tuple[float, float]:

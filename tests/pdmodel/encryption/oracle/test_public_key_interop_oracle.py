@@ -8,31 +8,41 @@ sides — the certificate's DER feeds PDFBox's ``PublicKeyRecipient`` on the
 encrypt side and a PKCS#12 keystore feeds PDFBox's
 ``PublicKeyDecryptionMaterial(keyStore, alias, password)`` on the decrypt side.
 
-Two Java probes drive the oracle:
+Three Java probes drive the oracle:
 
 * ``PublicKeyEncryptProbe`` — load a plaintext PDF, build a
   ``PublicKeyProtectionPolicy`` with one ``PublicKeyRecipient`` (the shared cert
   + default all-allowed ``AccessPermission``), select the algorithm via
   ``(keyLengthBits, preferAES)``, and save the encrypted result.
+* ``PublicKeyEncryptMultiProbe`` — same, but one OR more recipients, each
+  carrying its own permission mask (``certDerN`` + ``permIntN`` pairs in policy
+  order). Drives the Java → pypdfbox multi-recipient direction.
 * ``PublicKeyDecryptProbe`` — open a public-key-encrypted PDF through
   ``Loader.loadPDF(File, keystorePassword, keystoreInputStream, alias)`` (PDFBox
-  reads the InputStream as a PKCS#12 KeyStore) and print ``PAGES:<n>`` then the
-  ``PDFTextStripper`` text. A keystore whose cert matches no recipient makes
-  ``loadPDF`` throw → non-zero exit → the wrong-key rejection assertion.
+  reads the InputStream as a PKCS#12 KeyStore) and print ``PAGES:<n>`` then
+  ``PERMS:<currentAccessPermission.getPermissionBytes()>`` then the
+  ``PDFTextStripper`` text. The PERMS line surfaces the mask PDFBox recovered
+  for the opening recipient's OWN envelope, so the multi-recipient test asserts
+  each recipient sees their own distinct mask. A keystore whose cert matches no
+  recipient makes ``loadPDF`` throw → non-zero exit → wrong-key rejection.
 
 Interop results (both AES variants; RC4 public-key variants are not produced by
 this lite port — it is AES-only on the write side):
 
 | direction          | AES-128 | AES-256 | note                                    |
 |--------------------|---------|---------|-----------------------------------------|
-| pypdfbox → Java    | PASS    | PASS    | full content recovery                   |
+| pypdfbox → Java    | PASS    | PASS    | full content recovery (1 + N recipients)|
+| pypdfbox → Java    | PASS    | PASS    | N recipients: each opener sees its own  |
+|  (per-recipient)   |         |         | permission mask via the PERMS line; the |
+|                    |         |         | /Recipients array has exactly N         |
+|                    |         |         | envelopes in policy iterator order.     |
 | Java → pypdfbox    | SKIP    | SKIP    | PDFBox/Acrobat wrap the recipient seed  |
-|                    |         |         | in an RC2-CBC CMS envelope; the         |
-|                    |         |         | cryptography PKCS#7 backend decrypts    |
-|                    |         |         | AES-CBC envelopes only (RC2 is not      |
-|                    |         |         | exposed by OpenSSL, and hand-rolling it |
-|                    |         |         | is out of scope) — genuinely            |
-|                    |         |         | unsupported, not a bug.                 |
+|  (1 + N recipients)|         |         | in an RC2-CBC CMS envelope (one per     |
+|                    |         |         | recipient); the cryptography PKCS#7     |
+|                    |         |         | backend decrypts AES-CBC envelopes only |
+|                    |         |         | (RC2 is not exposed by OpenSSL, and     |
+|                    |         |         | hand-rolling it is out of scope) —      |
+|                    |         |         | genuinely unsupported, not a bug.       |
 
 Three real interop bugs in pypdfbox's public-key handler were found and FIXED
 to make pypdfbox → Java work (see CHANGES.md, wave 1418):
@@ -167,6 +177,29 @@ def _py_encrypt(
         doc.close()
 
 
+def _py_encrypt_multi(
+    src: Path,
+    out: Path,
+    recipients: list[tuple[x509.Certificate, AccessPermission]],
+    key_length: int,
+) -> None:
+    """Public-key-encrypt ``src`` to ``out`` for several recipients, each with
+    its own permission mask, in iterator order — pins the
+    one-envelope-per-recipient write shape against Java's read path."""
+    doc = PDDocument.load(str(src))
+    try:
+        policy = PublicKeyProtectionPolicy()
+        for cert, perms in recipients:
+            policy.add_recipient(
+                PublicKeyRecipient(certificate=cert, permissions=perms)
+            )
+        policy.set_encryption_key_length(key_length)
+        doc.protect(policy)
+        doc.save(str(out))
+    finally:
+        doc.close()
+
+
 def _py_pubkey_decrypt_text(
     path: Path, cert: x509.Certificate, key: RSAPrivateKey
 ) -> tuple[int, str]:
@@ -254,13 +287,42 @@ def _java_pubkey_encrypt(
     )
 
 
+def _java_pubkey_encrypt_multi(
+    src: Path,
+    out: Path,
+    recipients: list[tuple[Path, int]],
+    key_length: int,
+) -> None:
+    """Java public-key-encrypts ``src`` for several recipients via
+    ``PublicKeyEncryptMultiProbe``; ``recipients`` is ``[(cert_der, perm_int)]``
+    in policy order."""
+    args = [str(src), str(out), str(key_length), "true"]
+    for cert_der, perm_int in recipients:
+        args.append(str(cert_der))
+        args.append(str(perm_int))
+    run_probe("PublicKeyEncryptMultiProbe", *args)
+
+
 def _java_pubkey_decrypt(path: Path, p12: Path) -> tuple[int, str]:
+    pages, _perms, text = _java_pubkey_decrypt_full(path, p12)
+    return pages, text
+
+
+def _java_pubkey_decrypt_full(path: Path, p12: Path) -> tuple[int, int, str]:
+    """Decrypt via Java and return ``(page_count, perm_bytes, text)``.
+
+    ``perm_bytes`` is the signed 32-bit ``AccessPermission.getPermissionBytes()``
+    PDFBox recovered for the opening recipient's own envelope — lets the
+    multi-recipient parity test assert each recipient sees their own mask.
+    """
     raw = run_probe_text(
         "PublicKeyDecryptProbe", str(path), str(p12), _P12_PASSWORD, _ALIAS
     )
-    first, _, rest = raw.partition("\n")
+    first, _, after_pages = raw.partition("\n")
     assert first.startswith("PAGES:"), f"probe framing broke: {first!r}"
-    return int(first[len("PAGES:") :]), rest
+    second, _, rest = after_pages.partition("\n")
+    assert second.startswith("PERMS:"), f"probe framing broke: {second!r}"
+    return int(first[len("PAGES:") :]), int(second[len("PERMS:") :]), rest
 
 
 def _java_pubkey_decrypt_fails(path: Path, p12: Path) -> bool:
@@ -427,6 +489,161 @@ def test_java_pubkey_encrypts_pypdfbox_decrypts_rc2_unsupported(
 
         handler = PublicKeySecurityHandler()
         material = PublicKeyDecryptionMaterial(certificate=cert, private_key=key)
+        with pytest.raises(UnsupportedAlgorithm, match="RC2"):
+            handler.prepare_for_decryption(encryption, b"", material)
+    finally:
+        doc.close()
+
+
+# ------------------------------------ multi-recipient: pypdfbox → Java (per-mask)
+
+
+def _perms_print_locked() -> AccessPermission:
+    perms = AccessPermission()
+    perms.set_can_print(False)
+    perms.set_can_modify(False)
+    return perms
+
+
+def _perms_all() -> AccessPermission:
+    return AccessPermission()  # default: everything allowed
+
+
+@requires_oracle
+@pytest.mark.parametrize(
+    ("algo_id", "key_length"), _ALGORITHMS, ids=[a[0] for a in _ALGORITHMS]
+)
+def test_pypdfbox_multi_recipient_java_decrypts_each_own_mask(
+    algo_id: str, key_length: int, tmp_path: Path
+) -> None:
+    """pypdfbox public-key-encrypts for TWO recipients with DISTINCT permission
+    masks (one envelope per recipient, iterator order); Apache PDFBox opens the
+    file with each recipient's own PKCS#12 key, recovers identical content, and
+    surfaces THAT recipient's own AccessPermission mask.
+
+    Pins the wave-1502 one-envelope-per-recipient write shape end-to-end across
+    the library boundary: the file key is shared (derived from seed + all
+    envelopes), but each recipient's 4 permission bytes are private to their own
+    envelope, so the mask Java reports must differ per opener."""
+    _fixture_present()
+    base_text = run_probe_text("TextExtractProbe", str(_FIXTURE))
+
+    cert_a, key_a = _make_self_signed_rsa("recipient-a")
+    cert_b, key_b = _make_self_signed_rsa("recipient-b")
+    perms_a = _perms_print_locked()
+    perms_b = _perms_all()
+    # The on-the-wire value pypdfbox writes (and Java recovers) is the
+    # public-key-normalised mask, which mutates the receiver — snapshot it now.
+    expect_a = perms_a.get_permission_bytes_for_public_key() & 0xFFFFFFFF
+    expect_b = perms_b.get_permission_bytes_for_public_key() & 0xFFFFFFFF
+    assert expect_a != expect_b
+
+    p12_a = _write_pkcs12(cert_a, key_a, tmp_path / "a.p12")
+    p12_b = _write_pkcs12(cert_b, key_b, tmp_path / "b.p12")
+
+    enc = tmp_path / f"py_multi_{algo_id}.pdf"
+    _py_encrypt_multi(
+        _FIXTURE,
+        enc,
+        [(cert_a, _perms_print_locked()), (cert_b, _perms_all())],
+        key_length,
+    )
+
+    # Both recipients open the same file, recover the same content...
+    pages_a, perm_a, text_a = _java_pubkey_decrypt_full(enc, p12_a)
+    pages_b, perm_b, text_b = _java_pubkey_decrypt_full(enc, p12_b)
+    assert pages_a == 2
+    assert pages_b == 2
+    assert text_a == base_text
+    assert text_b == base_text
+    # ...but each sees only their own permission mask.
+    assert (perm_a & 0xFFFFFFFF) == expect_a
+    assert (perm_b & 0xFFFFFFFF) == expect_b
+
+
+@requires_oracle
+@pytest.mark.parametrize(
+    ("algo_id", "key_length"), _ALGORITHMS, ids=[a[0] for a in _ALGORITHMS]
+)
+def test_pypdfbox_multi_recipient_recipients_count_and_order(
+    algo_id: str, key_length: int, tmp_path: Path
+) -> None:
+    """The on-disk /Recipients array pypdfbox writes for N recipients has
+    exactly N envelope entries, in policy iterator order — pinned by re-opening
+    the file and counting the COSStrings in /CF /DefaultCryptFilter
+    /Recipients. (Order is verified implicitly by the per-mask decrypt test:
+    each recipient's own key still resolves its own envelope.)"""
+    _fixture_present()
+    cert_a, _key_a = _make_self_signed_rsa("recipient-a")
+    cert_b, _key_b = _make_self_signed_rsa("recipient-b")
+    cert_c, _key_c = _make_self_signed_rsa("recipient-c")
+
+    enc = tmp_path / f"py_multi_count_{algo_id}.pdf"
+    _py_encrypt_multi(
+        _FIXTURE,
+        enc,
+        [
+            (cert_a, _perms_print_locked()),
+            (cert_b, _perms_all()),
+            (cert_c, _perms_print_locked()),
+        ],
+        key_length,
+    )
+
+    doc = PDDocument.load(str(enc))
+    try:
+        encryption = PDEncryption(doc.get_document().get_encryption_dictionary())
+        default_cf = encryption.get_default_crypt_filter_dictionary()
+        assert default_cf is not None
+        recipients = default_cf.get_recipients()
+        assert recipients is not None
+        assert recipients.size() == 3
+    finally:
+        doc.close()
+
+
+@requires_oracle
+@pytest.mark.parametrize(
+    ("algo_id", "key_length"), _ALGORITHMS, ids=[a[0] for a in _ALGORITHMS]
+)
+def test_java_multi_recipient_pypdfbox_decrypts_rc2_unsupported(
+    algo_id: str, key_length: int, tmp_path: Path
+) -> None:
+    """Java → pypdfbox, multi-recipient: PDFBox still wraps EACH recipient seed
+    in an RC2-CBC CMS envelope, so the cryptography PKCS#7 backend cannot
+    decrypt any of them. pypdfbox surfaces the distinct UnsupportedAlgorithm
+    (not "wrong key"). Pins that the documented RC2 read-gap also covers the
+    multi-recipient case, and confirms PDFBox emits one RC2 envelope per
+    recipient (matching count)."""
+    _fixture_present()
+    cert_a, key_a = _make_self_signed_rsa("recipient-a")
+    cert_b, _key_b = _make_self_signed_rsa("recipient-b")
+    der_a = _write_cert_der(cert_a, tmp_path / "a.der")
+    der_b = _write_cert_der(cert_b, tmp_path / "b.der")
+
+    perms_a = _perms_print_locked()
+    perms_b = _perms_all()
+    pi_a = perms_a.get_permission_bytes_for_public_key()
+    pi_b = perms_b.get_permission_bytes_for_public_key()
+
+    enc = tmp_path / f"java_multi_{algo_id}.pdf"
+    _java_pubkey_encrypt_multi(
+        _FIXTURE, enc, [(der_a, pi_a), (der_b, pi_b)], key_length
+    )
+
+    doc = PDDocument.load(str(enc))
+    try:
+        encryption = PDEncryption(doc.get_document().get_encryption_dictionary())
+        default_cf = encryption.get_default_crypt_filter_dictionary()
+        assert default_cf is not None
+        recipients = default_cf.get_recipients()
+        assert recipients is not None and recipients.size() == 2
+        rc2_cbc_oid_der = bytes.fromhex("2a864886f70d0302")
+        for i in range(recipients.size()):
+            assert rc2_cbc_oid_der in recipients.get(i).get_bytes()
+
+        handler = PublicKeySecurityHandler()
+        material = PublicKeyDecryptionMaterial(certificate=cert_a, private_key=key_a)
         with pytest.raises(UnsupportedAlgorithm, match="RC2"):
             handler.prepare_for_decryption(encryption, b"", material)
     finally:

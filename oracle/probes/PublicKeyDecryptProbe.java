@@ -3,6 +3,7 @@ import java.io.FileInputStream;
 import java.io.PrintStream;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.encryption.AccessPermission;
 import org.apache.pdfbox.text.PDFTextStripper;
 
 /**
@@ -18,9 +19,14 @@ import org.apache.pdfbox.text.PDFTextStripper;
  *   Loader.loadPDF(File, String password, InputStream keyStore, String alias)
  * — PDFBox reads the InputStream as a PKCS#12 KeyStore, looks up the private
  * key + certificate under <alias>, and decrypts the /Recipients envelope with
- * it. Then prints two framed lines to stdout:
+ * it. Then prints framed lines to stdout:
  *   PAGES:<n>
+ *   PERMS:<currentAccessPermission.getPermissionBytes() as signed int>
  *   followed by the full PDFTextStripper text (UTF-8).
+ *
+ * The PERMS line surfaces the AccessPermission mask PDFBox recovered for the
+ * opening recipient's own envelope, so a multi-recipient parity test can assert
+ * each recipient sees their own distinct permission mask.
  *
  * A wrong key (keystore whose cert matches no recipient) makes loadPDF throw,
  * which exits non-zero — the parity test asserts on that for rejection. A
@@ -40,6 +46,10 @@ public final class PublicKeyDecryptProbe {
                         Loader.loadPDF(in, keystorePassword, ksIn, alias)) {
             out.print("PAGES:");
             out.print(doc.getNumberOfPages());
+            out.print("\n");
+            AccessPermission perms = doc.getCurrentAccessPermission();
+            out.print("PERMS:");
+            out.print(perms.getPermissionBytes());
             out.print("\n");
             out.print(new PDFTextStripper().getText(doc));
         }

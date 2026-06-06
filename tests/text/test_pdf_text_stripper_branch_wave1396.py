@@ -56,6 +56,7 @@ def test_dispatch_tj_with_non_string_operand_does_not_emit() -> None:
     """
     stripper = _stripper()
     state = _state()
+    state.in_text_object = True
     positions = []
     stripper._dispatch("Tj", [COSInteger.get(42)], state, positions)  # noqa: SLF001
     assert positions == []
@@ -68,6 +69,7 @@ def test_dispatch_tj_array_with_non_array_operand_does_not_emit() -> None:
     """
     stripper = _stripper()
     state = _state()
+    state.in_text_object = True
     positions = []
     stripper._dispatch("TJ", [COSString("text")], state, positions)  # noqa: SLF001
     assert positions == []
@@ -80,6 +82,10 @@ def test_dispatch_quote_with_non_string_operand_advances_line_only() -> None:
     """
     stripper = _stripper()
     state = _state()
+    # ``'`` decomposes to ``T*`` + ``Tj``; both are no-ops outside a text
+    # object (upstream gates them on a non-null text/line matrix), so open one
+    # first to exercise the line-advance branch.
+    state.in_text_object = True
     state.leading = 12.0
     positions = []
     stripper._dispatch("'", [COSInteger.get(99)], state, positions)  # noqa: SLF001

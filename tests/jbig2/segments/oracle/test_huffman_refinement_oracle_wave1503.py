@@ -19,11 +19,26 @@ route (naggInst>1 -> a one-strip TextRegion decoded from inside the dictionary)
 with two instances overlapping at the aggregate-region edge. pypdfbox places the
 second instance at column width-1 (clipped), yielding byte-1 ``0x81``; the
 bundled jar yields ``0x80``. Both decoders consume the identical bits and arrive
-at the same stream position; the difference is in the SD-internal aggregate
-text-region instance placement/edge-clipping. Root-causing it needs an
-instrumented Java probe (the jar's classes are reached only by reflection) — see
-DEFERRED.md. This is an exotic SD-aggregate-overlap edge with no known
-real-world trigger; pinned here so the reproduction is never lost.
+at the same stream position; the difference is in the byte-shifted blit clipping
+at the region edge.
+
+ROOT CAUSE (wave 1504, agent B) — this is a *jar bug fixed upstream*, identical
+in shape to the template-1 ``referenceDX < 0`` precedent in
+``test_generic_refinement_region_oracle.py``. The aggregate symbol's second
+instance lands at a non-byte-aligned column that runs past the region's right
+edge, so ``Bitmaps.blit`` takes a shifted-and-clipped path. The bundled 3.0.7
+jar's ``org.apache.pdfbox.jbig2.image.Bitmaps`` (verified by ``javap -c`` on the
+jar: ``blit`` dispatches *only* to ``blitUnshifted`` / ``blitSpecialShifted`` /
+``blitShifted`` — there is **no** ``blitByPixel`` method) carries the pre-fix
+shifted-blit arithmetic, which mis-clips and drops the edge pixel (``0x80``). The
+standalone ``apache/pdfbox-jbig2`` repo later added the PDFBOX-6156 guard
+(Bitmaps.java: "do it the hard way until the other methods are fixed") that
+diverts every non-byte-aligned / edge-overhanging blit to a correct per-pixel
+``blitByPixel`` fallback. pypdfbox ports the *fixed* upstream, so its ``0x81`` is
+the correct value. There is no pypdfbox bug to fix; we follow the corrected
+upstream and pin the jar's stale output as a documented divergence. Exotic
+SD-aggregate-overlap edge with no known real-world trigger; pinned here so the
+reproduction is never lost.
 """
 
 from __future__ import annotations
@@ -122,9 +137,11 @@ def test_huffman_sd_refinement_aggregate_diverges_from_pdfbox():
     pypdfbox and the bundled jar agree on the symbol count and the imported
     symbol but differ on byte-1 of the aggregate symbol decoded through the
     SD-internal one-strip text region (two overlapping instances at the region
-    edge). Asserting the EXACT outputs of both sides documents the divergence;
-    if a future change accidentally reconciles or worsens it, this test will
-    flag it.
+    edge). Root cause (module docstring): the bundled 3.0.7 jar's pre-PDFBOX-6156
+    shifted-blit mis-clips the edge pixel (``0x80``); pypdfbox ports the fixed
+    upstream per-pixel fallback (``0x81``, correct). Asserting the EXACT outputs
+    of both sides documents the divergence; if a future change accidentally
+    reconciles or worsens it, this test will flag it.
     """
     base = huffman_sd_data([(8, 10)])
     agg = huffman_sd_refagg_aggregate_data(8, 10, 2)

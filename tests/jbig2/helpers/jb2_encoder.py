@@ -323,6 +323,43 @@ def huffman_sd_data(symbols: list[tuple[int, int]]) -> bytes:
     return bw.to_bytes()
 
 
+def huffman_sd_import_chain_data(
+    new_symbol: tuple[int, int], imported_count: int
+) -> bytes:
+    """SDHUFF=1, SDREFAGG=0 SD that imports symbols from a referred-to SD.
+
+    Adds one new directly-coded symbol (one height class, uncompressed
+    collective bitmap) and re-exports all ``imported_count`` imported symbols
+    plus the new one. Exercises the import-symbols segment-graph arc
+    (``SymbolDictionary._retrieve_import_symbols`` /
+    ``amount_of_imported_symbols``) and the export-flag run encoding over a mix
+    of imported + new symbols.
+    """
+    w, h = new_symbol
+    total = imported_count + 1
+    bw = BitWriter()
+    bw.write_bits(1 << 0, 16)  # region flags: SDHUFF only
+    bw.write_bits(total, 32)  # exported (all imported + new)
+    bw.write_bits(1, 32)  # new (1)
+    write_huffman(bw, 4, h)  # HCDH (B4)
+    write_huffman(bw, 2, w)  # DW (B2)
+    write_huffman_oob(bw, 2)  # OOB ends height class
+    write_huffman(bw, 1, 0)  # BMSIZE (B1) == 0 -> uncompressed
+    bw.align()
+    stride = (w + 7) // 8
+    rows = [bytearray(stride) for _ in range(h)]
+    rows[0][0] |= 0x80
+    last = w - 1
+    rows[h - 1][last // 8] |= 0x80 >> (last % 8)
+    for r in rows:
+        for b in r:
+            bw.write_byte(b)
+    bw.align()
+    write_huffman(bw, 1, 0)  # export run 0 (none unexported)
+    write_huffman(bw, 1, total)  # export run total (all exported)
+    return bw.to_bytes()
+
+
 def huffman_text_region_data(
     width: int,
     height: int,
@@ -431,6 +468,74 @@ def huffman_sd_refagg_aggregate_data(
     write_huffman(bw, 1, 0)  # export run 0
     write_huffman(bw, 1, 2)  # export run 2 (export both)
     return bw.to_bytes() + b"\x00\x00\x00\x00"
+
+
+def table_segment_data() -> bytes:
+    """A type-53 custom Huffman code-table segment (Annex B.2).
+
+    Builds the smallest valid table covering the value 0 so a referring
+    text-region (SBHUFFFS==3) decodes a first-S coordinate of 0 from it. The
+    layout mirrors ``EncodedTable.parse_table``:
+
+    * flags byte: HTOOB=0, HTPS=1 (prefix-size field width), HTRS=2 (range-size
+      field width) — encoded as ``(rs-1)<<4 | (ps-1)<<1 | oob`` per B.2.1,
+    * HTLOW=0, HTHIGH=4 (4-byte signed each),
+    * one normal line (curRangeLow 0 < 4): PREFLEN=1, RANGELEN=2 (covers 0..3);
+      curRangeLow then advances to 4 and the loop ends,
+    * the lower-range line PREFLEN=2 and upper-range line PREFLEN=2.
+
+    The decoder assigns canonical codes by ascending prefix length, so the
+    length-1 normal line gets prefix code ``0``; the referring region emits
+    ``0`` followed by the 2 range bits ``00`` to read value 0.
+    """
+    bw = BitWriter()
+    # B.2.1 flags: bit7=0, bits4-6 = HTRS-1, bits1-3 = HTPS-1, bit0 = HTOOB.
+    ht_ps, ht_rs, ht_oob = 1, 2, 0
+    flags = ((ht_rs - 1) << 4) | ((ht_ps - 1) << 1) | ht_oob
+    bw.write_byte(flags)
+    bw.write_bits(0, 32)  # HTLOW
+    bw.write_bits(4, 32)  # HTHIGH
+    # Normal line covering [0, 3]: PREFLEN(1 bit)=1, RANGELEN(2 bits)=2.
+    bw.write_bits(1, ht_ps)  # PREFLEN of normal line
+    bw.write_bits(2, ht_rs)  # RANGELEN of normal line
+    # Lower-range line PREFLEN and upper-range line PREFLEN.
+    bw.write_bits(2, ht_ps)  # lower-range PREFLEN
+    bw.write_bits(2, ht_ps)  # upper-range PREFLEN
+    return bw.to_bytes()
+
+
+def huffman_text_region_user_fs_data(
+    width: int, height: int, symbols: list[tuple[int, int]]
+) -> bytes:
+    """SBHUFF=1 text region selecting a user-supplied table for SBHUFFFS.
+
+    One strip at t==0, refCorner TL, one instance of symbol 0 at S==0. The DfS
+    value 0 is read from the referred type-53 custom table (SBHUFFFS==3); DS/DT
+    and the remaining selectors stay on the standard tables. Exercises the
+    ``TextRegion._get_user_table`` / ``fs_table`` segment-graph branch.
+    """
+    n = len(symbols)
+    bw = BitWriter()
+    for b in region_segment_info(width, height):
+        bw.write_byte(b)
+    flags = (1 << 0) | (1 << 4)  # SBHUFF=1, refCorner=TOPLEFT(1)
+    bw.write_bits(flags, 16)
+    # huffman flags: SBHUFFFS == 3 (low 2 bits), everything else standard.
+    bw.write_bits(0b11, 16)
+    bw.write_bits(1, 32)  # SBNUMINSTANCES = 1
+    code_lengths = [1] * n if n > 1 else [1]
+    write_symbol_id_code_lengths(bw, code_lengths)
+    code_map = symbol_code_table(code_lengths)
+    write_huffman(bw, 11, 1)  # STRIPT (B11) -> base -1
+    write_huffman(bw, 11, 1)  # DT (B11) -> stripT 0
+    # DfS from the user table: normal-line code 0, then range bits 00 -> value 0.
+    bw.write_bit(0)
+    bw.write_bits(0, 2)
+    c0 = code_map[0]
+    bw.write_bits(c0.code, c0.prefix_length)
+    write_huffman_oob(bw, 8)  # OOB ends strip
+    bw.align()
+    return bw.to_bytes()
 
 
 def assemble(segments: list[tuple[int, int, list[int], int, bytes]], pages: int = 1) -> bytes:

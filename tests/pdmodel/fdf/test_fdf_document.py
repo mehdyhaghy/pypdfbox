@@ -215,6 +215,47 @@ def test_write_xml_emits_xfdf_envelope() -> None:
     fdf.close()
 
 
+def test_write_xml_full_envelope_byte_exact() -> None:
+    """Pin the exact XFDF envelope shape (header line, xfdf namespace +
+    ``xml:space``, ``<f>``/``<fields>`` body, ``\\n`` line separators, closing
+    tag) for a populated document — mirrors upstream ``FDFDocument.writeXML``
+    + ``FDFDictionary.writeXML`` + ``FDFField.writeXML`` byte-for-byte. Catches
+    a write-path regression even without the Java oracle."""
+    from pypdfbox.pdmodel.common.filespecification.pd_simple_file_specification import (
+        PDSimpleFileSpecification,
+    )
+    from pypdfbox.pdmodel.fdf.fdf_field import FDFField
+
+    fdf = FDFDocument()
+    try:
+        dict_ = fdf.get_catalog().get_fdf()
+        fs = PDSimpleFileSpecification()
+        fs.set_file("source.pdf")
+        dict_.set_file(fs)
+
+        field = FDFField()
+        field.set_partial_field_name("name")
+        field.set_value("Alice")
+        dict_.set_fields([field])
+
+        buf = io.StringIO()
+        fdf.write_xml(buf)
+    finally:
+        fdf.close()
+
+    assert buf.getvalue() == (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<xfdf xmlns="http://ns.adobe.com/xfdf/" xml:space="preserve">\n'
+        '<f href="source.pdf" />\n'
+        "<fields>\n"
+        '<field name="name">\n'
+        "<value>Alice</value>\n"
+        "</field>\n"
+        "</fields>\n"
+        "</xfdf>\n"
+    )
+
+
 def test_set_catalog_replaces_root() -> None:
     fdf = FDFDocument()
     new_cat = FDFCatalog()

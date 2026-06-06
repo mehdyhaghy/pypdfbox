@@ -1,5 +1,9 @@
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.OutputStreamWriter;
 import java.io.PrintStream;
+import java.io.Writer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.pdfbox.Loader;
@@ -24,6 +28,10 @@ import org.apache.pdfbox.pdmodel.interactive.form.PDNonTerminalField;
  *   roundtrip <kind> <input> <outFdf> <outXfdf>   load, re-save FDF + XFDF,
  *                                                  then load each back and emit
  *                                                  the round-tripped facts.
+ *   xfdfbytes <kind> <input>                       load + emit the exact bytes of
+ *                                                  FDFDocument.writeXML(Writer)
+ *                                                  (the XFDF serialiser) verbatim,
+ *                                                  for byte-exact comparison.
  *   import    <pdf> <fdf>                          load the AcroForm PDF, import
  *                                                  the FDF field values into it,
  *                                                  and emit each AcroForm field's
@@ -60,6 +68,20 @@ public final class FdfProbe {
             try (FDFDocument doc = load(kind, input)) {
                 emit(doc, out);
             }
+        } else if ("xfdfbytes".equals(mode)) {
+            // Emit the raw bytes produced by FDFDocument.writeXML (the XFDF
+            // serialiser) verbatim, so the Python side can assert byte-exact
+            // parity of its own write_xml output. The upstream writer wraps an
+            // OutputStreamWriter over UTF-8 with '\n' line separators baked
+            // into the literals — we reproduce that exactly here.
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            try (FDFDocument doc = load(kind, input)) {
+                Writer w = new OutputStreamWriter(baos, StandardCharsets.UTF_8);
+                doc.writeXML(w);
+                w.flush();
+            }
+            System.out.write(baos.toByteArray());
+            System.out.flush();
         } else if ("roundtrip".equals(mode)) {
             String outFdf = args[3];
             String outXfdf = args[4];
