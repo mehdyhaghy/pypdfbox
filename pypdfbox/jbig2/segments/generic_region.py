@@ -36,6 +36,16 @@ if TYPE_CHECKING:
 _MASK16 = 0xFFFF
 
 
+def _java_ushr(value: int, shift: int) -> int:
+    """Mirror Java's ``int >>`` shift-count semantics for a non-negative byte
+    accumulator. Java masks the shift count to its low 5 bits
+    (``shift & 0x1F``), so a *negative* shift (which arises in the AT-pixel
+    override expressions when ``minor_x + gbAtX`` exceeds 7) becomes a large
+    positive shift rather than raising. For the small ``result`` accumulator
+    (< 256) every such case yields 0, exactly as upstream PDFBox computes."""
+    return value >> (shift & 0x1F)
+
+
 class GenericRegion(Region):
     """A generic region segment.
 
@@ -645,28 +655,28 @@ class GenericRegion(Region):
         if self.gb_at_override[0]:
             context &= 0xFFEF
             if self.gb_at_y[0] == 0 and self.gb_at_x[0] >= -minor_x:
-                context |= (result >> (to_shift - self.gb_at_x[0]) & 0x1) << 4
+                context |= (_java_ushr(result, to_shift - self.gb_at_x[0]) & 0x1) << 4
             else:
                 context |= self._get_pixel_safe(x + self.gb_at_x[0], y + self.gb_at_y[0]) << 4
 
         if self.gb_at_override[1]:
             context &= 0xFBFF
             if self.gb_at_y[1] == 0 and self.gb_at_x[1] >= -minor_x:
-                context |= (result >> (to_shift - self.gb_at_x[1]) & 0x1) << 10
+                context |= (_java_ushr(result, to_shift - self.gb_at_x[1]) & 0x1) << 10
             else:
                 context |= self._get_pixel_safe(x + self.gb_at_x[1], y + self.gb_at_y[1]) << 10
 
         if self.gb_at_override[2]:
             context &= 0xF7FF
             if self.gb_at_y[2] == 0 and self.gb_at_x[2] >= -minor_x:
-                context |= (result >> (to_shift - self.gb_at_x[2]) & 0x1) << 11
+                context |= (_java_ushr(result, to_shift - self.gb_at_x[2]) & 0x1) << 11
             else:
                 context |= self._get_pixel_safe(x + self.gb_at_x[2], y + self.gb_at_y[2]) << 11
 
         if self.gb_at_override[3]:
             context &= 0x7FFF
             if self.gb_at_y[3] == 0 and self.gb_at_x[3] >= -minor_x:
-                context |= (result >> (to_shift - self.gb_at_x[3]) & 0x1) << 15
+                context |= (_java_ushr(result, to_shift - self.gb_at_x[3]) & 0x1) << 15
             else:
                 context |= self._get_pixel_safe(x + self.gb_at_x[3], y + self.gb_at_y[3]) << 15
         return context & _MASK16
@@ -683,74 +693,74 @@ class GenericRegion(Region):
         if self.gb_at_override[0]:
             context &= 0xFFFD
             if self.gb_at_y[0] == 0 and self.gb_at_x[0] >= -minor_x:
-                context |= (result >> (to_shift - self.gb_at_x[0]) & 0x1) << 1
+                context |= (_java_ushr(result, to_shift - self.gb_at_x[0]) & 0x1) << 1
             else:
                 context |= self._get_pixel_safe(x + self.gb_at_x[0], y + self.gb_at_y[0]) << 1
 
         if self.gb_at_override[1]:
             context &= 0xDFFF
             if self.gb_at_y[1] == 0 and self.gb_at_x[1] >= -minor_x:
-                context |= (result >> (to_shift - self.gb_at_x[1]) & 0x1) << 13
+                context |= (_java_ushr(result, to_shift - self.gb_at_x[1]) & 0x1) << 13
             else:
                 context |= self._get_pixel_safe(x + self.gb_at_x[1], y + self.gb_at_y[1]) << 13
         if self.gb_at_override[2]:
             context &= 0xFDFF
             if self.gb_at_y[2] == 0 and self.gb_at_x[2] >= -minor_x:
-                context |= (result >> (to_shift - self.gb_at_x[2]) & 0x1) << 9
+                context |= (_java_ushr(result, to_shift - self.gb_at_x[2]) & 0x1) << 9
             else:
                 context |= self._get_pixel_safe(x + self.gb_at_x[2], y + self.gb_at_y[2]) << 9
         if self.gb_at_override[3]:
             context &= 0xBFFF
             if self.gb_at_y[3] == 0 and self.gb_at_x[3] >= -minor_x:
-                context |= (result >> (to_shift - self.gb_at_x[3]) & 0x1) << 14
+                context |= (_java_ushr(result, to_shift - self.gb_at_x[3]) & 0x1) << 14
             else:
                 context |= self._get_pixel_safe(x + self.gb_at_x[3], y + self.gb_at_y[3]) << 14
         if self.gb_at_override[4]:
             context &= 0xEFFF
             if self.gb_at_y[4] == 0 and self.gb_at_x[4] >= -minor_x:
-                context |= (result >> (to_shift - self.gb_at_x[4]) & 0x1) << 12
+                context |= (_java_ushr(result, to_shift - self.gb_at_x[4]) & 0x1) << 12
             else:
                 context |= self._get_pixel_safe(x + self.gb_at_x[4], y + self.gb_at_y[4]) << 12
         if self.gb_at_override[5]:
             context &= 0xFFDF
             if self.gb_at_y[5] == 0 and self.gb_at_x[5] >= -minor_x:
-                context |= (result >> (to_shift - self.gb_at_x[5]) & 0x1) << 5
+                context |= (_java_ushr(result, to_shift - self.gb_at_x[5]) & 0x1) << 5
             else:
                 context |= self._get_pixel_safe(x + self.gb_at_x[5], y + self.gb_at_y[5]) << 5
         if self.gb_at_override[6]:
             context &= 0xFFFB
             if self.gb_at_y[6] == 0 and self.gb_at_x[6] >= -minor_x:
-                context |= (result >> (to_shift - self.gb_at_x[6]) & 0x1) << 2
+                context |= (_java_ushr(result, to_shift - self.gb_at_x[6]) & 0x1) << 2
             else:
                 context |= self._get_pixel_safe(x + self.gb_at_x[6], y + self.gb_at_y[6]) << 2
         if self.gb_at_override[7]:
             context &= 0xFFF7
             if self.gb_at_y[7] == 0 and self.gb_at_x[7] >= -minor_x:
-                context |= (result >> (to_shift - self.gb_at_x[7]) & 0x1) << 3
+                context |= (_java_ushr(result, to_shift - self.gb_at_x[7]) & 0x1) << 3
             else:
                 context |= self._get_pixel_safe(x + self.gb_at_x[7], y + self.gb_at_y[7]) << 3
         if self.gb_at_override[8]:
             context &= 0xF7FF
             if self.gb_at_y[8] == 0 and self.gb_at_x[8] >= -minor_x:
-                context |= (result >> (to_shift - self.gb_at_x[8]) & 0x1) << 11
+                context |= (_java_ushr(result, to_shift - self.gb_at_x[8]) & 0x1) << 11
             else:
                 context |= self._get_pixel_safe(x + self.gb_at_x[8], y + self.gb_at_y[8]) << 11
         if self.gb_at_override[9]:
             context &= 0xFFEF
             if self.gb_at_y[9] == 0 and self.gb_at_x[9] >= -minor_x:
-                context |= (result >> (to_shift - self.gb_at_x[9]) & 0x1) << 4
+                context |= (_java_ushr(result, to_shift - self.gb_at_x[9]) & 0x1) << 4
             else:
                 context |= self._get_pixel_safe(x + self.gb_at_x[9], y + self.gb_at_y[9]) << 4
         if self.gb_at_override[10]:
             context &= 0x7FFF
             if self.gb_at_y[10] == 0 and self.gb_at_x[10] >= -minor_x:
-                context |= (result >> (to_shift - self.gb_at_x[10]) & 0x1) << 15
+                context |= (_java_ushr(result, to_shift - self.gb_at_x[10]) & 0x1) << 15
             else:
                 context |= self._get_pixel_safe(x + self.gb_at_x[10], y + self.gb_at_y[10]) << 15
         if self.gb_at_override[11]:
             context &= 0xFDFF
             if self.gb_at_y[11] == 0 and self.gb_at_x[11] >= -minor_x:
-                context |= (result >> (to_shift - self.gb_at_x[11]) & 0x1) << 10
+                context |= (_java_ushr(result, to_shift - self.gb_at_x[11]) & 0x1) << 10
             else:
                 context |= self._get_pixel_safe(x + self.gb_at_x[11], y + self.gb_at_y[11]) << 10
 
@@ -762,7 +772,7 @@ class GenericRegion(Region):
         context &= 0x1FF7
         if self.gb_at_y[0] == 0 and self.gb_at_x[0] >= -minor_x:
             return (
-                context | (result >> (7 - (minor_x + self.gb_at_x[0])) & 0x1) << 3
+                context | (_java_ushr(result, 7 - (minor_x + self.gb_at_x[0])) & 0x1) << 3
             ) & _MASK16
         else:
             return (
@@ -775,7 +785,7 @@ class GenericRegion(Region):
         context &= 0x3FB
         if self.gb_at_y[0] == 0 and self.gb_at_x[0] >= -minor_x:
             return (
-                context | (result >> (7 - (minor_x + self.gb_at_x[0])) & 0x1) << 2
+                context | (_java_ushr(result, 7 - (minor_x + self.gb_at_x[0])) & 0x1) << 2
             ) & _MASK16
         else:
             return (
@@ -788,7 +798,7 @@ class GenericRegion(Region):
         context &= 0x3EF
         if self.gb_at_y[0] == 0 and self.gb_at_x[0] >= -minor_x:
             return (
-                context | (result >> (7 - (minor_x + self.gb_at_x[0])) & 0x1) << 4
+                context | (_java_ushr(result, 7 - (minor_x + self.gb_at_x[0])) & 0x1) << 4
             ) & _MASK16
         else:
             return (

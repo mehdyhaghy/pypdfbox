@@ -96,6 +96,18 @@ _ARITH_CASES = [
     ("template1_at_override", lambda: _arith_case(1, [(2, -1)], 9, 4)),
     ("template2_at_override", lambda: _arith_case(2, [(3, -1)], 9, 4)),
     ("template3_at_override", lambda: _arith_case(3, [(3, -1)], 9, 4)),
+    # All four template-0 AT pixels perturbed off nominal — exercises every
+    # per-pixel branch of _override_at_template0a.
+    (
+        "template0_all_at",
+        lambda: _arith_case(0, [(4, -2), (-2, -2), (1, -3), (-3, -1)], 16, 6),
+    ),
+    # AT pixel on the same row (gb_at_y == 0) drives the result-shift override
+    # branch of templates 1-3 where the shift count can go negative (Java masks
+    # the count to its low 5 bits).
+    ("template1_at_same_row", lambda: _arith_case(1, [(2, 0)], 12, 4)),
+    ("template2_at_same_row", lambda: _arith_case(2, [(2, 0)], 12, 4)),
+    ("template3_at_same_row", lambda: _arith_case(3, [(2, 0)], 12, 4)),
     ("template0_tpgdon", lambda: _tpgdon_case(0, 10, 5)),
     ("template1_tpgdon", lambda: _tpgdon_case(1, 10, 5)),
     ("template2_tpgdon", lambda: _tpgdon_case(2, 10, 5)),
@@ -110,6 +122,16 @@ _ARITH_CASES = [
             [(-3, 0), (0, -2), (-2, -1), (-1, -2), (1, -2), (2, -1),
              (-3, 0), (-4, 0), (2, -2), (3, -1), (-2, -2), (-3, -1)],
             13, 6,
+        ),
+    ),
+    # All 12 extended-template AT pixels perturbed off nominal — exercises every
+    # per-pixel branch of _override_at_template0b.
+    (
+        "ext_template_all_at",
+        lambda: _ext_case(
+            [(-1, 0), (1, -2), (-3, -1), (0, -2), (2, -2), (3, -1),
+             (-2, 0), (-3, 0), (3, -2), (2, -1), (-1, -2), (-2, -1)],
+            16, 6,
         ),
     ),
 ]

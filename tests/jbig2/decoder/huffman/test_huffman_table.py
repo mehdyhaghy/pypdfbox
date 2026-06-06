@@ -143,6 +143,46 @@ def test_internal_node_duplicate_oob_raises():
         node.append(b)
 
 
+def test_internal_node_duplicate_value_node_one_side_raises():
+    # bit==1 (code 0b1) routes to the ``one`` child; a second length-1 code on
+    # the same branch collides with the existing ValueNode.
+    node = InternalNode()
+    a = Code(1, 0, 1, False)
+    a.code = 1
+    b = Code(1, 0, 2, False)
+    b.code = 1
+    node.append(a)
+    with pytest.raises(RuntimeError, match="already have a ValueNode"):
+        node.append(b)
+
+
+def test_internal_node_duplicate_oob_zero_side_raises():
+    # range_length == -1 builds an OutOfBandNode; bit==0 (code 0b0) routes to
+    # the ``zero`` child, so a duplicate collides on the zero branch.
+    node = InternalNode()
+    a = Code(1, -1, 0, False)
+    a.code = 0
+    b = Code(1, -1, 0, False)
+    b.code = 0
+    node.append(a)
+    with pytest.raises(RuntimeError, match="already have a OOB"):
+        node.append(b)
+
+
+def test_internal_node_str_renders_children_indented():
+    # __str__ recurses through both child slots; an empty node shows two None
+    # children, and a populated branch nests a ValueNode under "1:".
+    node = InternalNode()
+    assert str(node) == "\n0: None\n1: None\n"
+    c = Code(1, 0, 5, False)
+    c.code = 1
+    node.append(c)
+    rendered = str(node)
+    assert "0: None" in rendered
+    assert "1: " in rendered
+    assert "None" in rendered
+
+
 # --------------------------------------------------------------------------- #
 # FixedSizeTable
 # --------------------------------------------------------------------------- #

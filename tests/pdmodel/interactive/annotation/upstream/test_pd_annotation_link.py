@@ -121,11 +121,13 @@ def test_custom_appearance_handler_round_trip() -> None:
     assert ann.get_custom_appearance_handler() is None
 
 
-# Upstream PDAnnotationLink.java line ~215: constructAppearances() and
-# line ~221: constructAppearances(PDDocument). With no custom handler the
-# call must not raise; with a custom handler it must dispatch through
-# generate_appearance_streams().
-def test_construct_appearances_without_custom_handler_is_noop() -> None:
+# Upstream PDAnnotationLink.java lines 236-247: constructAppearances() and
+# constructAppearances(PDDocument). With no custom handler the default path
+# wires the built-in PDLinkAppearanceHandler (wave 1498 fix); on a bare
+# annotation with no /Rect the handler early-returns (PDLinkAppearanceHandler
+# .java:62), so the call must not raise. With a custom handler it must
+# dispatch through generate_appearance_streams().
+def test_construct_appearances_without_custom_handler_does_not_raise() -> None:
     ann = PDAnnotationLink()
     ann.construct_appearances()
     ann.construct_appearances(None)

@@ -99,6 +99,20 @@ class JBIG2Document:
         offset = 0
         segment_type = 0
 
+        # Rewind to the window start before scanning. Upstream's first
+        # ``mapStream()`` always runs with the SubInputStream freshly at
+        # position 0, so ``isFileHeaderPresent()`` (which marks/reads/resets
+        # *from the current position*) sees the header. ``getAmountOfPages``
+        # may invoke ``mapStream()`` a SECOND time when the first pass produced
+        # no pages (a degenerate file-header-only / zero-segment globals
+        # stream); by then the prior pass left the sub stream seeked to the
+        # post-header offset, so without this rewind ``isFileHeaderPresent()``
+        # would read past EOF (-1), skip header parsing, and run a phantom
+        # segment parse off the end (EOFError). Seeking to 0 makes the re-map
+        # deterministically reproduce the first pass — the well-defined
+        # upstream outcome for such a stream (no pages) — instead of crashing.
+        self.sub_input_stream.seek(0)
+
         # Parse the file header if there is one.
         if self._is_file_header_present():
             self._parse_file_header()

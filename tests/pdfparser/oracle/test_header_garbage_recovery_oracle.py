@@ -204,30 +204,30 @@ def test_total_garbage_fails_on_both(tmp_path: Path) -> None:
 def test_junk_with_obj_tokens_but_no_catalog(tmp_path: Path) -> None:
     """Edge: leading junk that embeds bare ``n g obj`` tokens but no valid
     catalog / page tree. The wave-1497 header fall-through fires (brute-force
-    harvests the decoy objects), so the load no longer aborts at the header.
-    The rebuilt document has no resolvable /Root — and here a *pre-existing,
-    orthogonal* divergence shows: pypdfbox's ``PDFParser.parse`` deliberately
-    does NOT auto-invoke ``initial_parse`` (lazy /Root resolution, documented
-    in pdf_parser.py), so ``get_number_of_pages`` yields 0 rather than raising,
-    whereas upstream ``Loader.loadPDF`` runs ``initialParse`` and raises
-    "Missing root object specification in trailer." That lazy-init split is
-    NOT the header-recovery surface; it is pinned here only to document the
-    boundary. The pin is pypdfbox's actual recovered-but-rootless shape."""
+    harvests the decoy objects), so the load reaches the full rebuild; the
+    rebuilt trailer has NO resolvable /Root. Wave 1498 closed the divergence:
+    the full-rebuild path now mirrors upstream ``PDFParser.initialParse`` and
+    rejects the rootless document at load time (``Missing root object
+    specification in trailer.``) instead of yielding a silent 0-page shell, so
+    ``Loader.load_pdf`` raises and ``_pypdfbox_dump`` reports ``ok=false`` —
+    matching the oracle below. The lazy-/Root contract on the *located-xref*
+    path is unchanged."""
     decoy = b"garbage 1 0 obj << /Decoy true >> endobj 2 0 obj 42 endobj more junk "
     pdf_path = tmp_path / "decoy.pdf"
     pdf_path.write_bytes(decoy * 30)
-    assert _pypdfbox_dump(str(pdf_path)) == "ok=true\npages=0\ntext=\n"
+    assert _pypdfbox_dump(str(pdf_path)) == "ok=false\n"
 
 
 @requires_oracle
 def test_junk_with_obj_tokens_oracle_rejects(tmp_path: Path) -> None:
-    """Confirm the orthogonal lazy-init split: upstream rejects the rootless
-    decoy (``initialParse`` → "Missing root"), pypdfbox returns a 0-page
-    document. The header fall-through itself is at parity (both reach the
-    rebuild); only the eager-vs-lazy /Root validation differs."""
+    """Differential parity (wave 1498): upstream rejects the rootless decoy
+    (``initialParse`` → "Missing root"), and pypdfbox now does too on the
+    full-rebuild path. The header fall-through is at parity (both reach the
+    rebuild) AND the missing-/Root rejection is at parity — both sides fail."""
     decoy = b"garbage 1 0 obj << /Decoy true >> endobj 2 0 obj 42 endobj more junk "
     pdf_path = tmp_path / "decoy_oracle.pdf"
     pdf_path.write_bytes(decoy * 30)
     java = run_probe_text("HeaderGarbageProbe", str(pdf_path))
+    py = _pypdfbox_dump(str(pdf_path))
     assert java == "ok=false\n"
-    assert _pypdfbox_dump(str(pdf_path)) == "ok=true\npages=0\ntext=\n"
+    assert py == java

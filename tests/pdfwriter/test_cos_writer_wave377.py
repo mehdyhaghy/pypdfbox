@@ -94,8 +94,15 @@ def test_wave377_unsigned_xref_stream_helpers_cover_boundaries() -> None:
     assert _pack_unsigned(256, 2) == b"\x01\x00"
     with pytest.raises(ValueError):
         _pack_unsigned(-1, 1)
+    # Width 0 emits no bytes — PDFBox ``PDFXRefStream.writeNumber`` writes
+    # ``length`` bytes high-to-low, so a 0-width ``/W`` field drops the value
+    # (e.g. an offset-only increment yields ``/W [1 3 0]`` and the object-0
+    # free head's 65535 generation produces an empty third column). A
+    # *negative* width is still a writer bug and raises.
+    assert _pack_unsigned(1, 0) == b""
+    assert _pack_unsigned(65535, 0) == b""
     with pytest.raises(ValueError):
-        _pack_unsigned(1, 0)
+        _pack_unsigned(1, -1)
 
 
 def test_wave377_build_int_ranges_sorts_and_deduplicates() -> None:

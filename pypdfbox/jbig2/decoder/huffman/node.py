@@ -14,6 +14,9 @@ class Node(ABC):
     """Base class for all nodes in a Huffman tree."""
 
     @abstractmethod
-    def decode(self, iis: ImageInputStream) -> int:
-        """Decode one value from ``iis`` by descending the tree."""
+    def decode(self, iis: ImageInputStream) -> int:  # pragma: no cover - abstract
+        """Decode one value from ``iis`` by descending the tree.
+
+        Abstract: every concrete node (``InternalNode`` / ``ValueNode`` /
+        ``OutOfBandNode``) overrides this, so the base body never executes."""
         raise NotImplementedError

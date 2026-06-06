@@ -360,15 +360,21 @@ class PDAnnotationLink(PDAnnotation):
         """Generate link annotation appearances.
 
         Mirrors upstream ``constructAppearances(PDDocument)``
-        (``PDAnnotationLink.java`` line ~221). A custom handler, when
-        configured, is invoked exactly as upstream does. The built-in
-        ``PDLinkAppearanceHandler`` is not ported yet, so the default path
-        falls back to the base annotation implementation (no-op).
+        (``PDAnnotationLink.java`` lines 236-247). When no custom handler is
+        configured, the built-in ``PDLinkAppearanceHandler`` is wired and its
+        appearance streams are generated; otherwise the custom handler is
+        invoked exactly as upstream does.
         """
-        if self._custom_appearance_handler is not None:
-            self._custom_appearance_handler.generate_appearance_streams()
+        if self._custom_appearance_handler is None:
+            from .handlers.pd_link_appearance_handler import (
+                PDLinkAppearanceHandler,
+            )
+
+            appearance_handler = PDLinkAppearanceHandler(self, document)
+            appearance_handler.generate_appearance_streams()
             return None
-        return super().construct_appearances(document)
+        self._custom_appearance_handler.generate_appearance_streams()
+        return None
 
 
 __all__ = ["PDAnnotationLink"]

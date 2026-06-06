@@ -309,6 +309,20 @@ class PDFParser:
             # full (no-locatable-xref) rebuild does this; the missing-/Root
             # path leaves the valid located entries to lazy resolution.
             self._resolve_recovered_objects()
+            # Upstream ``Loader.loadPDF`` → ``PDFParser.parse(boolean)`` always
+            # ends in ``initialParse()``, which calls ``retrieveTrailer()`` and
+            # then validates the trailer's ``/Root`` — raising
+            # ``IOException("Missing root object specification in trailer.")``
+            # when the (possibly rebuilt) trailer has no resolvable catalog.
+            # pypdfbox defers ``initial_parse`` from the *located-xref* path so
+            # lazy /Root + stream resolution still works, but the full
+            # brute-force rebuild is precisely the path where upstream's eager
+            # rejection fires: a header-less, catalog-less buffer that carries
+            # only decoy ``n g obj`` tokens rebuilds a trailer with NO /Root and
+            # must fail at load time, not yield a silent 0-page document. Mirror
+            # that here (full-rebuild only — the lazy fixtures take the
+            # located-xref branch and are untouched).
+            self._reject_full_rebuild_without_root()
         elif self._lenient:
             # PDFBox's COSParser.checkXrefOffsets: in lenient mode every
             # parsed xref offset is verified to point at its ``n g obj``
@@ -1587,6 +1601,26 @@ class PDFParser:
         assert self._document is not None
         for cos_obj in self._document.get_objects():
             cos_obj.get_object()
+
+    def _reject_full_rebuild_without_root(self) -> None:
+        """Surface upstream's "Missing root" rejection on the full-rebuild path.
+
+        Mirrors upstream ``PDFParser.initialParse`` (PDFParser.java) which
+        ``Loader.loadPDF`` invokes via ``parse(boolean)``: after the trailer is
+        retrieved it dereferences ``/Root`` and throws
+        ``IOException("Missing root object specification in trailer.")`` when no
+        catalog dictionary is reachable. A complete brute-force reconstruction
+        that recovered objects but found no ``/Type /Catalog`` candidate has a
+        trailer with no ``/Root`` (``COSParser.rebuildTrailer`` leaves the key
+        absent), so the document would otherwise load as an empty 0-page shell.
+        Only the full (no-locatable-xref) rebuild calls this — the located-xref
+        path keeps pypdfbox's lazy /Root resolution contract."""
+        trailer = self._resolver.get_trailer()
+        root: COSBase | None = None
+        if trailer is not None:
+            root = trailer.get_dictionary_object(COSName.ROOT)  # type: ignore[attr-defined]
+        if not isinstance(root, COSDictionary):
+            raise PDFParseError("Missing root object specification in trailer.")
 
     def _check_xref_offsets_lenient(self) -> None:
         """Verify every parsed xref offset points at its ``n g obj`` header

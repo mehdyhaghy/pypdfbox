@@ -133,15 +133,39 @@ def _ceil_log256(value: int) -> int:
     return width
 
 
+def _xref_field_width(max_value: int) -> int:
+    """Byte width of an xref-stream ``/W`` field, mirroring
+    ``PDFXRefStream.getWEntry`` (PDFBox 3.0.7,
+    ``org.apache.pdfbox.pdfparser.PDFXRefStream``): the width is how many
+    bytes the column's MAX value needs, and a max of 0 yields width **0**
+    (not the spec-minimum 1). PDFBox's ``writeNumber`` then emits zero bytes
+    for that column, so e.g. an offset-only increment whose generations are
+    all 0 produces ``/W [1 3 0]``. This deliberately differs from
+    :func:`_ceil_log256` (which clamps to a minimum of 1)."""
+    width = 0
+    v = max_value
+    while v > 0:
+        v >>= 8
+        width += 1
+    return width
+
+
 def _pack_unsigned(value: int, width: int) -> bytes:
     """Big-endian unsigned int encoded in exactly ``width`` bytes. Raises
     ``ValueError`` if ``value`` doesn't fit — ISO 32000-1 §7.5.8.3 says
     field widths must be sized so this never happens, so a fit failure
-    indicates a writer bug rather than user input."""
+    indicates a writer bug rather than user input.
+
+    A ``width`` of 0 emits no bytes (PDFBox ``PDFXRefStream.writeNumber``
+    writes ``length`` bytes high-to-low, so a 0-width column produces an
+    empty field — the value is simply dropped, matching a ``/W`` entry of
+    0)."""
     if value < 0:
         raise ValueError(f"xref stream field cannot be negative: {value}")
-    if width <= 0:
-        raise ValueError(f"xref stream field width must be positive: {width}")
+    if width < 0:
+        raise ValueError(f"xref stream field width must be non-negative: {width}")
+    if width == 0:
+        return b""
     return int(value).to_bytes(width, "big", signed=False)
 
 
@@ -1557,19 +1581,24 @@ class COSWriter(ICOSVisitor):
         # it. It is deliberately kept out of the entry/index set below.
         xref_key = self._mint_fresh_object_key()
 
-        # Free-list head (object 0). Upstream ``doWriteXRefTable`` /
-        # ``PDFXRefStream.getIndexEntry`` always include object 0; the
-        # incremental xref-stream arm relies on the latter. We do NOT run
-        # ``_fill_gaps_with_free_entries`` — that would re-declare every
-        # untouched object number as free, bloating the increment and
-        # diverging from PDFBox (which feeds the new stream only the changed
-        # entries).
-        records: list[tuple[int, int, int, int]] = [(0, 0, 0, 65535)]
-        max_field2 = 0
+        # The changed entries fed into the stream (``streamData`` upstream).
+        # This list mirrors exactly what ``COSWriter.doWriteXRefInc`` passes to
+        # ``PDFXRefStream.addEntry`` — only the objects this increment rewrote.
+        # We deliberately do NOT prepend object 0's free head here and do NOT
+        # add the xref stream's OWN self-entry: upstream
+        # ``PDFXRefStream.writeStreamData`` emits the object-0 ``NULL_ENTRY``
+        # row implicitly (always, as a single leading row) and the self
+        # ``NormalXReference`` is only registered on ``COSWriter`` *after*
+        # ``getStream()`` already serialised the body, so it never lands in the
+        # stream data nor the ``/Index`` (oracle-confirmed against PDFBox
+        # 3.0.7: a one-field edit emits ``/Index [0 1 30 1 32 1]`` with three
+        # rows and no self-row). We do NOT run ``_fill_gaps_with_free_entries``
+        # — that would re-declare every untouched object number as free.
+        entries: list[tuple[int, int, int, int]] = []
         for entry in self._xref_entries:
             objnum = entry.key.object_number
             if entry.free:
-                records.append((objnum, 0, entry.offset, entry.key.generation_number))
+                entries.append((objnum, 0, entry.offset, entry.key.generation_number))
                 continue
             actual = (
                 entry.obj.get_object()
@@ -1583,35 +1612,48 @@ class COSWriter(ICOSVisitor):
             )
             if comp is not None:
                 objstm_num, idx = comp
-                records.append((objnum, 2, objstm_num, idx))
+                entries.append((objnum, 2, objstm_num, idx))
             else:
-                records.append((objnum, 1, entry.offset, entry.key.generation_number))
-                max_field2 = max(max_field2, entry.offset)
+                entries.append((objnum, 1, entry.offset, entry.key.generation_number))
 
-        # /W widths. The xref stream sits at the current output position;
-        # widen the field-2 estimate so it survives the self-entry's offset.
-        w1 = 1
-        xref_offset = out.get_position()
-        max_field2 = max(max_field2, xref_offset)
-        w2 = max(1, _ceil_log256(max_field2))
-        w3 = 2
+        # ``streamData`` is sorted by object number before width computation
+        # (upstream sorts it in ``writeStreamData``); sort here so the body and
+        # the /Index ranges agree.
+        entries.sort(key=lambda r: r[0])
 
-        # The xref stream's OWN entry: written into the body so a downstream
-        # reader chasing the chain finds it, but NOT exposed in /Index (it is
-        # reached via startxref). Upstream emits the self NormalXReference
-        # inside doWriteObject AFTER getStream() already serialised the body,
-        # so it never lands in the index either. We mirror that by sorting it
-        # in for the packed body while building /Index from the records list
-        # that excludes it.
-        index_numbers = sorted(r[0] for r in records)
-        records.append((xref_key.object_number, 1, xref_offset, 0))
-        records.sort(key=lambda r: r[0])
+        # /W widths — mirror ``PDFXRefStream.getWEntry``: each field width is
+        # the byte count of the MAX value in that column ACROSS ``streamData``
+        # ONLY (the implicit object-0 NULL_ENTRY row and the self-entry are
+        # both excluded from the width scan). A column whose max is 0 yields
+        # width 0 — so a pure offset-only increment (all generations 0, no
+        # object-stream rows) correctly produces ``/W [1 3 0]`` rather than the
+        # over-wide ``[1 3 2]`` that injecting the 65535 free-head gen forced.
+        max_field1 = max((t for _n, t, _f2, _f3 in entries), default=0)
+        max_field2 = max((f2 for _n, _t, f2, _f3 in entries), default=0)
+        max_field3 = max((f3 for _n, _t, _f2, f3 in entries), default=0)
+        w1 = _xref_field_width(max_field1)
+        w2 = _xref_field_width(max_field2)
+        w3 = _xref_field_width(max_field3)
 
+        # /Index — upstream ``getIndexEntry`` always seeds object 0 into the
+        # index range (so a fresh reader sees the free-list head), then the
+        # changed object numbers. The self-entry's number is excluded.
+        index_numbers = sorted({0, *(n for n, _t, _f2, _f3 in entries)})
+
+        # Body: leading object-0 row from the NULL_ENTRY (type 0, next-free 0,
+        # generation 65535) written with the COMPUTED w3 — when w3 is 0 the
+        # 65535 truncates to zero bytes, exactly as ``writeNumber`` does
+        # upstream — then the sorted streamData rows.
         body = bytearray()
-        for _objnum, t, f2, f3 in records:
+        body.extend(_pack_unsigned(0, w1))
+        body.extend(_pack_unsigned(0, w2))
+        body.extend(_pack_unsigned(65535 & ((1 << (8 * w3)) - 1) if w3 else 0, w3))
+        for _objnum, t, f2, f3 in entries:
             body.extend(_pack_unsigned(t, w1))
             body.extend(_pack_unsigned(f2, w2))
             body.extend(_pack_unsigned(f3, w3))
+
+        xref_offset = out.get_position()
 
         index_arr = COSArray()
         index_arr.set_direct(True)

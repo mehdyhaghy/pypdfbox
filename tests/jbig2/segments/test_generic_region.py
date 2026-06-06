@@ -272,6 +272,119 @@ def test_ext_template_decode_at_override():
     )
 
 
+@pytest.mark.parametrize(
+    ("template", "pairs", "width", "expected"),
+    [
+        # All four template-0 AT pixels perturbed off nominal — every
+        # _override_at_template0a per-pixel branch fires. Bytes captured from
+        # the upstream 3.0.7 GenericRegion (see the *_all_at oracle cases).
+        (0, [(4, -2), (-2, -2), (1, -3), (-3, -1)], 16, "0002137f705622b82788d815"),
+    ],
+    ids=["template0_all_at"],
+)
+def test_arithmetic_decode_all_at_override(template, pairs, width, expected):
+    data = _region_info(width, 6) + _gen_flags(template=template) + _at(pairs) + CODED
+    region = _decode(data)
+    assert region.override is True
+    assert bytes(region.get_region_bitmap().get_byte_array()).hex() == expected
+
+
+@pytest.mark.parametrize(
+    ("template", "expected"),
+    [
+        (1, "00002aa0d0e03cc0"),
+        (2, "00002aa018601cb0"),
+        (3, "0000289045108500"),
+    ],
+    ids=["template1", "template2", "template3"],
+)
+def test_arithmetic_decode_at_override_same_row(template, expected):
+    # AT pixel on the SAME row as the current pixel (gb_at_y == 0) drives the
+    # result-shift override branch of templates 1-3, where the shift count can
+    # go negative and must follow Java's ``int >>`` low-5-bit masking. Bytes
+    # captured from the upstream 3.0.7 GenericRegion.
+    data = _region_info(12, 4) + _gen_flags(template=template) + _at([(2, 0)]) + CODED
+    region = _decode(data)
+    assert region.override is True
+    assert bytes(region.get_region_bitmap().get_byte_array()).hex() == expected
+
+
+def test_ext_template_decode_all_at_override():
+    # All 12 extended-template AT pixels perturbed off nominal — every
+    # _override_at_template0b per-pixel branch fires. Bytes captured from the
+    # upstream 3.0.7 GenericRegion (see the ext_template_all_at oracle case).
+    pairs = [
+        (-1, 0), (1, -2), (-3, -1), (0, -2), (2, -2), (3, -1),
+        (-2, 0), (-3, 0), (3, -2), (2, -1), (-1, -2), (-2, -1),
+    ]
+    data = _region_info(16, 6) + _gen_flags(template=0, ext=1) + _at(pairs) + CODED
+    region = _decode(data)
+    assert region.use_ext_templates_flag() is True
+    assert region.override is True
+    assert bytes(region.get_region_bitmap().get_byte_array()).hex() == (
+        "00021244bd5590dd9242cfa4"
+    )
+
+
+def test_update_override_flags_no_at_pixels_returns_early():
+    # _update_override_flags() bails out when gb_at_x is None (nothing to
+    # override), leaving override off.
+    region = GenericRegion()
+    region.gb_at_x = None
+    region.gb_at_y = None
+    region._update_override_flags()
+    assert region.override is False
+    assert region.gb_at_override is None
+
+
+def test_update_override_flags_length_mismatch_returns_early():
+    # A gb_at_x / gb_at_y length mismatch is treated as malformed and skips the
+    # override computation entirely (override stays off).
+    region = GenericRegion()
+    region.gb_at_x = [3, -3]
+    region.gb_at_y = [-1]
+    region._update_override_flags()
+    assert region.override is False
+    assert region.gb_at_override is None
+
+
+@pytest.mark.parametrize(
+    ("template", "expected"),
+    [
+        (0, "00001440d800e520"),
+        (1, "00001550abc0aac0"),
+        (2, "00001550039008d0"),
+        (3, "00001440a010c8a0"),
+    ],
+    ids=["template0", "template1", "template2", "template3"],
+)
+def test_decode_with_skip_bitmap_clears_skipped_pixels(template, expected):
+    # The use_skip path (driven by HalftoneRegion in real PDFs) forces the
+    # decoded bit to 0 at every coordinate flagged in the skip bitmap, instead
+    # of pulling a bit from the arithmetic decoder. Configured here directly via
+    # the pattern/halftone setParameters overload. The skip bitmap clears
+    # (2, 1) and (5, 2); the resulting bytes differ from the no-skip decode,
+    # confirming the skip branch fired. Values are produced by the bit-exact
+    # MQ decoder (the non-skip context computation is oracle-verified by
+    # test_generic_region_oracle).
+    from pypdfbox.jbig2.bitmap import Bitmap
+
+    at_x = [3, -3, 2, -2] if template == 0 else [3 if template == 1 else 2]
+    at_y = [-1, -1, -2, -2] if template == 0 else [-1]
+    iis = ImageInputStream(CODED)
+    sis = SubInputStream(iis, 0, len(CODED))
+    region = GenericRegion(sis)
+    skip = Bitmap(12, 4)
+    skip.set_pixel(2, 1, 1)
+    skip.set_pixel(5, 2, 1)
+    region.set_parameters(
+        False, 0, len(CODED), 4, 12, template, False, True, skip,
+        gb_at_x=at_x, gb_at_y=at_y,
+    )
+    assert region.use_skip is True
+    assert bytes(region.get_region_bitmap().get_byte_array()).hex() == expected
+
+
 def test_decode_caches_bitmap():
     data = _region_info(13, 6) + _gen_flags(template=0) + _at(NOMINAL_AT[0]) + CODED
     region = _decode(data)

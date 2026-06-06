@@ -99,6 +99,35 @@ def test_globals_only_stream_remaps_on_amount_of_pages():
     assert doc.get_amount_of_pages() == 0
 
 
+def test_file_header_only_stream_remaps_without_eof():
+    # Regression (wave 1498): a standalone globals stream consisting of ONLY
+    # the file header (magic + flag byte, zero segments) used to crash on the
+    # get_amount_of_pages re-map. The first _map_stream (in the constructor)
+    # parses the header, finds no segments, and leaves the SubInputStream
+    # seeked to the post-header offset; the re-map (pages still empty, pages
+    # unknown) then started from that offset, so _is_file_header_present read
+    # past EOF (-1), skipped header parsing, and ran a phantom segment parse
+    # off the end -> EOFError. _map_stream now rewinds to 0 before scanning, so
+    # the re-map deterministically reproduces the first pass (zero pages) — the
+    # well-defined upstream outcome for a header-only stream — instead of
+    # raising. Both the pages-unknown (9-byte) and pages-known-zero (13-byte)
+    # header-only shapes are pinned.
+    unknown = _MAGIC + bytes((0b00000010,))  # pages unknown, header length 9
+    doc = _doc(unknown)
+    assert doc.is_amount_of_pages_unknown() is True
+    assert not doc.pages
+    assert doc.get_amount_of_pages() == 0
+    assert doc.get_amount_of_pages() == 0  # idempotent re-map, still no EOFError
+
+    known_zero = _MAGIC + bytes((0b00000000,)) + struct.pack(">I", 0)
+    doc2 = _doc(known_zero)
+    assert doc2.is_amount_of_pages_unknown() is False
+    assert doc2.file_header_length == 13
+    # amount_of_pages == 0 takes the re-map branch (get_amount_of_pages
+    # re-runs _map_stream when amount_of_pages == 0); it must not crash.
+    assert doc2.get_amount_of_pages() == 0
+
+
 def test_no_file_header_embedded_stream_starts_at_offset_zero():
     # No magic -> embedded organisation, sequential default. A single page-1
     # page-information segment maps cleanly.
