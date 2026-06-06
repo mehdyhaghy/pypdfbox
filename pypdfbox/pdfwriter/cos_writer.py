@@ -196,6 +196,24 @@ class _RawSinkAdapter:
             close()
 
 
+# Scalar COS types whose pool membership is by VALUE-EQUALITY, not identity.
+# Upstream ``COSObjectPool`` keeps a ``HashMap<COSBase, COSObjectKey>``; for
+# these types ``COSBase.equals`` / ``hashCode`` are value-based (COSString,
+# COSInteger, COSFloat, COSName, COSBoolean all override them), while
+# COSDictionary / COSArray / COSStream fall back to identity. So when a packed
+# container holds a *direct* scalar that is value-equal to an already-registered
+# *indirect* scalar, upstream emits a reference to that indirect rather than
+# inlining the value (``COSWriterObjectStream.writeObject`` →
+# ``compressionPool.contains(base)`` → ``objectPool.containsKey(base)``).
+_VALUE_KEYED_POOL_TYPES: tuple[type, ...] = (
+    COSString,
+    COSInteger,
+    COSFloat,
+    COSName,
+    COSBoolean,
+)
+
+
 class _ObjStmPoolShim:
     """Adapt ``COSWriter``'s key tables to the ``contains`` / ``get_key``
     surface :class:`COSWriterObjectStream` expects from a
@@ -207,16 +225,44 @@ class _ObjStmPoolShim:
     if so, for its key (``get_key``). We answer from the writer's
     ``id(obj) -> COSObjectKey`` map, which the compression pre-pass has already
     populated for every reachable indirect object.
+
+    Containers (dict / array / stream) match by identity (``id``), exactly like
+    upstream's HashMap on a type that does not override ``equals``. Scalar
+    values (string / integer / float / name / boolean) additionally match by
+    VALUE-EQUALITY through ``value_pool``: a direct scalar that is value-equal
+    to an indirect scalar already registered in the pool resolves to that
+    indirect's key, so it is emitted as ``N G R`` rather than inlined — mirroring
+    upstream ``COSObjectPool.objectPool.containsKey`` on a value-hashed
+    ``COSBase`` (``acroform.pdf`` object 77's ``[(BMW) 75 0 R (VW) (Audi)]``).
     """
 
-    def __init__(self, object_keys: dict[int, COSObjectKey]) -> None:
+    def __init__(
+        self,
+        object_keys: dict[int, COSObjectKey],
+        value_pool: dict[COSBase, COSObjectKey] | None = None,
+    ) -> None:
         self._object_keys = object_keys
+        # ``value_pool`` is keyed by the scalar COSBase itself; since these
+        # types are value-hashable, dict lookup performs value-equality (the
+        # Python analogue of upstream's ``HashMap<COSBase, COSObjectKey>``).
+        self._value_pool: dict[COSBase, COSObjectKey] = (
+            value_pool if value_pool is not None else {}
+        )
 
     def contains(self, obj: COSBase) -> bool:
-        return id(obj) in self._object_keys
+        if id(obj) in self._object_keys:
+            return True
+        if isinstance(obj, _VALUE_KEYED_POOL_TYPES):
+            return obj in self._value_pool
+        return False
 
     def get_key(self, obj: COSBase) -> COSObjectKey | None:
-        return self._object_keys.get(id(obj))
+        key = self._object_keys.get(id(obj))
+        if key is not None:
+            return key
+        if isinstance(obj, _VALUE_KEYED_POOL_TYPES):
+            return self._value_pool.get(obj)
+        return None
 
 
 class COSWriter(ICOSVisitor):
@@ -304,6 +350,12 @@ class COSWriter(ICOSVisitor):
         # (set in ``_pack_object_streams``). Mirrors upstream's top-level
         # forcing of ``trailer.getCOSDictionary(ROOT)``.
         self._root_dict_id: int | None = None
+        # Value-keyed pool of indirect scalars (string / integer / float /
+        # name / boolean) — populated in ``_pack_object_streams`` and consulted
+        # by ``_ObjStmPoolShim`` so a direct scalar value-equal to a registered
+        # indirect is emitted as a reference, mirroring upstream's
+        # value-hashed ``COSObjectPool``.
+        self._objstm_value_pool: dict[COSBase, COSObjectKey] = {}
         # In incremental mode the body, xref, and trailer are accumulated in
         # an in-memory buffer; the final ``doWriteIncrement`` copies the
         # source bytes to the real output and then drains the buffer
@@ -2297,6 +2349,27 @@ class COSWriter(ICOSVisitor):
             if root is not None:
                 self._root_dict_id = id(root)
 
+        # Build the VALUE-keyed pool of indirect scalars. Upstream's
+        # ``COSObjectPool`` registers every pooled object in a
+        # ``HashMap<COSBase, COSObjectKey>``; for the value-hashed scalar types
+        # (string / integer / float / name / boolean) this means a direct
+        # occurrence of a value-equal scalar inside a packed container is
+        # emitted as a reference to the registered indirect, not inlined. We
+        # mirror that by recording each genuinely-indirect scalar value here,
+        # keeping the LOWEST object number when two indirects share a value
+        # (deterministic stand-in for upstream's first-``put``-wins on the
+        # structure walk). Containers stay identity-keyed via ``_object_keys``.
+        self._objstm_value_pool = {}
+        for key, actual in sorted(
+            self._key_object.items(),
+            key=lambda kv: (kv[0].object_number, kv[0].generation_number),
+        ):
+            if (
+                isinstance(actual, _VALUE_KEYED_POOL_TYPES)
+                and actual not in self._objstm_value_pool
+            ):
+                self._objstm_value_pool[actual] = key
+
         candidates: list[tuple[COSObjectKey, COSBase]] = []
         for key, actual in self._key_object.items():
             if id(actual) in self._packed_object_ids:
@@ -2383,7 +2456,7 @@ class COSWriter(ICOSVisitor):
             COSWriterObjectStream,
         )
 
-        pool_shim = _ObjStmPoolShim(self._object_keys)
+        pool_shim = _ObjStmPoolShim(self._object_keys, self._objstm_value_pool)
         objstm_writer = COSWriterObjectStream(pool_shim)
         bodies: list[bytes] = []
         for _key, actual in chunk:

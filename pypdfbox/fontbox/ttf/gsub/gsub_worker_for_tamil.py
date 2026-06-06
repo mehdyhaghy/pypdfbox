@@ -171,18 +171,6 @@ class GsubWorkerForTamil(GsubWorker):
     def get_before_reph_glyph_ids(self) -> list[int]:
         return [self.get_glyph_id(c) for c in _BEFORE_REPH_CHARS]
 
-    def getbefore_reph_glyph_ids(self) -> list[int]:
-        """Parity mirror of upstream's ``getbeforeRephGlyphIds`` name.
-
-        Upstream Java spells this method ``getbeforeRephGlyphIds`` (lowercase
-        ``b`` immediately after ``get``) — a long-standing naming quirk in
-        the PDFBox source. The semantically-correct snake_case form is
-        :meth:`get_before_reph_glyph_ids`, which remains the canonical entry
-        point; this method exists so the parity matcher can resolve the
-        upstream name verbatim. The two are byte-identical in behaviour.
-        """
-        return self.get_before_reph_glyph_ids()
-
     def get_glyph_id(self, character: str) -> int:
         return self._cmap_lookup.get_glyph_id(ord(character))
 

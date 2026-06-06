@@ -97,8 +97,11 @@ def test_wave586_render_placeholder_success_pads_byte_range(
         rendered, contents_span, byte_range = doc._render_incremental_with_placeholder()  # noqa: SLF001
 
         assert contents_span == (6, 10)
-        assert byte_range == [0, 6, 10, len(rendered) - 10]
-        assert b"[0 6 10 26    ]" in rendered
+        # Brackets-EXCLUDED convention (wave 1502, matches upstream
+        # COSWriter.doWriteSignature): range 1 ends BEFORE the '<' delimiter
+        # (offset 5) and range 2 starts AFTER the '>' delimiter (offset 11).
+        assert byte_range == [0, 5, 11, len(rendered) - 11]
+        assert b"[0 5 11 25    ]" in rendered
     finally:
         doc.close()
 

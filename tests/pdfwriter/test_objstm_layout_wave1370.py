@@ -26,9 +26,11 @@ from pypdfbox.cos import (
     COSArray,
     COSDictionary,
     COSDocument,
+    COSInteger,
     COSName,
     COSObject,
     COSStream,
+    COSString,
 )
 from pypdfbox.pdfwriter import COSWriter
 
@@ -239,3 +241,94 @@ def test_multiple_objstms_emitted_when_chunk_size_exceeded() -> None:
     assert objstm_count >= 2, (
         f"expected >=2 ObjStms for 250 candidates; saw {objstm_count}"
     )
+
+
+# ---------- wave 1502: value-equality reference vs inline ------------------
+#
+# Upstream ``COSWriterCompressionPool`` keeps a value-hashed
+# ``HashMap<COSBase, COSObjectKey>`` (COSObjectPool). For the scalar COS types
+# (string / integer / float / name / boolean) ``COSBase.equals`` / ``hashCode``
+# are value-based, so when a *direct* scalar inside a packed container is
+# value-equal to an already-registered *indirect* scalar, upstream writes it as
+# an ``N G R`` reference rather than inlining the value
+# (``COSWriterObjectStream.writeObject`` → ``compressionPool.contains(base)``).
+# Containers (dict / array / stream) match by identity only.
+
+
+def test_direct_scalar_value_equal_to_indirect_emitted_as_reference() -> None:
+    """A direct ``COSString`` value-equal to a registered indirect string is
+    serialised as ``N G R`` inside the ObjStm body, not inlined — mirroring
+    upstream's value-hashed compression pool (acroform.pdf object 77's
+    ``[(BMW) 75 0 R (VW) (Audi)]``)."""
+    catalog = COSDictionary()
+    # Indirect string object 5 = (Porsche).
+    porsche_indirect = COSString("Porsche")
+    catalog.set_item(
+        COSName.get_pdf_name("DV"), COSObject(5, 0, resolved=porsche_indirect)
+    )
+    # A packed dict holding an /Opt array with a *separate* (Porsche) instance.
+    opt_holder = COSDictionary()
+    opt = COSArray()
+    opt.add(COSString("BMW"))
+    opt.add(COSString("Porsche"))  # distinct instance, value-equal to obj 5
+    opt.add(COSString("VW"))
+    opt.add(COSString("Audi"))
+    opt_holder.set_item(COSName.get_pdf_name("Opt"), opt)
+    catalog.set_item(
+        COSName.get_pdf_name("Holder"), COSObject(6, 0, resolved=opt_holder)
+    )
+    doc = _make_doc(catalog)
+    out = _write_xref_stream(doc)
+    decoded, _, _ = _decode_objstm_body(out)
+    # The value-equal (Porsche) must appear as a reference to object 5, not as
+    # an inlined (Porsche) literal inside the /Opt array. The other (unique)
+    # strings stay inlined.
+    assert b"5 0 R" in decoded, "value-equal indirect string was not referenced"
+    assert b"(BMW)" in decoded
+    assert b"(VW)" in decoded
+    assert b"(Audi)" in decoded
+    # (Porsche) appears at most once — only as the indirect object's own body,
+    # never inlined inside the /Opt array.
+    assert decoded.count(b"(Porsche)") == 1
+
+
+def test_direct_integer_value_equal_to_indirect_emitted_as_reference() -> None:
+    """The value-equality reference rule also applies to ``COSInteger``
+    (another value-hashed scalar type upstream)."""
+    catalog = COSDictionary()
+    # Indirect integer object 5 = 42.
+    catalog.set_item(
+        COSName.get_pdf_name("DV"), COSObject(5, 0, resolved=COSInteger.get(42))
+    )
+    holder = COSDictionary()
+    arr = COSArray()
+    arr.add(COSInteger.get(7))
+    arr.add(COSInteger.get(42))  # value-equal to indirect integer object 5
+    holder.set_item(COSName.get_pdf_name("Vals"), arr)
+    catalog.set_item(
+        COSName.get_pdf_name("Holder"), COSObject(6, 0, resolved=holder)
+    )
+    doc = _make_doc(catalog)
+    out = _write_xref_stream(doc)
+    decoded, _, _ = _decode_objstm_body(out)
+    assert b"5 0 R" in decoded, "value-equal indirect integer was not referenced"
+    # The 7 stays inlined; the value-equal 42 becomes a reference, so the only
+    # bare 42 token is the indirect object's own body.
+    assert b"[7 5 0 R ]" in decoded or b"[7 5 0 R]" in decoded
+
+
+def test_unique_direct_scalar_stays_inlined() -> None:
+    """A direct scalar with NO value-equal indirect counterpart is still
+    inlined — the value-equality rule must not over-reference."""
+    catalog = COSDictionary()
+    holder = COSDictionary()
+    arr = COSArray()
+    arr.add(COSString("Unique-Value-XYZ"))
+    holder.set_item(COSName.get_pdf_name("Vals"), arr)
+    catalog.set_item(
+        COSName.get_pdf_name("Holder"), COSObject(6, 0, resolved=holder)
+    )
+    doc = _make_doc(catalog)
+    out = _write_xref_stream(doc)
+    decoded, _, _ = _decode_objstm_body(out)
+    assert b"(Unique-Value-XYZ)" in decoded

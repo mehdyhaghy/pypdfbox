@@ -314,7 +314,6 @@ class PublicKeySecurityHandler(SecurityHandler):
             key_length_bits = 256
             version = 5
             revision = 5
-            sub_filter = self.SUBFILTER5
             cfm = PDCryptFilterDictionary.CFM_AESV3
             content_alg = algorithms.AES256
             digest_factory = hashlib.sha256
@@ -322,22 +321,27 @@ class PublicKeySecurityHandler(SecurityHandler):
             key_length_bits = 128
             version = 4
             revision = 4
-            sub_filter = self.SUBFILTER4
             cfm = PDCryptFilterDictionary.CFM_AESV2
             content_alg = algorithms.AES128
             digest_factory = hashlib.sha1
+        # Upstream prepareDocumentForEncryption writes /SubFilter adbe.pkcs7.s5
+        # for BOTH the AES-128 (V=4) and AES-256 (V=5) crypt-filter branches —
+        # SUBFILTER4 (adbe.pkcs7.s4) is reserved for the legacy non-crypt-filter
+        # RC4 default branch only (see the switch in prepareDocumentForEncryption,
+        # case 4 + case 5 both call setSubFilter(SUBFILTER5)). The lite write
+        # path is AES-only, so it always emits s5.
+        sub_filter = self.SUBFILTER5
 
         seed = os.urandom(_SEED_LENGTH)
 
-        # Group recipients by their public-key permission mask per PDF
-        # 32000-1 §7.6.5. Recipients that share permissions ride a single
-        # multi-recipient envelope; distinct permission sets each get their
-        # own envelope. The mask order is preserved by first-appearance so
-        # the on-disk /Recipients array stays deterministic across runs and
-        # matches policy author intent (the file-key digest then hashes
-        # envelopes in that same order).
-        permission_mask_to_recipients: dict[int, list[PublicKeyRecipient]] = {}
-        mask_order: list[int] = []
+        # Build ONE envelope per recipient, in policy iterator order — exactly
+        # what upstream computeRecipientsField does (it loops the recipients
+        # iterator and emits recipientsField[i] per recipient; it does NOT group
+        # recipients that share a permission mask onto a single multi-recipient
+        # envelope). The on-disk /Recipients array therefore has exactly
+        # getNumberOfRecipients() entries in iterator order, and the file-key
+        # digest hashes them in that same order.
+        envelopes: list[bytes] = []
         for recipient in recipients:
             if recipient.get_x509() is None:
                 raise ValueError(
@@ -352,24 +356,16 @@ class PublicKeySecurityHandler(SecurityHandler):
             # integer per §7.6.5 — same on-the-wire shape upstream uses.
             # Upstream packs ``getPermissionBytesForPublicKey()`` (bit 1 set,
             # bits 7/8 and 13-32 cleared), NOT the raw ``getPermissionBytes()``;
-            # see PublicKeySecurityHandler#computeRecipientInfo line 449.
+            # see PublicKeySecurityHandler#computeRecipientsField.
             perms_int = (
                 permission_obj.get_permission_bytes_for_public_key() & 0xFFFFFFFF
             )
-            if perms_int not in permission_mask_to_recipients:
-                permission_mask_to_recipients[perms_int] = []
-                mask_order.append(perms_int)
-            permission_mask_to_recipients[perms_int].append(recipient)
-
-        envelopes: list[bytes] = []
-        for perms_int in mask_order:
-            group = permission_mask_to_recipients[perms_int]
+            # Per §7.6.5: the 24-byte plaintext is seed (20) || perms (4 BE).
             blob = seed + perms_int.to_bytes(4, "big")
 
             builder = pkcs7.PKCS7EnvelopeBuilder()
             builder = builder.set_data(blob)
-            for recipient in group:
-                builder = builder.add_recipient(recipient.get_x509())
+            builder = builder.add_recipient(recipient.get_x509())
             builder = builder.set_content_encryption_algorithm(content_alg)
             envelope_der = builder.encrypt(
                 serialization.Encoding.DER,

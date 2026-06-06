@@ -377,12 +377,19 @@ def compute_byte_range(
     ``/Contents <…>`` placeholder located at ``contents_open`` (the ``<``
     byte offset) through ``contents_close`` (the ``>`` byte offset, inclusive).
 
-    Per ISO 32000-1 §12.8.1, the digest is taken over the entire file
-    *except* the bytes strictly between ``<`` and ``>`` — the angle
-    brackets themselves are *included* in the hashed range:
+    Mirrors Apache PDFBox's COSWriter (``doWriteSignature``): the digest is
+    taken over the entire file *except* the ``<…>`` /Contents token
+    *including* its ``<`` and ``>`` angle delimiters — i.e. range1 ends just
+    *before* ``<`` and range2 starts just *after* ``>``:
 
-        range1 = [0 .. contents_open]            (includes ``<``)
-        range2 = [contents_close .. file_end]    (includes ``>``)
+        range1 = [0 .. contents_open)            (excludes ``<``)
+        range2 = (contents_close .. file_end]    (excludes ``>``)
+
+    so ``document_bytes[start1 + len1] == b"<"`` and
+    ``document_bytes[start2 - 1] == b">"``. Confirmed against the live
+    PDFBox oracle (``SignByteRangeConventionProbe``): PDFBox's own signer
+    sets ``beforeLength = signatureOffset`` (position of ``<``) and
+    ``afterOffset = signatureOffset + signatureLength`` (just past ``>``).
 
     Raises :class:`ValueError` if the offsets don't sit inside the buffer
     or if ``contents_close`` is not strictly greater than ``contents_open``.
@@ -399,8 +406,8 @@ def compute_byte_range(
             f"must be strictly greater than open ({contents_open})"
         )
     start1 = 0
-    len1 = contents_open + 1  # include `<`
-    start2 = contents_close  # include `>`
+    len1 = contents_open  # exclude `<` (range1 ends just before it)
+    start2 = contents_close + 1  # exclude `>` (range2 starts just after it)
     len2 = n - start2
     return [start1, len1, start2, len2]
 

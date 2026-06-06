@@ -292,20 +292,21 @@ def test_get_last_relevant_signature_falls_back_to_last_when_no_byte_range():
 # ----------------------------------------------------------------- /ByteRange
 
 
-def test_compute_byte_range_brackets_contents_inclusively() -> None:
-    """`<` at offset 50, `>` at offset 70 of a 100-byte file:
-    range1 = [0..50] (51 bytes, includes `<`),
-    range2 = [70..99] (30 bytes, includes `>`)."""
+def test_compute_byte_range_excludes_contents_delimiters() -> None:
+    """`<` at offset 50, `>` at offset 70 of a 100-byte file. Matching
+    PDFBox's COSWriter, the `<`/`>` delimiters are EXCLUDED from the ranges:
+    range1 = [0..50) (50 bytes, ends before `<`),
+    range2 = (70..99] (29 bytes, starts after `>`)."""
     document = b"x" * 100
     br = compute_byte_range(document, 50, 70)
-    assert br == [0, 51, 70, 30]
+    assert br == [0, 50, 71, 29]
 
 
 def test_compute_byte_range_at_file_extremes() -> None:
     document = b"<....>" + b"y" * 10
-    # `<` at 0, `>` at 5
+    # `<` at 0, `>` at 5; delimiters excluded → len1=0, start2=6.
     br = compute_byte_range(document, 0, 5)
-    assert br == [0, 1, 5, len(document) - 5]
+    assert br == [0, 0, 6, len(document) - 6]
 
 
 def test_compute_byte_range_rejects_out_of_range_offsets() -> None:

@@ -69,16 +69,17 @@ public final class ByteRangeProbe {
 
                 // Derive the /Contents `<...>` span from the raw bytes around
                 // the gap PDFBox's ByteRange leaves. ByteRange is [a b c d];
-                // the excluded region is [b, c). The byte at b-1 should be the
-                // `<` opening delimiter (range1 includes it) and the byte at c
-                // should be the `>` closing delimiter (range2 includes it).
+                // the excluded region is [b, c). PDFBox's COSWriter places the
+                // `<`/`>` delimiters OUTSIDE the ranges: the byte at a+b is the
+                // `<` opening delimiter (the first excluded byte) and the byte
+                // at c-1 is the `>` closing delimiter (the last excluded byte).
                 int a = br[0];
                 int b = br[1];
                 int c = br[2];
                 int d = br[3];
 
-                int contentsOpen = a + b - 1;       // index of `<`
-                int contentsClose = c;              // index of `>`
+                int contentsOpen = a + b;           // index of `<`
+                int contentsClose = c - 1;          // index of `>`
                 out.println(prefix + "contentsOpen=" + contentsOpen);
                 out.println(prefix + "contentsClose=" + contentsClose);
 

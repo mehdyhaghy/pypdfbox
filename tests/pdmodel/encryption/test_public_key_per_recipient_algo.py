@@ -1,13 +1,20 @@
-"""Per-permission-mask envelope grouping for the public-key handler.
+"""One-envelope-per-recipient shape for the public-key handler write path.
 
-PDF 32000-1 §7.6.5 calls for **one PKCS#7 envelope per distinct permission
-set**, not one envelope per recipient. These tests pin that behaviour:
+Upstream ``PublicKeySecurityHandler#computeRecipientsField`` emits exactly one
+PKCS#7 envelope per recipient, in policy iterator order — it allocates
+``new byte[getNumberOfRecipients()][]`` and loops the recipients iterator,
+calling ``createDERForRecipient`` once per recipient. It does **not** group
+recipients that share a permission mask onto a single multi-recipient envelope.
 
-* recipients that share a permission mask collapse into a *single*
-  multi-recipient envelope on ``/Recipients``;
-* recipients with divergent permission masks land in separate envelopes;
-* both shapes round-trip through ``prepare_for_decryption`` for each
-  recipient's private key.
+These tests pin that upstream-faithful shape:
+
+* N recipients → N envelopes on ``/Recipients`` regardless of permission masks;
+* every envelope round-trips through ``prepare_for_decryption`` for its own
+  recipient key, surfacing that recipient's own permission mask.
+
+(An earlier wave invented per-permission-mask grouping, which contradicts
+upstream and violated the "do not invent abstractions" rule; wave 1502 reverted
+the write path to one-envelope-per-recipient and these tests track that.)
 """
 
 from __future__ import annotations
@@ -147,7 +154,7 @@ def two_recipients_different_perms() -> tuple[
     return r1, r2, c1, k1, c2, k2
 
 
-def test_two_recipients_same_perms_collapse_to_single_envelope(
+def test_two_recipients_same_perms_emit_one_envelope_each(
     two_recipients_same_perms: tuple[
         PublicKeyRecipient,
         PublicKeyRecipient,
@@ -157,7 +164,11 @@ def test_two_recipients_same_perms_collapse_to_single_envelope(
         object,
     ],
 ) -> None:
-    """Shared permission mask → one multi-recipient PKCS#7 envelope."""
+    """Shared permission mask still yields one envelope PER recipient.
+
+    Upstream computeRecipientsField never collapses recipients onto a shared
+    multi-recipient envelope — it emits one per recipient regardless of mask.
+    """
     r1, r2, _c1, _k1, _c2, _k2 = two_recipients_same_perms
 
     policy = PublicKeyProtectionPolicy()
@@ -173,12 +184,12 @@ def test_two_recipients_same_perms_collapse_to_single_envelope(
     assert encryption is not None
     recipients_array = _recipients_of(encryption)
     assert recipients_array is not None
-    # One envelope total — the two recipients share permissions and ride a
-    # single multi-recipient PKCS#7 ContentInfo per PDF 32000-1 §7.6.5.
-    assert recipients_array.size() == 1
+    # One envelope per recipient — two recipients, two envelopes, matching
+    # upstream's new byte[getNumberOfRecipients()][] allocation.
+    assert recipients_array.size() == 2
 
 
-def test_two_recipients_different_perms_emit_separate_envelopes(
+def test_two_recipients_different_perms_emit_one_envelope_each(
     two_recipients_different_perms: tuple[
         PublicKeyRecipient,
         PublicKeyRecipient,
@@ -188,7 +199,7 @@ def test_two_recipients_different_perms_emit_separate_envelopes(
         object,
     ],
 ) -> None:
-    """Divergent permission masks → one envelope per distinct mask."""
+    """Divergent permission masks → one envelope per recipient (still N)."""
     r1, r2, _c1, _k1, _c2, _k2 = two_recipients_different_perms
 
     policy = PublicKeyProtectionPolicy()
@@ -217,7 +228,7 @@ def test_same_perms_envelope_round_trips_for_each_recipient(
         object,
     ],
 ) -> None:
-    """The single shared envelope decrypts with *either* recipient key."""
+    """Each recipient's own envelope decrypts with that recipient's key."""
     r1, r2, c1, k1, c2, k2 = two_recipients_same_perms
 
     policy = PublicKeyProtectionPolicy()
@@ -253,7 +264,7 @@ def test_different_perms_envelopes_round_trip_each_recipient(
         object,
     ],
 ) -> None:
-    """Each per-mask envelope still decrypts with its own private key,
+    """Each per-recipient envelope still decrypts with its own private key,
     and the surfaced ``AccessPermission`` matches the recipient's mask."""
     r1, r2, c1, k1, c2, k2 = two_recipients_different_perms
 
@@ -297,8 +308,8 @@ def test_different_perms_envelopes_round_trip_each_recipient(
         )
 
 
-def test_three_recipients_two_share_permissions_yield_two_envelopes() -> None:
-    """Mixed grouping — 3 recipients across 2 permission masks → 2 envelopes."""
+def test_three_recipients_yield_three_envelopes() -> None:
+    """Three recipients → three envelopes, irrespective of shared masks."""
     try:
         perms_locked = AccessPermission()
         perms_locked.set_can_print(False)
@@ -323,5 +334,5 @@ def test_three_recipients_two_share_permissions_yield_two_envelopes() -> None:
     assert encryption is not None
     recipients_array = _recipients_of(encryption)
     assert recipients_array is not None
-    # Two distinct permission masks → two envelopes (one carries r1 + r2).
-    assert recipients_array.size() == 2
+    # One envelope per recipient — three recipients, three envelopes.
+    assert recipients_array.size() == 3

@@ -352,27 +352,42 @@ def test_full_save_objstm_packing_shape_matches_pdfbox(tmp_path: Path) -> None:
 
 @requires_oracle
 def test_full_save_objstm_decoded_body_matches_pdfbox(tmp_path: Path) -> None:
-    """The DECODED (inflated) ObjStm body is byte-identical to PDFBox's on the
-    unencrypted single-page fixture — proving the per-object compact
-    serialisation and index-header layout match upstream exactly, with the
-    deflate envelope the only residual divergence. (Some richer fixtures carry
-    a small reference-vs-inline divergence for indirect scalars shared across
-    containers, documented in DEFERRED.md, so this body-equality pin targets
-    the clean fixture.)"""
-    fixture = _FIXTURES / "pdfwriter" / "unencrypted.pdf"
-    if not fixture.is_file():
-        return
-    java = _parse_probe_kv(
-        run_probe_text(
-            "FullSaveObjStmParityProbe",
-            str(fixture),
-            str(tmp_path / "java_unencrypted.pdf"),
+    """The DECODED (inflated) ObjStm body is byte-identical to PDFBox's on
+    EVERY covered fixture — proving the per-object compact serialisation, the
+    index-header layout AND the reference-vs-inline choice for indirect scalars
+    all match upstream exactly, with the deflate envelope (zlib vs
+    java.util.zip.Deflater on an identical payload) the only residual
+    divergence.
+
+    Wave 1502 (agent A) closed the last body-level divergence: upstream's
+    compression pool is value-hashed for the scalar COS types (string / integer
+    / float / name / boolean), so a *direct* scalar value-equal to an
+    already-registered *indirect* scalar is emitted as ``N G R`` rather than
+    inlined. On ``acroform.pdf`` PDFBox writes object 77 as
+    ``[(BMW) 75 0 R (VW) (Audi)]`` (object 75 being the indirect ``(Porsche)``
+    string) where pypdfbox previously inlined ``(Porsche)``. The ``COSWriter``
+    pool shim now performs the same value-equality lookup, making every
+    fixture's decoded body match byte-for-byte (acroform was also a 1-byte
+    file-size residual, now byte-identical at 20759==20759)."""
+    for fixture in _FIXTURES_LIST:
+        if not fixture.is_file():
+            continue
+        java = _parse_probe_kv(
+            run_probe_text(
+                "FullSaveObjStmParityProbe",
+                str(fixture),
+                str(tmp_path / f"java_{fixture.stem}.pdf"),
+            )
         )
-    )
-    py = _py_objstm_parity(fixture)
-    assert py["objstm_count"] == 1
-    py_stream = py["streams"][0]  # type: ignore[index]
-    assert py_stream["bodysha"] == java["objstm0_bodysha"], (
-        "decoded ObjStm body differs from PDFBox"
-    )
-    assert str(py_stream["first"]) == java["objstm0_first"]
+        py = _py_objstm_parity(fixture)
+        java_count = int(java["objstm_count"])
+        assert py["objstm_count"] == java_count, (
+            f"{fixture.stem}: ObjStm count {py['objstm_count']} != {java_count}"
+        )
+        for n, py_stream in enumerate(py["streams"]):  # type: ignore[arg-type]
+            assert py_stream["bodysha"] == java[f"objstm{n}_bodysha"], (
+                f"{fixture.stem}: decoded ObjStm#{n} body differs from PDFBox"
+            )
+            assert str(py_stream["first"]) == java[f"objstm{n}_first"], (
+                f"{fixture.stem}: ObjStm#{n} /First differs from PDFBox"
+            )

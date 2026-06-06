@@ -112,14 +112,16 @@ def test_pkcs7_signature_round_trip(tmp_path: Path) -> None:
         assert start1 == 0
         # Round-trip the bracketed bytes — they must hash deterministically.
         bracketed = data[start1 : start1 + len1] + data[start2 : start2 + len2]
-        # The bracketed bytes BORDER the /Contents placeholder (the bracketed
-        # ranges include the angle brackets `<` and `>` at the boundaries —
-        # ISO 32000-1 §12.8.1: only the hex chars between < and > are skipped).
-        assert data[start1 + len1 - 1 : start1 + len1] == b"<"
-        assert data[start2 : start2 + 1] == b">"
-        # Skipped region = the hex-encoded /Contents body (no brackets).
+        # The bracketed bytes BORDER the /Contents placeholder. Matching
+        # PDFBox's COSWriter, the `<`/`>` angle delimiters are EXCLUDED from
+        # the ranges: the `<` is the first skipped byte (at start1+len1) and
+        # the `>` is the last skipped byte (at start2-1).
+        assert data[start1 + len1 : start1 + len1 + 1] == b"<"
+        assert data[start2 - 1 : start2] == b">"
+        # Skipped region = `<` + hex-encoded /Contents body + `>`.
         skipped = data[start1 + len1 : start2]
-        assert all(c in b"0123456789ABCDEFabcdef" for c in skipped)
+        assert skipped[:1] == b"<" and skipped[-1:] == b">"
+        assert all(c in b"0123456789ABCDEFabcdef" for c in skipped[1:-1])
         # And bracketed length matches expectation.
         assert len(bracketed) == len(data) - len(skipped)
 
@@ -214,10 +216,11 @@ def test_splice_byte_range_arithmetic(tmp_path: Path) -> None:
         br = loaded.get_byte_range()
         assert br is not None
         start1, len1, start2, len2 = br
-        # ByteRange ranges include the surrounding angle brackets — only the
-        # 16384 hex chars BETWEEN < and > are skipped.
+        # Matching PDFBox's COSWriter, the surrounding `<`/`>` delimiters are
+        # EXCLUDED from the ranges, so the skipped region is `<` + 16384 hex
+        # chars + `>` = 16386 bytes.
         skipped = start2 - (start1 + len1)
-        assert skipped == 16384
+        assert skipped == 16386
 
         # Sum of bracketed bytes + skipped region must equal file length.
         assert len1 + len2 + skipped == len(data)
@@ -225,9 +228,9 @@ def test_splice_byte_range_arithmetic(tmp_path: Path) -> None:
         assert start1 == 0
         # Second range ends exactly at EOF.
         assert start2 + len2 == len(data)
-        # Boundary bytes = the < and > delimiters themselves.
-        assert data[start1 + len1 - 1 : start1 + len1] == b"<"
-        assert data[start2 : start2 + 1] == b">"
+        # Boundary bytes: `<` is the first skipped byte, `>` the last.
+        assert data[start1 + len1 : start1 + len1 + 1] == b"<"
+        assert data[start2 - 1 : start2] == b">"
 
         # Confirm what the signer received was the actual concatenated slices.
         bracketed = data[start1 : start1 + len1] + data[start2 : start2 + len2]

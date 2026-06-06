@@ -385,40 +385,52 @@ def test_document_timestamp_signer_tsa_client_property() -> None:
 
 def test_pdsignature_get_contents_from_bytes_round_trip() -> None:
     """Sanity baseline — a properly bracketed /Contents block round-trips
-    through :meth:`PDSignature.get_contents_from_bytes`."""
+    through :meth:`PDSignature.get_contents_from_bytes` using upstream's
+    exact ``begin = br[0]+br[1]+1`` / ``len = br[2]-begin-1`` arithmetic."""
     sig = PDSignature()
     # Layout: PRE | < | hex(abcd) | > | POST
     # bytes:  10  | 1 | 4         | 1 | 6 → total 22.
     pdf = b"PRE-PREFIX<abcd>POSTFIX"
-    # PRE = "PRE-PREFIX" (10 bytes) ends at offset 10. left range
-    # convention "brackets excluded" → start1=0, len1=10 (covers PRE,
-    # without '<'). start2 = 15 (covers '>POSTFIX'), len2=8.
-    sig.set_byte_range([0, 10, 15, 8])
+    # `<` at offset 10, `>` at offset 15. Delimiters EXCLUDED from the
+    # ranges (PDFBox COSWriter convention): len1=10 (ends before `<`),
+    # start2=16 (after `>`), len2=7. Upstream reader: begin=0+10+1=11
+    # (first hex char), len=16-11-1=4 → slice pdf[11:15] == "abcd".
+    sig.set_byte_range([0, 10, 16, 7])
     out = sig.get_contents_from_bytes(pdf)
     assert out == bytes.fromhex("abcd")
 
 
-def test_pdsignature_get_contents_raises_when_left_delimiter_missing() -> None:
-    """Lines 808->813, 819 — when neither ``probe_start`` nor
-    ``probe_start + 1`` carries ``<``, ``gap_start`` stays None and the
-    final guard raises ``IndexError("missing or malformed /ByteRange")``."""
+def test_pdsignature_get_contents_from_bytes_strips_residual_delimiters() -> None:
+    """``get_converted_contents`` still strips a leading ``<`` / trailing
+    ``>`` defensively, so a non-conformant range that nudges one delimiter
+    INTO the slice is tolerated (upstream ``getConvertedContents`` parity)."""
     sig = PDSignature()
-    # No '<' anywhere — the probe scan must come up empty on the left.
+    pdf = b"PRE-PREFIX<abcd>POSTFIX"
+    # Brackets-INCLUDED legacy convention: len1=11 (covers `<`), start2=15
+    # (covers `>`). Upstream reader: begin=0+11+1=12, len=15-12-1=2 →
+    # pdf[12:14] == "bc" — the residual-delimiter strip is a no-op here;
+    # this case just proves the helper never raises on the legacy layout.
+    sig.set_byte_range([0, 11, 15, 8])
+    out = sig.get_contents_from_bytes(pdf)
+    assert out == bytes.fromhex("bc")
+
+
+def test_pdsignature_get_contents_raises_on_negative_slice() -> None:
+    """A ``/ByteRange`` whose arithmetic yields a negative length raises
+    ``IndexError`` (parity with upstream ``IndexOutOfBoundsException``)."""
+    sig = PDSignature()
     body = b"AAAAABBBBBCCCCCDDDDDEEEEE"
-    # /ByteRange [0, 10, 15, 10] — gap is "CCCCC" (offsets 10..15);
-    # neither offset 9 ('A') nor 10 ('C') is '<'.
-    sig.set_byte_range([0, 10, 15, 10])
+    # br[2] (5) < begin (0+10+1=11) → len = 5-11-1 = -7 → negative.
+    sig.set_byte_range([0, 10, 5, 10])
     with pytest.raises(IndexError, match="missing or malformed"):
         sig.get_contents_from_bytes(body)
 
 
-def test_pdsignature_get_contents_raises_when_right_delimiter_missing() -> None:
-    """Lines 814->818, 819 — the left ``<`` is present but the right
-    ``>`` isn't on either of the two probed positions."""
+def test_pdsignature_get_contents_raises_when_slice_overruns_file() -> None:
+    """A ``/ByteRange`` whose slice runs past EOF raises ``IndexError``."""
     sig = PDSignature()
-    # Left '<' at offset 10 (the byte BEFORE the right range start), but
-    # no '>' near the right edge.
-    body = b"PRE-PREFIX<abcdXPOSTFIX"
-    sig.set_byte_range([0, 10, 15, 8])
+    body = b"PRE-PREFIX<abcd>POSTFIX"  # 23 bytes
+    # begin=0+10+1=11, len=100-11-1=88 → 11+88 > 23.
+    sig.set_byte_range([0, 10, 100, 7])
     with pytest.raises(IndexError, match="missing or malformed"):
         sig.get_contents_from_bytes(body)

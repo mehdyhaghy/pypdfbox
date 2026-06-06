@@ -70,6 +70,29 @@ public final class SignatureDictProbe {
 
                 String name = sig.getName();
                 out.println(prefix + "name=" + (name == null ? "null" : name));
+
+                String reason = sig.getReason();
+                out.println(prefix + "reason=" + (reason == null ? "null" : reason));
+
+                String location = sig.getLocation();
+                out.println(
+                        prefix + "location="
+                                + (location == null ? "null" : location));
+
+                String contactInfo = sig.getContactInfo();
+                out.println(
+                        prefix + "contactInfo="
+                                + (contactInfo == null ? "null" : contactInfo));
+
+                // /ByteRange must be emitted inline (direct) so the COSWriter
+                // can splice it. A direct COSArray has no object/generation
+                // number when re-parsed; an indirect one resolves via a
+                // reference. PDFBox stores it directly (setByteRange ->
+                // ary.setDirect(true)); confirm pypdfbox does too.
+                COSBase brBase = cd.getItem(COSName.BYTERANGE);
+                out.println(
+                        prefix + "byteRangeIsDirect="
+                                + (brBase != null && brBase.isDirect()));
                 i++;
             }
         }

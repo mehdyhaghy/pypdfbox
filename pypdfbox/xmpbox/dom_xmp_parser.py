@@ -21,6 +21,7 @@ from .type import (
     ArrayProperty,
     Cardinality,
     LayerType,
+    ResourceRefType,
 )
 from .xmp_basic_job_ticket_schema import XMPBasicJobTicketSchema
 from .xmp_basic_schema import XMPBasicSchema
@@ -121,6 +122,33 @@ _TYPED_ARRAY_REGISTRY: dict[
         LayerType,
         "Seq",
     ),
+}
+
+
+# Built-in single (non-array) structured-type registry.
+#
+# Mirrors upstream ``createProperty`` → ``manageStructuredType`` (line 520):
+# a ``Cardinality.Simple`` property whose declared type is structured (e.g.
+# ``xmpMM:DerivedFrom`` is a ``Types.ResourceRef`` / ``Cardinality.Simple``)
+# is serialized as ``<wrapper rdf:parseType="Resource">…children…</wrapper>``
+# (the children carry the struct's typed fields). Upstream parses these via
+# ``parseLiDescription`` into a single typed ``AbstractStructuredType`` and
+# stores it on the schema under the property's local name.
+#
+# Keys are ``(schema namespace URI, property local-name)``; values are the
+# structured element class (which must subclass
+# :class:`AbstractStructuredType` and expose a ``_FIELD_TYPES`` mapping so
+# :meth:`AbstractStructuredType.add_simple_property` knows how to wrap each
+# child value). Unknown slots fall through to the legacy text representation.
+_TYPED_STRUCT_REGISTRY: dict[tuple[str, str], type[AbstractStructuredType]] = {
+    (
+        XMPMediaManagementSchema.NAMESPACE,
+        XMPMediaManagementSchema.DERIVED_FROM,
+    ): ResourceRefType,
+    (
+        XMPMediaManagementSchema.NAMESPACE,
+        XMPMediaManagementSchema.MANAGED_FROM,
+    ): ResourceRefType,
 }
 
 
@@ -553,6 +581,16 @@ class DomXmpParser:
                 # array under the upstream local name.
                 schema._properties[local] = typed_array  # noqa: SLF001
                 continue
+            # Single structured-type path: a ``Cardinality.Simple`` property
+            # whose declared type is structured (e.g. ``xmpMM:DerivedFrom``)
+            # is serialized as ``parseType="Resource"`` with the struct's
+            # typed fields as children. Port upstream ``manageStructuredType``
+            # + ``parseLiDescription`` and install the typed instance.
+            typed_struct = self._try_parse_typed_struct(child, ns, local, schema)
+            if typed_struct is not None:
+                typed_struct.set_property_name(local)
+                schema._properties[local] = typed_struct  # noqa: SLF001
+                continue
             parsed_value = self._parse_property_value(child)
             self._validate_element_form_cardinality(child, ns, local, parsed_value)
             self._assign(schema, local, parsed_value)
@@ -848,6 +886,37 @@ class DomXmpParser:
                 # unreachable from this call site.
                 array.add_property(instance)
         return array
+
+    def _try_parse_typed_struct(
+        self,
+        element: ET.Element,
+        ns: str,
+        local: str,
+        schema: XMPSchema,
+    ) -> AbstractStructuredType | None:
+        """Port of upstream ``manageStructuredType`` + ``parseLiDescription``
+        for a single (``Cardinality.Simple``) structured property.
+
+        If ``(ns, local)`` matches a registered single structured-type slot
+        (see :data:`_TYPED_STRUCT_REGISTRY`) and ``element`` carries the
+        struct's typed fields (either directly via ``rdf:parseType="Resource"``
+        or through a nested ``rdf:Description``), build the typed
+        :class:`AbstractStructuredType` instance and return it. Returns
+        ``None`` when the slot is not registered or the element carries no
+        child elements (so the legacy text path can take over).
+        """
+        element_cls = _TYPED_STRUCT_REGISTRY.get((ns, local))
+        if element_cls is None:
+            return None
+        # parseType="Resource": the property element itself is the struct
+        # container. Without it, upstream descends into the first child
+        # element (a nested rdf:Description) — but in both forms
+        # ``_build_structured_from_li`` already unwraps a single nested
+        # rdf:Description (PDFBOX-6126), so the property element is the
+        # correct entry point either way.
+        if not list(element):
+            return None
+        return self._build_structured_from_li(element, element_cls, schema)
 
     def _build_structured_from_li(
         self,

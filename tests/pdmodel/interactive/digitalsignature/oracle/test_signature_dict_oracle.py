@@ -173,3 +173,42 @@ def test_explicit_filter_subfilter_round_trip(tmp_path: Path) -> None:
     assert java["sig.0.type"] == "Sig"
     assert java["sig.0.filter"] == PDSignature.FILTER_ADOBE_PPKLITE
     assert java["sig.0.subfilter"] == PDSignature.SUBFILTER_ETSI_CADES_DETACHED
+
+
+@requires_oracle
+def test_identity_fields_round_trip(tmp_path: Path) -> None:
+    """PDFBox reads back the /Name, /Reason, /Location, /ContactInfo identity
+    strings pypdfbox wrote, and sees the /ByteRange emitted inline (direct) —
+    the upstream PDSignature.setByteRange contract (ary.setDirect(true))."""
+    cert, key = _make_self_signed_cert()
+    signer = Pkcs7Signature(cert, key)
+    unsigned = tmp_path / "unsigned.pdf"
+    signed = tmp_path / "signed.pdf"
+    _build_unsigned_pdf(unsigned)
+
+    with PDDocument.load(unsigned) as doc:
+        sig = PDSignature()
+        sig.set_name("Identity Signer")
+        sig.set_reason("I approve this document")
+        sig.set_location("Berlin, DE")
+        sig.set_contact_info("signer@example.test")
+        doc.add_signature(sig, signer)
+        with open(signed, "wb") as fh:
+            handle = doc.save_incremental_for_external_signing(fh)
+            pkcs7 = signer.sign(io.BytesIO(handle.get_content()))
+            handle.set_signature(pkcs7)
+
+    java = _parse_probe_kv(run_probe_text("SignatureDictProbe", str(signed)))
+    assert java["sig.0.name"] == "Identity Signer"
+    assert java["sig.0.reason"] == "I approve this document"
+    assert java["sig.0.location"] == "Berlin, DE"
+    assert java["sig.0.contactInfo"] == "signer@example.test"
+    assert java["sig.0.byteRangeIsDirect"] == "true"
+
+    # pypdfbox-side read-back agrees field-for-field.
+    with PDDocument.load(signed) as doc:
+        loaded = doc.get_signature_dictionaries()[0]
+        assert loaded.get_name() == "Identity Signer"
+        assert loaded.get_reason() == "I approve this document"
+        assert loaded.get_location() == "Berlin, DE"
+        assert loaded.get_contact_info() == "signer@example.test"

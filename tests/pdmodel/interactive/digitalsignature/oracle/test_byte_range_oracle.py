@@ -142,14 +142,16 @@ def test_byte_range_brackets_contents_delimiters(tmp_path: Path) -> None:
     py_byte_range, _ = _sign_external(unsigned, signed)
 
     java = _parse_probe_kv(run_probe_text("ByteRangeProbe", str(signed)))
-    # PDFBox-derived: the `<` sits at a+b-1, the `>` at c, in the raw bytes.
+    # PDFBox-derived: the `<`/`>` delimiters sit OUTSIDE the ranges (matching
+    # PDFBox's own COSWriter): the `<` is at a+b, the `>` at c-1.
     assert java["sig.0.byteRangeMatchesContents"] == "true"
-    # pypdfbox: a==0, and the byte just before range1's end is the `<`.
+    # pypdfbox: a==0, and the byte at range1's end (the first excluded byte)
+    # is the `<`; the byte just before range2's start is the `>`.
     a, b, c, d = py_byte_range
     assert a == 0
     raw = signed.read_bytes()
-    assert raw[a + b - 1 : a + b] == b"<"
-    assert raw[c : c + 1] == b">"
+    assert raw[a + b : a + b + 1] == b"<"
+    assert raw[c - 1 : c] == b">"
 
 
 @requires_oracle
@@ -186,3 +188,36 @@ def test_signed_content_length_matches_pdfbox(tmp_path: Path) -> None:
     _, b, _, d = py_byte_range
     assert py_content_len == b + d
     assert int(java["sig.0.signedContentLength"]) == py_content_len
+
+
+@requires_oracle
+def test_get_contents_byterange_matches_pdfbox(tmp_path: Path) -> None:
+    """A pypdfbox-signed document, re-sliced by Apache PDFBox's
+    ``getContents(byte[])`` (the /ByteRange-arithmetic overload:
+    ``begin = br[0]+br[1]+1`` / ``len = br[2]-begin-1``), yields exactly the
+    embedded ``/Contents`` COSString blob — AND exactly what pypdfbox's own
+    :meth:`PDSignature.get_contents_from_bytes` re-derives. This pins the
+    writer's /ByteRange delimiter convention (``<``/``>`` excluded) against
+    upstream's exact reader arithmetic in both languages."""
+    unsigned = tmp_path / "unsigned.pdf"
+    signed = tmp_path / "signed.pdf"
+    _build_unsigned_pdf(unsigned)
+    _sign_external(unsigned, signed)
+
+    java = _parse_probe_kv(
+        run_probe_text("SignatureContentsByteRangeProbe", str(signed))
+    )
+    assert java["count"] == "1"
+    # Java: the /ByteRange-sliced contents == the embedded COSString contents.
+    assert java["sig.0.agree"] == "true"
+
+    # pypdfbox's reader must extract the same blob from the same /ByteRange.
+    raw = signed.read_bytes()
+    with PDDocument.load(signed) as doc:
+        sigs = doc.get_signature_dictionaries()
+        assert len(sigs) == 1
+        py_via_byte_range = sigs[0].get_contents_from_bytes(raw)
+        py_via_cos_string = sigs[0].get_contents()
+    assert py_via_byte_range == py_via_cos_string
+    # And it agrees with PDFBox's getContents(byte[]) byte-for-byte.
+    assert py_via_byte_range.hex().upper() == java["sig.0.byteRangeHex"]

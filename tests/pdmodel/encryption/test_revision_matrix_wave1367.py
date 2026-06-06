@@ -696,9 +696,11 @@ def test_public_key_recipient_with_mismatched_key_cannot_decrypt() -> None:
         decrypt.prepare_for_decryption(encryption, b"\x00" * 16, material)
 
 
-def test_public_key_four_recipients_two_distinct_masks_yield_two_envelopes() -> None:
-    """Four-recipient extension of the three-recipient wave-1289 case — pins
-    that the per-mask collapsing scales beyond pairs."""
+def test_public_key_four_recipients_yield_four_envelopes() -> None:
+    """Four-recipient extension — pins the upstream one-envelope-per-recipient
+    shape (wave 1502 reverted the invented per-mask collapsing: upstream
+    ``computeRecipientsField`` allocates ``new byte[getNumberOfRecipients()][]``
+    and never groups recipients that share a permission mask)."""
     try:
         perms_locked = AccessPermission()
         perms_locked.set_can_print(False)
@@ -727,8 +729,9 @@ def test_public_key_four_recipients_two_distinct_masks_yield_two_envelopes() -> 
     assert default_cf is not None
     recipients = default_cf.get_recipients()
     assert recipients is not None
-    # Two distinct masks → exactly two envelopes regardless of recipient count.
-    assert recipients.size() == 2
+    # One envelope per recipient regardless of mask sharing — four recipients,
+    # four envelopes, matching upstream computeRecipientsField.
+    assert recipients.size() == 4
 
     expected_key = handler.get_encryption_key()
     assert expected_key is not None

@@ -187,9 +187,18 @@ class XmpSerializer:
         prefix: str | None,
         wrap_with_property: bool,
     ) -> None:
-        """Append serialised ``fields`` to ``parent``."""
+        """Append serialised ``fields`` to ``parent``.
+
+        Mirror of upstream ``XmpSerializer.serializeFields`` — ``prefix`` is
+        the forced element prefix (non-empty drives ``usePrefix``),
+        ``resource_ns`` is the schema prefix used to wrap structured
+        properties, and ``wrap_with_property`` controls whether a structured
+        field gets its own ``<resourceNS:name>`` wrapper element.
+        """
         for field in fields:
-            self._append_field(doc, parent, field, resource_ns, prefix)
+            self._append_field(
+                doc, parent, field, resource_ns, prefix, wrap_with_property
+            )
 
     # ------------------------------------------------------------------
     def _append_field(
@@ -199,6 +208,7 @@ class XmpSerializer:
         field: AbstractField,
         resource_ns: str,
         prefix: str | None,
+        wrap_with_property: bool = True,
     ) -> None:
         # Belt-and-suspenders: ``serialize_schema`` already converts flat-dict
         # schema entries to AbstractField via ``_normalize_schema_fields``,
@@ -206,21 +216,56 @@ class XmpSerializer:
         # hand us a raw primitive. Skip rather than crash.
         if not isinstance(field, AbstractField):
             return
+        use_prefix = bool(prefix)
         prop_name = field.get_property_name() or "value"
-        prefix_to_use = field.get_prefix() if hasattr(field, "get_prefix") else None
+        field_prefix = field.get_prefix() if hasattr(field, "get_prefix") else None
         ns_uri = field.get_namespace() if hasattr(field, "get_namespace") else None
-        tag = (
-            f"{prefix_to_use}:{prop_name}" if prefix_to_use else prop_name
-        )
-        elem = doc.createElementNS(ns_uri or "", tag) if ns_uri else doc.createElement(tag)
         if isinstance(field, AbstractSimpleProperty):
+            # Upstream: localPrefix = usePrefix ? prefix : simple.getPrefix().
+            simple_prefix = prefix if use_prefix else field_prefix
+            tag = f"{simple_prefix}:{prop_name}" if simple_prefix else prop_name
+            elem = (
+                doc.createElementNS(ns_uri or "", tag)
+                if ns_uri
+                else doc.createElement(tag)
+            )
             if hasattr(field, "get_string_value"):
                 value = field.get_string_value()
             else:
                 value = field.get_raw_value()
             text = doc.createTextNode(value if value is not None else "")
             elem.appendChild(text)
-        elif isinstance(field, ArrayProperty):
+            self._fill_element_with_attributes(elem, field)
+            parent.appendChild(elem)
+            return
+        if isinstance(field, AbstractStructuredType):
+            # Upstream ``serializeFields`` structured branch: wrap in
+            # ``<resourceNS:propertyName>`` (when wrap_with_property), then an
+            # ``<rdf:li rdf:parseType="Resource">`` carrying the struct's
+            # typed fields (serialised with prefix=None → each field uses its
+            # own prefix). Note upstream does NOT declare the inner field
+            # namespace (e.g. xmlns:stRef) — faithful port keeps that shape.
+            list_parent = parent
+            if wrap_with_property:
+                wrap_tag = (
+                    f"{resource_ns}:{prop_name}" if resource_ns else prop_name
+                )
+                wrapper = doc.createElement(wrap_tag)
+                parent.appendChild(wrapper)
+                list_parent = wrapper
+            li = doc.createElement(f"{DEFAULT_RDF_PREFIX}:li")
+            li.setAttribute(f"{DEFAULT_RDF_PREFIX}:parseType", "Resource")
+            list_parent.appendChild(li)
+            inner_fields = (
+                field.get_all_properties()
+                if hasattr(field, "get_all_properties")
+                else []
+            )
+            self.serialize_fields(doc, li, inner_fields, resource_ns, None, True)
+            return
+        tag = f"{field_prefix}:{prop_name}" if field_prefix else prop_name
+        elem = doc.createElementNS(ns_uri or "", tag) if ns_uri else doc.createElement(tag)
+        if isinstance(field, ArrayProperty):
             if hasattr(field, "get_array_type"):
                 array_type = field.get_array_type()
                 tag_value = (

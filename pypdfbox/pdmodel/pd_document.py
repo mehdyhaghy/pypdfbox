@@ -685,15 +685,21 @@ class PDDocument:
         contents_end = contents_start + self._CONTENTS_PLACEHOLDER_HEX_LEN
 
         # ByteRange = [start1, len1, start2, len2] where the two slices
-        # bracket the /Contents bytes (INCLUDING the angle brackets, per
-        # ISO 32000-1 §12.8.1: "the byte range shall span the entire file
-        # except the bytes between < and >, exclusive of those delimiters").
-        # Strictly: bytes 0..idx (just before `<`), then idx+1+N+1..end.
+        # bracket the /Contents hex string. Mirror Apache PDFBox's COSWriter
+        # (COSWriter.java doWriteSignature): the digest covers the entire file
+        # EXCEPT the `<…>` /Contents token *including* its `<` and `>` angle
+        # delimiters. Upstream sets
+        #   beforeLength = signatureOffset            (= position of `<`)
+        #   afterOffset  = signatureOffset + signatureLength (= just past `>`)
+        # so range1 ends just BEFORE `<` (the `<` is the first excluded byte)
+        # and range2 starts just AFTER `>` (the `>` is the last excluded byte).
+        # Confirmed against the live oracle (SignByteRangeConventionProbe):
+        # fileBytes[start1+len1] == '<' and fileBytes[start2-1] == '>'.
         contents_open = idx                        # position of `<`
         contents_close = idx + len(zero_run) - 1   # position of `>`
         start1 = 0
-        len1 = contents_open + 1                   # include `<`
-        start2 = contents_close                    # include `>`
+        len1 = contents_open                       # exclude `<` (ends before it)
+        start2 = contents_close + 1                # exclude `>` (starts after it)
         len2 = len(rendered) - start2
         byte_range = [start1, len1, start2, len2]
 

@@ -245,7 +245,10 @@ def test_prepare_document_round_trip_matches_decrypt_path(
         assert document.encryption.get_sub_filter() == "adbe.pkcs7.s5"
     else:
         assert document.encryption.get_v() == 4
-        assert document.encryption.get_sub_filter() == "adbe.pkcs7.s4"
+        # Upstream prepareDocumentForEncryption writes /SubFilter adbe.pkcs7.s5
+        # for BOTH the AES-128 (V=4) and AES-256 (V=5) crypt-filter branches;
+        # SUBFILTER4 (s4) is only used by the legacy RC4 default branch.
+        assert document.encryption.get_sub_filter() == "adbe.pkcs7.s5"
     # V>=4 crypt-filter handler keeps /Recipients inside /CF /DefaultCryptFilter
     # (PDFBox-compatible location).
     default_cf = document.encryption.get_default_crypt_filter_dictionary()

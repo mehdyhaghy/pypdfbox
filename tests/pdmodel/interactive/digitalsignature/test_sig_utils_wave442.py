@@ -170,7 +170,9 @@ def test_get_last_relevant_signature_accepts_missing_type() -> None:
 def test_compute_byte_range_accepts_bytearray() -> None:
     document = bytearray(b"abc<placeholder>xyz")
 
-    assert compute_byte_range(document, 3, 15) == [0, 4, 15, 4]
+    # `<` at 3, `>` at 15; delimiters excluded (PDFBox COSWriter convention):
+    # range1 ends before `<` (len1=3), range2 starts after `>` (start2=16).
+    assert compute_byte_range(document, 3, 15) == [0, 3, 16, 3]
 
 
 def test_compute_signed_digest_accepts_bytearray_and_named_algorithm() -> None:
