@@ -15,6 +15,7 @@ from pypdfbox.pdfparser.pdf_stream_parser import (
 )
 
 from .operator import Operator
+from .operator_name import OperatorName
 from .operator_processor import MissingOperandException, OperatorProcessor
 from .pd_content_stream import PDContentStream
 
@@ -204,7 +205,7 @@ class PDFStreamEngine:
                 self._resources = stream_resources
             with content_stream.get_contents_for_stream_parsing() as src:
                 parser = PDFStreamParser(src)
-                self._dispatch_tokens(parser)
+                self._dispatch_tokens(parser, content_stream)
         finally:
             self._resources = prev_resources
 
@@ -248,33 +249,101 @@ class PDFStreamEngine:
         nested-stream entry points — :meth:`process_transparency_group`,
         :meth:`process_annotation`, the rendering subclass' Type3 path —
         all call this to re-enter dispatch after they've fenced the
-        graphics stack / resources / matrix. The cluster #2 base does not
-        carry the colour-operator gating for ``PDTilingPattern`` /
-        Type3 ``d1`` first-operator detection — :meth:`_dispatch_tokens`
-        does not yet inspect those — but the call surface matches.
+        graphics stack / resources / matrix. The colour-operator gating
+        for ``PDTilingPattern`` (uncoloured) / Type3 ``d1`` first-operator
+        detection is carried by :meth:`_dispatch_tokens` (which receives
+        ``content_stream``), mirroring upstream ``processStreamOperators``.
         """
         with content_stream.get_contents_for_stream_parsing() as src:
             parser = PDFStreamParser(src)
-            self._dispatch_tokens(parser)
+            self._dispatch_tokens(parser, content_stream)
 
-    def _dispatch_tokens(self, parser: PDFStreamParser) -> None:
+    def _dispatch_tokens(
+        self,
+        parser: PDFStreamParser,
+        content_stream: PDContentStream | None = None,
+    ) -> None:
         """Drive the parser, accumulating operands until each operator
         token is seen, then dispatch. Mirrors upstream's
-        ``processStreamOperators`` loop, sans the Type3 / tiling-pattern
-        colour-operator gating which depends on classes that arrive in
-        later clusters.
+        ``processStreamOperators`` loop, including the Type3 / tiling-pattern
+        colour-operator gating.
+
+        ``content_stream`` carries the gating context so the flag mirrors
+        upstream ``PDFStreamEngine.processStreamOperators`` (3.0.7
+        lines 538-578): the flag is forced ``True`` for the duration of the
+        loop, then flipped ``False`` for an uncoloured tiling pattern up
+        front, and for a Type3 charproc whose first operator is ``d1``. The
+        previous value is always restored. When ``content_stream`` is
+        ``None`` (raw-bytes callers such as the renderer's Type3 path, which
+        carries its own ``_type3_ignore_color`` gate) the flag is left
+        untouched, so the two mechanisms never double-apply.
         """
-        operands: list[COSBase] = []
-        for token in parser.tokens():
-            if isinstance(token, _ParserOperator):
-                op = self._adopt_parser_operator(token)
-                self.process_operator(op, operands)
-                operands = []
-            elif isinstance(token, COSBase):
-                operands.append(token)
-            # parse_next_token never yields anything else, but a malformed
-            # stream could in principle: silently skip, matching upstream
-            # which also ignores non-COSBase / non-Operator tokens.
+        gating = content_stream is not None
+        old_should_process = self._should_process_color_operators
+        if gating:
+            # Upstream: shouldProcessColorOperators = true, then false for
+            # an uncoloured tiling pattern (PDFStreamEngine.java:545-551).
+            self._should_process_color_operators = True
+            if self._is_uncolored_tiling_pattern(content_stream):
+                self._should_process_color_operators = False
+        is_first_operator = True
+        is_type3_char_proc = gating and self._is_type3_char_proc(content_stream)
+        try:
+            operands: list[COSBase] = []
+            for token in parser.tokens():
+                if isinstance(token, _ParserOperator):
+                    op = self._adopt_parser_operator(token)
+                    if (
+                        gating
+                        and is_first_operator
+                        and is_type3_char_proc
+                        and op.get_name() == OperatorName.TYPE3_D1
+                    ):
+                        # First operator of a Type3 charproc is ``d1``: the
+                        # glyph is an uncoloured mask, colour comes from the
+                        # surrounding text state (PDFStreamEngine.java:558-562).
+                        self._should_process_color_operators = False
+                    is_first_operator = False
+                    self.process_operator(op, operands)
+                    operands = []
+                elif isinstance(token, COSBase):
+                    operands.append(token)
+                # parse_next_token never yields anything else, but a malformed
+                # stream could in principle: silently skip, matching upstream
+                # which also ignores non-COSBase / non-Operator tokens.
+        finally:
+            if gating:
+                self._should_process_color_operators = old_should_process
+
+    @staticmethod
+    def _is_uncolored_tiling_pattern(content_stream: PDContentStream | None) -> bool:
+        """Whether ``content_stream`` is an uncoloured (``/PaintType 2``)
+        :class:`PDTilingPattern`. Mirrors the upstream ``instanceof`` /
+        ``getPaintType() == PAINT_UNCOLORED`` guard."""
+        if content_stream is None:
+            return False
+        is_uncolored = getattr(content_stream, "is_uncolored", None)
+        get_paint_type = getattr(content_stream, "get_paint_type", None)
+        if not callable(is_uncolored) or not callable(get_paint_type):
+            return False
+        # Both methods are only present on PDTilingPattern in this codebase;
+        # guard on the pattern-type marker to avoid a false positive on an
+        # unrelated duck-type.
+        if getattr(content_stream, "get_pattern_type", None) is None:
+            return False
+        try:
+            return bool(is_uncolored())
+        except Exception:  # noqa: BLE001
+            return False
+
+    @staticmethod
+    def _is_type3_char_proc(content_stream: PDContentStream | None) -> bool:
+        """Whether ``content_stream`` is a :class:`PDType3CharProc`. Mirrors
+        the upstream ``instanceof PDType3CharProc`` guard for the leading
+        ``d1`` colour-suppression."""
+        if content_stream is None:
+            return False
+        return type(content_stream).__name__ == "PDType3CharProc"
 
     @staticmethod
     def _adopt_parser_operator(parser_op: _ParserOperator) -> Operator:

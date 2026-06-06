@@ -13,7 +13,13 @@ def test_load_pdf_malformed_bytes_raise_oserror_with_parse_cause() -> None:
         Loader.load_pdf(b"not a pdf at all")
 
     assert isinstance(excinfo.value.__cause__, PDFParseError)
-    assert "not a PDF file" in str(excinfo.value)
+    # Wave 1497: a header-less buffer no longer fails eagerly at the header
+    # scan. Mirroring upstream PDFParser.parse(boolean), a lenient load (the
+    # Loader default) logs "Error: Header doesn't contain versioninfo" and
+    # falls through to brute-force recovery; a buffer with NO recoverable
+    # ``n g obj`` definitions then surfaces the rejection downstream (the
+    # cause is still a PDFParseError).
+    assert "no recoverable objects" in str(excinfo.value)
 
 
 def test_load_pdf_rejects_non_callable_read_attribute_at_loader_boundary() -> None:

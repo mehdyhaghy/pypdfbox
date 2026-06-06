@@ -71,7 +71,10 @@ class JBIG2Document:
         """Retrieve the global (page-less) segment with the given number."""
         if self.global_segments is not None:
             return self.global_segments.get_segment(segment_nr)
-        return None
+        # Unreachable in practice: _map_stream (run from __init__) always
+        # assigns a JBIG2Globals instance, so global_segments is never None
+        # after construction. Kept to mirror upstream's defensive null guard.
+        return None  # pragma: no cover
 
     def get_page(self, page_number: int) -> JBIG2Page | None:
         """Retrieve a :class:`JBIG2Page` specified by the given page number."""
@@ -198,7 +201,11 @@ class JBIG2Document:
             return False
         except EOFError:
             return True
-        except IndexError:
+        except IndexError:  # pragma: no cover
+            # Defensive: read_bits past the stream window always surfaces as
+            # EOFError (ImageInputStream.read_fully raises EOFError, never
+            # IndexError, on this path). Kept as a belt-and-braces guard
+            # alongside the EOFError branch.
             return True
 
     def get_global_segments(self) -> JBIG2Globals | None:

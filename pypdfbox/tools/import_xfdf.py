@@ -11,6 +11,7 @@ import contextlib
 from pathlib import Path
 
 from pypdfbox.loader import Loader
+from pypdfbox.pdmodel.pd_document import PDDocument
 
 
 class ImportXFDF:
@@ -37,7 +38,11 @@ class ImportXFDF:
             raise OSError("infile and xfdffile are required")
         importer = ImportXFDF()
         try:
-            with Loader.load_pdf(self.infile) as pdf:
+            # Wrap the loaded ``COSDocument`` in a ``PDDocument`` (mirrors
+            # the sibling ``ExportXFDF`` tool) so ``get_document_catalog``
+            # is available — pypdfbox's ``Loader.load_pdf`` returns a bare
+            # ``COSDocument`` whereas upstream returns a ``PDDocument``.
+            with PDDocument.load(str(self.infile)) as pdf:
                 fdf = Loader.load_xfdf(self.xfdffile)
                 try:
                     importer.import_fdf(pdf, fdf)

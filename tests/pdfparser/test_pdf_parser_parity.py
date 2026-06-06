@@ -281,9 +281,17 @@ def test_parse_pdf_header_returns_false_on_missing_header() -> None:
     assert p.parse_pdf_header() is False
 
 
-def test_parse_pdf_header_returns_false_on_malformed_version() -> None:
+def test_parse_pdf_header_raises_on_malformed_version() -> None:
+    # Wave 1497: ``parse_pdf_header`` returns False ONLY for a missing marker
+    # (upstream ``COSParser.parseHeader`` returning ``false``). A *present*
+    # ``%PDF-`` marker followed by an unparseable version still propagates a
+    # ``PDFParseError`` — mirroring upstream throwing
+    # ``IOException("Error getting header version:")`` for that case rather
+    # than reporting "no header found". (Previously this was swallowed into a
+    # False return, which conflated the two distinct upstream outcomes.)
     p = _parser(b"%PDF-bad\nrest")
-    assert p.parse_pdf_header() is False
+    with pytest.raises(PDFParseError):
+        p.parse_pdf_header()
 
 
 # ---------- constructor with decryption_password (Java line 58) ----------

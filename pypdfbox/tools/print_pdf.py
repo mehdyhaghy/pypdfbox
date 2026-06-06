@@ -225,8 +225,23 @@ class PrintPDF:
         parser.add_argument("-password", default=None)
         parser.add_argument("-silentPrint", dest="silentPrint", action="store_true")
         parser.add_argument("-printerName", dest="printerName", default=None)
-        parser.add_argument("-orientation", default="AUTO")
-        parser.add_argument("-duplex", default="DOCUMENT")
+        # Constrain -orientation / -duplex to the upstream enum values so an
+        # unknown value is rejected at parse time with exit code 2 — mirroring
+        # picocli's "Invalid value for option" behaviour (PrintPDF.java:100,103
+        # use the `Orientation` / `Duplex` enums; picocli exits 2 on a bad enum
+        # token). Without `choices=` the Python port previously passed unknown
+        # orientations straight through and raised an uncaught KeyError on a bad
+        # -duplex (`Duplex[ns.duplex]`).
+        parser.add_argument(
+            "-orientation",
+            default="AUTO",
+            choices=["AUTO", "LANDSCAPE", "PORTRAIT", "REVERSE_LANDSCAPE"],
+        )
+        parser.add_argument(
+            "-duplex",
+            default="DOCUMENT",
+            choices=["SIMPLEX", "DUPLEX", "TUMBLE", "DOCUMENT"],
+        )
         parser.add_argument("-tray", default=None)
         parser.add_argument("-mediaSize", dest="mediaSize", default=None)
         parser.add_argument("-border", action="store_true")

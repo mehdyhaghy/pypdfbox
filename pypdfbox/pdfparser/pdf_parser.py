@@ -31,6 +31,21 @@ from .xref_trailer_resolver import XrefEntry, XrefTrailerResolver, XrefType
 
 _LOG = logging.getLogger(__name__)
 
+
+class _HeaderNotFoundError(PDFParseError):
+    """Raised by :meth:`PDFParser.parse_header` when the ``%PDF-`` / ``%FDF-``
+    marker is absent from the leading scan window.
+
+    A ``PDFParseError`` subclass so existing ``except PDFParseError`` callers
+    (and the standalone-method contract tests) keep treating a header-less file
+    as a parse failure, while :meth:`PDFParser.parse` can distinguish the
+    *marker-not-found* case (recoverable via brute-force in lenient mode, per
+    upstream ``COSParser.parseHeader`` returning ``false``) from a
+    *malformed-version* failure (always fatal, per upstream's
+    ``IOException("Error getting header version:")``).
+    """
+
+
 # How many trailing bytes to scan for ``startxref`` / ``%%EOF``. Mirrors the
 # upstream ``COSParser.DEFAULT_TRAIL_BYTECOUNT`` knob (default 2048 in PDFBox;
 # pypdfbox bumps the floor to 4096 to absorb noisier tails). Per-instance
@@ -187,8 +202,22 @@ class PDFParser:
             self.set_lenient(lenient)
         self._document = COSDocument(scratch_file=self._scratch_file)
         self._cos_parser = COSParser(self._src, document=self._document)
-        self._version = self.parse_header()
-        self._document.set_version(self._version)
+        # Mirror upstream ``PDFParser.parse(boolean)`` (PDFBox 3.0.7,
+        # PDFParser.java ~L150): if neither the %PDF- nor the %FDF- header is
+        # located in the scan window, a *lenient* parse logs a warning and
+        # falls through with the COSDocument's default version (1.4) so
+        # brute-force recovery can still rebuild a body whose header was
+        # pushed past the window by leading garbage; a *strict* parse raises
+        # "Error: Header doesn't contain versioninfo". ``parse_pdf_header``
+        # checks both the %PDF- and %FDF- markers in one scan (upstream splits
+        # this across parsePDFHeader()/parseFDFHeader()), records the version
+        # on the COSDocument on success, and propagates a malformed-version
+        # ``PDFParseError`` (upstream IOException) in either mode.
+        if not self.parse_pdf_header():
+            if not self._lenient:
+                raise PDFParseError("Error: Header doesn't contain versioninfo")
+            _LOG.warning("Error: Header doesn't contain versioninfo")
+        self._version = self._document.get_version()
         # Detect linearization (PDF 32000-1 Annex F): the **first**
         # indirect object after the header is the linearization
         # parameter dictionary. Advisory only — the regular xref-walk
@@ -946,7 +975,20 @@ class PDFParser:
             # identical, so fall through to the same version parse.
             idx = bytes(head).find(b"%FDF-")
             if idx < 0:
-                raise PDFParseError("missing %PDF- header (not a PDF file)")
+                # Mirrors upstream COSParser.parseHeader (PDFBox 3.0.7,
+                # COSParser.java ~L1619) returning ``false`` — NOT throwing —
+                # when the marker is absent from the scan window. The "not a
+                # PDF" decision is deferred to PDFParser.parse(boolean), which
+                # in lenient mode logs a warning and falls through to
+                # brute-force recovery (so leading binary garbage that pushes
+                # the header past the window still recovers), and in strict
+                # mode raises. ``_HeaderNotFoundError`` is the in-band signal
+                # for that distinction; a *malformed version* (marker present)
+                # still raises ``PDFParseError`` below, matching upstream's
+                # IOException("Error getting header version:").
+                raise _HeaderNotFoundError(
+                    "missing %PDF- header (not a PDF file)"
+                )
         # Position the cursor just past the 5-byte marker for version parsing.
         self._src.seek(idx + marker_len)
         version_bytes = bytearray()
@@ -967,10 +1009,18 @@ class PDFParser:
 
         Java-style boolean alias for :meth:`parse_header` — mirrors
         upstream ``COSParser.parsePDFHeader()`` whose contract is "did we
-        find a PDF header?"."""
+        find a PDF header?". A *malformed version* (marker present, digits
+        unparseable) still propagates as ``PDFParseError`` — matching upstream
+        ``parseHeader`` throwing ``IOException("Error getting header
+        version:")`` rather than returning ``false`` for that case."""
         try:
             version = self.parse_header()
-        except PDFParseError:
+        except _HeaderNotFoundError:
+            # Upstream COSParser.parseHeader rewinds to the document start
+            # before returning false; mirror that so the fall-through to
+            # linearization detection / startxref location / brute-force
+            # recovery sees a clean cursor.
+            self._src.seek(0)
             return False
         if self._document is not None:
             self._document.set_version(version)

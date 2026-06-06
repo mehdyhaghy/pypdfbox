@@ -1,5 +1,5 @@
 """Leading-garbage-before-``%PDF-`` recovery parity, pinned against the live
-Apache PDFBox 3.0.7 oracle (wave 1496).
+Apache PDFBox 3.0.7 oracle (wave 1496; divergence closed wave 1497).
 
 A PDF whose body is structurally clean but carries N bytes of junk *before* the
 ``%PDF-`` header has two distinct behaviours upstream:
@@ -8,22 +8,25 @@ A PDF whose body is structurally clean but carries N bytes of junk *before* the
   still leaves ``%PDF-`` inside the first 1024-byte scan window — the header is
   located and the file opens via the normal path.
 * **Arbitrary binary / long junk that pushes ``%PDF-`` past the scan window** —
-  ``COSParser.parsePDFHeader`` does NOT find the marker, but (per upstream) it
-  does NOT abort: it logs, assigns the default version, and the parse continues
-  into brute-force recovery, which rescans the whole body for ``N G obj``
+  ``COSParser.parseHeader`` does NOT find the marker, returns ``false``, and
+  ``PDFParser.parse(boolean)`` (lenient) logs "Error: Header doesn't contain
+  versioninfo", keeps the COSDocument's default version, and continues into
+  brute-force recovery, which rescans the whole body for ``N G obj``
   definitions and rebuilds the xref + trailer. The document opens with the full
   page count and text regardless of how much junk precedes it.
 
-pypdfbox currently diverges on the second case: ``PDFParser.parse_header``
-raises ``PDFParseError("missing %PDF- header")`` as soon as the marker is not in
-the 1024-byte window, so a file with >~1019 bytes of leading garbage fails to
-load even though every object is intact and brute-force recovery could rebuild
-it. This is a STRUCTURAL divergence (the "header-not-found → fall through to
-brute-force" recovery path is not wired into pypdfbox's ``parse``); it is pinned
-strict-xfail on BOTH sides here and tracked in ``DEFERRED.md``.
+Wave 1497 wired this fall-through into pypdfbox: ``PDFParser.parse`` no longer
+aborts when the header is missing from the scan window — in lenient mode it
+falls through to the existing offset-agnostic brute-force rebuild exactly as
+upstream does, so the long-garbage case now recovers at parity. The "not a PDF"
+rejection is re-derived downstream: a buffer with NO recoverable ``n g obj``
+definitions still fails (brute-force finds nothing), on both sides. Strict
+(non-lenient) mode still raises immediately.
 
-The short-garbage case (within the window) is asserted at parity below as a
-regression guard so the eventual fix does not break it.
+Both the short-garbage (within window) and long-garbage (past window) cases are
+asserted at parity below; total-garbage (no header, no objects) is asserted to
+FAIL on both sides; the pure-junk-with-embedded-``obj``-tokens edge is pinned
+too.
 """
 
 from __future__ import annotations
@@ -131,35 +134,100 @@ def test_short_leading_garbage_loads_value_pinned(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Beyond-window garbage: STRUCTURAL divergence — strict-xfail both sides.
+# Beyond-window garbage: brute-force recovery parity (wave 1497).
 # ---------------------------------------------------------------------------
-@pytest.mark.xfail(
-    reason="STRUCTURAL: pypdfbox PDFParser.parse_header raises on a header not "
-    "found within the 1024-byte scan window; upstream COSParser.parsePDFHeader "
-    "returns the default version and falls through to brute-force recovery, so "
-    "PDFBox recovers all pages with arbitrary leading garbage. Tracked in "
-    "DEFERRED.md (pdfparser/recovery).",
-    strict=True,
-)
-def test_long_leading_garbage_recovers_like_pdfbox(tmp_path: Path) -> None:
+_RECOVERED = "ok=true\npages=2\ntext=Hello World\\nPage Two Text\\n\n"
+
+
+def test_long_leading_garbage_recovers_value_pinned(tmp_path: Path) -> None:
+    """Oracle-free literal pin (PDFBox 3.0.7): 2000 bytes of binary junk push
+    the header past the 1024-byte scan window, yet brute-force recovery
+    rebuilds both pages. Was the wave-1496 strict-xfail divergence; closed
+    wave 1497 by wiring the header-not-found fall-through onto the existing
+    offset-agnostic brute-force rebuild."""
     junk = (b"\x00\x01BINARYJUNK\xff" * 200)[:2000]
     pdf_path = tmp_path / "long.pdf"
     pdf_path.write_bytes(junk + _CLEAN)
-    # Upstream PDFBox 3.0.7 recovers two pages + text from this exact input
-    # (HeaderGarbageProbe: ok=true / pages=2 / text=Hello World\nPage Two...).
-    assert _pypdfbox_dump(str(pdf_path)) == (
-        "ok=true\npages=2\ntext=Hello World\\nPage Two Text\\n\n"
-    )
+    assert _pypdfbox_dump(str(pdf_path)) == _RECOVERED
 
 
 @requires_oracle
-def test_long_leading_garbage_oracle_recovers(tmp_path: Path) -> None:
-    """Confirm the oracle DOES recover the long-garbage case (so the xfail
-    above is genuinely both-sides: pypdfbox fails, PDFBox succeeds)."""
-    junk = (b"\x00\x01BINARYJUNK\xff" * 200)[:2000]
-    pdf_path = tmp_path / "long_oracle.pdf"
+@pytest.mark.parametrize("n", [1100, 2000, 8000], ids=["g1100", "g2000", "g8000"])
+def test_long_leading_garbage_recovers_on_both(n: int, tmp_path: Path) -> None:
+    """Differential parity: junk slightly over the old 1024-byte window
+    (1100) and far past it (2000 / 8000) recovers identically on both sides."""
+    junk = (b"\x00\x01BINARYJUNK\xff" * 1000)[:n]
+    pdf_path = tmp_path / f"long_{n}.pdf"
     pdf_path.write_bytes(junk + _CLEAN)
     java = run_probe_text("HeaderGarbageProbe", str(pdf_path))
+    py = _pypdfbox_dump(str(pdf_path))
     assert re.match(r"ok=true\npages=2\n", java)
-    # And pypdfbox currently fails it (the divergence under deferral).
+    assert py == java
+
+
+@requires_oracle
+@pytest.mark.parametrize("n", [1019, 1024, 1030], ids=["b1019", "b1024", "b1030"])
+def test_window_boundary_garbage_matches(n: int, tmp_path: Path) -> None:
+    """The exact 1024-byte scan-window boundary: a header ending just inside
+    vs just past the window must resolve identically on both sides (whether by
+    the in-window header path or the brute-force fall-through)."""
+    junk = (b"j" * n)
+    pdf_path = tmp_path / f"boundary_{n}.pdf"
+    pdf_path.write_bytes(junk + _CLEAN)
+    java = run_probe_text("HeaderGarbageProbe", str(pdf_path))
+    py = _pypdfbox_dump(str(pdf_path))
+    assert java.startswith("ok=true")
+    assert py == java
+
+
+def test_total_garbage_no_header_no_objects_fails(tmp_path: Path) -> None:
+    """No header AND no recoverable ``n g obj`` definitions — brute-force
+    finds nothing, so the load fails. ``ok=false`` on the pypdfbox side; the
+    oracle agrees below."""
+    pdf_path = tmp_path / "total.pdf"
+    pdf_path.write_bytes(b"\x00\x01total binary garbage with no pdf structure\xff" * 50)
     assert _pypdfbox_dump(str(pdf_path)) == "ok=false\n"
+
+
+@requires_oracle
+def test_total_garbage_fails_on_both(tmp_path: Path) -> None:
+    """Differential: a header-less, object-less buffer fails to load in
+    PDFBox too (Loader.loadPDF raises after brute-force recovers nothing)."""
+    pdf_path = tmp_path / "total_oracle.pdf"
+    pdf_path.write_bytes(b"\x00\x01total binary garbage with no pdf structure\xff" * 50)
+    java = run_probe_text("HeaderGarbageProbe", str(pdf_path))
+    py = _pypdfbox_dump(str(pdf_path))
+    assert java == "ok=false\n"
+    assert py == java
+
+
+def test_junk_with_obj_tokens_but_no_catalog(tmp_path: Path) -> None:
+    """Edge: leading junk that embeds bare ``n g obj`` tokens but no valid
+    catalog / page tree. The wave-1497 header fall-through fires (brute-force
+    harvests the decoy objects), so the load no longer aborts at the header.
+    The rebuilt document has no resolvable /Root — and here a *pre-existing,
+    orthogonal* divergence shows: pypdfbox's ``PDFParser.parse`` deliberately
+    does NOT auto-invoke ``initial_parse`` (lazy /Root resolution, documented
+    in pdf_parser.py), so ``get_number_of_pages`` yields 0 rather than raising,
+    whereas upstream ``Loader.loadPDF`` runs ``initialParse`` and raises
+    "Missing root object specification in trailer." That lazy-init split is
+    NOT the header-recovery surface; it is pinned here only to document the
+    boundary. The pin is pypdfbox's actual recovered-but-rootless shape."""
+    decoy = b"garbage 1 0 obj << /Decoy true >> endobj 2 0 obj 42 endobj more junk "
+    pdf_path = tmp_path / "decoy.pdf"
+    pdf_path.write_bytes(decoy * 30)
+    assert _pypdfbox_dump(str(pdf_path)) == "ok=true\npages=0\ntext=\n"
+
+
+@requires_oracle
+def test_junk_with_obj_tokens_oracle_rejects(tmp_path: Path) -> None:
+    """Confirm the orthogonal lazy-init split: upstream rejects the rootless
+    decoy (``initialParse`` → "Missing root"), pypdfbox returns a 0-page
+    document. The header fall-through itself is at parity (both reach the
+    rebuild); only the eager-vs-lazy /Root validation differs."""
+    decoy = b"garbage 1 0 obj << /Decoy true >> endobj 2 0 obj 42 endobj more junk "
+    pdf_path = tmp_path / "decoy_oracle.pdf"
+    pdf_path.write_bytes(decoy * 30)
+    java = run_probe_text("HeaderGarbageProbe", str(pdf_path))
+    assert java == "ok=false\n"
+    assert _pypdfbox_dump(str(pdf_path)) == "ok=true\npages=0\ntext=\n"
