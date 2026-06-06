@@ -39,6 +39,14 @@ def _make_doc(catalog: COSDictionary | None = None) -> COSDocument:
     if catalog is None:
         catalog = COSDictionary()
     catalog.set_name(COSName.TYPE, "Catalog")  # type: ignore[attr-defined]
+    # The /Root catalog is excluded from ObjStm packing (matches upstream
+    # ``COSWriterCompressionPool.addObjectToPool``, which forces the catalog
+    # to the top-level bucket). The exclusion tests below pair their single
+    # *excluded* object with this benign packable filler so at least one
+    # ObjStm is always emitted to inspect.
+    filler = COSDictionary()
+    filler.set_int(COSName.get_pdf_name("Filler"), 1)
+    catalog.set_item(COSName.get_pdf_name("Filler"), COSObject(98, 0, resolved=filler))
     cat_obj = COSObject(1, 0, resolved=catalog)
     trailer = COSDictionary()
     trailer.set_item(COSName.ROOT, cat_obj)  # type: ignore[attr-defined]

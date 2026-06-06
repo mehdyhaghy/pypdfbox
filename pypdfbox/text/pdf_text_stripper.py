@@ -2942,7 +2942,12 @@ class PDFTextStripper:
         if self._flip_axes:
             # Rotated frame: line stepping happens along X.
             return abs(pos.x - prev.x) > max(prev.font_size, 0.1) * 0.5
-        return abs(pos.y - prev.y) > max(prev.font_size, 0.1) * 0.5
+        # The sole caller (_format_positions, ~line 2759) only invokes
+        # _is_line_break inside its ``if self._flip_axes:`` branch — the
+        # upright path uses the running-overlap model (_overlaps_line)
+        # instead — so this non-flip fallback is structurally unreachable.
+        # Kept for API symmetry with the flip-axes carve-out it serves.
+        return abs(pos.y - prev.y) > max(prev.font_size, 0.1) * 0.5  # pragma: no cover
 
     @staticmethod
     def _overlaps_line(

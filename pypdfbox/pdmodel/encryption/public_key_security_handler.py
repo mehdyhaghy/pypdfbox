@@ -172,9 +172,16 @@ class PublicKeySecurityHandler(SecurityHandler):
                 "Supplied private key matched none of the /Recipients envelopes"
             )
 
-        if len(envelope_plaintext) < _SEED_LENGTH:
+        # Upstream PublicKeySecurityHandler#prepareForDecryption (Java line
+        # ~262) requires the decrypted envelope to be EXACTLY 24 bytes — "the
+        # enveloped data does not contain 24 bytes" — never merely >= 20. A
+        # well-formed Acrobat/PDFBox recipient envelope is always seed(20) ||
+        # perms(4); anything else is corruption, so reject it strictly rather
+        # than tolerantly truncating.
+        if len(envelope_plaintext) != _SEED_LENGTH + 4:
             raise ValueError(
-                "Decrypted recipient envelope shorter than the 20-byte seed"
+                f"The enveloped data does not contain 24 bytes "
+                f"(got {len(envelope_plaintext)})"
             )
         seed = envelope_plaintext[:_SEED_LENGTH]
 
@@ -182,25 +189,42 @@ class PublicKeySecurityHandler(SecurityHandler):
         # access permissions for the recipient who owns this envelope, as a
         # big-endian two's-complement int. Decode and propagate to the base
         # so callers (PDDocument.get_current_access_permission) see the
-        # right surface, mirroring upstream behaviour.
-        if len(envelope_plaintext) >= _SEED_LENGTH + 4:
-            perms_unsigned = int.from_bytes(
-                envelope_plaintext[_SEED_LENGTH : _SEED_LENGTH + 4], "big"
-            )
-            # Convert big-endian unsigned -> two's-complement signed.
-            if perms_unsigned & 0x80000000:
-                perms_signed = perms_unsigned - 0x1_0000_0000
-            else:
-                perms_signed = perms_unsigned
-            self.set_current_access_permission(AccessPermission(perms_signed))
+        # right surface, mirroring upstream behaviour. Upstream builds the
+        # permission via the ``AccessPermission(byte[])`` constructor (signed
+        # big-endian) and immediately calls ``setReadOnly()`` — the recovered
+        # permission reflects an already-applied policy and must not be
+        # mutated by callers (Java line ~268).
+        perms_signed = int.from_bytes(
+            envelope_plaintext[_SEED_LENGTH : _SEED_LENGTH + 4],
+            "big",
+            signed=True,
+        )
+        current_access_permission = AccessPermission(perms_signed)
+        current_access_permission.set_read_only()
+        self.set_current_access_permission(current_access_permission)
 
         version = encryption.get_v()
         revision = encryption.get_revision()
-        key_length_bits = encryption.get_length() or 128
+
+        # Upstream prepareForDecryption (Java lines ~221-238) sources the key
+        # length AND the encrypt-metadata flag from the default crypt filter
+        # dictionary FIRST (when present with a non-zero /Length), only
+        # falling back to the /Encrypt-level /Length and /EncryptMetadata
+        # otherwise. The crypt-filter values are the authoritative ones for a
+        # V>=4 public-key file; the top-level /Length can disagree.
+        default_cf = encryption.get_default_crypt_filter_dictionary()
+        if default_cf is not None and default_cf.get_length() != 0:
+            key_length_bits = default_cf.get_length()
+            encrypt_metadata = default_cf.is_encrypt_meta_data()
+        else:
+            key_length_bits = encryption.get_length() or 128
+            encrypt_metadata = encryption.is_encrypt_meta_data()
         key_length_bytes = key_length_bits // 8
 
         # Hash composition — see §7.6.5: seed || every recipient blob in order
-        # || (when metadata is *not* encrypted) four 0xFF bytes.
+        # || (when metadata is *not* encrypted) four 0xFF bytes. Upstream gates
+        # the 0xFF*4 suffix on encryptionVersion in {4,5}; for the AES-only
+        # lite write path (V>=4) that gate is always satisfied.
         digest = (
             hashlib.sha256()
             if version >= 5
@@ -209,7 +233,7 @@ class PublicKeySecurityHandler(SecurityHandler):
         digest.update(seed)
         for blob in recipient_blobs:
             digest.update(blob)
-        if not encryption.is_encrypt_meta_data():
+        if version >= 4 and not encrypt_metadata:
             digest.update(b"\xff\xff\xff\xff")
         encryption_key = digest.digest()[:key_length_bytes]
 
@@ -217,9 +241,17 @@ class PublicKeySecurityHandler(SecurityHandler):
         self.set_key_length(key_length_bits)
         self.set_version(version)
         self.set_revision(revision)
-        # Public-key handler always pairs with a crypt filter; AES is the
-        # common case for V>=4 and required for V=5.
-        self.set_aes(version >= 4)
+        # AES detection mirrors upstream: read the crypt filter method
+        # (/CFM AESV2 or AESV3) when a default crypt filter is present, rather
+        # than inferring solely from V>=4 (a V4 file could in principle use
+        # RC4 V2 — though the lite write path is AES-only).
+        if default_cf is not None:
+            cfm = default_cf.get_cfm()
+            self.set_aes(
+                cfm in (PDCryptFilterDictionary.CFM_AESV2, PDCryptFilterDictionary.CFM_AESV3)
+            )
+        else:
+            self.set_aes(version >= 4)
 
     # ------------------------------------------------------------ encrypt
 

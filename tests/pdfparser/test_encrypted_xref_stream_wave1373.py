@@ -23,7 +23,7 @@ import io
 
 import pytest
 
-from pypdfbox.cos import COSDictionary, COSName, COSStream
+from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser import PDFParser
 from pypdfbox.pdfwriter import COSWriter
@@ -121,25 +121,26 @@ def test_encrypted_xref_stream_does_not_double_decrypt() -> None:
 
 
 def test_xref_stream_dictionary_keys_survive_pool_walk() -> None:
-    """The xref stream's own dictionary (``/Type /XRef``, ``/Size``,
-    ``/W``, ``/Encrypt``) must still be readable after the document
-    pool walk. A double-decipher would have garbled the dictionary
-    keys via the post-walk handler reapplication."""
+    """The xref stream's own dictionary (``/Size``, ``/Root``, ``/Encrypt``)
+    must still be readable after the document pool walk. A double-decipher
+    would have garbled the dictionary keys via the post-walk handler
+    reapplication.
+
+    Per ISO 32000-1 §7.5.8 the cross-reference STREAM dictionary IS the
+    document trailer in xref-stream mode, so the surviving keys are read off
+    ``cos_doc.get_trailer()``. (As of wave 1501 pypdfbox matches PDFBox's
+    ``COSWriter.doWriteXRefInc``: the xref stream serialises its body via
+    ``getStream()`` BEFORE its own ``doWriteObject``, so it carries no
+    self-entry and is therefore not an enumerable pool object — it is located
+    via ``startxref``, exactly like upstream. The trailer/xref-stream dict is
+    still fully parsed and decipher-clean.)"""
     from pypdfbox.pdmodel import PDDocument
 
     pdf = _build_encrypted_xref_stream_pdf()
     with PDDocument.load(pdf, password="user") as doc:
         cos_doc = doc.get_document()
-        for cos_obj in cos_doc.get_objects():
-            target = cos_obj.get_object()
-            if not isinstance(target, COSStream):
-                continue
-            type_name = target.get_dictionary_object(COSName.TYPE)
-            if not (isinstance(type_name, COSName) and type_name.name == "XRef"):
-                continue
-            # The dict keys we care about for a round-trippable xref.
-            assert isinstance(target, COSDictionary)
-            assert target.get_dictionary_object(COSName.get_pdf_name("Size")) is not None
-            assert target.get_dictionary_object(COSName.get_pdf_name("W")) is not None
-            return
-    pytest.fail("no /Type /XRef stream surfaced in the encrypted pool")
+        trailer = cos_doc.get_trailer()
+        assert isinstance(trailer, COSDictionary)
+        # The trailer IS the xref-stream dict — its keys must be intact.
+        assert trailer.get_dictionary_object(COSName.get_pdf_name("Size")) is not None
+        assert trailer.get_dictionary_object(COSName.ROOT) is not None

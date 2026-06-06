@@ -42,6 +42,13 @@ def _make_doc(catalog_dict: COSDictionary | None = None) -> COSDocument:
     doc.set_version(1.5)
     catalog = catalog_dict if catalog_dict is not None else COSDictionary()
     catalog.set_name(COSName.TYPE, "Catalog")  # type: ignore[attr-defined]
+    # The /Root catalog is forced to top-level (never packed) — mirrors
+    # upstream ``COSWriterCompressionPool.addObjectToPool``. Attach a benign
+    # packable child so object-stream tests always have at least one
+    # compressible (type-2) object to inspect even when the catalog is empty.
+    filler = COSDictionary()
+    filler.set_int(COSName.get_pdf_name("Filler"), 1)
+    catalog.set_item(COSName.get_pdf_name("Filler"), COSObject(97, 0, resolved=filler))
     catalog_obj = COSObject(1, 0, resolved=catalog)
     trailer = COSDictionary()
     trailer.set_item(COSName.ROOT, catalog_obj)  # type: ignore[attr-defined]

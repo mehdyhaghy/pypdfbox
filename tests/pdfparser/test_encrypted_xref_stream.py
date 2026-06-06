@@ -27,7 +27,6 @@ import io
 
 import pytest
 
-from pypdfbox.cos import COSName, COSStream
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser import PDFParser
 from pypdfbox.pdfwriter import COSWriter
@@ -131,38 +130,34 @@ def test_parse_succeeds_with_set_password() -> None:
 
 def test_xref_stream_decode_after_full_load_yields_plaintext_records() -> None:
     """After ``PDDocument.load`` (which runs the document-level decrypt
-    walk), reading the xref stream's body again must still surface the
-    plaintext fixed-width records — proof that the spec-mandated
-    skip-encryption rule survives both the parser-side bootstrap and the
-    later pool walk. Regression guard for the wave-13 bug where the same
-    stream would have been deciphered twice and decoded into garbage."""
-    from pypdfbox.pdmodel import PDDocument
+    walk), every indirect object recorded by the xref stream must still
+    resolve — proof that the xref stream was read as PLAINTEXT during the
+    parser bootstrap (ISO 32000-2 §7.6.2: cross-reference streams are never
+    encrypted). A double-decipher would have garbled the fixed-width records
+    (byte offsets), so resolution would fail and the page text would not
+    decode. Regression guard for the wave-13 double-decipher bug.
 
-    pdf = _build_encrypted_xref_stream_pdf()
+    Note (wave 1501): the xref stream itself is no longer an enumerable pool
+    object — pypdfbox now matches PDFBox's ``COSWriter.doWriteXRefInc``, which
+    serialises the xref body via ``getStream()`` before the stream's own
+    ``doWriteObject``, so it carries no self-entry and is located via
+    ``startxref`` rather than via the object pool. The plaintext-records
+    guarantee is therefore asserted through clean resolution + text decode
+    instead of by re-reading the (no-longer-pooled) xref stream body."""
+    from pypdfbox.pdmodel import PDDocument
+    from pypdfbox.text.pdf_text_stripper import PDFTextStripper
+
+    payload = "wave1373-payload-XYZ"
+    pdf = _build_encrypted_xref_stream_pdf(page_text=payload)
     with PDDocument.load(pdf, password="user") as doc:
         cos_doc = doc.get_document()
+        # Every pooled object resolves (garbled xref offsets would yield None).
         for cos_obj in cos_doc.get_objects():
-            target = cos_obj.get_object()
-            if not isinstance(target, COSStream):
-                continue
-            type_name = target.get_dictionary_object(COSName.TYPE)  # type: ignore[attr-defined]
-            if not (isinstance(type_name, COSName) and type_name.name == "XRef"):
-                continue
-            # Decoded body must be a clean fixed-width record stream.
-            with target.create_input_stream() as src:
-                body = src.read()
-            # /W [w1 w2 w3] determines the record width — at minimum 1
-            # byte of type plus a few of offset/gen. The first record is
-            # the free-list head: type=0, offset=0, gen=65535. Confirm
-            # those leading bytes survived the (skipped) decrypt pass.
-            assert len(body) >= 5, "xref body too short to hold a record"
-            assert body[0] == 0x00, (
-                "first xref record is the free-list head; type byte must "
-                "be 0 in cleartext — non-zero means a decrypt pass garbled "
-                "the body"
-            )
-            return
-        pytest.fail("no /Type /XRef stream surfaced in the pool")
+            assert cos_obj.get_object() is not None
+        # End-to-end: the page text decodes — the xref offsets pointed at the
+        # right objects, i.e. the xref stream body was plaintext, not double-
+        # deciphered.
+        assert payload in PDFTextStripper().get_text(doc)
 
 
 def test_full_load_pdf_round_trip_extracts_text() -> None:

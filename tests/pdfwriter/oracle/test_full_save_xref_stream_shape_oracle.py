@@ -236,3 +236,143 @@ def _iter_rows(w: list[int], dec: bytes):
         off += w2
         f3 = int.from_bytes(dec[off : off + w3], "big")
         yield (f1, f2, f3)
+
+
+# ---------------------------------------------------------------------------
+# Wave 1501: full structural parity of the object-stream PACKING shape.
+#
+# Wave 1501 converged pypdfbox's compressed-save object-stream packing onto
+# PDFBox's: the /Root catalog is excluded from packing, object streams are
+# written AFTER the top-level objects (so type-1 offsets stay small), the
+# inter-object-gap free-fill rows are gone (sparse multi-run /Index), the xref
+# stream's own self-entry is omitted from the body (matching ``getStream()``
+# preceding ``doWriteObject``), and packed-object bodies are serialised with
+# the compact ``COSWriterObjectStream`` writer so the DECODED ObjStm body is
+# byte-identical to PDFBox's. The only residual divergence is the
+# deflate-compressed envelope (zlib vs java.util.zip.Deflater) plus, on some
+# fixtures, a small handful of bytes from PDFBox's reference-vs-inline choice
+# for indirect scalar values shared across containers.
+# ---------------------------------------------------------------------------
+
+
+def _py_objstm_parity(src: Path) -> dict[str, object]:
+    """Full-compress-save ``src`` through pypdfbox and return the packing
+    shape: xref /W + /Index, ObjStm count, and per-stream (N, First, packed
+    object numbers, decoded-body SHA-256)."""
+    import hashlib
+    import re
+
+    cos = Loader.load_pdf(src)
+    doc = PDDocument(cos)
+    buf = io.BytesIO()
+    with COSWriter(buf, xref_stream=True, object_stream=True) as writer:
+        writer.write(doc)
+    doc.close()
+    full = buf.getvalue()
+
+    i = full.rfind(b"/Type /XRef")
+    if i < 0:
+        i = full.rfind(b"/Type/XRef")
+    xdict = full[full.rfind(b"obj", 0, i) : full.find(b"stream", i)]
+
+    def _bracket(key: bytes) -> str:
+        k = xdict.find(key)
+        o = xdict.find(b"[", k)
+        c = xdict.find(b"]", o)
+        return ",".join(p.decode("ascii") for p in xdict[o + 1 : c].split())
+
+    streams: list[dict[str, object]] = []
+    cursor = 0
+    while True:
+        oi = full.find(b"/Type /ObjStm", cursor)
+        if oi < 0:
+            oi = full.find(b"/Type/ObjStm", cursor)
+        if oi < 0:
+            break
+        cursor = oi + 5
+        region = full[full.rfind(b"obj", 0, oi) :]
+        first = int(re.search(rb"/First\s+(\d+)", region).group(1))
+        sm = region.index(b"stream") + len(b"stream")
+        if region[sm : sm + 2] == b"\r\n":
+            sm += 2
+        elif region[sm : sm + 1] in (b"\n", b"\r"):
+            sm += 1
+        em = region.index(b"endstream", sm)
+        while em > sm and region[em - 1] in (0x0A, 0x0D):
+            em -= 1
+        dec = zlib.decompress(region[sm:em])
+        nums = ",".join(m.decode() for m in re.findall(rb"(\d+)\s+\d+", dec[:first]))
+        streams.append(
+            {
+                "first": first,
+                "nums": nums,
+                "bodysha": hashlib.sha256(dec).hexdigest(),
+            }
+        )
+
+    return {
+        "w": _bracket(b"/W"),
+        "index": _bracket(b"/Index"),
+        "objstm_count": len(streams),
+        "streams": streams,
+    }
+
+
+@requires_oracle
+def test_full_save_objstm_packing_shape_matches_pdfbox(tmp_path: Path) -> None:
+    """The compressed-save object-stream PACKING shape — ObjStm count, the
+    packed object-number list of each stream, the xref ``/W`` widths and the
+    sparse ``/Index`` runs — is byte-for-byte identical to PDFBox's."""
+    for fixture in _FIXTURES_LIST:
+        if not fixture.is_file():
+            continue
+        java = _parse_probe_kv(
+            run_probe_text(
+                "FullSaveObjStmParityProbe",
+                str(fixture),
+                str(tmp_path / f"java_{fixture.stem}.pdf"),
+            )
+        )
+        py = _py_objstm_parity(fixture)
+
+        assert py["w"] == java["w"], f"{fixture.stem}: /W {py['w']} != {java['w']}"
+        assert py["index"] == java["index"], (
+            f"{fixture.stem}: /Index {py['index']} != {java['index']}"
+        )
+        assert str(py["objstm_count"]) == java["objstm_count"], (
+            f"{fixture.stem}: ObjStm count {py['objstm_count']} != "
+            f"{java['objstm_count']}"
+        )
+        for n, stream in enumerate(py["streams"]):  # type: ignore[arg-type]
+            assert stream["nums"] == java[f"objstm{n}_nums"], (
+                f"{fixture.stem}: ObjStm#{n} packed nums "
+                f"{stream['nums']} != {java[f'objstm{n}_nums']}"
+            )
+
+
+@requires_oracle
+def test_full_save_objstm_decoded_body_matches_pdfbox(tmp_path: Path) -> None:
+    """The DECODED (inflated) ObjStm body is byte-identical to PDFBox's on the
+    unencrypted single-page fixture — proving the per-object compact
+    serialisation and index-header layout match upstream exactly, with the
+    deflate envelope the only residual divergence. (Some richer fixtures carry
+    a small reference-vs-inline divergence for indirect scalars shared across
+    containers, documented in DEFERRED.md, so this body-equality pin targets
+    the clean fixture.)"""
+    fixture = _FIXTURES / "pdfwriter" / "unencrypted.pdf"
+    if not fixture.is_file():
+        return
+    java = _parse_probe_kv(
+        run_probe_text(
+            "FullSaveObjStmParityProbe",
+            str(fixture),
+            str(tmp_path / "java_unencrypted.pdf"),
+        )
+    )
+    py = _py_objstm_parity(fixture)
+    assert py["objstm_count"] == 1
+    py_stream = py["streams"][0]  # type: ignore[index]
+    assert py_stream["bodysha"] == java["objstm0_bodysha"], (
+        "decoded ObjStm body differs from PDFBox"
+    )
+    assert str(py_stream["first"]) == java["objstm0_first"]

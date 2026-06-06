@@ -287,6 +287,9 @@ def test_different_perms_envelopes_round_trip_each_recipient(
         assert decrypt.get_encryption_key() == expected_key
         surfaced = decrypt.get_current_access_permission()
         assert surfaced is not None
+        # Upstream locks the recovered permission (setReadOnly) — it reflects an
+        # already-applied policy and must not be mutated by callers.
+        assert surfaced.is_read_only()
         expected_perm = recipient.get_permission()
         assert expected_perm is not None
         assert (surfaced.get_permission_bytes() & 0xFFFFFFFF) == (

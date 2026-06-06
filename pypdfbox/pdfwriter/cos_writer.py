@@ -196,6 +196,29 @@ class _RawSinkAdapter:
             close()
 
 
+class _ObjStmPoolShim:
+    """Adapt ``COSWriter``'s key tables to the ``contains`` / ``get_key``
+    surface :class:`COSWriterObjectStream` expects from a
+    ``COSWriterCompressionPool``.
+
+    When serialising a packed object's body, any nested indirect object must
+    be written as an ``N G R`` reference rather than inlined. The object-stream
+    writer asks the pool whether a base is a known indirect (``contains``) and,
+    if so, for its key (``get_key``). We answer from the writer's
+    ``id(obj) -> COSObjectKey`` map, which the compression pre-pass has already
+    populated for every reachable indirect object.
+    """
+
+    def __init__(self, object_keys: dict[int, COSObjectKey]) -> None:
+        self._object_keys = object_keys
+
+    def contains(self, obj: COSBase) -> bool:
+        return id(obj) in self._object_keys
+
+    def get_key(self, obj: COSBase) -> COSObjectKey | None:
+        return self._object_keys.get(id(obj))
+
+
 class COSWriter(ICOSVisitor):
     """
     Serialize a ``COSDocument`` or ``PDDocument`` back to PDF bytes.
@@ -266,6 +289,21 @@ class COSWriter(ICOSVisitor):
         # ObjStm; the regular ``_do_write_object`` path skips these so we
         # don't emit duplicate indirect frames for the same payload.
         self._packed_object_ids: set[int] = set()
+        # Identity-set of resolved actuals that have already had their indirect
+        # frame written this pass — an actual-level dedup that lets the
+        # compressed path drive emission explicitly while the main visitor
+        # still safely queues references (no double-emit).
+        self._emitted_actual_ids: set[int] = set()
+        # ObjStm COSStreams planned by ``_pack_object_streams`` but whose
+        # byte emission is deferred until after the top-level (free-standing)
+        # indirect objects have been written — mirrors the upstream
+        # ``doWriteBodyCompressed`` ordering (top-level first, object streams
+        # last) so type-1 offsets stay as small as upstream's.
+        self._pending_object_streams: list[COSStream] = []
+        # id() of the /Root catalog dict — excluded from ObjStm packing
+        # (set in ``_pack_object_streams``). Mirrors upstream's top-level
+        # forcing of ``trailer.getCOSDictionary(ROOT)``.
+        self._root_dict_id: int | None = None
         # In incremental mode the body, xref, and trailer are accumulated in
         # an in-memory buffer; the final ``doWriteIncrement`` copies the
         # source bytes to the real output and then drains the buffer
@@ -1816,10 +1854,23 @@ class COSWriter(ICOSVisitor):
             )
             if not (obj_dirty or actual_dirty):
                 return
+        elif self._object_stream:
+            # Compressed xref-stream full save: the whole graph is pre-keyed
+            # by ``_collect_indirect_objects`` *before* any emit, so an actual
+            # that has a key but was never queued/emitted must still be
+            # queueable here. Gate the duplicate-skip on the real "already
+            # emitted this pass" signal (``_emitted_actual_ids``) rather than
+            # mere key presence (which the pre-pass sets for everything).
+            if (
+                actual is not None
+                and id(actual) in self._emitted_actual_ids
+            ):
+                return
         else:
-            # In full-save mode, an actual that already has a key has
+            # In plain full-save mode, an actual that already has a key has
             # already been queued under its first sighting — skip the
-            # duplicate.
+            # duplicate. (No pre-pass keys objects ahead of emission here, so
+            # key presence is a faithful "already seen" signal.)
             if actual is not None and id(actual) in self._object_keys:
                 return
 
@@ -1845,7 +1896,22 @@ class COSWriter(ICOSVisitor):
         ):
             self._written_objects.add(id(obj))
             return
+        # Idempotency on the resolved actual: the compressed xref-stream path
+        # drives the top-level emit explicitly off the pre-pass key table, but
+        # serialising each top-level object still routes references through the
+        # main visitor (which queues them). Guarding on the actual id keeps a
+        # referenced-then-explicitly-listed object from being emitted twice —
+        # each indirect frame is written exactly once regardless of how it was
+        # reached.
+        if (
+            actual_for_skip is not None
+            and id(actual_for_skip) in self._emitted_actual_ids
+        ):
+            self._written_objects.add(id(obj))
+            return
         self._written_objects.add(id(obj))
+        if actual_for_skip is not None:
+            self._emitted_actual_ids.add(id(actual_for_skip))
         key = self._get_object_key(obj)
         self._current_object_key = key
         # Detect whether this indirect object IS the /Encrypt dictionary so
@@ -2087,10 +2153,68 @@ class COSWriter(ICOSVisitor):
           ``_do_write_xref_stream`` after this method returns.
         """
         trailer = doc.get_trailer()
+        root = info = encrypt = None
         if trailer is not None:
             root = trailer.get_item(COSName.ROOT)  # type: ignore[attr-defined]
             info = trailer.get_item(COSName.INFO)  # type: ignore[attr-defined]
             encrypt = trailer.get_item(COSName.ENCRYPT)  # type: ignore[attr-defined]
+
+        if self._object_stream:
+            # Mirror upstream ``COSWriter.doWriteBodyCompressed`` (PDFBox
+            # 3.0.7, bytecode 0-554): the compression pool classifies every
+            # reachable indirect object into top-level (stays a free-standing
+            # indirect) vs object-stream (packed) BEFORE any byte is written,
+            # so each object is emitted EXACTLY once. We achieve the same by
+            # (1) walking the graph to assign keys without emitting,
+            # (2) packing the eligible objects into ``/ObjStm`` streams (which
+            #     records ``_packed_object_ids`` + ``_compressed_locations``),
+            # (3) emitting the remaining (top-level) indirects — whose emit
+            #     path skips anything already packed.
+            # The previous order (emit everything, then pack) double-wrote
+            # every packed object: once as a free-standing indirect, once
+            # inside the ObjStm body, inflating the file ~30% (e.g. 91 KB vs
+            # upstream's 69 KB on unencrypted.pdf).
+            self._collect_indirect_objects(root, info, encrypt)
+            self._pack_object_streams(doc)
+            # Emit every TOP-LEVEL (non-packed) indirect object — the
+            # ``topLevelObjects`` bucket upstream's pool produces. We packed
+            # objects into ObjStm bodies via the compact ``COSWriterObjectStream``
+            # writer, which emits nested indirects as ``N G R`` references
+            # WITHOUT queuing them, so we can no longer rely on the visitor's
+            # graph-walk to discover the referenced streams. Instead drive the
+            # emit directly from the pre-pass key table, in ascending object
+            # number (matches upstream's sorted ``topLevelObjects`` iteration,
+            # ``doWriteBodyCompressed`` bytecode 239-299). Packed objects are
+            # skipped (``_packed_object_ids``); the /Encrypt dict is held back
+            # so it lands last like upstream.
+            encrypt_actual = (
+                encrypt.get_object() if isinstance(encrypt, COSObject) else encrypt
+            )
+            pending_ids = {id(s) for s in self._pending_object_streams}
+            top_level_keys = sorted(
+                (
+                    k
+                    for k, actual in self._key_object.items()
+                    if id(actual) not in self._packed_object_ids
+                    and actual is not encrypt_actual
+                    and id(actual) not in pending_ids
+                ),
+                key=lambda k: (k.object_number, k.generation_number),
+            )
+            for key in top_level_keys:
+                self._do_write_object(self._key_object[key])
+            # Object streams are written AFTER the top-level objects
+            # (upstream ``doWriteBodyCompressed`` order), then the /Encrypt
+            # dict last (it is never packed).
+            for objstm in self._pending_object_streams:
+                self._do_write_object(objstm)
+            self._pending_object_streams.clear()
+            if encrypt is not None:
+                self._add_object_to_write(encrypt)
+            self._do_write_objects()
+            return
+
+        if trailer is not None:
             if root is not None:
                 self._add_object_to_write(root)
             if info is not None:
@@ -2102,12 +2226,46 @@ class COSWriter(ICOSVisitor):
         else:
             self._do_write_objects()
 
-        # Object-stream packing runs *after* the body has been queued so
-        # we can see every actual referenced from /Root + /Info graphs.
-        # Required-by-spec exclusions (streams, /Encrypt, /Type /Sig) are
-        # filtered inside the packer.
-        if self._object_stream:
-            self._pack_object_streams(doc)
+    def _collect_indirect_objects(self, *roots: COSBase | None) -> None:
+        """Non-emitting graph walk that assigns an object key to every
+        reachable indirect object, populating ``_key_object`` /
+        ``_object_keys`` so :py:meth:`_pack_object_streams` can run BEFORE
+        any indirect frame is written.
+
+        Discovery mirrors the byte-emitting visitor and upstream
+        ``COSWriterCompressionPool.addStructure`` / ``filterElement``: an
+        indirect object is a ``COSObject`` or a non-direct
+        ``COSDictionary`` / ``COSArray``; we recurse into the values of
+        dictionaries and the elements of arrays. Keys are minted through
+        :py:meth:`_get_object_key`, so declared source numbers are
+        preserved (and only un-numbered objects draw a fresh number) —
+        identical to what the subsequent emit pass would assign, just
+        without writing bytes.
+        """
+        seen: set[int] = set()
+        stack: list[COSBase] = [r for r in roots if r is not None]
+        while stack:
+            current = stack.pop()
+            if id(current) in seen:
+                continue
+            seen.add(id(current))
+            actual: COSBase | None
+            if isinstance(current, COSObject):
+                actual = current.get_object()
+                if actual is None:
+                    continue
+                self._get_object_key(current)
+            elif isinstance(current, (COSDictionary, COSArray)) and not current.is_direct():
+                actual = current
+                self._get_object_key(current)
+            elif isinstance(current, (COSDictionary, COSArray)):
+                actual = current
+            else:
+                continue
+            if isinstance(actual, COSArray):
+                stack.extend(v for v in list(actual) if v is not None)
+            elif isinstance(actual, COSDictionary):
+                stack.extend(v for v in actual.values() if v is not None)
 
     def _pack_object_streams(self, doc: COSDocument) -> None:
         """Bundle eligible non-stream indirect objects into one or more
@@ -2127,6 +2285,18 @@ class COSWriter(ICOSVisitor):
         for it; the regular indirect-frame emission in
         :py:meth:`_do_write_object` is suppressed via ``_packed_object_ids``.
         """
+        # Resolve the document catalog (/Root) so it can be excluded from
+        # packing — upstream ``COSWriterCompressionPool.addObjectToPool``
+        # forces ``document.getTrailer().getCOSDictionary(ROOT)`` to the
+        # top-level bucket (bytecode 102-117), keeping the catalog a
+        # free-standing indirect.
+        self._root_dict_id = None
+        trailer = doc.get_trailer()
+        if trailer is not None:
+            root = trailer.get_cos_dictionary(COSName.ROOT)  # type: ignore[attr-defined]
+            if root is not None:
+                self._root_dict_id = id(root)
+
         candidates: list[tuple[COSObjectKey, COSBase]] = []
         for key, actual in self._key_object.items():
             if id(actual) in self._packed_object_ids:
@@ -2166,6 +2336,15 @@ class COSWriter(ICOSVisitor):
             and id(actual) == self._encrypt_dict_id
         ):
             return False
+        if (
+            getattr(self, "_root_dict_id", None) is not None
+            and id(actual) == self._root_dict_id
+        ):
+            # The /Root catalog is forced to top-level upstream
+            # (``COSWriterCompressionPool.addObjectToPool`` excludes
+            # ``trailer.getCOSDictionary(ROOT)`` from the object-stream
+            # bucket), so it is never packed.
+            return False
         if isinstance(actual, COSDictionary):
             type_name = actual.get_dictionary_object(COSName.TYPE)  # type: ignore[attr-defined]
             if isinstance(type_name, COSName) and type_name.name in (
@@ -2181,53 +2360,53 @@ class COSWriter(ICOSVisitor):
         """Pack ``chunk`` into a single ObjStm and emit it as an
         indirect object. Records compressed-locations for each packed
         object so the xref stream can resolve them."""
-        # Serialize each object body to bytes via a per-pack scratch writer.
-        # Reuse the visitor layer (so dict / array / string formatting
-        # stays consistent) but redirect output to a fresh
-        # ``COSStandardOutputStream`` scoped to this packing pass.
+        # Serialise each packed object's body with the upstream-faithful
+        # COMPACT writer ``COSWriterObjectStream`` (PDFBox 3.0.7
+        # ``writeObjectsToStream`` / ``writeObject``), NOT the main visitor.
+        # The main ``COSWriter`` visitor pretty-prints dictionaries with a
+        # newline after ``<<`` and after each entry (``<<\n/Contents 2 0 R\n
+        # ...``); upstream packs objects compactly with single-space
+        # separators and trailing spaces (``<</Contents 2 0 R /CropBox [0.0
+        # 0.0 612.0 792.0 ] ...``). Using the compact writer makes the
+        # decoded ObjStm body byte-identical to PDFBox's, leaving only the
+        # deflate-compressed envelope (zlib vs java.util.zip.Deflater) as the
+        # residual divergence. Nested indirect references are resolved
+        # through a thin pool shim over the writer's key tables. Because the
+        # compact writer emits nested indirects as ``N G R`` references WITHOUT
+        # queuing them for emission, the caller drives the top-level emit
+        # directly off the pre-pass key table (see
+        # ``_do_write_body_xref_stream``) rather than relying on visitor-side
+        # graph discovery.
+        # Lazy import — ``cos_writer_object_stream`` imports ``COSWriter`` at
+        # call time, so importing it at module top would be cyclic.
+        from pypdfbox.pdfwriter.compress.cos_writer_object_stream import (
+            COSWriterObjectStream,
+        )
+
+        pool_shim = _ObjStmPoolShim(self._object_keys)
+        objstm_writer = COSWriterObjectStream(pool_shim)
         bodies: list[bytes] = []
         for _key, actual in chunk:
             buf = io.BytesIO()
-            saved_output = self._standard_output
-            saved_adapter = self._adapter
-            saved_current = self._current_object_key
-            self._adapter = _RawSinkAdapter(buf)
-            self._standard_output = COSStandardOutputStream(self._adapter)
-            # Strings inside packed objects are NOT encrypted (the entire
-            # ObjStm body goes through the security handler once, as a
-            # single stream). Spoof ``_current_object_key`` to None and
-            # set ``_in_encrypt_subtree`` so per-string encryption is
-            # bypassed during the per-object body emit.
-            self._current_object_key = None
-            previous_in_enc = self._in_encrypt_subtree
-            self._in_encrypt_subtree = True
-            try:
-                actual.accept(self)
-            finally:
-                self._in_encrypt_subtree = previous_in_enc
-                self._standard_output = saved_output
-                self._adapter = saved_adapter
-                self._current_object_key = saved_current
+            objstm_writer.write_object(buf, actual, top_level=True)
             bodies.append(buf.getvalue())
 
-        # Build the index header: whitespace-separated "<obj_num> <offset>"
-        # pairs — offsets are relative to ``/First``.
-        index_parts: list[bytes] = []
+        # Build the index header EXACTLY as upstream
+        # ``COSWriterObjectStream.writeObjectsToStream`` (PDFBox 3.0.7): for
+        # each object it writes ``<obj_num><SPACE><offset><SPACE>`` (a trailing
+        # space after every pair, including the last). ``/First`` is the byte
+        # length of that whole header — so the first body begins right after
+        # the final trailing space, with no extra newline separator. Matching
+        # this byte-for-byte (rather than the previous space-joined +
+        # trailing-``\n`` form) makes the decoded ObjStm body identical to
+        # PDFBox's.
+        index_blob = bytearray()
         running = 0
         for (key, _), body in zip(chunk, bodies, strict=False):
-            index_parts.append(f"{key.object_number} {running}".encode("ascii"))
+            index_blob += f"{key.object_number} {running} ".encode("ascii")
             running += len(body)
-        index_blob = b" ".join(index_parts)
         first_offset = len(index_blob)
-        # Add a separator so the first object body doesn't butt up against
-        # the last index integer (parsers tolerate either, but a leading
-        # whitespace makes the structure unambiguous and matches PDFBox).
-        if bodies:  # pragma: no branch
-            # Defensive: an object stream with zero bodies is never built
-            # — _pack_object_streams skips empty buckets earlier.
-            index_blob += b"\n"
-            first_offset += 1
-        payload = index_blob + b"".join(bodies)
+        payload = bytes(index_blob) + b"".join(bodies)
 
         # Mint a fresh object number for the ObjStm itself (skip past any
         # declared keys that haven't been ``_get_object_key``-funneled).
@@ -2250,14 +2429,33 @@ class COSWriter(ICOSVisitor):
 
         # Record per-packed-object compressed locations BEFORE the actual
         # emit (so even if the emit raises, ``_do_write_object``'s skip-
-        # set keeps in sync — and so the xref stream can see them).
-        for index, (_pkey, actual) in enumerate(chunk):
+        # set keeps in sync — and so the xref stream can see them). Each
+        # packed object also gets a type-2 xref entry registered here —
+        # mirroring upstream ``doWriteBodyCompressed``'s
+        # ``addXRefEntry(new ObjectStreamXReference(i, key, obj, objStmKey))``
+        # (bytecode 427-446): the packed object is never written as a
+        # free-standing indirect, so this is the ONLY place its xref entry
+        # is created. ``_do_write_xref_stream`` resolves the (objstm, index)
+        # pair from ``_compressed_locations`` keyed on the resolved actual.
+        for index, (pkey, actual) in enumerate(chunk):
             self._compressed_locations[id(actual)] = (objstm_key.object_number, index)
             self._packed_object_ids.add(id(actual))
+            self._xref_entries.append(
+                COSWriterXRefEntry(offset=0, key=pkey, obj=actual, free=False)
+            )
 
-        # Emit as a normal indirect object — the regular stream path
-        # threads it through the encryption pipeline if active.
-        self._do_write_object(objstm)
+        # Defer the byte emission of the ObjStm itself until AFTER the
+        # top-level (free-standing) indirect objects have been written.
+        # Upstream ``doWriteBodyCompressed`` writes the top-level objects
+        # first (bytecode 239-299) and only then serialises + writes the
+        # object streams (302-466). Emitting the ObjStm early would place
+        # the large packed payload near the file start and push every
+        # subsequent top-level stream's byte offset higher — on
+        # unencrypted.pdf that pushed two type-1 offsets past 65535 and
+        # widened ``/W`` from ``1 2 1`` to ``1 3 1``. The COSStream payload
+        # is already committed above, so deferring only the placement keeps
+        # the in-objstm relative offsets intact.
+        self._pending_object_streams.append(objstm)
 
     def _do_write_xref_stream(
         self, doc: COSDocument, *, in_hybrid: bool = False
@@ -2290,25 +2488,32 @@ class COSWriter(ICOSVisitor):
         # 1. Fresh number for the xref stream object.
         xref_key = self._mint_fresh_object_key()
 
-        # 2. Mandatory free-list head + any gaps. In hybrid mode the
-        # subsequent traditional xref pass owns the gap-filling — running
-        # it here too would double-add free-list entries and inflate the
-        # eventual ``xref`` section.
-        if not in_hybrid:
-            self._fill_gaps_with_free_entries()
-
-        # 3. Build the table of (objnum, type, field2, field3, is_free) tuples.
-        # Type 0 = free (next-free, gen)
+        # 2. Build the table of (objnum, type, field2, field3, is_free) tuples.
         # Type 1 = uncompressed (offset, gen)
         # Type 2 = compressed (objstm_num, index_in_objstm)
+        #
+        # Unlike the traditional ``xref`` table, the xref-STREAM path mirrors
+        # ``org.apache.pdfbox.pdfparser.PDFXRefStream`` (PDFBox 3.0.7), which
+        # does NOT fill inter-object gaps with explicit free entries. Its
+        # ``streamData`` carries only the real entries fed via ``addEntry``
+        # (type-1 uncompressed + type-2 compressed); the single object-0
+        # ``FreeXReference.NULL_ENTRY`` leading row is emitted by
+        # ``writeStreamData`` and object 0 is seeded into ``getIndexEntry``'s
+        # TreeSet, but no per-gap free rows exist. Filling gaps here would
+        # both bloat the body (one extra fixed-width row per missing object
+        # number) and collapse the otherwise-sparse multi-run ``/Index`` into
+        # a single dense run — the exact divergence this path used to carry
+        # (``PDFXRefStream.addEntry`` bytecode 0-58; ``getIndexEntry`` 0-170).
+        # Note: we intentionally do not call ``_fill_gaps_with_free_entries``
+        # in either the full or hybrid xref-stream sub-path.
         records: list[tuple[int, int, int, int, bool]] = []
         for entry in self._xref_entries:
-            objnum = entry.key.object_number
             if entry.free:
-                records.append(
-                    (objnum, 0, entry.offset, entry.key.generation_number, True)
-                )
+                # Defensive: the xref-stream path no longer seeds free
+                # entries, but if a caller pre-staged one we drop it — only
+                # the implicit object-0 NULL row belongs in an xref stream.
                 continue
+            objnum = entry.key.object_number
             actual = (
                 entry.obj.get_object()
                 if isinstance(entry.obj, COSObject)
@@ -2327,13 +2532,20 @@ class COSWriter(ICOSVisitor):
                     (objnum, 1, entry.offset, entry.key.generation_number, False)
                 )
 
-        # 4. Self-entry: the xref stream's own offset goes into the body.
-        # Append it BEFORE the width scan (mirroring upstream, where the
-        # ``NormalXReference`` for the xref stream object is registered via
-        # ``doWriteObject``/``addXRefEntry`` and so DOES feed
-        # ``PDFXRefStream.getWEntry`` — unlike the incremental path).
+        # 4. The xref stream's OWN entry is NOT placed in the body. Upstream
+        # ``COSWriter.doWriteXRefInc`` (PDFBox 3.0.7) builds the stream via
+        # ``PDFXRefStream.getStream()`` (which serialises ``streamData`` +
+        # ``/Index``) and only THEN calls ``doWriteObject`` on the xref
+        # stream object — so its ``NormalXReference`` is registered *after*
+        # the body has been frozen and never feeds ``getStream``
+        # (``doWriteXRefInc`` bytecode: getStream @140 precedes doWriteObject
+        # @148). The result: ``/Size`` is highest+1 but the top object number
+        # (the xref stream itself) is absent from ``/Index`` and the body,
+        # and its offset never widens ``/W`` — the parser still finds the
+        # stream via ``startxref``. Omitting it here keeps ``/W`` and the
+        # ``/Index`` run-shape bit-identical to upstream (a self-entry whose
+        # offset exceeds 65535 would otherwise force ``w2`` from 2 to 3).
         xref_offset = out.get_position()
-        records.append((xref_key.object_number, 1, xref_offset, 0, False))
         records.sort(key=lambda r: r[0])
 
         # 5. Compute /W widths exactly as ``PDFXRefStream.getWEntry`` does
@@ -2360,11 +2572,20 @@ class COSWriter(ICOSVisitor):
         w2 = _xref_field_width(max_field2)
         w3 = _xref_field_width(max_field3)
 
-        # Pack the body: each record = w1 + w2 + w3 big-endian bytes. A free
-        # entry's gen 65535 is written truncated to the computed w3 (when w3 is
-        # 0 it drops to zero bytes, exactly as ``writeNumber`` does upstream for
-        # the NULL_ENTRY row).
+        # Pack the body. ``PDFXRefStream.writeStreamData`` (bytecode 0-44)
+        # ALWAYS emits the object-0 ``FreeXReference.NULL_ENTRY`` row first
+        # (type 0, next-free 0, gen 65535) regardless of whether object 0 is
+        # in ``streamData``; the NULL row's gen 65535 is truncated to the
+        # computed w3 (``writeNumber`` masks/right-aligns), so when w3 is 0 it
+        # drops to zero bytes. The real entries (type-1/type-2) follow. Only
+        # the real entries widen ``/W`` (``getWEntry`` never scans the NULL
+        # row) — the NULL row is excluded from the max-scan above.
         body = bytearray()
+        body.extend(_pack_unsigned(0, w1))
+        body.extend(_pack_unsigned(0, w2))
+        body.extend(
+            _pack_unsigned(0xFFFF & ((1 << (8 * w3)) - 1) if w3 else 0, w3)
+        )
         for _objnum, t, f2, f3, _fr in records:
             body.extend(_pack_unsigned(t, w1))
             body.extend(_pack_unsigned(f2, w2))
@@ -2372,9 +2593,12 @@ class COSWriter(ICOSVisitor):
                 _pack_unsigned(f3 & ((1 << (8 * w3)) - 1) if w3 else 0, w3)
             )
 
-        # /Index — list of (first, count) ranges. PDFBox always emits
-        # /Index even for the single-range case; readers tolerate either.
-        ranges = self._build_int_ranges([r[0] for r in records])
+        # /Index — sparse list of (first, count) ranges over the union of the
+        # real object numbers and object 0 (``getIndexEntry`` seeds its TreeSet
+        # with ``0L`` then ``addAll(objectNumbers)``, bytecode 21-44). The runs
+        # are built over that union — no per-gap free rows means a genuinely
+        # sparse multi-run ``/Index`` matching PDFBox.
+        ranges = self._build_int_ranges([0, *[r[0] for r in records]])
         index_arr = COSArray()
         index_arr.set_direct(True)
         for first, count in ranges:

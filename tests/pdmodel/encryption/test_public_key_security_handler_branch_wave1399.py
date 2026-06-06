@@ -6,7 +6,8 @@ Targets the 3 partial arrows surviving after wave 1396:
   return ``None`` (decrypt "succeeded" but produced no plaintext) and
   loops to the next blob.
 * 149->160 — a decrypted envelope of *exactly* 20 bytes (seed only, no
-  per-recipient permissions tail) skips the permissions propagation.
+  per-recipient permissions tail) is rejected (wave 1501: upstream requires
+  exactly 24 bytes — a seed-only envelope is "does not contain 24 bytes").
 * 683->686 — ``compute_version_number`` with a policy whose
   ``get_encryption_key_length()`` returns a falsy value (e.g. 0) keeps
   the handler's default key length.
@@ -97,13 +98,14 @@ def test_prepare_for_decryption_pkcs7_returns_none_continues_loop(
 # ---------- 149->160 — envelope is exactly 20 bytes (seed only) -------------
 
 
-def test_prepare_for_decryption_envelope_seed_only_skips_perms_propagation(
+def test_prepare_for_decryption_envelope_seed_only_rejected(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A decrypted envelope of exactly 20 bytes (just the seed, no
-    per-recipient permission tail) skips the permissions decode.
-    Closes the False arm of the ``len(envelope_plaintext) >= 24``
-    guard at line 149."""
+    """A decrypted envelope of exactly 20 bytes (just the seed, no 4-byte
+    permission tail) is REJECTED — upstream
+    PublicKeySecurityHandler#prepareForDecryption requires exactly 24 bytes
+    ("the enveloped data does not contain 24 bytes") and never tolerates a
+    seed-only envelope."""
     cert, key = _self_signed_rsa()
     material = PublicKeyDecryptionMaterial()
     material._certificate = cert  # type: ignore[assignment]
@@ -115,20 +117,15 @@ def test_prepare_for_decryption_envelope_seed_only_skips_perms_propagation(
     encryption.set_revision(4)
     encryption.set_length(128)
 
-    # Exactly 20 bytes — short-circuits the L149 permissions read.
+    # Exactly 20 bytes — upstream rejects (not 24).
     monkeypatch.setattr(
         "pypdfbox.pdmodel.encryption.public_key_security_handler.pkcs7.pkcs7_decrypt_der",
         lambda *_args, **_kwargs: b"\xBB" * 20,
     )
 
     handler = PublicKeySecurityHandler()
-    # Captures the access-permission setter — must NOT have been called
-    # because the envelope is too short for the 4-byte perms tail.
-    captured: list[object] = []
-    handler.set_current_access_permission = captured.append  # type: ignore[assignment]
-
-    handler.prepare_for_decryption(encryption, b"\x00" * 16, material)
-    assert captured == []
+    with pytest.raises(ValueError, match="does not contain 24 bytes"):
+        handler.prepare_for_decryption(encryption, b"\x00" * 16, material)
 
 
 # ---------- 683->686 — compute_version_number with policy length = 0 --------

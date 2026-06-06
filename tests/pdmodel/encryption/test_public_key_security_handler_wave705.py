@@ -46,9 +46,12 @@ def test_prepare_for_decryption_rejects_non_string_recipient_entry() -> None:
         )
 
 
-def test_prepare_for_decryption_rejects_short_decrypted_envelope(
+def test_prepare_for_decryption_rejects_non_24_byte_envelope(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Upstream PublicKeySecurityHandler#prepareForDecryption requires the
+    # decrypted envelope to be EXACTLY 24 bytes (seed[20] || perms[4]) — "the
+    # enveloped data does not contain 24 bytes". Anything else is rejected.
     encryption = PDEncryption()
     encryption.set_recipients([b"recipient-envelope"])
 
@@ -58,7 +61,7 @@ def test_prepare_for_decryption_rejects_short_decrypted_envelope(
         lambda *_args, **_kwargs: b"too-short",
     )
 
-    with pytest.raises(ValueError, match="shorter than the 20-byte seed"):
+    with pytest.raises(ValueError, match="does not contain 24 bytes"):
         PublicKeySecurityHandler().prepare_for_decryption(
             encryption, b"document-id", _material_with_sentinels()
         )
@@ -94,6 +97,9 @@ def test_prepare_for_decryption_derives_key_with_metadata_sentinel_and_positive_
     assert handler.get_encryption_key() == expected
     assert handler.get_current_access_permission() is not None
     assert handler.get_current_access_permission().get_permission_bytes() == 4
+    # Upstream calls currentAccessPermission.setReadOnly() — the recovered
+    # permission reflects an already-applied policy and must be locked.
+    assert handler.get_current_access_permission().is_read_only()
 
 
 def test_prepare_document_requires_recipient_certificate() -> None:
