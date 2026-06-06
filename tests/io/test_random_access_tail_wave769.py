@@ -38,11 +38,14 @@ def test_read_fully_rejects_invalid_bytearray_ranges() -> None:
         reader.read_fully(buf, offset=2, length=2)
 
 
-def test_skip_rejects_negative_count() -> None:
+def test_skip_negative_count_seeks_backward() -> None:
+    # Upstream RandomAccessRead.skip(int) is seek(getPosition() + n) with no
+    # sign check, so a negative n seeks backward (pinned wave 1496 against the
+    # PDFBox 3.0.7 oracle). It does NOT raise.
     reader = RandomAccessReadBuffer(b"abc")
-
-    with pytest.raises(ValueError, match="non-negative"):
-        reader.skip(-1)
+    reader.seek(2)
+    reader.skip(-1)
+    assert reader.get_position() == 1
 
 
 def test_no_arg_empty_stream_constructor_path_builds_empty_buffer() -> None:

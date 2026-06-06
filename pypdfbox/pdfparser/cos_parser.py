@@ -1319,6 +1319,7 @@ class COSParser(BaseParser):
         root_name = COSName.get_pdf_name("Root")
         info_name = COSName.get_pdf_name("Info")
         size_name = COSName.get_pdf_name("Size")
+        fdf_name = COSName.get_pdf_name("FDF")
         for key, offset in objects.items():
             if key.object_number > max_obj:
                 max_obj = key.object_number
@@ -1342,11 +1343,15 @@ class COSParser(BaseParser):
                 continue
             if not isinstance(d, COSDictionary):
                 continue
-            # /Root candidate: dictionary advertises /Type /Catalog.
-            if (
-                not trailer.contains_key(root_name)
-                and d.get_item(type_name) is catalog_name
-            ):
+            # /Root candidate: dictionary advertises /Type /Catalog, or it
+            # carries an /FDF entry (FDF root dictionaries omit /Type but are
+            # equally valid catalogs — PDFBOX-3639). Mirrors upstream
+            # ``BruteForceParser.isCatalog`` (Java line 763-767):
+            # ``COSName.CATALOG.equals(getCOSName(TYPE)) || containsKey(FDF)``.
+            is_catalog = (
+                d.get_item(type_name) is catalog_name or d.contains_key(fdf_name)
+            )
+            if not trailer.contains_key(root_name) and is_catalog:
                 trailer.set_item(
                     root_name,
                     self._make_indirect_reference(
@@ -1357,7 +1362,7 @@ class COSParser(BaseParser):
             if (
                 not trailer.contains_key(info_name)
                 and any(d.get_item(k) is not None for k in info_keys)
-                and d.get_item(type_name) is not catalog_name
+                and not is_catalog
             ):
                 trailer.set_item(
                     info_name,

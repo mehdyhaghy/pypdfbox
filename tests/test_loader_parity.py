@@ -210,14 +210,16 @@ def test_load_fdf_delegates_to_fdf_document_loader() -> None:
         loaded.close()
 
 
-def test_load_fdf_java_alias_matches_load_fdf() -> None:
+def test_load_fdf_round_trip() -> None:
+    # The camelCase ``loadFDF`` alias was removed (strict snake_case rule);
+    # this pins the same round-trip through the canonical ``load_fdf``.
     source = FDFDocument()
     source.get_catalog().get_fdf().set_status("OK")
     buf = io.BytesIO()
     source.save(buf)
     source.close()
 
-    loaded = Loader.loadFDF(buf.getvalue())
+    loaded = Loader.load_fdf(buf.getvalue())
     try:
         assert isinstance(loaded, FDFDocument)
         assert loaded.get_catalog().get_fdf().get_status() == "OK"

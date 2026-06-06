@@ -1160,7 +1160,6 @@ def _embedded_encoding_base_format(
     if not isinstance(offset, int) or not 0 <= offset < len(cff_payload):
         return 0
     return cff_payload[offset] & 0x7F
-    return None
 
 
 __all__ = ["CFFParser"]

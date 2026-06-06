@@ -92,10 +92,14 @@ def test_rewind_moves_position_back() -> None:
     assert rab.get_position() == 0
 
 
-def test_rewind_negative_raises() -> None:
-    rab = RandomAccessReadBuffer(b"x")
-    with pytest.raises(ValueError):
-        rab.rewind(-1)
+def test_rewind_negative_seeks_forward() -> None:
+    # Upstream RandomAccessRead.rewind(int) is seek(getPosition() - n) with no
+    # sign check, so a negative n seeks forward (pinned wave 1496 against the
+    # PDFBox 3.0.7 oracle). It does NOT raise.
+    rab = RandomAccessReadBuffer(b"xyz")
+    rab.seek(1)
+    rab.rewind(-1)
+    assert rab.get_position() == 2
 
 
 def test_unread_int_and_bytes() -> None:

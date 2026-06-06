@@ -196,6 +196,14 @@ def test_is_catalog_false_for_dict_without_type() -> None:
     assert BruteForceParser.is_catalog(COSDictionary()) is False
 
 
+def test_is_catalog_true_for_fdf_dict_without_type() -> None:
+    # An FDF root dictionary omits /Type /Catalog but carries /FDF; upstream
+    # isCatalog (Java line 763-767) treats it as a catalog (PDFBOX-3639).
+    d = COSDictionary()
+    d.set_item(COSName.get_pdf_name("FDF"), COSDictionary())
+    assert BruteForceParser.is_catalog(d) is True
+
+
 def test_is_catalog_false_for_non_dictionary() -> None:
     assert BruteForceParser.is_catalog("not a dict") is False
     assert BruteForceParser.is_catalog(None) is False

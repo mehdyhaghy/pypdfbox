@@ -122,7 +122,9 @@ def _normalise_rotation(rotation: int | None) -> int:
         r = int(rotation or 0) % 360
     except (TypeError, ValueError):
         return 0
-    if r < 0:
+    if r < 0:  # pragma: no cover - Java-idiom residue: Python's % never
+        # returns a negative result for a positive modulus, so this guard
+        # (faithful to upstream's Java ``% 360`` which can) is unreachable here.
         r += 360
     return r if r in (0, 90, 180, 270) else 0
 

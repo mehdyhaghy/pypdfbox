@@ -159,16 +159,21 @@ class BruteForceParser(COSParser):
 
     @staticmethod
     def is_catalog(dictionary) -> bool:  # noqa: ANN001 — match upstream signature
-        """``True`` if ``dictionary`` is a document catalog.
+        """``True`` if ``dictionary`` is a PDF or FDF catalog.
 
-        Mirrors upstream ``isCatalog`` (Java line ~493, private static).
+        Mirrors upstream ``isCatalog`` (Java line 763-767, private):
+        ``COSName.CATALOG.equals(getCOSName(TYPE)) || containsKey(FDF)``.
+        FDF root dictionaries omit ``/Type /Catalog`` but carry ``/FDF`` and
+        are equally valid root dictionaries (PDFBOX-3639).
         """
         from pypdfbox.cos.cos_dictionary import COSDictionary  # noqa: PLC0415
         from pypdfbox.cos.cos_name import COSName  # noqa: PLC0415
 
         if not isinstance(dictionary, COSDictionary):
             return False
-        return dictionary.get_cos_name(COSName.TYPE) == COSName.CATALOG
+        return dictionary.get_cos_name(COSName.TYPE) == COSName.CATALOG or (
+            dictionary.contains_key(COSName.get_pdf_name("FDF"))
+        )
 
     @staticmethod
     def is_info(dictionary) -> bool:  # noqa: ANN001 — match upstream signature

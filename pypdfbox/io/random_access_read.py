@@ -62,9 +62,13 @@ class RandomAccessRead(ABC):
         return b
 
     def rewind(self, n: int) -> None:
-        """Move position back by ``n`` bytes. ``n`` must be >= 0."""
-        if n < 0:
-            raise ValueError("rewind count must be non-negative")
+        """
+        Move position back by ``n`` bytes.
+
+        Mirrors upstream ``RandomAccessRead.rewind(int)``: ``seek(getPosition()
+        - n)`` with no sign check, so a negative ``n`` seeks *forward*. Whether
+        the resulting position is valid is left to ``seek``.
+        """
         self.seek(self.get_position() - n)
 
     def is_eof(self) -> bool:
@@ -111,11 +115,15 @@ class RandomAccessRead(ABC):
         return None
 
     def skip(self, n: int) -> None:
-        """Advance position by ``n`` bytes (clipped to length)."""
-        if n < 0:
-            raise ValueError("skip count must be non-negative")
-        target = min(self.get_position() + n, self.length())
-        self.seek(target)
+        """
+        Advance position by ``n`` bytes.
+
+        Mirrors upstream ``RandomAccessRead.skip(int)``: ``seek(getPosition() +
+        n)`` with no sign check and no explicit length clamp — past-end and
+        negative targets are handled by ``seek`` itself (the buffer/file
+        implementations clamp a past-end seek to ``length()``).
+        """
+        self.seek(self.get_position() + n)
 
     def available(self) -> int:
         return max(0, self.length() - self.get_position())
