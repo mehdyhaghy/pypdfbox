@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.cos import COSDictionary
+from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.interactive.action.pd_target_directory import (
     PDTargetDirectory,
+)
+from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
+    PDNamedDestination,
 )
 
 
@@ -16,7 +19,9 @@ def test_default_fresh_target_directory() -> None:
     assert td.get_cos_object().size() == 0
     assert td.get_target_filename() is None
     assert td.get_named_destination() is None
-    assert td.get_page_number() is None
+    # Upstream getInt(-1)-backed: absent /P /A read as -1, not None.
+    assert td.get_page_number() == -1
+    assert td.get_annotation_index() == -1
     assert td.get_annotation_number() is None
     assert td.get_target() is None
     assert isinstance(td.get_cos_object(), COSDictionary)
@@ -29,10 +34,12 @@ def test_round_trip_all_fields() -> None:
     td.set_page_number(5)
     td.set_annotation_number(0)
 
-    assert td.get_relationship() == "P"
+    # get_relationship returns a COSName (upstream getCOSName-backed).
+    assert td.get_relationship() == COSName.get_pdf_name("P")
     assert td.get_target_filename() == "attachment.pdf"
     assert td.get_page_number() == 5
     assert td.get_annotation_number() == 0
+    assert td.get_annotation_index() == 0
 
 
 def test_recursive_target_directory() -> None:
@@ -66,7 +73,8 @@ def test_clearing_optional_entries() -> None:
     td.set_annotation_number(None)
 
     assert td.get_target_filename() is None
-    assert td.get_page_number() is None
+    assert td.get_page_number() == -1
+    assert td.get_annotation_index() == -1
     assert td.get_annotation_number() is None
 
 
@@ -78,12 +86,26 @@ def test_wrap_existing_dictionary_no_defaults() -> None:
 
 
 def test_named_destination_round_trip_uses_p_string_form() -> None:
-    """``/P`` may carry a named-destination string per PDF 32000-1 Table 202."""
+    """``/P`` may carry a named-destination string per PDF 32000-1 Table 202.
+
+    Upstream ``getNamedDestination()`` returns a ``PDNamedDestination``
+    wrapper (PDTargetDirectory.java line 178-186)."""
     td = PDTargetDirectory()
     td.set_named_destination("Chapter1")
-    assert td.get_named_destination() == "Chapter1"
+    named = td.get_named_destination()
+    assert isinstance(named, PDNamedDestination)
+    assert named.get_named_destination() == "Chapter1"
     # The string form does not surface as an integer page number.
-    assert td.get_page_number() is None
+    assert td.get_page_number() == -1
+
+
+def test_set_named_destination_accepts_pd_named_destination() -> None:
+    """The upstream contract takes a ``PDNamedDestination``."""
+    td = PDTargetDirectory()
+    td.set_named_destination(PDNamedDestination("Chapter2"))
+    named = td.get_named_destination()
+    assert isinstance(named, PDNamedDestination)
+    assert named.get_named_destination() == "Chapter2"
 
 
 def test_page_number_does_not_alias_named_destination() -> None:
@@ -97,10 +119,10 @@ def test_page_number_does_not_alias_named_destination() -> None:
 def test_set_named_destination_none_clears_p() -> None:
     td = PDTargetDirectory()
     td.set_named_destination("Nested")
-    assert td.get_named_destination() == "Nested"
+    assert td.get_named_destination() is not None
     td.set_named_destination(None)
     assert td.get_named_destination() is None
-    assert td.get_page_number() is None
+    assert td.get_page_number() == -1
 
 
 # ---------------------------------------------------------------- /A string form
@@ -113,7 +135,8 @@ def test_annotation_name_round_trip_string_form_of_a() -> None:
     assert td.get_annotation_name() == "AnnotNM-1"
     # The string form does not surface as an integer index.
     assert td.get_annotation_number() is None
-    assert td.get_annotation_index() is None
+    # Upstream getInt(-1)-backed: a string /A reads as -1.
+    assert td.get_annotation_index() == -1
 
 
 def test_annotation_index_does_not_alias_annotation_name() -> None:
@@ -196,5 +219,6 @@ def test_annotation_index_alias_matches_annotation_number() -> None:
     assert td.get_annotation_number() == 3
 
     td.set_annotation_index(None)
-    assert td.get_annotation_index() is None
+    # Upstream getInt(-1)-backed: cleared /A reads as -1.
+    assert td.get_annotation_index() == -1
     assert td.get_annotation_number() is None

@@ -222,7 +222,10 @@ class PDActionEmbeddedGoTo(PDAction):
 
         try:
             while current_target is not None:
-                relationship = current_target.get_relationship() or "C"
+                rel_name = current_target.get_relationship()
+                relationship = (
+                    rel_name.get_name() if rel_name is not None else "C"
+                )
                 next_filename = current_target.get_target_filename()
                 if next_filename is None:
                     # /N missing — chain broken.
@@ -425,13 +428,23 @@ class PDActionEmbeddedGoTo(PDAction):
             if target_id in visited:
                 break
             visited.add(target_id)
-            relationship = current.get_relationship() or "C"
+            rel_name = current.get_relationship()
+            relationship = rel_name.get_name() if rel_name is not None else "C"
+            # get_page_number is upstream getInt(-1)-backed: normalise the
+            # "absent / string-form" -1 sentinel back to None for the snapshot
+            # (TargetStep treats None as "no integer page set").
+            page = current.get_page_number()
+            named = current.get_named_destination()
             steps.append(
                 TargetStep(
                     relationship=relationship,
                     target_filename=current.get_target_filename(),
-                    page_number=current.get_page_number(),
-                    named_destination=current.get_named_destination(),
+                    page_number=page if page >= 0 else None,
+                    named_destination=(
+                        named.get_named_destination()
+                        if named is not None
+                        else None
+                    ),
                     annotation_number=current.get_annotation_number(),
                 )
             )

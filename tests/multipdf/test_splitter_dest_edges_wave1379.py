@@ -289,7 +289,8 @@ def test_goto_embedded_action_passes_through_untouched() -> None:
         assert isinstance(imported_action, PDActionEmbeddedGoTo)
         target_out = imported_action.get_target()
         assert target_out is not None
-        assert target_out.get_relationship() == "C"
+        rel = target_out.get_relationship()
+        assert rel is not None and rel.get_name() == "C"
         assert target_out.get_target_filename() == "attach.pdf"
         d = imported_action.get_d()
         assert d is not None

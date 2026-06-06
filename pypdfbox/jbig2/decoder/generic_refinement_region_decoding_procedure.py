@@ -380,7 +380,12 @@ class GenericRefinementRegionDecodingProcedure:
                 reference_byte_index,
                 T0,
             )
-        elif self.template_id == 1:
+        elif self.template_id == 1:  # pragma: no cover
+            # Unreachable: upstream's run() (GenericRefinementRegionDecodingProcedure.java
+            # lines 256-277) dispatches template 1 exclusively through the per-pixel
+            # decodeLineExplicitT1 / decodeLineTPGRT1, never through decodeOptimized's
+            # case 1. This faithful port of upstream's never-called template-1 fast
+            # path is kept for upstream-structure fidelity (see PROVENANCE).
             self._decode_template(
                 line_number,
                 width,
@@ -562,7 +567,10 @@ class GenericRefinementRegionDecodingProcedure:
             if not (self.gr_at_x[1] == -1 and self.gr_at_y[1] == -1):
                 self.gr_at_override[1] = True
                 self.override = True
-        elif self.template_id == 1:
+        elif self.template_id == 1:  # pragma: no cover
+            # Unreachable: _update_override is only invoked from run() when
+            # template_id == 0 (AT pixels are template-0-only). Faithful to
+            # upstream's switch, which carries the same never-taken case 1.
             self.override = False
 
     def _decode_typical_predicted_line(
@@ -592,7 +600,10 @@ class GenericRefinementRegionDecodingProcedure:
                 current_line,
                 ref_byte_index,
             )
-        elif self.template_id == 1:
+        elif self.template_id == 1:  # pragma: no cover
+            # Unreachable: see _decode_optimized's case-1 note. run() never reaches
+            # decodeTypicalPredictedLine for template 1 (per-pixel path is used
+            # instead); kept faithful to upstream's never-called fast path.
             self._decode_typical_predicted_line_template1(
                 line_number,
                 width,
@@ -741,7 +752,7 @@ class GenericRefinementRegionDecodingProcedure:
             ref_byte_index += 1
             x = next_byte
 
-    def _decode_typical_predicted_line_template1(
+    def _decode_typical_predicted_line_template1(  # pragma: no cover
         self,
         line_number: int,
         width: int,
@@ -753,6 +764,11 @@ class GenericRefinementRegionDecodingProcedure:
         current_line: int,
         ref_byte_index: int,
     ) -> None:
+        # Unreachable in upstream and in this port: the optimized template-1
+        # typical-prediction byte-blit (GenericRefinementRegionDecodingProcedure.java
+        # decodeTypicalPredictedLineTemplate1). run() dispatches template-1 TPGR
+        # lines through the per-pixel decodeLineTPGRT1 instead. Ported verbatim for
+        # upstream-structure fidelity; excluded from coverage as structurally dead.
         ref = self.reference_bitmap
         reg = self.region_bitmap
 
@@ -883,7 +899,12 @@ class GenericRefinementRegionDecodingProcedure:
         if self.gr_at_override[0]:
             context &= 0xFFF7
             if self.gr_at_y[0] == 0 and self.gr_at_x[0] >= -minor_x:
-                context |= ((result >> (7 - (minor_x + self.gr_at_x[0]))) & 0x1) << 3
+                # Java's ``int >>`` masks the shift count to its low 5 bits, so a
+                # negative ``7 - (minor_x + gr_at_x[0])`` (which arises when an AT
+                # pixel pushes ``minor_x + gr_at_x[0]`` past 7) shifts by
+                # ``count & 0x1F`` rather than raising; mirror that here.
+                shift = (7 - (minor_x + self.gr_at_x[0])) & 0x1F
+                context |= ((result >> shift) & 0x1) << 3
             else:
                 context |= (
                     self._get_pixel_safe(

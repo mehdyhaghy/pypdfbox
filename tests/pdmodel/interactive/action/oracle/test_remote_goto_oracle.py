@@ -179,7 +179,8 @@ def _canon_target(target: PDTargetDirectory | None) -> str:
             break
         seen.add(id(cos))
         rel = target.get_relationship()
-        line = "R" + ("" if rel is None else rel)
+        # get_relationship returns COSName (upstream contract, wave 1494).
+        line = "R" + ("" if rel is None else rel.get_name())
         line += "|N" + _null_to_empty(target.get_target_filename())
         named = target.get_named_destination()
         page_num = target.get_page_number()
@@ -440,13 +441,15 @@ def test_remote_goto_accessor_round_trip(remote_goto_pdf: Path) -> None:
         assert gotoe.get_open_in_new_window_mode() is OpenMode.SAME_WINDOW
         target = gotoe.get_target()
         assert target is not None
-        assert target.get_relationship() == "C"
+        rel = target.get_relationship()
+        assert rel is not None and rel.get_name() == "C"
         assert target.get_target_filename() == "attachment.pdf"
         assert target.get_page_number() == 3
         assert target.get_annotation_number() == 0
         nested = target.get_target()
         assert nested is not None
-        assert nested.get_relationship() == "P"
+        nested_rel = nested.get_relationship()
+        assert nested_rel is not None and nested_rel.get_name() == "P"
         assert nested.get_target_filename() == "root.pdf"
         assert nested.get_target() is None
 

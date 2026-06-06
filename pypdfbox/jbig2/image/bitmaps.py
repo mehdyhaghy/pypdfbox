@@ -433,7 +433,13 @@ class Bitmaps:
                 src_end_idx,
                 combination_operator,
             )
-        elif special_case:
+        elif special_case:  # pragma: no cover
+            # Unreachable: use_shift is true only when shift_val1 != 0 (x bit-
+            # misaligned), but any such blit not satisfying the full-width-at-0
+            # case is diverted to _blit_by_pixel above by the PDFBOX-6156 guard,
+            # and the full-width-at-0 case has shift_val1 == 0 (so use_shift is
+            # false). Faithful to upstream Bitmaps.blit, whose identical guard
+            # leaves blitSpecialShifted / blitShifted equally unreachable.
             _blit_special_shifted(
                 src,
                 dst,
@@ -447,7 +453,8 @@ class Bitmaps:
                 shift_val2,
                 combination_operator,
             )
-        else:
+        else:  # pragma: no cover
+            # Unreachable: see the _blit_special_shifted note above (PDFBOX-6156).
             _blit_shifted(
                 src,
                 dst,
@@ -591,8 +598,12 @@ def _to_signed_byte(value: int) -> int:
     return value - 256 if value >= 128 else value
 
 
-def _to_signed_short(value: int) -> int:
-    """Interpret the low 16 bits of ``value`` as a signed Java ``short``."""
+def _to_signed_short(value: int) -> int:  # pragma: no cover
+    """Interpret the low 16 bits of ``value`` as a signed Java ``short``.
+
+    Used only by the structurally-dead ``_blit_shifted`` / ``_blit_special_shifted``
+    workers (see their PDFBOX-6156 notes); excluded from coverage with them.
+    """
     value &= 0xFFFF
     return value - 0x10000 if value >= 0x8000 else value
 
@@ -651,7 +662,7 @@ def _blit_unshifted(
         lines -= 1
 
 
-def _blit_special_shifted(
+def _blit_special_shifted(  # pragma: no cover
     src: Bitmap,
     dst: Bitmap,
     start_line: int,
@@ -664,6 +675,9 @@ def _blit_special_shifted(
     shift_val2: int,
     op: CombinationOperator,
 ) -> None:
+    # Unreachable via Bitmaps.blit (PDFBOX-6156 guard diverts every shifted blit
+    # to _blit_by_pixel). Ported verbatim from upstream's blitSpecialShifted for
+    # structure fidelity; excluded from coverage as structurally dead.
     for _dst_line in range(start_line, last_line):
         register = 0
         dst_idx = dst_start_idx
@@ -688,7 +702,7 @@ def _blit_special_shifted(
         src_end_idx += src.get_row_stride()
 
 
-def _blit_shifted(
+def _blit_shifted(  # pragma: no cover
     src: Bitmap,
     dst: Bitmap,
     start_line: int,
@@ -702,6 +716,9 @@ def _blit_shifted(
     op: CombinationOperator,
     padding: int,
 ) -> None:
+    # Unreachable via Bitmaps.blit (PDFBOX-6156 guard diverts every shifted blit
+    # to _blit_by_pixel). Ported verbatim from upstream's blitShifted for
+    # structure fidelity; excluded from coverage as structurally dead.
     for _dst_line in range(start_line, last_line):
         register = 0
         dst_idx = dst_start_idx

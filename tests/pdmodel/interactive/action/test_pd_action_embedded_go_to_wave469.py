@@ -107,7 +107,8 @@ def test_wave469_set_target_accepts_raw_cos_dictionary() -> None:
     target = action.get_target_directory()
     assert target is not None
     assert target.get_cos_object() is raw_target
-    assert target.get_relationship() == "P"
+    rel = target.get_relationship()
+    assert rel is not None and rel.get_name() == "P"
     assert target.get_target_filename() == "parent.pdf"
 
 

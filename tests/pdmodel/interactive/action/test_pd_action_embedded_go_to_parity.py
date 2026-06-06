@@ -139,7 +139,8 @@ def test_set_target_directory_round_trip() -> None:
 
     got = action.get_target_directory()
     assert got is not None
-    assert got.get_relationship() == "P"
+    rel = got.get_relationship()
+    assert rel is not None and rel.get_name() == "P"
     assert got.get_target_filename() == "parent.pdf"
 
 
