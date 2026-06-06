@@ -200,7 +200,14 @@ def _unpng(data: bytes, row_bytes: int, bytes_per_pixel: int) -> bytes:
                 up_left = prev_row[i - bytes_per_pixel] if i >= bytes_per_pixel else 0
                 cur[i] = (cur[i] + _paeth(left, up, up_left)) & 0xFF
         else:
-            raise OSError(f"unknown PNG filter type {filter_type}")
+            # Unknown PNG filter tag (> 4). Upstream does NOT raise: its
+            # ``decodePredictorRow`` switches on ``predictor = tag + 10`` and
+            # any value outside 10..14 hits ``default: break`` — the row is
+            # written through unchanged. A malformed stream / wrong /Columns
+            # geometry that mis-aligns the tag bytes therefore yields
+            # passthrough rows on PDFBox, not a decode failure. Match that
+            # (this is a real lenient-decode parity point, see CHANGES.md).
+            pass
 
         out.extend(cur)
         prev_row = cur

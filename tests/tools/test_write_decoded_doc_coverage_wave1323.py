@@ -167,15 +167,37 @@ def test_do_it_swallows_attribute_error_when_xref_table_missing(
 # ---------------------------------------------------------------------------
 
 
+class _OSErrorStream(COSStream):
+    """A ``COSStream`` whose decode raises, driving the OSError-skip arm.
+
+    Wave 1505 made FlateDecode lenient (partial output instead of raising,
+    matching upstream PDFBOX-1232), so a corrupt deflate payload no longer
+    produces an ``OSError`` — the skip branch is now driven directly, the
+    way upstream's catch (IOException from any cause) is contract-tested.
+    """
+
+    def has_data(self) -> bool:
+        # ``PDStream.to_byte_array`` short-circuits to ``b""`` when the
+        # stream has no body; report data so the raising read is reached.
+        return True
+
+    def to_byte_array(self) -> bytes:
+        raise OSError("synthetic decode failure")
+
+    def create_input_stream(self, *args: object, **kwargs: object):
+        # ``process_object`` reads via ``PDStream(stream).to_byte_array()``,
+        # which drains this input stream — raise from here too so the
+        # OSError surfaces regardless of the read path.
+        raise OSError("synthetic decode failure")
+
+
 def test_process_object_oserror_is_logged_to_stderr(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """A stream whose ``/FlateDecode`` payload is corrupted raises
-    ``OSError`` during ``to_byte_array``; the helper logs to stderr
-    with the object's key — covers lines 65-67."""
-    stream = COSStream()
+    """A stream whose decode raises ``OSError`` during ``to_byte_array``;
+    the helper logs to stderr with the object's key — covers lines 65-67."""
+    stream = _OSErrorStream()
     stream.set_item(COSName.FILTER, COSName.FLATE_DECODE)
-    stream.set_raw_data(b"\xff\xff\xff\xff garbage payload not deflate")
 
     class _ObjWithKey:
         def __init__(self, inner: COSStream) -> None:
@@ -207,9 +229,8 @@ def test_process_object_oserror_without_get_key_uses_placeholder(
         # process_object's unwrap step.
         pass
 
-    inner = COSStream()
+    inner = _OSErrorStream()
     inner.set_item(COSName.FILTER, COSName.FLATE_DECODE)
-    inner.set_raw_data(b"\xff\xff\xff\xff garbage")
 
     class _CosObjShim:
         def get_object(self) -> COSStream:

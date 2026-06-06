@@ -402,32 +402,30 @@ def test_missing_eod_after_valid_data_returns_decoded_prefix() -> None:
     assert _decode(stream) == b"AB"
 
 
-def test_invalid_code_raises_oserror() -> None:
+def test_invalid_code_stops_leniently() -> None:
     # Reference a code well beyond the initial table without ever
     # populating it. CLEAR, then code 500 (way past 258), then EOD.
+    # Upstream throws EOFException on a corrupt code and its own try/catch
+    # turns that into a lenient "premature EOF" stop — it keeps whatever was
+    # decoded (here: nothing) and does NOT raise. Oracle-verified: PDFBox
+    # 3.0.7 yields zero bytes, ok=true. (Was a wrong-direction OSError pin.)
     stream = _build_stream([(CLEAR_TABLE, 9), (500, 9), (EOD, 9)])
     f = LZWDecode()
     out = BytesIO()
-    with pytest.raises(OSError):
-        f.decode(BytesIO(stream), out, None)
+    f.decode(BytesIO(stream), out, None)
+    assert out.getvalue() == b""
 
 
-def test_reserved_code_referenced_as_data_raises() -> None:
-    # CLEAR, then 'A', then explicitly use code 256 as data (not as the
-    # CLEAR sentinel — wait, the decoder always treats 256 as CLEAR).
-    # Use code 257 (EOD) inline followed by another EOD: the decoder
-    # will stop at the first EOD. So instead force a placeholder hit
-    # by a contrived second-CLEAR-without-prev pattern. Simpler: build
-    # a stream that resolves to None via direct corruption.
-    #
-    # Build CLEAR, code 257-1 = 256 -> CLEAR resets again; that's
-    # legal. The genuinely-invalid case is "code = current table size
-    # without a prev" — which the decoder rejects.
+def test_kwkwk_without_prev_stops_leniently() -> None:
+    # CLEAR resets prev to None; then code 258 == current table size with no
+    # previous string (the KwKwK degenerate). Upstream's
+    # ``else { throw new EOFException(...) }`` path turns this into the same
+    # lenient stop, not an error. Oracle-verified: PDFBox yields zero bytes.
     stream = _build_stream([(CLEAR_TABLE, 9), (258, 9), (EOD, 9)])
     f = LZWDecode()
     out = BytesIO()
-    with pytest.raises(OSError):
-        f.decode(BytesIO(stream), out, None)
+    f.decode(BytesIO(stream), out, None)
+    assert out.getvalue() == b""
 
 
 # ---------- registration ---------------------------------------------

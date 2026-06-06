@@ -230,15 +230,19 @@ def _generate_corpus() -> list[tuple[str, bytes]]:
     add("tz_negative", _wrap(b"-100 Tz BT /F1 12 Tf 72 680 Td (NTZ) Tj ET\n"))
     add("font_size_zero", _wrap(b"BT /F1 0 Tf 72 680 Td (ZFS) Tj ET\n"))
     add("font_size_negative", _wrap(b"BT /F1 -12 Tf 72 680 Td (NFS) Tj ET\n"))
-    # NOTE: a *huge* font size on a draw whose baseline sits between the two
-    # anchor draws (e.g. ``/F1 1000000 Tf … 680 Td``) exposes a line-grouping
-    # geometry edge, not an operator-robustness one: PDFBox merges the tall
-    # glyph and both anchors onto a single line (its line-overlap test keys on
-    # the line's accumulated height), whereas the lite stripper's y-up overlap
-    # accumulator splits them. Fixing that sign would regress rotated-text
-    # parity (the flip-axes path shares the accumulator), so it is out of scope
-    # for this operator-fuzz wave — the large-font-size *operator* path is
-    # still covered by the moderate sizes above. See report / DEFERRED.md.
+    # A *huge* font size on a draw whose baseline sits between the two anchor
+    # draws exercises the line-grouping geometry edge (wave 1505): PDFBox's
+    # line-overlap test keys on the line's accumulated height, so the tall
+    # glyph's span overlaps both normal-font anchors and all three merge onto a
+    # single line. The lite stripper now mirrors this — its upright y-up line
+    # accumulator tracks the bottom-most (MIN user-Y) baseline, the y-up mirror
+    # of upstream's max device-Y, so the same merge fires. (Closing the
+    # wave-1504 sign-mismatch DEFERRED item; the rotated path keeps upstream's
+    # literal max sense and stays byte-exact.)
+    add(
+        "font_size_huge",
+        _wrap(b"BT /F1 1000000 Tf 72 680 Td (HFS) Tj ET\n"),
+    )
     add(
         "text_matrix_zero_scale",
         _wrap(b"BT 0 0 0 0 72 680 Tm /F1 12 Tf (ZTM) Tj ET\n"),

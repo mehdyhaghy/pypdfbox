@@ -47,9 +47,14 @@ def test_lzw_decode_params_array_out_of_range_falls_back_to_empty_dict() -> None
     assert result.parameters is parameters
 
 
-def test_lzw_reserved_table_slot_referenced_as_data_raises(
+def test_lzw_reserved_table_slot_referenced_as_data_stops_leniently(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # A code landing on a None (reserved/placeholder) table slot is a corrupt
+    # stream. Upstream classes every corrupt-code path as a premature EOF
+    # (EOFException caught + logged → stop, keep partial output), so pypdfbox
+    # raises EOFError internally and the surrounding handler swallows it: the
+    # decode returns whatever was produced (here: nothing), it does NOT raise.
     def poisoned_table() -> list[bytes | None]:
         table = [bytes((i,)) for i in range(256)]
         table[65] = None
@@ -58,8 +63,9 @@ def test_lzw_reserved_table_slot_referenced_as_data_raises(
 
     monkeypatch.setattr(lzw_decode, "_initial_code_table", poisoned_table)
 
-    with pytest.raises(OSError, match="reserved entry"):
-        LZWDecode._do_lzw_decode(BytesIO(_pack_lzw_codes([(65, 9)])), BytesIO(), True)
+    out = BytesIO()
+    LZWDecode._do_lzw_decode(BytesIO(_pack_lzw_codes([(65, 9)])), out, True)
+    assert out.getvalue() == b""
 
 
 def test_run_length_decode_empty_stream_stops_without_eod() -> None:

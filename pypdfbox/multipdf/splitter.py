@@ -508,6 +508,36 @@ class Splitter:
 
         imported = self._current_destination_document.import_page(page)
 
+        # Materialise the inheritable page-geometry attributes on the
+        # imported page dict. Upstream's ``Splitter.processPage`` gets this
+        # for free because ``PDDocument.importPage`` (PDDocument.java lines
+        # 700-702) explicitly re-applies ``setCropBox`` / ``setMediaBox`` /
+        # ``setRotation`` from the *resolved* source values right after the
+        # shallow page-dict copy + ``/Parent`` removal. Our port's
+        # ``PDDocument.import_page`` does a deep-copy + ``/Parent`` strip but
+        # does NOT re-apply those three setters, so a source page that
+        # *inherited* its ``/MediaBox`` / ``/CropBox`` / ``/Rotate`` from a
+        # page-tree node loses them once detached from the source tree and
+        # falls back to the Letter / 0 defaults. Re-applying here keeps the
+        # Splitter (and the PageExtractor that delegates to it) byte-for-byte
+        # aligned with upstream's importPage materialisation. Each setter is
+        # guarded because a malformed source page may raise while resolving
+        # the inherited value — upstream would throw, but we prefer to ship
+        # the chunk with whatever geometry survived rather than abort the
+        # whole split.
+        try:
+            imported.set_crop_box(page.get_crop_box())
+        except Exception as exc:  # noqa: BLE001
+            _LOG.debug("set_crop_box failed during split: %s", exc)
+        try:
+            imported.set_media_box(page.get_media_box())
+        except Exception as exc:  # noqa: BLE001
+            _LOG.debug("set_media_box failed during split: %s", exc)
+        try:
+            imported.set_rotation(page.get_rotation())
+        except Exception as exc:  # noqa: BLE001
+            _LOG.debug("set_rotation failed during split: %s", exc)
+
         # Mirror upstream: if the source page had a /Resources but the
         # imported one didn't carry it through (because the inheritable
         # path was used), copy the resources dict directly so the chunk

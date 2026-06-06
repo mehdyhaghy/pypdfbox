@@ -54,9 +54,15 @@ def test_unpredict_png_short_final_row_is_zero_padded() -> None:
     )
 
 
-def test_unpredict_png_unknown_filter_type_raises() -> None:
-    with pytest.raises(OSError, match="unknown PNG filter type 5"):
-        unpredict(b"\x05abcd", 10, columns=4, colors=1, bits_per_component=8)
+def test_unpredict_png_unknown_filter_type_passes_through() -> None:
+    # An unknown per-row PNG filter tag (> 4) is NOT an error on decode:
+    # upstream's decodePredictorRow switches on ``tag + 10`` and any value
+    # outside 10..14 hits ``default: break``, writing the row unchanged.
+    # Oracle-verified (PredictorDecodeProbe): tag 5 over "abcd" yields the
+    # four raw bytes, no exception. (Was a wrong-direction raise pin.)
+    assert unpredict(b"\x05abcd", 10, columns=4, colors=1, bits_per_component=8) == (
+        b"abcd"
+    )
 
 
 def test_tiff_encode_pads_short_final_row_before_delta_encoding() -> None:

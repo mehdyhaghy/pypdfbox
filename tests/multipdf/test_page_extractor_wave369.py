@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import pytest
 
-import pypdfbox.pdmodel.pd_document as pd_document_module
 from pypdfbox import PDDocument, PDPage
 from pypdfbox.multipdf import PageExtractor
 from pypdfbox.pdmodel.pd_viewer_preferences import PDViewerPreferences
@@ -15,7 +14,20 @@ def _make_doc(n_pages: int) -> PDDocument:
     return doc
 
 
-def test_wave369_extract_start_past_document_returns_empty_metadata_copy() -> None:
+def test_wave369_extract_start_past_document_raises_like_upstream() -> None:
+    """A range entirely past the document (``start=9, end=9`` on a 2-page
+    source) raises, mirroring upstream.
+
+    The raw-span guard ``end - start + 1 = 1 > 0`` passes, so upstream
+    builds a ``Splitter`` with ``setStartPage(max(9, 1) = 9)`` and
+    ``setEndPage(min(9, 2) = 2)``. ``Splitter.setEndPage`` rejects
+    ``end < startPage`` with ``IllegalArgumentException`` — the Python
+    port raises the analogous ``ValueError``. Wave 369 originally pinned
+    the bespoke page-walk's lenient "return empty doc with metadata
+    copied" behaviour; wave 1505 retargets it to the upstream contract
+    now that ``extract`` delegates to the ported ``Splitter`` (verified
+    against PDFBox 3.0.7: ``IllegalArgumentException: End page is smaller
+    than startPage``)."""
     src = _make_doc(2)
     info = src.get_document_information()
     info.set_title("wave369 title")
@@ -23,35 +35,26 @@ def test_wave369_extract_start_past_document_returns_empty_metadata_copy() -> No
     prefs.set_hide_menubar(True)
     src.get_document_catalog().set_viewer_preferences(prefs)
 
-    result = PageExtractor(src, 9, 9).extract()
-
-    assert result.get_number_of_pages() == 0
-    assert result.get_document_information().get_title() == "wave369 title"
-    out_prefs = result.get_document_catalog().get_viewer_preferences()
-    assert out_prefs is not None
-    assert out_prefs.hide_menubar() is True
+    with pytest.raises(ValueError, match="End page is smaller than startPage"):
+        PageExtractor(src, 9, 9).extract()
 
     src.close()
-    result.close()
 
 
-class _FailingMetadataSource:
-    def get_number_of_pages(self) -> int:
-        return 0
+def test_wave369_extract_zero_page_source_raises_like_upstream() -> None:
+    """Extracting ``[1..1]`` from a zero-page document raises, mirroring
+    upstream.
 
-    def get_document_information(self) -> object:
-        raise RuntimeError("broken info")
-
-    def get_document_catalog(self) -> object:
-        raise RuntimeError("broken catalog")
-
-
-def test_wave369_extract_swallowing_metadata_failures_still_returns_doc() -> None:
-    result = PageExtractor(_FailingMetadataSource(), 1, 1).extract()  # type: ignore[arg-type]
-
-    assert result.get_number_of_pages() == 0
-
-    result.close()
+    The raw-span guard ``1 - 1 + 1 = 1 > 0`` passes; upstream then calls
+    ``setEndPage(min(1, 0) = 0)`` which ``Splitter.setEndPage`` rejects
+    (``IllegalArgumentException: End page is smaller than one``). The port
+    raises the analogous ``ValueError``. Wave 369 originally pinned the
+    bespoke walk's lenient empty-doc return; retargeted in wave 1505 to
+    the upstream contract."""
+    empty = _make_doc(0)
+    with pytest.raises(ValueError, match="End page is smaller than one"):
+        PageExtractor(empty, 1, 1).extract()
+    empty.close()
 
 
 class _InfoSource:
@@ -84,54 +87,43 @@ def test_wave369_copy_document_information_ignores_target_rejection() -> None:
     assert target.seen_info is info
 
 
-def test_wave369_extract_ignores_imported_page_setter_failures(
+def test_wave369_extract_delegates_to_splitter(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    src = _make_doc(1)
-    prefs = PDViewerPreferences()
-    prefs.set_hide_toolbar(True)
-    src.get_document_catalog().set_viewer_preferences(prefs)
-    calls: list[str] = []
+    """``extract`` delegates to a single ``Splitter.split`` covering the
+    clamped window and returns its first part.
 
-    class RejectingImportedPage:
-        def set_crop_box(self, _value: object) -> None:
-            calls.append("crop")
-            raise RuntimeError("crop failed")
+    Wave 369 originally pinned the bespoke page-walk's per-page setter
+    re-application (``set_crop_box`` / ``set_media_box`` / ``set_resources``
+    / ``set_rotation`` in that order) via a monkeypatched ``PDDocument``.
+    That walk was removed in wave 1505 when ``extract`` was switched to
+    delegate to the ported ``Splitter`` (upstream parity). This test now
+    pins the delegation contract: the configured ``Splitter`` is driven
+    with ``set_start_page(max(start, 1))`` /
+    ``set_end_page(min(end, N))`` / ``set_split_at_page(end - start + 1)``
+    and ``extract`` returns ``split()[0]``."""
+    import pypdfbox.multipdf.splitter as splitter_module
 
-        def set_media_box(self, _value: object) -> None:
-            calls.append("media")
-            raise RuntimeError("media failed")
+    src = _make_doc(5)
+    recorded: dict[str, object] = {}
+    real_split = splitter_module.Splitter.split
 
-        def set_resources(self, _value: object) -> None:
-            calls.append("resources")
-            raise RuntimeError("resources failed")
+    def spy_split(self: object, document: object) -> list[object]:
+        recorded["start"] = self.get_start_page()  # type: ignore[attr-defined]
+        recorded["end"] = self.get_end_page()  # type: ignore[attr-defined]
+        recorded["split_at"] = self.get_split_at_page()  # type: ignore[attr-defined]
+        recorded["document"] = document
+        return real_split(self, document)  # type: ignore[arg-type]
 
-        def set_rotation(self, _value: object) -> None:
-            calls.append("rotation")
-            raise RuntimeError("rotation failed")
+    monkeypatch.setattr(splitter_module.Splitter, "split", spy_split)
 
-    class TargetCatalog:
-        def set_viewer_preferences(self, _prefs: object) -> None:
-            pass
+    result = PageExtractor(src, 2, 4).extract()
 
-    class TargetDocument:
-        def __init__(self) -> None:
-            self.imported = RejectingImportedPage()
-
-        def set_document_information(self, _info: object) -> None:
-            pass
-
-        def get_document_catalog(self) -> TargetCatalog:
-            return TargetCatalog()
-
-        def import_page(self, _page: PDPage) -> RejectingImportedPage:
-            return self.imported
-
-    monkeypatch.setattr(pd_document_module, "PDDocument", TargetDocument)
-
-    result = PageExtractor(src, 1, 1).extract()
-
-    assert isinstance(result, TargetDocument)
-    assert calls == ["crop", "media", "resources", "rotation"]
+    assert recorded["document"] is src
+    assert recorded["start"] == 2
+    assert recorded["end"] == 4
+    assert recorded["split_at"] == 3  # 4 - 2 + 1
+    assert result.get_number_of_pages() == 3
 
     src.close()
+    result.close()

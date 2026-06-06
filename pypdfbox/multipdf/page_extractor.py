@@ -15,27 +15,34 @@ class PageExtractor:
     :class:`PDDocument`. Mirrors
     ``org.apache.pdfbox.multipdf.PageExtractor``.
 
-    Upstream delegates to ``Splitter`` configured with a single split
-    boundary covering ``[startPage..endPage]``; we don't ship a ported
-    ``Splitter`` yet, so this implementation walks the source page tree
-    directly and deep-copies each page into a fresh ``PDDocument`` via
-    :meth:`PDDocument.import_page` (which itself reuses the same deep-
-    copy machinery as :class:`pypdfbox.multipdf.PDFCloneUtility`). After
-    the page is imported the upstream-visible defensive setters
-    (``set_media_box`` / ``set_crop_box`` / ``set_resources`` /
-    ``set_rotation``) are re-applied so inheritable attributes that
-    weren't materialised on the source page dict still land on the
-    extracted page. Document information and viewer preferences are
-    copied across as well, matching upstream byte-for-byte (see
-    ``CHANGES.md`` for the deviation note about the Splitter delegation).
+    Upstream delegates to :class:`Splitter` configured with a single split
+    boundary covering ``[startPage..endPage]``, and so does this port now
+    that :class:`Splitter` is fully ported (the earlier bespoke page-walk
+    was a stop-gap while the ported ``Splitter`` did not yet exist — see
+    the closed wave-708 deferral in ``HISTORY.md``). The extracted
+    document therefore inherits all of Splitter's per-page behaviour:
+    annotation cloning, ``/B`` bead removal, structure-tree clone,
+    cross-chunk destination fix-up, and inherited page-geometry
+    materialisation (``/MediaBox`` / ``/CropBox`` / ``/Rotate``).
+    Document information and viewer preferences are carried across by
+    Splitter's :meth:`Splitter.create_new_document`.
 
     Page numbers are **1-based and inclusive** at both ends, matching
     upstream:
 
     - ``startPage < 1``  -> clamped up to 1.
     - ``endPage > N``    -> clamped down to ``source.get_number_of_pages()``.
-    - ``startPage > endPage`` (after clamping) -> returns an empty
-      ``PDDocument``.
+    - ``endPage - startPage + 1 <= 0`` (raw, pre-clamp) -> returns an
+      empty ``PDDocument``.
+    - a range entirely past the end of the document (``max(start, 1)`` >
+      ``min(end, N)``) -> raises ``ValueError`` via Splitter's
+      :meth:`Splitter.set_end_page` guard, mirroring upstream's
+      ``IllegalArgumentException``.
+
+    The :meth:`_copy_document_information` / :meth:`_copy_viewer_preferences`
+    helpers are retained as no-longer-internally-called compatibility
+    shims (Splitter now performs the copy); they remain available for
+    callers / tests that invoked them directly.
     """
 
     def __init__(
@@ -70,68 +77,54 @@ class PageExtractor:
 
     def extract(self) -> PDDocument:
         """Build and return a new :class:`PDDocument` containing the
-        clamped ``[start_page..end_page]`` range. Pages are deep-copied so
-        the result owns its own resource graph, then the page setters
-        upstream uses (``setMediaBox`` / ``setCropBox`` / ``setResources``
-        / ``setRotation``) are re-applied so inheritable attributes
-        survive the extraction. Document information and viewer
-        preferences are copied across too."""
+        ``[start_page..end_page]`` range (1-based, inclusive on both ends).
+
+        Mirrors upstream ``PageExtractor.extract`` **exactly**, including
+        its delegation to :class:`Splitter`::
+
+            if (endPage - startPage + 1 <= 0) return new PDDocument();
+            Splitter splitter = new Splitter();
+            splitter.setStartPage(Math.max(startPage, 1));
+            splitter.setEndPage(Math.min(endPage, source.getNumberOfPages()));
+            splitter.setSplitAtPage(getEndPage() - getStartPage() + 1);
+            return splitter.split(sourceDocument).get(0);
+
+        Earlier waves re-implemented the page walk directly (the ported
+        :class:`Splitter` did not exist yet — see the now-closed
+        ``HISTORY.md`` wave-708 deferral). Now that :class:`Splitter` is a
+        full port, delegating restores byte-for-byte parity: the extracted
+        document inherits Splitter's annotation cloning, ``/B`` bead
+        removal, structure-tree clone, destination fix-up, and
+        inherited-attribute materialisation rather than the partial subset
+        the bespoke walk re-applied. It also restores upstream's edge-case
+        contract: an out-of-document range where ``max(start, 1)`` exceeds
+        ``min(end, N)`` now raises (Splitter's ``set_end_page`` rejects
+        ``end < start_page`` -> ``ValueError``, the Python analogue of
+        Java's ``IllegalArgumentException``) instead of silently returning
+        an empty document.
+        """
         # Local import to dodge an import cycle: ``pypdfbox.pdmodel``
         # transitively imports lots of submodules and we don't want
         # ``import pypdfbox.multipdf`` to drag the entire pdmodel surface
         # in at module-load time.
+        from pypdfbox.multipdf.splitter import Splitter
         from pypdfbox.pdmodel.pd_document import PDDocument
 
         # Degenerate range -- return a fresh empty document. Mirrors
         # upstream's ``if (endPage - startPage + 1 <= 0) return new
-        # PDDocument();`` early-return.
+        # PDDocument();`` early-return (uses the RAW, unclamped bounds).
         if self._end_page - self._start_page + 1 <= 0:
             return PDDocument()
 
         n = self._source_document.get_number_of_pages()
-        start = max(self._start_page, 1)
-        end = min(self._end_page, n)
-
-        target = PDDocument()
-
-        # Copy document information and viewer preferences -- upstream
-        # does both before the page walk. Wrapped in best-effort try
-        # blocks because the source may not have either populated and
-        # neither is essential for a valid extracted document.
-        self._copy_document_information(target)
-        self._copy_viewer_preferences(target)
-
-        # Walk every page so we mirror upstream's 1-based for-loop. The
-        # upstream implementation iterates 1..N and only imports pages in
-        # the [startPage..endPage] window; we do the same so that any
-        # future per-page bookkeeping (e.g. struct-tree or annotation
-        # remapping) has the full index context.
-        for i in range(1, n + 1):
-            if i < start or i > end:
-                continue
-            page = self._source_document.get_page(i - 1)
-            imported = target.import_page(page)
-            # Upstream re-applies the inheritable attributes via the
-            # page setters so they materialise on the extracted page
-            # dict even if the source had inherited them from a parent
-            # node that didn't follow the extraction.
-            try:
-                imported.set_crop_box(page.get_crop_box())
-            except Exception as exc:  # noqa: BLE001
-                _LOG.debug("set_crop_box failed during extract: %s", exc)
-            try:
-                imported.set_media_box(page.get_media_box())
-            except Exception as exc:  # noqa: BLE001
-                _LOG.debug("set_media_box failed during extract: %s", exc)
-            try:
-                imported.set_resources(page.get_resources())
-            except Exception as exc:  # noqa: BLE001
-                _LOG.debug("set_resources failed during extract: %s", exc)
-            try:
-                imported.set_rotation(page.get_rotation())
-            except Exception as exc:  # noqa: BLE001
-                _LOG.debug("set_rotation failed during extract: %s", exc)
-        return target
+        splitter = Splitter()
+        splitter.set_start_page(max(self._start_page, 1))
+        splitter.set_end_page(min(self._end_page, n))
+        # Upstream feeds the RAW (pre-clamp) span to setSplitAtPage so the
+        # whole clamped window lands in a single destination document.
+        splitter.set_split_at_page(self._end_page - self._start_page + 1)
+        split = splitter.split(self._source_document)
+        return split[0]
 
     # ---------- helpers ----------
 

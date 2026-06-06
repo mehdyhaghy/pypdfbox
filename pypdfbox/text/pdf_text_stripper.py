@@ -2695,12 +2695,49 @@ class PDFTextStripper:
         # horizontal jump larger than one space (a new column whose font
         # size may differ), matching upstream lines 681-687.
         #
-        # The lite TextPosition carries Y in the PDF user-space (y-up)
-        # frame, so ``max_y_for_line`` tracks the *highest* baseline seen
-        # on the line (the largest Y) — the y-up mirror of upstream's
-        # y-down ``maxYForLine`` (its smallest device Y). The overlap test
-        # (:meth:`_overlaps_line`) is correspondingly mirrored to y-up.
-        _MAX_Y_RESET = -math.inf
+        # Per-axis line-extent accumulator. Upstream tracks
+        # ``maxYForLine = MAX(positionY)`` in its y-down *device* frame
+        # (PDFTextStripper.java:689-692), i.e. the lowest (bottom-most)
+        # baseline seen on the line, reset to ``-Float.MAX_VALUE``. Which
+        # coordinate frame the lite stripper's stored ``pos.y`` lives in
+        # depends on the path:
+        #
+        #   * upright, unrotated page (``not _flip_axes and
+        #     _page_rotation == 0``): ``pos.y`` is the raw PDF user-space
+        #     (y-up) baseline — a larger Y is *higher* on the page. The
+        #     y-up mirror of "max device-Y" is therefore "**min user-Y**":
+        #     the accumulator must track the lowest baseline as ``MIN`` and
+        #     reset to ``+inf`` (update ``if position_y <= acc``). Keeping
+        #     the literal ``MAX`` / ``-inf`` here is the long-standing sign
+        #     mismatch that split a single visual line mixing very different
+        #     glyph heights (a large-font run between two normal-font
+        #     anchors) where Java merges them. ``_overlaps_line`` is already
+        #     the correct y-up transform of upstream ``overlap`` *given* a
+        #     MIN-user-Y accumulator (its two span clauses carry the matching
+        #     heights — verified by substituting ``device_y = -user_y`` into
+        #     upstream's ``overlap``), so only the accumulation direction was
+        #     wrong.
+        #
+        #   * rotated page (``_page_rotation in (90, 180, 270)``):
+        #     ``_apply_page_rotation`` has already rewritten ``pos.y`` into
+        #     upstream's ``getY()`` device frame (see that method's lines
+        #     866-878: the stored Y runs in the SAME direction as upstream's
+        #     ``getY()`` precisely so this accumulation matches). There the
+        #     literal ``MAX`` / ``-inf`` is upstream's verbatim behaviour and
+        #     the 90/270 fragmentation pattern depends on it — flipping the
+        #     sense would regress
+        #     ``test_right_angle_rotation_byte_exact``.
+        #
+        #   * flip-axes (``set_should_flip_axes``): a lite-only manual X/Y
+        #     transpose with no upstream counterpart; ``_overlaps_line`` is
+        #     not consulted on that path (it uses ``_is_line_break``), so the
+        #     accumulator is dead for line-breaking there — kept on the
+        #     legacy ``MAX`` / ``-inf`` sense for stability (documented
+        #     carve-out, see ``set_should_flip_axes`` DEFERRED entry).
+        #
+        # ``min_y_line_axis`` selects the upright-unrotated MIN-user-Y path.
+        min_y_line_axis = not self._flip_axes and self._page_rotation == 0
+        _MAX_Y_RESET = math.inf if min_y_line_axis else -math.inf
         _MAX_HEIGHT_RESET = -1.0
         # When a ``carry`` dict is supplied the running line state persists
         # across article (bead-bucket) boundaries — mirroring upstream's
@@ -2885,8 +2922,15 @@ class PDFTextStripper:
                         max_y_for_line = _MAX_Y_RESET
                         max_height_for_line = _MAX_HEIGHT_RESET
             # Accumulate the line's vertical extent (upstream lines
-            # 689-707): track the highest baseline and the tallest glyph.
-            if position_y >= max_y_for_line:
+            # 689-707): track the bottom-most baseline and the tallest glyph.
+            # In the upright unrotated y-up frame the bottom-most baseline is
+            # the *minimum* user-Y (mirror of upstream's max device-Y); the
+            # rotated / flip-axes paths keep upstream's literal max sense (see
+            # the ``min_y_line_axis`` note above).
+            if min_y_line_axis:
+                if position_y <= max_y_for_line:
+                    max_y_for_line = position_y
+            elif position_y >= max_y_for_line:
                 max_y_for_line = position_y
             max_height_for_line = max(max_height_for_line, position_height)
             self.write_string_with_positions(pos.text, [pos], _buffered_sink)
@@ -3004,14 +3048,20 @@ class PDFTextStripper:
             || y1 <= y2 && y1 >= y2 - height2
 
         Here ``y1`` is the glyph baseline (``position_y``) and ``y2`` is the
-        line's accumulated baseline (``max_y_for_line``). Because the lite
-        TextPosition carries Y in PDF user space (y-up: a larger Y is higher
-        on the page), a run's top edge is ``baseline + height`` rather than
-        ``baseline - height``, so the two span-containment clauses flip
-        their sign accordingly. The ``within`` (shared-baseline) clause is
-        sign-agnostic. When the line extents are still at their reset
-        sentinels (no glyph yet), the height clauses correctly report no
-        overlap so the first glyph always opens the line.
+        line's accumulated baseline (``max_y_for_line``). On the upright
+        unrotated path the lite TextPosition carries Y in PDF user space
+        (y-up: a larger Y is higher on the page) and ``max_y_for_line`` is
+        the line's MIN user-Y (the bottom-most baseline — the y-up mirror of
+        upstream's max device-Y; see ``_emit_group``). Substituting
+        ``device_y = -user_y`` into upstream's ``overlap`` yields exactly the
+        two clauses below: the glyph-span clause carries the *line's* height
+        (``y2 <= y1 <= y2 + height2``) and the line-span clause carries the
+        *glyph's* height (``y1 <= y2 <= y1 + height1``). A run's top edge is
+        ``baseline + height`` (y-up) rather than ``baseline - height``. The
+        ``within`` (shared-baseline) clause is sign-agnostic. When the line
+        extents are still at their reset sentinels (no glyph yet), the height
+        clauses correctly report no overlap so the first glyph always opens
+        the line.
         """
         if PDFTextStripper.within(position_y, max_y_for_line, 0.1):
             return True

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 import os
+import struct
+from decimal import Decimal
 from enum import Enum
 from typing import TYPE_CHECKING, Any, cast
 
@@ -635,14 +637,74 @@ class Overlay:
 
     @staticmethod
     def _float_to_string(value: float) -> str:
-        """Compact decimal string — strips trailing zeros but keeps ``.0``
-        on integer-valued floats. Mirrors upstream's BigDecimal-based
-        formatter."""
-        # Use repr-style to avoid scientific notation; then prune zeros.
-        text = f"{value:.10f}".rstrip("0")
-        if text.endswith("."):
-            text += "0"
-        return text
+        """Compact decimal string emitted into the overlay content stream.
+
+        Byte-faithful port of upstream ``Overlay.float2String`` (which
+        receives a ``(float)``-cast value, i.e. 32-bit precision):
+
+        1. ``new BigDecimal(String.valueOf(floatValue))`` — parse the
+           *shortest* decimal that round-trips to the float32 (Java's
+           ``Float.toString`` semantics, including its ``E``-notation
+           boundaries at ``< 1e-3`` and ``>= 1e7``).
+        2. ``.toPlainString()`` — expand any exponent into plain decimal.
+        3. Strip trailing ``0`` digits, but keep a final ``.0`` when the
+           plain string still ends with one.
+
+        The earlier ``f"{value:.10f}"`` shortcut diverged for any value
+        that is not a clean half-integer (it formatted the *double* at a
+        fixed 10 fractional digits rather than the shortest float32
+        repr): e.g. ``123456.789`` → upstream ``123456.79`` vs the old
+        ``123456.789``; ``66.66666``f → upstream ``66.666664`` vs the
+        old ``66.6666666667``; ``1e8`` → upstream ``100000000`` (no
+        ``.0``) vs the old ``100000000.0``.
+        """
+        plain = format(Decimal(Overlay._java_float_to_string(value)), "f")
+        # BigDecimal normalises the sign of negative zero away
+        # (``new BigDecimal("-0.0")`` == ``0.0``); Python's Decimal keeps it.
+        if plain.startswith("-") and not plain.lstrip("-0."):
+            plain = plain[1:]
+        if "." in plain and not plain.endswith(".0"):
+            while plain.endswith("0") and not plain.endswith(".0"):
+                plain = plain[:-1]
+        return plain
+
+    @staticmethod
+    def _java_float_to_string(value: float) -> str:
+        """Replicate ``java.lang.Float.toString(float)`` for ``value``.
+
+        Returns the shortest decimal string that round-trips to the
+        32-bit float nearest ``value``, in Java's format: a decimal point
+        is always present, ``E`` notation is used iff the decimal
+        magnitude is ``< 1e-3`` or ``>= 1e7`` (Java's
+        ``FloatingDecimal`` thresholds), and ``-0.0`` keeps its sign
+        (``BigDecimal`` normalises the sign away downstream)."""
+        fv = struct.unpack("f", struct.pack("f", value))[0]
+        sign = "-" if struct.pack("f", fv)[3] & 0x80 else ""
+        if fv == 0.0:
+            return f"{sign}0.0"
+        # Shortest significant-digit string that round-trips to this float32.
+        digits = None
+        for prec in range(0, 17):
+            candidate = f"{abs(fv):.{prec}e}"
+            if struct.unpack("f", struct.pack("f", float(candidate)))[0] == abs(fv):
+                digits = candidate
+                break
+        if digits is None:
+            digits = f"{abs(fv):.17e}"
+        mantissa, exp_text = digits.split("e")
+        exp = int(exp_text)
+        int_part, _, frac_part = mantissa.partition(".")
+        frac_part = frac_part.rstrip("0")
+        sig = int_part + frac_part  # significant digits, no point
+        if -3 <= exp < 7:
+            if exp >= 0:
+                padded = sig + "0" * max(0, exp + 1 - len(sig))
+                whole = padded[: exp + 1]
+                fraction = padded[exp + 1 :] or "0"
+                return f"{sign}{whole}.{fraction}"
+            return f"{sign}0." + "0" * (-exp - 1) + sig
+        first, rest = sig[0], (sig[1:] or "0")
+        return f"{sign}{first}.{rest}E{exp}"
 
     def _create_stream(self, content: str) -> COSStream:
         assert self._input_pdf is not None

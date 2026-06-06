@@ -118,8 +118,16 @@ def test_wave836_tiff_predictor_16bit_rgb_round_trip() -> None:
 
 
 def test_wave836_predictor_private_unknown_png_filter_rejections() -> None:
+    # ENCODE side: applying an undefined PNG filter tag is a programming error
+    # (the encoder only ever picks 0..4), so it still raises.
     with pytest.raises(OSError, match="unknown PNG filter type 7"):
         _predictor._png_apply_filter(7, b"\x01\x02", b"\x00\x00", 1)  # noqa: SLF001
 
-    with pytest.raises(OSError, match="unknown PNG filter type 7"):
-        unpredict(b"\x07\x01\x02", predictor=10, columns=2, colors=1, bits_per_component=8)
+    # DECODE side: an unknown per-row tag (> 4) from a malformed / mis-aligned
+    # stream is NOT an error — upstream's decodePredictorRow hits
+    # ``default: break`` and writes the row through unchanged. pypdfbox now
+    # matches (oracle-verified, wave 1505): tag 7 over two data bytes yields
+    # those two bytes verbatim.
+    assert unpredict(
+        b"\x07\x01\x02", predictor=10, columns=2, colors=1, bits_per_component=8
+    ) == b"\x01\x02"

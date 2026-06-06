@@ -356,10 +356,14 @@ class LZWDecode(Filter):
                 if next_command < len(code_table):
                     entry = code_table[next_command]
                     if entry is None:
-                        # Hit the placeholder for CLEAR/EOD as data —
-                        # only legal as the literal CLEAR/EOD sentinels
-                        # which we already handled above.
-                        raise OSError(
+                        # Hit the placeholder for CLEAR/EOD as data. Upstream
+                        # has no such placeholder (its initial table is 256
+                        # entries, with CLEAR/EOD handled by the loop header),
+                        # so a code landing here is a corrupt stream. Upstream
+                        # treats every corrupt-code path as a premature EOF
+                        # (``throw new EOFException`` caught + logged → stop),
+                        # so raise ``EOFError`` to take the same lenient exit.
+                        raise EOFError(
                             f"invalid LZW code references reserved entry: {next_command}"
                         )
                     curr = entry
@@ -374,14 +378,24 @@ class LZWDecode(Filter):
                     decoded.write(curr)
                     code_table.append(curr)
                 else:
-                    raise OSError(
+                    # Corrupt stream: code out of range, or KwKwK with no
+                    # previous string. Upstream throws ``EOFException`` here
+                    # (LZWFilter.doLZWDecode line 119) which its own
+                    # try/catch turns into a lenient "premature EOF" stop —
+                    # whatever was decoded so far is kept, no exception
+                    # propagates. Mirror that by raising ``EOFError`` so the
+                    # surrounding handler stops gracefully instead of bubbling
+                    # an ``OSError`` (a parity divergence: PDFBox yields the
+                    # partial output, pypdfbox used to abort the whole decode).
+                    raise EOFError(
                         f"invalid LZW code: {next_command} (table size {len(code_table)})"
                     )
 
                 prev = curr
                 chunk = _calculate_chunk(len(code_table), early_change)
         except EOFError:
-            # PDFBox logs a warning and stops when the stream ends before EOD.
+            # PDFBox logs a warning and stops when the stream ends before EOD
+            # OR when a corrupt code is hit (both are EOFException upstream).
             return
 
 

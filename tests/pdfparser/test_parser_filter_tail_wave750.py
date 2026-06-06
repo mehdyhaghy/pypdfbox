@@ -43,9 +43,14 @@ def test_lzw_decode_params_array_exception_returns_empty_dictionary(
     assert result.parameters is parameters
 
 
-def test_lzw_reserved_code_table_slot_as_data_raises(
+def test_lzw_reserved_code_table_slot_as_data_stops_leniently(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # A code resolving to a None (reserved) slot is a corrupt stream. Upstream
+    # treats every corrupt-code path as a premature EOF (caught + logged →
+    # stop, keep partial output). pypdfbox raises EOFError internally and the
+    # surrounding handler swallows it, so the decode returns its partial output
+    # (here: nothing) rather than raising. (Wave 1505 parity fix.)
     def poisoned_table() -> list[bytes | None]:
         table = [bytes((i,)) for i in range(256)]
         table[65] = None
@@ -54,8 +59,9 @@ def test_lzw_reserved_code_table_slot_as_data_raises(
 
     monkeypatch.setattr(lzw_decode_module, "_initial_code_table", poisoned_table)
 
-    with pytest.raises(OSError, match="reserved entry: 65"):
-        LZWDecode._do_lzw_decode(BytesIO(_pack_lzw_codes([(65, 9)])), BytesIO(), True)
+    out = BytesIO()
+    LZWDecode._do_lzw_decode(BytesIO(_pack_lzw_codes([(65, 9)])), out, True)
+    assert out.getvalue() == b""
 
 
 def test_filter_decode_params_for_filter_uses_raw_get_fallback(

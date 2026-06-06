@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import zlib
 from typing import BinaryIO
 
@@ -9,11 +10,7 @@ from ._predictor import predict, unpredict
 from .decode_result import DecodeResult
 from .filter import Filter
 from .filter_factory import FilterFactory
-
-_RAW_DEFLATE_FALLBACK_ERRORS = (
-    "incorrect header check",
-    "unknown compression method",
-)
+from .flate_filter_decoder_stream import FlateFilterDecoderStream
 
 
 def _get_decode_params(parameters: COSDictionary | None, index: int) -> COSDictionary:
@@ -57,22 +54,29 @@ class FlateDecode(Filter):
         index: int = 0,
     ) -> DecodeResult:
         raw = encoded.read()
-        try:
-            inflated = zlib.decompress(raw)
-        except zlib.error as exc:
-            if any(message in str(exc) for message in _RAW_DEFLATE_FALLBACK_ERRORS):
-                # Be tolerant of malformed PDFs that store raw deflate
-                # bytes without the zlib wrapper normally required by
-                # /FlateDecode, but keep checksum/truncation failures strict.
-                try:
-                    inflated = zlib.decompress(raw, wbits=-zlib.MAX_WBITS)
-                except zlib.error as raw_exc:
-                    raise OSError(f"FlateDecode: {raw_exc}") from raw_exc
-            else:
-                # Surface decompression failures (truncated streams, bad
-                # checksums, etc.) as ``OSError`` so callers can rely on
-                # one I/O exception type per the Filter contract.
-                raise OSError(f"FlateDecode: {exc}") from exc
+        # Decode through ``FlateFilterDecoderStream`` (mirrors upstream's
+        # ``FlateFilter.decode`` which wraps the body in this stream rather
+        # than calling a one-shot inflate). The wrapper skips the 2-byte
+        # zlib header, uses a nowrap ``Inflater``, and on a truncated /
+        # corrupt body (``DataFormatException``) logs a warning and yields
+        # whatever was already inflated instead of raising — PDFBOX-1232.
+        # This is the lenient partial-inflate contract a one-shot
+        # ``zlib.decompress`` cannot reproduce (it raises Error -5 on a
+        # missing Z_STREAM_END / truncation).
+        inflated = FlateFilterDecoderStream(io.BytesIO(raw)).read()
+        if not inflated and len(raw) > 2:
+            # Documented divergence (kept from the original port): a body
+            # that is raw deflate with NO zlib header makes the nowrap
+            # inflate fail on the first block, so the decoder stream yields
+            # zero bytes (this is exactly what PDFBox does too — it logs and
+            # returns empty). pypdfbox is deliberately more lenient: retry a
+            # bare raw-deflate inflate so malformed PDFs that omit the zlib
+            # wrapper still recover their payload. A genuinely empty stream
+            # (decoded to b"") leaves this retry a no-op. See CHANGES.md.
+            try:
+                inflated = zlib.decompress(raw, wbits=-zlib.MAX_WBITS)
+            except zlib.error:
+                inflated = b""
 
         decode_params = _get_decode_params(parameters, index)
         predictor = decode_params.get_int("Predictor", 1)

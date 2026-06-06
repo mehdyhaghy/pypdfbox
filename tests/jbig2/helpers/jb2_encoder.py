@@ -538,6 +538,106 @@ def huffman_text_region_user_fs_data(
     return bw.to_bytes()
 
 
+def arithmetic_sd_data(symbols: list[tuple[int, int, list[list[int]]]]) -> bytes:
+    """SDHUFF=0, SDREFAGG=0 arithmetic symbol dictionary data part (§6.5.8.1).
+
+    ``symbols`` is a list of ``(width, height, rows)`` where ``rows[y][x]`` is the
+    pixel bit. All symbols are grouped into ascending height classes (the encoder
+    sorts them by height); each symbol is directly coded through a template-0
+    generic region on the shared MQ stream, exactly as ``SymbolDictionary``
+    decodes the arithmetic path (IADH delta-heights, IADW delta-widths + OOB,
+    per-symbol generic bitmap, IAEX export run lengths). All symbols are exported.
+
+    Returns the full data part: the 2-byte region flags + AT pixels + 4+4 byte
+    counts, then the continuous arithmetic-coded body.
+    """
+    n = len(symbols)
+    header = arithmetic_sd_header(n, n, retain_context=False, use_context=False)
+    body, _ = _encode_arithmetic_sd_body(symbols, _new_cx(65536, 1))
+    return header + body
+
+
+def _encode_arithmetic_sd_body(
+    symbols: list[tuple[int, int, list[list[int]]]],
+    bitmap_cx,
+    *,
+    amount_imported: int = 0,
+):
+    """Encode one SDHUFF=0 arithmetic body onto ``bitmap_cx`` (mutated in place).
+
+    Returns ``(body_bytes, bitmap_cx)``. ``amount_imported`` is the number of
+    symbols imported from a referred-to dictionary (they precede the new symbols
+    in the export-flag run but are not re-coded here). All new symbols plus the
+    imported ones are exported.
+    """
+    from tests.jbig2.helpers.mq_encoder import (
+        OOB,
+        ArithmeticIntegerEncoder,
+        MQEncoder,
+        encode_generic_region_template0,
+    )
+
+    n_new = len(symbols)
+    total = amount_imported + n_new
+
+    enc = MQEncoder()
+    int_enc = ArithmeticIntegerEncoder(enc)
+    cx_iadh = _new_cx(512, 1)
+    cx_iadw = _new_cx(512, 1)
+    cx_iaex = _new_cx(512, 1)
+
+    ordered = sorted(range(n_new), key=lambda i: symbols[i][1])
+    prev_height = 0
+    i = 0
+    while i < len(ordered):
+        h = symbols[ordered[i]][1]
+        int_enc.encode(cx_iadh, h - prev_height)
+        prev_height = h
+        prev_width = 0
+        while i < len(ordered) and symbols[ordered[i]][1] == h:
+            w, _h, rows = symbols[ordered[i]]
+            int_enc.encode(cx_iadw, w - prev_width)
+            prev_width = w
+            encode_generic_region_template0(enc, bitmap_cx, rows, w, h)
+            i += 1
+        int_enc.encode(cx_iadw, OOB)
+
+    int_enc.encode(cx_iaex, 0)
+    int_enc.encode(cx_iaex, total)
+    return enc.flush(), bitmap_cx
+
+
+def _new_cx(size: int, index: int):
+    from tests.jbig2.helpers.mq_encoder import Cx
+
+    return Cx(size, index)
+
+
+def arithmetic_sd_header(
+    n_export: int, n_new: int, *, retain_context: bool, use_context: bool
+) -> bytes:
+    """SDHUFF=0 symbol-dictionary header (region flags + AT + counts).
+
+    ``retain_context`` sets bit 9 (SDCONTEXTRETAINED); ``use_context`` sets bit 8
+    (SDCONTEXTUSED) so the decoder adopts the referred dictionary's retained
+    bitmap coding statistics (§7.4.2.2).
+    """
+    bw = BitWriter()
+    flags = 0
+    if retain_context:
+        flags |= 1 << 9
+    if use_context:
+        flags |= 1 << 8
+    bw.write_bits(flags, 16)
+    for ax, ay in ((3, -1), (-3, -1), (2, -2), (-2, -2)):
+        bw.write_byte(ax & 0xFF)
+        bw.write_byte(ay & 0xFF)
+    bw.write_bits(n_export, 32)
+    bw.write_bits(n_new, 32)
+    bw.align()
+    return bw.to_bytes()
+
+
 def assemble(segments: list[tuple[int, int, list[int], int, bytes]], pages: int = 1) -> bytes:
     """Assemble a standalone JBIG2 stream from (nr, type, refs, page, data).
 

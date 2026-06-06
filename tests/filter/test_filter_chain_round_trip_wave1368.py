@@ -111,9 +111,15 @@ def test_decode_chain_preserves_filter_order() -> None:
     # Forward order works.
     out = Filter.decode_chain(io.BytesIO(encoded), [ahx, flate])
     assert out.read() == raw
-    # Reverse order breaks (zlib sees hex text, not deflate bytes).
-    with pytest.raises(OSError):
-        Filter.decode_chain(io.BytesIO(encoded), [flate, ahx])
+    # Reverse order breaks: the lenient flate decoder (PDFBOX-1232) sees
+    # ASCII-hex text instead of deflate bytes and yields garbage / empty
+    # rather than raising (matching upstream's FlateFilterDecoderStream),
+    # so the chain cannot recover the original payload.
+    try:
+        broken = Filter.decode_chain(io.BytesIO(encoded), [flate, ahx]).read()
+    except OSError:
+        broken = None
+    assert broken != raw
 
 
 def test_decode_chain_resolves_via_filter_factory() -> None:

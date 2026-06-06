@@ -239,25 +239,46 @@ class TestPredictor:
 
 
 class TestErrors:
-    def test_truncated_stream_raises_oserror(self) -> None:
-        # Compress something then chop off the trailing bytes.
-        encoded = zlib.compress(b"some data" * 100)
+    def test_truncated_stream_yields_partial_data(self) -> None:
+        # A truncated /FlateDecode body does NOT raise: upstream's
+        # FlateFilterDecoderStream (PDFBOX-1232) catches the
+        # DataFormatException, logs a warning, and yields whatever was
+        # already inflated. Verified byte-for-byte against the live
+        # PDFBox 3.0.7 oracle (see test_filter_decode_oracle.py): for this
+        # exact input PDFBox emits 10 bytes — the leading decoded prefix.
+        original = b"some data" * 100
+        encoded = zlib.compress(original)
         truncated = encoded[: len(encoded) // 2]
         flate = FlateDecode()
-        with pytest.raises(OSError):
-            flate.decode(io.BytesIO(truncated), io.BytesIO(), None)
+        out = io.BytesIO()
+        flate.decode(io.BytesIO(truncated), out, None)
+        decoded = out.getvalue()
+        # Partial, not empty, and a genuine prefix of the original payload.
+        assert 0 < len(decoded) < len(original)
+        assert original.startswith(decoded)
 
-    def test_truncated_zlib_stream_does_not_fall_back_to_raw_deflate(self) -> None:
-        encoded = zlib.compress(b"some data" * 100)
+    def test_truncated_zlib_stream_yields_partial_data(self) -> None:
+        # Dropping the final 2 bytes (the Adler-32 tail) loses only the
+        # checksum, not data: upstream's nowrap Inflater ignores the
+        # checksum, so the full payload still decodes. PDFBox yields all
+        # 900 bytes here (oracle-verified); the old strict zlib.decompress
+        # raised an "incomplete/truncated" Error -5.
+        original = b"some data" * 100
+        encoded = zlib.compress(original)
         truncated = encoded[:-2]
         flate = FlateDecode()
-        with pytest.raises(OSError, match="incomplete|truncated"):
-            flate.decode(io.BytesIO(truncated), io.BytesIO(), None)
+        out = io.BytesIO()
+        flate.decode(io.BytesIO(truncated), out, None)
+        assert out.getvalue() == original
 
-    def test_garbage_input_raises_oserror(self) -> None:
+    def test_garbage_input_yields_empty(self) -> None:
+        # Non-deflate garbage: the decoder stream fails on the first block
+        # and yields zero bytes (it does not raise). Matches PDFBox, which
+        # logs a warning and emits an empty stream (oracle-verified).
         flate = FlateDecode()
-        with pytest.raises(OSError):
-            flate.decode(io.BytesIO(b"not zlib at all"), io.BytesIO(), None)
+        out = io.BytesIO()
+        flate.decode(io.BytesIO(b"not zlib at all"), out, None)
+        assert out.getvalue() == b""
 
     def test_unsupported_predictor_raises(self) -> None:
         # Predictor numbers other than 1, 2, and 10..15 are not defined.
