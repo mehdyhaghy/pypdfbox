@@ -89,10 +89,11 @@ def test_set_crypt_filter_method_rejects_non_name_or_string() -> None:
         cf.set_crypt_filter_method(16)  # type: ignore[arg-type]
 
 
-def test_default_length_is_5_bytes_default_encrypt_metadata_true() -> None:
+def test_default_length_is_40_bits_default_encrypt_metadata_true() -> None:
     cf = PDCryptFilterDictionary()
-    # Spec defaults: 5 bytes (40-bit RC4) and EncryptMetadata=true.
-    assert cf.get_length() == 5
+    # Upstream getLength() defaults to 40 (length in BITS, multiple of 8 — see
+    # PDFBox 3.0.7 PDCryptFilterDictionary line 86); EncryptMetadata=true.
+    assert cf.get_length() == 40
     assert cf.get_encrypt_metadata() is True
 
 

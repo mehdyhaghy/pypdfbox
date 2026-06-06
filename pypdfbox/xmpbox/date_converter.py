@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone, tzinfo
 from typing import ClassVar
 
 # Mirrors upstream's regex check that distinguishes a leading-ISO-style date
@@ -322,6 +322,158 @@ def _try_parse_date_fallback(date_string: str) -> datetime | None:
     return cal.to_datetime()
 
 
+def to_calendar_strict(date_string: str | None) -> datetime | None:
+    """Strict, xmpbox-flavoured ``toCalendar`` — a 1:1 port of
+    ``org.apache.xmpbox.DateConverter.toCalendar(String)``.
+
+    This is a *separate* parser from the lenient module-level
+    :func:`to_calendar` (which mirrors
+    ``org.apache.pdfbox.util.DateConverter.toCalendar``). Upstream ships TWO
+    distinct ``DateConverter`` classes; pypdfbox exposes both behaviours rather
+    than collapsing them. The xmpbox variant is markedly stricter:
+
+    * It strips a leading ``D:`` prefix but then runs a *pure numeric* parse:
+      after ``date.replaceAll("[-:T]", "")`` it indexes fixed substrings, so the
+      PDF apostrophe time-zone form (``D:YYYYMMDDhhmmss+hh'mm'``) fails on the
+      apostrophes (``Integer.parseInt`` raises → ``IOException`` →
+      :class:`OSError`).
+    * It does NOT walk the SimpleDateFormat tables — locale-named shapes
+      (``"Friday, January 11, 2115"``) and slash dates are rejected.
+    * A ``T`` separator is only legal at position 10 (``posOfT != 10 &&
+      posOfT != -1`` → :class:`OSError`).
+    * For ``None`` and empty / whitespace-only input it returns ``None``
+      (upstream returns ``null``). Callers that immediately dereference the
+      result observe the upstream ``NullPointerException``; in Python that
+      surfaces as an :class:`AttributeError` on the ``None`` (e.g.
+      ``result.timestamp()``), mirroring the same null-deref contract.
+
+    Mirrors ``org.apache.xmpbox.DateConverter.toCalendar`` lines 76-205.
+    """
+    # Line 79: (date != null) && (date.trim().length() > 0).
+    if date_string is None:
+        return None
+    date = date_string.strip()
+    if not date:
+        return None
+
+    try:
+        zone: tzinfo | None = None
+
+        # Lines 94-104: full ISO-8601 fast path.
+        if _ISO_PREFIX_RE.match(date):
+            return _from_iso8601(date)
+
+        # Lines 105-108: strip the D: prefix (but the rest is parsed strictly).
+        if date.startswith("D:"):
+            date = date[2:]
+
+        # Lines 109-113: a T separator is only valid at position 10.
+        pos_of_t = date.find("T")
+        if pos_of_t != 10 and pos_of_t != -1:
+            raise OSError(f"Error converting date:{date}")
+
+        # Line 115: collapse the separators.
+        date = re.sub(r"[\-:T]", "", date)
+
+        # Lines 117-120.
+        if len(date) < 4:
+            raise OSError(f"Error: Invalid date format '{date}'")
+
+        # Lines 84-88 default field values, overwritten as the string lengthens.
+        month = 1
+        day = 1
+        hour = 0
+        minute = 0
+        second = 0
+
+        # Lines 121-137: fixed-width fields. ``int(...)`` raises ValueError on a
+        # non-digit, mirroring Java's NumberFormatException → IOException.
+        year = int(date[0:4])
+        if len(date) >= 6:
+            month = int(date[4:6])
+        if len(date) >= 8:
+            day = int(date[6:8])
+        if len(date) >= 10:
+            hour = int(date[8:10])
+        if len(date) >= 12:
+            minute = int(date[10:12])
+
+        # Lines 139-144: seconds + time-zone start position.
+        time_zone_pos = 12
+        if (
+            len(date) == 14
+            or len(date) - 12 > 5
+            or (len(date) - 12 == 3 and date.endswith("Z"))
+        ):
+            second = int(date[12:14])
+            time_zone_pos = 14
+
+        # Lines 146-185: optional time zone.
+        if len(date) >= (time_zone_pos + 1):
+            sign = date[time_zone_pos]
+            if sign == "Z":
+                zone = timezone(timedelta(0))
+            else:
+                hours = 0
+                minutes = 0
+                if len(date) >= (time_zone_pos + 3):
+                    if sign == "+":
+                        # parseInt cannot handle the + sign (line 161-162).
+                        hours = int(date[time_zone_pos + 1 : time_zone_pos + 3])
+                    else:
+                        hours = -int(date[time_zone_pos : time_zone_pos + 2])
+                if sign == "+":
+                    if len(date) >= (time_zone_pos + 5):
+                        minutes = int(date[time_zone_pos + 3 : time_zone_pos + 5])
+                else:
+                    if len(date) >= (time_zone_pos + 4):
+                        minutes = int(date[time_zone_pos + 2 : time_zone_pos + 4])
+                offset_millis = hours * 60 * 60 * 1000 + minutes * 60 * 1000
+                zone = timezone(timedelta(milliseconds=offset_millis))
+    except ValueError as exc:
+        # Lines 199-202: NumberFormatException → IOException.
+        raise OSError(f"Error converting date:{date}") from exc
+
+    # Lines 187-197: build the calendar. ``zone == null`` means the JVM default
+    # zone — pypdfbox uses the host's local zone (the closest stdlib
+    # equivalent of ``new GregorianCalendar()``). Lenient field handling
+    # (Calendar default) lets out-of-range month/day roll over, so we
+    # normalise through a base UTC moment + timedelta the way Calendar does.
+    if zone is None:
+        zone = datetime.now().astimezone().tzinfo  # local default zone
+    return _build_lenient(year, month - 1, day, hour, minute, second, zone)
+
+
+def _build_lenient(
+    year: int,
+    month0: int,
+    day: int,
+    hour: int,
+    minute: int,
+    second: int,
+    tz: tzinfo,
+) -> datetime:
+    """Mirror ``Calendar.set`` + lenient normalisation.
+
+    java.util.Calendar is lenient by default, so out-of-range fields roll over
+    (e.g. month 12 → next January, day 0 → last day of the previous month).
+    Reproduce that by anchoring at the year/January/day-1 base and adding the
+    field deltas, the same way Calendar resolves the fields.
+    """
+    base = datetime(year, 1, 1, tzinfo=tz)
+    resolved = base + timedelta(
+        days=(day - 1),
+        hours=hour,
+        minutes=minute,
+        seconds=second,
+    )
+    # Apply the month offset by walking whole months (variable length) so the
+    # rollover matches Calendar's month arithmetic.
+    total_month = resolved.month - 1 + month0
+    add_year, norm_month = divmod(total_month, 12)
+    return resolved.replace(year=resolved.year + add_year, month=norm_month + 1)
+
+
 def to_iso8601(value: datetime, print_millis: bool = False) -> str:
     """Format a :class:`datetime.datetime` as an ISO 8601 string.
 
@@ -397,6 +549,18 @@ class DateConverter:
         ``IOException``).
         """
         return to_calendar(date_string)
+
+    @staticmethod
+    def to_calendar_strict(date_string: str | None) -> datetime | None:
+        """Mirror the *xmpbox* ``DateConverter.toCalendar(String)``.
+
+        Stricter than :meth:`to_calendar` (which mirrors
+        ``org.apache.pdfbox.util.DateConverter``): rejects the PDF apostrophe
+        time-zone form, the SimpleDateFormat locale shapes, and a misplaced
+        ``T`` separator. Returns ``None`` for ``None`` / empty input. See
+        :func:`to_calendar_strict`.
+        """
+        return to_calendar_strict(date_string)
 
     @staticmethod
     def to_iso8601(value: datetime, print_millis: bool = False) -> str:

@@ -22,23 +22,28 @@ unified onto the dir-adjusted ``_classify_paragraph_separation`` path — there 
 no rotation in the coordinates for those fields to normalise. The flip-axes
 carve-outs documented inline in ``pdf_text_stripper.py`` are correct as-is.
 
-The actionable ``/Rotate`` parity gap is a *different* surface: upstream's
-``LegacyPDFStreamEngine`` folds ``page.getRotation()`` into the CTM
-(``LegacyPDFStreamEngine`` ``pageRotation`` + ``translateMatrix``), so a
-rotated page's TextPositions arrive in the *device* (rotated) frame. pypdfbox's
-``LegacyPDFStreamEngine.process_page`` reads ``get_rotation()`` but does **not**
-build that rotation matrix (only a cropbox translate), so glyphs stay in raw
-user space. Consequences pinned below:
+The page-rotation parity surface (closed wave 1495): upstream does **not** fold
+``page.getRotation()`` into the CTM (``PDPage.getMatrix()`` returns the identity
+— PDPage.java:385-389); instead every ``TextPosition`` is constructed with the
+page rotation + page dimensions (``LegacyPDFStreamEngine.showGlyph`` →
+``new TextPosition(pageRotation, …)``) and the page-rotation-adjusted
+coordinates are derived by ``TextPosition``'s ``getX``/``getY``/``getWidth``
+(via ``getXRot``/``getYLowerLeftRot``/``getWidthRot``). The default extraction
+path (``sortByPosition`` false) groups on exactly those accessors
+(PDFTextStripper.java:585-591), so a rotated page's glyphs land in the rotated
+*device* frame.
 
-* **rot0 / rot180** — both engines land identical text. The 180 case matches
-  because neither side re-flows it (upstream's 180 CTM keeps the line-flow axis
-  vertical, and the lite raw-user-space path is already upright).
-* **rot90 / rot270** — Java fragments the lines (its device-frame line grouping
-  splits each rotated row mid-word, e.g. ``"H\neading T\nitle\n…"``), while the
-  lite stripper emits clean upright text. This is the documented missing
-  page-rotation CTM fold (see DEFERRED.md), tracked, not yet closed. Asserted
-  here as a *both-sides* divergence pin so the gap is visible and a future
-  CTM-fold fix has a regression target.
+pypdfbox now reproduces this with ``PDFTextStripper._apply_page_rotation``: a
+per-page post-pass that rewrites each run's stored ``x``/``y``/``width`` into
+the page-rotation-adjusted frame, plus per-glyph emission on 90/270 pages so
+the rotated rows fragment glyph-by-glyph the way upstream's per-glyph
+``showGlyph`` feeds ``writePage``. Result:
+
+* **rot0 / rot180** — byte-exact (the fold is a verbatim no-op for rot0; rot180
+  re-points the coordinates but the grouping is unchanged).
+* **rot90 / rot270** — byte-exact: the rotated rows fragment exactly as Java
+  does (the 90 and 270 patterns differ because upstream's ``maxYForLine`` line
+  accumulation is not symmetric under the rotation direction).
 
 ``@requires_oracle`` so it skips cleanly without Java + the jar.
 Hand-written (not ported from upstream JUnit).
@@ -105,37 +110,57 @@ def test_rot0_multiline_layout_preserved(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# rot90 / rot270 — documented divergence (missing page-rotation CTM fold)
+# rot90 / rot270 — byte-exact parity (page-rotation fold, wave 1495)
 # ---------------------------------------------------------------------------
 
 
 @requires_oracle
 @pytest.mark.parametrize("rotate", [90, 270])
-def test_right_angle_rotation_diverges_pending_ctm_fold(
-    tmp_path: Path, rotate: int
-) -> None:
-    """Both-sides pin for the page-rotation CTM-fold gap (DEFERRED.md).
+def test_right_angle_rotation_byte_exact(tmp_path: Path, rotate: int) -> None:
+    """Page-rotation parity for the right angles (closed wave 1495).
 
-    Java fragments the rotated rows in its device frame; the lite stripper
-    keeps clean upright text. We assert *both* sides explicitly so that
-    closing the gap (folding ``page.getRotation()`` into the CTM in
-    ``LegacyPDFStreamEngine``) flips this from a divergence pin into a
-    parity pin — and so an accidental re-flow change on either engine
-    trips the test rather than silently passing.
+    The lite stripper now folds the page ``/Rotate`` into each run's stored
+    coordinates (``PDFTextStripper._apply_page_rotation``), reproducing
+    upstream's default-path grouping on the page-rotation-adjusted
+    ``getX()``/``getY()``/``getWidth()`` (PDFTextStripper.java:585-591). On a
+    90/270 page a horizontal row therefore advances along the grouping's line
+    axis with zero rotated width, fragmenting the row exactly the way Apache
+    PDFBox does — byte-for-byte. (The fragmentation pattern differs between 90
+    and 270 because upstream's ``maxYForLine`` line accumulation is not
+    symmetric under the rotation direction; both reproduced.)
     """
     src = _build(tmp_path, rotate)
     java = _java_extract(src)
     py = _py_extract(src)
-    # Lite stripper: clean upright text (raw user-space coordinates).
-    assert py == (
+    assert py == java
+    # Sanity: the rotated rows really are fragmented in the device frame (not
+    # the upright text), so this is a true device-frame parity rather than an
+    # accidental match against the rot0 layout.
+    assert java != (
         "Heading Title\n"
         "First body line here\n"
         "Second body line continues\n"
         "Indented new paragraph begins\n"
         "and wraps onto the next line\n"
     )
-    # Java: device-frame line grouping fragments the rotated rows.
-    assert java != py
-    # The same glyphs survive on both sides — only the line grouping
-    # differs (guards against the divergence masking a dropped glyph).
-    assert java.replace("\n", "") == py.replace("\n", "")
+
+
+@requires_oracle
+@pytest.mark.parametrize("rotate", [90, 270])
+def test_right_angle_rotation_no_glyph_dropped(tmp_path: Path, rotate: int) -> None:
+    """The page-rotation fold only regroups glyphs — it never drops one.
+
+    The whitespace-stripped payload of the rotated extraction equals the
+    upright (rot0) payload, guarding against a fold bug that silently loses a
+    glyph while still matching Java's (also-fragmented) output.
+    """
+    src = _build(tmp_path, rotate)
+    py = _py_extract(src)
+    upright = (
+        "Heading Title"
+        "First body line here"
+        "Second body line continues"
+        "Indented new paragraph begins"
+        "and wraps onto the next line"
+    )
+    assert "".join(py.split()) == "".join(upright.split())

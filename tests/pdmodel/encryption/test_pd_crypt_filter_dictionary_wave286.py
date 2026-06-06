@@ -23,7 +23,7 @@ def test_optional_entry_has_helpers_require_well_formed_cos_values() -> None:
     crypt_filter = PDCryptFilterDictionary(raw)
 
     assert crypt_filter.get_cfm() is None
-    assert crypt_filter.get_length() == 5
+    assert crypt_filter.get_length() == 40
     assert crypt_filter.get_recipients() is None
     assert crypt_filter.get_encrypt_metadata() is True
     assert crypt_filter.has_cfm() is False
@@ -62,7 +62,7 @@ def test_optional_entry_has_and_clear_helpers_round_trip() -> None:
     crypt_filter.clear_encrypt_metadata()
 
     assert crypt_filter.get_cfm() is None
-    assert crypt_filter.get_length() == 5
+    assert crypt_filter.get_length() == 40
     assert crypt_filter.get_recipients() is None
     assert crypt_filter.get_encrypt_metadata() is True
     assert crypt_filter.has_cfm() is False

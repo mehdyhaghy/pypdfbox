@@ -88,6 +88,28 @@ def _build_doc(runs: list[_Run], path: Path) -> None:
         doc.close()
 
 
+def _build_rotated_doc(runs: list[_Run], path: Path, rotate: int) -> None:
+    """Build a one-page PDF (identity-``Tm`` runs) whose page ``/Rotate`` is
+    ``rotate``, saved to ``path``."""
+    doc = PDDocument()
+    try:
+        font = PDFontFactory.create_default_font("Helvetica")
+        page = PDPage(PDRectangle(0.0, 0.0, _PAGE_W, _PAGE_H))
+        page.set_rotation(rotate)
+        doc.add_page(page)
+        cs = PDPageContentStream(doc, page)
+        for x, y, txt in runs:
+            cs.begin_text()
+            cs.set_font(font, 12.0)
+            cs.new_line_at_offset(x, y)
+            cs.show_text(txt)
+            cs.end_text()
+        cs.close()
+        doc.save(str(path))
+    finally:
+        doc.close()
+
+
 def _unescape(s: str) -> str:
     """Reverse the probe's newline/backslash escaping."""
     return s.replace("\\r", "\r").replace("\\n", "\n").replace("\\\\", "\\")
@@ -190,3 +212,47 @@ def test_remove_region_before_extract_matches_pdfbox(tmp_path: Path) -> None:
     assert "drop" not in py
     assert "KEEPME" in py["keep"]
     assert "DROPME" not in py["keep"]
+
+
+# ---------------------------------------------------------------------------
+# Rotated page: by-area binning frame (narrowed deferral, wave 1495)
+# ---------------------------------------------------------------------------
+
+
+def test_rotated_page_by_area_uses_unrotated_user_frame(tmp_path: Path) -> None:
+    """By-area region binning on a rotated page is pinned to the **unrotated**
+    user-space frame (a narrowed wave-1495 deferral, see DEFERRED.md).
+
+    The wave-1495 page-rotation fold makes the *base* ``PDFTextStripper`` group
+    a rotated page's text in the device frame (byte-exact with Java — see
+    ``test_rotated_page_extraction_oracle.py``). The ``PDFTextStripperByArea``
+    binner, however, deliberately skips the fold this wave: its ``_bin_glyph``
+    half-open boundary test is calibrated for the lite y-up user-space frame,
+    which the device y-down frame would invert. So on a rotated page the binner
+    still tests each glyph's *unrotated* user-space origin against the region
+    rectangle — region rectangles are interpreted in unrotated page space, not
+    upstream's device frame.
+
+    This test pins that contract (offline, no oracle): ``HELLO`` drawn at user
+    ``(100, 700)`` on a ``/Rotate 90`` page is captured by a region defined in
+    **unrotated** user coordinates around ``(100, 700)``, confirming the binner
+    ignores the page rotation. Closing the gap (device-frame binning) is the
+    tracked follow-up."""
+    pdf = tmp_path / "rot90_area.pdf"
+    _build_rotated_doc([(100.0, 700.0, "HELLO")], pdf, rotate=90)
+
+    doc = PDDocument.load(str(pdf))
+    try:
+        s = PDFTextStripperByArea()
+        s.set_sort_by_position(True)
+        # Region in UNROTATED user space around the run's draw origin.
+        s.add_region("cap", (90.0, 690.0, 120.0, 30.0))
+        s.add_region("empty", (90.0, 100.0, 120.0, 30.0))
+        s.extract_regions(doc.get_page(0))
+        cap = s.get_text_for_region("cap")
+        empty = s.get_text_for_region("empty")
+    finally:
+        doc.close()
+
+    assert "HELLO" in cap.replace("\n", "")
+    assert empty == "\n"

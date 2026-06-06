@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING, Any
 
-from ..date_converter import to_calendar, to_iso8601
+from ..date_converter import to_calendar_strict, to_iso8601
 from .abstract_simple_property import AbstractSimpleProperty
 
 if TYPE_CHECKING:
@@ -38,19 +38,21 @@ class DateType(AbstractSimpleProperty):
 
         Mirrors upstream ``DateType#isGoodType`` (DateType.java L88-107):
         returns True for ``Calendar`` (here: :class:`datetime`/:class:`date`)
-        and for any string that :func:`to_calendar` can parse without raising.
+        and for any string that the *strict* xmpbox
+        ``DateConverter.toCalendar`` can parse without raising
+        ``IOException``. Note upstream returns ``True`` even when ``toCalendar``
+        returns ``null`` (the empty / whitespace-only string), because it only
+        catches the exception — it never inspects the result. The port mirrors
+        that exactly.
         """
         if isinstance(value, datetime | date):
             return True
         if isinstance(value, str):
             try:
-                parsed = to_calendar(value)
+                to_calendar_strict(value)
             except OSError:
                 return False
-            # Upstream's DateConverter.toCalendar throws on unparseable strings;
-            # the port returns None for empty/whitespace, which upstream's
-            # isGoodType also rejects (the empty string would have thrown there).
-            return parsed is not None
+            return True
         return False
 
     def set_value_from_calendar(self, value: datetime | date) -> None:
@@ -72,22 +74,22 @@ class DateType(AbstractSimpleProperty):
         """Set the property value from a string.
 
         Mirrors upstream ``DateType#setValueFromString``
-        (DateType.java L162-175): delegates to :func:`to_calendar` and
-        raises if the string is unparseable. Upstream's comment says this
-        "SHOULD NEVER HAPPEN" because :meth:`set_value` pre-validates via
-        :meth:`is_good_type`; we still surface the error as ``ValueError``.
+        (DateType.java L162-175): delegates to the strict xmpbox
+        :func:`to_calendar_strict` and re-raises any ``IOException`` as
+        ``ValueError`` ("SHOULD NEVER HAPPEN" upstream because :meth:`set_value`
+        pre-validates via :meth:`is_good_type`). Upstream's
+        ``setValueFromCalendar`` stores ``null`` verbatim, so a string that
+        parses to ``None`` (the empty / whitespace-only string) leaves the
+        stored value ``None`` rather than raising.
         """
         try:
-            parsed = to_calendar(value)
+            parsed = to_calendar_strict(value)
         except OSError as exc:
             raise ValueError(
                 f"Value given is not allowed for the Date type: {value!r}"
             ) from exc
-        if parsed is None:
-            raise ValueError(
-                f"Value given is not allowed for the Date type: {value!r}"
-            )
-        self.set_value_from_calendar(parsed)
+        # Upstream setValueFromCalendar(null) stores null; do the same.
+        self._date_value = parsed
 
     def set_value(self, value: Any) -> None:
         # Mirror upstream DateType#setValue (DateType.java L116-144): null

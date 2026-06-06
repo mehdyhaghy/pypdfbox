@@ -223,6 +223,19 @@ class PDFTextStripper:
         # every show-text operator.
         self._font_cache: dict[str, PDFont | None] = {}
         self._active_page: PDPage | None = None
+        # Page-rotation bookkeeping for the per-page coordinate fold. Mirrors
+        # upstream ``LegacyPDFStreamEngine``'s ``pageRotation`` / ``pageSize``
+        # fields (LegacyPDFStreamEngine.java:82-83, set in ``processPage``).
+        # The page ``/Rotate`` (0/90/180/270) and the cropbox extents feed the
+        # ``TextPosition`` page-rotation accessors (``getX``/``getY``/``getWidth``,
+        # via ``getXRot``/``getYLowerLeftRot``/``getWidthRot`` —
+        # TextPosition.java:293-446) so a rotated page's runs are grouped in the
+        # device (rotated) frame, the way the default-path (``sortByPosition``
+        # false) ``writePage`` consumes ``getX()``/``getY()``/``getWidth()``
+        # (PDFTextStripper.java:585-591).
+        self._page_rotation: int = 0
+        self._page_width: float = 0.0
+        self._page_height: float = 0.0
         self._active_cmap: CMap | None = None
         self._active_font: PDFont | None = None
         # Resources override active while recursing into a form XObject's
@@ -723,6 +736,24 @@ class PDFTextStripper:
         # ``/ToUnicode`` and typed-font lookup, and clear the per-page
         # caches.
         self._active_page = page
+        # Snapshot the page rotation + cropbox extents for the per-page
+        # coordinate fold (``_apply_page_rotation`` below). Mirrors upstream
+        # ``LegacyPDFStreamEngine.processPage`` (LegacyPDFStreamEngine.java:
+        # 139-153), which records ``pageRotation`` and the cropbox so each
+        # ``TextPosition`` is constructed with the page rotation and page
+        # dimensions. Defensive against a malformed ``/Rotate`` or missing
+        # cropbox so unrotated pages keep their existing raw-user-space frame.
+        try:
+            self._page_rotation = int(page.get_rotation()) % 360
+        except Exception:  # noqa: BLE001 — defensive: bad /Rotate
+            self._page_rotation = 0
+        try:
+            crop = page.get_crop_box()
+            self._page_width = float(crop.get_width())
+            self._page_height = float(crop.get_height())
+        except Exception:  # noqa: BLE001 — defensive: missing/odd CropBox
+            self._page_width = 0.0
+            self._page_height = 0.0
         self._cmap_cache = {}
         self._font_cache = {}
         self._active_cmap = None
@@ -732,6 +763,12 @@ class PDFTextStripper:
         self._font_height_cache = {}
         try:
             positions = self._extract_positions(body)
+            # Fold the page ``/Rotate`` into each run's stored coordinates so
+            # the line/word grouping consumes the device (rotated) frame, the
+            # way upstream's default-path ``writePage`` reads
+            # ``getX()``/``getY()``/``getWidth()`` (PDFTextStripper.java:
+            # 585-591). No-op when the page is unrotated.
+            self._apply_page_rotation(positions)
             # Stash the per-article TextPositions so subclasses /
             # ``get_characters_by_article`` can introspect the same
             # data the formatter consumed. Lite mode treats the whole
@@ -745,6 +782,116 @@ class PDFTextStripper:
             self._active_cmap = None
             self._active_font = None
             self._active_avg_advance = None
+
+    def _apply_page_rotation(self, positions: list[TextPosition]) -> None:
+        """Fold the page ``/Rotate`` into each run's stored ``x``/``y``/``width``.
+
+        Faithful port of upstream's page-rotation coordinate handling. In Apache
+        PDFBox the page rotation is **not** baked into the CTM
+        (``PDPage.getMatrix()`` returns the identity — PDPage.java:385-389);
+        instead every ``TextPosition`` is constructed with the page rotation +
+        page dimensions (``LegacyPDFStreamEngine.showGlyph`` →
+        ``new TextPosition(pageRotation, pageWidth, pageHeight, ...)``,
+        LegacyPDFStreamEngine.java:309-313) and the *page-rotation-adjusted*
+        coordinates are derived lazily by ``TextPosition``'s constructor /
+        accessors:
+
+          * ``getX()``      = ``getXRot(rotation)``        (TextPosition.java:293)
+          * ``getY()`` (raw lower-left) = ``getYLowerLeftRot(rotation)``
+                                                            (TextPosition.java:356)
+          * ``getWidth()``  = ``getWidthRot(rotation)``    (TextPosition.java:426)
+
+        The default extraction path (``sortByPosition`` false — the
+        ``PDFTextStripper`` default) groups on exactly these page-rotation
+        accessors (``writePage``, PDFTextStripper.java:585-591), so a rotated
+        page's glyphs land in the rotated *device* frame: a row of horizontal
+        glyphs on a ``/Rotate 90`` page advances along the grouping's *line*
+        axis (each glyph a new ``getY``) and reports zero ``getWidth`` (its
+        text-space extent is perpendicular to the rotated width axis), which is
+        what fragments the rotated rows in Java's output.
+
+        The lite ``TextPosition`` carries Y in the PDF user-space (y-up,
+        lower-left-origin) frame the existing heuristics are calibrated for, so
+        this fold stores ``getYLowerLeftRot`` (upstream's ``getY()`` mirrored by
+        a page-extent constant) rather than the upper-left ``getY()`` — the
+        relative geometry the difference/overlap heuristics consume is
+        identical, and ``/Rotate 0`` is a verbatim no-op (``getXRot(0)`` /
+        ``getYLowerLeftRot(0)`` / ``getWidthRot(0)`` are the raw translate /
+        run width the lite emitter already stored).
+        """
+        rotation = self._page_rotation
+        if rotation == 0:
+            # Unrotated page — leave the raw user-space coordinates untouched
+            # (byte-exact with every pre-fold extraction). Still record the
+            # page geometry + rotation on the positions for API parity with
+            # upstream ``getRotation``/``getPageWidth``/``getPageHeight``.
+            pw = self._page_width
+            ph = self._page_height
+            for pos in positions:
+                pos.rotation = 0.0
+                pos.page_width = pw
+                pos.page_height = ph
+            return
+        pw = self._page_width
+        ph = self._page_height
+        for pos in positions:
+            raw_x = pos.x
+            raw_y = pos.y
+            raw_width = pos.width
+            # ``getWidthRot`` (TextPosition.java:426-436): for 90/270 the width
+            # is measured along Y (``|endY - ty|``), for 0/180 along X
+            # (``|endX - tx|``). The lite run is laid along its text direction
+            # (``dir``), so its raw end point is the origin stepped by the run
+            # width along that direction: ``endX = x + width·cosθ``,
+            # ``endY = y + width·sinθ``. A horizontal run (``dir == 0``) has
+            # ``endY == y`` so its 90/270 rotated width is 0 — the zero-extent
+            # that fragments the rotated row in Java's output.
+            theta = math.radians(pos.dir % 360.0)
+            end_x_raw = raw_x + raw_width * math.cos(theta)
+            end_y_raw = raw_y + raw_width * math.sin(theta)
+            width_adj = (
+                abs(end_y_raw - raw_y)
+                if rotation in (90, 270)
+                else abs(end_x_raw - raw_x)
+            )
+            # ``getXRot`` (TextPosition.java:293-312).
+            if rotation == 90:
+                x_adj = raw_y
+            elif rotation == 180:
+                x_adj = pw - raw_x
+            elif rotation == 270:
+                x_adj = ph - raw_y
+            else:
+                x_adj = raw_x
+            # Line-flow axis (``getY`` — TextPosition.java:325-328, the value
+            # the default-path grouping reads at PDFTextStripper.java:588). The
+            # grouping accumulates the line extent with ``maxYForLine = max(...)``
+            # (PDFTextStripper.java:689-692; lite ``max_y_for_line``), which is
+            # **not** symmetric under negation — so the stored Y must run in the
+            # SAME direction as upstream's ``getY()`` for the line accumulation
+            # to match, rather than the lower-left mirror. (For ``/Rotate 0``
+            # the within-line Y is constant, so the lite's historical raw-``ty``
+            # y-up frame and upstream's ``pageHeight - ty`` agree regardless of
+            # direction and stay byte-exact; that no-op case is handled above.)
+            # ``getY`` = ``pageHeight - getYLowerLeftRot`` (0/180) or
+            # ``pageWidth - getYLowerLeftRot`` (90/270) — TextPosition.java:
+            # 110-117 / 406-418.
+            if rotation == 90:
+                # getYLowerLeftRot(90) = pageWidth - tx ⇒ getY = tx = raw_x.
+                y_adj = raw_x
+            elif rotation == 180:
+                y_adj = ph - raw_y
+            elif rotation == 270:
+                # getYLowerLeftRot(270) = tx ⇒ getY = pageWidth - tx.
+                y_adj = pw - raw_x
+            else:
+                y_adj = raw_y
+            pos.x = x_adj
+            pos.y = y_adj
+            pos.width = width_adj
+            pos.rotation = float(rotation)
+            pos.page_width = pw
+            pos.page_height = ph
 
     # ---------- parser walk ----------
 
@@ -1576,6 +1723,41 @@ class PDFTextStripper:
             run_width = len(text) * per_char * th
         width_of_space = width_of_space * th
 
+        # Page-rotation per-glyph emission. On a ``/Rotate 90``/``270`` page the
+        # default grouping consumes the page-rotation-adjusted ``getX``/``getY``
+        # (``_apply_page_rotation``), in which a horizontal run advances along
+        # the grouping's *line* axis — so each glyph of the run lands on its own
+        # rotated line, exactly the way upstream's per-glyph ``showGlyph``
+        # (LegacyPDFStreamEngine.java:161) feeds one ``TextPosition`` per glyph
+        # into ``writePage``. The lite stripper otherwise emits one position per
+        # show-text run; to reproduce Java's rotated-row fragmentation faithfully
+        # we emit per glyph here. Only the plain (non-``/ActualText``,
+        # non-ignore-space) path takes this branch — those rarer combinations
+        # fall through to the run path below.
+        if (
+            self._page_rotation in (90, 270)
+            and not self._ignore_content_stream_space_glyphs
+            and emit_text is not None
+            and emit_text == text
+        ):
+            self._emit_per_glyph(
+                state,
+                positions,
+                font,
+                resolved_font_name,
+                glyph_text,
+                glyph_adv,
+                glyph_width,
+                effective_font_size,
+                x_scale,
+                width_of_space,
+                run_height,
+                text_dir,
+            )
+            state.text_x += run_width * state.tm_a
+            state.text_y += run_width * state.tm_b
+            return
+
         if self._ignore_content_stream_space_glyphs:
             if emit_text is not None:
                 self._emit_ignoring_space_glyphs(
@@ -1656,6 +1838,68 @@ class PDFTextStripper:
         # collapse onto its neighbour.
         state.text_x += run_width * state.tm_a
         state.text_y += run_width * state.tm_b
+
+    def _emit_per_glyph(
+        self,
+        state: _TextState,
+        positions: list[TextPosition],
+        font: PDFont | None,
+        resolved_font_name: str | None,
+        glyph_text: list[str],
+        glyph_adv: list[float],
+        glyph_width: list[float],
+        effective_font_size: float,
+        x_scale: float,
+        width_of_space: float,
+        run_height: float,
+        text_dir: float,
+    ) -> None:
+        """Emit one :class:`TextPosition` per glyph of a show-text run.
+
+        Used on rotated (``/Rotate 90``/``270``) pages so the line/word
+        grouping fragments the rotated rows the way upstream's per-glyph
+        ``showGlyph`` does (LegacyPDFStreamEngine.java:161 →
+        ``processTextPosition`` per glyph). Each glyph's origin is the run
+        cursor stepped by the cumulative text-space advance of the preceding
+        glyphs, carried through the text matrix's scale/shear into the
+        translation slots — identical to how the run path advances
+        ``text_x``/``text_y`` (``translate(advance, 0) × Tm``). Widths are the
+        raw (pre-rotation) glyph advances; ``_apply_page_rotation`` then folds
+        each glyph into the device frame.
+        """
+        offset = 0.0
+        for piece, adv, gw in zip(glyph_text, glyph_adv, glyph_width, strict=False):
+            if piece:
+                glyph_x = state.text_x + offset * state.tm_a
+                glyph_y = state.text_y + offset * state.tm_b
+                origin = self._origin_matrix(state, glyph_x, glyph_y)
+                positions.append(
+                    TextPosition(
+                        text=piece,
+                        x=origin.get_translate_x(),
+                        y=origin.get_translate_y(),
+                        font_size=effective_font_size,
+                        font_name=state.font_name,
+                        font=font,
+                        resolved_font_name=resolved_font_name,
+                        width=gw * x_scale,
+                        width_of_space=width_of_space * x_scale,
+                        char_spacing=state.char_spacing,
+                        word_spacing=state.word_spacing,
+                        dir=text_dir,
+                        height=run_height,
+                        individual_widths=[gw * x_scale],
+                        text_matrix=[
+                            state.tm_a,
+                            state.tm_b,
+                            state.tm_c,
+                            state.tm_d,
+                            glyph_x,
+                            glyph_y,
+                        ],
+                    )
+                )
+            offset += adv
 
     @staticmethod
     def _origin_matrix(state: _TextState, text_x: float, text_y: float) -> Matrix:

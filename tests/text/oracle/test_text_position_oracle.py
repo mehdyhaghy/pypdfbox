@@ -251,23 +251,27 @@ def test_with_outline_intra_line_x_origin_matches_pdfbox() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Rotated fixture: pypdfbox does not fold the page /Rotate into the CTM
-# (the producer bakes the rotation into the text matrix instead), so it
-# never sets dir/page geometry on the position. The run still carries the
-# correct device origin in its own un-rotated y-up frame — it relates to
-# Java's direction-adjusted coords by an axis swap. Documented, asserted.
+# Rotated fixture: since wave 1495 pypdfbox folds the page /Rotate into each
+# run's stored coordinates (``_apply_page_rotation``), reproducing upstream's
+# page-rotation accessors. ``rot90.pdf`` is a 90-degree page whose producer
+# also rotates the text matrix to read upright, so the run's ``dir`` is 90 and
+# the folded ``x``/``y`` now land directly on Java's direction-adjusted
+# coordinates — no axis swap. Direct equality, pinned.
 # ---------------------------------------------------------------------------
 
 
 @requires_oracle
 def test_rot90_run_origin_reconciles_with_pdfbox() -> None:
-    """``rot90.pdf`` is a 90-degree page. Apache PDFBox's ``getDir()`` is
-    90 and ``getXDirAdj`` / ``getYDirAdj`` undo the rotation. pypdfbox's
-    lite stripper leaves the page rotation in the text matrix and reports
-    the device origin in its own y-up frame, so the mapping is an axis
-    swap: ``java_x_dir_adj == py.y`` and ``java_y_dir_adj == py.x``. Font
-    size is rotation-invariant and matches directly. (Documented in
-    ``CHANGES.md`` — page-/Rotate-not-in-CTM lite carve-out.)
+    """``rot90.pdf`` is a 90-degree page reading upright (the producer rotates
+    the text matrix). Apache PDFBox reports ``getDir() == 90`` and its
+    ``getXDirAdj`` / ``getYDirAdj`` give the upright reading-frame origin.
+
+    Since wave 1495 pypdfbox folds the page ``/Rotate`` into each run's stored
+    ``x``/``y`` (``_apply_page_rotation``), so the lite run's origin now lands
+    **directly** on Java's direction-adjusted coordinates — ``py.x ==
+    java_x_dir_adj`` and ``py.y == java_y_dir_adj`` — rather than the former
+    axis-swap relationship. Font size is rotation-invariant and matches
+    directly.
     """
     glyphs = _java_glyphs("multipdf/rot90.pdf")
     runs, _pw, _ph = _py_runs("multipdf/rot90.pdf")
@@ -275,6 +279,6 @@ def test_rot90_run_origin_reconciles_with_pdfbox() -> None:
 
     first_run = runs[0]
     first_glyph = glyphs[0]
-    assert first_run.y == pytest.approx(first_glyph.x_dir_adj, abs=_COORD_EPS)
-    assert first_run.x == pytest.approx(first_glyph.y_dir_adj, abs=_COORD_EPS)
+    assert first_run.x == pytest.approx(first_glyph.x_dir_adj, abs=_COORD_EPS)
+    assert first_run.y == pytest.approx(first_glyph.y_dir_adj, abs=_COORD_EPS)
     assert first_run.get_font_size_in_pt() == pytest.approx(first_glyph.fs_pt, abs=_FS_EPS)

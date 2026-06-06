@@ -266,18 +266,27 @@ class ExifSchema(XMPSchema):
             return raw
         try:
             if isinstance(raw, AbstractSimpleProperty):
-                return expected(
+                coerced = expected(
                     self._metadata,
                     self._namespace,
                     self._prefix,
                     local_name,
                     raw.get_string_value(),
                 )
-            return expected(
-                self._metadata, self._namespace, self._prefix, local_name, raw
-            )
+            else:
+                coerced = expected(
+                    self._metadata, self._namespace, self._prefix, local_name, raw
+                )
         except (TypeError, ValueError):
             return None
+        # A coerced simple property whose serialized value is None carries no
+        # usable value (e.g. an empty raw string coerced to a DateType — which
+        # the strict xmpbox DateConverter accepts as a null Calendar, wave 1495).
+        # Treat that as "no typed value present" so the typed getter still
+        # returns None for an empty / unusable raw string.
+        if coerced.get_string_value() is None:
+            return None
+        return coerced
 
     def _typed_set(
         self, local_name: str, prop: AbstractSimpleProperty | None

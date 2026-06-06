@@ -3,12 +3,16 @@
 Covers the line/word-break heuristic in
 :class:`pypdfbox.text.PDFTextStripper` when the configured page rotation
 or ``set_should_flip_axes`` toggle inverts the role of the X and Y
-axes. The lite stripper does not natively re-orient its line-break
-heuristic to match a page's ``/Rotate`` value (text is stripped in
-user-space order); the rotation-aware path is exposed via
-``set_should_flip_axes(True)`` which transposes X/Y in the line/word
-predicates. These tests pin the contract end-to-end through
-``get_text``.
+axes.
+
+Since wave 1495 the stripper folds a page's ``/Rotate`` into each run's
+stored coordinates (``_apply_page_rotation``), matching upstream's
+default-path grouping on the page-rotation-adjusted ``getX``/``getY`` — so
+on a 90/270 page a horizontal row fragments across newlines in the device
+frame exactly as Java PDFBox does (the rot0/180 upright text is unchanged).
+The separate ``set_should_flip_axes(True)`` toggle is a lite-only manual
+X/Y transpose with no upstream counterpart (it is NOT driven by ``/Rotate``).
+These tests pin both contracts end-to-end through ``get_text``.
 """
 from __future__ import annotations
 
@@ -54,14 +58,24 @@ def test_page_rotation_270_preserved_on_page_object() -> None:
 
 
 def test_text_still_extracted_on_rotated_pages() -> None:
-    """Even though the lite stripper does not natively reorient line
-    detection to a page's /Rotate, the text payload still extracts —
-    the page's content stream is parsed regardless of the metadata."""
+    """Every glyph still extracts on a rotated page. Since wave 1495 the
+    page ``/Rotate`` is folded into each run's stored coordinates (matching
+    upstream's default-path ``getX``/``getY`` grouping), so on a 90/270 page
+    the device-frame line grouping may fragment a horizontal row across
+    newlines (``kept`` -> ``ke\\npt``) — exactly as Java PDFBox does. The
+    invariant is that no glyph is dropped, not that the row stays contiguous;
+    rot0/180 keep the upright contiguous text."""
     for rot in (0, 90, 180, 270):
         doc = PDDocument()
         _page(doc, b"BT /F0 12 Tf 100 700 Td (kept) Tj ET", rotation=rot)
         out = PDFTextStripper().get_text(doc)
-        assert "kept" in out, f"rotation={rot} did not extract"
+        if rot in (0, 180):
+            assert "kept" in out, f"rotation={rot} did not extract"
+        else:
+            # All glyphs survive; the device-frame grouping may newline-split.
+            assert "".join(out.split()) == "kept", (
+                f"rotation={rot} dropped a glyph: {out!r}"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -199,5 +213,10 @@ def test_multipage_rotated_pages_joined_with_page_end() -> None:
     out = s.get_text(doc)
     # Each page is terminated by the configured marker.
     assert out.count("===") == 2
-    # And in stream order.
-    assert out.index("one") < out.index("two")
+    # And in stream order. Since wave 1495 the page /Rotate is folded into the
+    # coordinates, so a 90/270 page's row may fragment across newlines; the
+    # first page's glyphs still all precede the page-end marker that precedes
+    # the second page's glyphs. Compare on the whitespace-stripped payload.
+    first, _, rest = out.partition("===")
+    assert "".join(first.split()) == "one"
+    assert "".join(rest.split()).startswith("two")

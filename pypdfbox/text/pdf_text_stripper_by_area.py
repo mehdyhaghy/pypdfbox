@@ -202,6 +202,19 @@ class PDFTextStripperByArea(PDFTextStripper):
         # already-formatted text — we need the raw position list to bin
         # by region first, then format each region separately.
         self._active_page = page
+        # NOTE: the by-area binner deliberately does NOT run the page-rotation
+        # fold (``PDFTextStripper._apply_page_rotation``). On an unrotated page
+        # the fold is a no-op, so the proven unrotated by-area parity is
+        # unaffected; on a rotated page the region rectangles would need to be
+        # interpreted in the rotated *device* frame (upstream tests
+        # ``Rectangle2D.contains(text.getX(), text.getY())`` against the
+        # page-rotation-adjusted coordinates — PDFTextStripperByArea.java:141),
+        # but ``_bin_glyph``'s boundary semantics are calibrated for the lite
+        # y-up user-space frame (``min_y < y <= max_y``), which the device
+        # y-down frame the fold produces would invert. Rotated-page region
+        # binning is therefore tracked as a narrow follow-up (DEFERRED.md) so
+        # the unrotated half-open boundary parity stays intact this wave.
+        self._page_rotation = 0
         self._cmap_cache = {}
         self._font_cache = {}
         self._active_cmap = None

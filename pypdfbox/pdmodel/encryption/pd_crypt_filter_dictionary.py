@@ -109,8 +109,11 @@ class PDCryptFilterDictionary:
     # ---------- /Length (in bytes) ----------
 
     def get_length(self) -> int:
-        # Default per PDF 32000-1 §7.6.5 Table 25: 5 bytes (40 bit RC4).
-        return self._dict.get_int(_LENGTH, 5)
+        # Length in **bits** (a multiple of 8). Upstream
+        # ``PDCryptFilterDictionary.getLength()`` returns
+        # ``getInt(COSName.LENGTH, 40)`` (PDFBox 3.0.7, line 86) — the default
+        # is 40 bits, not 5 bytes. Verified via CryptFilterDictDefaultProbe.
+        return self._dict.get_int(_LENGTH, 40)
 
     def set_length(self, length: int) -> None:
         self._dict.set_int(_LENGTH, length)

@@ -89,11 +89,17 @@ def test_date_from_pdf_dictionary_form(metadata: XMPMetadata) -> None:
     assert (val.hour, val.minute, val.second) == (14, 33, 11)
 
 
-def test_wave324_date_type_accepts_pdf_apostrophe_offset(
+def test_date_type_rejects_pdf_apostrophe_offset(
     metadata: XMPMetadata,
 ) -> None:
-    field = DateType(metadata, "ns", "p", "when", "D:20100322143311-05'30'")
-    assert field.get_string_value() == "2010-03-22T14:33:11-05:30"
+    # Wave 1495: the xmpbox DateType uses the STRICT
+    # org.apache.xmpbox.DateConverter, which rejects the PDF apostrophe
+    # time-zone form (Integer.parseInt chokes on the apostrophes -> IOException
+    # -> isGoodType returns false -> setValue throws). Verified against the
+    # live 3.0.7 xmpbox jar (DateType("D:...-05'30'") -> IllegalArgumentException).
+    # This is the pdfbox.util/xmpbox strictness split closed in wave 1495.
+    with pytest.raises(ValueError):
+        DateType(metadata, "ns", "p", "when", "D:20100322143311-05'30'")
 
 
 def test_date_rejects_garbage_string(metadata: XMPMetadata) -> None:
@@ -101,16 +107,22 @@ def test_date_rejects_garbage_string(metadata: XMPMetadata) -> None:
         DateType(metadata, "ns", "p", "when", "not a date")
 
 
-def test_date_rejects_empty_string(metadata: XMPMetadata) -> None:
-    # DateConverter returns None for empty / whitespace strings; DateType
-    # must surface that as a ValueError (mirrors upstream isGoodType).
-    with pytest.raises(ValueError):
-        DateType(metadata, "ns", "p", "when", "")
+def test_date_accepts_empty_string_as_null(metadata: XMPMetadata) -> None:
+    # Wave 1495: upstream xmpbox isGoodType("") is True (toCalendar returns
+    # null WITHOUT throwing, and isGoodType only catches the exception), so
+    # setValue("") is accepted and stores a null Calendar. Verified against the
+    # live 3.0.7 jar: DateType("...","") -> getStringValue() == null.
+    field = DateType(metadata, "ns", "p", "when", "")
+    assert field.get_value() is None
+    assert field.get_string_value() is None
 
 
-def test_date_rejects_whitespace_only_string(metadata: XMPMetadata) -> None:
-    with pytest.raises(ValueError):
-        DateType(metadata, "ns", "p", "when", "   ")
+def test_date_accepts_whitespace_only_string_as_null(metadata: XMPMetadata) -> None:
+    # Same as the empty-string case: whitespace-only trims to empty, toCalendar
+    # returns null, isGoodType is True. Verified against the live 3.0.7 jar.
+    field = DateType(metadata, "ns", "p", "when", "   ")
+    assert field.get_value() is None
+    assert field.get_string_value() is None
 
 
 def test_date_rejects_none(metadata: XMPMetadata) -> None:
@@ -208,10 +220,12 @@ def test_is_good_type_rejects_unparseable_string(metadata: XMPMetadata) -> None:
     assert field.is_good_type("not a date") is False
 
 
-def test_is_good_type_rejects_empty_string(metadata: XMPMetadata) -> None:
+def test_is_good_type_accepts_empty_string(metadata: XMPMetadata) -> None:
     field = DateType(metadata, "ns", "p", "when", datetime(2010, 1, 1, tzinfo=UTC))
-    # to_calendar returns None for empty/whitespace; isGoodType therefore False.
-    assert field.is_good_type("") is False
+    # Wave 1495: upstream isGoodType("") is True (toCalendar returns null
+    # without throwing; isGoodType only catches IOException). Verified vs the
+    # live 3.0.7 jar.
+    assert field.is_good_type("") is True
 
 
 def test_is_good_type_rejects_other_types(metadata: XMPMetadata) -> None:
@@ -249,7 +263,9 @@ def test_set_value_from_string_rejects_garbage(metadata: XMPMetadata) -> None:
         field.set_value_from_string("not a date")
 
 
-def test_set_value_from_string_rejects_empty(metadata: XMPMetadata) -> None:
+def test_set_value_from_string_accepts_empty_as_null(metadata: XMPMetadata) -> None:
     field = DateType(metadata, "ns", "p", "when", datetime(2010, 1, 1, tzinfo=UTC))
-    with pytest.raises(ValueError):
-        field.set_value_from_string("")
+    # Wave 1495: upstream setValueFromString("") stores null (toCalendar
+    # returns null, setValueFromCalendar(null) is a no-op assignment).
+    field.set_value_from_string("")
+    assert field.get_value() is None
