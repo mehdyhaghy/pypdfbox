@@ -184,9 +184,9 @@ def test_draw_zapf_alias() -> None:
     """Line 312: ``draw_zapf`` forwards to ``_draw_zapf``."""
     annotation, handler = _setup_for_painter(PDAnnotationText.NAME_CROSS)
     with handler.get_normal_appearance_as_content_stream() as cs:
-        # Pass a known glyph name from ZapfDingbats; arbitrary baseline /
-        # translate-y values.
-        handler.draw_zapf(annotation, cs, 0.0, 0.0, "a1")
+        # Pass a known glyph name from ZapfDingbats (a22 = the Cross glyph);
+        # arbitrary baseline / translate-y values.
+        handler.draw_zapf(annotation, cs, 0.0, 0.0, "a22")
 
 
 def test_adjust_rect_and_b_box_public_alias() -> None:

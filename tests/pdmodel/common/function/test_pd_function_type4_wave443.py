@@ -42,7 +42,13 @@ def test_latin1_body_fallback_still_reports_unsupported_token() -> None:
 
 
 def test_procedure_literal_left_on_stack_is_not_valid_output() -> None:
-    fn = _make("{ true { 1 } }", domain=[])
+    # Wave 1509: the executor now auto-runs a *trailing* procedure (upstream
+    # ``InstructionSequence.execute`` parity), so ``{ true { 1 } }`` no longer
+    # leaves a proc literal — the inner proc runs. To leave a proc in an output
+    # slot we keep a value above it (``true``) and declare two outputs via
+    # /Range so the proc lands inside the top-N. pypdfbox raises "expected
+    # numeric output"; upstream throws ClassCastException — both reject.
+    fn = _make("{ { 1 } true }", domain=[], rng=[0, 1, 0, 1])
 
     with pytest.raises(OSError, match="expected numeric output"):
         fn.eval([])

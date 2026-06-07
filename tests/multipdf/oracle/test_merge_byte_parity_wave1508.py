@@ -34,12 +34,12 @@ Fixtures cover every shape the wave-1508 production fixes target:
 
 The full merged bytes are byte-identical to PDFBox *modulo* the
 content+time-derived ``/ID`` hash (non-deterministic by design) for the clean
-page-concatenation pair; the complex AcroForm/struct-tree fixtures additionally
-surface two documented, out-of-scope *writer-level* residuals (form-XObject
+page-concatenation pair AND, since wave 1509, for the complex AcroForm /
+struct-tree fixtures too. The two wave-1508 writer-level residuals (form-XObject
 ``/Resources`` written indirect vs PDFBox's inline-direct; struct-tree
-ParentTree number-tree node lacks ``/Limits``) — see ``CHANGES.md`` /
-``DEFERRED.md`` wave 1508. Those live below the page-dict layer this wave pins
-and are asserted around, not against.
+ParentTree number-tree node lacking ``/Limits``) are CLOSED — see ``CHANGES.md``
+wave 1509. ``test_complex_fixture_merge_is_byte_identical_modulo_id`` now pins
+the whole merged byte stream for every complex fixture.
 """
 
 from __future__ import annotations
@@ -285,20 +285,58 @@ def test_plain_concatenation_merge_is_byte_identical_modulo_id() -> None:
 
 
 @requires_oracle
-def test_complex_fixture_residuals_are_writer_level_not_page_dict() -> None:
-    """The struct-tree fixture is byte-identical to PDFBox in its PAGE
-    dictionaries (pinned structurally by
-    ``test_merged_page_dict_shape_matches_pdfbox``) but NOT byte-identical
-    overall: two documented, out-of-scope *writer-level* residuals remain. This
-    test pins that those residuals are confined to the writer layer (form-XObject
-    ``/Resources`` serialization and the ParentTree ``/Limits`` node) — i.e. the
-    overall divergence is exactly the two known markers, not a perturbed page
-    dict — so a future page-dict regression (this wave's layer) is not masked.
+@pytest.mark.parametrize(
+    "names",
+    [
+        ("AcroFormForMerge.pdf", "rot0.pdf"),
+        ("PDFBOX-6018-099267-p9-OrphanPopups.pdf", "rot0.pdf"),
+        ("PDFA3A.pdf", "rot0.pdf"),
+    ],
+    ids=["own_cropbox_formxobject", "orphan_no_resources", "struct_tree"],
+)
+def test_complex_fixture_merge_is_byte_identical_modulo_id(
+    names: tuple[str, ...],
+) -> None:
+    """The complex AcroForm / struct-tree merge fixtures are now byte-identical
+    to PDFBox 3.0.7 (modulo the time-derived ``/ID``) — the two wave-1508
+    writer-level residuals are CLOSED in wave 1509.
 
-    Residuals (CHANGES.md / DEFERRED.md wave 1508):
-      * form-XObject ``/Resources`` written as an indirect ref vs PDFBox's
-        inline-direct dict,
-      * struct-tree ParentTree number-tree node lacks ``/Limits``.
+    History (wave 1508, see CHANGES.md / DEFERRED.md): these pairs previously
+    diverged below the page-dict layer by exactly two writer-level markers and
+    were only pinned structurally (this test formerly asserted the divergence
+    *was* those two markers, so a page-dict regression could not hide behind
+    them). Wave 1509 root-caused and fixed both upstream-faithfully:
+
+      * a form-XObject's ``/Resources`` (and any nested ``/XObject``)
+        sub-dictionary is now written INLINE (direct) — pypdfbox's
+        ``COSWriter.visit_from_dictionary`` mirrors upstream's PDFBOX-3684
+        ``setDirect(true)`` block for non-incremental saves;
+      * the merged struct-tree ParentTree single-leaf number-tree node now
+        carries ``/Limits [lower upper]`` (``[0 0]`` for the single-leaf case),
+        emitted ahead of ``/Nums`` exactly as upstream ``setNumbers`` does.
+
+    With both fixed, the whole merged byte stream matches PDFBox for every
+    complex fixture — the strongest possible parity pin.
+    """
+    sources = _have(*names)
+    with tempfile.TemporaryDirectory() as td:
+        java_out = Path(td) / "java.pdf"
+        run_probe_text(_PROBE, str(java_out), *[str(s) for s in sources])
+        java_bytes = java_out.read_bytes()
+    py_bytes = _merge_py_uncompressed_bytes(sources)
+
+    assert _strip_id(py_bytes) == _strip_id(java_bytes), (
+        "complex merge diverged beyond /ID; "
+        f"sizes pypdfbox={len(py_bytes)} PDFBox={len(java_bytes)}"
+    )
+
+
+@requires_oracle
+def test_struct_tree_parent_tree_limits_emitted_before_nums() -> None:
+    """The wave-1509 ParentTree-``/Limits`` fix specifically: the merged
+    struct-tree single-leaf number-tree node carries ``/Limits [0 0]`` AND
+    serializes it ahead of ``/Nums`` (upstream ``setNumbers`` materializes
+    ``/Limits`` via ``setUpper/LowerLimit`` before ``setItem(NUMS, ...)``).
     """
     sources = _have("PDFA3A.pdf", "rot0.pdf")
     with tempfile.TemporaryDirectory() as td:
@@ -307,12 +345,9 @@ def test_complex_fixture_residuals_are_writer_level_not_page_dict() -> None:
         java_bytes = java_out.read_bytes()
     py_bytes = _merge_py_uncompressed_bytes(sources)
 
-    # Overall NOT byte-identical (the documented residual exists for this pair).
-    assert _strip_id(py_bytes) != _strip_id(java_bytes)
-
-    # The residual for this struct-tree pair is the ParentTree number-tree
-    # node's /Limits: PDFBox carries a /Limits on the merged single-leaf number
-    # tree; pypdfbox does not (documented writer-level residual, out of this
-    # wave's page-dict scope).
-    assert b"/Limits [0 0]" in java_bytes
-    assert b"/Limits [0 0]" not in py_bytes
+    for blob in (java_bytes, py_bytes):
+        assert b"/Limits [0 0]" in blob
+        # /Limits precedes /Nums inside the ParentTree leaf object.
+        limits_at = blob.index(b"/Limits [0 0]")
+        nums_at = blob.index(b"/Nums [0 ", limits_at - 80)
+        assert limits_at < nums_at

@@ -1597,12 +1597,65 @@ class PDFMergerUtility:
         # CHANGES.md.
         new_parent_tree = PDStructureElementNumberTreeNode()
         new_parent_tree.set_numbers(dest_number_tree_as_map)
+        # Upstream ``PDNumberTreeNode.setNumbers`` unconditionally stamps a
+        # ``/Limits [lower upper]`` array (``[null null]`` for an empty map),
+        # even on the tree root that ``mergeStructureTree`` builds here. The
+        # pypdfbox ``PDNumberTreeNode`` deliberately drops ``/Limits`` from any
+        # root node (documented spec-compliant divergence, pinned in
+        # ``tests/pdmodel/common/oracle/test_number_tree_setter_oracle.py``), so
+        # the rebuilt ParentTree leaf would otherwise lack the ``/Limits``
+        # PDFBox writes. Re-stamp it here to keep the merged ParentTree
+        # byte-faithful to upstream without perturbing the general number-tree
+        # contract.
+        self._stamp_parent_tree_limits(new_parent_tree, dest_number_tree_as_map)
         dest_struct_tree.set_parent_tree(new_parent_tree)
         dest_struct_tree.set_parent_tree_next_key(dest_parent_tree_next_key)
 
         self._merge_k_entries(cloner, src_struct_tree, dest_struct_tree)
         self._merge_role_map(cloner, src_struct_tree, dest_struct_tree)
         self._merge_id_tree(cloner, src_struct_tree, dest_struct_tree)
+
+    @staticmethod
+    def _stamp_parent_tree_limits(
+        parent_tree: Any, numbers: dict[int, COSBase]
+    ) -> None:
+        """Stamp ``/Limits`` on the rebuilt ParentTree root the way upstream's
+        ``PDNumberTreeNode.setNumbers`` does.
+
+        Upstream unconditionally writes ``/Limits [lower upper]`` (the min/max
+        keys) onto the node ``setNumbers`` mutates, even when it is the tree
+        root; an empty map yields ``/Limits [null null]``. pypdfbox's
+        ``PDNumberTreeNode`` deliberately strips ``/Limits`` from a root node, so
+        the merged ParentTree leaf would lack the entry PDFBox always emits.
+        This re-creates the upstream shape exactly for the merged root —
+        including the key INSERTION ORDER: upstream ``setNumbers`` calls
+        ``setUpperLimit``/``setLowerLimit`` (which materialize ``/Limits``)
+        *before* ``setItem(NUMS, ...)``, so ``/Limits`` serializes ahead of
+        ``/Nums``. We re-key both entries in that order here.
+        """
+        from pypdfbox.cos import COSInteger
+
+        node = parent_tree.get_cos_object()
+        limits_key = COSName.get_pdf_name("Limits")
+        nums_key = COSName.get_pdf_name("Nums")
+
+        arr = COSArray()
+        if numbers:
+            keys = sorted(numbers)
+            arr.add(COSInteger.get(keys[0]))
+            arr.add(COSInteger.get(keys[-1]))
+        else:
+            arr.add(COSNull.NULL)
+            arr.add(COSNull.NULL)
+
+        # Reproduce upstream insertion order (/Limits before /Nums): pull the
+        # /Nums value set by ``set_numbers``, stamp /Limits, then re-insert
+        # /Nums so it lands after /Limits in the COSDictionary key order.
+        nums_value = node.get_item(nums_key)
+        node.remove_item(nums_key)
+        node.set_item(limits_key, arr)
+        if nums_value is not None:
+            node.set_item(nums_key, nums_value)
 
     def _update_page_references_map(
         self,

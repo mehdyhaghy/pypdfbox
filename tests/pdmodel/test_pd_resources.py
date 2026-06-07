@@ -35,15 +35,15 @@ def test_get_cos_object_returns_underlying_dict() -> None:
     assert res.get_cos_object() is cos
 
 
-def test_add_xobject_assigns_im0_im1() -> None:
+def test_add_xobject_assigns_im1_im2() -> None:
     res = PDResources()
     s1 = COSStream()
     s2 = COSStream()
     name1 = res.add(COSName.get_pdf_name("XObject"), s1)
     name2 = res.add(COSName.get_pdf_name("XObject"), s2)
-    assert name1.get_name() == "Im0"
-    assert name2.get_name() == "Im1"
-    assert sorted(n.get_name() for n in res.get_xobject_names()) == ["Im0", "Im1"]
+    assert name1.get_name() == "Im1"
+    assert name2.get_name() == "Im2"
+    assert sorted(n.get_name() for n in res.get_xobject_names()) == ["Im1", "Im2"]
 
 
 def test_add_form_xobject_uses_form_prefix() -> None:
@@ -53,16 +53,16 @@ def test_add_form_xobject_uses_form_prefix() -> None:
     form = COSDictionary()
     form.set_name(COSName.SUBTYPE, "Form")  # type: ignore[attr-defined]
     name = res.add(COSName.get_pdf_name("XObject"), form)
-    assert name.get_name() == "Form0"
+    assert name.get_name() == "Form1"
 
 
-def test_add_font_assigns_f0() -> None:
+def test_add_font_assigns_f1() -> None:
     res = PDResources()
     font = COSDictionary()
     font.set_name(COSName.TYPE, "Font")  # type: ignore[attr-defined]
     name = res.add(COSName.get_pdf_name("Font"), font)
-    assert name.get_name() == "F0"
-    assert [n.get_name() for n in res.get_font_names()] == ["F0"]
+    assert name.get_name() == "F1"
+    assert [n.get_name() for n in res.get_font_names()] == ["F1"]
 
 
 def test_get_xobject_resolves_indirect_ref() -> None:
@@ -136,8 +136,9 @@ def test_add_x_object_uses_typed_prefixes() -> None:
     form_name = res.add_x_object(PDFormXObject(COSStream()))
     image_name = res.add_x_object(PDImageXObject(COSStream()))
 
-    assert form_name.get_name() == "Form0"
-    assert image_name.get_name() == "Im0"
+    # Both land in /XObject; second add is seeded to size()==1 → index 2.
+    assert form_name.get_name() == "Form1"
+    assert image_name.get_name() == "Im2"
 
 
 def test_add_x_object_accepts_custom_prefix() -> None:
@@ -145,8 +146,8 @@ def test_add_x_object_accepts_custom_prefix() -> None:
 
     name = res.add_x_object(PDImageXObject(COSStream()), "Logo")
 
-    assert name.get_name() == "Logo0"
-    assert [n.get_name() for n in res.get_xobject_names()] == ["Logo0"]
+    assert name.get_name() == "Logo1"
+    assert [n.get_name() for n in res.get_xobject_names()] == ["Logo1"]
 
 
 def test_add_x_object_reuses_existing_cos_object() -> None:
@@ -157,7 +158,7 @@ def test_add_x_object_reuses_existing_cos_object() -> None:
     second = res.add_x_object(image, "Other")
 
     assert second == first
-    assert [n.get_name() for n in res.get_xobject_names()] == ["Logo0"]
+    assert [n.get_name() for n in res.get_xobject_names()] == ["Logo1"]
 
 
 def test_add_x_object_reuses_existing_indirect_cos_object() -> None:
@@ -190,7 +191,7 @@ def test_upstream_name_aliases_return_cos_names() -> None:
         COSDictionary(),
     )
 
-    assert [name.get_name() for name in res.get_x_object_names()] == ["Im0"]
+    assert [name.get_name() for name in res.get_x_object_names()] == ["Im1"]
     assert [name.get_name() for name in res.get_ext_g_state_names()] == ["GS0"]
     assert [name.get_name() for name in res.get_properties_names()] == ["Prop0"]
 
@@ -325,7 +326,7 @@ def test_typed_add_reuses_existing_cos_object() -> None:
     second = res.add(ext)
 
     assert first == second
-    assert [name.get_name() for name in res.get_extgstate_names()] == ["gs0"]
+    assert [name.get_name() for name in res.get_extgstate_names()] == ["gs1"]
 
 
 def test_typed_add_xobject_uses_upstream_prefixes() -> None:
@@ -334,8 +335,9 @@ def test_typed_add_xobject_uses_upstream_prefixes() -> None:
     form_name = res.add(PDFormXObject(COSStream()))
     image_name = res.add(PDImageXObject(COSStream()))
 
-    assert form_name.get_name() == "Form0"
-    assert image_name.get_name() == "Im0"
+    # Both land in /XObject; second add is seeded to size()==1 → index 2.
+    assert form_name.get_name() == "Form1"
+    assert image_name.get_name() == "Im2"
 
 
 def test_typed_put_infers_category() -> None:
@@ -381,11 +383,14 @@ def test_typed_add_optional_content_group_uses_oc_prefix() -> None:
     ocg_name = res.add(ocg)
     plain_name = res.add(plain)
 
-    assert ocg_name.get_name() == "oc0"
-    assert plain_name.get_name() == "Prop0"
+    # Both land in the same /Properties sub-dict; createKey is seeded to
+    # keySet().size() (counting all keys regardless of prefix), so the second
+    # add starts its search at index 2 → "Prop2" (not "Prop1").
+    assert ocg_name.get_name() == "oc1"
+    assert plain_name.get_name() == "Prop2"
     assert sorted(n.get_name() for n in res.get_property_list_names()) == [
-        "Prop0",
-        "oc0",
+        "Prop2",
+        "oc1",
     ]
 
 

@@ -138,6 +138,152 @@ _GLYPH_P: list[tuple[str, tuple[float, ...]]] = [
     ("H", ()),
 ]
 
+# ---------------------------------------------------------------------------
+# ZapfDingbats / Symbol glyph outlines used by drawZapf / drawCrossHairs.
+#
+# Upstream extracts these via ``Standard14Fonts.getGlyphPath(fontName, glyph)``
+# (ZapfDingbats for Cross/Star/Check/RightPointer, Symbol for CrossHairs) and
+# walks the resulting ``GeneralPath`` with ``addPath``. pypdfbox has not ported
+# Standard14 glyph-path extraction, so we embed the exact upstream glyph
+# outlines as pre-flattened ``(op, coords)`` paths. Coordinates are in the
+# font's own units (ZapfDingbats / Symbol use a 1/2048 em fontMatrix); the draw
+# helpers apply the upstream fontMatrix-derived scale/translate ``cm`` before
+# emitting. All operands are canonical to 3 decimals — matching what Apache
+# PDFBox 3.0.7 emits when it flattens these paths.
+# ---------------------------------------------------------------------------
+
+# ZapfDingbats "a22" — ✖ heavy multiplication X (Cross icon).
+_GLYPH_ZAPF_CROSS: list[tuple[str, tuple[float, ...]]] = [
+    ("M", (1493, 344)),
+    ("L", (1149, 0)),
+    ("L", (778, 371)),
+    ("L", (408, 0)),
+    ("L", (63, 344)),
+    ("L", (434, 715)),
+    ("L", (63, 1083)),
+    ("L", (410, 1430)),
+    ("L", (778, 1061)),
+    ("L", (1147, 1430)),
+    ("L", (1493, 1083)),
+    ("L", (1122, 715)),
+    ("L", (1493, 344)),
+    ("H", ()),
+]
+
+# ZapfDingbats "a35" — ★ black star (Star icon).
+_GLYPH_ZAPF_STAR: list[tuple[str, tuple[float, ...]]] = [
+    ("M", (1606, 883)),
+    ("L", (1130, 537)),
+    ("L", (1313, -25)),
+    ("L", (836, 322)),
+    ("L", (358, -25)),
+    ("L", (541, 537)),
+    ("L", (66, 883)),
+    ("L", (653, 883)),
+    ("L", (836, 1442)),
+    ("L", (1018, 883)),
+    ("L", (1606, 883)),
+    ("H", ()),
+]
+
+# ZapfDingbats "a20" — ✔ heavy check mark (Check icon).
+_GLYPH_ZAPF_CHECK: list[tuple[str, tuple[float, ...]]] = [
+    ("M", (1663, 1300)),
+    ("C", (1663, 1222, 1627.667, 1146, 1557, 1072)),
+    ("L", (1546, 1061)),
+    ("L", (928, 410)),
+    ("C", (796.667, 272, 685, 165.333, 593, 90)),
+    ("C", (500.333, 14.667, 435, -23, 397, -23)),
+    ("C", (357, -23, 307.333, -4.333, 248, 33)),
+    ("C", (188.667, 71, 150.333, 110, 133, 150)),
+    ("C", (118.333, 183.333, 104.667, 254, 92, 362)),
+    ("C", (78.667, 470, 72, 587, 72, 713)),
+    ("C", (72, 781.667, 100.667, 845, 158, 903)),
+    ("C", (215.333, 961.667, 278.667, 991, 348, 991)),
+    ("C", (414, 991, 453.333, 930.667, 466, 810)),
+    ("C", (467.333, 796, 468.333, 785.667, 469, 779)),
+    ("C", (479.667, 686.333, 492, 621.667, 506, 585)),
+    ("C", (520, 548.333, 539, 530, 563, 530)),
+    ("C", (573, 530, 591.667, 540.667, 619, 562)),
+    ("C", (646.333, 584, 679, 613.667, 717, 651)),
+    ("L", (1352, 1280)),
+    ("C", (1405.333, 1333.333, 1453, 1373.667, 1495, 1401)),
+    ("C", (1537, 1428.333, 1572.667, 1442, 1602, 1442)),
+    ("C", (1624, 1442, 1639.667, 1433.667, 1649, 1417)),
+    ("C", (1658.333, 1400.333, 1663, 1372.333, 1663, 1333)),
+    ("L", (1663, 1300)),
+    ("H", ()),
+]
+
+# ZapfDingbats "a174" — ➤ three-d top-lighted rightwards arrowhead
+# (RightPointer icon).
+_GLYPH_ZAPF_RIGHT_POINTER: list[tuple[str, tuple[float, ...]]] = [
+    ("M", (1806, 709)),
+    ("L", (72, 8)),
+    ("L", (492, 709)),
+    ("L", (72, 1409)),
+    ("L", (1806, 709)),
+    ("H", ()),
+]
+
+# Symbol "circleplus" — ⊕ circled plus (CrossHairs icon).
+_GLYPH_SYMBOL_CIRCLE_PLUS: list[tuple[str, tuple[float, ...]]] = [
+    ("M", (731, 555)),
+    ("L", (309, 555)),
+    ("L", (309, 668)),
+    ("L", (731, 668)),
+    ("L", (731, 1087)),
+    ("L", (844, 1087)),
+    ("L", (844, 668)),
+    ("L", (1264, 668)),
+    ("L", (1264, 555)),
+    ("L", (844, 555)),
+    ("L", (844, 135)),
+    ("L", (731, 135)),
+    ("L", (731, 555)),
+    ("H", ()),
+    ("M", (786, 1266)),
+    ("C", (697.333, 1266, 613.333, 1249.667, 534, 1217)),
+    ("C", (454, 1183.667, 383.333, 1135.667, 322, 1073)),
+    ("C", (261.333, 1012.333, 214.667, 942.333, 182, 863)),
+    ("C", (149.333, 783, 133, 698.667, 133, 610)),
+    ("C", (133, 537.333, 144, 467.667, 166, 401)),
+    ("C", (188.667, 334.333, 222, 272.333, 266, 215)),
+    ("C", (328.667, 133, 405.667, 69.333, 497, 24)),
+    ("C", (588.333, -22, 684.667, -45, 786, -45)),
+    ("C", (872.667, -45, 956.333, -28.333, 1037, 5)),
+    ("C", (1117.667, 39, 1189, 87.333, 1251, 150)),
+    ("C", (1312.333, 211.333, 1359.333, 281.667, 1392, 361)),
+    ("C", (1425.333, 440.333, 1442, 523.333, 1442, 610)),
+    ("C", (1442, 697.333, 1425.333, 780.667, 1392, 860)),
+    ("C", (1358.667, 940, 1311, 1011, 1249, 1073)),
+    ("C", (1187, 1135, 1116.333, 1182.667, 1037, 1216)),
+    ("C", (957.667, 1249.333, 874, 1266, 786, 1266)),
+    ("H", ()),
+    ("M", (37, 610)),
+    ("C", (37, 709.333, 56, 805, 94, 897)),
+    ("C", (132, 989.667, 186, 1071, 256, 1141)),
+    ("C", (326.667, 1212.333, 407, 1266.667, 497, 1304)),
+    ("C", (587.667, 1341.333, 684, 1360, 786, 1360)),
+    ("C", (869.333, 1360, 950, 1347, 1028, 1321)),
+    ("C", (1106, 1294.333, 1177.667, 1256, 1243, 1206)),
+    ("C", (1336.333, 1134.667, 1408.333, 1047, 1459, 943)),
+    ("C", (1510.333, 839, 1536, 728, 1536, 610)),
+    ("C", (1536, 527.333, 1523, 447.333, 1497, 370)),
+    ("C", (1471, 292.667, 1432.667, 221.333, 1382, 156)),
+    ("C", (1310, 62, 1222, -10.667, 1118, -62)),
+    ("C", (1014, -113.333, 903.333, -139, 786, -139)),
+    ("C", (686.667, -139, 591.333, -120, 500, -82)),
+    ("C", (408.667, -44, 327.333, 10.667, 256, 82)),
+    ("C", (185.333, 152.667, 131.333, 233.333, 94, 324)),
+    ("C", (56, 415.333, 37, 510.667, 37, 610)),
+    ("H", ()),
+]
+
+# ZapfDingbats / Symbol shared fontMatrix scale (1/2048 — a TrueType-derived
+# em, the value Apache PDFBox reads from the Standard-14 font's fontMatrix).
+_ZAPF_FONT_MATRIX_SCALE = 0.00048828125
+
 
 def _apply_matrix(cs: PDAppearanceContentStream, matrix: Matrix) -> None:
     """Emit the ``cm`` operator with the six components of ``matrix``.
@@ -184,13 +330,14 @@ class PDTextAppearanceHandler(PDAbstractAppearanceHandler):
 
     Each ``/Name`` value (``Note``, ``Help``, ``Insert``, etc.) dispatches
     to a private ``_draw_*`` helper that emits a small icon path
-    (~20-100 content-stream operators). The implementations are direct
-    line-by-line ports of the upstream Java drawing code, with one
-    documented deviation: glyph-based icons (``Cross``, ``Star``,
-    ``Check``, ``RightPointer``, ``CrossHairs``, ``Help``,
-    ``Paragraph``, ``NewParagraph``) fall back to a hand-built shape
-    that approximates the Adobe glyph, because :class:`Standard14Fonts`
-    glyph path extraction is not yet ported. See ``CHANGES.md``.
+    (~20-300 content-stream operators). The implementations are direct
+    line-by-line ports of the upstream Java drawing code. Glyph-based
+    icons (``Cross``, ``Star``, ``Check``, ``RightPointer``,
+    ``CrossHairs``, ``Help``, ``Paragraph``, ``NewParagraph``) embed the
+    exact upstream Standard-14 glyph outlines (since
+    :class:`Standard14Fonts` glyph-path extraction is not yet ported) and
+    drive them through :meth:`add_path` under the upstream fontMatrix
+    scale — byte-identical to Apache PDFBox. See ``CHANGES.md``.
     """
 
     SUPPORTED_NAMES: frozenset[str] = _SUPPORTED_NAMES
@@ -657,10 +804,12 @@ class PDTextAppearanceHandler(PDAbstractAppearanceHandler):
     ) -> None:
         """Mirrors upstream ``drawCrossHairs`` (PDTextAppearanceHandler.java:390).
 
-        Documented deviation: upstream draws the ``circleplus`` glyph
-        from the Symbol Type1 font. We render an equivalent shape (a
-        circle with vertical + horizontal bars) by hand because Symbol
-        font glyph paths aren't ported yet.
+        Upstream draws the ``circleplus`` glyph from the Symbol Type1 font
+        via ``Standard14Fonts.getGlyphPath`` and walks it with ``addPath``.
+        pypdfbox has not ported Standard14 glyph-path extraction, so we
+        drive the exact pre-flattened Symbol glyph outline through
+        :meth:`add_path` under the upstream fontMatrix-derived
+        scale/translate ``cm`` — byte-identical to Apache PDFBox 3.0.7.
         """
         bbox = self._adjust_rect_and_bbox(annotation, 20.0, 20.0)
         min_dim = min(bbox.get_width(), bbox.get_height())
@@ -670,18 +819,13 @@ class PDTextAppearanceHandler(PDAbstractAppearanceHandler):
         cs.set_line_cap_style(0)
         cs.set_line_width(0.61)  # value from Adobe
 
-        cx = min_dim / 2
-        cy = min_dim / 2
-        r = min_dim / 2 - 1.0
-        # Circle.
-        self.draw_circle(cs, cx, cy, r)
-        cs.stroke()
-        # Cross.
-        cs.move_to(cx - r, cy)
-        cs.line_to(cx + r, cy)
-        cs.move_to(cx, cy - r)
-        cs.line_to(cx, cy + r)
-        cs.stroke()
+        # Upstream computes the scale via the Symbol fontMatrix
+        # (1/2048, 1/2048) multiplied by 1.3333.
+        scale = _ZAPF_FONT_MATRIX_SCALE * min_dim * 1.3333
+        _apply_matrix(cs, Matrix.get_scale_instance(scale, scale))
+        _apply_matrix(cs, Matrix.get_translate_instance(0.0, 50.0))
+        self.add_path(cs, _GLYPH_SYMBOL_CIRCLE_PLUS)
+        cs.fill_and_stroke()
 
     def _draw_up_arrow(
         self, annotation: PDAnnotationText, cs: PDAppearanceContentStream
@@ -829,12 +973,12 @@ class PDTextAppearanceHandler(PDAbstractAppearanceHandler):
         """Mirrors upstream's private ``drawZapf``
         (PDTextAppearanceHandler.java:592).
 
-        Documented deviation: upstream extracts the named glyph path
-        from the ZapfDingbats Type1 font via
-        ``Standard14Fonts.getGlyphPath``. That path is not ported yet
-        in pypdfbox, so we render a hand-built approximation per glyph
-        name. The bbox / line-state setup matches upstream exactly so
-        rendering still respects the geometry Adobe expects.
+        Upstream extracts the named glyph path from the ZapfDingbats Type1
+        font via ``Standard14Fonts.getGlyphPath`` and walks it with
+        ``addPath``. pypdfbox has not ported Standard14 glyph-path
+        extraction, so we drive the exact pre-flattened upstream glyph
+        outline through :meth:`add_path` under the upstream fontMatrix-derived
+        scale/translate ``cm`` — byte-identical to Apache PDFBox 3.0.7.
         """
         bbox = self._adjust_rect_and_bbox(annotation, 20.0, by)
         min_dim = min(bbox.get_width(), bbox.get_height())
@@ -845,83 +989,19 @@ class PDTextAppearanceHandler(PDAbstractAppearanceHandler):
         cs.set_line_width(0.59)  # value from Adobe
 
         # Upstream computes the scale via the ZapfDingbats fontMatrix
-        # (1/1000, 1/1000) — equivalent to a hand-coded 0.001 here.
-        x_scale = 0.001
-        y_scale = 0.001
-        _apply_matrix(
-            cs, Matrix.get_scale_instance(x_scale * min_dim / 0.8, y_scale * min_dim / 0.8)
-        )
+        # (1/2048, 1/2048) divided by 0.8.
+        scale = _ZAPF_FONT_MATRIX_SCALE * min_dim / 0.8
+        _apply_matrix(cs, Matrix.get_scale_instance(scale, scale))
         _apply_matrix(cs, Matrix.get_translate_instance(0.0, ty))
 
-        # Hand-built approximations for the four ZapfDingbats glyphs the
-        # spec dispatches through drawZapf.
-        if glyph_name == "a22":
-            # Cross (✖, 0x2716) — drawn as two thick diagonals.
-            self._draw_glyph_cross(cs)
-        elif glyph_name == "a35":
-            # Star (★, 0x2605) — five-pointed filled star.
-            self._draw_glyph_star(cs)
-        elif glyph_name == "a20":
-            # Check mark (✔, 0x2714) — angled tick.
-            self._draw_glyph_check(cs)
-        elif glyph_name == "a174":
-            # Right pointer (➤, 0x27A4) — arrowhead.
-            self._draw_glyph_right_pointer(cs)
+        glyph = {
+            "a22": _GLYPH_ZAPF_CROSS,
+            "a35": _GLYPH_ZAPF_STAR,
+            "a20": _GLYPH_ZAPF_CHECK,
+            "a174": _GLYPH_ZAPF_RIGHT_POINTER,
+        }[glyph_name]
+        self.add_path(cs, glyph)
         cs.fill_and_stroke()
-
-    # ------------------------------------------------------------------
-    # ZapfDingbats glyph approximations (units in font's 1000-unit em)
-    # ------------------------------------------------------------------
-
-    def _draw_glyph_cross(self, cs: PDAppearanceContentStream) -> None:
-        # ✖ — two thick diagonal bars meeting at the centre (500, 500).
-        thickness = 110.0
-        cs.move_to(150.0 - thickness * 0.7, 150.0 + thickness * 0.7)
-        cs.line_to(150.0 + thickness * 0.7, 150.0 - thickness * 0.7)
-        cs.line_to(850.0 + thickness * 0.7, 850.0 - thickness * 0.7)
-        cs.line_to(850.0 - thickness * 0.7, 850.0 + thickness * 0.7)
-        cs.close_path()
-        cs.move_to(150.0 - thickness * 0.7, 850.0 - thickness * 0.7)
-        cs.line_to(150.0 + thickness * 0.7, 850.0 + thickness * 0.7)
-        cs.line_to(850.0 + thickness * 0.7, 150.0 + thickness * 0.7)
-        cs.line_to(850.0 - thickness * 0.7, 150.0 - thickness * 0.7)
-        cs.close_path()
-
-    def _draw_glyph_star(self, cs: PDAppearanceContentStream) -> None:
-        # ★ — five-pointed star with outer radius 450, centered at (500, 500).
-        cx = 500.0
-        cy = 500.0
-        outer = 450.0
-        inner = outer * 0.382  # standard 5-point star ratio
-        # Start at the top point.
-        for i in range(10):
-            angle = math.pi / 2 + i * math.pi / 5
-            radius = outer if i % 2 == 0 else inner
-            x = cx + math.cos(angle) * radius
-            y = cy + math.sin(angle) * radius
-            if i == 0:
-                cs.move_to(x, y)
-            else:
-                cs.line_to(x, y)
-        cs.close_path()
-
-    def _draw_glyph_check(self, cs: PDAppearanceContentStream) -> None:
-        # ✔ — angled tick. Path traced clockwise.
-        cs.move_to(100.0, 450.0)
-        cs.line_to(250.0, 300.0)
-        cs.line_to(450.0, 500.0)
-        cs.line_to(800.0, 800.0)
-        cs.line_to(900.0, 700.0)
-        cs.line_to(450.0, 200.0)
-        cs.close_path()
-
-    def _draw_glyph_right_pointer(self, cs: PDAppearanceContentStream) -> None:
-        # ➤ — arrowhead pointing right.
-        cs.move_to(100.0, 200.0)
-        cs.line_to(800.0, 500.0)
-        cs.line_to(100.0, 800.0)
-        cs.line_to(250.0, 500.0)
-        cs.close_path()
 
     def generate_rollover_appearance(self) -> None:
         # No rollover appearance (PDTextAppearanceHandler.java:670)

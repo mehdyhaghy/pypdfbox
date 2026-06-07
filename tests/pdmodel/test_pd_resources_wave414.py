@@ -83,8 +83,9 @@ def test_add_x_object_unknown_subclass_falls_back_to_subtype_wave414() -> None:
     form_name = res.add_x_object(CustomXObject("Form"))  # type: ignore[arg-type]
     image_name = res.add_x_object(CustomXObject("Image"))  # type: ignore[arg-type]
 
-    assert form_name.get_name() == "Form0"
-    assert image_name.get_name() == "Im0"
+    # Both land in /XObject; second add is seeded to size()==1 → index 2.
+    assert form_name.get_name() == "Form1"
+    assert image_name.get_name() == "Im2"
 
 
 def test_get_font_returns_none_for_non_dictionary_entries_wave414() -> None:
@@ -136,11 +137,11 @@ def test_add_validates_category_value_and_infers_prefixes_wave414() -> None:
     with pytest.raises(ValueError, match="unknown resource category"):
         res.add(COSName.get_pdf_name("Custom"), COSDictionary())
 
-    assert res.add(PDResources.COLOR_SPACE, COSName.get_pdf_name("DeviceRGB")).get_name() == "cs0"
-    assert res.add(PDResources.EXT_G_STATE, COSDictionary()).get_name() == "gs0"
-    assert res.add(PDResources.SHADING, COSDictionary()).get_name() == "sh0"
-    assert res.add(PDResources.PATTERN, COSDictionary()).get_name() == "p0"
-    assert res.add(PDResources.PROPERTIES, COSDictionary()).get_name() == "Prop0"
+    assert res.add(PDResources.COLOR_SPACE, COSName.get_pdf_name("DeviceRGB")).get_name() == "cs1"
+    assert res.add(PDResources.EXT_G_STATE, COSDictionary()).get_name() == "gs1"
+    assert res.add(PDResources.SHADING, COSDictionary()).get_name() == "sh1"
+    assert res.add(PDResources.PATTERN, COSDictionary()).get_name() == "p1"
+    assert res.add(PDResources.PROPERTIES, COSDictionary()).get_name() == "Prop1"
 
 
 def test_put_upstream_overload_validates_name_and_value_wave414() -> None:

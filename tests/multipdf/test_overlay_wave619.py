@@ -70,7 +70,7 @@ def test_overlay_creates_explicit_resources_when_page_has_only_lazy_resources() 
     assert isinstance(resources, COSDictionary)
     xobjects = resources.get_dictionary_object(COSName.get_pdf_name("XObject"))
     assert isinstance(xobjects, COSDictionary)
-    assert [name.get_name() for name in xobjects.key_set()] == ["OL0"]
+    assert [name.get_name() for name in xobjects.key_set()] == ["OL1"]
 
 
 def test_load_pdfs_filename_configuration_replaces_staged_documents() -> None:

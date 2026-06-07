@@ -201,18 +201,18 @@ def test_get_document_returns_target_document() -> None:
 
 
 def test_create_overlay_x_object_auto_allocates_form_key() -> None:
-    """Default path delegates to PDResources.add_x_object → ``Form0``."""
+    """Default path delegates to PDResources.add_x_object → ``Form1``."""
     src = _make_doc_with_one_page()
     target = _make_doc_with_one_page()
     util = LayerUtility(target)
     form = util.import_page_as_form(src, 0)
     target_page = target.get_page(0)
     name = util.create_overlay_x_object(target_page, form)
-    assert name.get_name() == "Form0"
+    assert name.get_name() == "Form1"
     # Calling again allocates the next free slot.
     form2 = util.import_page_as_form(src, 0)
     name2 = util.create_overlay_x_object(target_page, form2)
-    assert name2.get_name() == "Form1"
+    assert name2.get_name() == "Form2"
     src.close()
     target.close()
 
@@ -248,5 +248,5 @@ def test_name_already_used_returns_false_when_unset() -> None:
     target = _make_doc_with_one_page()
     util = LayerUtility(target)
     target_page = target.get_page(0)
-    assert util.name_already_used(target_page, "Form0") is False
+    assert util.name_already_used(target_page, "Form1") is False
     target.close()

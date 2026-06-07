@@ -304,10 +304,10 @@ class PDResources:
         self, xobject: PDXObject, prefix: str | None = None
     ) -> COSName:
         """Register ``xobject`` under a fresh key. Form XObjects are keyed
-        ``Form0``/``Form1``/…, image XObjects ``Im0``/``Im1``/…, unless a
+        ``Form1``/``Form2``/…, image XObjects ``Im1``/``Im2``/…, unless a
         custom ``prefix`` is supplied. Matching upstream ``createKey`` per
-        kind, returns an existing key when the same COS object is already
-        present."""
+        kind (1-based), returns an existing key when the same COS object is
+        already present."""
         # Local imports — cluster boundary, see ``get_x_object``.
         from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (  # noqa: PLC0415
             PDFormXObject,
@@ -870,14 +870,20 @@ class PDResources:
 
     @staticmethod
     def _create_key(sub: COSDictionary, prefix: str) -> COSName:
-        """Allocate ``<prefix><n>`` where ``n`` is the smallest non-negative
-        integer not already used. Mirrors upstream ``createKey``."""
-        n = 0
+        """Allocate a fresh ``<prefix><n>`` resource key. Mirrors upstream
+        ``PDResources.createKey`` byte-for-byte: the counter is seeded to the
+        sub-dictionary's ``keySet().size()`` and pre-incremented, then walked
+        upward past any collision. A freshly-created (empty) sub-dictionary
+        therefore yields ``<prefix>1`` — the numbering is **1-based**, not the
+        smallest-free-integer scheme. Note this is not the smallest free
+        integer: a sub-dict holding only ``{gs5}`` (size 1) yields ``gs2``,
+        not ``gs1``, exactly as upstream."""
+        n = len(sub.key_set())
         while True:
+            n += 1
             candidate = COSName.get_pdf_name(f"{prefix}{n}")
             if not sub.contains_key(candidate):
                 return candidate
-            n += 1
 
     def create_key(self, kind: COSName, prefix: str) -> COSName:
         """Allocate a fresh resource key for ``kind``/``prefix``. Mirrors

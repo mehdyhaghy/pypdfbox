@@ -174,7 +174,9 @@ def test_wave507_resources_add_reuses_existing_indirect_and_allocates_ocg_prefix
     ocg = PDOptionalContentGroup("Layer")
     ocg_name = res.add(ocg)
 
-    assert ocg_name.get_name() == "oc0"
+    # /Properties already holds Prop0 (size 1); createKey seeds from
+    # keySet().size() and pre-increments → oc2 (not oc1).
+    assert ocg_name.get_name() == "oc2"
 
 
 @pytest.mark.parametrize(

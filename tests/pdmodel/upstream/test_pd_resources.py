@@ -118,15 +118,16 @@ def test_get_returns_none_for_missing() -> None:
 
 
 def test_create_key_returns_unique_name() -> None:
-    """Upstream ``createKey`` (line 740) picks the smallest free
-    ``<prefix><n>`` slot in the category sub-dictionary."""
+    """Upstream ``createKey`` (line 740) seeds the counter to
+    ``keySet().size()`` and pre-increments, so it is 1-based: the first key on
+    an empty category is ``F1`` and the next is ``F2``."""
     resources = PDResources()
     first = resources.create_key(PDResources.FONT, "F")
     resources.put(PDResources.FONT, first, COSDictionary())
     second = resources.create_key(PDResources.FONT, "F")
 
-    assert first.get_name() == "F0"
-    assert second.get_name() == "F1"
+    assert first.get_name() == "F1"
+    assert second.get_name() == "F2"
 
 
 def test_is_allowed_cache_for_form_xobject_is_true() -> None:

@@ -156,7 +156,7 @@ def test_resources_add_optional_content_group_uses_oc_prefix() -> None:
 
     name = res.add(group)
 
-    assert name.get_name() == "oc0"
+    assert name.get_name() == "oc1"
     assert res.get_property_list(name).get_cos_object() is group.get_cos_object()
 
 
@@ -169,9 +169,11 @@ def test_resources_cos_value_rejects_wrapper_returning_non_cos() -> None:
         PDResources().add(PDResources.XOBJECT, BadResource())
 
 
-def test_resources_create_key_skips_occupied_suffixes() -> None:
+def test_resources_create_key_seeds_from_size() -> None:
+    # createKey seeds the counter to keySet().size() (here 2) and
+    # pre-increments to 3, so a dict already holding {Im0, Im1} yields Im3.
     subdict = COSDictionary()
     subdict.set_item(COSName.get_pdf_name("Im0"), COSStream())
     subdict.set_item(COSName.get_pdf_name("Im1"), COSStream())
 
-    assert PDResources._create_key(subdict, "Im").get_name() == "Im2"
+    assert PDResources._create_key(subdict, "Im").get_name() == "Im3"

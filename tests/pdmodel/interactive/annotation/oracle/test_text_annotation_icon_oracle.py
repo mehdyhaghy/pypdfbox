@@ -71,9 +71,11 @@ _STANDARD_NAMES = (
     PDAnnotationText.NAME_CROSS_HAIRS,
 )
 
-# Names whose operand stream is pinned byte-exact this wave (the rest are the
-# ZapfDingbats / Symbol glyph icons still on the documented approximation
-# divergence — they are not asserted operand-level here).
+# Names whose operand stream is pinned byte-exact. As of wave 1509 this is the
+# FULL standard icon set — the ZapfDingbats / Symbol glyph icons (Cross / Star /
+# Check / RightPointer / CrossHairs) that previously used hand-built
+# approximations now embed the exact upstream Standard-14 glyph outlines, so
+# every icon's operand stream is asserted here.
 _PINNED_NAMES = frozenset(
     {
         PDAnnotationText.NAME_NOTE,
@@ -83,6 +85,15 @@ _PINNED_NAMES = frozenset(
         PDAnnotationText.NAME_NEW_PARAGRAPH,
         PDAnnotationText.NAME_PARAGRAPH,
         PDAnnotationText.NAME_INSERT,
+        PDAnnotationText.NAME_CIRCLE,
+        PDAnnotationText.NAME_CROSS,
+        PDAnnotationText.NAME_STAR,
+        PDAnnotationText.NAME_CHECK,
+        PDAnnotationText.NAME_RIGHT_ARROW,
+        PDAnnotationText.NAME_RIGHT_POINTER,
+        PDAnnotationText.NAME_UP_ARROW,
+        PDAnnotationText.NAME_UP_LEFT_ARROW,
+        PDAnnotationText.NAME_CROSS_HAIRS,
     }
 )
 
@@ -280,9 +291,7 @@ def test_text_annotation_icons_match_pdfbox_exactly() -> None:
         assert py["rect"] == jr["rect"], (
             f"{label} /Rect: {py['rect']!r} != PDFBox {jr['rect']!r}"
         )
-        if not _is_pinned(jr):
-            # ZapfDingbats / Symbol glyph icons: documented approximation
-            # divergence — not asserted operand-level this wave.
+        if not _is_pinned(jr):  # pragma: no cover - every standard icon is pinned
             continue
         pinned_seen += 1
         assert py["bbox"] == jr["bbox"], (
@@ -296,17 +305,17 @@ def test_text_annotation_icons_match_pdfbox_exactly() -> None:
             f"  pypdfbox ({len(py['toks'])}): {py['toks']}\n"  # type: ignore[arg-type]
             f"  PDFBox   ({len(jr['toks'])}): {jr['toks']}"  # type: ignore[arg-type]
         )
-    # Sanity: Note, Comment, Key, Help, NewParagraph, Paragraph, Insert (x1),
-    # plus the two colour variants, plus missing-name(Note), plus unknown(NOAP).
-    assert pinned_seen == 11, f"expected 11 pinned records, asserted {pinned_seen}"
+    # Sanity: all 16 standard icons, plus the two colour variants, plus the
+    # missing-name(Note) record, plus the unknown-name(NOAP) record = 20.
+    assert pinned_seen == 20, f"expected 20 pinned records, asserted {pinned_seen}"
 
 
 @requires_oracle
 def test_help_paragraph_newparagraph_use_exact_glyph_paths() -> None:
-    """Focused regression: the three glyph-bearing icons that previously used
-    hand-built approximations now emit the exact upstream Standard-14 glyph
-    outlines. Asserts each contains the signature first glyph operand the
-    approximation never produced."""
+    """Focused regression: the three Standard-14 glyph-bearing icons that
+    previously used hand-built approximations now emit the exact upstream
+    glyph outlines. Asserts each contains the signature first glyph operand
+    the approximation never produced."""
     java = {r["name"]: r for r in _java_records() if r.get("bbox") != "NOAP"}
     signatures = {
         PDAnnotationText.NAME_HELP: ["778", "544", "m"],
@@ -324,6 +333,38 @@ def test_help_paragraph_newparagraph_use_exact_glyph_paths() -> None:
             f"{name}: missing exact glyph signature {sig} in {toks}"
         )
         # And the whole stream equals upstream.
+        assert toks == java[name]["toks"], (
+            f"{name} full stream diverges from PDFBox"
+        )
+
+
+@requires_oracle
+def test_zapf_symbol_glyph_icons_use_exact_glyph_paths() -> None:
+    """Focused regression: the five ZapfDingbats / Symbol glyph icons closed
+    in wave 1509 — Cross / Star / Check / RightPointer (ZapfDingbats) and
+    CrossHairs (Symbol) — previously emitted hand-built approximations. They
+    now embed the exact upstream Standard-14 glyph outlines, driven through
+    ``add_path`` under the fontMatrix-derived scale. Asserts each carries the
+    signature first glyph operand the approximation never produced, then that
+    the whole operand stream equals Apache PDFBox byte-for-byte."""
+    java = {r["name"]: r for r in _java_records() if r.get("bbox") != "NOAP"}
+    signatures = {
+        PDAnnotationText.NAME_CROSS: ["1493", "344", "m"],
+        PDAnnotationText.NAME_STAR: ["1606", "883", "m"],
+        PDAnnotationText.NAME_CHECK: ["1663", "1300", "m"],
+        PDAnnotationText.NAME_RIGHT_POINTER: ["1806", "709", "m"],
+        PDAnnotationText.NAME_CROSS_HAIRS: ["731", "555", "m"],
+    }
+    for name, sig in signatures.items():
+        ann = PDAnnotationText()
+        ann.set_rectangle(PDRectangle.from_xywh(50, 700, 30, 30))
+        ann.set_name(name)
+        py = _py_fingerprint(ann)
+        toks = py["toks"]
+        joined = " ".join(toks)  # type: ignore[arg-type]
+        assert " ".join(sig) in joined, (
+            f"{name}: missing exact glyph signature {sig} in {toks}"
+        )
         assert toks == java[name]["toks"], (
             f"{name} full stream diverges from PDFBox"
         )

@@ -199,7 +199,7 @@ def test_wave517_resources_register_and_cache_type0_font() -> None:
     direct_font = PDType0Font()
     direct_key = resources.add(direct_font)
 
-    assert direct_key.get_name() == "F0"
+    assert direct_key.get_name() == "F1"
     assert resources.add(direct_font) == direct_key
     # get_font always returns a typed PDFont (wave 1487); a direct entry is
     # wrapped fresh via PDFontFactory, sharing the same COS dictionary.

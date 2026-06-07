@@ -3109,6 +3109,18 @@ class COSWriter(ICOSVisitor):
             key.accept(self)
             out.write(SPACE)
             if isinstance(value, COSDictionary):
+                if not self._incremental_update:
+                    # PDFBOX-3684: on a full save, write a nested /XObject or
+                    # /Resources sub-dictionary as a DIRECT (inline) object to
+                    # save file size — but never the dict's own self-named key
+                    # (avoid a dictionary that references itself). Mirrors
+                    # upstream ``COSWriter.visitFromDictionary``.
+                    xobject_item = value.get_item(COSName.XOBJECT)
+                    if xobject_item is not None and key != COSName.XOBJECT:
+                        xobject_item.set_direct(True)
+                    resources_item = value.get_item(COSName.RESOURCES)
+                    if resources_item is not None and key != COSName.RESOURCES:
+                        resources_item.set_direct(True)
                 self._write_dictionary(value)
             elif isinstance(value, COSObject):
                 self._add_object_to_write(value)

@@ -205,7 +205,7 @@ def test_show_text_round_trip() -> None:
         cs.end_text()
     body = _stream_bytes(page)
     assert body == (
-        b"BT\n/F0 12 Tf\n50 750 Td\n(Hello World) Tj\nET\n"
+        b"BT\n/F1 12 Tf\n50 750 Td\n(Hello World) Tj\nET\n"
     )
 
 

@@ -10,7 +10,10 @@ from pypdfbox.pdmodel.graphics.shading import PDShading
 from pypdfbox.pdmodel.pd_resource_cache import DefaultResourceCache
 
 
-def test_wave537_create_key_reuses_lowest_available_gap() -> None:
+def test_wave537_create_key_seeds_from_size_not_lowest_gap() -> None:
+    # Upstream createKey seeds the counter to keySet().size() and walks
+    # upward — it does NOT fill the lowest free gap. A /Font dict holding
+    # {F0, F2} (size 2) therefore yields F3, leaving F1 unused.
     res = PDResources()
     existing = COSDictionary()
     existing.set_item(COSName.get_pdf_name("F0"), COSDictionary())
@@ -19,8 +22,8 @@ def test_wave537_create_key_reuses_lowest_available_gap() -> None:
 
     name = res.add(PDResources.FONT, COSDictionary())
 
-    assert name.get_name() == "F1"
-    assert [n.get_name() for n in res.get_font_names()] == ["F0", "F2", "F1"]
+    assert name.get_name() == "F3"
+    assert [n.get_name() for n in res.get_font_names()] == ["F0", "F2", "F3"]
 
 
 def test_wave537_general_add_accepts_custom_prefix() -> None:
@@ -28,7 +31,7 @@ def test_wave537_general_add_accepts_custom_prefix() -> None:
 
     name = res.add(PDResources.COLOR_SPACE, COSName.get_pdf_name("DeviceRGB"), prefix="CS")
 
-    assert name.get_name() == "CS0"
+    assert name.get_name() == "CS1"
     assert res.get_color_space(name) is PDDeviceRGB.INSTANCE
 
 

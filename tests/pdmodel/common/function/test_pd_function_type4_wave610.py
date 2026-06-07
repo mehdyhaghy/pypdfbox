@@ -28,24 +28,32 @@ def _make(
 
 
 def test_tokenizer_splits_adjacent_braces_and_ignores_comments() -> None:
+    # wave 1509: the program's outer ``{ ... }`` is now wrapped as the main
+    # sequence's single procedure (upstream-faithful ``InstructionSequenceBuilder``
+    # shape). The comment runs only to the newline, so ``{3 mul}if`` is still
+    # part of the program.
     fn = _make("{1 2 add% comment hides the rest\n{3 mul}if}", domain=[])
 
-    assert fn.get_instructions() == [1.0, 2.0, "add", [3.0, "mul"], "if"]
+    assert fn.get_instructions() == [[1.0, 2.0, "add", [3.0, "mul"], "if"]]
 
 
 @pytest.mark.parametrize(
-    ("body", "message"),
+    ("body", "expected"),
     [
-        ("}", "unexpected closing brace"),
-        ("{ 1 } 2", "unexpected trailing tokens"),
-        ("{ 1", "missing closing brace"),
+        # Wave 1509: pypdfbox's Type 4 parser now mirrors upstream
+        # ``InstructionSequenceBuilder``'s lenient stack semantics — ``}`` pops
+        # without a balance check, a missing close leaves the accumulated
+        # structure intact, and tokens after the outer ``}`` stay in the main
+        # sequence. None of these malformed brace shapes raise at parse time.
+        ("}", []),
+        ("{ 1 } 2", [[1.0], 2.0]),
+        ("{ 1", [[1.0]]),
     ],
 )
-def test_parse_reports_malformed_braces(body: str, message: str) -> None:
+def test_parse_malformed_braces_are_lenient(body: str, expected: list) -> None:
     fn = _make(body, domain=[])
 
-    with pytest.raises(OSError, match=message):
-        fn.get_instructions()
+    assert fn.get_instructions() == expected
 
 
 def test_eval_raises_when_range_declares_more_outputs_than_stack_has() -> None:

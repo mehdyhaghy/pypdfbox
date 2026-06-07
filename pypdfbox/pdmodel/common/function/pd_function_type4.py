@@ -181,46 +181,48 @@ def _tokenize(body: str) -> list[str]:
 
 
 def _parse(body: str) -> Instruction:
-    """Parse ``body`` into a nested instruction sequence.
+    """Parse ``body`` into a nested instruction sequence, mirroring upstream
+    ``InstructionSequenceBuilder``'s lenient stack semantics.
 
-    The outermost ``{ ... }`` wrap is required (PDF 32000-1 §7.10.5: the
-    program "shall consist of a sequence of operators and operands enclosed
-    in braces"). An empty body parses as the empty sequence.
+    Upstream PDFBox builds the program with a streaming SAX-style handler
+    (``InstructionSequenceBuilder``) that maintains a ``mainSequence`` and a
+    stack of open procedures: ``{`` adds a fresh sub-sequence to the current
+    sequence and pushes it; ``}`` simply pops the stack *without any balance
+    check*. Consequently a missing closing brace, a stray closing brace,
+    an absent outer wrapper, and tokens trailing the outer ``}`` are all
+    tolerated — the structure already accumulated into ``mainSequence``
+    survives, and the executor (see :func:`_execute`) auto-runs a trailing
+    procedure left on top of the stack. pypdfbox previously used a strict
+    recursive-descent parser that rejected every one of these malformed
+    shapes; wave 1509 aligned this path with the upstream lenience contract
+    (differential-pinned by ``FunctionEvalFuzzProbe``).
+
+    An empty body parses as the empty sequence.
     """
     tokens = _tokenize(body)
     if not tokens:
         return []
 
-    pos = [0]
-
-    def parse_block(expect_close: bool) -> Instruction:
-        seq: Instruction = []
-        while pos[0] < len(tokens):
-            tok = tokens[pos[0]]
-            pos[0] += 1
-            if tok == "{":
-                seq.append(parse_block(True))
-            elif tok == "}":
-                if not expect_close:
-                    raise OSError("unexpected closing brace in PostScript body")
-                return seq
-            else:
-                seq.append(_classify(tok))
-        if expect_close:
-            raise OSError("missing closing brace in PostScript body")
-        return seq
-
-    # Strip an optional outer { ... }; any extra braces are reported.
-    if tokens[0] == "{":
-        pos[0] = 1
-        seq = parse_block(True)
-        if pos[0] != len(tokens):
-            raise OSError(
-                f"unexpected trailing tokens in PostScript body: "
-                f"{tokens[pos[0]:]!r}"
-            )
-        return seq
-    return parse_block(False)
+    # ``main`` is upstream's ``mainSequence``; ``stack`` is its ``seqStack``,
+    # which always has at least the main sequence at the bottom. ``}`` pops
+    # the stack but never below the main sequence (Java's Stack.pop would
+    # throw EmptyStackException, but in practice the extra-close cases all
+    # leave at least the main sequence — guard against underflow so a stray
+    # ``}`` degrades to lenient instead of erroring, matching the observed
+    # Java behaviour where excess closes simply unwind to the main level).
+    main: Instruction = []
+    stack: list[Instruction] = [main]
+    for tok in tokens:
+        if tok == "{":
+            child: Instruction = []
+            stack[-1].append(child)
+            stack.append(child)
+        elif tok == "}":
+            if len(stack) > 1:
+                stack.pop()
+        else:
+            stack[-1].append(_classify(tok))
+    return main
 
 
 def _classify(tok: str) -> float | bool | str:
@@ -312,6 +314,14 @@ def _execute(sequence: Instruction, stack: Stack) -> None:
         if op is None:
             raise OSError(f"unsupported PostScript operator: {token!r}")
         op(stack)
+
+    # Upstream ``InstructionSequence.execute`` finishes by auto-running any
+    # procedure left on top of the stack (PDFunctionType4's top-level program
+    # is itself a procedure pushed by the outer ``{``; this is what runs it).
+    # A ``while`` loop drains a chain of trailing procs, mirroring upstream.
+    while stack and isinstance(stack[-1], list):
+        nested = stack.pop()
+        _execute(nested, stack)
 
 
 # ---------- operators ----------

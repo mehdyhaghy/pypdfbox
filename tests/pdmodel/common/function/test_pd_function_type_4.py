@@ -118,26 +118,29 @@ def test_unknown_operator_raises() -> None:
         fn.eval([])
 
 
-def test_trailing_tokens_after_closing_brace_raise() -> None:
-    """Parser must reject body with extra tokens past the outer `}`."""
-    fn = _make("{ 1 } 99", domain=[])
-    with pytest.raises(OSError):
-        fn.eval([])
+def test_trailing_tokens_after_closing_brace_are_lenient() -> None:
+    """Wave 1509: upstream ``InstructionSequenceBuilder`` keeps tokens trailing
+    the outer ``}`` in the main sequence rather than rejecting them. With
+    /Range declaring one output, ``{ 1 } 99`` yields the trailing ``99``
+    (the executor runs the ``{ 1 }`` proc, then ``99`` is the top output)."""
+    fn = _make("{ 1 } 99", domain=[], rng=[0, 1000])
+    assert fn.eval([]) == pytest.approx([99.0])
 
 
-def test_missing_closing_brace_raises() -> None:
-    """A malformed body with an unterminated procedure must be rejected."""
-    fn = _make("{ 1 2 add", domain=[])
-    with pytest.raises(OSError, match="missing closing brace"):
-        fn.eval([])
+def test_missing_closing_brace_is_lenient() -> None:
+    """Wave 1509: a missing closing brace no longer raises. Upstream's builder
+    pops its proc stack without a balance check, so the structure already
+    accumulated survives — ``{ 1 2 add`` runs as ``1 2 add`` -> 3."""
+    fn = _make("{ 1 2 add", domain=[], rng=[0, 1000])
+    assert fn.eval([]) == pytest.approx([3.0])
 
 
-def test_unmatched_closing_brace_without_outer_wrapper_raises() -> None:
-    """Outer braces are optional for lenient real-world streams, but a stray
-    closing brace is still malformed."""
-    fn = _make("1 }", domain=[])
-    with pytest.raises(OSError, match="unexpected closing brace"):
-        fn.eval([])
+def test_unmatched_closing_brace_without_outer_wrapper_is_lenient() -> None:
+    """Wave 1509: a stray closing brace simply unwinds the builder's proc
+    stack (upstream ``}`` = ``seqStack.pop()`` with no check), leaving the
+    preceding ``1`` as the program output."""
+    fn = _make("1 }", domain=[], rng=[0, 1000])
+    assert fn.eval([]) == pytest.approx([1.0])
 
 
 # --------------------------------------------------------------------------

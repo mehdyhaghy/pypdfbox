@@ -178,10 +178,10 @@ def test_set_stroking_color_space_named_registers_resource() -> None:
     with PDPageContentStream(doc, page) as cs:
         cs.set_stroking_color_space(icc)
     body = _stream_bytes(page)
-    assert body == b"/cs0 CS\n"
+    assert body == b"/cs1 CS\n"
     res = page.get_resources()
     keys = [n.get_name() for n in res.get_color_space_names()]
-    assert keys == ["cs0"]
+    assert keys == ["cs1"]
 
 
 def test_set_color_space_reuses_existing_key() -> None:
@@ -200,9 +200,9 @@ def test_set_color_space_reuses_existing_key() -> None:
         cs.set_stroking_color_space(icc)
         cs.set_non_stroking_color_space(icc)
     body = _stream_bytes(page)
-    assert body == b"/cs0 CS\n/cs0 cs\n"
+    assert body == b"/cs1 CS\n/cs1 cs\n"
     res = page.get_resources()
-    assert [n.get_name() for n in res.get_color_space_names()] == ["cs0"]
+    assert [n.get_name() for n in res.get_color_space_names()] == ["cs1"]
 
 
 # ----------------------------------------------------------------------

@@ -63,14 +63,23 @@ class PDAnnotationSound(PDAnnotationMarkup):
     def construct_appearances(self, document: PDDocument | None = None) -> None:
         """Generate sound annotation appearances.
 
-        A custom handler, when configured, is invoked exactly as upstream does.
-        The built-in ``PDSoundAppearanceHandler`` is not ported yet, so the
-        default path remains a no-op like the base annotation implementation.
+        Mirrors upstream ``PDAnnotationSound.constructAppearances(PDDocument)``:
+        with no custom handler configured, a :class:`PDSoundAppearanceHandler`
+        is instantiated and its ``generate_appearance_streams`` driven. That
+        built-in handler is a faithful port of the upstream stub whose three
+        ``generate*`` methods are ``// TODO to be implemented`` no-ops, so the
+        default path writes no appearance stream — exactly as Apache PDFBox.
         """
         if self._custom_appearance_handler is not None:
             self._custom_appearance_handler.generate_appearance_streams()
             return None
-        return super().construct_appearances(document)
+        from .handlers.pd_sound_appearance_handler import (
+            PDSoundAppearanceHandler,
+        )
+
+        appearance_handler = PDSoundAppearanceHandler(self, document)
+        appearance_handler.generate_appearance_streams()
+        return None
 
     # ---------- /Sound (sound stream, required) ----------
 

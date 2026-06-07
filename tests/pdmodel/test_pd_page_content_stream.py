@@ -143,10 +143,10 @@ def test_begin_text_set_font_show_text_end_text() -> None:
         cs.show_text("Hi")
         cs.end_text()
     body = _stream_bytes(page)
-    assert body == b"BT\n/F0 12 Tf\n(Hi) Tj\nET\n"
-    # Font auto-registered on the page resources under "F0".
+    assert body == b"BT\n/F1 12 Tf\n(Hi) Tj\nET\n"
+    # Font auto-registered on the page resources under "F1".
     res = page.get_resources()
-    assert "F0" in [n.get_name() for n in res.get_font_names()]
+    assert "F1" in [n.get_name() for n in res.get_font_names()]
 
 
 def test_show_text_escapes_parens_and_backslash() -> None:
@@ -208,9 +208,9 @@ def test_set_font_reuses_existing_key() -> None:
     font.get_cos_object().set_name(COSName.get_pdf_name("BaseFont"), "Helvetica")
     with PDPageContentStream(doc, page) as cs:
         cs.set_font(font, 10)
-        cs.set_font(font, 12)  # second call should reuse F0, not allocate F1
+        cs.set_font(font, 12)  # second call should reuse F1, not allocate F2
     res = page.get_resources()
-    assert [n.get_name() for n in res.get_font_names()] == ["F0"]
+    assert [n.get_name() for n in res.get_font_names()] == ["F1"]
 
 
 # ------------------------------------------------------------------
@@ -249,9 +249,9 @@ def test_draw_image_auto_assigns_im0() -> None:
         cs.draw_image(img, 10, 20)
     body = _stream_bytes(page)
     # Default w/h = intrinsic 100 x 50.
-    assert body == b"q\n100 0 0 50 10 20 cm\n/Im0 Do\nQ\n"
+    assert body == b"q\n100 0 0 50 10 20 cm\n/Im1 Do\nQ\n"
     res = page.get_resources()
-    assert [n.get_name() for n in res.get_xobject_names()] == ["Im0"]
+    assert [n.get_name() for n in res.get_xobject_names()] == ["Im1"]
 
 
 def test_draw_image_assigns_im0_im1_for_two_images() -> None:
@@ -263,7 +263,7 @@ def test_draw_image_assigns_im0_im1_for_two_images() -> None:
         cs.draw_image(img1, 0, 0, 10, 10)
         cs.draw_image(img2, 20, 20, 5, 5)
     res = page.get_resources()
-    assert sorted(n.get_name() for n in res.get_xobject_names()) == ["Im0", "Im1"]
+    assert sorted(n.get_name() for n in res.get_xobject_names()) == ["Im1", "Im2"]
 
 
 def test_draw_image_reuses_existing_key() -> None:
@@ -274,7 +274,7 @@ def test_draw_image_reuses_existing_key() -> None:
         cs.draw_image(img, 0, 0, 10, 10)
         cs.draw_image(img, 50, 50, 10, 10)
     res = page.get_resources()
-    assert [n.get_name() for n in res.get_xobject_names()] == ["Im0"]
+    assert [n.get_name() for n in res.get_xobject_names()] == ["Im1"]
 
 
 def test_draw_image_native_size_two_arg_position() -> None:
@@ -286,7 +286,7 @@ def test_draw_image_native_size_two_arg_position() -> None:
     with PDPageContentStream(doc, page) as cs:
         cs.draw_image(img, 7, 8)
     body = _stream_bytes(page)
-    assert body == b"q\n100 0 0 50 7 8 cm\n/Im0 Do\nQ\n"
+    assert body == b"q\n100 0 0 50 7 8 cm\n/Im1 Do\nQ\n"
 
 
 def test_draw_image_with_explicit_scaled_dimensions() -> None:
@@ -298,7 +298,7 @@ def test_draw_image_with_explicit_scaled_dimensions() -> None:
         cs.draw_image(img, 1.5, 2.5, 200, 100)
     body = _stream_bytes(page)
     # CTM order matches ``a b c d e f cm`` (= width 0 0 height x y).
-    assert body == b"q\n200 0 0 100 1.5 2.5 cm\n/Im0 Do\nQ\n"
+    assert body == b"q\n200 0 0 100 1.5 2.5 cm\n/Im1 Do\nQ\n"
 
 
 def test_draw_image_full_custom_ctm_tuple() -> None:
@@ -312,7 +312,7 @@ def test_draw_image_full_custom_ctm_tuple() -> None:
         cs.draw_image(img, matrix)
     body = _stream_bytes(page)
     # CTM bytes preserve the input matrix verbatim, wrapped in q/Q.
-    assert body == b"q\n50 0 0 25 100 200 cm\n/Im0 Do\nQ\n"
+    assert body == b"q\n50 0 0 25 100 200 cm\n/Im1 Do\nQ\n"
 
 
 def test_draw_image_full_custom_ctm_list_with_rotation() -> None:
@@ -325,7 +325,7 @@ def test_draw_image_full_custom_ctm_list_with_rotation() -> None:
     with PDPageContentStream(doc, page) as cs:
         cs.draw_image(img, [0, 100, -100, 0, 50, 60])
     body = _stream_bytes(page)
-    assert body == b"q\n0 100 -100 0 50 60 cm\n/Im0 Do\nQ\n"
+    assert body == b"q\n0 100 -100 0 50 60 cm\n/Im1 Do\nQ\n"
 
 
 def test_draw_image_matrix_overload_rejects_wrong_arity() -> None:
@@ -408,7 +408,7 @@ def test_draw_image_path_without_factories_raises_not_implemented(
 def test_draw_image_with_path_uses_lossless_factory(tmp_path) -> None:
     """End-to-end: passing a PNG path to ``draw_image`` lazy-imports the
     factories, builds a PDImageXObject under the hood, and emits the
-    expected ``q ... cm /Im0 Do Q`` byte sequence."""
+    expected ``q ... cm /Im1 Do Q`` byte sequence."""
     from PIL import Image as _PILImage
 
     src = tmp_path / "tile.png"
@@ -419,11 +419,11 @@ def test_draw_image_with_path_uses_lossless_factory(tmp_path) -> None:
     with PDPageContentStream(doc, page) as cs:
         cs.draw_image(src, 5, 5, 100, 50)
     body = _stream_bytes(page)
-    # Width 100, height 50, anchor (5,5) — single XObject auto-named Im0.
-    assert body == b"q\n100 0 0 50 5 5 cm\n/Im0 Do\nQ\n"
+    # Width 100, height 50, anchor (5,5) — single XObject auto-named Im1.
+    assert body == b"q\n100 0 0 50 5 5 cm\n/Im1 Do\nQ\n"
     res = page.get_resources()
     names = [n.get_name() for n in res.get_xobject_names()]
-    assert names == ["Im0"]
+    assert names == ["Im1"]
 
 
 def test_draw_image_with_jpeg_bytes_uses_jpeg_factory(tmp_path) -> None:
@@ -440,9 +440,9 @@ def test_draw_image_with_jpeg_bytes_uses_jpeg_factory(tmp_path) -> None:
     with PDPageContentStream(doc, page) as cs:
         cs.draw_image(raw, 0, 0)  # native size (8x8)
     body = _stream_bytes(page)
-    assert body == b"q\n8 0 0 8 0 0 cm\n/Im0 Do\nQ\n"
+    assert body == b"q\n8 0 0 8 0 0 cm\n/Im1 Do\nQ\n"
     img = page.get_resources().get_x_object(
-        COSName.get_pdf_name("Im0")
+        COSName.get_pdf_name("Im1")
     )
     filters = [n.get_name() for n in img.get_cos_object().get_filter_list()]
     assert filters == ["DCTDecode"]
@@ -455,7 +455,7 @@ def test_draw_form_emits_do_with_form_key() -> None:
     with PDPageContentStream(doc, page) as cs:
         cs.draw_form(form, 5, 6)
     body = _stream_bytes(page)
-    assert body == b"q\n1 0 0 1 5 6 cm\n/Form0 Do\nQ\n"
+    assert body == b"q\n1 0 0 1 5 6 cm\n/Form1 Do\nQ\n"
 
 
 def test_draw_form_at_origin_skips_redundant_cm() -> None:
@@ -465,7 +465,7 @@ def test_draw_form_at_origin_skips_redundant_cm() -> None:
     with PDPageContentStream(doc, page) as cs:
         cs.draw_form(form)
     body = _stream_bytes(page)
-    assert body == b"q\n/Form0 Do\nQ\n"
+    assert body == b"q\n/Form1 Do\nQ\n"
 
 
 # ------------------------------------------------------------------
@@ -729,12 +729,12 @@ def test_begin_marked_content_with_property_list_registers_resource() -> None:
         cs.end_marked_content()
 
     body = _stream_bytes(page)
-    assert b"/OC /Prop0 BDC" in body
+    assert b"/OC /Prop1 BDC" in body
     res = page.get_resources().get_cos_object().get_dictionary_object(
         COSName.get_pdf_name("Properties")
     )
     assert res is not None
-    assert res.get_dictionary_object(COSName.get_pdf_name("Prop0")) is ocg.get_cos_object()
+    assert res.get_dictionary_object(COSName.get_pdf_name("Prop1")) is ocg.get_cos_object()
 
 
 def test_marked_content_point_emits_mp_and_dp() -> None:
@@ -762,7 +762,7 @@ def test_marked_content_property_list_reuses_existing_key() -> None:
 
     body = _stream_bytes(page)
     # Both entries reuse MC0 — only one Properties slot allocated.
-    assert body.count(b"/OC /Prop0 BDC") == 2
+    assert body.count(b"/OC /Prop1 BDC") == 2
     res = page.get_resources().get_cos_object().get_dictionary_object(
         COSName.get_pdf_name("Properties")
     )
@@ -926,8 +926,8 @@ def test_show_text_with_positioning_empty_list() -> None:
 
 def test_set_graphics_state_parameters_emits_gs_with_registered_key() -> None:
     """``set_graphics_state_parameters(PDExtendedGraphicsState)`` registers
-    the dictionary under /Resources/ExtGState (key ``gs0``) and emits
-    ``/gs0 gs``."""
+    the dictionary under /Resources/ExtGState (key ``gs1``) and emits
+    ``/gs1 gs``."""
     from pypdfbox.pdmodel.graphics.state.pd_extended_graphics_state import (
         PDExtendedGraphicsState,
     )
@@ -940,17 +940,17 @@ def test_set_graphics_state_parameters_emits_gs_with_registered_key() -> None:
     with PDPageContentStream(doc, page) as cs:
         cs.set_graphics_state_parameters(ext)
 
-    assert _stream_bytes(page) == b"/gs0 gs\n"
+    assert _stream_bytes(page) == b"/gs1 gs\n"
     res = page.get_resources().get_cos_object().get_dictionary_object(
         COSName.get_pdf_name("ExtGState")
     )
     assert res is not None
-    assert res.get_dictionary_object(COSName.get_pdf_name("gs0")) is ext.get_cos_object()
+    assert res.get_dictionary_object(COSName.get_pdf_name("gs1")) is ext.get_cos_object()
 
 
 def test_set_graphics_state_parameters_reuses_existing_key() -> None:
     """A second call with the same ExtGState reuses the existing slot
-    (no new gs1 is allocated)."""
+    (no new gs2 is allocated)."""
     from pypdfbox.pdmodel.graphics.state.pd_extended_graphics_state import (
         PDExtendedGraphicsState,
     )
@@ -964,27 +964,27 @@ def test_set_graphics_state_parameters_reuses_existing_key() -> None:
         cs.set_graphics_state_parameters(ext)
         cs.set_graphics_state_parameters(ext)
 
-    assert _stream_bytes(page) == b"/gs0 gs\n/gs0 gs\n"
+    assert _stream_bytes(page) == b"/gs1 gs\n/gs1 gs\n"
     sub = page.get_resources().get_cos_object().get_dictionary_object(
         COSName.get_pdf_name("ExtGState")
     )
-    assert [n.get_name() for n in sub.key_set()] == ["gs0"]
+    assert [n.get_name() for n in sub.key_set()] == ["gs1"]
 
 
 def test_set_stroking_alpha_constant_creates_extgstate_with_ca() -> None:
     """``set_stroking_alpha_constant(0.5)`` registers a fresh ExtGState
-    carrying ``/CA 0.5`` and emits ``/gs0 gs``."""
+    carrying ``/CA 0.5`` and emits ``/gs1 gs``."""
     doc = PDDocument()
     page = _make_page(doc)
 
     with PDPageContentStream(doc, page) as cs:
         cs.set_stroking_alpha_constant(0.5)
 
-    assert _stream_bytes(page) == b"/gs0 gs\n"
+    assert _stream_bytes(page) == b"/gs1 gs\n"
     sub = page.get_resources().get_cos_object().get_dictionary_object(
         COSName.get_pdf_name("ExtGState")
     )
-    gs = sub.get_dictionary_object(COSName.get_pdf_name("gs0"))
+    gs = sub.get_dictionary_object(COSName.get_pdf_name("gs1"))
     assert gs.get_float(COSName.get_pdf_name("CA")) == 0.5
     # Non-stroking key not set.
     assert gs.get_dictionary_object(COSName.get_pdf_name("ca")) is None
@@ -998,18 +998,18 @@ def test_set_non_stroking_alpha_constant_creates_extgstate_with_ca_lower() -> No
     with PDPageContentStream(doc, page) as cs:
         cs.set_non_stroking_alpha_constant(0.25)
 
-    assert _stream_bytes(page) == b"/gs0 gs\n"
+    assert _stream_bytes(page) == b"/gs1 gs\n"
     sub = page.get_resources().get_cos_object().get_dictionary_object(
         COSName.get_pdf_name("ExtGState")
     )
-    gs = sub.get_dictionary_object(COSName.get_pdf_name("gs0"))
+    gs = sub.get_dictionary_object(COSName.get_pdf_name("gs1"))
     assert gs.get_float(COSName.get_pdf_name("ca")) == 0.25
     assert gs.get_dictionary_object(COSName.get_pdf_name("CA")) is None
 
 
 def test_set_stroking_then_non_stroking_alpha_allocates_two_extgstates() -> None:
     """Two separate alpha calls allocate two distinct ExtGState slots
-    (``gs0``, ``gs1``) — each helper builds a fresh ExtGState."""
+    (``gs1``, ``gs2``) — each helper builds a fresh ExtGState."""
     doc = PDDocument()
     page = _make_page(doc)
 
@@ -1017,16 +1017,16 @@ def test_set_stroking_then_non_stroking_alpha_allocates_two_extgstates() -> None
         cs.set_stroking_alpha_constant(0.7)
         cs.set_non_stroking_alpha_constant(0.4)
 
-    assert _stream_bytes(page) == b"/gs0 gs\n/gs1 gs\n"
+    assert _stream_bytes(page) == b"/gs1 gs\n/gs2 gs\n"
     sub = page.get_resources().get_cos_object().get_dictionary_object(
         COSName.get_pdf_name("ExtGState")
     )
-    assert sorted(n.get_name() for n in sub.key_set()) == ["gs0", "gs1"]
+    assert sorted(n.get_name() for n in sub.key_set()) == ["gs1", "gs2"]
 
 
 def test_set_blend_mode_with_blend_mode_instance() -> None:
     """``set_blend_mode(BlendMode.MULTIPLY)`` registers an ExtGState
-    carrying ``/BM /Multiply`` and emits ``/gs0 gs``."""
+    carrying ``/BM /Multiply`` and emits ``/gs1 gs``."""
     from pypdfbox.pdmodel.graphics.blend_mode import BlendMode
 
     doc = PDDocument()
@@ -1035,11 +1035,11 @@ def test_set_blend_mode_with_blend_mode_instance() -> None:
     with PDPageContentStream(doc, page) as cs:
         cs.set_blend_mode(BlendMode.MULTIPLY)
 
-    assert _stream_bytes(page) == b"/gs0 gs\n"
+    assert _stream_bytes(page) == b"/gs1 gs\n"
     sub = page.get_resources().get_cos_object().get_dictionary_object(
         COSName.get_pdf_name("ExtGState")
     )
-    gs = sub.get_dictionary_object(COSName.get_pdf_name("gs0"))
+    gs = sub.get_dictionary_object(COSName.get_pdf_name("gs1"))
     assert gs.get_name(COSName.get_pdf_name("BM")) == "Multiply"
 
 
@@ -1051,11 +1051,11 @@ def test_set_blend_mode_with_string_name() -> None:
     with PDPageContentStream(doc, page) as cs:
         cs.set_blend_mode("Screen")
 
-    assert _stream_bytes(page) == b"/gs0 gs\n"
+    assert _stream_bytes(page) == b"/gs1 gs\n"
     sub = page.get_resources().get_cos_object().get_dictionary_object(
         COSName.get_pdf_name("ExtGState")
     )
-    gs = sub.get_dictionary_object(COSName.get_pdf_name("gs0"))
+    gs = sub.get_dictionary_object(COSName.get_pdf_name("gs1"))
     assert gs.get_name(COSName.get_pdf_name("BM")) == "Screen"
 
 
@@ -1072,11 +1072,11 @@ def test_set_softmask_with_dict_writes_smask_entry() -> None:
     with PDPageContentStream(doc, page) as cs:
         cs.set_softmask(smask_dict)
 
-    assert _stream_bytes(page) == b"/gs0 gs\n"
+    assert _stream_bytes(page) == b"/gs1 gs\n"
     sub = page.get_resources().get_cos_object().get_dictionary_object(
         COSName.get_pdf_name("ExtGState")
     )
-    gs = sub.get_dictionary_object(COSName.get_pdf_name("gs0"))
+    gs = sub.get_dictionary_object(COSName.get_pdf_name("gs1"))
     assert gs.get_dictionary_object(COSName.get_pdf_name("SMask")) is smask_dict
 
 
@@ -1105,7 +1105,7 @@ def _make_shading_pattern():  # type: ignore[no-untyped-def]
 
 def test_set_stroking_pattern_emits_pattern_cs_and_scn() -> None:
     """``set_stroking_pattern(pattern)`` emits
-    ``/Pattern CS /p0 SCN`` and registers under /Resources/Pattern."""
+    ``/Pattern CS /p1 SCN`` and registers under /Resources/Pattern."""
     doc = PDDocument()
     page = _make_page(doc)
     pat = _make_tiling_pattern()
@@ -1113,15 +1113,15 @@ def test_set_stroking_pattern_emits_pattern_cs_and_scn() -> None:
     with PDPageContentStream(doc, page) as cs:
         cs.set_stroking_pattern(pat)
 
-    assert _stream_bytes(page) == b"/Pattern CS\n/p0 SCN\n"
+    assert _stream_bytes(page) == b"/Pattern CS\n/p1 SCN\n"
     sub = page.get_resources().get_cos_object().get_dictionary_object(
         COSName.get_pdf_name("Pattern")
     )
-    assert sub.get_dictionary_object(COSName.get_pdf_name("p0")) is pat.get_cos_object()
+    assert sub.get_dictionary_object(COSName.get_pdf_name("p1")) is pat.get_cos_object()
 
 
 def test_set_non_stroking_pattern_emits_lowercase_operators() -> None:
-    """Non-stroking variant emits ``/Pattern cs`` + ``/p0 scn``."""
+    """Non-stroking variant emits ``/Pattern cs`` + ``/p1 scn``."""
     doc = PDDocument()
     page = _make_page(doc)
     pat = _make_shading_pattern()
@@ -1129,11 +1129,11 @@ def test_set_non_stroking_pattern_emits_lowercase_operators() -> None:
     with PDPageContentStream(doc, page) as cs:
         cs.set_non_stroking_pattern(pat)
 
-    assert _stream_bytes(page) == b"/Pattern cs\n/p0 scn\n"
+    assert _stream_bytes(page) == b"/Pattern cs\n/p1 scn\n"
     sub = page.get_resources().get_cos_object().get_dictionary_object(
         COSName.get_pdf_name("Pattern")
     )
-    assert sub.get_dictionary_object(COSName.get_pdf_name("p0")) is pat.get_cos_object()
+    assert sub.get_dictionary_object(COSName.get_pdf_name("p1")) is pat.get_cos_object()
 
 
 def test_set_non_stroking_pattern_with_color_components_uncolored_tiling() -> None:
@@ -1148,11 +1148,11 @@ def test_set_non_stroking_pattern_with_color_components_uncolored_tiling() -> No
         cs.set_non_stroking_pattern(pat, [1.0, 0.0, 0.0])
 
     # Components emitted as bare numeric operands; pattern name follows.
-    assert _stream_bytes(page) == b"/Pattern cs\n1 0 0 /p0 scn\n"
+    assert _stream_bytes(page) == b"/Pattern cs\n1 0 0 /p1 scn\n"
 
 
 def test_set_stroking_pattern_reuses_existing_key() -> None:
-    """A second call with the same pattern reuses ``p0`` rather than
+    """A second call with the same pattern reuses ``p1`` rather than
     allocating a fresh slot."""
     doc = PDDocument()
     page = _make_page(doc)
@@ -1165,11 +1165,11 @@ def test_set_stroking_pattern_reuses_existing_key() -> None:
     sub = page.get_resources().get_cos_object().get_dictionary_object(
         COSName.get_pdf_name("Pattern")
     )
-    assert [n.get_name() for n in sub.key_set()] == ["p0"]
+    assert [n.get_name() for n in sub.key_set()] == ["p1"]
 
 
 def test_two_distinct_patterns_get_separate_keys() -> None:
-    """Two distinct PDAbstractPattern objects → ``p0`` and ``p1``."""
+    """Two distinct PDAbstractPattern objects → ``p1`` and ``p2``."""
     doc = PDDocument()
     page = _make_page(doc)
     pat_a = _make_tiling_pattern()
@@ -1182,7 +1182,7 @@ def test_two_distinct_patterns_get_separate_keys() -> None:
     sub = page.get_resources().get_cos_object().get_dictionary_object(
         COSName.get_pdf_name("Pattern")
     )
-    assert sorted(n.get_name() for n in sub.key_set()) == ["p0", "p1"]
+    assert sorted(n.get_name() for n in sub.key_set()) == ["p1", "p2"]
 
 
 def test_set_stroking_pattern_rejects_non_pattern() -> None:
@@ -1207,7 +1207,7 @@ def _make_shading():  # type: ignore[no-untyped-def]
 
 def test_shading_fill_emits_sh_with_registered_key() -> None:
     """``shading_fill(shading)`` registers the shading under
-    /Resources/Shading (key ``sh0``) and emits ``/sh0 sh``."""
+    /Resources/Shading (key ``sh1``) and emits ``/sh1 sh``."""
     doc = PDDocument()
     page = _make_page(doc)
     sh = _make_shading()
@@ -1215,15 +1215,15 @@ def test_shading_fill_emits_sh_with_registered_key() -> None:
     with PDPageContentStream(doc, page) as cs:
         cs.shading_fill(sh)
 
-    assert _stream_bytes(page) == b"/sh0 sh\n"
+    assert _stream_bytes(page) == b"/sh1 sh\n"
     sub = page.get_resources().get_cos_object().get_dictionary_object(
         COSName.get_pdf_name("Shading")
     )
-    assert sub.get_dictionary_object(COSName.get_pdf_name("sh0")) is sh.get_cos_object()
+    assert sub.get_dictionary_object(COSName.get_pdf_name("sh1")) is sh.get_cos_object()
 
 
 def test_shading_fill_reuses_existing_key() -> None:
-    """A second shading_fill with the same shading reuses ``sh0``."""
+    """A second shading_fill with the same shading reuses ``sh1``."""
     doc = PDDocument()
     page = _make_page(doc)
     sh = _make_shading()
@@ -1232,15 +1232,15 @@ def test_shading_fill_reuses_existing_key() -> None:
         cs.shading_fill(sh)
         cs.shading_fill(sh)
 
-    assert _stream_bytes(page) == b"/sh0 sh\n/sh0 sh\n"
+    assert _stream_bytes(page) == b"/sh1 sh\n/sh1 sh\n"
     sub = page.get_resources().get_cos_object().get_dictionary_object(
         COSName.get_pdf_name("Shading")
     )
-    assert [n.get_name() for n in sub.key_set()] == ["sh0"]
+    assert [n.get_name() for n in sub.key_set()] == ["sh1"]
 
 
 def test_two_distinct_shadings_get_separate_keys() -> None:
-    """Two distinct shadings → ``sh0`` and ``sh1``."""
+    """Two distinct shadings → ``sh1`` and ``sh2``."""
     doc = PDDocument()
     page = _make_page(doc)
     sh_a = _make_shading()
@@ -1253,7 +1253,7 @@ def test_two_distinct_shadings_get_separate_keys() -> None:
     sub = page.get_resources().get_cos_object().get_dictionary_object(
         COSName.get_pdf_name("Shading")
     )
-    assert sorted(n.get_name() for n in sub.key_set()) == ["sh0", "sh1"]
+    assert sorted(n.get_name() for n in sub.key_set()) == ["sh1", "sh2"]
 
 
 def test_shading_fill_rejects_non_shading() -> None:
@@ -1288,23 +1288,23 @@ def test_alpha_blend_pattern_shading_combined_round_trip() -> None:
         cs.shading_fill(sh)
 
     body = _stream_bytes(page)
-    # Three ExtGState slots (gs0=alpha, gs1=blend), one pattern (p0),
-    # one shading (sh0). gs2 etc. not allocated.
-    assert b"/gs0 gs" in body  # alpha
-    assert b"/gs1 gs" in body  # blend
+    # Two ExtGState slots (gs1=alpha, gs2=blend), one pattern (p1),
+    # one shading (sh1). gs3 etc. not allocated.
+    assert b"/gs1 gs" in body  # alpha
+    assert b"/gs2 gs" in body  # blend
     assert b"/Pattern cs" in body
-    assert b"/p0 scn" in body
+    assert b"/p1 scn" in body
     assert b"0 0 100 100 re" in body
     assert b"f\n" in body
-    assert b"/sh0 sh" in body
+    assert b"/sh1 sh" in body
 
     res = page.get_resources().get_cos_object()
     ext = res.get_dictionary_object(COSName.get_pdf_name("ExtGState"))
-    assert sorted(n.get_name() for n in ext.key_set()) == ["gs0", "gs1"]
+    assert sorted(n.get_name() for n in ext.key_set()) == ["gs1", "gs2"]
     pat_sub = res.get_dictionary_object(COSName.get_pdf_name("Pattern"))
-    assert [n.get_name() for n in pat_sub.key_set()] == ["p0"]
+    assert [n.get_name() for n in pat_sub.key_set()] == ["p1"]
     sh_sub = res.get_dictionary_object(COSName.get_pdf_name("Shading"))
-    assert [n.get_name() for n in sh_sub.key_set()] == ["sh0"]
+    assert [n.get_name() for n in sh_sub.key_set()] == ["sh1"]
 
 
 # ------------------------------------------------------------------

@@ -153,26 +153,32 @@ def test_groupings_are_immutable_tuples() -> None:
 
 
 def test_get_instructions_returns_parsed_sequence() -> None:
-    """``get_instructions`` returns the parsed nested list. ``5 6 add``
-    parses to ``[5.0, 6.0, "add"]``."""
+    """``get_instructions`` returns the parsed ``mainSequence``. Mirroring
+    upstream ``InstructionSequenceBuilder`` (wave 1509), the program's outer
+    ``{ ... }`` becomes a nested procedure of the main sequence, so
+    ``{ 5 6 add }`` parses to ``[[5.0, 6.0, "add"]]``; the executor auto-runs
+    that trailing procedure."""
     fn = _make("{ 5 6 add }", domain=[])
     seq = fn.get_instructions()
-    assert seq == [5.0, 6.0, "add"]
+    assert seq == [[5.0, 6.0, "add"]]
 
 
 def test_get_instructions_empty_body_is_empty_list() -> None:
+    # ``{ }`` -> main sequence holding one empty procedure (wave 1509 lenient
+    # upstream-faithful parser); a fully empty body still parses to ``[]``.
     fn = _make("{ }", domain=[])
-    assert fn.get_instructions() == []
+    assert fn.get_instructions() == [[]]
 
 
 def test_get_instructions_nested_procs_become_sublists() -> None:
     """A ``{ ... }`` block inside the program becomes a Python sub-list."""
     fn = _make("{ true { 1 2 add } if }", domain=[])
     seq = fn.get_instructions()
-    # Outer: [True, [1.0, 2.0, "add"], "if"]
-    assert seq[0] is True
-    assert seq[1] == [1.0, 2.0, "add"]
-    assert seq[2] == "if"
+    # mainSequence wraps the program proc (wave 1509): [[True, [...], "if"]]
+    program = seq[0]
+    assert program[0] is True
+    assert program[1] == [1.0, 2.0, "add"]
+    assert program[2] == "if"
 
 
 def test_get_instructions_caches_same_list_across_calls() -> None:

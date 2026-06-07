@@ -73,7 +73,7 @@ def test_wave686_add_infers_typed_pattern_and_shading_categories() -> None:
     pattern_name = resources.add(_tiling_pattern())
     shading_name = resources.add(_shading_type2())
 
-    assert pattern_name.get_name() == "p0"
-    assert shading_name.get_name() == "sh0"
+    assert pattern_name.get_name() == "p1"
+    assert shading_name.get_name() == "sh1"
     assert resources.has_pattern(pattern_name)
     assert resources.has_shading(shading_name)

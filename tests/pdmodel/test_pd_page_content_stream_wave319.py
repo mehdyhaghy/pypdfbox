@@ -7,7 +7,7 @@ from pypdfbox.pdmodel.pd_page_content_stream import PDPageContentStream
 
 _FONT = COSName.get_pdf_name("Font")
 _F0 = COSName.get_pdf_name("F0")
-_F1 = COSName.get_pdf_name("F1")
+_F2 = COSName.get_pdf_name("F2")
 _PARENT = COSName.get_pdf_name("Parent")
 _RESOURCES = COSName.get_pdf_name("Resources")
 _TYPE = COSName.get_pdf_name("Type")
@@ -40,5 +40,7 @@ def test_wave319_content_stream_reuses_inherited_resources_without_shadowing() -
     assert page.get_cos_object().get_dictionary_object(_RESOURCES) is None
     assert page.get_resources().get_cos_object() is parent_resources
     assert parent_fonts.get_dictionary_object(_F0) is inherited_font
-    assert parent_fonts.get_dictionary_object(_F1) is font.get_cos_object()
-    assert page.get_contents() == b"BT\n/F1 12 Tf\n(Hi) Tj\nET\n"
+    # createKey seeds from keySet().size() (1, for the inherited F0) and
+    # pre-increments → F2 (not the lowest free slot F1).
+    assert parent_fonts.get_dictionary_object(_F2) is font.get_cos_object()
+    assert page.get_contents() == b"BT\n/F2 12 Tf\n(Hi) Tj\nET\n"

@@ -61,8 +61,8 @@ def test_draw_image_jpeg_path_uses_jpeg_factory(
     with PDPageContentStream(doc, page) as cs:
         cs.draw_image(src, 1, 2)
 
-    assert _stream_bytes(page) == b"q\n3 0 0 2 1 2 cm\n/Im0 Do\nQ\n"
-    xobject = page.get_resources().get_x_object(COSName.get_pdf_name("Im0"))
+    assert _stream_bytes(page) == b"q\n3 0 0 2 1 2 cm\n/Im1 Do\nQ\n"
+    xobject = page.get_resources().get_x_object(COSName.get_pdf_name("Im1"))
     filters = [name.get_name() for name in xobject.get_cos_object().get_filter_list()]
     assert filters == ["DCTDecode"]
 
@@ -80,7 +80,7 @@ def test_draw_image_png_bytes_uses_lossless_factory(
     with PDPageContentStream(doc, page) as cs:
         cs.draw_image(src.read_bytes(), 5, 6)
 
-    assert _stream_bytes(page) == b"q\n4 0 0 3 5 6 cm\n/Im0 Do\nQ\n"
+    assert _stream_bytes(page) == b"q\n4 0 0 3 5 6 cm\n/Im1 Do\nQ\n"
 
 
 def test_draw_image_pillow_image_uses_lossless_factory(
@@ -94,7 +94,7 @@ def test_draw_image_pillow_image_uses_lossless_factory(
     with PDPageContentStream(doc, page) as cs:
         cs.draw_image(image, 9, 10)
 
-    assert _stream_bytes(page) == b"q\n7 0 0 5 9 10 cm\n/Im0 Do\nQ\n"
+    assert _stream_bytes(page) == b"q\n7 0 0 5 9 10 cm\n/Im1 Do\nQ\n"
 
 
 def test_draw_image_pillow_image_without_lossless_factory_raises(

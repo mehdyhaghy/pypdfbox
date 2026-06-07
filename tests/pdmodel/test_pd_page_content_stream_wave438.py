@@ -188,7 +188,7 @@ def test_wave438_non_device_color_space_registers_and_reuses_key() -> None:
         cs.set_stroking_color_space(color_space)
         cs.set_non_stroking_color_space(color_space)
 
-    assert _stream_bytes(page) == b"/cs0 CS\n/cs0 cs\n"
+    assert _stream_bytes(page) == b"/cs1 CS\n/cs1 cs\n"
     doc.close()
 
 
@@ -218,8 +218,8 @@ def test_wave438_draw_image_uses_intrinsic_size_and_reuses_xobject_key() -> None
         cs.draw_image(image, (1, 0, 0, 1, 4, 5))
 
     assert _stream_bytes(page) == (
-        b"q\n7 0 0 11 2 3 cm\n/Im0 Do\nQ\n"
-        b"q\n1 0 0 1 4 5 cm\n/Im0 Do\nQ\n"
+        b"q\n7 0 0 11 2 3 cm\n/Im1 Do\nQ\n"
+        b"q\n1 0 0 1 4 5 cm\n/Im1 Do\nQ\n"
     )
     doc.close()
 
@@ -246,7 +246,7 @@ def test_wave438_draw_form_offset_and_error_paths() -> None:
     with PDPageContentStream(doc, page) as cs:
         cs.draw_form(form, 9, 10)
 
-    assert _stream_bytes(page) == b"q\n1 0 0 1 9 10 cm\n/Form0 Do\nQ\n"
+    assert _stream_bytes(page) == b"q\n1 0 0 1 9 10 cm\n/Form1 Do\nQ\n"
 
     cs = PDPageContentStream(doc, page)
     with pytest.raises(TypeError, match="PDFormXObject"):
@@ -273,6 +273,6 @@ def test_wave438_marked_content_property_list_reuses_resource_key() -> None:
         cs.end_marked_content()
 
     assert _stream_bytes(page) == (
-        b"/Span /Prop0 BDC\n/Span /Prop0 DP\n/P /Direct DP\nEMC\n"
+        b"/Span /Prop1 BDC\n/Span /Prop1 DP\n/P /Direct DP\nEMC\n"
     )
     doc.close()

@@ -114,7 +114,7 @@ def test_wave396_pdcolor_pattern_name_emits_scn() -> None:
     # Mirrors upstream: a non-device colour space is registered as a
     # /Resources/ColorSpace entry, referenced via ``/csN CS`` (``cs`` for
     # non-stroking), then the components + optional pattern name + ``SCN``.
-    assert _stream_bytes(page) == b"/cs0 CS\n0.5 /P1 SCN\n/cs1 cs\n/P1 scn\n"
+    assert _stream_bytes(page) == b"/cs1 CS\n0.5 /P1 SCN\n/cs2 cs\n/P1 scn\n"
 
 
 def test_wave396_set_font_rejects_non_font() -> None:
@@ -141,11 +141,11 @@ def test_wave396_soft_mask_and_pattern_aliases_emit_expected_resources() -> None
         cs.set_stroking_pattern(pattern, [0.25])
 
     body = _stream_bytes(page)
-    assert b"/gs0 gs\n" in body
-    assert body.count(b"/p0") == 3
-    assert b"/Pattern CS\n/p0 SCN\n" in body
-    assert b"/Pattern cs\n/p0 scn\n" in body
-    assert b"/Pattern CS\n0.25 /p0 SCN\n" in body
+    assert b"/gs1 gs\n" in body
+    assert body.count(b"/p1") == 3
+    assert b"/Pattern CS\n/p1 SCN\n" in body
+    assert b"/Pattern cs\n/p1 scn\n" in body
+    assert b"/Pattern CS\n0.25 /p1 SCN\n" in body
 
 
 @pytest.mark.parametrize(
@@ -321,7 +321,7 @@ def test_wave396_marked_content_point_registers_property_list_once() -> None:
         cs.add_marked_content_point_with_dict("Span", prop)
         cs.add_marked_content_point_with_dict("Span", prop)
 
-    assert _stream_bytes(page) == b"/Span /Prop0 DP\n/Span /Prop0 DP\n"
+    assert _stream_bytes(page) == b"/Span /Prop1 DP\n/Span /Prop1 DP\n"
 
 
 def test_wave396_color_space_pattern_name_and_missing_cos_paths() -> None:
@@ -372,4 +372,4 @@ def test_wave396_nonfinite_number_rejected_and_existing_font_key_reused() -> Non
     with PDPageContentStream(doc, page) as cs:
         cs.set_font(font, 9)
 
-    assert _stream_bytes(page) == b"/F0 9 Tf\n"
+    assert _stream_bytes(page) == b"/F1 9 Tf\n"
