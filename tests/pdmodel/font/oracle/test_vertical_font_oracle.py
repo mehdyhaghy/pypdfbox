@@ -201,7 +201,7 @@ def test_vertical_dw2_default_matches_pdfbox(tmp_path: Path) -> None:
     # Sanity: the font is reported vertical and the default displacement-y is
     # the spec -1000/1000 = -1.0 (not 0.0 — the wave-1428 regression).
     assert any(line.endswith("\ttrue") for line in java)
-    code1 = next(ln for ln in java if ln.startswith("CODE\t0\tF0\t1\t"))
+    code1 = next(ln for ln in java if ln.startswith("CODE\t0\tF1\t1\t"))
     assert code1.split("\t")[8] == "-1.000000", code1
 
 
@@ -218,9 +218,9 @@ def test_vertical_explicit_w2_matches_pdfbox(tmp_path: Path) -> None:
     )
     # A covered CID (1) must use its /W2 w1y (-1000 -> -1.0), and an uncovered
     # CID (100) must use the explicit /DW2 displacement-y (-1100 -> -1.1).
-    code1 = next(ln for ln in java if ln.startswith("CODE\t0\tF0\t1\t"))
+    code1 = next(ln for ln in java if ln.startswith("CODE\t0\tF1\t1\t"))
     assert code1.split("\t")[8] == "-1.000000", code1
-    code100 = next(ln for ln in java if ln.startswith("CODE\t0\tF0\t100\t"))
+    code100 = next(ln for ln in java if ln.startswith("CODE\t0\tF1\t100\t"))
     assert code100.split("\t")[8] == "-1.100000", code100
 
 
