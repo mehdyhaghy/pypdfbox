@@ -6968,14 +6968,23 @@ class PDFRenderer(PDFStreamEngine):
 
         Spec formula: ``B(Cb, Cs) = SetLum(SetSat(Cs, Sat(Cb)), Lum(Cb))``.
         """
+        from pypdfbox.pdmodel.graphics.blend_mode import (  # noqa: PLC0415
+            BlendMode,
+        )
+
         backdrop = Image.merge("RGB", (br, bg, bb))
         source = Image.merge("RGB", (sr, sg, sb))
 
         def _compose(cb: _RGBFloat, cs: _RGBFloat) -> _RGBFloat:
-            r, g, b = PDFRenderer._hsl_set_sat(
-                cs[0], cs[1], cs[2], PDFRenderer._hsl_sat(*cb)
-            )
-            return PDFRenderer._hsl_set_lum(r, g, b, PDFRenderer._hsl_lum(*cb))
+            # Upstream fHue: getSaturationRGB(dest, src, temp);
+            # getLuminosityRGB(dest, temp, result). dest=backdrop (cb),
+            # src=source (cs). Integer 8.16 fixed-point — bit-identical to
+            # ``BlendComposite`` (PDF 32000-1 §11.3.5.3 via BlendMode.java).
+            temp: list[float] = [0.0, 0.0, 0.0]
+            BlendMode.get_saturation_rgb(list(cb), list(cs), temp)
+            result: list[float] = [0.0, 0.0, 0.0]
+            BlendMode.get_luminosity_rgb(list(cb), temp, result)
+            return result[0], result[1], result[2]
 
         return PDFRenderer._hsl_blend_pixels(backdrop, source, _compose)
 
@@ -6992,14 +7001,20 @@ class PDFRenderer(PDFStreamEngine):
 
         Spec formula: ``B(Cb, Cs) = SetLum(SetSat(Cb, Sat(Cs)), Lum(Cb))``.
         """
+        from pypdfbox.pdmodel.graphics.blend_mode import (  # noqa: PLC0415
+            BlendMode,
+        )
+
         backdrop = Image.merge("RGB", (br, bg, bb))
         source = Image.merge("RGB", (sr, sg, sb))
 
         def _compose(cb: _RGBFloat, cs: _RGBFloat) -> _RGBFloat:
-            r, g, b = PDFRenderer._hsl_set_sat(
-                cb[0], cb[1], cb[2], PDFRenderer._hsl_sat(*cs)
-            )
-            return PDFRenderer._hsl_set_lum(r, g, b, PDFRenderer._hsl_lum(*cb))
+            # Upstream fSaturation = getSaturationRGB(src, dest, result),
+            # i.e. srcValues=source (cs), dstValues=backdrop (cb). Integer
+            # 8.16 fixed-point — bit-identical to ``BlendComposite``.
+            result: list[float] = [0.0, 0.0, 0.0]
+            BlendMode.get_saturation_rgb(list(cs), list(cb), result)
+            return result[0], result[1], result[2]
 
         return PDFRenderer._hsl_blend_pixels(backdrop, source, _compose)
 
@@ -7016,13 +7031,20 @@ class PDFRenderer(PDFStreamEngine):
 
         Spec formula: ``B(Cb, Cs) = SetLum(Cs, Lum(Cb))``.
         """
+        from pypdfbox.pdmodel.graphics.blend_mode import (  # noqa: PLC0415
+            BlendMode,
+        )
+
         backdrop = Image.merge("RGB", (br, bg, bb))
         source = Image.merge("RGB", (sr, sg, sb))
 
         def _compose(cb: _RGBFloat, cs: _RGBFloat) -> _RGBFloat:
-            return PDFRenderer._hsl_set_lum(
-                cs[0], cs[1], cs[2], PDFRenderer._hsl_lum(*cb)
-            )
+            # Upstream fColor = getLuminosityRGB(dest, src, result), i.e.
+            # srcValues=backdrop (cb), dstValues=source (cs). Integer 8.16
+            # fixed-point — bit-identical to ``BlendComposite``.
+            result: list[float] = [0.0, 0.0, 0.0]
+            BlendMode.get_luminosity_rgb(list(cb), list(cs), result)
+            return result[0], result[1], result[2]
 
         return PDFRenderer._hsl_blend_pixels(backdrop, source, _compose)
 
@@ -7039,13 +7061,20 @@ class PDFRenderer(PDFStreamEngine):
 
         Spec formula: ``B(Cb, Cs) = SetLum(Cb, Lum(Cs))``.
         """
+        from pypdfbox.pdmodel.graphics.blend_mode import (  # noqa: PLC0415
+            BlendMode,
+        )
+
         backdrop = Image.merge("RGB", (br, bg, bb))
         source = Image.merge("RGB", (sr, sg, sb))
 
         def _compose(cb: _RGBFloat, cs: _RGBFloat) -> _RGBFloat:
-            return PDFRenderer._hsl_set_lum(
-                cb[0], cb[1], cb[2], PDFRenderer._hsl_lum(*cs)
-            )
+            # Upstream fLuminosity = getLuminosityRGB(src, dest, result),
+            # i.e. srcValues=source (cs), dstValues=backdrop (cb). Integer
+            # 8.16 fixed-point — bit-identical to ``BlendComposite``.
+            result: list[float] = [0.0, 0.0, 0.0]
+            BlendMode.get_luminosity_rgb(list(cs), list(cb), result)
+            return result[0], result[1], result[2]
 
         return PDFRenderer._hsl_blend_pixels(backdrop, source, _compose)
 

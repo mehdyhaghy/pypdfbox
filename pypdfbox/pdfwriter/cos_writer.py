@@ -39,6 +39,7 @@ from .cos_writer_xref_entry import COSWriterXRefEntry
 # document undecryptable.
 _ID_NAME: COSName = COSName.get_pdf_name("ID")
 _FLATE_DECODE_NAME: COSName = COSName.get_pdf_name("FlateDecode")
+_VERSION_NAME: COSName = COSName.get_pdf_name("Version")
 
 _logger = logging.getLogger(__name__)
 
@@ -1868,6 +1869,18 @@ class COSWriter(ICOSVisitor):
 
     def _do_write_header(self, doc: COSDocument) -> None:
         out = self._standard_output
+        # Object-stream compression requires PDF 1.5+ (object streams) and a
+        # cross-reference stream; upstream ``COSWriter.doWriteHeader`` raises the
+        # version to ``COSWriterCompressionPool.MINIMUM_SUPPORTED_VERSION`` (1.6)
+        # when ``isCompress()`` — bumping BOTH the PDDocument (catalog ``/Version``
+        # entry, for docs whose header version is already >= 1.4) and the
+        # COSDocument (the header version itself) — so a 1.4 input compressed-saves
+        # as ``%PDF-1.6`` with ``/Version /1.6`` in the catalog. Mirror that here
+        # before the header version is read (skipped when an explicit
+        # ``set_pdf_version`` override is in play, matching upstream's preference
+        # for an explicit pin).
+        if self._object_stream and self._pdf_version is None:
+            self._bump_version_for_compress(doc)
         # Honour an explicit ``set_pdf_version`` override so callers can
         # bump the header without mutating the COSDocument. Falls through
         # to the document's own version when no override is in play.
@@ -1893,6 +1906,63 @@ class COSWriter(ICOSVisitor):
         # ``%g`` may return "1.4" or "1.45" — both fine. Just strip any
         # accidental trailing zeros in the fraction beyond a single digit.
         return text
+
+    def _bump_version_for_compress(self, doc: COSDocument) -> None:
+        """Raise the document's PDF version to the compression minimum (1.6),
+        mirroring ``COSWriter.doWriteHeader``'s ``isCompress()`` branch.
+
+        Upstream bumps both ``pdDocument.setVersion`` and ``doc.setVersion`` to
+        ``max(current, MINIMUM_SUPPORTED_VERSION)``. ``PDDocument.setVersion``
+        writes ``/Version`` into the document catalog when the header version is
+        already >= 1.4 (otherwise it bumps only the COSDocument header). We
+        replicate both effects directly on the COS layer: the catalog dict is
+        reached via the trailer's ``/Root`` (resolving an indirect reference)."""
+        from .compress.cos_writer_compression_pool import (
+            COSWriterCompressionPool,
+        )
+
+        minimum = COSWriterCompressionPool.MINIMUM_SUPPORTED_VERSION
+        header_version = doc.get_version()
+
+        # Catalog-version side, mirroring ``PDDocument.setVersion(max(pdVersion,
+        # minimum))``. ``PDDocument.getVersion()`` is ``max(catalogVersion,
+        # headerVersion)`` (catalog /Version only counts when headerVersion >=
+        # 1.4); ``setVersion`` then writes /Version into the catalog (for header
+        # version >= 1.4) iff the new version exceeds the current effective one.
+        trailer = doc.get_trailer()
+        catalog = None
+        if trailer is not None:
+            root = trailer.get_item(COSName.ROOT)
+            if isinstance(root, COSObject):
+                root = root.get_object()
+            if isinstance(root, COSDictionary):
+                catalog = root
+
+        catalog_version = -1.0
+        if catalog is not None and header_version >= 1.4:
+            existing = catalog.get_item(_VERSION_NAME)
+            if isinstance(existing, COSName):
+                try:
+                    catalog_version = float(existing.get_name())
+                except ValueError:
+                    catalog_version = -1.0
+
+        effective_version = (
+            max(catalog_version, header_version)
+            if header_version >= 1.4
+            else header_version
+        )
+        new_version = max(effective_version, minimum)
+        if new_version > effective_version and header_version >= 1.4 and catalog is not None:
+            catalog.set_item(
+                _VERSION_NAME,
+                COSName.get_pdf_name(self._format_version(new_version)),
+            )
+
+        # Header side (doc.setVersion): always raise the COSDocument header
+        # version to the compression minimum.
+        if header_version < minimum:
+            doc.set_version(minimum)
 
     # ---------- body ----------
 

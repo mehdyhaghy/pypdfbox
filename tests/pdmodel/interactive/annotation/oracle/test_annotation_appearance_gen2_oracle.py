@@ -61,11 +61,11 @@ Documented (NOT fixed — legitimate lite-surface differences)
   / pattern emission isn't ported, so the lite handler draws the zig-zag
   polyline inline (``m l l ... S``). ``/BBox`` matches exactly; the draw form
   differs (documented in the handler + ``CHANGES.md``).
-* **FileAttachment icon**: upstream draws the icon from a filled
-  ``GeneralPath`` glyph (dozens of ``m``/``l``/``c`` ops). The lite handler
-  draws a stylized recognisable icon with a small fixed operator set.
-  ``/BBox`` matches (18x18); the glyph path differs (documented in the
-  handler).
+* **FileAttachment icon**: reached full operand-level parity in wave 1507 —
+  the handler now ports the exact upstream ``drawPushPin`` / ``drawPaperclip``
+  / ``drawGraph`` / ``drawTag`` SVG-derived glyph paths, so the byte-exact
+  token stream is asserted in ``test_file_attachment_icon_oracle.py``. ``/BBox``
+  matches (18x18) here as it always did.
 * **FreeText text layout**: upstream word-wraps ``/Contents`` into multiple
   ``Td Tj`` runs; the lite handler lays the text differently. ``/BBox`` and
   the surrounding rectangle/clip/text-object operator skeleton match; the

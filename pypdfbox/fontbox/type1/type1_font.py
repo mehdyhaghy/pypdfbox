@@ -1000,7 +1000,15 @@ class Type1Font:
     def _charstrings_dict(self) -> dict[str, Any]:
         if self._charstrings is None:
             assert self._t1 is not None  # noqa: S101
-            self._charstrings = self._t1["CharStrings"]
+            # Upstream initialises ``charstrings`` to an empty LinkedHashMap, so
+            # a font whose eexec/Private section never yielded a /CharStrings
+            # table (e.g. a missing or truncated segment 2) still exposes an
+            # empty glyph map rather than throwing — mirror that here instead
+            # of letting a missing-key error escape.
+            try:
+                self._charstrings = self._t1["CharStrings"]
+            except (KeyError, AssertionError):
+                self._charstrings = {}
         return self._charstrings
 
     def get_width(self, name: str) -> float:

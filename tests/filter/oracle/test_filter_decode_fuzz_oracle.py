@@ -360,11 +360,14 @@ def _ccitt_mutants() -> list[_Mut]:
       a truncated G3 strip that libtiff decodes to *some* bytes) → the head
       bytes are libtiff/Pillow codec output and differ from PDFBox's pure-Java
       bytes (CLAUDE.md libtiff EOD carve-out), so they stay ``ok``-only.
-    * the /Rows==0 row-discovery case stays ``ok``-only: pypdfbox's
-      ``_estimate_rows`` invention decodes a discovered row count where upstream
-      (``arraySize = rowBytes * max(rows, height) == 0``) emits zero bytes — a
-      separate, still-open documented divergence (the row-count estimator), not
-      the libtiff-strictness gap.
+    * the /Rows==0-with-no-/Height case is now pinned ``exact`` (wave 1507,
+      closing the wave-1506 deferral): the filter mirrors
+      ``CCITTFaxFilter.decode`` exactly — ``arraySize = rowBytes *
+      max(rows, height) == 0`` → ZERO bytes. pypdfbox formerly invented a
+      data-driven row estimate inside the filter; that estimator now lives only
+      in the standalone ``CCITTFaxDecoderStream`` consumer (which genuinely
+      discovers its own row count), not in the filter contract. Both sides
+      emit an empty body here, so it is byte-exact.
     """
     out: list[_Mut] = []
     stream = {"Width": 8, "Height": 2}
@@ -408,8 +411,10 @@ def _ccitt_mutants() -> list[_Mut]:
     # PDFBox's zero-fill (libtiff did NOT fail here) — ok-only.
     add("ccitt_g3_truncated", g3[: len(g3) // 2], 0, 8, 2, "ok")
 
-    # --- /Rows==0 row-discovery divergence (still open) -> OK-only --------
-    # pypdfbox estimates a row count; upstream's arraySize is 0 (zero bytes).
+    # --- /Rows==0 with no /Height -> arraySize == 0 -> EXACT (zero bytes) --
+    # Both engines emit nothing: upstream's allocation is empty, and pypdfbox
+    # now mirrors that (no more filter-level row estimation). Stream dict is {}
+    # (no /Height), /Rows is 0, so max(rows, height) == 0.
     out.append(
         (
             "ccitt_g4_zero_rows",
@@ -417,7 +422,7 @@ def _ccitt_mutants() -> list[_Mut]:
             g4,
             {},
             {"K": -1, "Columns": 8, "Rows": 0},
-            "ok",
+            "exact",
         )
     )
     return out

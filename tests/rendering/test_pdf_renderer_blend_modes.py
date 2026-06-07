@@ -308,6 +308,59 @@ def test_blend_color_then_luminosity_round_trip_preserves_lum() -> None:
     assert abs(actual_lum - backdrop_lum) < 0.01
 
 
+def _bm_int_blend(
+    mode: str, cs: tuple[float, float, float], cb: tuple[float, float, float]
+) -> tuple[int, int, int]:
+    """Reference non-separable RGB result computed with upstream's integer
+    8.16 fixed-point ``BlendMode`` helpers (``getSaturationRGB`` /
+    ``getLuminosityRGB``), using the same source/dest argument order as
+    ``BlendComposite.compose`` (src=top, dest=backdrop). Returns the
+    0..255 rounded RGB triple."""
+    result: list[float] = [0.0, 0.0, 0.0]
+    if mode == "Hue":
+        temp: list[float] = [0.0, 0.0, 0.0]
+        BlendMode.get_saturation_rgb(list(cb), list(cs), temp)
+        BlendMode.get_luminosity_rgb(list(cb), temp, result)
+    elif mode == "Saturation":
+        BlendMode.get_saturation_rgb(list(cs), list(cb), result)
+    elif mode == "Color":
+        BlendMode.get_luminosity_rgb(list(cb), list(cs), result)
+    else:  # Luminosity
+        BlendMode.get_luminosity_rgb(list(cs), list(cb), result)
+    return tuple(int(round(c * 255.0)) for c in result)  # type: ignore[return-value]
+
+
+def test_nonseparable_render_is_bit_identical_to_integer_blendmode() -> None:
+    """The renderer's HSL blend path must produce the *same* bytes as
+    upstream ``BlendMode.get_saturation_rgb`` / ``get_luminosity_rgb``
+    (integer 8.16 fixed-point), not the older float ``SetLum`` / ``SetSat``
+    form. Opaque source over opaque backdrop ⇒ the composite reduces to the
+    raw blend result, so the rendered pixel must equal the integer-helper
+    output exactly. Pins the wave-1507 fix that swapped the float HSL math
+    for the integer form (the float Luminosity result was off by 1 on red).
+    """
+    cb = (0.9, 0.4, 0.1)  # backdrop
+    cs = (0.2, 0.4, 0.8)  # source (top)
+    # Quantise to the byte values the image pipeline actually carries.
+    bg = _solid(tuple(round(c * 255) for c in cb) + (255,))  # type: ignore[arg-type]
+    src = _solid(tuple(round(c * 255) for c in cs) + (255,))  # type: ignore[arg-type]
+    bq = tuple(round(c * 255) / 255.0 for c in cb)
+    sq = tuple(round(c * 255) / 255.0 for c in cs)
+    modes = {
+        "Hue": BlendMode.HUE,
+        "Saturation": BlendMode.SATURATION,
+        "Color": BlendMode.COLOR,
+        "Luminosity": BlendMode.LUMINOSITY,
+    }
+    for name, mode in modes.items():
+        out = PDFRenderer._blend(src, bg, mode)
+        got = out.getpixel((0, 0))[:3]
+        expected = _bm_int_blend(name, sq, bq)  # type: ignore[arg-type]
+        assert got == expected, (
+            f"{name}: renderer pixel {got} != integer BlendMode {expected}"
+        )
+
+
 def test_blend_resizes_mismatched_source() -> None:
     """``_blend`` resizes a smaller source up to the backdrop size before
     compositing so callers don't have to pre-align the buffers."""

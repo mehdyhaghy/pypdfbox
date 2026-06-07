@@ -19,7 +19,7 @@ from typing import BinaryIO
 
 from pypdfbox.cos import COSDictionary
 
-from .ccitt_fax_decode import CCITTFaxDecode
+from .ccitt_fax_decode import CCITTFaxDecode, _estimate_rows
 from .tiff_extension import TIFFExtension
 
 
@@ -75,8 +75,19 @@ class CCITTFaxDecoderStream(io.RawIOBase):
         else:
             sub.set_int("K", 0)
         sub.set_int("Columns", self._columns)
-        if self._rows > 0:
-            sub.set_int("Rows", self._rows)
+        # Read the encoded body up front: the standalone decoder-stream API
+        # discovers its own row count when none is supplied (unlike the
+        # ``CCITTFaxFilter.decode`` filter contract, which emits zero bytes when
+        # neither /Rows nor /Height is known — ``arraySize == 0``). Upstream's
+        # pure-Java ``CCITTFaxDecoderStream`` keeps reading scanlines until EOF;
+        # we reproduce that by feeding the filter a generous estimated /Rows so
+        # libtiff decodes to the end-of-block marker. Row discovery therefore
+        # lives HERE, in the decoder stream, not in the filter.
+        encoded_bytes = self._in.read()
+        rows = self._rows if self._rows > 0 else _estimate_rows(
+            encoded_bytes, self._columns
+        )
+        sub.set_int("Rows", rows)
         # T4Options bit 2 = encoded byte align.
         if self._options & 0x4:
             sub.set_boolean("EncodedByteAlign", True)
@@ -84,7 +95,7 @@ class CCITTFaxDecoderStream(io.RawIOBase):
 
         filt = CCITTFaxDecode()
         out = io.BytesIO()
-        filt.decode(self._in, out, params, 0)
+        filt.decode(io.BytesIO(encoded_bytes), out, params, 0)
         self._buf = out.getvalue()
         self._decoded = True
 

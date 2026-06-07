@@ -64,6 +64,29 @@ _FIXTURES_LIST = [
     _FIXTURES / "pdfwriter" / "PDFBOX-3110-poems-beads.pdf",
 ]
 
+# Wave 1507 (agent A): deeper, structurally complex shapes — a tagged PDF/A-3a
+# document with a full struct tree, a large outline/bookmark tree, and an
+# AcroForm-heavy fixture. These exercise the compressed-save TRAVERSAL on dense
+# object graphs (the wave-1506 concern). The compressed-save object-stream
+# packing + decoded body proved byte-identical to PDFBox on all three.
+_COMPLEX_FIXTURES_LIST = [
+    _FIXTURES / "multipdf" / "PDFA3A.pdf",
+    _FIXTURES / "pdmodel" / "with_outline.pdf",
+    _FIXTURES / "multipdf" / "AcroFormForMerge.pdf",
+]
+
+# Merge pairs: (a, b) — pypdfbox/PDFBox each merge a+b to an intermediate file,
+# then BOTH compress-save that SAME intermediate. This isolates the compressed
+# SAVE of a deep MERGED graph from the (separate) merger object-numbering, which
+# legitimately differs between the two mergers.
+_MERGE_PAIRS = [
+    (_FIXTURES / "multipdf" / "PDFA3A.pdf", _FIXTURES / "multipdf" / "PDFA3A.pdf"),
+    (
+        _FIXTURES / "multipdf" / "PDFA3A.pdf",
+        _FIXTURES / "multipdf" / "AcroFormForMerge.pdf",
+    ),
+]
+
 
 def _parse_probe_kv(text: str) -> dict[str, str]:
     out: dict[str, str] = {}
@@ -390,4 +413,234 @@ def test_full_save_objstm_decoded_body_matches_pdfbox(tmp_path: Path) -> None:
             )
             assert str(py_stream["first"]) == java[f"objstm{n}_first"], (
                 f"{fixture.stem}: ObjStm#{n} /First differs from PDFBox"
+            )
+
+
+# ---------------------------------------------------------------------------
+# Wave 1507 (agent A): complex / merged shapes + the compression version bump.
+#
+# Two findings pinned here:
+#   (1) The compressed-save object-stream PACKING + decoded body is byte-for-byte
+#       identical to PDFBox on structurally DEEP documents (tagged PDF/A-3a with a
+#       full struct tree, a large outline/bookmark tree, an AcroForm-heavy doc)
+#       AND on a deep MERGED graph (when both sides compress-save the SAME merged
+#       input — the merger object-numbering, which differs between the two
+#       mergers, is factored out by sharing the intermediate file). This confirms
+#       the wave-1506 "object-renumbering on deep struct trees" observation was a
+#       MERGER concern, not a compressed-save (COSWriter traversal) one.
+#   (2) ``COSWriter.doWriteHeader`` raises the PDF version to
+#       ``COSWriterCompressionPool.MINIMUM_SUPPORTED_VERSION`` (1.6) when
+#       compressing — bumping the COSDocument header (``%PDF-1.6``) AND, for
+#       documents whose header version is already >= 1.4, writing ``/Version /1.6``
+#       into the catalog. pypdfbox previously emitted the source version verbatim
+#       (a 1.4 doc compressed-saved as ``%PDF-1.4`` with no catalog ``/Version``);
+#       wave 1507 ported the bump so the header + catalog version match PDFBox.
+# ---------------------------------------------------------------------------
+
+
+def _py_objstm_parity_bytes(full: bytes) -> dict[str, object]:
+    """Same packing-shape extraction as :func:`_py_objstm_parity` but over a
+    pre-saved compressed PDF byte string (used for the merged-then-compressed
+    isolation, where the intermediate merged file is produced by the Java
+    oracle and re-loaded/compress-saved by pypdfbox)."""
+    import hashlib
+    import re
+
+    i = full.rfind(b"/Type /XRef")
+    if i < 0:
+        i = full.rfind(b"/Type/XRef")
+    xdict = full[full.rfind(b"obj", 0, i) : full.find(b"stream", i)]
+
+    def _bracket(key: bytes) -> str:
+        k = xdict.find(key)
+        o = xdict.find(b"[", k)
+        c = xdict.find(b"]", o)
+        return ",".join(p.decode("ascii") for p in xdict[o + 1 : c].split())
+
+    streams: list[dict[str, object]] = []
+    cursor = 0
+    while True:
+        oi = full.find(b"/Type /ObjStm", cursor)
+        if oi < 0:
+            oi = full.find(b"/Type/ObjStm", cursor)
+        if oi < 0:
+            break
+        cursor = oi + 5
+        region = full[full.rfind(b"obj", 0, oi) :]
+        first = int(re.search(rb"/First\s+(\d+)", region).group(1))
+        sm = region.index(b"stream") + len(b"stream")
+        if region[sm : sm + 2] == b"\r\n":
+            sm += 2
+        elif region[sm : sm + 1] in (b"\n", b"\r"):
+            sm += 1
+        em = region.index(b"endstream", sm)
+        while em > sm and region[em - 1] in (0x0A, 0x0D):
+            em -= 1
+        dec = zlib.decompress(region[sm:em])
+        nums = ",".join(m.decode() for m in re.findall(rb"(\d+)\s+\d+", dec[:first]))
+        streams.append(
+            {
+                "first": first,
+                "nums": nums,
+                "bodysha": hashlib.sha256(dec).hexdigest(),
+            }
+        )
+    return {
+        "w": _bracket(b"/W"),
+        "index": _bracket(b"/Index"),
+        "objstm_count": len(streams),
+        "streams": streams,
+    }
+
+
+def _py_compress_save_bytes(src: Path) -> bytes:
+    """Full-compress-save ``src`` through pypdfbox and return the bytes."""
+    cos = Loader.load_pdf(src)
+    doc = PDDocument(cos)
+    buf = io.BytesIO()
+    with COSWriter(buf, xref_stream=True, object_stream=True) as writer:
+        writer.write(doc)
+    doc.close()
+    return buf.getvalue()
+
+
+@requires_oracle
+def test_full_save_compress_bumps_header_version_to_minimum_like_pdfbox(
+    tmp_path: Path,
+) -> None:
+    """On a compressed save, pypdfbox raises the header version to PDFBox's
+    compression minimum (1.6) exactly as ``COSWriter.doWriteHeader`` does — for
+    every covered fixture the emitted ``%PDF-x.y`` header equals PDFBox's. A 1.4
+    document (``unencrypted.pdf``, ``with_outline.pdf``) compresses-saves as
+    ``%PDF-1.6``; a 1.7 document (``PDFA3A.pdf``) stays ``%PDF-1.7``."""
+    for fixture in [*_FIXTURES_LIST, *_COMPLEX_FIXTURES_LIST]:
+        if not fixture.is_file():
+            continue
+        java_out = tmp_path / f"java_{fixture.stem}.pdf"
+        run_probe_text(
+            "FullSaveObjStmParityProbe", str(fixture), str(java_out)
+        )
+        java_header = java_out.read_bytes()[:12]
+        py_header = _py_compress_save_bytes(fixture)[:12]
+        assert py_header == java_header, (
+            f"{fixture.stem}: header {py_header!r} != PDFBox {java_header!r}"
+        )
+
+
+@requires_oracle
+def test_full_save_compress_writes_catalog_version_like_pdfbox(
+    tmp_path: Path,
+) -> None:
+    """When the source header version is >= 1.4, the compression version bump is
+    also recorded as ``/Version`` in the document catalog (mirroring
+    ``PDDocument.setVersion`` which writes the catalog entry for >= 1.4 docs). A
+    1.4 fixture compressed-saves with ``/Version /1.6`` present in the catalog,
+    matching PDFBox byte-for-byte."""
+    import re
+
+    fixture = _FIXTURES / "pdmodel" / "with_outline.pdf"
+    if not fixture.is_file():
+        return
+    java_out = tmp_path / "java_with_outline.pdf"
+    run_probe_text("FullSaveObjStmParityProbe", str(fixture), str(java_out))
+    java = java_out.read_bytes()
+    py = _py_compress_save_bytes(fixture)
+
+    def _catalog_version(data: bytes) -> bytes | None:
+        i = data.find(b"/Type /Catalog")
+        if i < 0:
+            i = data.find(b"/Type/Catalog")
+        assert i >= 0, "no catalog found"
+        region = data[i : data.find(b">>", i)]
+        m = re.search(rb"/Version\s*/([\d.]+)", region)
+        return m.group(1) if m else None
+
+    assert _catalog_version(py) == _catalog_version(java) == b"1.6"
+
+
+@requires_oracle
+def test_full_save_objstm_packing_shape_matches_pdfbox_complex(tmp_path: Path) -> None:
+    """The compressed-save object-stream packing shape (ObjStm count, packed
+    object-number lists, ``/W`` widths, sparse ``/Index`` runs) is byte-for-byte
+    identical to PDFBox on structurally DEEP documents — a tagged PDF/A-3a struct
+    tree, a large outline tree, and an AcroForm-heavy doc (wave-1506 concern)."""
+    for fixture in _COMPLEX_FIXTURES_LIST:
+        if not fixture.is_file():
+            continue
+        java = _parse_probe_kv(
+            run_probe_text(
+                "FullSaveObjStmParityProbe",
+                str(fixture),
+                str(tmp_path / f"java_{fixture.stem}.pdf"),
+            )
+        )
+        py = _py_objstm_parity(fixture)
+        assert py["w"] == java["w"], f"{fixture.stem}: /W {py['w']} != {java['w']}"
+        assert py["index"] == java["index"], (
+            f"{fixture.stem}: /Index {py['index']} != {java['index']}"
+        )
+        assert str(py["objstm_count"]) == java["objstm_count"], (
+            f"{fixture.stem}: ObjStm count {py['objstm_count']} != "
+            f"{java['objstm_count']}"
+        )
+        for n, stream in enumerate(py["streams"]):  # type: ignore[arg-type]
+            assert stream["nums"] == java[f"objstm{n}_nums"], (
+                f"{fixture.stem}: ObjStm#{n} packed nums "
+                f"{stream['nums']} != {java[f'objstm{n}_nums']}"
+            )
+            assert stream["bodysha"] == java[f"objstm{n}_bodysha"], (
+                f"{fixture.stem}: decoded ObjStm#{n} body differs from PDFBox"
+            )
+            assert str(stream["first"]) == java[f"objstm{n}_first"], (
+                f"{fixture.stem}: ObjStm#{n} /First differs from PDFBox"
+            )
+
+
+@requires_oracle
+def test_full_save_objstm_merged_compress_matches_pdfbox(tmp_path: Path) -> None:
+    """A deep MERGED graph compress-saves byte-identically. The Java oracle
+    merges ``a + b`` into an intermediate file and compress-saves it; pypdfbox
+    then compress-saves the SAME intermediate. This isolates the compressed-save
+    traversal (the surface) from the merger object-numbering (which legitimately
+    differs between the two mergers). The xref ``/W`` + ``/Index``, ObjStm count,
+    every packed-object number, each ``/First`` and the decoded ObjStm body all
+    match PDFBox exactly — confirming the compressed-save path has no
+    deep-graph-specific traversal divergence."""
+    for a, b in _MERGE_PAIRS:
+        if not a.is_file() or not b.is_file():
+            continue
+        merged = tmp_path / f"merged_{a.stem}_{b.stem}.pdf"
+        java_out = tmp_path / f"java_{a.stem}_{b.stem}.pdf"
+        java = _parse_probe_kv(
+            run_probe_text(
+                "FullSaveMergedObjStmParityProbe",
+                str(a),
+                str(b),
+                str(merged),
+                str(java_out),
+            )
+        )
+        # pypdfbox compress-saves the SAME intermediate merged file the Java
+        # probe produced (so only the compressed-save path differs).
+        py = _py_objstm_parity_bytes(_py_compress_save_bytes(merged))
+
+        assert py["w"] == java["w"], (
+            f"{a.stem}+{b.stem}: /W {py['w']} != {java['w']}"
+        )
+        assert py["index"] == java["index"], (
+            f"{a.stem}+{b.stem}: /Index {py['index']} != {java['index']}"
+        )
+        assert str(py["objstm_count"]) == java["objstm_count"], (
+            f"{a.stem}+{b.stem}: ObjStm count {py['objstm_count']} != "
+            f"{java['objstm_count']}"
+        )
+        for n, stream in enumerate(py["streams"]):  # type: ignore[arg-type]
+            assert stream["nums"] == java[f"objstm{n}_nums"], (
+                f"{a.stem}+{b.stem}: ObjStm#{n} packed nums differ from PDFBox"
+            )
+            assert stream["bodysha"] == java[f"objstm{n}_bodysha"], (
+                f"{a.stem}+{b.stem}: decoded ObjStm#{n} body differs from PDFBox"
+            )
+            assert str(stream["first"]) == java[f"objstm{n}_first"], (
+                f"{a.stem}+{b.stem}: ObjStm#{n} /First differs from PDFBox"
             )

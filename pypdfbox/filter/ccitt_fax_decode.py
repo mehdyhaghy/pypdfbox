@@ -225,24 +225,30 @@ class CCITTFaxDecode(Filter):
             raise OSError(f"CCITTFaxDecode: invalid /Columns {columns}")
 
         encoded_bytes = encoded.read()
-        if not encoded_bytes:
-            # Upstream never short-circuits an empty body: CCITTFaxFilter.decode
-            # pre-allocates ``byte[(cols+7)/8 * rows]`` (zero-filled), decodes
-            # zero rows from the empty stream (CCITTFaxDecoderStream swallows the
-            # EOF and leaves the buffer untouched), then inverts the whole buffer
-            # when /BlackIs1 is false. So an empty body with /Rows (or /Height)
-            # known yields ``rows * rowBytes`` of WHITE (0xFF default, 0x00 for
-            # /BlackIs1) — NOT zero bytes. With no row count at all (rows == 0)
-            # the allocation is empty, matching upstream's ``len == 0``.
+        if not encoded_bytes or rows <= 0:
+            # Mirror ``CCITTFaxFilter.decode`` EXACTLY: it pre-allocates a fixed
+            # ``byte[(cols+7)/8 * max(rows, height)]`` buffer (zero-filled),
+            # decodes whatever scanlines it can, swallows the EOF on the rest,
+            # then inverts the whole buffer when /BlackIs1 is false. The size of
+            # that buffer is determined SOLELY by the reconciled row count
+            # (``rows``), never by the encoded body. So:
+            #   * empty body, rows known  -> ``rows * rowBytes`` of WHITE (0xFF
+            #     default, 0x00 for /BlackIs1) — NOT zero bytes;
+            #   * any body, rows == 0     -> ``arraySize == 0`` -> ZERO bytes
+            #     (no /Rows AND no /Height; for a real image XObject /Height is
+            #     always present on the stream dict, so this is the synthetic
+            #     "neither dimension known" case). pypdfbox formerly invented a
+            #     data-driven row estimate here; upstream emits nothing, and we
+            #     now match byte-for-byte. The standalone row-discovery path
+            #     lives in ``CCITTFaxDecoderStream`` (which is the upstream
+            #     consumer that genuinely needs it), not in the filter contract.
             return self._zero_fill_result(
                 decoded, parameters, columns=columns, rows=rows, black_is_1=black_is_1
             )
 
-        # PDF spec §7.4.9: with /Rows omitted (≤ 0) the decoder must
-        # discover the row count from the encoded stream. libtiff does
-        # exactly that when ImageLength is "large enough", so we feed it
-        # a generous upper bound and trim afterwards.
-        wrapper_rows = rows if rows > 0 else _estimate_rows(encoded_bytes, columns)
+        # Past this point ``rows`` is guaranteed > 0 (the rows <= 0 case is
+        # handled by the zero-fill short-circuit above, mirroring upstream's
+        # ``arraySize == 0`` allocation).
 
         # Polarity must match Apache PDFBox's CCITTFaxFilter, which is the
         # behavioural oracle. PDFBox decodes the fax bitstream into a buffer
@@ -261,7 +267,7 @@ class CCITTFaxDecode(Filter):
         tiff_bytes = _build_tiff_wrapper(
             encoded_bytes,
             columns=columns,
-            rows=wrapper_rows,
+            rows=rows,
             k=k,
             photometric=photometric,
             encoded_byte_align=encoded_byte_align,
@@ -296,31 +302,30 @@ class CCITTFaxDecode(Filter):
                 decoded, parameters, columns=columns, rows=rows, black_is_1=black_is_1
             )
 
-        # If the effective row count is known (declared /Rows or the
-        # reconciled /Height), force the output to exactly that many
-        # scanlines. Apache PDFBox allocates a fixed ``rows * rowBytes``
-        # buffer and fills only the rows it decodes, so a shorter decode is
-        # zero-padded (white) and an over-long libtiff decode is trimmed.
-        # Matching that fixed footprint keeps the decoded body byte-exact
-        # with PDFBox whether /Rows is smaller, larger, or absent vs the
-        # encoded image's natural row count. (When rows == 0 — neither /Rows
-        # nor /Height given — we keep everything libtiff returned.)
-        if rows > 0:
-            row_bytes = (actual_width + 7) // 8
-            target = rows * row_bytes
-            if len(scanlines) >= target:
-                scanlines = scanlines[:target]
-            else:
-                # PDFBox zero-fills its decode buffer (set bit = black) before
-                # decoding, then inverts the whole buffer when /BlackIs1 is
-                # false. The padded tail rows therefore read out as WHITE in
-                # both polarities: 0xFF for /BlackIs1 false (sample 0 = black,
-                # so white = 1 bits), 0x00 for /BlackIs1 true (sample 1 =
-                # black, white = 0 bits). Match that so the padded scanlines
-                # are byte-exact with PDFBox.
-                pad_byte = 0x00 if black_is_1 else 0xFF
-                scanlines = scanlines + bytes([pad_byte]) * (target - len(scanlines))
-            actual_height = rows
+        # The effective row count is always known here (declared /Rows or the
+        # reconciled /Height — the rows <= 0 case short-circuited above to the
+        # empty allocation, mirroring upstream's ``arraySize == 0``). Force the
+        # output to exactly that many scanlines: Apache PDFBox allocates a fixed
+        # ``rows * rowBytes`` buffer and fills only the rows it decodes, so a
+        # shorter decode is zero-padded (white) and an over-long libtiff decode
+        # is trimmed. Matching that fixed footprint keeps the decoded body
+        # byte-exact with PDFBox whether /Rows is smaller or larger than the
+        # encoded image's natural row count.
+        row_bytes = (actual_width + 7) // 8
+        target = rows * row_bytes
+        if len(scanlines) >= target:
+            scanlines = scanlines[:target]
+        else:
+            # PDFBox zero-fills its decode buffer (set bit = black) before
+            # decoding, then inverts the whole buffer when /BlackIs1 is
+            # false. The padded tail rows therefore read out as WHITE in
+            # both polarities: 0xFF for /BlackIs1 false (sample 0 = black,
+            # so white = 1 bits), 0x00 for /BlackIs1 true (sample 1 =
+            # black, white = 0 bits). Match that so the padded scanlines
+            # are byte-exact with PDFBox.
+            pad_byte = 0x00 if black_is_1 else 0xFF
+            scanlines = scanlines + bytes([pad_byte]) * (target - len(scanlines))
+        actual_height = rows
 
         bytes_written = decoded.write(scanlines)
 
@@ -497,6 +502,13 @@ class CCITTFaxDecode(Filter):
 
 def _estimate_rows(encoded_bytes: bytes, columns: int) -> int:
     """Generous upper bound for the row count when /Rows is missing.
+
+    Used ONLY by the standalone ``CCITTFaxDecoderStream`` (the upstream
+    consumer that genuinely discovers its own row count by reading to the
+    end-of-block marker). The ``CCITTFaxFilter.decode`` filter contract does
+    NOT estimate rows — when neither /Rows nor /Height is known its buffer
+    allocation is empty (``arraySize == 0`` -> zero bytes), matching upstream
+    exactly. Row discovery belongs to the decoder stream, not the filter.
 
     libtiff stops decoding at the natural end-of-block marker even when
     ImageLength is over-large, so any over-estimate is safe. We use a

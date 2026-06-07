@@ -310,17 +310,107 @@ class PDMeshBasedShadingType(PDTriangleBasedShadingType):
         matrix: Any = None,
         control_points: int = 12,
     ) -> list[Any]:
-        """Decode the patch list from this mesh shading's bit stream.
+        """Decode the patch list from this mesh shading's bit stream into
+        ready-to-triangulate :class:`CoonsPatch` / :class:`TensorPatch`
+        instances.
 
-        Concrete subclasses override this with the full bit-stream reader;
-        the abstract base raises ``NotImplementedError`` so parity tooling
-        sees the symbol while the production path stays on the concrete
-        subclass.
+        Mirrors upstream ``PDMeshBasedShadingType.collectPatches`` (Java):
+        it reads the same flag-driven control-point / corner-colour stream
+        as :meth:`parse_patches` (via the shared :func:`parse_patch_stream`
+        reader, which the live-oracle ``PatchMeshDecodeProbe`` already pins
+        bit-for-bit), applies the user-space -> device-space transform
+        (``matrix`` concatenated then ``xform``) to every control point, and
+        wraps each patch in the rendering-side ``Patch`` subclass selected by
+        ``control_points`` (12 -> Coons, 16 -> tensor). The returned objects
+        carry the triangulated ``list_of_triangles`` that
+        :class:`PatchMeshesShadingContext` walks when building its pixel
+        table.
+
+        ``parse_patches`` is preserved as the geometry-only (untransformed,
+        un-triangulated) lite-renderer entry point used by the decode oracle;
+        ``collect_patches`` is the full render path. Returns an empty list
+        when the backing object is not a ``COSStream`` or the ``/Decode``
+        array is missing/degenerate, matching upstream's fallback.
         """
-        _ = (xform, matrix, control_points)
-        raise NotImplementedError(
-            "PDMeshBasedShadingType.collect_patches is abstract"
+        from pypdfbox.cos.cos_stream import COSStream  # noqa: PLC0415
+
+        from .coons_patch import CoonsPatch  # noqa: PLC0415
+        from .tensor_patch import TensorPatch  # noqa: PLC0415
+
+        if control_points not in (12, 16):
+            control_points = 16 if self.get_shading_type() == 7 else 12
+
+        # Backing object must be a stream (upstream returns emptyList()
+        # otherwise — collectPatches line ~70).
+        cos = self.get_cos_object()
+        if not isinstance(cos, COSStream):
+            return []
+        range_x = self.get_decode_for_parameter(0)
+        range_y = self.get_decode_for_parameter(1)
+        if range_x is None or range_y is None:
+            return []
+        if range_x[0] == range_x[1] or range_y[0] == range_y[1]:
+            return []
+        ncc = self.get_number_of_color_components()
+        if ncc <= 0:
+            return []
+        # Flatten the /Decode array into the [xmin,xmax,ymin,ymax,c..] shape
+        # parse_patch_stream expects, via the same per-parameter accessor
+        # upstream uses (getDecodeForParameter).
+        decode: list[float] = [range_x[0], range_x[1], range_y[0], range_y[1]]
+        for i in range(ncc):
+            rng = self.get_decode_for_parameter(2 + i)
+            if rng is None:
+                # Mirrors upstream's IOException("Range missing in shading
+                # /Decode entry") -> OSError per project convention.
+                raise OSError("Range missing in shading /Decode entry")
+            decode.extend((rng[0], rng[1]))
+
+        bits_per_coordinate = self.get_bits_per_coordinate()
+        bits_per_component = self.get_bits_per_component()
+        bits_per_flag = self.get_bits_per_flag()
+        if bits_per_coordinate <= 0 or bits_per_component <= 0 or bits_per_flag <= 0:
+            return []
+
+        with cos.create_input_stream() as src:
+            stream_bytes = src.read()
+        parsed = parse_patch_stream(
+            stream_bytes,
+            bits_per_coordinate=bits_per_coordinate,
+            bits_per_component=bits_per_component,
+            bits_per_flag=bits_per_flag,
+            decode=decode,
+            num_color_components=ncc,
+            control_points=control_points,
         )
+        if not parsed:
+            return []
+
+        def _apply(transform: Any, x: float, y: float) -> tuple[float, float]:
+            # Accept either pypdfbox's ``Matrix`` (transform_point) or any
+            # AffineTransform-shaped object exposing ``transform_point``; fall
+            # back to identity for anything else (the lite-renderer convention
+            # defers transforms, so a bare/None transform is a no-op).
+            fn = getattr(transform, "transform_point", None)
+            if callable(fn):
+                tx, ty = fn(x, y)
+                return float(tx), float(ty)
+            return x, y
+
+        def _xf(point: tuple[float, float]) -> tuple[float, float]:
+            x, y = float(point[0]), float(point[1])
+            if matrix is not None:
+                x, y = _apply(matrix, x, y)
+            if xform is not None:
+                x, y = _apply(xform, x, y)
+            return (x, y)
+
+        patch_cls = TensorPatch if control_points == 16 else CoonsPatch
+        patches: list[Any] = []
+        for record in parsed:
+            transformed = [_xf(p) for p in record.points]
+            patches.append(patch_cls(transformed, record.colors))
+        return patches
 
     def read_patch(
         self,

@@ -276,10 +276,16 @@ def test_mesh_generate_patch_is_abstract() -> None:
         mesh.generate_patch([(0.0, 0.0)], [[0.0]])
 
 
-def test_mesh_collect_patches_is_abstract_on_bare_base() -> None:
+def test_mesh_collect_patches_returns_empty_when_not_a_stream() -> None:
+    """Wave 1507: ``PDMeshBasedShadingType.collect_patches`` is no longer an
+    abstract stub — it now mirrors upstream's concrete ``collectPatches``.
+    When the backing object is a bare ``COSDictionary`` (not a ``COSStream``)
+    it returns an empty list, exactly like upstream
+    (``collectPatches`` returns ``Collections.emptyList()`` when the dict is
+    not a ``COSStream``). Concrete Type 6 / 7 shadings inherit this working
+    implementation."""
     mesh = _ConcreteMesh()
-    with pytest.raises(NotImplementedError):
-        PDMeshBasedShadingType.collect_patches(mesh)
+    assert PDMeshBasedShadingType.collect_patches(mesh) == []
 
 
 def test_mesh_read_patch_is_abstract() -> None:

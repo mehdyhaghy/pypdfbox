@@ -119,27 +119,50 @@ def test_g4_round_trip_alternating_pattern() -> None:
     assert decoded == b"\xaa\xaa\xaa\xaa"
 
 
-def test_g4_round_trip_omitted_rows() -> None:
-    """Rows=0 / missing → libtiff fills our generous wrapper height with
-    decoded data, possibly followed by padding past end-of-data. Real
-    callers should supply /Rows; this test pins the first-four-rows
-    payload (which is portable) but not the trailing tail (libtiff's
-    behaviour past EOD is platform-defined — macOS/Linux zero-pad, the
-    Windows wheel may include scratch bits)."""
+def test_g4_omitted_rows_no_height_emits_zero_bytes() -> None:
+    """Rows omitted AND no /Height → upstream ``CCITTFaxFilter.decode``
+    allocates ``(cols+7)/8 * max(rows, height) == 0`` bytes and emits NOTHING
+    (wave 1507, closes the ``_estimate_rows`` filter-contract divergence).
+
+    pypdfbox formerly invented a data-driven row estimate inside the filter;
+    upstream's filter does no such thing — the buffer size comes solely from
+    the reconciled row count, which is 0 when neither dimension is known. For
+    a real image XObject the stream dict always carries /Height, so this
+    "neither dimension known" case is synthetic. The standalone row-discovery
+    path now lives in ``CCITTFaxDecoderStream`` (exercised separately)."""
     img = Image.new("1", (8, 4), 0)
     for x in range(0, 8, 2):
         for y in range(4):
             img.putpixel((x, y), 255)
     encoded = _g4_strip(img)
 
-    params = _decode_params(K=-1, Columns=8)  # /Rows omitted
+    params = _decode_params(K=-1, Columns=8)  # /Rows omitted, no /Height
     decoded = _decode(encoded, params)
-    # The first four rows reproduce the original payload; we do not
-    # pin the post-EOD tail because libtiff's over-allocated-buffer
-    # contents are not specified.
-    assert decoded[:4] == b"\xaa\xaa\xaa\xaa"
-    # Sanity: libtiff returned at least the requested four rows.
-    assert len(decoded) >= 4
+    assert decoded == b""
+
+
+def test_g4_omitted_rows_uses_height_from_stream_dict() -> None:
+    """Rows omitted but /Height present on the stream dict → upstream
+    reconciles ``rows = max(0, height)`` and decodes that many scanlines.
+
+    This is the real image-XObject path: /Height always rides on the stream
+    dict, so the filter never needs to discover rows."""
+    img = Image.new("1", (8, 4), 0)
+    for x in range(0, 8, 2):
+        for y in range(4):
+            img.putpixel((x, y), 255)
+    encoded = _g4_strip(img)
+
+    # /Height on the parameters (stream) dict; /Rows lives in nested
+    # /DecodeParms. The filter reads /Height off ``parameters`` directly.
+    params = COSDictionary()
+    params.set_int("Height", 4)
+    dp = COSDictionary()
+    dp.set_int("K", -1)
+    dp.set_int("Columns", 8)
+    params.set_item("DecodeParms", dp)
+    decoded = _decode(encoded, params)
+    assert decoded == b"\xaa\xaa\xaa\xaa"
 
 
 # ---------- BlackIs1 polarity -----------------------------------------

@@ -612,9 +612,18 @@ class Type1Parser:
         # warm-up. We accept the parameter to mirror upstream's signature.
         del len_iv
         self._parse_ascii(bytes(segment1))
-        self.decrypted_binary = Type1FontUtil.eexec_decrypt(
-            self._normalise_eexec_segment(bytes(segment2))
-        )
+        eexec_cipher = self._normalise_eexec_segment(bytes(segment2))
+        # Upstream ``Type1Parser.decrypt`` returns an empty plaintext when the
+        # ciphertext is empty or shorter than the 4-byte eexec warm-up prefix
+        # (``cipherBytes.length == 0 || n > cipherBytes.length``), so a font
+        # whose segment 2 is missing/truncated still parses to an empty Private
+        # dict rather than throwing. pypdfbox's strict ``Type1FontUtil``
+        # deliberately rejects short input, so we apply upstream's lenient
+        # guard here at the parse-path call site to match ``createWithPFB``.
+        if len(eexec_cipher) < 4:
+            self.decrypted_binary = b""
+        else:
+            self.decrypted_binary = Type1FontUtil.eexec_decrypt(eexec_cipher)
         # Best-effort second-stage parse over the decrypted block. Any
         # parse failure leaves Private / Subrs / CharStrings empty and is
         # logged at debug — matches our overall "tolerant defaults"

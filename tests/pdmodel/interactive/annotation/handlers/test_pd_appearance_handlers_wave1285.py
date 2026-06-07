@@ -74,14 +74,18 @@ def test_file_attachment_push_pin_emits_path_operators() -> None:
     assert b"l" in body  # line_to operator
 
 
-def test_file_attachment_graph_emits_rectangles() -> None:
+def test_file_attachment_graph_emits_glyph_path() -> None:
     annotation = PDAnnotationFileAttachment()
     annotation.set_rectangle(PDRectangle(*_RECT))
     annotation.set_attachment_name("Graph")
     PDFileAttachmentAppearanceHandler(annotation).generate_normal_appearance()
     body = _appearance_bytes(annotation)
-    # The graph draws four bars via add_rect (re operator).
-    assert body.count(b"re") >= 4
+    # Wave 1507: the histogram glyph is now the exact upstream SVG-derived
+    # filled path (scale/translate cm + many m/l/c sub-paths + fill), not the
+    # old stylized four-bar approximation.
+    assert b"cm" in body  # scale + translate matrices
+    assert b"c" in body  # curve_to operators
+    assert body.rstrip().endswith(b"f")  # filled glyph
 
 
 def test_file_attachment_tag_emits_curves() -> None:

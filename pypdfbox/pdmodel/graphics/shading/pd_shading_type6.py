@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName, COSNumber, COSStream
 
+from .pd_mesh_based_shading_type import PDMeshBasedShadingType
 from .pd_shading import PDShading
 
 if TYPE_CHECKING:
@@ -18,9 +19,15 @@ _DECODE: COSName = COSName.get_pdf_name("Decode")
 _FUNCTION: COSName = COSName.get_pdf_name("Function")
 
 
-class PDShadingType6(PDShading):
+class PDShadingType6(PDMeshBasedShadingType):
     """Coons patch mesh shading. Mirrors PDFBox ``PDShadingType6`` lite
     surface.
+
+    Hierarchy mirrors upstream: ``PDShadingType6 extends
+    PDMeshBasedShadingType`` (which extends the triangle-based mesh base),
+    so the working ``collect_patches`` render path is inherited from the
+    base. ``parse_patches`` (geometry-only) is preserved as the lite decode
+    path the parity oracle pins.
 
     Per PDF 32000-1 §8.7.4.5.7 (Table 88), Coons patch mesh streams require
     ``/BitsPerCoordinate``, ``/BitsPerComponent``, ``/BitsPerFlag``, and
