@@ -64,9 +64,86 @@ def test_acro_form_properties(acro_form: tuple[PDDocument, PDAcroForm]) -> None:
 # Skipped: ``testFlattenWidgetNoRef`` — same fixture/load dependencies
 # as ``testFlatten``.
 
-# Skipped: ``testFlattenSpecificFieldsOnly`` — requires
-# ``AlignmentTests.pdf`` + ``refresh_appearances`` parity that depends
-# on full /DA tokenisation.
+# ``testFlattenSpecificFieldsOnly`` — the upstream version loads
+# ``AlignmentTests.pdf`` and asserts the count invariant
+#   numFieldsBeforeFlatten == numFieldsAfterFlatten + fieldsToFlatten.size()
+#   numWidgetsBeforeFlatten == numWidgetsAfterFlatten + fieldsToFlatten.size()
+# after ``flatten(fieldsToFlatten, true)``. The bundled-fixture + render
+# dependency is unported, but the *count invariant* itself is portable on a
+# synthetic form (below). This is the load-bearing assertion the upstream
+# test makes — that a partial flatten removes exactly the requested fields
+# (and their widgets), no more, no fewer.
+
+
+def test_flatten_specific_fields_only_count_invariant() -> None:
+    """Port of ``testFlattenSpecificFieldsOnly`` count invariant: a partial
+    ``flatten(fieldsToFlatten, ...)`` shrinks both the field set and the
+    widget set by exactly ``len(fieldsToFlatten)``."""
+    from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSStream
+    from pypdfbox.pdmodel.pd_page import PDPage
+
+    document = PDDocument()
+    page = PDPage()
+    document.add_page(page)
+    form = PDAcroForm(document)
+    document.get_document_catalog().set_acro_form(form)
+
+    def _appearance() -> COSStream:
+        stream = COSStream()
+        stream.set_item(COSName.get_pdf_name("Subtype"), COSName.get_pdf_name("Form"))
+        bbox = COSArray()
+        for v in (0.0, 0.0, 50.0, 10.0):
+            bbox.add(COSFloat(v))
+        stream.set_item(COSName.get_pdf_name("BBox"), bbox)
+        stream.set_raw_data(b"q Q\n")
+        return stream
+
+    annots = COSArray()
+    fields: list[PDTextField] = []
+    for i in range(5):
+        field = PDTextField(form)
+        field.set_partial_name(f"field{i}")
+        cos = field.get_cos_object()
+        cos.set_item(COSName.get_pdf_name("Subtype"), COSName.get_pdf_name("Widget"))
+        rect = COSArray()
+        for v in (10.0, 10.0 + i * 12.0, 60.0, 20.0 + i * 12.0):
+            rect.add(COSFloat(v))
+        cos.set_item(COSName.get_pdf_name("Rect"), rect)
+        cos.set_item(COSName.get_pdf_name("P"), page.get_cos_object())
+        ap = COSDictionary()
+        ap.set_item(COSName.get_pdf_name("N"), _appearance())
+        cos.set_item(COSName.get_pdf_name("AP"), ap)
+        annots.add(cos)
+        fields.append(field)
+    page.get_cos_object().set_item(COSName.get_pdf_name("Annots"), annots)
+    form.set_fields(fields)
+
+    def _count_widgets() -> int:
+        arr = page.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Annots"))
+        if not isinstance(arr, COSArray):
+            return 0
+        return sum(
+            1
+            for i in range(arr.size())
+            if isinstance(arr.get_object(i), COSDictionary)
+            and arr.get_object(i).get_dictionary_object(COSName.get_pdf_name("Subtype"))
+            == COSName.get_pdf_name("Widget")
+        )
+
+    num_fields_before = len(form.get_fields())
+    num_widgets_before = _count_widgets()
+
+    fields_to_flatten = [form.get_field("field1"), form.get_field("field3")]
+    form.flatten(fields_to_flatten, False)
+
+    num_fields_after = len(form.get_fields())
+    num_widgets_after = _count_widgets()
+
+    assert num_fields_before == num_fields_after + len(fields_to_flatten)
+    assert num_widgets_before == num_widgets_after + len(fields_to_flatten)
+    # /AcroForm survives a partial flatten.
+    assert document.get_document_catalog().get_acro_form() is not None
+    document.close()
 
 # Skipped: ``testDontAddMissingInformationOnDocumentLoad`` — exercises
 # upstream PDFBOX-3752 lazy /DA + /DR auto-population on

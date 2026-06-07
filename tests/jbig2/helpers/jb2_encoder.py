@@ -613,6 +613,194 @@ def _new_cx(size: int, index: int):
     return Cx(size, index)
 
 
+def arithmetic_sd_refagg_header(
+    n_export: int,
+    n_new: int,
+    *,
+    sdr_template: int = 1,
+    sdr_at: tuple[tuple[int, int], tuple[int, int]] | None = None,
+) -> bytes:
+    """SDHUFF=0, SDREFAGG=1 symbol-dictionary header (region flags + AT + counts).
+
+    Sets bit 1 (SDREFAGG) and SDRTEMPLATE (bit 12). Direct-coding AT pixels are
+    still present (SDHUFF=0, SDTEMPLATE=0 -> 4 AT pairs). Refinement AT pixels
+    follow only when SDRTEMPLATE == 0 (2 pairs); SDRTEMPLATE == 1 carries none.
+    """
+    bw = BitWriter()
+    flags = (1 << 1) | ((sdr_template & 1) << 12)  # SDREFAGG + SDRTEMPLATE
+    bw.write_bits(flags, 16)
+    # Direct generic-region AT pixels (SDTEMPLATE == 0 -> 4 pairs).
+    for ax, ay in ((3, -1), (-3, -1), (2, -2), (-2, -2)):
+        bw.write_byte(ax & 0xFF)
+        bw.write_byte(ay & 0xFF)
+    # Refinement AT pixels only when SDRTEMPLATE == 0.
+    if sdr_template == 0:
+        pairs = sdr_at if sdr_at is not None else ((-1, -1), (-1, -1))
+        for ax, ay in pairs:
+            bw.write_byte(ax & 0xFF)
+            bw.write_byte(ay & 0xFF)
+    bw.write_bits(n_export, 32)
+    bw.write_bits(n_new, 32)
+    bw.align()
+    return bw.to_bytes()
+
+
+def arithmetic_sd_refagg_single_data(
+    new_w: int,
+    new_h: int,
+    target_rows: list[list[int]],
+    ref_id: int,
+    ref_symbols: list[tuple[int, int, list[list[int]]]],
+    *,
+    imported_count: int,
+    rdx: int = 0,
+    rdy: int = 0,
+) -> bytes:
+    """SDHUFF=0, SDREFAGG=1 SD with one new single-instance refined symbol.
+
+    The refinement SD refers to a base SD providing ``imported_count`` symbols;
+    the single new symbol is decoded via the generic-refinement-region procedure
+    (GRTEMPLATE 1, TPGRON off) from imported symbol ``ref_id``
+    (``ref_symbols[ref_id]``) with offsets ``rdx`` / ``rdy``. Mirrors
+    ``SymbolDictionary._decode_aggregate`` (IAAI == 1 ->
+    ``_decode_refined_symbol``: IAID, IARDX, IARDY, then the refinement bitmap on
+    the shared bitmap CX). All imported + new symbols are exported.
+    """
+    import math
+
+    from tests.jbig2.helpers.mq_encoder import (
+        OOB,
+        ArithmeticIntegerEncoder,
+        MQEncoder,
+        encode_refinement_region_template1,
+    )
+
+    total = imported_count + 1
+    header = arithmetic_sd_refagg_header(total, 1, sdr_template=1)
+
+    # sb_sym_code_len = ceil(log2(total)) on the arithmetic path (6.5.8.2.3).
+    sb_sym_code_len = math.ceil(math.log(total) / math.log(2)) if total > 1 else 0
+
+    enc = MQEncoder()
+    int_enc = ArithmeticIntegerEncoder(enc)
+    cx_iadh = _new_cx(512, 1)
+    cx_iadw = _new_cx(512, 1)
+    cx_iaai = _new_cx(512, 1)
+    cx_iaex = _new_cx(512, 1)
+    cx_iaid = _new_cx(1 << sb_sym_code_len, 1)
+    cx_iardx = _new_cx(512, 1)
+    cx_iardy = _new_cx(512, 1)
+    # Refinement bitmap context: same size as the decoder's reset CX (65536).
+    bitmap_cx = _new_cx(65536, 1)
+
+    # One height class with one symbol.
+    int_enc.encode(cx_iadh, new_h)  # delta-height (prev 0)
+    int_enc.encode(cx_iadw, new_w)  # delta-width (prev 0)
+    # IAAI == 1 -> single-instance refinement.
+    int_enc.encode(cx_iaai, 1)
+    # _decode_refined_symbol: IAID, IARDX, IARDY.
+    int_enc.encode_iaid(cx_iaid, ref_id, sb_sym_code_len)
+    int_enc.encode(cx_iardx, rdx)
+    int_enc.encode(cx_iardy, rdy)
+    # Refinement bitmap (GRTEMPLATE 1) referencing imported symbol ref_id.
+    ref_w, ref_h, ref_rows = ref_symbols[ref_id]
+    encode_refinement_region_template1(
+        enc,
+        bitmap_cx,
+        target_rows,
+        new_w,
+        new_h,
+        ref_rows,
+        ref_w,
+        ref_h,
+        rdx,
+        rdy,
+    )
+    # OOB on IADW ends the (single-symbol) height class.
+    int_enc.encode(cx_iadw, OOB)
+    # Export-flag runs: skip 0, then export all `total`.
+    int_enc.encode(cx_iaex, 0)
+    int_enc.encode(cx_iaex, total)
+    return header + enc.flush()
+
+
+def arithmetic_sd_refagg_aggregate_data(
+    new_w: int,
+    new_h: int,
+    placements: list[tuple[int, int, int]],
+    ref_symbols: list[tuple[int, int, list[list[int]]]],
+    *,
+    imported_count: int,
+) -> bytes:
+    """SDHUFF=0, SDREFAGG=1 SD whose one new symbol is decoded via the aggregate
+    text-region route (IAAI > 1 -> ``_decode_through_text_region``).
+
+    ``placements`` is a list of ``(symbol_id, s, t)`` instances composed into the
+    new symbol bitmap (size ``new_w`` x ``new_h``) by a one-strip arithmetic
+    TextRegion (sb_strips==1, transposed==0, refCorner==TOPLEFT, r==0 per
+    instance). The instances reference imported symbols (``ref_symbols``) from a
+    referred-to base SD. Mirrors ``SymbolDictionary._decode_through_text_region``
+    (Table 17): IADT strip-T, per-strip IADT delta-T, first instance IAFS, then
+    per instance IAID + IARI(0); IADS gaps + OOB terminate the strip.
+    """
+    import math
+
+    from tests.jbig2.helpers.mq_encoder import (
+        OOB,
+        ArithmeticIntegerEncoder,
+        MQEncoder,
+    )
+
+    total = imported_count + 1
+    header = arithmetic_sd_refagg_header(total, 1, sdr_template=1)
+    sb_sym_code_len = max(math.ceil(math.log(total) / math.log(2)), 0) if total > 1 else 0
+
+    enc = MQEncoder()
+    int_enc = ArithmeticIntegerEncoder(enc)
+    cx_iadh = _new_cx(512, 1)
+    cx_iadw = _new_cx(512, 1)
+    cx_iaai = _new_cx(512, 1)
+    cx_iaex = _new_cx(512, 1)
+    # Text-region contexts (one-strip aggregate): per Table 17 / set_contexts.
+    cx_iadt = _new_cx(512, 1)
+    cx_iafs = _new_cx(512, 1)
+    cx_iads = _new_cx(512, 1)
+    cx_iari = _new_cx(512, 1)
+    cx_iaid = _new_cx(1 << sb_sym_code_len, 1)
+
+    n_inst = len(placements)
+
+    int_enc.encode(cx_iadh, new_h)  # delta-height
+    int_enc.encode(cx_iadw, new_w)  # delta-width
+    int_enc.encode(cx_iaai, n_inst)  # IAAI > 1 -> aggregate text region
+
+    # One-strip text region (sb_strips == 1). strip_t starts at 0 (IADT 0 -> *-1).
+    int_enc.encode(cx_iadt, 0)  # initial STRIPT
+    int_enc.encode(cx_iadt, 0)  # per-strip delta-T -> strip_t stays 0
+    # ``placements[i][1]`` is the left x (current_s) where instance i is placed.
+    # For refCorner TOPLEFT / transposed 0 the decoder advances current_s by
+    # (symbol_width - 1) after each blit, so the IADS gap before instance i is
+    # placements[i].s - (placements[i-1].s + width_{i-1} - 1).
+    prev_s = 0
+    prev_w = 0
+    for idx, (sym_id, s, _t) in enumerate(placements):
+        if idx == 0:
+            int_enc.encode(cx_iafs, s)  # DfS -> first_s = s
+        else:
+            int_enc.encode(cx_iads, s - (prev_s + prev_w - 1))  # IdS gap
+        # current_t: sb_strips == 1 -> not read.
+        int_enc.encode_iaid(cx_iaid, sym_id, sb_sym_code_len)  # IAID
+        int_enc.encode(cx_iari, 0)  # IARI (r == 0)
+        prev_s = s
+        prev_w = ref_symbols[sym_id][0]
+    int_enc.encode(cx_iads, OOB)  # OOB ends the strip
+
+    int_enc.encode(cx_iadw, OOB)  # OOB ends the (single-symbol) height class
+    int_enc.encode(cx_iaex, 0)
+    int_enc.encode(cx_iaex, total)
+    return header + enc.flush()
+
+
 def arithmetic_sd_header(
     n_export: int, n_new: int, *, retain_context: bool, use_context: bool
 ) -> bytes:

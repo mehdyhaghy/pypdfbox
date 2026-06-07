@@ -6,8 +6,10 @@ exercise:
 - :meth:`PDFMergerUtility.merge_documents_random_access_read` and bytes
   / :class:`RandomAccessRead` / file-stream handling in :meth:`add_source`.
 - :meth:`PDFMergerUtility.set_destination` overload routing.
-- ``/PageMode``, ``/PageLayout``, ``/Lang``, ``/ViewerPreferences`` are
-  carried over first-source-wins.
+- ``/PageMode`` is carried over first-source-wins; ``/Lang`` /
+  ``/ViewerPreferences`` / ``/MarkInfo`` are merged ONLY inside the
+  structure-tree block (matching upstream gating, wave 1506); ``/PageLayout``
+  is never merged.
 - ``/Outlines`` concatenation and ``/PageLabels`` index shift.
 - :meth:`PDFMergerUtility.set_ignore_acro_form_errors` toggle behaviour.
 """
@@ -195,7 +197,11 @@ def test_page_mode_first_source_wins(tmp_path: Path) -> None:
         assert _catalog_dict(merged).get_name("PageMode") == "UseOutlines"
 
 
-def test_page_layout_first_source_wins(tmp_path: Path) -> None:
+def test_page_layout_not_merged_for_untagged_sources(tmp_path: Path) -> None:
+    """Wave 1506: upstream ``appendDocument`` never merges /PageLayout (there is
+    no /PageLayout merge arm in PDFBox at all). pypdfbox previously carried it
+    first-source-wins; that inline shim was removed. Untagged sources → the
+    merged catalog has no /PageLayout (oracle-confirmed)."""
     a = tmp_path / "a.pdf"
     b = tmp_path / "b.pdf"
     out = tmp_path / "out.pdf"
@@ -211,29 +217,13 @@ def test_page_layout_first_source_wins(tmp_path: Path) -> None:
     util.set_destination_file_name(str(out))
     util.merge_documents()
     with PDDocument.load(str(out)) as merged:
-        assert _catalog_dict(merged).get_name("PageLayout") == "TwoColumnLeft"
+        assert _catalog_dict(merged).get_name("PageLayout") is None
 
 
-def test_page_layout_picked_up_from_second_when_first_missing(
-    tmp_path: Path,
-) -> None:
-    a = tmp_path / "a.pdf"
-    b = tmp_path / "b.pdf"
-    out = tmp_path / "out.pdf"
-    _save_to_path(_build_doc(1), a)  # no /PageLayout
-    src_b = _build_doc(1)
-    _catalog_dict(src_b).set_name("PageLayout", "TwoPageRight")
-    _save_to_path(src_b, b)
-
-    util = PDFMergerUtility()
-    util.add_sources([str(a), str(b)])
-    util.set_destination_file_name(str(out))
-    util.merge_documents()
-    with PDDocument.load(str(out)) as merged:
-        assert _catalog_dict(merged).get_name("PageLayout") == "TwoPageRight"
-
-
-def test_lang_first_source_wins(tmp_path: Path) -> None:
+def test_lang_not_merged_for_untagged_sources(tmp_path: Path) -> None:
+    """Wave 1506: upstream merges /Lang only inside the structure-tree block
+    (``mergeLanguage``). Untagged sources → no structure-tree merge → the
+    merged catalog has no /Lang (oracle-confirmed)."""
     a = tmp_path / "a.pdf"
     b = tmp_path / "b.pdf"
     out = tmp_path / "out.pdf"
@@ -249,20 +239,21 @@ def test_lang_first_source_wins(tmp_path: Path) -> None:
     util.set_destination_file_name(str(out))
     util.merge_documents()
     with PDDocument.load(str(out)) as merged:
-        lang_obj = _catalog_dict(merged).get_dictionary_object(
-            COSName.get_pdf_name("Lang")
+        assert (
+            _catalog_dict(merged).get_dictionary_object(
+                COSName.get_pdf_name("Lang")
+            )
+            is None
         )
-        # Cloned through COSString — back-conversion to a Python string is
-        # what we're confirming (first-source-wins).
-        text = (
-            lang_obj.get_string()
-            if hasattr(lang_obj, "get_string")
-            else str(lang_obj)
-        )
-        assert text == "en-US"
 
 
-def test_viewer_preferences_first_source_wins(tmp_path: Path) -> None:
+def test_viewer_preferences_not_merged_for_untagged_sources(
+    tmp_path: Path,
+) -> None:
+    """Wave 1506: upstream merges /ViewerPreferences only inside the
+    structure-tree block (``mergeViewerPreferences``). Untagged sources → no
+    structure-tree merge → the merged catalog has no /ViewerPreferences
+    (oracle-confirmed)."""
     a = tmp_path / "a.pdf"
     b = tmp_path / "b.pdf"
     out = tmp_path / "out.pdf"
@@ -286,17 +277,12 @@ def test_viewer_preferences_first_source_wins(tmp_path: Path) -> None:
     util.set_destination_file_name(str(out))
     util.merge_documents()
     with PDDocument.load(str(out)) as merged:
-        vp_merged = _catalog_dict(merged).get_dictionary_object(
-            COSName.get_pdf_name("ViewerPreferences")
+        assert (
+            _catalog_dict(merged).get_dictionary_object(
+                COSName.get_pdf_name("ViewerPreferences")
+            )
+            is None
         )
-        assert isinstance(vp_merged, COSDictionary)
-        assert vp_merged.get_boolean(
-            COSName.get_pdf_name("HideToolbar"), False
-        ) is True
-        # second source's preference must NOT have leaked in
-        assert vp_merged.get_boolean(
-            COSName.get_pdf_name("HideMenubar"), False
-        ) is False
 
 
 # ---------- /Outlines concatenation ----------
@@ -484,6 +470,57 @@ def test_acro_form_merge_mode_round_trip() -> None:
     util = PDFMergerUtility()
     util.set_acro_form_merge_mode(AcroFormMergeMode.JOIN_FORM_FIELDS_MODE)
     assert util.get_acro_form_merge_mode() == AcroFormMergeMode.JOIN_FORM_FIELDS_MODE
+
+
+# ---------- struct-tree-gated catalog scalar merges (wave 1506) ----------
+
+
+_MULTIPDF_FIXTURES = (
+    Path(__file__).resolve().parent.parent / "fixtures" / "multipdf"
+)
+
+
+def test_lang_markinfo_viewer_prefs_merged_inside_struct_tree_block() -> None:
+    """When the structure tree IS merged (a tagged source), upstream's
+    ``appendDocument`` runs mergeMarkInfo / mergeLanguage /
+    mergeViewerPreferences as the last statements inside the
+    ``if (mergeStructTree)`` block. pypdfbox mirrors that gating (wave 1506):
+    merging a plain AcroForm doc with a tagged PDF/A doc carries /MarkInfo,
+    /Lang, and /ViewerPreferences from the tagged source into the destination.
+
+    Oracle-confirmed against PDFBox 3.0.7: the merged catalog carries
+    ``/MarkInfo {Marked true, Suspects false}``, ``/Lang (de-DE)``, and
+    ``/ViewerPreferences {DisplayDocTitle true}``."""
+    a = _MULTIPDF_FIXTURES / "AcroFormForMerge.pdf"
+    b = _MULTIPDF_FIXTURES / "PDFA3A.pdf"
+    if not (a.is_file() and b.is_file()):
+        pytest.skip("merge fixtures AcroFormForMerge.pdf + PDFA3A.pdf missing")
+
+    util = PDFMergerUtility()
+    dest = PDDocument()
+    try:
+        for src in (a, b):
+            sd = PDDocument.load(src)
+            try:
+                util.append_document(dest, sd)
+            finally:
+                sd.close()
+        co = dest.get_document_catalog().get_cos_object()
+
+        mark_info = co.get_dictionary_object(COSName.get_pdf_name("MarkInfo"))
+        assert isinstance(mark_info, COSDictionary)
+        assert mark_info.get_boolean(COSName.get_pdf_name("Marked"), False) is True
+
+        lang = co.get_dictionary_object(COSName.get_pdf_name("Lang"))
+        text = lang.get_string() if hasattr(lang, "get_string") else None
+        assert text == "de-DE"
+
+        vp = co.get_dictionary_object(
+            COSName.get_pdf_name("ViewerPreferences")
+        )
+        assert isinstance(vp, COSDictionary)
+    finally:
+        dest.close()
 
 
 # ---------- nested-class aliases ----------

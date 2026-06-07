@@ -886,39 +886,24 @@ class PDFMergerUtility:
         self._merge_outline(cloner, src_catalog, dest_catalog)
 
         # ----- /PageMode -----
+        # First-source-wins. NOTE: upstream's outside-struct-block /PageMode
+        # merge reads ``destCatalog.getPageMode()`` which bakes in the spec
+        # default ``UseNone`` (never null), so upstream's ``if (destPageMode ==
+        # null)`` guard is dead code and /PageMode is effectively never carried.
+        # pypdfbox deliberately uses the raw-key guard here so a source
+        # /PageMode IS carried into a destination that has none — a documented
+        # enhancement over upstream's accidental no-op (see CHANGES.md). The
+        # /Lang and /ViewerPreferences carries that pypdfbox previously did at
+        # this same spot were removed: upstream merges those ONLY inside the
+        # structure-tree block (via mergeLanguage / mergeViewerPreferences),
+        # alongside mergeMarkInfo — see _finish_struct_tree_merge's tail. There
+        # is no /PageLayout merge in upstream at all.
         if dest_catalog.get_cos_object().get_dictionary_object(_PAGE_MODE) is None:
             src_pm = src_catalog.get_cos_object().get_dictionary_object(_PAGE_MODE)
             if src_pm is not None:
                 cloned = cloner.clone_for_new_document(src_pm)
                 if cloned is not None:
                     dest_catalog.get_cos_object().set_item(_PAGE_MODE, cloned)
-
-        # ----- /PageLayout (carried first-source-wins like /PageMode) -----
-        if dest_catalog.get_cos_object().get_dictionary_object(_PAGE_LAYOUT) is None:
-            src_pl = src_catalog.get_cos_object().get_dictionary_object(_PAGE_LAYOUT)
-            if src_pl is not None:
-                cloned = cloner.clone_for_new_document(src_pl)
-                if cloned is not None:
-                    dest_catalog.get_cos_object().set_item(_PAGE_LAYOUT, cloned)
-
-        # ----- /Lang -----
-        if dest_catalog.get_cos_object().get_dictionary_object(_LANG) is None:
-            src_lang = src_catalog.get_cos_object().get_dictionary_object(_LANG)
-            if src_lang is not None:
-                cloned = cloner.clone_for_new_document(src_lang)
-                if cloned is not None:
-                    dest_catalog.get_cos_object().set_item(_LANG, cloned)
-
-        # ----- /ViewerPreferences -----
-        if (
-            dest_catalog.get_cos_object().get_dictionary_object(_VIEWER_PREFS)
-            is None
-        ):
-            src_vp = src_catalog.get_cos_object().get_dictionary_object(_VIEWER_PREFS)
-            if isinstance(src_vp, COSDictionary):
-                cloned = cloner.clone_for_new_document(src_vp)
-                if cloned is not None:
-                    dest_catalog.get_cos_object().set_item(_VIEWER_PREFS, cloned)
 
         # ----- /PageLabels -----
         self._merge_page_labels(cloner, source, destination)
@@ -1012,6 +997,15 @@ class PDFMergerUtility:
                 dest_parent_tree_next_key,
                 obj_mapping,
             )
+            # Upstream appendDocument runs these three catalog-scalar merges as
+            # the final statements INSIDE the ``if (mergeStructTree)`` block
+            # (Java lines 848-850), so they fire only when the structure tree
+            # is actually merged: /MarkInfo (marked=true, suspect OR-fold),
+            # /Lang (first-source-wins), and /ViewerPreferences (dict fold +
+            # boolean OR-merge). Mirrors that gating exactly.
+            self.merge_mark_info(dest_catalog, src_catalog)
+            self.merge_language(dest_catalog, src_catalog)
+            self.merge_viewer_preferences(dest_catalog, src_catalog, cloner)
 
     # ---------- helpers ----------
 

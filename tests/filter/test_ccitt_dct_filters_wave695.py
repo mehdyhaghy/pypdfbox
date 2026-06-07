@@ -92,15 +92,17 @@ def test_ccitt_estimate_rows_clamps_invalid_columns_to_one() -> None:
     assert ccitt_module._estimate_rows(b"\x00\x01", 0) == 1
 
 
-def test_dct_decode_empty_input_reuses_supplied_parameters() -> None:
+def test_dct_decode_empty_input_raises() -> None:
+    # Upstream DCTFilter.decode feeds the empty stream to ImageIO, which finds
+    # no JPEG SOI marker and throws — so pypdfbox raises here too instead of
+    # short-circuiting to ok / 0 bytes (wave 1506, closes the wave-1505
+    # empty-DCT deferral). Pinned ok=false vs the live oracle in
+    # test_filter_decode_fuzz_oracle.py.
     params = COSDictionary()
     out = io.BytesIO()
 
-    result = DCTDecode().decode(io.BytesIO(b""), out, params)
-
-    assert result.parameters is params
-    assert result.bytes_written == 0
-    assert out.getvalue() == b""
+    with pytest.raises(OSError, match="JPEG decode failed"):
+        DCTDecode().decode(io.BytesIO(b""), out, params)
 
 
 def test_dct_decode_invalid_jpeg_raises_oserror() -> None:

@@ -62,6 +62,19 @@ class Cx:
     def toggle_mps(self) -> None:
         self._mps[self.index] ^= 1
 
+    def copy(self) -> Cx:
+        """Return a deep copy (mirror of the decoder's ``CX.copy``).
+
+        Used to model coding-context reuse across symbol dictionaries: a
+        context-using SD adopts ``base.cx.copy()`` as the starting bitmap
+        context, so the encoder must continue from a copy of the base
+        encoder's bitmap ``Cx`` after the base body was encoded.
+        """
+        result = Cx(len(self._i), self.index)
+        result._i[:] = self._i
+        result._mps[:] = self._mps
+        return result
+
 
 class MQEncoder:
     """The MQ arithmetic ENCODER (ITU-T Rec. T.88 Annex E.3).
@@ -341,3 +354,66 @@ def encode_generic_region_template0(
             byte_index += 1
             idx += 1
             x = next_byte
+
+
+def _pixel_safe(rows: list[list[int]], width: int, height: int, x: int, y: int) -> int:
+    """Mirror ``_get_pixel_safe`` (§6.3.5.2 out-of-bounds rule: outside == 0)."""
+    if x < 0 or y < 0 or x >= width or y >= height:
+        return 0
+    return rows[y][x]
+
+
+def encode_refinement_region_template1(
+    encoder: MQEncoder,
+    cx: Cx,
+    target_rows: list[list[int]],
+    width: int,
+    height: int,
+    reference_rows: list[list[int]],
+    ref_width: int,
+    ref_height: int,
+    reference_dx: int,
+    reference_dy: int,
+) -> None:
+    """Encode a generic-refinement-region bitmap with GRTEMPLATE 1, TPGRON off.
+
+    The inverse of ``GenericRefinementRegionDecodingProcedure`` for the
+    template-1, non-TPGR path (``_decode_line_explicit_t1`` + ``_build_context_t1``,
+    the per-pixel route the SD single-instance refinement and the SD aggregate
+    TextRegion use for ``sdr_template == 1`` / ``sbr_template == 1``). Pixels are
+    encoded in row-major order; each pixel's context is formed from the
+    *already-encoded* region pixels (``target_rows`` built up incrementally) and
+    the static reference bitmap, identical to the decoder, so the produced bits
+    decode back to ``target_rows`` and the CX state evolves the same way.
+    """
+    # Build the region incrementally so neighbour reads see only coded pixels.
+    region = [[0] * width for _ in range(height)]
+
+    def region_bit(x: int, y: int) -> int:
+        return _pixel_safe(region, width, height, x, y)
+
+    def reference_bit(x: int, y: int) -> int:
+        return _pixel_safe(
+            reference_rows, ref_width, ref_height, x - reference_dx, y - reference_dy
+        )
+
+    def build_context_t1(x: int, y: int) -> int:
+        return (
+            (region_bit(x - 1, y - 1) << 9)
+            | (region_bit(x, y - 1) << 8)
+            | (region_bit(x + 1, y - 1) << 7)
+            | (region_bit(x - 1, y) << 6)
+            | (reference_bit(x, y - 1) << 5)
+            | (reference_bit(x - 1, y) << 4)
+            | (reference_bit(x, y) << 3)
+            | (reference_bit(x + 1, y) << 2)
+            | (reference_bit(x, y + 1) << 1)
+            | (reference_bit(x + 1, y + 1))
+        )
+
+    for y in range(height):
+        for x in range(width):
+            cx.set_index(build_context_t1(x, y))
+            bit = target_rows[y][x]
+            encoder.encode(cx, bit)
+            region[y][x] = bit

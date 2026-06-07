@@ -214,16 +214,38 @@ def test_invalid_columns_raises() -> None:
         _decode(b"\x00\x01", params)
 
 
-def test_empty_body_returns_empty() -> None:
+def test_empty_body_zero_fills_to_row_footprint() -> None:
+    # Upstream CCITTFaxFilter.decode pre-allocates ``(cols+7)/8 * rows`` and
+    # decodes zero rows from an empty stream, then inverts when /BlackIs1 is
+    # false — so an empty body with /Rows known yields a WHITE buffer of the
+    # full footprint (4 rows × 1 row-byte = 0xFF × 4), NOT zero bytes. Pinned
+    # byte-exact vs the live oracle in test_filter_decode_fuzz_oracle.py.
     params = _decode_params(K=-1, Columns=8, Rows=4)
+    assert _decode(b"", params) == b"\xff\xff\xff\xff"
+
+
+def test_empty_body_no_rows_returns_empty() -> None:
+    # With no /Rows (and no /Height) the upstream allocation is empty, so an
+    # empty body decodes to zero bytes (matches PDFBox arraySize == 0).
+    params = _decode_params(K=-1, Columns=8)  # /Rows omitted
     assert _decode(b"", params) == b""
 
 
-def test_garbage_payload_raises() -> None:
+def test_empty_body_black_is_1_zero_fills_black() -> None:
+    # /BlackIs1 true skips the inversion, so the zero-decode buffer reads out
+    # all 0x00 (black) rather than 0xFF.
+    params = _decode_params(K=-1, Columns=8, Rows=4, BlackIs1=True)
+    assert _decode(b"", params) == b"\x00\x00\x00\x00"
+
+
+def test_garbage_payload_zero_fills() -> None:
+    # libtiff rejects random non-CCITT bytes, but PDFBox's pure-Java decoder
+    # never throws — it decodes zero rows and zero-fills. pypdfbox now matches
+    # that lenient contract (libtiff failure -> deterministic zero-fill buffer)
+    # instead of raising OSError. Pinned vs the live oracle in
+    # test_filter_decode_fuzz_oracle.py.
     params = _decode_params(K=-1, Columns=8, Rows=4)
-    # Random non-CCITT bytes should fail libtiff decode.
-    with pytest.raises(OSError):
-        _decode(b"\x00\x00\x00\x00\x00", params)
+    assert _decode(b"\x00\x00\x00\x00\x00", params) == b"\xff\xff\xff\xff"
 
 
 def test_encode_requires_columns_and_rows() -> None:

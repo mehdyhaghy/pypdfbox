@@ -36,9 +36,13 @@ RunLength) the projection is exact (ok + len + sha): both engines share the
 same decode algorithm so byte-equality is the right bar. For the image filters
 (CCITTFaxDecode / DCTDecode) the two libraries decode by entirely different
 machinery (libtiff / Pillow vs PDFBox's pure-Java codecs) and pad past EOD
-differently (CLAUDE.md libtiff/Pillow EOD carve-out), so those mutants are
-pinned LOOSELY — only the ``ok`` boolean (decode succeeds vs throws) is
-compared, never len/sha.
+differently (CLAUDE.md libtiff/Pillow EOD carve-out), so the *partial-decode*
+mutants there are pinned LOOSELY — only the ``ok`` boolean (decode succeeds vs
+throws) is compared, never len/sha. The exception (wave 1506) is the CCITT
+libtiff-FAILURE path: when libtiff rejects a body outright, ``CCITTFaxDecode``
+falls back to a deterministic, fully pypdfbox-constructed ``rows * rowBytes``
+zero-fill buffer that reproduces PDFBox's "decoded 0 rows" outcome byte-for-
+byte — no codec output is in that buffer, so those mutants are pinned EXACT.
 
 Deterministic generator, fixed PRNG seed ``random.Random(1505)``.
 """
@@ -318,28 +322,59 @@ def _runlength_mutants() -> list[_Mut]:
     return out
 
 
-def _ccitt_mutants() -> list[_Mut]:
-    """CCITT mutants — LOOSE (ok-only) parity: libtiff vs PDFBox pad past EOD
-    differently (CLAUDE.md carve-out), so only the ok boolean is compared.
+def _ccitt_encode(raw: bytes, cols: int, rows: int, k: int) -> bytes:
+    flt = FilterFactory.get("CCITTFaxDecode")
+    p = COSDictionary()
+    dp = COSDictionary()
+    for kk, vv in {"K": k, "Columns": cols, "Rows": rows}.items():
+        dp.set_item(COSName.get_pdf_name(kk), COSInteger.get(vv))
+    p.set_item(COSName.get_pdf_name("DecodeParms"), dp)
+    out = io.BytesIO()
+    flt.encode(io.BytesIO(raw), out, p)
+    return out.getvalue()
 
-    DOCUMENTED LIBRARY-GAP DIVERGENCE (not pinned here): PDFBox's pure-Java
-    ``CCITTFaxDecoderStream`` pre-allocates a ``rows * rowBytes`` buffer and
-    fills only the scanlines it manages to decode — it effectively NEVER
-    throws on a malformed body (a truncated / garbage / wrong-geometry strip
-    yields a partial-or-zero buffer, ok=true). pypdfbox decodes via libtiff
-    (through Pillow), which is materially stricter: a truncated G4 strip, a
-    column/row geometry that libtiff rejects, or a /Rows==0 sniff that yields
-    no scanlines surfaces as an ``OSError`` (ok=false). The corpus below pins
-    only the cases where the two libraries AGREE; the truncated / wrong-
-    geometry / zero-rows cases that expose the libtiff-strictness gap are
-    deliberately omitted (see CHANGES.md / DEFERRED.md). Closing that gap
-    would mean swallowing every libtiff failure into a zero-filled buffer,
-    a CCITT decode-path rewrite out of scope for this filter-fuzz wave.
+
+def _ccitt_mutants() -> list[_Mut]:
+    """CCITT mutants vs Apache PDFBox.
+
+    LIBRARY-GAP CONTRACT (wave 1506, closing the wave-1505 deferral): PDFBox's
+    pure-Java ``CCITTFaxDecoderStream`` pre-allocates a fixed
+    ``(cols+7)/8 * rows`` buffer (zero-filled), fills only the scanlines it
+    manages to decode, swallows the EOF/AIOOBE on the rest, and — when
+    /BlackIs1 is false — inverts the whole buffer (``CCITTFaxFilter.decode`` →
+    ``readFromDecoderStream``). It therefore NEVER throws on a malformed body:
+    a truncated / garbage / empty strip yields a fixed WHITE buffer (decoded
+    0 rows → all 0xFF). pypdfbox decodes via libtiff (Pillow), which is
+    materially stricter and *raises* on those inputs — so ``CCITTFaxDecode``
+    now wraps libtiff failures in a deterministic, pypdfbox-constructed
+    ``rows * rowBytes`` zero-fill that reproduces upstream's outcome byte-for-
+    byte (and empty bodies no longer short-circuit to 0 bytes).
+
+    Pinning split:
+
+    * libtiff-FAILURE cases (truncated G4 / garbage / empty with /Rows known) →
+      the fallback buffer is entirely pypdfbox-constructed and deterministic,
+      so they are pinned ``exact`` (ok + len + sha) — NOT subject to the
+      libtiff EOD carve-out (no codec output is in the buffer).
+    * libtiff-SUCCESS-with-partial-content cases (a wrong-/Columns geometry or
+      a truncated G3 strip that libtiff decodes to *some* bytes) → the head
+      bytes are libtiff/Pillow codec output and differ from PDFBox's pure-Java
+      bytes (CLAUDE.md libtiff EOD carve-out), so they stay ``ok``-only.
+    * the /Rows==0 row-discovery case stays ``ok``-only: pypdfbox's
+      ``_estimate_rows`` invention decodes a discovered row count where upstream
+      (``arraySize = rowBytes * max(rows, height) == 0``) emits zero bytes — a
+      separate, still-open documented divergence (the row-count estimator), not
+      the libtiff-strictness gap.
     """
     out: list[_Mut] = []
     stream = {"Width": 8, "Height": 2}
+    raw = bytes([0b10101010, 0b11001100])  # 8x2 bilevel image
+    g4 = _ccitt_encode(raw, 8, 2, -1)
+    g3 = _ccitt_encode(raw, 8, 2, 0)
 
-    def add(name: str, body: bytes, k: int, cols: int, rows: int) -> None:
+    def add(
+        name: str, body: bytes, k: int, cols: int, rows: int, mode: str
+    ) -> None:
         out.append(
             (
                 name,
@@ -347,14 +382,44 @@ def _ccitt_mutants() -> list[_Mut]:
                 body,
                 stream,
                 {"K": k, "Columns": cols, "Rows": rows},
-                "ok",
+                mode,
             )
         )
 
-    # Cases where libtiff and PDFBox agree on ok/throw:
-    add("ccitt_g4_empty", b"", -1, 8, 2)
-    add("ccitt_g3_1d_garbage", bytes([0xAA, 0x55, 0xAA, 0x55]), 0, 8, 2)
-    add("ccitt_g3_2d_garbage", bytes([0xFF, 0x00, 0xFF]), 1, 8, 2)
+    # --- cases where libtiff and PDFBox already agreed (kept) -------------
+    add("ccitt_g3_1d_garbage", bytes([0xAA, 0x55, 0xAA, 0x55]), 0, 8, 2, "ok")
+    add("ccitt_g3_2d_garbage", bytes([0xFF, 0x00, 0xFF]), 1, 8, 2, "ok")
+
+    # --- libtiff-FAILURE -> deterministic zero-fill, pinned EXACT ---------
+    # (the four mutants wave 1505 dropped, now closed at byte parity).
+    # Empty G4 body with /Rows known: upstream allocates 2x1 bytes, decodes
+    # zero rows, inverts -> 0xFF*2; pypdfbox no longer short-circuits to 0.
+    add("ccitt_g4_empty", b"", -1, 8, 2, "exact")
+    # Truncated G4 strip: libtiff rejects -> zero-fill 0xFF*2 == PDFBox.
+    add("ccitt_g4_truncated", g4[: len(g4) // 2], -1, 8, 2, "exact")
+    # Random non-CCITT bytes with /Rows known: libtiff rejects -> zero-fill.
+    add("ccitt_garbage_rows_known", b"\x00\x00\x00\x00\x00", -1, 8, 2, "exact")
+
+    # --- libtiff-SUCCESS-with-partial-content -> codec-dependent, OK-only -
+    # Wrong /Columns: both engines decode *some* bytes; head bytes are codec
+    # output (libtiff EOD carve-out), so only the ok boolean is pinned.
+    add("ccitt_g4_wrong_columns", g4, -1, 32, 2, "ok")
+    # Truncated G3 strip: libtiff decodes partial content that differs from
+    # PDFBox's zero-fill (libtiff did NOT fail here) — ok-only.
+    add("ccitt_g3_truncated", g3[: len(g3) // 2], 0, 8, 2, "ok")
+
+    # --- /Rows==0 row-discovery divergence (still open) -> OK-only --------
+    # pypdfbox estimates a row count; upstream's arraySize is 0 (zero bytes).
+    out.append(
+        (
+            "ccitt_g4_zero_rows",
+            "CCITTFaxDecode",
+            g4,
+            {},
+            {"K": -1, "Columns": 8, "Rows": 0},
+            "ok",
+        )
+    )
     return out
 
 
@@ -371,11 +436,11 @@ def _dct_mutants() -> list[_Mut]:
     add("dct_soi_only", b"\xff\xd8")
     add("dct_truncated_header", jpeg_soi)
     add("dct_garbage", b"not a jpeg at all, just bytes")
-    # NOTE: an EMPTY DCT body is a documented divergence (omitted here):
-    # pypdfbox short-circuits an empty stream to ok=true / zero bytes, while
-    # PDFBox's DCTFilter feeds the empty stream to ImageIO and throws
-    # (ok=false). See CHANGES.md / DEFERRED.md — left as-is because the
-    # empty-stream guard is harmless for real (non-empty) JPEG bodies.
+    # An EMPTY DCT body now matches upstream (wave 1506, closing the wave-1505
+    # deferral): pypdfbox no longer short-circuits to ok / 0 bytes; like
+    # PDFBox's DCTFilter (which feeds the empty stream to ImageIO -> no SOI
+    # marker -> throw) it surfaces ok=false. Both sides classify as a throw.
+    add("dct_empty", b"")
     return out
 
 

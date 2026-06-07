@@ -226,9 +226,17 @@ class CCITTFaxDecode(Filter):
 
         encoded_bytes = encoded.read()
         if not encoded_bytes:
-            # An empty body is harmless — emit no scanlines.
-            out_params = parameters if parameters is not None else COSDictionary()
-            return DecodeResult(parameters=out_params, bytes_written=0)
+            # Upstream never short-circuits an empty body: CCITTFaxFilter.decode
+            # pre-allocates ``byte[(cols+7)/8 * rows]`` (zero-filled), decodes
+            # zero rows from the empty stream (CCITTFaxDecoderStream swallows the
+            # EOF and leaves the buffer untouched), then inverts the whole buffer
+            # when /BlackIs1 is false. So an empty body with /Rows (or /Height)
+            # known yields ``rows * rowBytes`` of WHITE (0xFF default, 0x00 for
+            # /BlackIs1) — NOT zero bytes. With no row count at all (rows == 0)
+            # the allocation is empty, matching upstream's ``len == 0``.
+            return self._zero_fill_result(
+                decoded, parameters, columns=columns, rows=rows, black_is_1=black_is_1
+            )
 
         # PDF spec §7.4.9: with /Rows omitted (≤ 0) the decoder must
         # discover the row count from the encoded stream. libtiff does
@@ -266,8 +274,27 @@ class CCITTFaxDecode(Filter):
                 scanlines = bilevel.tobytes()
                 actual_height = bilevel.size[1]
                 actual_width = bilevel.size[0]
-        except Exception as exc:
-            raise OSError(f"CCITTFaxDecode: libtiff decode failed: {exc}") from exc
+        except Exception:
+            # libtiff is materially stricter than PDFBox's pure-Java
+            # CCITTFaxDecoderStream, which NEVER throws on a malformed body: it
+            # pre-allocates ``rows * rowBytes`` (zero-filled), fills only the
+            # scanlines it manages to decode, swallows the EOF/AIOOBE on the
+            # rest, and inverts the whole buffer when /BlackIs1 is false
+            # (CCITTFaxFilter.decode → readFromDecoderStream). A truncated /
+            # garbage / wrong-geometry strip that libtiff rejects therefore
+            # corresponds to upstream's "decoded 0 rows" outcome: a fixed
+            # ``rows * rowBytes`` buffer of WHITE (0xFF default, 0x00 for
+            # /BlackIs1). Fall back to that deterministic zero-fill instead of
+            # raising, so the lenient decode contract matches PDFBox. (When the
+            # row count is unknown — rows == 0 and no /Height — upstream's
+            # allocation is empty, so we emit zero bytes too.) This buffer is
+            # entirely pypdfbox-constructed and deterministic, so it is byte-
+            # exact with PDFBox here — unlike the partial-decode path, where the
+            # head bytes are libtiff/Pillow codec output and only "decode
+            # succeeds vs throws" can be pinned (CLAUDE.md libtiff EOD carve-out).
+            return self._zero_fill_result(
+                decoded, parameters, columns=columns, rows=rows, black_is_1=black_is_1
+            )
 
         # If the effective row count is known (declared /Rows or the
         # reconciled /Height), force the output to exactly that many
@@ -302,6 +329,35 @@ class CCITTFaxDecode(Filter):
         out_params = parameters if parameters is not None else COSDictionary()
         out_params.set_int(_COLUMNS, actual_width)
         out_params.set_int(_ROWS, actual_height)
+        return DecodeResult(parameters=out_params, bytes_written=bytes_written)
+
+    def _zero_fill_result(
+        self,
+        decoded: BinaryIO,
+        parameters: COSDictionary | None,
+        *,
+        columns: int,
+        rows: int,
+        black_is_1: bool,
+    ) -> DecodeResult:
+        """Emit upstream's fixed ``rows * rowBytes`` zero-decode buffer.
+
+        Mirrors the ``CCITTFaxFilter.decode`` allocation for a body that
+        decodes no scanlines (empty / malformed input that libtiff rejects):
+        a fixed ``(columns + 7) // 8 * rows`` buffer whose every byte reads out
+        WHITE — 0xFF when /BlackIs1 is false (the buffer is zero-filled then
+        inverted), 0x00 when /BlackIs1 is true (no inversion). When ``rows`` is
+        unknown (<= 0) the upstream allocation is empty, so we write nothing.
+        """
+        row_bytes = (columns + 7) // 8
+        effective_rows = rows if rows > 0 else 0
+        target = row_bytes * effective_rows
+        pad_byte = 0x00 if black_is_1 else 0xFF
+        buffer = bytes([pad_byte]) * target if target else b""
+        bytes_written = decoded.write(buffer)
+        out_params = parameters if parameters is not None else COSDictionary()
+        out_params.set_int(_COLUMNS, columns)
+        out_params.set_int(_ROWS, effective_rows)
         return DecodeResult(parameters=out_params, bytes_written=bytes_written)
 
     def encode(

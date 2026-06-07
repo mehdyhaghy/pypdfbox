@@ -274,6 +274,120 @@ def test_flatten_subset_keeps_other_fields_and_acro_form() -> None:
     assert f"/{names[0].name} Do".encode("ascii") in contents
 
 
+def test_flatten_subset_removes_nested_terminal_from_parent_kids() -> None:
+    """A nested terminal field flattened via the subset arm must be removed
+    from its *parent's* ``/Kids`` array — not just the root ``/Fields``.
+
+    Mirrors upstream ``PDAcroForm.removeFields`` (line 853): a field with a
+    parent is removed from ``parent.getCOSObject().getCOSArray(KIDS)``.
+    Before this fix the port only scanned the root ``/Fields`` array, so a
+    nested terminal stayed behind as a dangling, widget-less ``/Kids`` entry
+    after its widget was stripped from ``/Annots`` — a real divergence
+    (wave 1506, agent C)."""
+    doc, form = _make_document_with_form()
+    page = next(iter(doc.get_pages()))
+
+    parent = PDNonTerminalField(form)
+    parent.set_partial_name("group")
+
+    # Build the nested terminal as a raw COS dict in the parent's /Kids so
+    # the field-tree walk (get_field) wires the parent reference correctly,
+    # matching how a parsed document presents the hierarchy.
+    child_dict = COSDictionary()
+    child_dict.set_string(COSName.get_pdf_name("T"), "kid")
+    child_dict.set_item(COSName.get_pdf_name("FT"), COSName.get_pdf_name("Tx"))
+    child_dict.set_item(COSName.get_pdf_name("Parent"), parent.get_cos_object())
+    appearance = _make_form_xobject((0.0, 0.0, 100.0, 20.0))
+    _attach_widget(child_dict, page, (10.0, 10.0, 110.0, 30.0), appearance)
+
+    kids = COSArray()
+    kids.add(child_dict)
+    parent.get_cos_object().set_item(COSName.get_pdf_name("Kids"), kids)
+    form.set_fields([parent])
+
+    child = form.get_field("group.kid")
+    assert child is not None
+    assert child.get_parent() is not None
+
+    form.flatten(fields=[child])
+
+    # The nested terminal is gone from the parent's /Kids (upstream parity).
+    kids_after = parent.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Kids"))
+    assert kids_after is None or kids_after.size() == 0
+    # Widget removed from the page /Annots.
+    annots = page.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Annots"))
+    assert annots is None or annots.size() == 0
+    # The parent field itself survives in the root /Fields (only the child
+    # was requested for flatten); /AcroForm survives a partial flatten.
+    assert doc.get_document_catalog().get_acro_form() is not None
+    root_fields = form.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Fields"))
+    assert isinstance(root_fields, COSArray)
+    assert root_fields.size() == 1
+    assert root_fields.get_object(0) is parent.get_cos_object()
+    # The appearance was baked onto the page.
+    contents = page.get_contents()
+    assert b" Do" in contents
+
+
+def test_flatten_hidden_widget_is_not_drawn_but_still_removed() -> None:
+    """A hidden widget (``/F`` bit 2) must NOT have its appearance baked into
+    the page content — but it is still removed from ``/Annots``.
+
+    Mirrors upstream ``PDAcroForm.flatten``: the per-widget draw is gated on
+    ``isVisibleAnnotation`` (``!isInvisible() && !isHidden()``) while the
+    ``/Annots`` removal happens for every mapped widget regardless. Before
+    this fix the port baked a hidden field's appearance into the visible page
+    content (wave 1506, agent C)."""
+    from pypdfbox.cos import COSInteger
+
+    doc, form = _make_document_with_form()
+    page = next(iter(doc.get_pages()))
+
+    field = PDTextField(form)
+    field.set_partial_name("hidden")
+    appearance = _make_form_xobject((0.0, 0.0, 100.0, 20.0))
+    _attach_widget(field.get_cos_object(), page, (10.0, 10.0, 110.0, 30.0), appearance)
+    # Mark the widget hidden (/F bit 2).
+    field.get_cos_object().set_item(COSName.get_pdf_name("F"), COSInteger.get(2))
+    form.set_fields([field])
+
+    form.flatten()
+
+    # No appearance baked: the page either has no XObject resource or an empty
+    # one (the hidden widget's form was not registered).
+    res = page.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Resources"))
+    if isinstance(res, COSDictionary):
+        xo = res.get_dictionary_object(COSName.get_pdf_name("XObject"))
+        assert xo is None or (isinstance(xo, COSDictionary) and xo.size() == 0)
+    # No Do operator appended.
+    assert b" Do" not in page.get_contents()
+    # But the hidden widget is still removed from /Annots (upstream parity).
+    annots = page.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Annots"))
+    assert annots is None or annots.size() == 0
+
+
+def test_flatten_invisible_widget_is_not_drawn_but_still_removed() -> None:
+    """An invisible widget (``/F`` bit 1) is likewise not drawn but is removed
+    from ``/Annots`` (upstream ``isVisibleAnnotation`` gate)."""
+    from pypdfbox.cos import COSInteger
+
+    doc, form = _make_document_with_form()
+    page = next(iter(doc.get_pages()))
+
+    field = PDTextField(form)
+    field.set_partial_name("invisible")
+    appearance = _make_form_xobject((0.0, 0.0, 100.0, 20.0))
+    _attach_widget(field.get_cos_object(), page, (10.0, 10.0, 110.0, 30.0), appearance)
+    field.get_cos_object().set_item(COSName.get_pdf_name("F"), COSInteger.get(1))
+    form.set_fields([field])
+
+    form.flatten()
+
+    assert b" Do" not in page.get_contents()
+    annots = page.get_cos_object().get_dictionary_object(COSName.get_pdf_name("Annots"))
+    assert annots is None or annots.size() == 0
+
+
 def test_flatten_checkbox_uses_as_state_to_pick_appearance() -> None:
     """When /AP /N is a state subdictionary, /AS selects which stream."""
     doc, form = _make_document_with_form()
@@ -336,8 +450,14 @@ def test_flatten_cyclic_non_terminal_subtree_returns_without_recursing() -> None
     root.get_cos_object().set_item(COSName.get_pdf_name("Kids"), root_kids)
     form.set_fields([root])
 
+    # The cycle guard inside _collect_terminals must let flatten complete
+    # without infinite recursion (the point of this test).
     form.flatten(fields=[root])
 
+    # Upstream PDAcroForm.removeFields removes every *passed* field from its
+    # array regardless of whether any widget was rendered — a root-level
+    # field with no parent is dropped from /Fields. The cyclic subtree never
+    # yields a flattenable terminal, but `root` is still removed (mirrors
+    # upstream removeFields([root])).
     fields = form.get_fields()
-    assert len(fields) == 1
-    assert fields[0].get_cos_object() is root.get_cos_object()
+    assert len(fields) == 0

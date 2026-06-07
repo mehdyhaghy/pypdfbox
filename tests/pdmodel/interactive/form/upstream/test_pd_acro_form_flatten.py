@@ -222,12 +222,15 @@ def test_flatten_pdfbox_2586() -> None:
 
 
 def test_flatten_hidden_fields() -> None:
-    """PDFBOX-3262 hidden fields. Upstream's pixel-compare verifies
-    that widgets carrying the /F Hidden flag (PDF 32000-1 §12.5.3
-    Table 165) are not rendered. The structural equivalent: a widget
-    with /F Hidden set still gets dropped from /Annots and /Fields
-    after flatten — the upstream invariant is that the form is
-    flattened consistently regardless of visibility flags."""
+    """PDFBOX-3262 hidden fields. Upstream's pixel-compare verifies that
+    widgets carrying the /F Hidden flag (PDF 32000-1 §12.5.3 Table 165) are
+    NOT rendered into the flattened page content. Upstream ``flatten`` gates
+    the per-widget draw on ``isVisibleAnnotation`` (``!isInvisible() &&
+    !isHidden()``) yet removes every mapped widget from ``/Annots``
+    regardless. Structural equivalent: the hidden widget is dropped from
+    ``/Annots`` and ``/Fields`` but its appearance is NOT baked onto the page;
+    only the visible widget's appearance materialises (wave 1506, agent C —
+    the prior port baked the hidden appearance too, diverging from upstream)."""
     doc, form, pages = _make_document_with_form()
     visible = PDTextField(form)
     visible.set_partial_name("visible")
@@ -247,8 +250,10 @@ def test_flatten_hidden_fields() -> None:
     assert doc.get_document_catalog().get_acro_form() is None
     # Both widgets dropped from /Annots regardless of Hidden flag.
     assert _page_annot_count(pages[0]) == 0
-    # Both appearances materialised on the page.
-    assert len(_page_xobject_keys(pages[0])) == 2
+    # Only the visible widget's appearance materialised; the hidden one was
+    # gated out by isVisibleAnnotation (upstream parity).
+    xobject_keys = _page_xobject_keys(pages[0])
+    assert len(xobject_keys) == 1
 
 
 def test_flatten_signed_document_1() -> None:

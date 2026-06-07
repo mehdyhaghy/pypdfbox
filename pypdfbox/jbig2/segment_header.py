@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import weakref
 from typing import TYPE_CHECKING, Any
 
 from pypdfbox.jbig2.io.sub_input_stream import SubInputStream
@@ -89,7 +88,20 @@ class SegmentHeader:
         self.segment_data_length = 0
         self.segment_data_start_offset = 0
 
-        self._segment_data: weakref.ref[SegmentData] | None = None
+        # Upstream holds the decoded segment data through a ``SoftReference``
+        # (``java.lang.ref.SoftReference``), which the JVM clears only under
+        # memory pressure — so for the duration of a normal decode it behaves
+        # exactly like a strong reference. Python's ``weakref`` is far more
+        # aggressive: it drops the referent the instant no strong reference
+        # survives, which let a retained arithmetic coding context (CX) on a
+        # referred-to symbol dictionary be collected mid-decode (the base SD
+        # would be re-created fresh with ``cx is None``, faulting
+        # ``_adopt_retained_coding_contexts``). To mirror the practical
+        # ``SoftReference`` lifetime we hold a plain strong reference; the lazy
+        # contract is preserved (data is still created lazily on first
+        # ``get_segment_data()`` and released explicitly via
+        # ``clean_segment_data()``).
+        self._segment_data: SegmentData | None = None
 
         self._parse(document, sis, offset, organisation_type)
 
@@ -300,10 +312,7 @@ class SegmentHeader:
 
         :return: Retrieved :class:`SegmentData` instance.
         """
-        segment_data_part = None
-
-        if self._segment_data is not None:
-            segment_data_part = self._segment_data()
+        segment_data_part = self._segment_data
 
         if segment_data_part is None:
             if not SEGMENT_TYPE_MAP:
@@ -314,7 +323,7 @@ class SegmentHeader:
             try:
                 segment_data_part = segment_class()
                 segment_data_part.init(self, self.get_data_input_stream())
-                self._segment_data = weakref.ref(segment_data_part)
+                self._segment_data = segment_data_part
             except Exception as e:
                 raise RuntimeError(
                     f"Can't instantiate segment class {segment_class.__name__} "

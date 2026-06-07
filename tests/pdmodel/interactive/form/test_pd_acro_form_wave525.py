@@ -132,7 +132,12 @@ def test_wave525_xfa_accessor_alias_and_clear() -> None:
     assert form.xfa() is None
 
 
-def test_wave525_flatten_returns_when_requested_subtree_has_no_terminals() -> None:
+def test_wave525_flatten_removes_requested_field_even_with_no_terminals() -> None:
+    # Upstream PDAcroForm.flatten(fields, ...) ends in removeFields(fields),
+    # which removes every *passed* field from its array regardless of whether
+    # any widget was rendered. A childless non-terminal passed to flatten is
+    # therefore dropped from the root /Fields (wave 1506, agent C — the prior
+    # port left it behind, which diverged from upstream removeFields).
     form = PDAcroForm()
     parent = PDNonTerminalField(form)
     parent.set_partial_name("empty")
@@ -140,7 +145,7 @@ def test_wave525_flatten_returns_when_requested_subtree_has_no_terminals() -> No
 
     form.flatten(fields=[parent])
 
-    assert [field.get_partial_name() for field in form.get_fields()] == ["empty"]
+    assert form.get_fields() == []
 
 
 def test_wave525_flatten_widget_skips_missing_page_after_valid_appearance() -> None:

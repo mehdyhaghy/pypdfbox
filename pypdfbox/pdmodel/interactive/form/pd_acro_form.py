@@ -839,14 +839,17 @@ class PDAcroForm:
 
         # Flatten input is a list of root fields; walk descendants once
         # to collect every terminal exactly once. ``refresh_appearances``
-        # operates on the same terminal set.
+        # operates on the same terminal set. Unlike upstream — which receives
+        # the fully-expanded field tree from the no-arg ``flatten()`` and so
+        # iterates each field's own widgets directly — the port resolves only
+        # the root fields and expands them here (the cycle guard inside
+        # ``_collect_terminals`` mirrors upstream's ``PDFieldTree`` recursion
+        # protection). The rendered widget set is identical either way.
         from .pd_terminal_field import PDTerminalField
 
         terminal_fields: list[PDField] = []
         for field in targets:
             terminal_fields.extend(self._collect_terminals(field))
-        if not terminal_fields:
-            return
 
         if refresh_appearances:
             self.refresh_appearances(terminal_fields)
@@ -863,20 +866,18 @@ class PDAcroForm:
         # the caller asked for "everything").
         if flatten_all:
             # Mirrors upstream's "remove the AcroForm dict outright" path:
-            # nothing remains to be referenced.
+            # nothing remains to be referenced. (Documented divergence: where
+            # upstream's removeFields(getFieldTree()) empties /Fields but keeps
+            # the AcroForm dict, pypdfbox drops the dict — see CHANGES.md.)
             self._dictionary.remove_item(_FIELDS)
             self._remove_acro_form_from_catalog()
         else:
-            arr = self._dictionary.get_dictionary_object(_FIELDS)
-            if isinstance(arr, COSArray):
-                victims = {id(f.get_cos_object()) for f in terminal_fields}
-                # Walk a copy so removals don't perturb iteration.
-                from pypdfbox.cos import COSObject
-
-                for entry in list(arr):
-                    resolved = entry.get_object() if isinstance(entry, COSObject) else entry
-                    if id(resolved) in victims:
-                        arr.remove(entry)
+            # Partial flatten: mirror upstream PDAcroForm.removeFields — each
+            # requested field is removed from its parent's /Kids (when it has a
+            # parent) or from the root /Fields (when it is top-level). The old
+            # port only scanned root /Fields, so a nested terminal field stayed
+            # behind as a dangling, widget-less entry in its parent's /Kids.
+            self.remove_fields(targets)
 
         # /XFA cleanup for hybrid forms (upstream parity).
         self._dictionary.remove_item(_XFA)
@@ -950,10 +951,20 @@ class PDAcroForm:
     ) -> None:
         """Append the widget's normal appearance to ``page``'s content.
 
-        A no-op when the widget lacks a usable ``/AP /N`` stream, a valid
-        ``/Rect``, or a resolvable Form-XObject ``/BBox`` — those widgets are
-        still removed from ``/Annots`` by the caller, they simply contribute
-        no drawn content."""
+        A no-op when the widget is invisible or hidden (``/F`` flag bits 1/2),
+        or lacks a usable ``/AP /N`` stream, a valid ``/Rect``, or a resolvable
+        Form-XObject ``/BBox`` — those widgets are still removed from
+        ``/Annots`` by the caller, they simply contribute no drawn content.
+
+        The invisible/hidden gate mirrors upstream ``PDAcroForm.flatten``,
+        which only draws a widget when ``isVisibleAnnotation`` returns true
+        (``!isInvisible() && !isHidden()``) yet removes every mapped widget
+        from ``/Annots`` regardless. Without it the port baked a hidden field's
+        appearance into the visible page content."""
+        # /F flag bit 1 = Invisible, bit 2 = Hidden (PDF 32000-1 §12.5.3).
+        flags = widget.get_int(COSName.get_pdf_name("F"), 0)
+        if flags & (1 << 0) or flags & (1 << 1):
+            return
         appearance_stream = self._select_appearance_stream(widget)
         if appearance_stream is None:
             return

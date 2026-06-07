@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from pypdfbox.cos.cos_name import COSName
 from pypdfbox.pdmodel import PDDocument, PDPage, PDViewerPreferences
 from pypdfbox.pdmodel.common import PDMetadata
 from pypdfbox.tools import cli
@@ -61,14 +62,20 @@ def test_merge_preserves_first_simple_catalog_entries(tmp_path: Path) -> None:
 
     with PDDocument.load(out) as merged:
         catalog = merged.get_document_catalog()
-        assert catalog.get_language() == "en-US"
-        assert catalog.get_page_layout() == "TwoColumnLeft"
+        # Wave 1506: /Lang, /ViewerPreferences and /PageLayout are merged
+        # ONLY inside the structure-tree arm (upstream appendDocument runs
+        # mergeLanguage/mergeViewerPreferences/mergeMarkInfo inside
+        # `if (mergeStructTree)`; there is no /PageLayout merge at all).
+        # These untagged sources therefore carry none of them.
+        cos_catalog = catalog.get_cos_object()
+        assert cos_catalog.get_item(COSName.get_pdf_name("Lang")) is None
+        assert cos_catalog.get_item(COSName.get_pdf_name("PageLayout")) is None
+        assert cos_catalog.get_item(
+            COSName.get_pdf_name("ViewerPreferences")
+        ) is None
+        # /PageMode is the documented pypdfbox enhancement (upstream's
+        # getPageMode bakes the spec default, making its guard dead code).
         assert catalog.get_page_mode() == "UseOutlines"
-
-        prefs = catalog.get_viewer_preferences()
-        assert prefs is not None
-        assert prefs.hide_toolbar()
-        assert prefs.display_doc_title()
 
         metadata = catalog.get_metadata()
         assert metadata is not None

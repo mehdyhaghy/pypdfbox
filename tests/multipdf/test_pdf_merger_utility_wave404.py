@@ -136,7 +136,15 @@ def test_wave404_merge_to_stream_from_bytes_and_bytearray_sources() -> None:
         assert merged.get_number_of_pages() == 3
 
 
-def test_wave404_catalog_first_source_wins_entries_are_copied_once() -> None:
+def test_wave404_catalog_scalar_merge_matches_upstream_gating() -> None:
+    """Wave 1506: upstream ``appendDocument`` carries /PageMode first-source-wins
+    OUTSIDE the structure-tree block, but merges /Lang and /ViewerPreferences
+    ONLY inside the ``if (mergeStructTree)`` block (alongside /MarkInfo), and
+    never merges /PageLayout at all (oracle-confirmed: a non-tagged two-source
+    merge leaves Lang / ViewerPreferences / PageLayout absent on the
+    destination). These sources are plain (untagged) → no structure-tree merge →
+    Lang / ViewerPreferences / PageLayout are NOT carried; only the existing
+    dest /PageMode survives."""
     source = _make_doc(1)
     destination = _make_doc(1)
     src_catalog = source.get_document_catalog().get_cos_object()
@@ -151,14 +159,15 @@ def test_wave404_catalog_first_source_wins_entries_are_copied_once() -> None:
 
     PDFMergerUtility().append_document(destination, source)
 
+    # /PageMode is merged outside the struct block (first-source-wins): the
+    # destination already had UseNone, so the source's UseOutlines is ignored.
     assert dest_catalog.get_dictionary_object(_PAGE_MODE) == COSName.get_pdf_name(
         "UseNone"
     )
-    assert dest_catalog.get_dictionary_object(_PAGE_LAYOUT) == COSName.get_pdf_name(
-        "TwoColumnLeft"
-    )
-    assert dest_catalog.get_string(_LANG) == "en-US"
-    assert dest_catalog.get_dictionary_object(_VIEWER_PREFS) is not None
+    # No structure-tree merge → these three are NOT carried, matching upstream.
+    assert dest_catalog.get_dictionary_object(_PAGE_LAYOUT) is None
+    assert dest_catalog.get_string(_LANG) is None
+    assert dest_catalog.get_dictionary_object(_VIEWER_PREFS) is None
     source.close()
     destination.close()
 

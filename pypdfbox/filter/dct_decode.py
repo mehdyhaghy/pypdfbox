@@ -43,8 +43,17 @@ class DCTDecode(Filter):
     ) -> DecodeResult:
         encoded_bytes = encoded.read()
         out_params = parameters if parameters is not None else COSDictionary()
-        if not encoded_bytes:
-            return DecodeResult(parameters=out_params, bytes_written=0)
+        # Upstream DCTFilter.decode does NOT short-circuit an empty body: it
+        # feeds the (empty) stream straight to ImageIO, which finds no JPEG SOI
+        # marker and throws (DecodeResult is never reached). pypdfbox previously
+        # returned ok / 0 bytes here, which diverged from PDFBox's throw. We now
+        # let an empty / unreadable body fall through to the decode path below,
+        # where both imagecodecs and the Pillow fallback fail and surface an
+        # ``OSError`` — matching upstream. (The image read path almost never
+        # reaches this with an empty body: image XObjects stop the /Filter chain
+        # before /DCTDecode, preserving the JPEG bytes verbatim; only an
+        # explicit decode of a malformed/empty DCT body hits it, and PDFBox
+        # throws there too.)
         if encoded_bytes.startswith(b"\n"):
             encoded_bytes = encoded_bytes[1:]
 

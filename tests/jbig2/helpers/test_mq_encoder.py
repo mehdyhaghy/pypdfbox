@@ -25,6 +25,7 @@ from tests.jbig2.helpers.mq_encoder import (
     ArithmeticIntegerEncoder,
     Cx,
     MQEncoder,
+    encode_refinement_region_template1,
 )
 
 
@@ -153,3 +154,49 @@ def test_iaid_roundtrip():
     dec_cx = CX(1 << sym_code_len, 1)
     out = [int_dec.decode_iaid(dec_cx, sym_code_len) for _ in ids]
     assert out == ids
+
+
+@pytest.mark.parametrize(
+    "target_name",
+    ["identity", "checker", "single_pixel", "all_zero"],
+    ids=["identity", "checker", "single_pixel", "all_zero"],
+)
+def test_refinement_template1_roundtrip(target_name):
+    """The template-1 refinement-region encoder is the exact inverse of
+    ``GenericRefinementRegionDecodingProcedure.decode`` (GRTEMPLATE 1, TPGRON
+    off): encode a target over a reference, decode the bytes with the production
+    procedure, assert the decoded bitmap equals the target."""
+    from pypdfbox.jbig2.bitmap import Bitmap
+    from pypdfbox.jbig2.decoder.generic_refinement_region_decoding_procedure import (
+        GenericRefinementRegionDecodingProcedure as GRR,
+    )
+
+    w = h = 8
+    ref_rows = [[(x + y) & 1 for x in range(w)] for y in range(h)]
+    if target_name == "identity":
+        target = [row[:] for row in ref_rows]
+    elif target_name == "checker":
+        target = [[(x ^ y) & 1 for x in range(w)] for y in range(h)]
+    elif target_name == "single_pixel":
+        target = [[0] * w for _ in range(h)]
+        target[3][4] = 1
+    else:  # all_zero
+        target = [[0] * w for _ in range(h)]
+
+    enc = MQEncoder()
+    enc_cx = Cx(65536, 1)
+    encode_refinement_region_template1(
+        enc, enc_cx, target, w, h, ref_rows, w, h, 0, 0
+    )
+    data = enc.flush()
+
+    ref = Bitmap(w, h)
+    for y in range(h):
+        for x in range(w):
+            ref.set_pixel(x, y, ref_rows[y][x])
+
+    dec = ArithmeticDecoder(ImageInputStream(data))
+    dec_cx = CX(65536, 1)
+    out = GRR.decode(dec, dec_cx, w, h, 1, False, ref, 0, 0, None, None)
+    decoded = [[out.get_pixel(x, y) for x in range(w)] for y in range(h)]
+    assert decoded == target
