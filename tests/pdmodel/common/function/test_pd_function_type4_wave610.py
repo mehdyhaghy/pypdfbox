@@ -79,13 +79,16 @@ def test_numeric_operators_reject_boolean_operands() -> None:
 def test_bitwise_operators_reject_procedure_operands() -> None:
     fn = _make("{ { 1 } 3 and }", domain=[])
 
-    with pytest.raises(OSError, match="and operands must both"):
+    with pytest.raises(OSError, match="and operands must be"):
         fn.eval([])
 
 
-def test_private_bool_pop_rejects_non_boolean_value() -> None:
-    with pytest.raises(OSError, match="expected boolean"):
-        type4._pop_bool([1.0])
+def test_private_int_strict_pop_rejects_float_value() -> None:
+    # Wave 1511: the strict integer-operator pop (upstream (Integer) cast)
+    # rejects a Float on top of the stack, surfacing the jar's
+    # ClassCastException as OSError.
+    with pytest.raises(OSError, match="expected integer"):
+        type4._pop_int_strict([1.0])
 
 
 def test_operator_introspection_exposes_registered_groups() -> None:

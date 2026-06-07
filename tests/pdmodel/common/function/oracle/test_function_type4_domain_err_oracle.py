@@ -160,20 +160,42 @@ def test_type4_domain_err_matches_pdfbox() -> None:
     )
 
 
-@pytest.mark.xfail(
-    reason="DEFERRED (wave 1500): structural int/float type-discipline gap. "
-    "pypdfbox's Type 4 stack machine is pure-float and loses the Integer-vs-"
-    "Float tag that upstream's ExecutionContext keeps. The strict integer "
-    "operators (idiv, mod, bitshift, and/or/xor, not) cast with (Integer) and "
-    "throw ClassCastException on a Float operand; pypdfbox accepts any float "
-    "that equals its int. Replicating this needs an int/float tag threaded "
-    "through the whole stack (add/mul/sub also branch on it), which is a "
-    "structural rewrite out of scope for this audit.",
-    strict=True,
-)
 def test_type4_strict_integer_operator_rejects_float_operand() -> None:
-    # Upstream: bitshift pops with (Integer) => a Float (here produced by div)
-    # raises ClassCastException. pypdfbox currently accepts it and returns 6.0.
+    # Wave 1511 restored the Integer/Float type discipline: bitshift pops with
+    # (Integer), so a Float (here produced by ``div``, which always yields a
+    # Float) raises ClassCastException in Java. pypdfbox now surfaces that as
+    # OSError instead of accepting it and returning 6.0. Verified ERR against
+    # the live jar (_ScratchType4Probe / FunctionType4OpsProbe).
     fn = PDFunction.create(_type4("{ pop 6 2 div 1 bitshift }", [0.0, 1.0], [-9.0, 9.0]))
     with pytest.raises((OSError, ValueError)):
         fn.eval([0.0])
+
+
+def test_type4_idiv_rejects_int_valued_float() -> None:
+    # ``8.0`` parses as a Real (REAL_PATTERN), not an Integer, so even though it
+    # equals 8 the strict ``idiv`` pop raises — matches the jar (ERR).
+    fn = PDFunction.create(_type4("{ pop 8.0 2 idiv }", [0.0, 1.0], [-100.0, 100.0]))
+    with pytest.raises((OSError, ValueError)):
+        fn.eval([0.0])
+
+
+def test_type4_int_preserving_chain_keeps_idiv_legal() -> None:
+    # add/sub/mul/cvi on integer operands preserve the Integer tag, so a strict
+    # integer op downstream stays legal. ``5 3 add 2 idiv`` => (8) idiv 2 => 4.
+    fn = PDFunction.create(_type4("{ pop 5 3 add 2 idiv }", [0.0, 1.0], [-100.0, 100.0]))
+    assert fn.eval([0.0]) == pytest.approx([4.0])
+
+
+def test_type4_cvi_retags_float_to_int_for_idiv() -> None:
+    # ``cvi`` re-tags a Float as an Integer, so ``7.9 cvi 2 idiv`` works where
+    # ``7.9 2 idiv`` would raise. (7) idiv 2 => 3. Matches the jar.
+    fn = PDFunction.create(_type4("{ pop 7.9 cvi 2 idiv }", [0.0, 1.0], [-100.0, 100.0]))
+    assert fn.eval([0.0]) == pytest.approx([3.0])
+
+
+def test_type4_input_value_is_float_and_rejected_by_idiv() -> None:
+    # Inputs are pushed as Float (upstream pushes float[]), so using an input
+    # directly in a strict integer op raises — verified ERR against the jar.
+    fn = PDFunction.create(_type4("{ 1 idiv }", [0.0, 10.0], [-100.0, 100.0]))
+    with pytest.raises((OSError, ValueError)):
+        fn.eval([4.0])

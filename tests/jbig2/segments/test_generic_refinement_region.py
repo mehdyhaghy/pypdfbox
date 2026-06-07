@@ -481,6 +481,30 @@ def test_get_gr_reference_requires_replace_when_no_referred_segments():
         grr.get_region_bitmap()
 
 
+def test_get_gr_reference_extracts_from_page_bitmap_when_no_referred_segments():
+    # §7.4.7.4: a self-referring immediate refinement region with REPLACE and
+    # no referred-to segments uses the current page-buffer contents (restricted
+    # to its region) as GRREFERENCE. ``set_page_bitmap`` supplies that buffer;
+    # ``_get_gr_reference`` then ``Bitmaps.extract``s the region ROI from it.
+    region = _region_info_header(8, 4, 0, 0, CombinationOperator.REPLACE.value)
+    flags = bytes([0x01])  # template 1, no AT
+    data = region + flags + bytes([0x00, 0x00, 0x00, 0x00])
+    grr = GenericRefinementRegion()
+    grr.init(header=_DummyHeader(rt_segments=None), sis=_sub_input_stream(data))
+
+    page = _make_reference(8, 4, "8040c030")
+    grr.set_page_bitmap(page)
+    assert grr.page_bitmap is page
+
+    out = grr.get_region_bitmap()
+    assert out.get_width() == 8
+    assert out.get_height() == 4
+    # The reference was taken from the page buffer, not a referred-to region.
+    assert grr.reference_bitmap is not None
+    assert grr.reference_bitmap.get_width() == 8
+    assert grr.reference_bitmap.get_height() == 4
+
+
 def test_get_region_bitmap_delegates_to_referred_region():
     # A referred-to region segment supplies the reference bitmap; the segment
     # parses cleanly and uses that region's bitmap as GRREFERENCE.

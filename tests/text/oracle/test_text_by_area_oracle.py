@@ -1,7 +1,12 @@
 """Live Apache PDFBox differential parity tests for PDFTextStripperByArea,
 covering facets the existing area oracles do NOT exercise — using only clearly
 DISJOINT (non-overlapping) regions (the overlapping-region case is tracked in
-DEFERRED.md and pinned separately in test_text_multi_region_oracle.py).
+DEFERRED.md and pinned separately in test_text_multi_region_oracle.py), plus
+**rotated-page region binning** across all four /Rotate values (wave 1511,
+closing the wave-1495/1510 deferral): the binner folds each glyph origin into
+the page-rotation-adjusted device frame upstream tests Rectangle2D.contains
+against, so a region defined in that device frame captures the glyph
+byte-identically on /Rotate 0/90/180/270.
 
 Existing coverage (test_text_sort_area_oracle.py / test_text_multi_region_oracle.py)
 exercises single-region clipping, boundary half-openness, and multi-region
@@ -50,6 +55,8 @@ Hand-written (not ported from upstream JUnit).
 from __future__ import annotations
 
 from pathlib import Path
+
+import pytest
 
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
 from pypdfbox.pdmodel.font.pd_font_factory import PDFontFactory
@@ -215,44 +222,116 @@ def test_remove_region_before_extract_matches_pdfbox(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Rotated page: by-area binning frame (narrowed deferral, wave 1495)
+# Rotated page: by-area binning in the page-rotation-adjusted device frame
+# (wave 1511 — closes the wave-1495/1510 deferral). Upstream
+# ``PDFTextStripperByArea.processTextPosition`` (Java L141) tests
+# ``Rectangle2D.contains(text.getX(), text.getY())`` against the
+# page-rotation-adjusted *device* coordinates, so a region defined in the
+# rotated device frame captures the glyph regardless of /Rotate. pypdfbox folds
+# each glyph origin into that same device frame before the boundary test.
 # ---------------------------------------------------------------------------
 
 
-def test_rotated_page_by_area_uses_unrotated_user_frame(tmp_path: Path) -> None:
-    """By-area region binning on a rotated page is pinned to the **unrotated**
-    user-space frame (a narrowed wave-1495 deferral, see DEFERRED.md).
+def _device_to_user(
+    rect: _AwtRect, rotate: int
+) -> tuple[float, float, float, float]:
+    """Invert a device-frame (AWT, post-rotation) rect into the PDF user-space
+    rect pypdfbox's ``add_region`` consumes.
 
-    The wave-1495 page-rotation fold makes the *base* ``PDFTextStripper`` group
-    a rotated page's text in the device frame (byte-exact with Java — see
-    ``test_rotated_page_extraction_oracle.py``). The ``PDFTextStripperByArea``
-    binner, however, deliberately skips the fold this wave: its ``_bin_glyph``
-    half-open boundary test is calibrated for the lite y-up user-space frame,
-    which the device y-down frame would invert. So on a rotated page the binner
-    still tests each glyph's *unrotated* user-space origin against the region
-    rectangle — region rectangles are interpreted in unrotated page space, not
-    upstream's device frame.
+    The device frame matches upstream ``TextPosition.getX()`` / ``getY()`` for
+    the page rotation; a device point ``(dx, dy)`` inverts to user ``(ux, uy)``:
 
-    This test pins that contract (offline, no oracle): ``HELLO`` drawn at user
-    ``(100, 700)`` on a ``/Rotate 90`` page is captured by a region defined in
-    **unrotated** user coordinates around ``(100, 700)``, confirming the binner
-    ignores the page rotation. Closing the gap (device-frame binning) is the
-    tracked follow-up."""
-    pdf = tmp_path / "rot90_area.pdf"
-    _build_rotated_doc([(100.0, 700.0, "HELLO")], pdf, rotate=90)
+      * ``/Rotate 0``   -> ``(dx, page_h - dy)``  (AWT y-down -> user y-up)
+      * ``/Rotate 90``  -> ``(dy, dx)``
+      * ``/Rotate 180`` -> ``(page_w - dx, dy)``
+      * ``/Rotate 270`` -> ``(page_w - dy, page_h - dx)``
+
+    The ``/Rotate 180`` device Y maps straight back to user ``y`` (upstream's
+    ``getY()`` flips cancel — see ``_glyph_device_origin``). We invert the
+    rect's two opposite corners and renormalize.
+    """
+    dx, dy, w, h = rect
+    corners = [(dx, dy), (dx + w, dy + h)]
+    user = []
+    for cx, cy in corners:
+        if rotate == 90:
+            user.append((cy, cx))
+        elif rotate == 180:
+            user.append((_PAGE_W - cx, cy))
+        elif rotate == 270:
+            user.append((_PAGE_W - cy, _PAGE_H - cx))
+        else:
+            user.append((cx, _PAGE_H - cy))
+    (ux0, uy0), (ux1, uy1) = user
+    minx, maxx = min(ux0, ux1), max(ux0, ux1)
+    miny, maxy = min(uy0, uy1), max(uy0, uy1)
+    return (minx, miny, maxx - minx, maxy - miny)
+
+
+@requires_oracle
+@pytest.mark.parametrize("rotate", [0, 90, 180, 270])
+def test_rotated_page_by_area_device_frame_matches_pdfbox(
+    tmp_path: Path, rotate: int
+) -> None:
+    """On every ``/Rotate`` value, a region defined in the rotated device frame
+    captures the run that falls in it and excludes the others — byte-identical
+    to Apache PDFBox, which tests ``Rectangle2D.contains`` against the
+    page-rotation-adjusted ``getX()`` / ``getY()``.
+
+    Three runs are drawn at distinct user-space positions; for the active
+    rotation we fold each draw origin into the device frame and place one
+    *capturing* region tightly around the first run plus one *empty* region in a
+    clear quadrant, with a third region straddling the boundary between two
+    runs. The same geometric device rect is handed to Java (AWT, native) and
+    inverse-mapped into user space for pypdfbox."""
+    pdf = tmp_path / f"rot{rotate}_area.pdf"
+    runs = [
+        (100.0, 700.0, "ALPHA"),
+        (100.0, 120.0, "BETA"),
+        (400.0, 400.0, "GAMMA"),
+    ]
+    _build_rotated_doc(runs, pdf, rotate=rotate)
+
+    # Fold each run's draw origin into the device frame so the region rects can
+    # be expressed in the same coordinates Java's getX()/getY() reports.
+    def fold(ux: float, uy: float) -> tuple[float, float]:
+        if rotate == 90:
+            return (uy, ux)
+        if rotate == 180:
+            return (_PAGE_W - ux, uy)
+        if rotate == 270:
+            return (_PAGE_H - uy, _PAGE_W - ux)
+        return (ux, _PAGE_H - uy)
+
+    ax, ay = fold(100.0, 700.0)   # ALPHA device origin
+    # Capturing region around ALPHA's device origin. The run advances along one
+    # device axis depending on rotation, so size the box generously on both
+    # device axes to enclose the whole 5-glyph run while staying well clear of
+    # BETA (user 100,120) and GAMMA (user 400,400), which fold far away.
+    cap_rect: _AwtRect = (ax - 60.0, ay - 60.0, 120.0, 120.0)
+    # Empty region: a clear band well away from every run's device origin.
+    bx, by = fold(400.0, 400.0)   # GAMMA device origin
+    empty_rect: _AwtRect = (bx + 200.0, by + 200.0, 40.0, 20.0)
+
+    regions: list[tuple[str, _AwtRect]] = [
+        ("cap", cap_rect),
+        ("empty", empty_rect),
+    ]
+    java = _run_probe("regions", pdf, regions)
 
     doc = PDDocument.load(str(pdf))
     try:
         s = PDFTextStripperByArea()
         s.set_sort_by_position(True)
-        # Region in UNROTATED user space around the run's draw origin.
-        s.add_region("cap", (90.0, 690.0, 120.0, 30.0))
-        s.add_region("empty", (90.0, 100.0, 120.0, 30.0))
+        for name, dev in regions:
+            s.add_region(name, _device_to_user(dev, rotate))
         s.extract_regions(doc.get_page(0))
-        cap = s.get_text_for_region("cap")
-        empty = s.get_text_for_region("empty")
+        py = {name: s.get_text_for_region(name) for name in s.get_regions()}
     finally:
         doc.close()
 
-    assert "HELLO" in cap.replace("\n", "")
-    assert empty == "\n"
+    assert py == java
+    assert "ALPHA" in py["cap"].replace("\n", "")
+    assert "BETA" not in py["cap"]
+    assert "GAMMA" not in py["cap"]
+    assert py["empty"] == "\n"

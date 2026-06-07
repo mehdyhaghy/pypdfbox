@@ -50,13 +50,22 @@ public final class TextByAreaProbe {
             PDFTextStripperByArea stripper = new PDFTextStripperByArea();
             stripper.setSortByPosition(true);
 
-            String nameA = args[2];
-            stripper.addRegion(nameA, rect(args, 3));
-            String nameB = args[7];
-            stripper.addRegion(nameB, rect(args, 8));
+            if ("regions".equals(mode)) {
+                // Generic mode: any number of (name x y w h) 5-tuples follow the
+                // file arg. Used by the rotated-page parity test which pins all
+                // four /Rotate values against AWT-frame region rectangles.
+                for (int i = 2; i + 4 < args.length; i += 5) {
+                    stripper.addRegion(args[i], rect(args, i + 1));
+                }
+            } else {
+                String nameA = args[2];
+                stripper.addRegion(nameA, rect(args, 3));
+                String nameB = args[7];
+                stripper.addRegion(nameB, rect(args, 8));
 
-            if ("remove".equals(mode)) {
-                stripper.removeRegion(nameB);
+                if ("remove".equals(mode)) {
+                    stripper.removeRegion(nameB);
+                }
             }
 
             PDPage page = doc.getPage(0);

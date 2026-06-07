@@ -326,6 +326,53 @@ def test_ext_template_decode_all_at_override():
     )
 
 
+def test_override_template0a_result_shift_branch_every_index():
+    # Drive the "AT pixel on the current row, in-range" fast branch of
+    # _override_at_template0a for ALL FOUR template-0 AT indices at once
+    # (gb_at_y[i] == 0 and gb_at_x[i] >= -minor_x), reading the bit straight
+    # out of the partially-built ``result`` word instead of the bitmap.
+    region = GenericRegion()
+    region.gb_at_override = [True, True, True, True]
+    region.gb_at_x = [0, 0, 0, 0]
+    region.gb_at_y = [0, 0, 0, 0]
+    # result bit 0 set -> _java_ushr(result, 0) & 1 == 1 for each AT pixel.
+    out = region._override_at_template0a(
+        context=0xFFFF, x=0, y=0, result=0x1, minor_x=0, to_shift=0
+    )
+    # Each of the four AT pixels ORs its bit (4, 10, 11, 15) back in after the
+    # mask clears it; with result bit set, every bit ends up 1, so the word is
+    # unchanged from the all-ones input.
+    assert out == 0xFFFF
+    # result bit 0 clear -> each AT pixel contributes 0; bits 4/10/11/15 cleared.
+    out0 = region._override_at_template0a(
+        context=0xFFFF, x=0, y=0, result=0x0, minor_x=0, to_shift=0
+    )
+    assert out0 == 0xFFFF & ~((1 << 4) | (1 << 10) | (1 << 11) | (1 << 15))
+
+
+def test_override_template0b_result_shift_branch_every_index():
+    # Same fast branch for the extended template (12 AT pixels) — every
+    # _override_at_template0b "current-row, in-range" arm fires.
+    region = GenericRegion()
+    region.gb_at_override = [True] * 12
+    region.gb_at_x = [0] * 12
+    region.gb_at_y = [0] * 12
+    out = region._override_at_template0b(
+        context=0xFFFF, x=0, y=0, result=0x1, minor_x=0, to_shift=0
+    )
+    # Bit 9 stays clear: the AT-index-11 arm masks 0xFDFF (clearing bit 9 set
+    # by AT-index 2) but writes its bit at position 10 — a verbatim port of the
+    # upstream GenericRegion.overrideAtTemplate0b clear/set asymmetry. The exact
+    # value is deterministic; pinning it guards the ported context arithmetic.
+    assert out == 0xFDFF
+    # With result bit clear, every "in-range" arm contributes 0; the surviving
+    # word is the deterministic product of the same clear/set asymmetry.
+    out0 = region._override_at_template0b(
+        context=0xFFFF, x=0, y=0, result=0x0, minor_x=0, to_shift=0
+    )
+    assert out0 == 0x05C1
+
+
 def test_update_override_flags_no_at_pixels_returns_early():
     # _update_override_flags() bails out when gb_at_x is None (nothing to
     # override), leaving override off.

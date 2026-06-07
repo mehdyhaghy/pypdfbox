@@ -79,7 +79,7 @@ def test_bitwise_operators_reject_mixed_bool_and_number_operands() -> None:
     for op in ("and", "or", "xor"):
         fn = _make(f"{{ true 1 {op} }}", domain=[])
 
-        with pytest.raises(OSError, match=rf"{op} operands must both"):
+        with pytest.raises(OSError, match=rf"{op} operands must be"):
             fn.eval([])
 
 

@@ -1,17 +1,32 @@
 from __future__ import annotations
 
 import math
+import re
+import struct
 from collections.abc import Callable
 
 from pypdfbox.cos import COSBase, COSStream
 
 from .pd_function import PDFunction
 
-# Tokens emitted by ``_tokenize`` are either:
-#   * ``float``                  — a numeric literal pushed straight onto the stack
-#   * ``str``                    — an operator name or boolean literal
+# Tokens emitted by ``_classify`` (and held in a parsed instruction list) are:
+#   * ``int``                    — an integer literal (PostScript ``Integer``)
+#   * ``float``                  — a real literal (PostScript ``Float``)
+#   * ``bool``                   — a ``true`` / ``false`` literal
+#   * ``str``                    — an operator name
 #   * ``list[Token]`` (sub-seq)  — a ``{...}`` instruction sub-sequence (operand
 #                                  to ``if`` / ``ifelse``)
+#
+# Integer-vs-real tagging is load-bearing, not cosmetic: upstream's
+# ``ExecutionContext`` keeps an ``Object`` stack of boxed ``Integer`` / ``Float``
+# / ``Boolean`` and the strict integer operators (``idiv``, ``mod``, ``bitshift``,
+# ``and`` / ``or`` / ``xor``, ``not``) cast ``(Integer)`` and throw
+# ``ClassCastException`` on a ``Float`` operand, while the arithmetic operators
+# (``add`` / ``sub`` / ``mul`` / ``abs`` / ``neg`` / ``ceiling`` / ``floor`` /
+# ``round`` / ``truncate``) branch on the tag to decide whether the result is an
+# Integer or a Float. Python's native ``int`` / ``float`` types are the tag:
+# integer literals/results push ``int``, reals push ``float``. ``bool`` is a
+# subclass of ``int`` in Python, so every type check below tests ``bool`` first.
 Instruction = list[object]
 Stack = list[object]
 Operator = Callable[[Stack], None]
@@ -28,10 +43,13 @@ class PDFunctionType4(PDFunction):
     a small stack machine over the operator subset enumerated in PDF 32000-1
     §7.10.5.
 
-    Numeric stability uses Python ``float`` throughout; booleans pushed by
-    ``true``/``false``/comparisons live on the same stack as numbers (per
-    spec). Stack underflow, type mismatch, and unknown operators all surface
-    as ``OSError`` to mirror upstream ``IOException``. ``def``, ``forall``,
+    The stack threads the PostScript Integer-vs-Real type tag faithfully
+    (Python ``int`` for integer literals/results, ``float`` for reals, ``bool``
+    for booleans) so the strict integer operators reject Float operands exactly
+    as upstream's ``(Integer)`` casts do. Stack underflow, type mismatch
+    (upstream ``ClassCastException``), unknown operators, and other Type-4-illegal
+    constructs all surface as ``OSError`` to mirror upstream's runtime faults
+    (which ``PDFunctionType4.eval`` would propagate). ``def``, ``forall``,
     ``for``, dictionaries, and other operators not allowed in Type 4 are
     intentionally rejected.
     """
@@ -225,24 +243,38 @@ def _parse(body: str) -> Instruction:
     return main
 
 
-def _classify(tok: str) -> float | bool | str:
-    """Tag a raw token as a numeric literal, boolean literal, or operator
-    name. Hex / radix-prefixed numbers (PostScript's ``16#FF`` form) are not
-    used by Type 4 programs in practice and are rejected by falling through
-    to the operator path — the executor will raise on the unknown name."""
+# Upstream ``InstructionSequenceBuilder`` classifies a token with two regexes,
+# in this order: ``[+-]?\d+`` => Integer, then ``-?\d*\.\d*([Ee]-?\d+)?`` =>
+# Real. The integer regex is tried FIRST, so ``42`` is an Integer while ``42.0``
+# (matches the real regex, not the integer one) is a Float. This ordering is the
+# whole point of the type discipline: ``8 2 idiv`` works but ``8.0 2 idiv``
+# raises ClassCastException (verified against the live jar). We reproduce the
+# exact patterns so a literal lands on the same tag Java would assign.
+_INTEGER_RE = re.compile(r"[+-]?\d+")
+_REAL_RE = re.compile(r"-?\d*\.\d*([Ee]-?\d+)?")
+
+
+def _classify(tok: str) -> int | float | bool | str:
+    """Tag a raw token as an integer literal, real literal, boolean literal,
+    or operator name, mirroring upstream ``InstructionSequenceBuilder.token``.
+
+    Note: upstream does NOT special-case ``true`` / ``false`` in the builder —
+    they fall through to ``addName`` and are handled by the ``True`` / ``False``
+    operators at execution time. We classify them to Python ``bool`` here as an
+    equivalent shortcut (the executor pushes a bare ``bool`` token directly), so
+    the observable stack contents are identical.
+
+    Hex / radix-prefixed numbers (PostScript's ``16#FF`` form) match neither
+    regex (upstream leaves them as a TODO) and fall through to the operator
+    path — the executor raises on the resulting unknown name."""
     if tok == "true":
         return True
     if tok == "false":
         return False
-    # Numeric literal? Try int first then float.
-    try:
-        return float(int(tok))
-    except ValueError:
-        pass
-    try:
+    if _INTEGER_RE.fullmatch(tok):
+        return int(tok)
+    if _REAL_RE.fullmatch(tok):
         return float(tok)
-    except ValueError:
-        pass
     return tok
 
 
@@ -255,35 +287,43 @@ def _pop(stack: Stack) -> object:
     return stack.pop()
 
 
-def _pop_num(stack: Stack) -> float:
+def _pop_number(stack: Stack) -> int | float:
+    """Pop a number preserving its int/float tag — upstream ``popNumber()``
+    (``(Number) stack.pop()``). A ``Boolean`` on top raises (Java's cast to
+    ``Number`` throws ClassCastException); we surface it as ``OSError``."""
     v = _pop(stack)
     if isinstance(v, bool):
         raise OSError("type mismatch: expected number, got boolean")
     if not isinstance(v, (int, float)):
         raise OSError(f"type mismatch: expected number, got {type(v).__name__}")
-    return float(v)
-
-
-def _pop_int(stack: Stack) -> int:
-    v = _pop_num(stack)
-    if v != int(v):
-        raise OSError(f"type mismatch: expected integer, got {v}")
-    return int(v)
-
-
-def _pop_bool(stack: Stack) -> bool:
-    v = _pop(stack)
-    if not isinstance(v, bool):
-        raise OSError(f"type mismatch: expected boolean, got {type(v).__name__}")
     return v
 
 
-def _int_bit_operand(value: object, operator_name: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise OSError(
-            f"type mismatch: {operator_name} operands must both be bool or both int"
-        )
-    return int(value)
+def _pop_real(stack: Stack) -> float:
+    """Pop a number and return it as a float — upstream ``popReal()``
+    (``((Number) stack.pop()).floatValue()``). The tag is discarded; both
+    Integer and Float operands are accepted."""
+    return float(_pop_number(stack))
+
+
+def _pop_int_strict(stack: Stack) -> int:
+    """Pop a strictly-Integer value — upstream ``popInt()`` (``(Integer)
+    stack.pop()``). A Float (even an int-valued one like ``8.0`` or a ``div``
+    result) raises ClassCastException in Java; we surface that as ``OSError``.
+    Used by the strict integer operators ``idiv`` / ``mod`` / ``bitshift``."""
+    v = _pop(stack)
+    if isinstance(v, bool) or not isinstance(v, int):
+        got = "float" if isinstance(v, float) else type(v).__name__
+        raise OSError(f"type mismatch: expected integer (Integer cast), got {got}")
+    return v
+
+
+def _pop_int_value(stack: Stack) -> int:
+    """Pop a number and truncate to int — upstream's stack operators use
+    ``((Number) stack.pop()).intValue()`` for ``copy`` / ``index`` / ``roll``
+    counts, which leniently accepts a Float and truncates toward zero. A
+    Boolean still raises (cast to Number fails)."""
+    return math.trunc(_pop_number(stack))
 
 
 def _to_output_float(value: object) -> float:
@@ -305,7 +345,10 @@ def _execute(sequence: Instruction, stack: Stack) -> None:
             stack.append(token)
             continue
         if isinstance(token, (int, float)):
-            stack.append(float(token))
+            # Preserve the int/float tag (upstream pushes the boxed Integer or
+            # Float literal verbatim). Do NOT coerce to float here — that is the
+            # exact loss of the type tag this rewrite restores.
+            stack.append(token)
             continue
         if not isinstance(token, str):
             raise OSError(f"unsupported PostScript token: {token!r}")
@@ -332,27 +375,71 @@ def _execute(sequence: Instruction, stack: Stack) -> None:
 # "unsupported operator" via the dispatcher.
 
 
+# Java ``int`` is a 32-bit two's-complement type. The arithmetic operators that
+# preserve the Integer tag (add/sub/mul) compute in ``long`` and only stay
+# Integer when the result fits in the 32-bit range, otherwise overflow to Float.
+_INT_MIN = -(2**31)
+_INT_MAX = 2**31 - 1
+
+
+def _is_int(value: object) -> bool:
+    """True for a PostScript Integer tag (Python ``int`` but not ``bool``)."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _is_number(value: object) -> bool:
+    """True for a PostScript number (Integer or Real) — excludes Boolean.
+    Mirrors a Java ``instanceof Number`` test, which Boolean fails."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _both_int(a: object, b: object) -> bool:
+    # bool is a subclass of int — exclude it (a Boolean is never an Integer here;
+    # arithmetic on a Boolean already raised in _pop_number).
+    return (
+        isinstance(a, int)
+        and not isinstance(a, bool)
+        and isinstance(b, int)
+        and not isinstance(b, bool)
+    )
+
+
 def _op_add(s: Stack) -> None:
-    b = _pop_num(s)
-    a = _pop_num(s)
-    s.append(a + b)
+    b = _pop_number(s)
+    a = _pop_number(s)
+    if _both_int(a, b):
+        total = a + b
+        s.append(total if _INT_MIN <= total <= _INT_MAX else float(total))
+    else:
+        s.append(float(a) + float(b))
 
 
 def _op_sub(s: Stack) -> None:
-    b = _pop_num(s)
-    a = _pop_num(s)
-    s.append(a - b)
+    b = _pop_number(s)
+    a = _pop_number(s)
+    if _both_int(a, b):
+        result = a - b
+        s.append(result if _INT_MIN <= result <= _INT_MAX else float(result))
+    else:
+        s.append(float(a) - float(b))
 
 
 def _op_mul(s: Stack) -> None:
-    b = _pop_num(s)
-    a = _pop_num(s)
-    s.append(a * b)
+    b = _pop_number(s)
+    a = _pop_number(s)
+    if _both_int(a, b):
+        result = a * b
+        s.append(result if _INT_MIN <= result <= _INT_MAX else float(result))
+    else:
+        s.append(float(a) * float(b))
 
 
 def _op_div(s: Stack) -> None:
-    b = _pop_num(s)
-    a = _pop_num(s)
+    # Upstream ``Div`` always casts both operands to float and pushes a Float,
+    # regardless of operand tags — ``6 2 div`` => 3.0 (Float). So idiv after a
+    # div always sees a Float and raises (the strict-xfail case).
+    b = float(_pop_number(s))
+    a = float(_pop_number(s))
     # Upstream ArithmeticOperators$Div is plain ``num1.floatValue() /
     # num2.floatValue()`` — IEEE-754 float division, so a zero divisor yields
     # +/-Infinity (or NaN for 0/0), which the subsequent /Range clip clamps to
@@ -370,80 +457,92 @@ def _op_div(s: Stack) -> None:
 
 
 def _op_idiv(s: Stack) -> None:
-    b = _pop_int(s)
-    a = _pop_int(s)
+    # Strict ``(Integer)`` pops — a Float operand raises (matches the jar).
+    b = _pop_int_strict(s)
+    a = _pop_int_strict(s)
     if b == 0:
         raise OSError("integer division by zero")
-    # Truncation toward zero (PostScript semantics, not Python floor).
+    # Java integer division truncates toward zero (not Python floor); the
+    # result keeps the Integer tag.
     q = abs(a) // abs(b)
     if (a < 0) ^ (b < 0):
         q = -q
-    s.append(float(q))
+    s.append(q)
 
 
 def _op_mod(s: Stack) -> None:
-    b = _pop_int(s)
-    a = _pop_int(s)
+    b = _pop_int_strict(s)
+    a = _pop_int_strict(s)
     if b == 0:
         raise OSError("mod by zero")
-    # Sign of result follows dividend (PostScript semantics).
+    # Java ``%`` — sign of result follows the dividend; result stays Integer.
     r = abs(a) % abs(b)
     if a < 0:
         r = -r
-    s.append(float(r))
+    s.append(r)
 
 
 def _op_neg(s: Stack) -> None:
-    a = _pop_num(s)
-    s.append(-a)
+    a = _pop_number(s)
+    if _is_int(a):
+        # Java guards Integer.MIN_VALUE (negation overflows int) by promoting to
+        # Float; every other int stays Integer.
+        s.append(float(-a) if a == _INT_MIN else -a)
+    else:
+        s.append(-float(a))
 
 
 def _op_abs(s: Stack) -> None:
-    a = _pop_num(s)
-    s.append(abs(a))
+    a = _pop_number(s)
+    # Integer in => Integer out; Float in => Float out (upstream branches on tag).
+    s.append(abs(a) if _is_int(a) else abs(float(a)))
 
 
 def _op_ceiling(s: Stack) -> None:
-    a = _pop_num(s)
-    s.append(float(math.ceil(a)))
+    a = _pop_number(s)
+    # Integer is returned unchanged (already whole); Float is ceil'd to a Float.
+    s.append(a if _is_int(a) else float(math.ceil(a)))
 
 
 def _op_floor(s: Stack) -> None:
-    a = _pop_num(s)
-    s.append(float(math.floor(a)))
+    a = _pop_number(s)
+    s.append(a if _is_int(a) else float(math.floor(a)))
 
 
 def _op_round(s: Stack) -> None:
-    a = _pop_num(s)
-    # PostScript round(): nearest, ties go toward +infinity.
+    a = _pop_number(s)
+    if _is_int(a):
+        s.append(a)
+        return
+    # Float branch: Java ``Math.round`` is ``floor(x + 0.5)`` — ties to +inf.
     s.append(float(math.floor(a + 0.5)))
 
 
 def _op_truncate(s: Stack) -> None:
-    a = _pop_num(s)
-    s.append(float(math.trunc(a)))
+    a = _pop_number(s)
+    s.append(a if _is_int(a) else float(math.trunc(a)))
 
 
 def _op_sqrt(s: Stack) -> None:
-    a = _pop_num(s)
+    a = _pop_real(s)
     if a < 0:
         raise OSError("sqrt of negative number")
     s.append(math.sqrt(a))
 
 
 def _op_sin(s: Stack) -> None:
-    a = _pop_num(s)  # degrees per PostScript
+    a = _pop_real(s)  # degrees per PostScript
     s.append(math.sin(math.radians(a)))
 
 
 def _op_cos(s: Stack) -> None:
-    a = _pop_num(s)
+    a = _pop_real(s)
     s.append(math.cos(math.radians(a)))
 
 
 def _op_atan(s: Stack) -> None:
-    den = _pop_num(s)
-    num = _pop_num(s)
+    den = _pop_real(s)
+    num = _pop_real(s)
     # PostScript atan(num, den) returns degrees in [0, 360).
     deg = math.degrees(math.atan2(num, den))
     if deg < 0:
@@ -452,8 +551,8 @@ def _op_atan(s: Stack) -> None:
 
 
 def _op_exp(s: Stack) -> None:
-    exponent = _pop_num(s)
-    base = _pop_num(s)
+    exponent = float(_pop_number(s))
+    base = float(_pop_number(s))
     # Upstream ArithmeticOperators$Exp == ``(float) Math.pow(base, exp)``.
     # Java's Math.pow returns NaN for a negative base with a non-integer
     # exponent (and for other indeterminate forms) rather than throwing;
@@ -467,7 +566,7 @@ def _op_exp(s: Stack) -> None:
 
 
 def _op_ln(s: Stack) -> None:
-    a = _pop_num(s)
+    a = float(_pop_number(s))
     # Upstream ArithmeticOperators$Ln is plain ``(float) Math.log(...)`` with no
     # domain guard: Math.log(0) == -Infinity and Math.log(negative) == NaN. The
     # subsequent /Range clip turns -Infinity into the range min and passes NaN
@@ -482,7 +581,7 @@ def _op_ln(s: Stack) -> None:
 
 
 def _op_log(s: Stack) -> None:
-    a = _pop_num(s)
+    a = float(_pop_number(s))
     # Mirrors upstream ArithmeticOperators$Log == ``(float) Math.log10(...)``;
     # same -Infinity / NaN edge behaviour as ``ln`` (see above).
     if a == 0.0:
@@ -494,12 +593,17 @@ def _op_log(s: Stack) -> None:
 
 
 def _op_cvi(s: Stack) -> None:
-    a = _pop_num(s)
-    s.append(float(int(math.trunc(a))))
+    # Upstream ``Cvi`` == ``num.intValue()`` — truncates toward zero and pushes
+    # an Integer. Crucially this RE-tags a Float as an Integer, so ``7.9 cvi 2
+    # idiv`` works where ``7.9 2 idiv`` would raise.
+    a = _pop_number(s)
+    s.append(math.trunc(a))
 
 
 def _op_cvr(s: Stack) -> None:
-    a = _pop_num(s)
+    # Upstream ``Cvr`` == ``num.floatValue()`` — pushes a Float (re-tags an
+    # Integer as a Real).
+    a = _pop_number(s)
     s.append(float(a))
 
 
@@ -524,25 +628,34 @@ def _op_pop(s: Stack) -> None:
 
 
 def _op_copy(s: Stack) -> None:
-    n = _pop_int(s)
-    if n < 0 or n > len(s):
-        raise OSError("copy operand out of range")
-    if n == 0:
+    # Upstream ``Copy`` uses ``((Number) pop).intValue()`` — a Float count is
+    # accepted and truncated. Java only branches on ``n > 0``; a negative or
+    # over-large ``n`` either no-ops or throws IndexOutOfBounds (a
+    # RuntimeException), which we surface as OSError.
+    n = _pop_int_value(s)
+    if n <= 0:
         return
+    if n > len(s):
+        raise OSError("copy operand out of range")
     top = s[-n:]
     s.extend(top)
 
 
 def _op_index(s: Stack) -> None:
-    n = _pop_int(s)
+    # Upstream ``Index`` uses ``((Number) pop).intValue()`` (Float accepted,
+    # truncated); only ``n < 0`` is an explicit rangecheck, an over-large ``n``
+    # throws IndexOutOfBounds (RuntimeException) -> OSError here.
+    n = _pop_int_value(s)
     if n < 0 or n >= len(s):
         raise OSError("index operand out of range")
     s.append(s[-1 - n])
 
 
 def _op_roll(s: Stack) -> None:
-    j = _pop_int(s)
-    n = _pop_int(s)
+    # Upstream ``Roll`` uses ``((Number) pop).intValue()`` for both j and n
+    # (Float counts accepted, truncated).
+    j = _pop_int_value(s)
+    n = _pop_int_value(s)
     # Mirror upstream PDFBox StackOperators$Roll EXACTLY (parity over the
     # cleaner PostScript-Reference semantics): it does NOT reduce ``j`` modulo
     # ``n``. ``j == 0`` is a no-op; ``n < 0`` is a range error. For any other
@@ -578,95 +691,110 @@ def _cmp_pop(s: Stack) -> tuple[object, object]:
     return a, b
 
 
+def _float32_compare_eq(a: int | float, b: int | float) -> bool:
+    # Upstream ``Eq`` compares via ``Float.compare(a.floatValue(),
+    # b.floatValue())`` — both operands are narrowed to 32-bit float first. For
+    # the magnitudes Type 4 programs use this is indistinguishable from a direct
+    # compare, but narrow explicitly so a value that differs only beyond float32
+    # precision compares equal exactly as Java does.
+    fa = struct.unpack("f", struct.pack("f", float(a)))[0]
+    fb = struct.unpack("f", struct.pack("f", float(b)))[0]
+    return fa == fb
+
+
 def _op_eq(s: Stack) -> None:
     a, b = _cmp_pop(s)
-    s.append(a == b)
+    # Upstream: both Number => float32 compare; otherwise Object.equals. A
+    # number-vs-boolean pair takes the equals branch (always unequal).
+    if _is_number(a) and _is_number(b):
+        s.append(_float32_compare_eq(a, b))
+    else:
+        s.append(a == b)
 
 
 def _op_ne(s: Stack) -> None:
     a, b = _cmp_pop(s)
-    s.append(a != b)
+    if _is_number(a) and _is_number(b):
+        s.append(not _float32_compare_eq(a, b))
+    else:
+        s.append(a != b)
 
 
 def _op_lt(s: Stack) -> None:
-    b = _pop_num(s)
-    a = _pop_num(s)
+    # Comparison ops cast both operands to (Number) (popReal); a Boolean raises.
+    b = _pop_real(s)
+    a = _pop_real(s)
     s.append(a < b)
 
 
 def _op_le(s: Stack) -> None:
-    b = _pop_num(s)
-    a = _pop_num(s)
+    b = _pop_real(s)
+    a = _pop_real(s)
     s.append(a <= b)
 
 
 def _op_gt(s: Stack) -> None:
-    b = _pop_num(s)
-    a = _pop_num(s)
+    b = _pop_real(s)
+    a = _pop_real(s)
     s.append(a > b)
 
 
 def _op_ge(s: Stack) -> None:
-    b = _pop_num(s)
-    a = _pop_num(s)
+    b = _pop_real(s)
+    a = _pop_real(s)
     s.append(a >= b)
 
 
-def _op_and(s: Stack) -> None:
+def _logical(s: Stack, name: str, bool_fn: Callable, int_fn: Callable) -> None:
+    """Shared body for ``and`` / ``or`` / ``xor`` — upstream
+    ``AbstractLogicalOperator``: both Boolean => boolean op (Boolean result);
+    both Integer => int op (Integer result); anything else (notably any Float,
+    or a mixed bool/int pair) => ClassCastException."""
     b = _pop(s)
     a = _pop(s)
     if isinstance(a, bool) and isinstance(b, bool):
-        s.append(a and b)
-    elif isinstance(a, bool) or isinstance(b, bool):
-        raise OSError("type mismatch: and operands must both be bool or both int")
+        s.append(bool_fn(a, b))
+    elif _is_int(a) and _is_int(b):
+        s.append(int_fn(a, b))
     else:
-        s.append(float(_int_bit_operand(a, "and") & _int_bit_operand(b, "and")))
+        raise OSError(f"type mismatch: {name} operands must be bool/bool or int/int")
+
+
+def _op_and(s: Stack) -> None:
+    _logical(s, "and", lambda a, b: a and b, lambda a, b: a & b)
 
 
 def _op_or(s: Stack) -> None:
-    b = _pop(s)
-    a = _pop(s)
-    if isinstance(a, bool) and isinstance(b, bool):
-        s.append(a or b)
-    elif isinstance(a, bool) or isinstance(b, bool):
-        raise OSError("type mismatch: or operands must both be bool or both int")
-    else:
-        s.append(float(_int_bit_operand(a, "or") | _int_bit_operand(b, "or")))
+    _logical(s, "or", lambda a, b: a or b, lambda a, b: a | b)
 
 
 def _op_xor(s: Stack) -> None:
-    b = _pop(s)
-    a = _pop(s)
-    if isinstance(a, bool) and isinstance(b, bool):
-        s.append(a != b)
-    elif isinstance(a, bool) or isinstance(b, bool):
-        raise OSError("type mismatch: xor operands must both be bool or both int")
-    else:
-        s.append(float(_int_bit_operand(a, "xor") ^ _int_bit_operand(b, "xor")))
+    _logical(s, "xor", lambda a, b: a != b, lambda a, b: a ^ b)
 
 
 def _op_not(s: Stack) -> None:
     a = _pop(s)
     if isinstance(a, bool):
         s.append(not a)
-    elif isinstance(a, (int, float)):
-        # Mirrors upstream PDFBox semantics: ``not`` on an integer is
-        # arithmetic negation, NOT bitwise complement. The PostScript
-        # Reference does specify bit-invert here, but PDFBox 3.0 negates
-        # (``-int1`` in BitwiseOperators$Not), and parity with PDFBox
-        # behavior is the contract — see CLAUDE.md "Behavior over style".
-        s.append(-float(a))
+    elif _is_int(a):
+        # Upstream ``Not`` on an Integer is arithmetic negation (``-int1``),
+        # NOT a bitwise complement, and the result keeps the Integer tag. A
+        # Float raises ClassCastException (the strict int discipline). See
+        # CLAUDE.md "Behavior over style".
+        s.append(-a)
     else:
         raise OSError("type mismatch: not operand must be bool or int")
 
 
 def _op_bitshift(s: Stack) -> None:
-    shift = _pop_int(s)
-    val = _pop_int(s)
+    # Both operands are ``(Integer)`` casts — a Float shift count or value
+    # raises ClassCastException. Result keeps the Integer tag.
+    shift = _pop_int_strict(s)
+    val = _pop_int_strict(s)
     if shift >= 0:
-        s.append(float(val << shift))
+        s.append(val << shift)
     else:
-        s.append(float(val >> -shift))
+        s.append(val >> -shift)
 
 
 def _op_true(s: Stack) -> None:

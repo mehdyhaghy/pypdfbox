@@ -314,3 +314,63 @@ def test_skip_enabled_decode_runs():
     bm = hr.get_region_bitmap()
     assert bm.get_width() == 8
     assert bm.get_height() == 8
+
+
+def test_constructor_with_stream_builds_region_info():
+    # The ``HalftoneRegion(SubInputStream)`` constructor overload builds the
+    # region-segment-information field eagerly from the stream (upstream parity),
+    # rather than deferring to ``init``.
+    data = ht_data(rw=8, rh=8, hgw=2, hgh=2)
+    iis = ImageInputStream(data)
+    sis = SubInputStream(iis, 0, len(data))
+    hr = HalftoneRegion(sub_input_stream=sis)
+    assert hr.region_info is not None
+    assert hr.sub_input_stream is sis
+
+
+def test_get_patterns_collects_from_referred_pattern_dictionaries():
+    # When ``patterns`` is not pre-seeded, ``_get_patterns`` (6.6.5.1) walks the
+    # segment's referred-to PatternDictionary segments and flattens their
+    # dictionaries into one HPATS list. Drive that path with two stub
+    # referred-to segments, each carrying a small dictionary.
+    dict_a = _patterns(2, 4, 4)
+    dict_b = _patterns(2, 4, 4)
+
+    class _PatDict:
+        def __init__(self, pats):
+            self._pats = pats
+
+        def get_dictionary(self):
+            return self._pats
+
+    class _Referred:
+        def __init__(self, pats):
+            self._pd = _PatDict(pats)
+
+        def get_segment_data(self):
+            return self._pd
+
+    class _Header:
+        def get_rt_segments(self):
+            return [_Referred(dict_a), _Referred(dict_b)]
+
+    hr = _parse(ht_data(rw=8, rh=8, hgw=2, hgh=2))
+    hr.segment_header = _Header()
+    # patterns is None, so get_region_bitmap auto-fetches via _get_patterns.
+    assert hr.patterns is None
+    bm = hr.get_region_bitmap()
+    assert bm.get_width() == 8
+    # Both referred dictionaries contributed their two patterns each.
+    assert len(hr.patterns) == 4
+
+
+def test_grayscale_decode_template2_uses_template_two_at_pixel():
+    # The grayscale-decode AT-pixel setup (Annex C.5) selects a different first
+    # AT-x for HTEMPLATE >= 2 (2) vs <= 1 (3). Decoding a template-2 halftone
+    # region exercises that ``h_template >= 2`` arm.
+    hr = _parse(ht_data(rw=8, rh=8, hgw=2, hgh=2, template=2))
+    assert hr.get_h_template() == 2
+    hr.patterns = _patterns(4, 4, 4)
+    bm = hr.get_region_bitmap()
+    assert bm.get_width() == 8
+    assert bm.get_height() == 8

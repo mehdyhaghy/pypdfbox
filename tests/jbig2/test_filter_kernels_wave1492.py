@@ -289,3 +289,59 @@ def test_by_type_round_trips_every_member():
 def test_get_name_is_simple_class_name():
     assert Lanczos().get_name() == "Lanczos"
     assert Mitchell().get_name() == "Mitchell"
+
+
+# ---------------------------------------------------------------------------
+# coverage round-out (wave 1511) — the None-guards, the abstract base ``f``,
+# the support/blur accessors, and the Bessel ``x == 0`` order-one guard. Every
+# one is a verbatim port of an upstream ``Filter`` member (``nameByType`` /
+# ``typeByName`` / ``byType`` null checks, the abstract ``f``, the four
+# get/set accessors, and ``BesselOrderOne``'s ``x == 0`` short-circuit), all
+# reachable through the same public/protected surface upstream exposes.
+# ---------------------------------------------------------------------------
+
+
+def test_name_by_type_rejects_none():
+    # Upstream ``Filter.nameByType`` throws on a null ``FilterType``.
+    with pytest.raises(ValueError, match="must not be null"):
+        Filter.name_by_type(None)
+
+
+def test_type_by_name_rejects_none():
+    # Upstream ``Filter.typeByName`` throws on a null name string.
+    with pytest.raises(ValueError, match="must not be null"):
+        Filter.type_by_name(None)
+
+
+def test_by_type_rejects_unmapped_type():
+    # ``Filter.byType`` raises when no kernel is registered for the type.
+    # No real ``FilterType`` is unmapped, so drive the ``impl is None`` arm
+    # with a sentinel key the ``_BY_TYPE`` table cannot contain.
+    with pytest.raises(ValueError, match="No filter for given type"):
+        Filter.by_type(object())
+
+
+def test_abstract_base_f_is_not_implemented():
+    # The base ``Filter.f`` is abstract — every concrete kernel overrides it.
+    with pytest.raises(NotImplementedError):
+        Filter().f(0.0)
+
+
+def test_support_and_blur_accessors_round_trip():
+    # Mirror upstream's ``getSupport``/``setSupport``/``getBlur``/``setBlur``.
+    f = Triangle()
+    assert f.get_support() == f.support
+    assert f.get_blur() == f.blur
+    f.set_support(2.5)
+    assert f.get_support() == 2.5
+    assert f.support == 2.5
+    f.set_blur(0.75)
+    assert f.get_blur() == 0.75
+    assert f.blur == 0.75
+
+
+def test_bessel_order_one_zero_argument_returns_zero():
+    # ``BesselOrderOne(0) == 0`` (upstream guard). ``Bessel.f`` short-circuits
+    # at ``x == 0`` before ever calling the helper, so this exercises the
+    # defensive guard directly the way the upstream static method allows.
+    assert Bessel()._bessel_order_one(0.0) == 0.0

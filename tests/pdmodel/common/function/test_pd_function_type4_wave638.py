@@ -80,8 +80,16 @@ def test_wave638_numeric_error_paths_surface_as_oserror(
 
 
 def test_wave638_private_stack_helpers_reject_non_numeric_and_non_integral() -> None:
+    # popNumber rejects a non-number (Java (Number) cast failure).
     with pytest.raises(OSError, match="expected number, got str"):
-        type4._pop_num(["x"])
+        type4._pop_number(["x"])
 
-    with pytest.raises(OSError, match="expected integer, got 1.25"):
-        type4._pop_int([1.25])
+    # The strict integer pop (upstream (Integer) cast) rejects a Float — wave
+    # 1511 restored this; the old lenient int-equality pop no longer exists.
+    with pytest.raises(OSError, match="expected integer"):
+        type4._pop_int_strict([1.25])
+
+    # The lenient count pop (upstream ((Number)).intValue() in copy/index/roll)
+    # accepts a Float and truncates toward zero rather than raising.
+    assert type4._pop_int_value([1.25]) == 1
+    assert type4._pop_int_value([-1.9]) == -1

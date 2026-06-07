@@ -140,14 +140,24 @@ def test_floor():
 
 
 def test_idiv():
-    assert _exec(Idiv(), 7.0, 2.0) == [3.0]
-    # Truncation toward zero (PostScript semantics).
-    assert _exec(Idiv(), -7.0, 2.0) == [-3.0]
+    # idiv requires Integer operands (upstream popInt / (Integer) cast) and
+    # returns an Integer; truncation is toward zero (Java integer division).
+    assert _exec(Idiv(), 7, 2) == [3]
+    assert _exec(Idiv(), -7, 2) == [-3]
+
+
+def test_idiv_rejects_float_operand():
+    # A Float operand raises (matches the jar's ClassCastException). Wave 1511
+    # restored this strict integer-operator discipline.
+    with pytest.raises(OSError):
+        _exec(Idiv(), 7.0, 2)
+    with pytest.raises(OSError):
+        _exec(Idiv(), 7, 2.0)
 
 
 def test_idiv_by_zero_raises():
     with pytest.raises(OSError):
-        _exec(Idiv(), 1.0, 0.0)
+        _exec(Idiv(), 1, 0)
 
 
 def test_ln():
@@ -176,14 +186,22 @@ def test_log_non_positive_yields_special():
 
 
 def test_mod():
-    assert _exec(Mod(), 7.0, 3.0) == [1.0]
-    # Sign follows dividend (PostScript semantics).
-    assert _exec(Mod(), -7.0, 3.0) == [-1.0]
+    # mod requires Integer operands and returns an Integer; the remainder sign
+    # follows the dividend (Java ``%``).
+    assert _exec(Mod(), 7, 3) == [1]
+    assert _exec(Mod(), -7, 3) == [-1]
+
+
+def test_mod_rejects_float_operand():
+    with pytest.raises(OSError):
+        _exec(Mod(), 7.0, 3)
+    with pytest.raises(OSError):
+        _exec(Mod(), 7, 3.0)
 
 
 def test_mod_by_zero_raises():
     with pytest.raises(OSError):
-        _exec(Mod(), 1.0, 0.0)
+        _exec(Mod(), 1, 0)
 
 
 def test_mul():

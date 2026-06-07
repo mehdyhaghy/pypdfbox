@@ -48,6 +48,17 @@ def test_resolution():
     assert page_info.get_resolution_y() == 300
 
 
+def test_bitmap_width_and_height_accessors():
+    # ``_get_bitmap_width`` / ``_get_bitmap_height`` mirror upstream's
+    # ``getBitmapWidth`` / ``getBitmapHeight`` — they return the same parsed
+    # 7.4.8.1/7.4.8.2 dimensions exposed by ``get_width`` / ``get_height``.
+    page_info = _parse(_DATA)
+    assert page_info._get_bitmap_width() == 64
+    assert page_info._get_bitmap_height() == 48
+    assert page_info._get_bitmap_width() == page_info.get_width()
+    assert page_info._get_bitmap_height() == page_info.get_height()
+
+
 def test_flag_bits():
     page_info = _parse(_DATA)
     assert page_info.is_combination_operator_override_allowed() is True

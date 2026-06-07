@@ -202,19 +202,27 @@ class PDFTextStripperByArea(PDFTextStripper):
         # already-formatted text — we need the raw position list to bin
         # by region first, then format each region separately.
         self._active_page = page
-        # NOTE: the by-area binner deliberately does NOT run the page-rotation
-        # fold (``PDFTextStripper._apply_page_rotation``). On an unrotated page
-        # the fold is a no-op, so the proven unrotated by-area parity is
-        # unaffected; on a rotated page the region rectangles would need to be
-        # interpreted in the rotated *device* frame (upstream tests
-        # ``Rectangle2D.contains(text.getX(), text.getY())`` against the
-        # page-rotation-adjusted coordinates — PDFTextStripperByArea.java:141),
-        # but ``_bin_glyph``'s boundary semantics are calibrated for the lite
-        # y-up user-space frame (``min_y < y <= max_y``), which the device
-        # y-down frame the fold produces would invert. Rotated-page region
-        # binning is therefore tracked as a narrow follow-up (DEFERRED.md) so
-        # the unrotated half-open boundary parity stays intact this wave.
-        self._page_rotation = 0
+        # Snapshot the page rotation + cropbox extents so ``_apply_page_rotation``
+        # can fold the page ``/Rotate`` into each glyph's stored coordinates,
+        # exactly the way the base ``PDFTextStripper.process_page`` does. On a
+        # rotated page upstream's ``PDFTextStripperByArea.processTextPosition``
+        # (Java L141) tests ``Rectangle2D.contains(text.getX(), text.getY())``
+        # against the page-rotation-adjusted *device* coordinates; folding here
+        # puts the lite glyph origins in that same device frame so ``_bin_glyph``
+        # can reproduce the native ``Rectangle2D.contains`` half-open test. The
+        # unrotated path (``/Rotate 0``) is a verbatim no-op fold, so the proven
+        # y-up user-frame half-open parity is unaffected.
+        try:
+            self._page_rotation = int(page.get_rotation()) % 360
+        except Exception:  # noqa: BLE001 — defensive: bad /Rotate
+            self._page_rotation = 0
+        try:
+            crop = page.get_crop_box()
+            self._page_width = float(crop.get_width())
+            self._page_height = float(crop.get_height())
+        except Exception:  # noqa: BLE001 — defensive: missing/odd CropBox
+            self._page_width = 0.0
+            self._page_height = 0.0
         self._cmap_cache = {}
         self._font_cache = {}
         self._active_cmap = None
@@ -222,6 +230,20 @@ class PDFTextStripperByArea(PDFTextStripper):
         self._active_avg_advance = None
         try:
             positions = self._extract_positions(contents)
+            # NOTE: we do NOT run ``_apply_page_rotation`` over the whole list
+            # here. On a rotated page the fold collapses a horizontal run's
+            # ``width`` to a zero device-axis extent, which would break the
+            # per-glyph straddle split in ``process_text_position`` (it steps the
+            # glyph origin by the run's user-space advance). Instead the split
+            # stays in the user frame and ``_bin_glyph`` folds each individual
+            # glyph origin into the device frame just before the boundary test
+            # (see ``_glyph_device_origin``), so binning matches upstream's
+            # page-rotation-adjusted ``Rectangle2D.contains`` test per glyph.
+            # Record page geometry on the positions for API parity regardless.
+            for pos in positions:
+                pos.rotation = float(self._page_rotation)
+                pos.page_width = self._page_width
+                pos.page_height = self._page_height
             # Bin positions into regions through the public hook so a
             # subclass that overrides ``process_text_position`` can still
             # extend the routing decision (e.g. drop watermarks). The
@@ -398,17 +420,43 @@ class PDFTextStripperByArea(PDFTextStripper):
         iterate matching regions in Java-HashMap order (:func:`_hashmap_order`),
         and bin a glyph only if it survives the shared dedup.
 
-        Boundary semantics reproduce Java ``Rectangle2D.contains`` exactly:
-        half-open in Java device space (y-down), which the y-flip into PDF
-        user space turns into ``min_x`` inclusive / ``max_x`` exclusive and
-        ``min_y`` *exclusive* / ``max_y`` inclusive. See the
-        ``process_text_position`` docstring.
+        Boundary semantics reproduce Java ``Rectangle2D.contains`` exactly.
+        On an **unrotated** page the glyph origin ``(x, y)`` is in the lite
+        y-up user frame and the region rectangle is stored y-up, so the y-flip
+        into Java device space turns the half-open test into ``min_x`` inclusive
+        / ``max_x`` exclusive and ``min_y`` *exclusive* / ``max_y`` inclusive
+        (see the ``process_text_position`` docstring).
+
+        On a **rotated** page (``/Rotate 90/180/270``) the user-space glyph
+        origin ``(x, y)`` is folded into the page-rotation-adjusted *device*
+        frame (y-down, upper-left origin) via :func:`_glyph_device_origin` — the
+        exact coordinates upstream's ``processTextPosition`` tests
+        ``Rectangle2D.contains`` against (Java L141: ``text.getX()`` /
+        ``text.getY()``). The user-space region rectangle is mapped into that
+        same device frame via :func:`_region_device_bounds`, and we apply
+        ``Rectangle2D.contains``'s native ``min_x <= x < max_x &&
+        min_y <= y < max_y`` directly.
         """
         suppress = self._suppress_duplicate_overlapping_text
+        rotation = self._page_rotation
+        if rotation != 0:
+            dev_x, dev_y = _glyph_device_origin(
+                x, y, rotation, self._page_width, self._page_height
+            )
         for name in _hashmap_order(self._region_area.keys()):
-            min_x, min_y, max_x, max_y = self._region_area[name]
-            if not (min_x <= x < max_x and min_y < y <= max_y):
-                continue
+            if rotation == 0:
+                min_x, min_y, max_x, max_y = self._region_area[name]
+                if not (min_x <= x < max_x and min_y < y <= max_y):
+                    continue
+            else:
+                min_x, min_y, max_x, max_y = _region_device_bounds(
+                    self._region_area[name],
+                    rotation,
+                    self._page_width,
+                    self._page_height,
+                )
+                if not (min_x <= dev_x < max_x and min_y <= dev_y < max_y):
+                    continue
             if suppress and self._is_suppressed_duplicate(text, x, y):
                 # The shared page-wide map already recorded a coincident
                 # same-text glyph (from an earlier region in HashMap order or
@@ -446,6 +494,82 @@ class PDFTextStripperByArea(PDFTextStripper):
         # Java L945-950: not suppressed — record (x, y) and show.
         same_text.setdefault(x, set()).add(y)
         return False
+
+
+def _glyph_device_origin(
+    x: float,
+    y: float,
+    rotation: int,
+    page_width: float,
+    page_height: float,
+) -> tuple[float, float]:
+    """Fold a user-space glyph origin into the page-rotation-adjusted device
+    frame, matching upstream ``TextPosition.getX()`` / ``getY()``.
+
+    Mirrors the per-position transform ``PDFTextStripper._apply_page_rotation``
+    applies for a rotated page: ``getX() == getXRot(rotation)`` and
+    ``getY() == pageDim - getYLowerLeftRot(rotation)``. For a user point
+    ``(x, y)`` (y-up) this resolves to
+
+      * ``/Rotate 90``  -> ``(y, x)``
+      * ``/Rotate 180`` -> ``(pw - x, y)``
+      * ``/Rotate 270`` -> ``(ph - y, pw - x)``
+
+    so a glyph lands at the same device coordinate the region rectangle is
+    mapped to by :func:`_region_device_bounds`. The ``/Rotate 180`` Y is the
+    user-space ``y`` unchanged: upstream's ``getY() = pageHeight -
+    getYLowerLeftRot(180)`` and ``getYLowerLeftRot(180) = pageHeight - y``, so
+    the two ``pageHeight`` terms cancel (the only rotation where the device Y is
+    not a flip of the user Y).
+    """
+    if rotation == 90:
+        return (y, x)
+    if rotation == 180:
+        return (page_width - x, y)
+    if rotation == 270:
+        return (page_height - y, page_width - x)
+    return (x, y)
+
+
+def _region_device_bounds(
+    bounds: tuple[float, float, float, float],
+    rotation: int,
+    page_width: float,
+    page_height: float,
+) -> tuple[float, float, float, float]:
+    """Map a user-space region rectangle into the page-rotation-adjusted
+    *device* frame so it can be tested against folded glyph coordinates.
+
+    ``bounds`` is ``(min_x, min_y, max_x, max_y)`` in PDF user space (y-up).
+    The folded glyph frame matches upstream's ``TextPosition.getX()`` /
+    ``getY()`` for the given page ``rotation`` (see
+    ``PDFTextStripper._apply_page_rotation``): a user point ``(ux, uy)`` maps to
+
+      * ``/Rotate 90``  -> ``(uy, ux)``
+      * ``/Rotate 180`` -> ``(pw - ux, uy)``
+      * ``/Rotate 270`` -> ``(ph - uy, pw - ux)``
+
+    (matching :func:`_glyph_device_origin` exactly, including the ``/Rotate 180``
+    Y that stays ``uy`` because upstream's two ``pageHeight`` flips cancel.)
+
+    We transform the rectangle's two opposite corners and renormalize so the
+    result is ``(min_x, min_y, max_x, max_y)`` in the device frame. The caller
+    then applies ``Rectangle2D.contains``'s native half-open test directly.
+    """
+    min_x, min_y, max_x, max_y = bounds
+
+    def _to_device(ux: float, uy: float) -> tuple[float, float]:
+        if rotation == 90:
+            return (uy, ux)
+        if rotation == 180:
+            return (page_width - ux, uy)
+        if rotation == 270:
+            return (page_height - uy, page_width - ux)
+        return (ux, uy)
+
+    dx0, dy0 = _to_device(min_x, min_y)
+    dx1, dy1 = _to_device(max_x, max_y)
+    return (min(dx0, dx1), min(dy0, dy1), max(dx0, dx1), max(dy0, dy1))
 
 
 def _java_string_hash_code(s: str) -> int:
