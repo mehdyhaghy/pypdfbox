@@ -198,19 +198,25 @@ class PDDocument:
         trailer = COSDictionary()
         catalog = COSDictionary()
         catalog.set_item(_TYPE, _CATALOG)
+        # Mirror upstream's no-arg PDDocument constructor (PDDocument.java
+        # lines 180-185) key-for-key AND in upstream's exact insertion order:
+        # /Type, then /Version, then /Pages. Stamping /Version BEFORE /Pages
+        # (rather than appending it after the pages tree) is what keeps a
+        # freshly-built destination catalog byte-identical to PDFBox's when
+        # serialized — most visibly in PDFMergerUtility output, whose merged
+        # /Catalog otherwise diverged only in this key order. The literal
+        # value lives in :attr:`DEFAULT_VERSION` so subclasses / callers can
+        # override.
+        catalog.set_item(
+            COSName.get_pdf_name("Version"),
+            COSName.get_pdf_name(f"{self.DEFAULT_VERSION:.1f}"),
+        )
         # Pages root.
         pages = COSDictionary()
         pages.set_item(_TYPE, _PAGES)
         pages.set_item(_KIDS, COSArray())
         pages.set_int(_COUNT, 0)
         catalog.set_item(_PAGES, pages)
-        # Mirror upstream's no-arg PDDocument: stamp /Version on the catalog
-        # so it matches the default header version. The literal value lives in
-        # :attr:`DEFAULT_VERSION` so subclasses / callers can override.
-        catalog.set_item(
-            COSName.get_pdf_name("Version"),
-            COSName.get_pdf_name(f"{self.DEFAULT_VERSION:.1f}"),
-        )
         trailer.set_item(_ROOT, catalog)
         self._document.set_trailer(trailer)
 

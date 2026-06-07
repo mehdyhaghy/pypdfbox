@@ -956,7 +956,40 @@ class PDFMergerUtility:
 
             new_page_dict = cloner.clone_for_new_document(old_page_dict)
             assert isinstance(new_page_dict, COSDictionary)
-            new_page_dict.remove_item(_PARENT)
+            new_page = PDPage(new_page_dict)
+
+            if not merge_struct_tree:
+                # PDFBOX-4429: remove bogus StructParent(s). Upstream runs
+                # this BEFORE the geometry setters below (Java lines 779-786).
+                new_page_dict.remove_item(_STRUCT_PARENTS)
+                self._strip_struct_parent_from_annots(new_page_dict)
+
+            # Mirror upstream appendDocument's page-loop geometry setters
+            # (Java lines 787-800), run UNCONDITIONALLY in this exact order:
+            # setCropBox, setMediaBox, setRotation, setResources. These
+            # normalise the cloned page's geometry to the *resolved*
+            # (inheritance-flattened) values and, crucially, materialise a
+            # /CropBox key when the source page only inherited one — which is
+            # why upstream's merged page dictionaries carry a trailing
+            # /CropBox the raw clone lacks. setResources re-wraps the
+            # already-cloned /Resources (cloneForNewDocument returns the
+            # cached clone, so this is an in-place no-op on value but pins the
+            # key). Upstream does NOT strip /Parent here: the cloned /Parent
+            # stays in its original slot and PDPageTree.add overwrites it in
+            # place, so the key keeps its source position rather than being
+            # re-appended at the end.
+            new_page.set_crop_box(page.get_crop_box())
+            new_page.set_media_box(page.get_media_box())
+            new_page.set_rotation(page.get_rotation())
+            src_resources = page.get_resources()
+            if src_resources is not None:
+                cloned_res = cloner.clone_for_new_document(
+                    src_resources.get_cos_object()
+                )
+                assert isinstance(cloned_res, COSDictionary)
+                new_page.set_resources(cloned_res)
+            else:
+                new_page.set_resources(COSDictionary())
 
             if merge_struct_tree:
                 self._update_struct_parent_entries(
@@ -977,11 +1010,19 @@ class PDFMergerUtility:
                     old_annots_dicts, new_annots_dicts, strict=False
                 ):
                     obj_mapping[id(old_a)] = new_a
-            else:
-                new_page_dict.remove_item(_STRUCT_PARENTS)
-                self._strip_struct_parent_from_annots(new_page_dict)
+                # Mirror upstream appendDocument's struct-tree branch, which
+                # finishes the per-page annotation handling with
+                # ``newPage.setAnnotations(annotations)`` (after the geometry
+                # setters above). That write-back MATERIALISES an /Annots key
+                # appended at the end of the page dict — even when the source
+                # page had none and the resolved list is empty — so a merged
+                # struct-tree page always carries a trailing /Annots array.
+                # Re-feeding the page's own resolved annotations keeps the
+                # array contents (and order) identical to the clone while
+                # pinning the key position to match PDFBox byte-for-byte.
+                new_page.set_annotations(new_page.get_annotations())
 
-            dest_pages.add(PDPage(new_page_dict))
+            dest_pages.add(new_page)
 
         # ----- /OpenAction -----
         self._merge_open_action(cloner, src_catalog, dest_catalog)

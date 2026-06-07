@@ -110,12 +110,18 @@ class PlainTextFormatter:
             elif self._text_alignment is TextAlign.RIGHT:
                 start_offset = self._width - line.get_width()
             elif self._text_alignment is TextAlign.JUSTIFY:
-                if line_index != len(lines) - 1 and len(line.get_words()) > 1:
+                # Upstream computes inter-word spacing for every non-last
+                # line with no word-count guard and never resets it once
+                # set (Java processLines lines 248-253). A single-word
+                # non-last line therefore divides by ``words.size() - 1 ==
+                # 0`` and yields a non-finite value, which the downstream
+                # ``new_line_at_offset`` rejects — matching upstream's
+                # ``IllegalArgumentException: Infinity is not a finite
+                # number`` (pinned as a jar quirk in the oracle test).
+                if line_index != len(lines) - 1:
                     inter_word_spacing = line.get_inter_word_spacing(
                         self._width
                     )
-                else:
-                    inter_word_spacing = 0.0
             else:
                 start_offset = 0.0
 

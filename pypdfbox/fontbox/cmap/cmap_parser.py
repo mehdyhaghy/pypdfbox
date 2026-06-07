@@ -798,13 +798,25 @@ class CMapParser:
     def create_string_from_bytes(data: bytes) -> str:
         """Map a byte sequence to its CMap string value.
 
-        Mirrors upstream ``CMapParser#createStringFromBytes``: 1 byte
-        decodes through latin-1 (one char per byte), longer values
-        decode as UTF-16BE. Malformed UTF-16BE input is decoded with
-        replacement so corrupt ToUnicode CMaps do not abort parsing.
+        Mirrors upstream ``CMapParser#createStringFromBytes``: a sequence
+        of ``length <= 2`` routes through ``CMapStrings.getMapping`` —
+        1 byte decodes through latin-1 (one char per byte), 2 bytes (and
+        the *empty* ``<>`` token, whose ``CMap.toInt`` is ``0``) decode as
+        UTF-16BE. Longer values decode as UTF-16BE directly. Malformed
+        UTF-16BE input is decoded with replacement so corrupt ToUnicode
+        CMaps do not abort parsing.
+
+        The empty-token (``len == 0``) case is the lenient edge a
+        ``beginbfchar <01> <>`` entry exercises: upstream's
+        ``getMapping(new byte[0])`` indexes ``twoByteMappings.get(0)`` and
+        so yields ``"\\u0000"`` rather than the empty string a naive
+        UTF-16BE decode of zero bytes would produce.
         """
         if len(data) == 1:
             return data.decode("latin-1")
+        if len(data) == 0:
+            # Upstream getMapping([]) -> twoByteMappings.get(0) == "\x00".
+            return "\x00"
         return data.decode("utf-16-be", errors="replace")
 
     # ---------- input coercion ----------

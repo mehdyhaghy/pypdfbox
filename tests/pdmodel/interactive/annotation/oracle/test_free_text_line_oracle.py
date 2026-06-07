@@ -32,29 +32,28 @@ Parity asserted
 * **Line op-sequence** — matches Apache PDFBox **exactly** (the leader lines,
   the caption text run, the Diamond start ending and the ClosedArrow end
   ending are all present in the same order).
-* **FreeText op-sequence** — the structural skeleton matches: callout polyline
+* **FreeText op-sequence** — matches Apache PDFBox **exactly**: callout polyline
   drawn (``m l l S``), the OpenArrow ending drawn inside a ``q ... Q`` block,
   the border box, the ``/Rotate`` ``cm``, the clip, and a ``BT ... ET`` text
-  object that shows the contents. See the documented divergence below.
+  object whose ``Td``/``Tj`` run cadence is produced by the ported
+  ``PlainTextFormatter`` (wave 1508).
 
-FIXED this wave
----------------
-``PDFreeTextAppearanceHandler`` emitted the ``/Rotate`` ``cm`` operator only
-when ``/Rotate`` was non-zero (``if rotation:``). Upstream emits it
-unconditionally — ``getRotateInstance(0, 0, 0)`` is the identity matrix but
-the ``cm`` token is still written — so the lite stream was one ``cm`` short of
-Apache PDFBox's. Fixed to emit the transform unconditionally; the FreeText
-appearance op-sequence now carries the ``cm`` exactly where PDFBox does.
+FIXED in wave 1508
+------------------
+``PDFreeTextAppearanceHandler`` previously emitted one ``Td Tj`` per
+``\\n``-terminated segment via a naive splitter, diverging from upstream's
+``PlainTextFormatter`` word-wrap. The handler now routes ``/Contents`` through
+the ported ``PlainTextFormatter`` (``pypdfbox.pdmodel.interactive.form``) with
+the same Builder configuration upstream uses (``style`` / ``text`` /
+``width(clip_width)`` / ``wrapLines(true)`` / ``initialOffset`` and no
+``textAlign`` — Adobe ignores ``/Q``). The full FreeText op-sequence, including
+the ``Td``/``Tj`` run cadence, now matches Apache PDFBox exactly.
 
-Documented (NOT fixed — legitimate lite-surface difference)
------------------------------------------------------------
-* **FreeText text layout**: upstream word-wraps ``/Contents`` with
-  ``PlainTextFormatter`` into multiple ``Td Tj`` runs; the lite handler emits
-  one ``Td Tj`` per ``\\n``-terminated segment (here a single run). ``/BBox``,
-  the callout/arrow/border/clip skeleton and the ``BT Tf rg ... ET`` text
-  object all match; only the number of ``Td Tj`` pairs inside the text object
-  differs (documented in the handler + ``CHANGES.md``). The test asserts the
-  shared skeleton plus "at least one ``Td Tj``", not the exact run count.
+Earlier (wave that closed the ``cm`` gap): ``PDFreeTextAppearanceHandler``
+emitted the ``/Rotate`` ``cm`` operator only when ``/Rotate`` was non-zero.
+Upstream emits it unconditionally — ``getRotateInstance(0, 0, 0)`` is the
+identity matrix but the ``cm`` token is still written. Fixed to emit the
+transform unconditionally.
 """
 
 from __future__ import annotations
@@ -300,13 +299,12 @@ def test_line_ending_shapes_present() -> None:
 
 
 @requires_oracle
-def test_free_text_appearance_skeleton_matches() -> None:
-    """The FreeText ``/AP /N`` ``/BBox`` matches exactly and the structural
-    op-skeleton (callout polyline + OpenArrow ending + border box + /Rotate cm
-    + clip + BT..ET text) matches Apache PDFBox.
-
-    Only the *number* of ``Td Tj`` runs inside the text object differs
-    (documented PlainTextFormatter word-wrap divergence)."""
+def test_free_text_appearance_op_sequence_exact() -> None:
+    """The FreeText ``/AP /N`` ``/BBox`` and the full op-sequence match Apache
+    PDFBox **exactly**: callout polyline (``m l l S``) + OpenArrow ending inside
+    a ``q ... Q`` block + border box (``re B``) + /Rotate ``cm`` + clip
+    (``re W n``) + the ``BT..ET`` text object whose ``Td``/``Tj`` run cadence is
+    produced by the ported ``PlainTextFormatter`` (wave 1508)."""
     java = _java_records()["FreeText"]
     ft = _build_free_text()
     ft.construct_appearances()
@@ -317,27 +315,9 @@ def test_free_text_appearance_skeleton_matches() -> None:
     )
     py_ops = _operators(stream)
     jr_ops = list(java["ops"])  # type: ignore[arg-type]
-
-    # Callout polyline: 3-point /CL drawn as ``m l l`` then stroked.
-    assert "m" in py_ops and py_ops.count("l") >= 2 and "S" in py_ops, py_ops
-
-    # OpenArrow line-ending drawn inside a ``q ... Q`` block with its own
-    # ``cm`` transform — present on both sides.
-    assert "q" in py_ops and "Q" in py_ops, py_ops
-    assert "cm" in py_ops and "cm" in jr_ops, (py_ops, jr_ops)
-
-    # Border box (``re B``), clip (``re W n``) and the text object skeleton.
-    for op in ("re", "B", "W", "n", "BT", "Tf", "rg", "Td", "Tj", "ET"):
-        assert op in py_ops, f"FreeText missing {op!r} in {py_ops}"
-        assert op in jr_ops, f"PDFBox missing {op!r} in {jr_ops}"
-
-    # The ``cm`` rotate is now emitted unconditionally (the fix). Confirm the
-    # border box draw is followed by a ``cm`` then the clip — the upstream
-    # order — by checking ``B`` precedes a ``cm`` which precedes ``W``.
-    b_idx = py_ops.index("B")
-    assert "cm" in py_ops[b_idx:], py_ops
-    cm_after_b = b_idx + py_ops[b_idx:].index("cm")
-    assert "W" in py_ops[cm_after_b:], py_ops
+    assert py_ops == jr_ops, (
+        f"FreeText op-sequence diverges\n pypdfbox: {py_ops}\n PDFBox:   {jr_ops}"
+    )
 
 
 @requires_oracle

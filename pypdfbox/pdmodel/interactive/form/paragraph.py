@@ -42,10 +42,24 @@ class Line:
 
     def get_inter_word_spacing(self, width: float) -> float:
         """Return the per-gap spacing needed to justify this line to
-        ``width``. Caller is responsible for ensuring
-        ``len(words) > 1`` — upstream divides by ``words.size() - 1``
-        without a guard."""
-        return (width - self._line_width) / (len(self._words) - 1)
+        ``width``. Mirrors upstream ``getInterWordSpacing`` (Java line
+        363): ``(width - lineWidth) / (words.size() - 1)`` with **no**
+        guard against a single-word line. Upstream is Java float
+        arithmetic, where dividing by zero yields ``Infinity`` /
+        ``-Infinity`` (not an exception); we reproduce that so a
+        single-word justify line propagates a non-finite value to
+        ``new_line_at_offset`` exactly as upstream does (it then raises
+        the "not a finite number" guard)."""
+        gaps = len(self._words) - 1
+        numerator = width - self._line_width
+        if gaps == 0:
+            # Java float division by zero -> +/-Infinity (or NaN for 0/0).
+            if numerator > 0:
+                return float("inf")
+            if numerator < 0:
+                return float("-inf")
+            return float("nan")
+        return numerator / gaps
 
     def calculate_width(self, font: PDFont, font_size: float) -> float:
         """Return the rendered width of this line, accounting for the

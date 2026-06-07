@@ -38,6 +38,107 @@ _SUPPORTED_NAMES = frozenset(
 )
 
 
+# ---------------------------------------------------------------------------
+# Standard-14 glyph outlines used by drawHelp / drawParagraph / drawNewParagraph.
+#
+# Upstream extracts these via ``Standard14Fonts.getGlyphPath(fontName, glyph)``
+# and walks the resulting ``GeneralPath`` with ``addPath``. pypdfbox has not
+# ported Standard14 glyph-path extraction, so we embed the exact upstream glyph
+# outlines (canonical to 3 decimals — matching the operand precision Apache
+# PDFBox emits) as pre-flattened ``(op, coords)`` paths. Quadratic segments are
+# already cubic in the source outlines. Coordinates are in the font's 1000-unit
+# em; the draw helpers apply the upstream scale/translate ``cm`` before emitting.
+# ---------------------------------------------------------------------------
+
+_GLYPH_QUESTION: list[tuple[str, tuple[float, ...]]] = [
+    ("M", (778, 544)),
+    ("C", (770, 518.667, 765.667, 479.333, 765, 426)),
+    ("L", (495, 426)),
+    ("C", (499, 538.667, 509.667, 616.333, 527, 659)),
+    ("C", (544.333, 702.333, 589, 752, 661, 808)),
+    ("L", (734, 865)),
+    ("C", (758, 883, 777.333, 902.667, 792, 924)),
+    ("C", (818.667, 960.667, 832, 1001, 832, 1045)),
+    ("C", (832, 1095.667, 817.333, 1141.667, 788, 1183)),
+    ("C", (758, 1225, 703.667, 1246, 625, 1246)),
+    ("C", (547.667, 1246, 493, 1220.333, 461, 1169)),
+    ("C", (428.333, 1117.667, 412, 1064.333, 412, 1009)),
+    ("L", (123, 1009)),
+    ("C", (131, 1199, 197.333, 1333.667, 322, 1413)),
+    ("C", (400.667, 1463.667, 497.333, 1489, 612, 1489)),
+    ("C", (762.667, 1489, 887.667, 1453, 987, 1381)),
+    ("C", (1087, 1309, 1137, 1202.333, 1137, 1061)),
+    ("C", (1137, 974.333, 1115.333, 901.333, 1072, 842)),
+    ("C", (1046.667, 806, 998, 760, 926, 704)),
+    ("L", (855, 649)),
+    ("C", (816.333, 619, 790.667, 584, 778, 544)),
+    ("H", ()),
+    ("M", (786, 0)),
+    ("L", (488, 0)),
+    ("L", (488, 289)),
+    ("L", (786, 289)),
+    ("L", (786, 0)),
+    ("H", ()),
+]
+
+_GLYPH_PARAGRAPH: list[tuple[str, tuple[float, ...]]] = [
+    ("M", (940, -363)),
+    ("L", (793, -363)),
+    ("L", (793, 1353)),
+    ("L", (562, 1353)),
+    ("L", (562, -363)),
+    ("L", (415, -363)),
+    ("L", (415, 526)),
+    ("C", (273, 528, 166.667, 577.333, 96, 674)),
+    ("C", (24.667, 771.333, -11, 878.333, -11, 995)),
+    ("C", (-11, 1093.667, 13, 1181.667, 61, 1259)),
+    ("C", (147.667, 1399, 290.333, 1469, 489, 1469)),
+    ("L", (1065, 1469)),
+    ("L", (1065, 1353)),
+    ("L", (940, 1353)),
+    ("L", (940, -363)),
+    ("H", ()),
+]
+
+_GLYPH_N: list[tuple[str, tuple[float, ...]]] = [
+    ("M", (1348, 0)),
+    ("L", (1040, 0)),
+    ("L", (438, 1047)),
+    ("L", (438, 0)),
+    ("L", (151, 0)),
+    ("L", (151, 1474)),
+    ("L", (474, 1474)),
+    ("L", (1061, 445)),
+    ("L", (1061, 1474)),
+    ("L", (1348, 1474)),
+    ("L", (1348, 0)),
+    ("H", ()),
+]
+
+_GLYPH_P: list[tuple[str, tuple[float, ...]]] = [
+    ("M", (782, 530)),
+    ("L", (469, 530)),
+    ("L", (469, 0)),
+    ("L", (163, 0)),
+    ("L", (163, 1474)),
+    ("L", (805, 1474)),
+    ("C", (953, 1474, 1071, 1436, 1159, 1360)),
+    ("C", (1247, 1284, 1291, 1166.333, 1291, 1007)),
+    ("C", (1291, 833, 1247, 710, 1159, 638)),
+    ("C", (1071, 566, 945.333, 530, 782, 530)),
+    ("H", ()),
+    ("M", (926, 837)),
+    ("C", (966, 872.333, 986, 928.333, 986, 1005)),
+    ("C", (986, 1081.667, 966, 1136.333, 926, 1169)),
+    ("C", (885.333, 1201.667, 828.667, 1218, 756, 1218)),
+    ("L", (469, 1218)),
+    ("L", (469, 784)),
+    ("L", (756, 784)),
+    ("C", (828.667, 784, 885.333, 801.667, 926, 837)),
+    ("H", ()),
+]
+
+
 def _apply_matrix(cs: PDAppearanceContentStream, matrix: Matrix) -> None:
     """Emit the ``cm`` operator with the six components of ``matrix``.
 
@@ -115,10 +216,18 @@ class PDTextAppearanceHandler(PDAbstractAppearanceHandler):
         with self.get_normal_appearance_as_content_stream() as cs:
             bg_components = self._color_components_from_annotation(annotation)
             if bg_components is None:
-                # White when /C is absent (PDTextAppearanceHandler.java:96)
+                # White when /C is absent (PDTextAppearanceHandler.java:96):
+                # upstream calls setNonStrokingColor(1f) → the gray shorthand
+                # ``1 g``. A one-element list routes to that same shorthand.
                 cs.set_non_stroking_color([1.0])
             else:
-                cs.set_non_stroking_color(bg_components)
+                # Upstream passes the full PDColor to setNonStrokingColor, which
+                # emits ``/DeviceRGB cs r g b sc`` (colour-space + ``cs`` +
+                # components + ``sc``), never the device shorthand ``rg``/``g``/
+                # ``k``. Wrap the raw /C components so the operand stream matches.
+                cs.set_non_stroking_color(
+                    self._pd_color_from_components(bg_components)
+                )
             # Stroking color stays the PDF default (black).
             self.set_opacity(cs, annotation.get_constant_opacity())
             dispatch = {
@@ -392,7 +501,7 @@ class PDTextAppearanceHandler(PDAbstractAppearanceHandler):
         self, annotation: PDAnnotationText, cs: PDAppearanceContentStream
     ) -> None:
         """Mirrors upstream ``drawHelp`` (PDTextAppearanceHandler.java:280).
-        Circle with a question-mark glyph centered inside."""
+        Circle with the Helvetica-Bold ``question`` glyph centered inside."""
         bbox = self._adjust_rect_and_bbox(annotation, 20.0, 20.0)
         min_dim = min(bbox.get_width(), bbox.get_height())
 
@@ -409,33 +518,18 @@ class PDTextAppearanceHandler(PDAbstractAppearanceHandler):
         cs.fill()
         cs.restore_graphics_state()
 
-        # Documented deviation: upstream draws a Helvetica-Bold "?" via
-        # Standard14Fonts glyph paths. Those aren't ported yet, so we
-        # render a hand-built question-mark hash that visually matches.
+        # Helvetica-Bold "question" glyph path, scaled into the circle.
         cs.save_graphics_state()
-        cx = min_dim / 2
-        cy = min_dim / 2
-        # Question-mark approximated with two strokes.
-        r = min_dim / 6
-        cs.set_line_width(min_dim / 12)
-        # Curve of the "?"
-        cs.move_to(cx - r * 0.7, cy + r * 0.6)
-        cs.curve_to(
-            cx - r * 0.7, cy + r * 1.3,
-            cx + r * 0.7, cy + r * 1.3,
-            cx + r * 0.7, cy + r * 0.6,
+        _apply_matrix(
+            cs,
+            Matrix.get_scale_instance(
+                0.001 * min_dim / 2.25, 0.001 * min_dim / 2.25
+            ),
         )
-        cs.curve_to(
-            cx + r * 0.7, cy,
-            cx, cy + r * 0.2,
-            cx, cy - r * 0.2,
-        )
-        cs.stroke()
-        # Dot of the "?"
-        self.draw_circle(cs, cx, cy - r * 0.9, min_dim / 25)
-        cs.fill()
+        _apply_matrix(cs, Matrix.get_translate_instance(500.0, 375.0))
+        self.add_path(cs, _GLYPH_QUESTION)
         cs.restore_graphics_state()
-        # outer ring counterclockwise to keep nonzero winding consistent
+
         self.draw_circle2(cs, min_dim / 2, min_dim / 2, min_dim / 2 - 1.0)
         cs.fill_and_stroke()
 
@@ -443,7 +537,7 @@ class PDTextAppearanceHandler(PDAbstractAppearanceHandler):
         self, annotation: PDAnnotationText, cs: PDAppearanceContentStream
     ) -> None:
         """Mirrors upstream ``drawParagraph`` (PDTextAppearanceHandler.java:320).
-        Pilcrow glyph centered in a circle."""
+        Helvetica ``paragraph`` (pilcrow) glyph centered in a circle."""
         bbox = self._adjust_rect_and_bbox(annotation, 20.0, 20.0)
         min_dim = min(bbox.get_width(), bbox.get_height())
 
@@ -460,31 +554,19 @@ class PDTextAppearanceHandler(PDAbstractAppearanceHandler):
         cs.fill()
         cs.restore_graphics_state()
 
-        # Documented deviation: pilcrow rendered as a hand-built path
-        # since the Standard14 glyph extraction is not ported.
+        # Helvetica "paragraph" glyph path, scaled into the circle.
         cs.save_graphics_state()
-        cx = min_dim / 2
-        cy = min_dim / 2
-        s = min_dim / 8
-        # vertical stems of the pilcrow
-        cs.move_to(cx - s * 0.5, cy + s * 2.4)
-        cs.line_to(cx + s * 1.4, cy + s * 2.4)
-        cs.line_to(cx + s * 1.4, cy - s * 2.6)
-        cs.line_to(cx + s * 0.8, cy - s * 2.6)
-        cs.line_to(cx + s * 0.8, cy + s * 2.0)
-        cs.line_to(cx + s * 0.2, cy + s * 2.0)
-        cs.line_to(cx + s * 0.2, cy - s * 2.6)
-        cs.line_to(cx - s * 0.4, cy - s * 2.6)
-        cs.line_to(cx - s * 0.4, cy + s * 0.4)
-        # bowl of the pilcrow
-        cs.curve_to(
-            cx - s * 2.2, cy + s * 0.4,
-            cx - s * 2.2, cy + s * 2.4,
-            cx - s * 0.5, cy + s * 2.4,
+        _apply_matrix(
+            cs,
+            Matrix.get_scale_instance(
+                0.001 * min_dim / 3.0, 0.001 * min_dim / 3.0
+            ),
         )
-        cs.close_path()
-        cs.fill_and_stroke()
+        _apply_matrix(cs, Matrix.get_translate_instance(850.0, 900.0))
+        self.add_path(cs, _GLYPH_PARAGRAPH)
         cs.restore_graphics_state()
+        cs.fill_and_stroke()
+
         self.draw_circle(cs, min_dim / 2, min_dim / 2, min_dim / 2 - 1.0)
         cs.stroke()
 
@@ -492,7 +574,7 @@ class PDTextAppearanceHandler(PDAbstractAppearanceHandler):
         self, annotation: PDAnnotationText, cs: PDAppearanceContentStream
     ) -> None:
         """Mirrors upstream ``drawNewParagraph`` (PDTextAppearanceHandler.java:362).
-        Triangle marker above an ``NP`` glyph pair."""
+        Triangle marker above the Helvetica-Bold ``N`` / ``P`` glyph pair."""
         self._adjust_rect_and_bbox(annotation, 13.0, 20.0)
 
         cs.set_miter_limit(4.0)
@@ -506,32 +588,13 @@ class PDTextAppearanceHandler(PDAbstractAppearanceHandler):
         cs.line_to(12.705, 7.287)
         cs.close_and_fill_and_stroke()
 
-        # Documented deviation: the "NP" letterforms below the triangle
-        # are rendered as simple stroked rectangles since the
-        # Standard14Fonts glyph paths aren't ported yet. The triangle is
-        # still drawn exactly as Adobe / upstream output.
-        cs.save_graphics_state()
-        cs.set_line_width(0.4)
-        # Letter "N" — two verticals plus diagonal.
-        cs.move_to(1.5, 1.0)
-        cs.line_to(1.5, 6.0)
-        cs.stroke()
-        cs.move_to(5.0, 1.0)
-        cs.line_to(5.0, 6.0)
-        cs.stroke()
-        cs.move_to(1.5, 6.0)
-        cs.line_to(5.0, 1.0)
-        cs.stroke()
-        # Letter "P" — vertical bar plus a bowl.
-        cs.move_to(7.5, 1.0)
-        cs.line_to(7.5, 6.0)
-        cs.stroke()
-        cs.move_to(7.5, 6.0)
-        cs.line_to(10.0, 6.0)
-        cs.curve_to(11.5, 6.0, 11.5, 3.5, 10.0, 3.5)
-        cs.line_to(7.5, 3.5)
-        cs.stroke()
-        cs.restore_graphics_state()
+        # Helvetica-Bold "N" then "P" glyph paths, scaled and translated.
+        _apply_matrix(cs, Matrix.get_scale_instance(0.004, 0.004))
+        _apply_matrix(cs, Matrix.get_translate_instance(200.0, 0.0))
+        self.add_path(cs, _GLYPH_N)
+        _apply_matrix(cs, Matrix.get_translate_instance(1300.0, 0.0))
+        self.add_path(cs, _GLYPH_P)
+        cs.fill()
 
     def _draw_star(
         self, annotation: PDAnnotationText, cs: PDAppearanceContentStream

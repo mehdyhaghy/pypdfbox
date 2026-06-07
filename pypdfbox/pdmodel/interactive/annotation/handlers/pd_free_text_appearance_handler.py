@@ -52,9 +52,14 @@ class PDFreeTextAppearanceHandler(PDAbstractAppearanceHandler):
 
     * Cloudy borders fall back to the regular straight-edged rectangle
       until :class:`CloudyBorder` is wired into the FreeText path.
-    * ``PlainTextFormatter``'s line wrapping is replaced with a simple
-      line splitter that emits one ``Tj`` per ``\\n``-terminated line —
-      sufficient for parseable output, not yet wrapped to ``width``.
+
+    The text-layout pass routes ``/Contents`` through the ported
+    :class:`PlainTextFormatter` and the *annotation-layout*
+    :class:`PlainText`
+    (``pypdfbox.pdmodel.interactive.annotation.layout``), word-wrapping to
+    the clip width exactly as upstream's FreeText handler does (which uses
+    the ``annotation.layout`` variant, **not** the AcroForm one), so the
+    ``Td``/``Tj`` run cadence matches Apache PDFBox.
     """
 
     DEFAULT_FONT_SIZE: float = 10.0
@@ -260,22 +265,38 @@ class PDFreeTextAppearanceHandler(PDAbstractAppearanceHandler):
             cs.clip()
 
             contents = annotation.get_contents()
-            if contents:
+            if contents is not None:
                 cs.begin_text()
                 cs.set_font(font, self._font_size)
                 if text_components:
                     cs.set_non_stroking_color(text_components)
-                # Documented deviation: pypdfbox doesn't yet have
-                # PlainTextFormatter; emit one line per "\n" segment.
-                first = True
-                for line in contents.splitlines() or [""]:
-                    if first:
-                        cs.new_line_at_offset(x_offset, y_offset)
-                        first = False
-                    else:
-                        cs.new_line_at_offset(0.0, -self._font_size * 1.2)
-                    cs.show_text(line)
-                cs.end_text()
+                # Word-wrap /Contents into width via the ported
+                # PlainTextFormatter, matching upstream's
+                # generateNormalAppearance (PDFreeTextAppearanceHandler.java:299).
+                # Adobe ignores the annotation's /Q, so no textAlign is set
+                # (the formatter defaults to LEFT).
+                from ..layout import (  # noqa: PLC0415
+                    AppearanceStyle,
+                    PlainText,
+                    PlainTextFormatter,
+                )
+
+                appearance_style = AppearanceStyle()
+                appearance_style.set_font(font)
+                appearance_style.set_font_size(self._font_size)
+                formatter = (
+                    PlainTextFormatter.Builder(cs)
+                    .style(appearance_style)
+                    .text(PlainText(contents))
+                    .width(clip_width)
+                    .wrap_lines(True)
+                    .initial_offset(x_offset, y_offset)
+                    .build()
+                )
+                try:
+                    formatter.format()
+                finally:
+                    cs.end_text()
 
             # If a callout is present, grow the annotation /Rect so it
             # encloses the painted callout polyline as well.
