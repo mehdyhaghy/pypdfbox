@@ -85,13 +85,18 @@ def test_create_dispatches_stream_types(shading_type, cls):
     assert result.get_cos_object() is s
 
 
-@pytest.mark.parametrize("shading_type", list(_STREAM_TYPES.keys()))
-def test_create_rejects_plain_dict_for_stream_types(shading_type):
-    # Types 4-7 require a stream because mesh data lives in the body.
+@pytest.mark.parametrize("shading_type,cls", list(_STREAM_TYPES.items()))
+def test_create_accepts_plain_dict_for_mesh_types(shading_type, cls):
+    # Upstream PDShading.create constructs the mesh PDShadingType4..7 directly
+    # from a plain COSDictionary (their constructors take a COSDictionary, not
+    # a stream). The earlier stream-required guard diverged from upstream and
+    # was removed in wave 1513 (ShadingPatternFuzzProbe oracle).
     d = COSDictionary()
     d.set_int("ShadingType", shading_type)
-    with pytest.raises(OSError, match="stream"):
-        PDShading.create(d)
+    result = PDShading.create(d)
+    assert isinstance(result, cls)
+    assert result.get_shading_type() == shading_type
+    assert result.get_cos_object() is d
 
 
 @pytest.mark.parametrize("shading_type", [0, 8, 99, -1, 100])

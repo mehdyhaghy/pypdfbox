@@ -157,6 +157,17 @@ class PDFieldFactory:
             # PDFBOX-2885: erroneous non-field objects in /Fields are ignored
             # by upstream instead of being wrapped as generic fields.
             return None
+        # Wave 1513 divergence (pinned, defensible): upstream
+        # ``PDFieldFactory.createField`` returns ``null`` for a /T-present-but-
+        # /FT-absent (and non-inheritable) dictionary too — it never wraps a
+        # typeless dict as a field. pypdfbox keeps the :class:`PDFieldStub`
+        # generic-terminal wrapper here on purpose: the stub is a load-bearing
+        # construction scaffold woven through the field-tree machinery and its
+        # tests (a typeless dict added to /Fields is expected to survive a
+        # get_field_tree() round-trip). The divergence only widens what pypdfbox
+        # *surfaces* (a recoverable generic terminal vs nothing); it never
+        # mis-types a real field. Pinned in the wave-1513 AcroForm field-fuzz
+        # oracle (case ``ft_missing``) and CHANGES.md.
         return PDFieldStub(form, field, parent)
 
     @staticmethod

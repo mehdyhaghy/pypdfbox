@@ -66,7 +66,8 @@ def test_no_arg_constructor_yields_empty_wrapper() -> None:
     info = PDCIDSystemInfo()
     assert info.get_registry() is None
     assert info.get_ordering() is None
-    assert info.get_supplement() == 0
+    # Absent /Supplement -> -1 (oracle-verified upstream default).
+    assert info.get_supplement() == -1
     assert isinstance(info.get_cos_object(), COSDictionary)
 
 

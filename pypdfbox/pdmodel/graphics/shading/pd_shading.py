@@ -79,7 +79,10 @@ class PDShading:
             raise TypeError(
                 f"PDShading.create expects COSDictionary, got {type(base).__name__}"
             )
-        shading_type = base.get_int(_SHADING_TYPE)
+        # Upstream: getInt(SHADING_TYPE, 0) — missing/non-int defaults to 0,
+        # which then falls through the switch to the "Unknown shading type 0"
+        # error. Mirror the 0 default (not the COSDictionary -1 sentinel).
+        shading_type = base.get_int(_SHADING_TYPE, 0)
         if shading_type == PDShading.SHADING_TYPE1:
             return PDShadingType1(base)
         if shading_type == PDShading.SHADING_TYPE2:
@@ -87,30 +90,19 @@ class PDShading:
         if shading_type == PDShading.SHADING_TYPE3:
             return PDShadingType3(base)
         if shading_type == PDShading.SHADING_TYPE4:
-            if not isinstance(base, COSStream):
-                raise OSError(
-                    "Shading type 4 requires a stream, got plain dictionary"
-                )
+            # Upstream PDShading.create constructs PDShadingType4..7 directly
+            # from the COSDictionary — the mesh constructors take a plain
+            # COSDictionary (PDShadingType4(COSDictionary)), not a stream.
+            # An earlier stream-required guard here diverged from upstream by
+            # raising on a plain mesh dictionary; removed for parity.
             return PDShadingType4(base)
         if shading_type == PDShading.SHADING_TYPE5:
-            if not isinstance(base, COSStream):
-                raise OSError(
-                    "Shading type 5 requires a stream, got plain dictionary"
-                )
             return PDShadingType5(base)
         if shading_type == PDShading.SHADING_TYPE6:
-            if not isinstance(base, COSStream):
-                raise OSError(
-                    "Shading type 6 requires a stream, got plain dictionary"
-                )
             return PDShadingType6(base)
         if shading_type == PDShading.SHADING_TYPE7:
-            if not isinstance(base, COSStream):
-                raise OSError(
-                    "Shading type 7 requires a stream, got plain dictionary"
-                )
             return PDShadingType7(base)
-        raise OSError(f"Invalid ShadingType {shading_type}")
+        raise OSError(f"Error: Unknown shading type {shading_type}")
 
     # ---------- COS surface ----------
 

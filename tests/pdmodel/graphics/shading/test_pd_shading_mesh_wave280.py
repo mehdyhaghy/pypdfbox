@@ -113,21 +113,24 @@ def test_cos_stream_body_round_trips_through_factory(cls):
 
 
 @pytest.mark.parametrize(
-    ("shading_type", "message"),
+    ("shading_type", "cls"),
     [
-        (PDShading.SHADING_TYPE4, "Shading type 4 requires a stream"),
-        (PDShading.SHADING_TYPE5, "Shading type 5 requires a stream"),
+        (PDShading.SHADING_TYPE4, PDShadingType4),
+        (PDShading.SHADING_TYPE5, PDShadingType5),
     ],
 )
-def test_factory_rejects_plain_dictionary_for_stream_mesh_types(
+def test_factory_accepts_plain_dictionary_for_mesh_types(
     shading_type,
-    message,
+    cls,
 ):
-    malformed = COSDictionary()
-    malformed.set_int("ShadingType", shading_type)
+    # Upstream PDShading.create constructs the mesh PDShadingType4..7 directly
+    # from a plain COSDictionary (their constructors take a COSDictionary, not
+    # a stream). The earlier stream-required guard diverged from upstream and
+    # was removed in wave 1513 (ShadingPatternFuzzProbe oracle).
+    plain = COSDictionary()
+    plain.set_int("ShadingType", shading_type)
 
-    with pytest.raises(OSError, match=message):
-        PDShading.create(malformed)
+    assert isinstance(PDShading.create(plain), cls)
 
 
 @pytest.mark.parametrize("cls", MESH_TYPES)

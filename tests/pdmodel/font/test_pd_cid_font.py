@@ -59,9 +59,11 @@ def test_cid_system_info_round_trip_adobe_japan1_6() -> None:
     assert str(info2) == "Adobe-Japan1-6"
 
 
-def test_cid_system_info_default_supplement_is_zero() -> None:
+def test_cid_system_info_default_supplement_is_minus_one() -> None:
+    # Upstream getSupplement() returns -1 for an absent /Supplement
+    # (COSDictionary.getInt one-arg default) — verified via the live oracle.
     info = PDCIDSystemInfo()
-    assert info.get_supplement() == 0
+    assert info.get_supplement() == -1
     assert info.get_registry() is None
     assert info.get_ordering() is None
 

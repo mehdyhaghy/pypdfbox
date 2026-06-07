@@ -89,16 +89,18 @@ def test_cos_stream_round_trip_preserves_body_and_metadata(
 
 
 @pytest.mark.parametrize(("cls", "expected_type", "_label"), PATCH_TYPES)
-def test_factory_rejects_plain_dictionary_for_stream_based_patch_shading(
+def test_factory_accepts_plain_dictionary_for_patch_shading(
     cls,
     expected_type,
     _label,
 ):
+    # Upstream PDShading.create constructs PDShadingType4..7 directly from a
+    # plain COSDictionary (the mesh constructors take a COSDictionary, not a
+    # stream); an earlier stream-required guard here diverged from upstream and
+    # was removed in wave 1513 (caught by the ShadingPatternFuzzProbe oracle).
     dictionary = COSDictionary()
     dictionary.set_int("ShadingType", expected_type)
-
-    with pytest.raises(OSError, match=f"Shading type {expected_type} requires a stream"):
-        PDShading.create(dictionary)
+    assert isinstance(PDShading.create(dictionary), cls)
 
     stream = COSStream()
     stream.set_int("ShadingType", expected_type)

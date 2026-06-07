@@ -121,7 +121,12 @@ class PDCIDSystemInfo:
     # ---------- /Supplement ----------
 
     def get_supplement(self) -> int:
-        return self._dict.get_int(_SUPPLEMENT, 0)
+        # Upstream ``PDCIDSystemInfo.getSupplement`` calls
+        # ``dictionary.getInt(COSName.SUPPLEMENT)`` (the one-arg form), which
+        # defaults to ``-1`` when the entry is absent or non-numeric — NOT 0.
+        # An absent /Supplement therefore reports -1 (e.g. ``Adobe-GB1--1``),
+        # matching the live oracle.
+        return self._dict.get_int(_SUPPLEMENT, -1)
 
     def set_supplement(self, supplement: int) -> None:
         self._dict.set_int(_SUPPLEMENT, int(supplement))

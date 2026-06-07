@@ -241,10 +241,21 @@ def test_create_rejects_invalid_shading_type():
         PDShading.create(_make_shading_dict(99))
 
 
-def test_create_requires_stream_for_type4_through_7():
-    for t in (4, 5, 6, 7):
-        with pytest.raises(OSError):
-            PDShading.create(_make_shading_dict(t))
+def test_create_accepts_plain_dict_for_type4_through_7():
+    # Upstream PDShading.create builds the mesh PDShadingType4..7 directly from
+    # a plain COSDictionary (their constructors take a COSDictionary, not a
+    # stream). The earlier stream-required guard diverged from upstream and was
+    # removed in wave 1513 (ShadingPatternFuzzProbe oracle).
+    expected = {
+        4: PDShadingType4,
+        5: PDShadingType5,
+        6: PDShadingType6,
+        7: PDShadingType7,
+    }
+    for t, cls in expected.items():
+        result = PDShading.create(_make_shading_dict(t))
+        assert isinstance(result, cls)
+        assert result.get_shading_type() == t
 
 
 # ---------- base /Function + eval_function + bounds (PDShading parity) ----------

@@ -59,12 +59,16 @@ def test_create_returns_none_and_rejects_non_dictionary() -> None:
 
 
 def test_create_rejects_missing_or_invalid_shading_type() -> None:
-    with pytest.raises(OSError, match="Invalid ShadingType -1"):
+    # Upstream getInt(SHADING_TYPE, 0) → missing /ShadingType defaults to 0,
+    # which falls through the switch to "Error: Unknown shading type 0"
+    # (retargeted in wave 1513 from the old -1 sentinel + "Invalid ShadingType"
+    # wording, both non-upstream; caught by the ShadingPatternFuzzProbe oracle).
+    with pytest.raises(OSError, match="Error: Unknown shading type 0"):
         PDShading.create(COSDictionary())
 
     raw = COSDictionary()
     raw.set_int("ShadingType", 99)
-    with pytest.raises(OSError, match="Invalid ShadingType 99"):
+    with pytest.raises(OSError, match="Error: Unknown shading type 99"):
         PDShading.create(raw)
 
 

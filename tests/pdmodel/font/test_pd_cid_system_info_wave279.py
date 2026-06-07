@@ -39,22 +39,25 @@ def test_no_arg_defaults_are_empty_and_not_identity_or_adobe() -> None:
     assert isinstance(info.get_cos_object(), COSDictionary)
     assert info.get_registry() is None
     assert info.get_ordering() is None
-    assert info.get_supplement() == 0
+    # Upstream getSupplement() defaults to -1 (COSDictionary.getInt one-arg)
+    # when /Supplement is absent — verified against the live PDFBox oracle.
+    assert info.get_supplement() == -1
     assert info.is_identity() is False
     assert info.is_adobe() is False
-    assert str(info) == "null-null-0"
+    assert str(info) == "null-null--1"
 
 
 def test_string_representation_matches_java_null_text_for_missing_parts() -> None:
     info = PDCIDSystemInfo()
     info.set_registry("Adobe")
 
-    assert str(info) == "Adobe-null-0"
+    # /Supplement absent -> -1 (oracle-verified upstream default).
+    assert str(info) == "Adobe-null--1"
 
     info.set_registry(None)
     info.set_ordering("Identity")
 
-    assert str(info) == "null-Identity-0"
+    assert str(info) == "null-Identity--1"
 
 
 def test_cos_dictionary_round_trip_preserves_backing_object() -> None:
@@ -124,7 +127,9 @@ def test_malformed_cos_entry_types_fall_back_to_accessor_defaults() -> None:
 
     assert info.get_registry() is None
     assert info.get_ordering() is None
-    assert info.get_supplement() == 0
+    # Non-numeric /Supplement -> -1 (COSDictionary.getInt one-arg default),
+    # not 0; verified against the live PDFBox oracle.
+    assert info.get_supplement() == -1
     assert info.is_identity() is False
     assert info.is_adobe() is False
 

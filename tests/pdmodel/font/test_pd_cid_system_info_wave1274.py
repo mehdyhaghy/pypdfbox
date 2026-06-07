@@ -21,4 +21,6 @@ def test_to_string_renders_missing_fields_as_null() -> None:
     ``String.valueOf(null)`` would render them as ``"null"``; pypdfbox
     matches that."""
     info = PDCIDSystemInfo()  # empty wrapper
-    assert info.to_string() == "null-null-0"
+    # Absent /Supplement renders as -1 (upstream COSDictionary.getInt one-arg
+    # default), oracle-verified in wave 1513.
+    assert info.to_string() == "null-null--1"
