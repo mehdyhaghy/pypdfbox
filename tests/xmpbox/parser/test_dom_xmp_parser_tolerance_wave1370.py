@@ -173,8 +173,12 @@ def test_throw_exception_alias_round_trips_with_strict_flag() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_malformed_rdf_surfaces_format_error() -> None:
-    # Unclosed Description tag — expat hard-fails.
+def test_malformed_rdf_surfaces_undefined_error() -> None:
+    # Unclosed Description tag — expat hard-fails. Upstream's ``parse`` wraps
+    # the resulting SAXException as ``ErrorType.Undefined`` ("Failed to
+    # parse: ...", DomXmpParser line 140), not FORMAT. Validated against the
+    # live xmpbox 3.0.7 oracle in
+    # tests/xmpbox/oracle/test_xmp_parse_fuzz_wave1512.py.
     body = _wrap(
         b'<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"'
         b' xmlns:dc="http://purl.org/dc/elements/1.1/">'
@@ -185,7 +189,7 @@ def test_malformed_rdf_surfaces_format_error() -> None:
     parser.set_strict_parsing(False)
     with pytest.raises(XmpParsingException) as excinfo:
         parser.parse(body)
-    assert excinfo.value.get_error_type() is XmpParsingException.ErrorType.FORMAT
+    assert excinfo.value.get_error_type() is XmpParsingException.ErrorType.UNDEFINED
 
 
 def test_malformed_rdf_prefix_unknown_namespace_keeps_prefix() -> None:

@@ -312,9 +312,15 @@ class DomXmpParser:
         # would otherwise expand internal entities ("billion laughs" DoS) /
         # resolve external entities (XXE) on untrusted metadata.
         if contains_doctype(body):
+            # Upstream configures its DocumentBuilder with
+            # ``disallow-doctype-decl=true``; a DOCTYPE therefore surfaces as a
+            # SAXException during the DOM build, which ``parse`` wraps as
+            # ``ErrorType.Undefined`` ("Failed to parse: ...", DomXmpParser
+            # line 140) — not a FORMAT error. Mirror that so the error-type
+            # token matches the oracle.
             raise XmpParsingException(
-                XmpParsingException.ErrorType.FORMAT,
-                "XMP packet must not contain a DOCTYPE declaration",
+                XmpParsingException.ErrorType.UNDEFINED,
+                "Failed to parse: XMP packet must not contain a DOCTYPE declaration",
             )
 
         try:
@@ -322,9 +328,14 @@ class DomXmpParser:
             # honored by the underlying expat parser.
             root = ET.fromstring(body)
         except ET.ParseError as exc:
+            # Any XML-level parse failure (malformed / truncated / not-XML /
+            # empty input) is wrapped by upstream's ``parse`` as
+            # ``ErrorType.Undefined`` ("Failed to parse: ...", DomXmpParser
+            # line 140), since the SAXException never reaches the structural
+            # FORMAT checks. Mirror the upstream error-type discriminator.
             raise XmpParsingException(
-                XmpParsingException.ErrorType.FORMAT,
-                f"malformed XMP packet: {exc}",
+                XmpParsingException.ErrorType.UNDEFINED,
+                f"Failed to parse: {exc}",
             ) from exc
 
         rdf = self._find_rdf_root(root)

@@ -218,10 +218,15 @@ def test_xmp_parsing_exception_error_type_enum_membership() -> None:
     assert actual_names == expected_names
 
 
-def test_parse_malformed_sets_format_error_type() -> None:
+def test_parse_malformed_sets_undefined_error_type() -> None:
+    # Upstream's ``parse`` wraps any SAXException/IOException from the DOM
+    # build as ``ErrorType.Undefined`` ("Failed to parse: ...", DomXmpParser
+    # line 140); the structural FORMAT checks run only after a successful
+    # parse. Validated against the live xmpbox 3.0.7 oracle in
+    # tests/xmpbox/oracle/test_xmp_parse_fuzz_wave1512.py.
     with pytest.raises(XmpParsingException) as info:
         DomXmpParser().parse(b"<rdf:RDF unclosed")
-    assert info.value.get_error_type() is XmpParsingException.ErrorType.FORMAT
+    assert info.value.get_error_type() is XmpParsingException.ErrorType.UNDEFINED
 
 
 def test_parse_missing_rdf_root_sets_no_root_element_error_type() -> None:

@@ -970,10 +970,21 @@ class StandardSecurityHandler(SecurityHandler):
             oe = encryption.get_oe()
             ue = encryption.get_ue()
             perms = encryption.get_perms()
-            if o is None or u is None or oe is None or ue is None or perms is None:
+            # Only /O and /U are mandatory to *attempt* authentication; the
+            # role-specific encryption key (/OE for owner, /UE for user) is
+            # consumed lazily inside the compute. Authentication first decides
+            # the role from the /O,/U hashes (upstream ``isOwnerPassword56`` /
+            # ``isUserPassword56`` need neither /OE nor /UE), then the matched
+            # role's encryption key is unwrapped — mirroring upstream
+            # ``computeEncryptedKeyRev56``, which raises an ``IOException``
+            # ("/Encrypt/OE entry is missing" / "/Encrypt/UE entry is missing")
+            # only when the *authenticating* role's key is absent. A document
+            # missing the *other* role's key still opens. /Perms is a post-auth
+            # integrity check and is tolerated absent (warn-only).
+            if o is None or u is None:
                 raise InvalidPasswordException()
             key = self._compute_encryption_key_r5_r6(
-                password, o, u, oe, ue, perms, revision
+                password, o, u, oe, ue, perms or b"", revision
             )
             if key is None:
                 raise InvalidPasswordException()
@@ -982,7 +993,7 @@ class StandardSecurityHandler(SecurityHandler):
             # Algorithm 13 — verify /Perms. Upstream merely warns on mismatch
             # since some encoders mis-emit the field; we do the same so we
             # stay tolerant of buggy producers (PDFBox parity).
-            if len(perms) == 16 and not self._validate_perms_r5_r6(
+            if perms is not None and len(perms) == 16 and not self._validate_perms_r5_r6(
                 key, perms, self._permissions, self._encrypt_metadata
             ):
                 _LOG.warning(
@@ -1002,6 +1013,14 @@ class StandardSecurityHandler(SecurityHandler):
         # Revisions 2-4: try owner password first, then user password.
         if o is None or u is None:
             raise InvalidPasswordException()
+        # Pad/truncate /O and /U to the 32-byte revision-mandated length before
+        # key derivation, matching upstream's ``getOwnerKey()`` / ``getUserKey()``
+        # (both ``Arrays.copyOf(bytes, 32)``). A producer that emits an
+        # over-long /O (extra trailing bytes) still authenticates because the
+        # owner-key algorithm only consumes the first 32 bytes; truncating here
+        # keeps pypdfbox tolerant of that producer just as PDFBox is.
+        o = o.ljust(32, b"\x00")[:32]
+        u = u.ljust(32, b"\x00")[:32]
         key_len_bytes = key_length_bits // 8
         owner_key = self._compute_encryption_key_via_owner_password(
             password,
@@ -1692,24 +1711,44 @@ class StandardSecurityHandler(SecurityHandler):
         password: bytes,
         o: bytes,
         u: bytes,
-        oe: bytes,
-        ue: bytes,
+        oe: bytes | None,
+        ue: bytes | None,
         perms: bytes,
         revision: int,
     ) -> bytes | None:
         """PDF 32000-2 §7.6.4.4.10/.11 — validate password, unwrap file key.
 
-        Returns the 32-byte AES-256 file key on success, or None on mismatch.
+        Returns the 32-byte AES-256 file key on success, or None when neither
+        the owner nor the user hash matches ``password`` (→ caller raises
+        :class:`InvalidPasswordException`).
+
+        The role is decided FIRST from the /O,/U hashes (upstream
+        ``isOwnerPassword56`` / ``isUserPassword56`` need neither /OE nor /UE).
+        Only AFTER a role matches is that role's encryption key unwrapped:
+        owner authentication unwraps the file key from /OE, user authentication
+        from /UE. Mirroring upstream ``computeEncryptedKeyRev56``, a missing
+        encryption key for the *authenticating* role raises ``OSError`` (Java
+        ``IOException`` "/Encrypt/OE entry is missing" / "/Encrypt/UE entry is
+        missing") — it is NOT a silent password mismatch. A document missing the
+        *other* role's key still opens with the matching password.
         """
-        if not (o and u and oe and ue):
+        if not (o and u):
             return None
+        truncated_pw = password[:127]
         # Owner: hash(password || OVS || U[0:48]) compared to O[0:32].
         owner_validation_salt = o[32:40]
         owner_key_salt = o[40:48]
-        truncated_pw = password[:127]
-        if cls._compute_hash_r5_r6(
-            truncated_pw + owner_validation_salt + u[:48], truncated_pw, u[:48], revision
-        ) == o[:32]:
+        if (
+            cls._compute_hash_r5_r6(
+                truncated_pw + owner_validation_salt + u[:48],
+                truncated_pw,
+                u[:48],
+                revision,
+            )
+            == o[:32]
+        ):
+            if not oe:
+                raise OSError("/Encrypt/OE entry is missing")
             inter = cls._compute_hash_r5_r6(
                 truncated_pw + owner_key_salt + u[:48],
                 truncated_pw,
@@ -1721,9 +1760,14 @@ class StandardSecurityHandler(SecurityHandler):
         # User: hash(password || UVS) compared to U[0:32].
         user_validation_salt = u[32:40]
         user_key_salt = u[40:48]
-        if cls._compute_hash_r5_r6(
-            truncated_pw + user_validation_salt, truncated_pw, b"", revision
-        ) == u[:32]:
+        if (
+            cls._compute_hash_r5_r6(
+                truncated_pw + user_validation_salt, truncated_pw, b"", revision
+            )
+            == u[:32]
+        ):
+            if not ue:
+                raise OSError("/Encrypt/UE entry is missing")
             inter = cls._compute_hash_r5_r6(
                 truncated_pw + user_key_salt, truncated_pw, b"", revision
             )

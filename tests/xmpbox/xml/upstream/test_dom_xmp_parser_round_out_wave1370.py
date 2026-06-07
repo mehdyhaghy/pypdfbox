@@ -20,15 +20,19 @@ from pypdfbox.xmpbox.dom_xmp_parser import DomXmpParser, XmpParsingException
 
 
 def test_parse_failure_xml_declaration_only_raises() -> None:
-    """Upstream: ``testParseFailure`` — XML declaration with no root element
-    surfaces FORMAT (upstream returned a "Failed to parse" message)."""
+    """Upstream: ``testParseFailure`` — XML declaration with no root element.
+
+    Upstream returns a "Failed to parse" message, i.e.
+    ``ErrorType.Undefined`` (the SAXException wrapper in ``parse``,
+    DomXmpParser line 140). Validated against the live xmpbox 3.0.7 oracle
+    in tests/xmpbox/oracle/test_xmp_parse_fuzz_wave1512.py."""
     s = b'<?xml version="1.0" encoding="UTF-8" standalone="no"?>'
     parser = DomXmpParser()
     with pytest.raises(XmpParsingException) as excinfo:
         parser.parse(s)
     assert (
         excinfo.value.get_error_type()
-        is XmpParsingException.ErrorType.FORMAT
+        is XmpParsingException.ErrorType.UNDEFINED
     )
 
 

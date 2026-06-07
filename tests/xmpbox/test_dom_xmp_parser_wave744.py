@@ -113,7 +113,11 @@ def test_wave744_unknown_namespace_without_prefix_hint_uses_ns0() -> None:
 @pytest.mark.parametrize(
     ("packet", "expected"),
     [
-        (b"<not-xml", XmpParsingException.ErrorType.FORMAT),
+        # Upstream wraps any XML-level parse failure in ``parse`` as
+        # ``ErrorType.Undefined`` ("Failed to parse: ...", DomXmpParser
+        # line 140) — validated against the live xmpbox 3.0.7 oracle in
+        # tests/xmpbox/oracle/test_xmp_parse_fuzz_wave1512.py.
+        (b"<not-xml", XmpParsingException.ErrorType.UNDEFINED),
         (b"<root />", XmpParsingException.ErrorType.NO_ROOT_ELEMENT),
     ],
 )

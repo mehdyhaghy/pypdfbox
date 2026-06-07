@@ -28,6 +28,10 @@ _INFO: COSName = COSName.INFO  # type: ignore[attr-defined]
 _ROOT: COSName = COSName.ROOT  # type: ignore[attr-defined]
 _ENCRYPT: COSName = COSName.ENCRYPT  # type: ignore[attr-defined]
 _RESOURCE_CACHE_UNSET = object()
+# PDF 32000-1 §7.6.3 — the /Filter value naming the Standard security handler
+# (mirrors ``StandardSecurityHandler.FILTER``; kept as a literal here to avoid a
+# module-load circular import and to stay stable under decrypt-path test doubles).
+_STANDARD_SECURITY_FILTER = "Standard"
 
 
 # Source-type alias for ``PDDocument.load`` — same shape as ``Loader.load_pdf``.
@@ -964,6 +968,20 @@ class PDDocument:
         if enc_dict is None:
             return
         encryption = PDEncryption(enc_dict)
+
+        # /Filter dispatch (PDF 32000-1 §7.6.1): the encryption dictionary's
+        # /Filter names the security handler. This password-based decrypt path
+        # only satisfies the Standard security handler — a missing, unknown, or
+        # public-key (/Adobe.PubSec) /Filter selects no password handler, so we
+        # raise the same ``IOException`` PDFBox does ("No security handler for
+        # filter <name>", matched verbatim by Apache Tika TIKA-4082) rather than
+        # silently treating a non-Standard /Filter as Standard and mis-decrypting.
+        # The standard /Filter value is the PDF-spec constant "Standard"
+        # (``StandardSecurityHandler.FILTER``); compare on the name so the check
+        # is independent of the handler-class binding instantiated below.
+        filter_name = encryption.get_filter()
+        if filter_name != _STANDARD_SECURITY_FILTER:
+            raise OSError(f"No security handler for filter {filter_name}")
 
         # Pull the file ID's first element — the standard handler keys off
         # of it during file-encryption-key derivation. May be absent on

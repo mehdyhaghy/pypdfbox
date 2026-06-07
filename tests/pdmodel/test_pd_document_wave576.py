@@ -260,7 +260,12 @@ def test_wave576_decrypt_sets_stream_handlers_and_invalidates_permission(
     cos_doc.set_trailer(COSDictionary())
     trailer = cos_doc.get_trailer()
     assert trailer is not None
-    trailer.set_item(COSName.ENCRYPT, COSDictionary())  # type: ignore[attr-defined]
+    # A real encrypted document always carries /Filter /Standard; the decrypt
+    # bootstrap now dispatches on it (wave 1512 /Filter guard), so the synthetic
+    # encryption dict must name the Standard handler like upstream does.
+    enc_dict = COSDictionary()
+    enc_dict.set_name(COSName.get_pdf_name("Filter"), "Standard")
+    trailer.set_item(COSName.ENCRYPT, enc_dict)  # type: ignore[attr-defined]
     ids = COSArray()
     from pypdfbox.cos import COSString
 
