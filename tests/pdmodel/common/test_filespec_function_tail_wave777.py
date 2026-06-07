@@ -81,4 +81,9 @@ def test_type3_eval_uses_encode_low_for_degenerate_selected_partition() -> None:
 
 
 def test_type4_pop_bool_returns_boolean_operand() -> None:
-    assert type4._pop_bool([True]) is True
+    # _pop_bool was folded into _op_if/_op_ifelse's inline boolean checks by
+    # the wave-1511 int/float type-discipline rewrite; pin the surviving
+    # boolean-operand contract: a True condition executes the procedure.
+    stack: list[object] = [True, [1]]
+    type4._op_if(stack)
+    assert stack == [1]

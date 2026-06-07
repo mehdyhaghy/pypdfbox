@@ -116,8 +116,11 @@ def test_wave727_type4_private_error_and_operator_paths() -> None:
     fn._function_stream.get_cos_object = lambda: COSDictionary()  # type: ignore[method-assign]
     assert fn.get_instructions() == []
 
-    with pytest.raises(OSError, match="expected boolean"):
-        type4._pop_bool([1.0])
+    # _pop_bool was folded into _op_if's inline boolean check by the
+    # wave-1511 int/float type-discipline rewrite; the non-boolean-condition
+    # error contract survives on the operator itself.
+    with pytest.raises(OSError, match="boolean condition"):
+        type4._op_if([1.0, [1]])
 
     with pytest.raises(OSError, match="roll rangecheck"):
         type4._op_roll([1.0, -1.0, 1.0])
