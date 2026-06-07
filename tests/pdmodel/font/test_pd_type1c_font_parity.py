@@ -173,12 +173,19 @@ def test_is_embedded_false_when_only_font_file_present() -> None:
     assert font.is_embedded() is False
 
 
-def test_is_embedded_true_when_font_file3_present() -> None:
+def test_is_embedded_false_when_font_file3_unparseable() -> None:
+    # Upstream PDType1CFont.isEmbedded() reflects ``cffFont != null`` — an
+    # empty / unparseable /FontFile3 is damaged -> NOT embedded (verified vs
+    # PDFBox 3.0.7: emb=false dmg=true). Wave 1510 aligned pypdfbox; the
+    # embedded-AND-parses positive path is covered by
+    # tests/pdmodel/font/oracle/test_type1c_simple_font_oracle.py with a real
+    # bundled CFF program.
     font = PDType1CFont()
     fd = PDFontDescriptor()
     fd.set_font_file3(COSStream())
     font.set_font_descriptor(fd)
-    assert font.is_embedded() is True
+    assert font.is_embedded() is False
+    assert font.is_damaged() is True
 
 
 # ---------- is_damaged ----------

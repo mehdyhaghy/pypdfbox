@@ -635,8 +635,11 @@ class SymbolDictionary(Dictionary):
             raise RuntimeError("CX not initialized (bug in initialization order)")
 
         # arithmetic_decoder must already be initialized for the current
-        # bitstream context.
-        if self.arithmetic_decoder is None:
+        # bitstream context. Defensive guard — unreachable on every decode path
+        # (get_dictionary always constructs the decoder before a refined symbol
+        # is decoded); mirrors upstream SymbolDictionary.decodeNewSymbols line
+        # 746 (an IllegalStateException that is likewise structurally dead).
+        if self.arithmetic_decoder is None:  # pragma: no cover
             raise RuntimeError("ArithmeticDecoder not initialized")
 
         # Parameters as shown in Table 18, page 36
@@ -701,7 +704,10 @@ class SymbolDictionary(Dictionary):
                 return self.dw_table.decode(self.sub_input_stream)
         else:
             return self.i_decoder.decode(self.cx_iadw)
-        return 0
+        # Unreachable: SDHUFFDW is only ever 0/1/3 (2 is reserved); mirrors the
+        # `default: return 0` after the switch in upstream
+        # SymbolDictionary.decodeDifferenceWidth (line 812), structurally dead.
+        return 0  # pragma: no cover
 
     def _decode_height_class_delta_height(self) -> int:
         if self.is_huffman_encoded:
@@ -723,7 +729,11 @@ class SymbolDictionary(Dictionary):
                 self.dh_table = self._get_user_table(0)
             return self.dh_table.decode(self.sub_input_stream)
 
-        return 0
+        # Unreachable: SDHUFFDH is only ever 0/1/3 (2 is reserved); mirrors the
+        # `default: return 0` after the switch in upstream
+        # SymbolDictionary.decodeHeightClassDeltaHeightWithHuffman (line 851),
+        # structurally dead.
+        return 0  # pragma: no cover
 
     def _decode_height_class_collective_bitmap(
         self, bm_size: int, height_class_height: int, total_width: int
@@ -835,7 +845,11 @@ class SymbolDictionary(Dictionary):
 
     def _set_symbols_array(self) -> None:
         """6.5.8.2.4 - Setting SBSYMS."""
-        if self.import_symbols is None:
+        # _set_in_syms (run during _parse_header) always assigns import_symbols
+        # (to the retrieved list or []), so this guard is structurally dead on
+        # every decode path — mirrors upstream SymbolDictionary.setSymbolsArray
+        # lines 994-997 where the same `if importSymbols == null` is unreachable.
+        if self.import_symbols is None:  # pragma: no cover
             self._retrieve_import_symbols()
 
         if self.sb_symbols is None:

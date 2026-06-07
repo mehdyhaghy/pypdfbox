@@ -197,15 +197,20 @@ class PDType1CFont(PDType1Font):
     # ---------- upstream-parity overrides ----------
 
     def is_embedded(self) -> bool:
-        """``True`` iff the font dictionary carries an embedded CFF
-        program — ``/FontFile3`` on the ``/FontDescriptor``. Mirrors
-        upstream ``PDType1CFont.isEmbedded``: PDType1C only honours
-        ``/FontFile3`` (the Type 1 ``/FontFile`` slot is a Type1Font
-        concern handled by the PDType1Font base)."""
+        """``True`` iff the font has a *successfully parsed* embedded CFF
+        program — ``/FontFile3`` on the ``/FontDescriptor``.
+
+        Mirrors upstream ``PDType1CFont.isEmbedded`` which returns the
+        ``isEmbedded`` field the constructor sets to ``cffFont != null`` —
+        embedding is true *only* when the CFF was present **and** parsed
+        cleanly. A damaged ``/FontFile3`` is therefore not embedded (and
+        ``is_damaged`` reports ``True`` for it). PDType1C only honours
+        ``/FontFile3`` (the Type 1 ``/FontFile`` slot is a PDType1Font
+        concern)."""
         descriptor = self.get_font_descriptor()
-        if descriptor is None:
+        if descriptor is None or descriptor.get_font_file3() is None:
             return False
-        return descriptor.get_font_file3() is not None
+        return not self.is_damaged()
 
     def is_damaged(self) -> bool:
         """``True`` iff the embedded CFF program failed to parse.

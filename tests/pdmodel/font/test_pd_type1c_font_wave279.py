@@ -75,7 +75,10 @@ def test_set_font_descriptor_none_removes_descriptor() -> None:
     font.set_font_descriptor(descriptor)
 
     assert font.get_font_descriptor() is not None
-    assert font.is_embedded() is True
+    # Wave 1510: an empty /FontFile3 is damaged -> not embedded (matches
+    # upstream ``cffFont != null``). The descriptor is still attached; this
+    # test's subject is set_font_descriptor(None) removing it, below.
+    assert font.is_embedded() is False
 
     font.set_font_descriptor(None)
 
@@ -181,7 +184,10 @@ def test_unparseable_font_file3_is_damaged_but_safe_to_query() -> None:
     font = PDType1CFont()
     font.set_font_descriptor(descriptor)
 
-    assert font.is_embedded() is True
+    # Wave 1510: an unparseable /FontFile3 is damaged, and upstream's
+    # ``isEmbedded == cffFont != null`` means a damaged program is NOT
+    # embedded (verified vs PDFBox 3.0.7: emb=false dmg=true).
+    assert font.is_embedded() is False
     assert font.get_font_program() is None
     assert font.get_cff_font() is None
     assert font.is_damaged() is True

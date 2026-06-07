@@ -498,8 +498,11 @@ class PDType1Font(PDSimpleFont):
 
     def get_base_font(self) -> str | None:
         """``/BaseFont`` — alias of :meth:`PDFont.get_name`. Mirrors
-        upstream ``PDType1Font.getBaseFont``."""
-        return self._dict.get_name(_BASE_FONT_KEY)
+        upstream ``PDType1Font.getBaseFont`` which reads the value via
+        ``COSDictionary.getNameAsString`` — so a ``/BaseFont`` written as a
+        ``COSString`` (a real-world malformation) still resolves to its
+        text rather than ``None``."""
+        return self._dict.get_name_as_string(_BASE_FONT_KEY)
 
     def get_name(self) -> str | None:
         """The font's lookup name (``/BaseFont``). Mirrors upstream
@@ -510,9 +513,10 @@ class PDType1Font(PDSimpleFont):
         PostScript identity. We read ``/BaseFont`` directly (rather than
         chaining through :meth:`get_base_font`) so subclasses that
         override one method but not the other don't end up in mutual
-        recursion.
+        recursion. Read via ``getNameAsString`` (mirrors upstream) so a
+        ``/BaseFont`` stored as a ``COSString`` still yields its text.
         """
-        return self._dict.get_name(_BASE_FONT_KEY)
+        return self._dict.get_name_as_string(_BASE_FONT_KEY)
 
     def get_font_program(self) -> Type1Font | None:
         """Return the parsed embedded Type 1 program, or ``None`` when the
@@ -586,16 +590,21 @@ class PDType1Font(PDSimpleFont):
         return self.get_path(".notdef")
 
     def is_embedded(self) -> bool:
-        """``True`` iff the font dictionary carries an embedded font
-        program — ``/FontFile`` (Type 1) or ``/FontFile3`` (Type 1C /
-        OpenType). Mirrors upstream ``PDFont.isEmbedded``."""
+        """``True`` iff the font has a *successfully parsed* embedded program
+        — ``/FontFile`` (Type 1) or ``/FontFile3`` (Type 1C / OpenType).
+
+        Mirrors upstream ``PDType1Font.isEmbedded`` which returns the
+        ``isEmbedded`` field the constructor sets to ``type1 != null`` —
+        i.e. embedding is true *only* when the program was both present
+        **and** parsed cleanly. A damaged ``/FontFile`` is therefore not
+        embedded (and ``is_damaged`` reports ``True`` for it)."""
         descriptor = self.get_font_descriptor()
         if descriptor is None:
             return False
-        return (
-            descriptor.get_font_file() is not None
-            or descriptor.get_font_file3() is not None
-        )
+        if descriptor.get_font_file() is not None:
+            # Present: counts as embedded only if it parsed (not damaged).
+            return not self.is_damaged()
+        return descriptor.get_font_file3() is not None
 
     def is_damaged(self) -> bool:
         """``True`` iff the embedded font program failed to parse.

@@ -47,11 +47,9 @@ class PDFreeTextAppearanceHandler(PDAbstractAppearanceHandler):
     color, ``/DS`` parsing for the CSS ``color:`` override, callout line
     + line-ending styles, the rectangle / border-effect interplay and a
     text-rendering pass that emits the ``/Contents`` string inside a
-    clip box. A few upstream-specific behaviours are deviated from
-    (documented in ``CHANGES.md``):
-
-    * Cloudy borders fall back to the regular straight-edged rectangle
-      until :class:`CloudyBorder` is wired into the FreeText path.
+    clip box. The /BE cloudy-border path is wired through
+    :class:`CloudyBorder` exactly as the Square/Circle/Polygon handlers
+    do (PDFreeTextAppearanceHandler.java:186-204).
 
     The text-layout pass routes ``/Contents`` through the ported
     :class:`PlainTextFormatter` and the *annotation-layout*
@@ -179,22 +177,52 @@ class PDFreeTextAppearanceHandler(PDAbstractAppearanceHandler):
                 )
                 cs.restore_graphics_state()
 
-            # Compute the border box. Documented deviation: cloudy borders
-            # are not yet wired through for FreeText; we always emit the
-            # plain rectangle.
-            border_box = self.apply_rect_differences(
-                self.get_rectangle(), annotation.get_rect_differences()
-            )
-            normal_stream = annotation.get_normal_appearance_stream()
-            if normal_stream is not None:
-                normal_stream.set_bbox(border_box)
-            padded_rectangle = self.get_padded_rectangle(border_box, ab.width / 2)
-            cs.add_rect(
-                padded_rectangle.get_lower_left_x(),
-                padded_rectangle.get_lower_left_y(),
-                padded_rectangle.get_width(),
-                padded_rectangle.get_height(),
-            )
+            # Compute the border box. Mirrors upstream
+            # PDFreeTextAppearanceHandler.java:186-222 — the /BE cloudy
+            # path draws a cloud and re-stamps the appearance bbox/matrix,
+            # the regular path emits the plain (padded) rectangle. Either
+            # way ``border_box`` (the /Rect inset by /RD) drives the later
+            # text layout and a single ``draw_shape`` paints the result.
+            from ..pd_border_effect_dictionary import PDBorderEffectDictionary
+            from .cloudy_border import CloudyBorder
+
+            border_effect = annotation.get_border_effect()
+            if (
+                border_effect is not None
+                and border_effect.get_style()
+                == PDBorderEffectDictionary.STYLE_CLOUDY
+            ):
+                # Adobe lays out the text against the original rectangle,
+                # but an /RD shrinks the writing area — compute border_box
+                # here because /RD is overwritten a few lines down
+                # (PDFreeTextAppearanceHandler.java:190-193).
+                border_box = self.apply_rect_differences(
+                    self.get_rectangle(), annotation.get_rect_differences()
+                )
+                cloudy_border = CloudyBorder(
+                    cs, border_effect.get_intensity(), ab.width, self.get_rectangle()
+                )
+                cloudy_border.create_cloudy_rectangle(annotation.get_rect_difference())
+                annotation.set_rectangle(cloudy_border.get_rectangle())
+                annotation.set_rect_difference(cloudy_border.get_rect_difference())
+                normal_stream = annotation.get_normal_appearance_stream()
+                if normal_stream is not None:
+                    normal_stream.set_bbox(cloudy_border.get_bbox())
+                    normal_stream.set_matrix(cloudy_border.get_matrix())
+            else:
+                border_box = self.apply_rect_differences(
+                    self.get_rectangle(), annotation.get_rect_differences()
+                )
+                normal_stream = annotation.get_normal_appearance_stream()
+                if normal_stream is not None:
+                    normal_stream.set_bbox(border_box)
+                padded_rectangle = self.get_padded_rectangle(border_box, ab.width / 2)
+                cs.add_rect(
+                    padded_rectangle.get_lower_left_x(),
+                    padded_rectangle.get_lower_left_y(),
+                    padded_rectangle.get_width(),
+                    padded_rectangle.get_height(),
+                )
             cs.draw_shape(ab.width, has_stroke, has_background)
 
             # /Rotate transform. Upstream emits this unconditionally

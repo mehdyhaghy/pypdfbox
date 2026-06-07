@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime as _dt
-import re as _re
 from collections.abc import (
     Callable,
     Collection,
@@ -29,30 +28,6 @@ from .i_cos_visitor import ICOSVisitor
 # Sentinel for "no default supplied" — distinguishes from a caller-passed None.
 _MISSING: Any = object()
 
-# Lenient PDF-date string parser used by ``get_date`` / ``get_embedded_date``.
-# Mirrors the subset accepted by ``org.apache.pdfbox.util.DateConverter``.
-_PDF_DATE_RE = _re.compile(
-    r"""
-    ^D?:?
-    (?P<year>\d{4})
-    (?P<month>\d{2})?
-    (?P<day>\d{2})?
-    (?P<hour>\d{2})?
-    (?P<minute>\d{2})?
-    (?P<second>\d{2})?
-    (?:
-        (?P<offsign>Z|[+\-])
-        (?P<offhour>\d{2})?
-        '?
-        (?P<offminute>\d{2})?
-        '?
-    )?
-    $
-    """,
-    _re.VERBOSE,
-)
-
-
 def _as_name(key: COSName | str) -> COSName:
     """Normalize string keys to interned ``COSName`` for storage."""
     if isinstance(key, COSName):
@@ -63,57 +38,40 @@ def _as_name(key: COSName | str) -> COSName:
 
 
 def _parse_pdf_date(value: str) -> _dt.datetime | None:
-    """Best-effort parse of a PDF date string ``D:YYYYMMDDHHmmSSOHH'mm'``.
+    """Parse a PDF date string the way ``COSDictionary.getDate`` does.
 
-    Returns ``None`` if the string is unparseable. Mirrors the lenient
-    behavior of ``DateConverter.toCalendar`` for the common subset.
+    Upstream ``COSDictionary.getDate`` delegates straight to
+    ``org.apache.pdfbox.util.DateConverter.toCalendar(COSString)``
+    (verified against PDFBox 3.0.7 bytecode: ``getDate`` calls
+    ``DateConverter.toCalendar``), which in turn calls
+    ``toCalendar(String)``. pypdfbox's faithful 1:1 port of that parser is
+    :func:`pypdfbox.xmpbox.date_converter.to_calendar` (oracle-pinned against
+    the live jar in ``tests/xmpbox/oracle/test_date_convert_oracle.py``).
+
+    Earlier this module carried its own ``_PDF_DATE_RE`` regex that handled
+    only the ``D:YYYYMMDD…`` subset; it diverged from upstream on every other
+    lenient shape ``DateConverter`` accepts — GMT/UTC-prefixed offsets
+    (``D:…GMT+05:30``, ``D:…UTC``), ISO 8601 (``2024-03-15T12:00:00Z``),
+    named-month forms (``26 May 2020 11:25:10``), and a ``Z`` followed by an
+    explicit offset (``…Z05'00'``). Delegating to ``to_calendar`` makes
+    ``get_date`` match ``COSDictionary.getDate`` byte-for-byte.
+
+    The import is local to keep the ``cos`` package (module 2 in the
+    dependency order) free of an import-time edge onto ``xmpbox``;
+    ``date_converter`` itself imports only stdlib.
+
+    Returns ``None`` when the input cannot be parsed (``to_calendar`` returns
+    ``None`` for empty / whitespace / bare-``D:`` input and raises
+    :class:`OSError` for any other unparseable shape — both map to ``None``
+    here, matching upstream's ``null`` return).
     """
+    from pypdfbox.xmpbox.date_converter import to_calendar
+
     if not value:
         return None
-    stripped = value.strip()
-    if not stripped:
-        return None
-    m = _PDF_DATE_RE.match(stripped)
-    if m is None:
-        return None
-    year = int(m.group("year"))
-    month = int(m.group("month") or 1)
-    day = int(m.group("day") or 1)
-    hour = int(m.group("hour") or 0)
-    minute = int(m.group("minute") or 0)
-    second = int(m.group("second") or 0)
-    # Upstream ``DateConverter.toCalendar`` parses with
-    # ``GregorianCalendar.setLenient(false)``, so an out-of-range field
-    # (e.g. second 60 from a misencoded leap second, or hour 24) makes the
-    # whole parse fail and the method returns ``null``. We mirror that: the
-    # ``datetime(...)`` constructor below raises ``ValueError`` for any
-    # out-of-range field, which we map to ``None`` — including second == 60
-    # (Python's ``datetime`` has no leap-second slot). Do NOT clamp.
-    sign = m.group("offsign")
-    if sign is None or sign == "Z":
-        tz: _dt.tzinfo = _dt.UTC
-    else:
-        off_hour = int(m.group("offhour") or 0)
-        off_minute = int(m.group("offminute") or 0)
-        # Upstream builds the zone via ``SimpleTimeZone`` from a raw
-        # millisecond offset and lets ``Calendar.ZONE_OFFSET`` reduce it into
-        # ``(-24h, +24h)``. An out-of-range designation like ``+24'00'`` or
-        # ``+99'00'`` therefore does NOT fail the parse — it wraps modulo
-        # 24 hours (truncating toward zero, Java ``%`` semantics) rather than
-        # raising. Python's ``timezone`` rejects ``|offset| >= 24h``, so we
-        # apply the same reduction before constructing it.
-        total_minutes = off_hour * 60 + off_minute
-        if sign == "-":
-            total_minutes = -total_minutes
-        # Java integer ``%`` truncates toward zero (``math.fmod`` for ints):
-        # -5940 % 1440 == -180, +5940 % 1440 == +180, matching PDFBox's
-        # GMT-zone reduction (e.g. -99'00' → -03:00, +99'00' → +03:00).
-        reduced = total_minutes - 1440 * int(total_minutes / 1440)
-        delta = _dt.timedelta(minutes=reduced)
-        tz = _dt.timezone(delta)
     try:
-        return _dt.datetime(year, month, day, hour, minute, second, tzinfo=tz)
-    except ValueError:
+        return to_calendar(value)
+    except OSError:
         return None
 
 

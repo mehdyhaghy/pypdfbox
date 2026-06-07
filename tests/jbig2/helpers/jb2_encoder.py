@@ -169,12 +169,20 @@ def segment_header(
     bw.write_bit(0)
     bw.write_bit(0)
     bw.write_bits(segment_type, 6)
-    # 7.2.4 referred-to count + retain bits (short format: count<=4, 1 byte).
+    # 7.2.4 referred-to count + retain bits.
     count = len(referred_to)
-    if count > 4:
-        raise ValueError("long referred-to format not supported by helper")
-    bw.write_bits(count, 3)
-    bw.write_bits(0, 5)  # retain bits
+    if count <= 4:
+        # Short format: 1 byte (3-bit count + 5 retain bits).
+        bw.write_bits(count, 3)
+        bw.write_bits(0, 5)  # retain bits
+    else:
+        # Long format (7.2.4): 3-bit sentinel 111, then 29-bit count, then
+        # ceil((count + 1) / 8) retain-bit bytes (all zero here).
+        bw.write_bits(0b111, 3)
+        bw.write_bits(count, 29)
+        retain_bytes = (count + 8) // 8  # ceil((count + 1) / 8)
+        for _ in range(retain_bytes):
+            bw.write_byte(0)
     # 7.2.5 referred-to segment numbers (1 byte each when segment_nr <= 256).
     if segment_nr > 256:
         raise ValueError("multi-byte referred-to numbers not supported by helper")
@@ -323,6 +331,49 @@ def huffman_sd_data(symbols: list[tuple[int, int]]) -> bytes:
     return bw.to_bytes()
 
 
+def huffman_sd_alt_standard_table_data(symbols: list[tuple[int, int]]) -> bytes:
+    """SDHUFF=1, SDREFAGG=0 SD selecting the *alternate* standard tables.
+
+    SDHUFFDH==1 (B5 instead of B4) and SDHUFFDW==1 (B3 instead of B2); BMSIZE
+    stays standard B1. Exercises the ``selection == 1`` arms of
+    ``SymbolDictionary._decode_height_class_delta_height_with_huffman`` (B5) and
+    ``_decode_difference_width`` (B3). No referred-to tables needed.
+    """
+    bw = BitWriter()
+    # region flags: SDHUFF(bit0), SDHUFFDH==1 (bits2-3), SDHUFFDW==1 (bits4-5).
+    flags = (1 << 0) | (1 << 2) | (1 << 4)
+    bw.write_bits(flags, 16)
+    n = len(symbols)
+    bw.write_bits(n, 32)  # exported
+    bw.write_bits(n, 32)  # new
+    height = symbols[0][1]
+    write_huffman(bw, 5, height)  # HCDH (B5)
+    prev_w = 0
+    total_width = 0
+    for (w, _h) in symbols:
+        write_huffman(bw, 3, w - prev_w)  # DW (B3)
+        prev_w = w
+        total_width += w
+    write_huffman_oob(bw, 3)  # OOB ends height class (B3 has an OOB line)
+    write_huffman(bw, 1, 0)  # BMSIZE (B1) == 0 -> uncompressed
+    bw.align()
+    stride = (total_width + 7) // 8
+    rows = [bytearray(stride) for _ in range(height)]
+    col = 0
+    for (w, _h) in symbols:
+        rows[0][col // 8] |= 0x80 >> (col % 8)
+        last = col + w - 1
+        rows[height - 1][last // 8] |= 0x80 >> (last % 8)
+        col += w
+    for r in rows:
+        for b in r:
+            bw.write_byte(b)
+    bw.align()
+    write_huffman(bw, 1, 0)  # export run 0
+    write_huffman(bw, 1, n)  # export run n (all exported)
+    return bw.to_bytes()
+
+
 def huffman_sd_import_chain_data(
     new_symbol: tuple[int, int], imported_count: int
 ) -> bytes:
@@ -365,13 +416,19 @@ def huffman_text_region_data(
     height: int,
     symbols: list[tuple[int, int]],
     placements: list[tuple[int, int, int]],
+    default_pixel: int = 0,
 ) -> bytes:
-    """SBHUFF=1, REFINE=0 text-region data; one strip at t==0, refCorner TL."""
+    """SBHUFF=1, REFINE=0 text-region data; one strip at t==0, refCorner TL.
+
+    When ``default_pixel`` is 1 the SBDEFPIXEL flag (bit 9) is set, exercising
+    ``TextRegion._create_region_bitmap``'s ``fill_bitmap(0xFF)`` arm.
+    """
     n = len(symbols)
     bw = BitWriter()
     for b in region_segment_info(width, height):
         bw.write_byte(b)
-    flags = (1 << 0) | (1 << 4)  # SBHUFF=1, refCorner=TOPLEFT(1)
+    # SBHUFF=1, SBDEFPIXEL (bit9), refCorner=TOPLEFT(1).
+    flags = (1 << 0) | ((default_pixel & 1) << 9) | (1 << 4)
     bw.write_bits(flags, 16)
     bw.write_bits(0, 16)  # huffman flags: all selections 0
     bw.write_bits(len(placements), 32)  # SBNUMINSTANCES
@@ -504,6 +561,158 @@ def table_segment_data() -> bytes:
     return bw.to_bytes()
 
 
+def wide_table_segment_data(ht_high: int = 256) -> bytes:
+    """A type-53 custom Huffman code-table (Annex B.2) covering ``[0, ht_high)``.
+
+    Single normal line with PREFLEN=1 and RANGELEN large enough to span the
+    whole range, so any value in ``[0, ht_high)`` is read as prefix bit ``0``
+    followed by ``RANGELEN`` value bits. Used where a referring region needs a
+    user table covering a value larger than the 4-element :func:`table_segment_data`
+    (e.g. the refinement-bitmap byte count read for SBHUFFRSIZE==1).
+    """
+    range_len = max(1, (ht_high - 1).bit_length())
+    bw = BitWriter()
+    ht_ps, ht_oob = 1, 0
+    # RANGELEN values up to 31 fit the 5-bit RANGE-SIZE field; HTRS == 5.
+    ht_rs = 5
+    flags = ((ht_rs - 1) << 4) | ((ht_ps - 1) << 1) | ht_oob
+    bw.write_byte(flags)
+    bw.write_bits(0, 32)  # HTLOW
+    bw.write_bits(ht_high, 32)  # HTHIGH
+    bw.write_bits(1, ht_ps)  # PREFLEN of the single normal line
+    bw.write_bits(range_len, ht_rs)  # RANGELEN of the normal line
+    bw.write_bits(2, ht_ps)  # lower-range PREFLEN
+    bw.write_bits(2, ht_ps)  # upper-range PREFLEN
+    return bw.to_bytes(), range_len
+
+
+def _wide_table_value_bits(bw: BitWriter, value: int, range_len: int) -> None:
+    """Emit ``value`` against a :func:`wide_table_segment_data` table."""
+    bw.write_bit(0)  # canonical prefix code of the length-1 normal line
+    bw.write_bits(value, range_len)
+
+
+def huffman_sd_user_table_data(
+    symbols: list[tuple[int, int]], range_len: int
+) -> bytes:
+    """SDHUFF=1, SDREFAGG=0 SD selecting USER tables for SDHUFFDH/DW/BMSIZE.
+
+    All three selectors use referred-to type-53 user tables (SDHUFFDH==3,
+    SDHUFFDW==3, SDHUFFBMSIZE==1); the collective bitmap is uncompressed
+    (BMSIZE value 0). Exercises ``SymbolDictionary._huff_decode_bm_size`` and
+    the ``== 3`` user-table arms / ``*_nr`` accumulators of
+    ``_decode_height_class_delta_height_with_huffman`` and
+    ``_decode_difference_width``, plus the ``_get_user_table`` increment arm.
+
+    Requires three referred-to type-53 segments via :func:`wide_table_segment_data`
+    (each covering the emitted value), in order: DH (table 0), DW (table 1),
+    BMSIZE (table 2). ``range_len`` must match the wide-table builder.
+    """
+    bw = BitWriter()
+    # region flags: SDHUFF(bit0), SDHUFFDH==3 (bits2-3), SDHUFFDW==3 (bits4-5),
+    # SDHUFFBMSIZE==1 (bit6).
+    flags = (1 << 0) | (0b11 << 2) | (0b11 << 4) | (1 << 6)
+    bw.write_bits(flags, 16)
+    n = len(symbols)
+    bw.write_bits(n, 32)  # exported
+    bw.write_bits(n, 32)  # new
+    height = symbols[0][1]
+    _wide_table_value_bits(bw, height, range_len)  # HCDH (DH user table)
+    prev_w = 0
+    total_width = 0
+    for (w, _h) in symbols:
+        _wide_table_value_bits(bw, w - prev_w, range_len)  # DW (DW user table)
+        prev_w = w
+        total_width += w
+    # OOB ends the height class. The wide user table has no OOB line, so the
+    # height-class loop relies on amount_of_decoded_symbols reaching the count;
+    # emit one extra DW that is read then discarded by the count guard.
+    _wide_table_value_bits(bw, 0, range_len)
+    _wide_table_value_bits(bw, 0, range_len)  # BMSIZE (BMSIZE user table) == 0
+    bw.align()
+    stride = (total_width + 7) // 8
+    rows = [bytearray(stride) for _ in range(height)]
+    col = 0
+    for (w, _h) in symbols:
+        rows[0][col // 8] |= 0x80 >> (col % 8)
+        last = col + w - 1
+        rows[height - 1][last // 8] |= 0x80 >> (last % 8)
+        col += w
+    for r in rows:
+        for b in r:
+            bw.write_byte(b)
+    bw.align()
+    write_huffman(bw, 1, 0)  # export run 0
+    write_huffman(bw, 1, n)  # export run n (all exported)
+    return bw.to_bytes()
+
+
+def huffman_text_region_refine_user_table_data(
+    width: int,
+    height: int,
+    symbols: list[tuple[int, int]],
+    refine_bytes: int,
+) -> tuple[bytes, int]:
+    """SBHUFF=1, REFINE=1 text region selecting USER tables for *every* selector.
+
+    One refined instance (all RD* == 0) of symbol 0, with SBHUFFFS/DS/DT and
+    SBHUFFRDW/RDH/RDX/RDY all ``3`` (user tables) and SBHUFFRSIZE ``1`` (user
+    table). Exercises the user-table branches AND the per-selector ``*_nr``
+    table-ordinal accumulators of ``TextRegion._decode_strip_t``,
+    ``_decode_id_s``, ``_decode_rdw/_decode_rdh/_decode_rdx/_decode_rdy`` and
+    ``_decode_sym_in_ref_size`` (every ``if self.sb_huff_* == 3: *_nr += 1``).
+
+    Requires EIGHT referred-to type-53 segments, in this decode-ordinal order:
+    FS (table 0), DS (table 1, unused with a single instance but consuming an
+    ordinal slot), DT (table 2), RDW (table 3), RDH (table 4), RDX (table 5),
+    RDY (table 6), RSIZE (table 7). FS/DS/DT/RDW..RDY use :func:`table_segment_data`;
+    RSIZE needs a :func:`wide_table_segment_data` covering ``refine_bytes`` —
+    returns ``(data, range_len)`` so the caller matches the wide-table builder.
+    """
+    n = len(symbols)
+    bw = BitWriter()
+    for b in region_segment_info(width, height):
+        bw.write_byte(b)
+    # SBHUFF, REFINE, refCorner=TL, SBRTEMPLATE=1.
+    flags = (1 << 0) | (1 << 1) | (1 << 4) | (1 << 15)
+    bw.write_bits(flags, 16)
+    # huffman flags: SBHUFFRSIZE==1 (bit14); RDY/RDX/RDH/RDW == 3 (bits12-13,
+    # 10-11, 8-9, 6-7); DT/DS/FS == 3 (bits4-5, 2-3, 0-1).
+    hflags = (
+        (1 << 14)
+        | (0b11 << 12)
+        | (0b11 << 10)
+        | (0b11 << 8)
+        | (0b11 << 6)
+        | (0b11 << 4)
+        | (0b11 << 2)
+        | 0b11
+    )
+    bw.write_bits(hflags, 16)
+    bw.write_bits(1, 32)  # SBNUMINSTANCES = 1
+    code_lengths = [1] * n if n > 1 else [1]
+    write_symbol_id_code_lengths(bw, code_lengths)
+    code_map = symbol_code_table(code_lengths)
+    _user_table_value0_bits(bw)  # STRIPT (DT table 2) == 0
+    _user_table_value0_bits(bw)  # DT (DT table 2) == 0
+    _user_table_value0_bits(bw)  # DfS (FS table 0) == 0
+    c0 = code_map[0]
+    bw.write_bits(c0.code, c0.prefix_length)  # ID symbol 0
+    bw.write_bit(1)  # RI = 1 (refined)
+    _user_table_value0_bits(bw)  # RDW (table 3) == 0
+    _user_table_value0_bits(bw)  # RDH (table 4) == 0
+    _user_table_value0_bits(bw)  # RDX (table 5) == 0
+    _user_table_value0_bits(bw)  # RDY (table 6) == 0
+    range_len = max(1, (256 - 1).bit_length())
+    _wide_table_value_bits(bw, refine_bytes, range_len)  # symInRefSize (table 7)
+    bw.align()
+    for _ in range(refine_bytes):
+        bw.write_byte(0)
+    write_huffman_oob(bw, 8)  # OOB ends strip
+    bw.align()
+    return bw.to_bytes(), range_len
+
+
 def huffman_text_region_user_fs_data(
     width: int, height: int, symbols: list[tuple[int, int]]
 ) -> bytes:
@@ -534,6 +743,61 @@ def huffman_text_region_user_fs_data(
     c0 = code_map[0]
     bw.write_bits(c0.code, c0.prefix_length)
     write_huffman_oob(bw, 8)  # OOB ends strip
+    bw.align()
+    return bw.to_bytes()
+
+
+def _user_table_value0_bits(bw: BitWriter) -> None:
+    """Emit the bits the value-0 normal line of :func:`table_segment_data`.
+
+    The decoder builds that table with one length-1 normal line covering
+    ``[0, 3]`` (canonical prefix code ``0``) plus two length-2 range lines, so a
+    value of 0 is read as prefix bit ``0`` followed by the two range bits ``00``.
+    """
+    bw.write_bit(0)
+    bw.write_bits(0, 2)
+
+
+def huffman_text_region_multi_user_table_data(
+    width: int, height: int, symbols: list[tuple[int, int]]
+) -> bytes:
+    """SBHUFF=1 text region selecting user tables for SBHUFFFS/DS/DT (all == 3).
+
+    Two instances of symbol 0 placed side by side in one strip, refCorner TL.
+    STRIPT/DT are read from the DT user table, DfS from the FS user table and
+    IdS from the DS user table — all value 0 — exercising:
+
+    * ``TextRegion._decode_strip_t`` SBHUFFDT==3 user-table branch (and the
+      ``dt_nr`` accumulator over FS==3 + DS==3),
+    * ``TextRegion._decode_id_s`` SBHUFFDS==3 user-table branch (and the
+      ``ds_nr`` accumulator over FS==3),
+    * ``TextRegion._decode_dt`` SBHUFFDT==3 cached-table branch,
+    * ``TextRegion._get_user_table`` non-zero ``table_counter`` increment arm.
+
+    Requires three referred-to type-53 segments (each :func:`table_segment_data`)
+    in order: table 0 (FS), table 1 (DS), table 2 (DT).
+    """
+    n = len(symbols)
+    bw = BitWriter()
+    for b in region_segment_info(width, height):
+        bw.write_byte(b)
+    flags = (1 << 0) | (1 << 4)  # SBHUFF=1, refCorner=TOPLEFT(1)
+    bw.write_bits(flags, 16)
+    # huffman flags: SBHUFFFS==3 (bits0-1), SBHUFFDS==3 (bits2-3),
+    # SBHUFFDT==3 (bits4-5); everything else standard.
+    bw.write_bits((0b11 << 4) | (0b11 << 2) | 0b11, 16)
+    bw.write_bits(2, 32)  # SBNUMINSTANCES = 2
+    code_lengths = [1] * n if n > 1 else [1]
+    write_symbol_id_code_lengths(bw, code_lengths)
+    code_map = symbol_code_table(code_lengths)
+    _user_table_value0_bits(bw)  # STRIPT (DT table) == 0
+    _user_table_value0_bits(bw)  # DT (DT table) == 0
+    _user_table_value0_bits(bw)  # DfS (FS table) == 0
+    c0 = code_map[0]
+    bw.write_bits(c0.code, c0.prefix_length)  # ID symbol 0
+    _user_table_value0_bits(bw)  # IdS (DS table) == 0 -> second instance
+    bw.write_bits(c0.code, c0.prefix_length)  # ID symbol 0
+    _user_table_value0_bits(bw)  # IdS read then instance_counter>=2 breaks strip
     bw.align()
     return bw.to_bytes()
 

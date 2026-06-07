@@ -61,13 +61,20 @@ def test_is_embedded_false_when_descriptor_has_no_font_file() -> None:
     assert font.is_embedded() is False
 
 
-def test_is_embedded_true_when_font_file_present() -> None:
+def test_is_embedded_false_when_font_file_unparseable() -> None:
+    # Upstream PDType1Font.isEmbedded() is true only when the /FontFile both
+    # exists AND parses (the constructor's ``isEmbedded = type1 != null``).
+    # An empty / unparseable /FontFile stream is therefore damaged -> NOT
+    # embedded (verified against PDFBox 3.0.7: emb=false dmg=true). Wave 1510
+    # aligned pypdfbox with this; the embedded-AND-parses positive path is
+    # covered by tests/pdmodel/font/oracle/test_type1_fontfile_read_oracle.py
+    # with a real bundled Type 1 program.
     font = PDType1Font()
     fd = PDFontDescriptor()
-    # An empty COSStream is enough — is_embedded only checks for presence.
     fd.set_font_file(COSStream())
     font.set_font_descriptor(fd)
-    assert font.is_embedded() is True
+    assert font.is_embedded() is False
+    assert font.is_damaged() is True
 
 
 def test_is_embedded_true_when_font_file3_present() -> None:

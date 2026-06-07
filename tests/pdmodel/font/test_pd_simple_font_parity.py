@@ -303,16 +303,32 @@ def test_is_standard_14_true_when_differences_only_restate_base_mapping() -> Non
     assert font.is_standard_14() is True
 
 
-def test_is_standard_14_false_when_font_program_embedded() -> None:
-    # Embedded fonts are never Standard 14 — inherits base-class rule.
+def test_is_standard_14_false_when_font_program_embedded(monkeypatch) -> None:
+    # Embedded fonts are never Standard 14 — inherits the base-class rule
+    # (PDFont.isStandard14: ``if (isEmbedded()) return false``). A *genuinely
+    # embedded* (parsed) program forces is_embedded() True regardless of the
+    # /BaseFont name. Wave 1510 made is_embedded() reflect parse success, so
+    # we force the embedded state directly rather than relying on a bare
+    # /FontFile stream (which, when unparseable, is damaged -> not embedded).
+    font = PDType1Font()
+    font.get_cos_object().set_name(COSName.get_pdf_name("BaseFont"), "Helvetica")
+    monkeypatch.setattr(font, "is_embedded", lambda: True)
+    assert font.is_standard_14() is False
+
+
+def test_is_standard_14_true_when_font_file_damaged() -> None:
+    # Wave 1510 / upstream contract: a /BaseFont matching a Standard 14 name
+    # with an unparseable (damaged) /FontFile is NOT embedded, so it IS
+    # treated as Standard 14 (verified vs PDFBox 3.0.7: emb=false std14=true).
+    from pypdfbox.cos import COSStream
+
     font = PDType1Font()
     font.get_cos_object().set_name(COSName.get_pdf_name("BaseFont"), "Helvetica")
     fd = PDFontDescriptor()
-    from pypdfbox.cos import COSStream
-
     fd.get_cos_object().set_item(COSName.get_pdf_name("FontFile"), COSStream())
     font.set_font_descriptor(fd)
-    assert font.is_standard_14() is False
+    assert font.is_embedded() is False
+    assert font.is_standard_14() is True
 
 
 # ---------- TrueType inherits the same accessors ----------

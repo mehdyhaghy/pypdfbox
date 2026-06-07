@@ -53,6 +53,28 @@ def test_code_str_assigned_shows_bit_pattern():
     assert str(c) == "101/3/0/5"
 
 
+def test_code_table_to_string_joins_code_lines():
+    # Wave 1510: ``HuffmanTable.code_table_to_string`` (upstream static
+    # ``codeTableToString``) joins each ``Code`` line followed by a newline.
+    codes = [Code(1, 0, 0, False), Code(2, 0, 3, False)]
+    codes[0].code = 0
+    codes[1].code = 0b10
+    rendered = HuffmanTable.code_table_to_string(codes)
+    assert rendered == "0/1/0/0\n10/2/0/3\n"
+
+
+def test_huffman_table_str_wraps_root_node():
+    # Wave 1510: ``HuffmanTable.__str__`` (upstream ``toString``) renders the
+    # root InternalNode and appends a trailing newline.
+    table = HuffmanTable()
+    table.init_tree([Code(1, 0, 7, False)])
+    rendered = str(table)
+    assert rendered == f"{table.root_node}\n"
+    assert rendered.endswith("\n")
+    # The single length-1 leaf appears under the "1:" branch of the root.
+    assert "1: " in rendered
+
+
 # --------------------------------------------------------------------------- #
 # bit_pattern helper (ValueNode.bitPattern)
 # --------------------------------------------------------------------------- #
