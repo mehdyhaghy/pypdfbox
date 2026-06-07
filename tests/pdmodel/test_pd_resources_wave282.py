@@ -137,5 +137,9 @@ def test_typed_xobject_reports_malformed_non_stream_entry() -> None:
     name = COSName.get_pdf_name("BadX")
     res.put(PDResources.XOBJECT, name, COSDictionary())
 
-    with pytest.raises(TypeError, match="/XObject entry /BadX is not a stream"):
+    # Wave 1514: retargeted TypeError -> OSError. Upstream
+    # PDResources.getXObject delegates to PDXObject.createXObject, which raises
+    # IOException for a non-stream entry; pypdfbox now mirrors that as OSError
+    # (caught by the wave-1514 resources-lookup fuzz oracle).
+    with pytest.raises(OSError, match="/XObject entry /BadX is not a stream"):
         res.get_x_object(name)

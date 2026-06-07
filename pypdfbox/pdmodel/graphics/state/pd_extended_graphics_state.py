@@ -540,7 +540,14 @@ class PDExtendedGraphicsState:
     # ---------- RI ----------
 
     def get_rendering_intent(self) -> str | None:
-        return self._dict.get_name(_RI)
+        # Upstream ``getRenderingIntent()`` resolves ``/RI`` via
+        # ``getNameAsString(COSName.RI)``, which accepts *either* a
+        # ``COSName`` *or* a ``COSString`` (oracle-confirmed: a ``/RI`` stored
+        # as the string ``(Perceptual)`` resolves to ``Perceptual``). The
+        # plain ``get_name`` accessor only handles ``COSName`` and returned
+        # ``None`` for a string-valued entry — a divergence; use the
+        # string-tolerant accessor to match.
+        return self._dict.get_name_as_string(_RI)
 
     def set_rendering_intent(self, ri: RenderingIntent | str | None) -> None:
         from pypdfbox.pdmodel.graphics.state.rendering_intent import (  # noqa: PLC0415
@@ -569,7 +576,10 @@ class PDExtendedGraphicsState:
             RenderingIntent,
         )
 
-        ri = self._dict.get_name(_RI)
+        # Mirror upstream ``getRenderingIntent()``: ``getNameAsString``
+        # resolves both ``COSName`` and ``COSString`` forms of ``/RI`` (see
+        # :meth:`get_rendering_intent`).
+        ri = self._dict.get_name_as_string(_RI)
         if ri is None:
             return None
         return RenderingIntent.from_string(ri)

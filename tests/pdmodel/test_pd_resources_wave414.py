@@ -63,7 +63,9 @@ def test_get_x_object_rejects_malformed_and_unknown_subtype_wave414() -> None:
     res.put(PDResources.XOBJECT, bad_name, COSDictionary())
     res.put(PDResources.XOBJECT, unknown_name, unknown)
 
-    with pytest.raises(TypeError, match="not a stream"):
+    # Wave 1514: retargeted TypeError -> OSError to match upstream
+    # PDXObject.createXObject's IOException for a non-stream /XObject entry.
+    with pytest.raises(OSError, match="not a stream"):
         res.get_x_object(bad_name)
     with pytest.raises(OSError, match="Invalid XObject Subtype"):
         res.get_x_object(unknown_name)

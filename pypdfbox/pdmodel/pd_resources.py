@@ -276,7 +276,12 @@ class PDResources:
             if cached is not None:
                 return cached
         if not isinstance(entry, COSStream):
-            raise TypeError(
+            # Upstream PDResources.getXObject hands the resolved COSBase to
+            # PDXObject.createXObject, which raises IOException ("Unexpected
+            # object type") when the /XObject entry is not a stream. Mirror
+            # that with OSError (IOException's pypdfbox analogue) rather than a
+            # Python TypeError so the failure mode is byte-comparable.
+            raise OSError(
                 f"/XObject entry {key!s} is not a stream: {type(entry).__name__}"
             )
         subtype = entry.get_name(COSName.SUBTYPE)  # type: ignore[attr-defined]
