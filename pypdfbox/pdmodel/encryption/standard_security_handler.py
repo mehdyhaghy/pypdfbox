@@ -880,7 +880,7 @@ class StandardSecurityHandler(SecurityHandler):
     def _dispatch_decrypt(
         self, cfm: str, data: bytes, obj_num: int, gen_num: int
     ) -> bytes:
-        if cfm in (_CFM_IDENTITY, _CFM_NONE):
+        if cfm == _CFM_IDENTITY:
             return data
         if cfm == _CFM_V2:
             # RC4: per-object key WITHOUT the AES salt, regardless of the
@@ -896,13 +896,22 @@ class StandardSecurityHandler(SecurityHandler):
         if cfm == _CFM_AESV3:
             # AES-256: file-encryption key used directly (no per-object salt).
             return _aes128_cbc_decrypt(self.get_encryption_key() or b"", data)
-        # Unknown CFM — refuse silently rather than corrupting bytes.
-        return data
+        # /CFM /None and any unknown /CFM — PDFBox's V4 dispatch flips
+        # ``useAES`` ON only for AESV2 / AESV3 and uses the RC4 per-object key
+        # for EVERY other /CFM value, INCLUDING the spec's "no-cipher" /None
+        # (``StandardSecurityHandler.prepareForDecryption`` reads the
+        # crypt-filter method; the cipher selector in ``SecurityHandler.
+        # decryptData`` defaults to RC4 — it does NOT special-case /None as a
+        # pass-through). So /None and any non-spec /CFM are RC4-deciphered,
+        # not left as ciphertext — mirror that or such a document would be
+        # unreadable in pypdfbox while PDFBox recovers it. Only /Identity
+        # (the reserved /StmF /StrF name, never a /CFM) is a true pass-through.
+        return _rc4(self.compute_object_key(obj_num, gen_num, aes=False), data)
 
     def _dispatch_encrypt(
         self, cfm: str, data: bytes, obj_num: int, gen_num: int
     ) -> bytes:
-        if cfm in (_CFM_IDENTITY, _CFM_NONE):
+        if cfm == _CFM_IDENTITY:
             return data
         if cfm == _CFM_V2:
             return _rc4(self.compute_object_key(obj_num, gen_num, aes=False), data)
@@ -912,7 +921,9 @@ class StandardSecurityHandler(SecurityHandler):
             )
         if cfm == _CFM_AESV3:
             return _aes128_cbc_encrypt(self.get_encryption_key() or b"", data)
-        return data
+        # Unknown /CFM — RC4 per-object key, matching the decrypt-side
+        # fallback (see :meth:`_dispatch_decrypt`).
+        return _rc4(self.compute_object_key(obj_num, gen_num, aes=False), data)
 
     # ------------------------------------------------------------ read path
 

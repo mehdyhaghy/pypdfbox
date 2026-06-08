@@ -117,14 +117,18 @@ def test_wave465_v4_routing_resolves_cf_entries_and_eff_defaults_to_stream() -> 
     assert handler.get_embedded_file_cfm() == "AESV2"
 
 
-def test_wave465_identity_and_unknown_filters_are_passthrough() -> None:
+def test_wave465_only_identity_is_passthrough_none_and_unknown_are_rc4() -> None:
+    # Wave 1517 (CryptFilterFuzzProbe): only the reserved /Identity filter name
+    # is a true pass-through. /None and any unknown /CFM are RC4-deciphered by
+    # PDFBox (it special-cases AES only), so they must NOT pass through here.
     handler = StandardSecurityHandler()
     handler.set_encryption_key(b"\x01" * 16)
 
     assert handler._dispatch_encrypt("Identity", b"plain", 1, 0) == b"plain"  # noqa: SLF001
-    assert handler._dispatch_decrypt("None", b"plain", 1, 0) == b"plain"  # noqa: SLF001
-    assert handler._dispatch_encrypt("BogusCFM", b"plain", 1, 0) == b"plain"  # noqa: SLF001
-    assert handler._dispatch_decrypt("BogusCFM", b"plain", 1, 0) == b"plain"  # noqa: SLF001
+    for cfm in ("None", "BogusCFM"):
+        enc = handler._dispatch_encrypt(cfm, b"plain", 1, 0)  # noqa: SLF001
+        assert enc != b"plain"
+        assert handler._dispatch_decrypt(cfm, enc, 1, 0) == b"plain"  # noqa: SLF001
 
 
 def test_wave465_prepare_document_requires_policy() -> None:

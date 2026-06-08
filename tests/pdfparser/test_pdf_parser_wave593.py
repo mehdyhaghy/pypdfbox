@@ -57,10 +57,15 @@ def test_wave593_read_stream_body_reports_missing_endstream_keyword() -> None:
     assert stream.get_raw_data() == b"ABC"
 
 
-def test_wave593_resolve_stream_length_rejects_indirect_length_reference() -> None:
+def test_wave593_resolve_stream_length_rejects_unread_indirect_length() -> None:
+    """An indirect /Length whose target has no loader (its content was never
+    read) raises ``PDFParseError`` from ``_resolve_stream_length``, mirroring
+    upstream ``COSParser.getLength`` which throws "Length object content was not
+    read." (Wave 1517 — formerly pypdfbox conflated this with the generic
+    "missing or malformed /Length" message)."""
     parser = _parser()
     stream = COSStream()
     stream.set_item("Length", COSObject(9, 0))
 
-    with pytest.raises(PDFParseError, match="missing or malformed /Length"):
+    with pytest.raises(PDFParseError, match="Length object content was not read"):
         parser._resolve_stream_length(stream)  # noqa: SLF001

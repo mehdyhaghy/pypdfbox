@@ -77,16 +77,24 @@ def test_setters_with_none_remove_entries_and_presence_flags() -> None:
     assert not sig.has_prop_build()
 
 
-def test_get_byte_range_returns_none_for_wrong_cos_shapes() -> None:
+def test_get_byte_range_returns_none_when_not_an_array() -> None:
+    # /ByteRange that is not a COSArray -> None (pypdfbox null-sentinel
+    # divergence; upstream returns int[0]). Pinned in the wave-1517 fuzz suite.
     sig = PDSignature()
     sig.get_cos_object().set_item(_BYTE_RANGE, COSName.get_pdf_name("NotArray"))
     assert sig.get_byte_range() is None
 
+
+def test_get_byte_range_substitutes_minus_one_for_non_number_elements() -> None:
+    # Wave 1517: oracle-corrected. Upstream PDSignature.getByteRange coerces
+    # every entry with COSArray.getInt(i), which substitutes -1 for any
+    # non-number element rather than discarding the whole array.
+    sig = PDSignature()
     byte_range = COSArray()
     byte_range.add(COSName.get_pdf_name("not-an-int"))
     byte_range.add(COSName.get_pdf_name("still-not-an-int"))
     sig.get_cos_object().set_item(_BYTE_RANGE, byte_range)
-    assert sig.get_byte_range() is None
+    assert sig.get_byte_range() == [-1, -1]
 
 
 def test_contents_are_stored_as_forced_hex_cos_string() -> None:

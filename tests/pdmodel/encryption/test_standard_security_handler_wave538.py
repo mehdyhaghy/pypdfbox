@@ -151,15 +151,19 @@ def test_wave538_prepare_document_installs_aes128_crypt_filter() -> None:
     assert handler.get_embedded_file_cfm() == "AESV2"
 
 
-def test_wave538_identity_and_unknown_filters_leave_bytes_unchanged() -> None:
+def test_wave538_only_identity_leaves_bytes_unchanged() -> None:
+    # Wave 1517 (CryptFilterFuzzProbe): /Identity is the sole true pass-through
+    # (returns the same object). /None and unknown /CFM are RC4-deciphered like
+    # PDFBox, so they transform the bytes rather than passing them through.
     handler = StandardSecurityHandler()
     handler.set_encryption_key(b"k" * 16)
     payload = b"plain payload"
 
     assert handler._dispatch_encrypt("Identity", payload, 7, 0) is payload  # noqa: SLF001
-    assert handler._dispatch_decrypt("None", payload, 7, 0) is payload  # noqa: SLF001
-    assert handler._dispatch_encrypt("UnknownCFM", payload, 7, 0) is payload  # noqa: SLF001
-    assert handler._dispatch_decrypt("UnknownCFM", payload, 7, 0) is payload  # noqa: SLF001
+    for cfm in ("None", "UnknownCFM"):
+        enc = handler._dispatch_encrypt(cfm, payload, 7, 0)  # noqa: SLF001
+        assert enc != payload
+        assert handler._dispatch_decrypt(cfm, enc, 7, 0) == payload  # noqa: SLF001
 
 
 def test_wave538_revision_number_from_version_uses_policy_permissions() -> None:

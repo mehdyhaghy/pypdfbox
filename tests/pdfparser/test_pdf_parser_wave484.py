@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import pytest
-
 from pypdfbox.cos import COSDictionary, COSObjectKey, COSStream
 from pypdfbox.io import RandomAccessReadBuffer
-from pypdfbox.pdfparser import PDFParseError, PDFParser
+from pypdfbox.pdfparser import PDFParser
 
 
 def _parser(data: bytes) -> PDFParser:
@@ -75,7 +73,11 @@ def test_wave484_stream_body_can_follow_bare_cr_after_stream_keyword() -> None:
         doc.close()
 
 
-def test_wave484_stream_negative_length_raises_when_object_is_loaded() -> None:
+def test_wave484_stream_negative_length_recovers_when_object_is_loaded() -> None:
+    """A negative /Length fails ``validate_stream_length`` and triggers the
+    endstream recovery scan in lenient mode, mirroring upstream PDFBox
+    ``parseCOSStream`` (a negative ``longValue()`` simply fails
+    ``validateStreamLength``). (Wave 1517 alignment.)"""
     pdf = _build_pdf(
         [b"1 0 obj\n<< /Length -1 >>\nstream\nabc\nendstream\nendobj"],
     )
@@ -83,7 +85,8 @@ def test_wave484_stream_negative_length_raises_when_object_is_loaded() -> None:
     doc = parser.parse()
 
     try:
-        with pytest.raises(PDFParseError, match="stream /Length is negative"):
-            doc.get_object_from_pool(COSObjectKey(1, 0)).get_object()
+        stream = doc.get_object_from_pool(COSObjectKey(1, 0)).get_object()
+        assert isinstance(stream, COSStream)
+        assert stream.get_raw_data() == b"abc"
     finally:
         doc.close()

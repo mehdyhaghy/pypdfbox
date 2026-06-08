@@ -466,6 +466,84 @@ def _verify_cert_signature(
     return False, f"unsupported issuer key type: {type(public_key).__name__}"
 
 
+def _filter_byte_range(source: bytes, byte_range: list[int]) -> bytes:
+    """Faithful port of upstream ``COSFilterInputStream``'s read over a
+    ``ByteArrayInputStream`` (the engine behind ``PDSignature.getSignedContent
+    (byte[])``).
+
+    ``byte_range`` is the flat ``[start, len, start, len, …]`` array exactly as
+    ``getByteRange()`` returns it. Ranges are paired ``len(byte_range) // 2``
+    times (a trailing odd entry is dropped). A single monotonic ``position``
+    cursor advances across ``source``; for each pair ``[start, length]`` the
+    span is ``[start, start + length)``.
+
+    Behavioural quirks reproduced from upstream (oracle-pinned against PDFBox
+    3.0.7, ``SigDictFuzzProbe``):
+
+    * skip-forward to a range that begins *ahead* of the cursor; if the source
+      runs out before the skip completes, upstream's ``nextRange`` raises
+      ``IOException`` → we raise :class:`OSError`;
+    * a span whose ``end - position`` is negative drives a negative read length
+      into ``ByteArrayInputStream.read``, which raises
+      ``IndexOutOfBoundsException`` → we raise :class:`IndexError`.
+    """
+    # calculateRanges: ranges[i] = [start, start + length], pairing len/2 times.
+    ranges: list[tuple[int, int]] = []
+    for i in range(len(byte_range) // 2):
+        start = byte_range[i * 2]
+        ranges.append((start, start + byte_range[i * 2 + 1]))
+
+    out = bytearray()
+    n = len(source)
+    position = 0
+    range_index = -1
+
+    def next_range() -> bool:
+        nonlocal range_index, position
+        if range_index + 1 < len(ranges):
+            range_index += 1
+            start = ranges[range_index][0]
+            # Skip forward to the range start. ByteArrayInputStream.skip()
+            # returns 0 only when already at EOF; upstream throws IOException.
+            while position < start:
+                # available bytes to skip from the byte-array source.
+                skippable = n - position
+                skipped = min(start - position, skippable) if skippable > 0 else 0
+                if skipped == 0:
+                    raise OSError(
+                        "FilterInputStream.skip() returns 0, range: "
+                        f"{list(ranges[range_index])}"
+                    )
+                position += skipped
+            return True
+        return False
+
+    # Mirror IOUtils.toByteArray's read loop driving COSFilterInputStream.read.
+    while True:
+        remaining = ranges[range_index][1] - position if range_index != -1 else 0
+        if (range_index == -1 or remaining <= 0) and not next_range():
+            break
+        remaining = ranges[range_index][1] - position
+        # super.read(b, off, min(len, getRemaining())): a negative length here
+        # raises IndexOutOfBoundsException in ByteArrayInputStream.
+        if remaining < 0:
+            raise IndexError(
+                "negative read length from /ByteRange span "
+                f"{list(ranges[range_index])}"
+            )
+        if position >= n:
+            # ByteArrayInputStream.read returns -1 at EOF → COSFilterInputStream
+            # treats it as end-of-current-range; advance.
+            if not next_range():
+                break
+            continue
+        take = min(remaining, n - position)
+        out += source[position : position + take]
+        position += take
+
+    return bytes(out)
+
+
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _SIG: COSName = COSName.get_pdf_name("Sig")
 _FILTER: COSName = COSName.get_pdf_name("Filter")
@@ -653,13 +731,21 @@ class PDSignature:
     # ---------- /ByteRange ----------
 
     def get_byte_range(self) -> list[int] | None:
+        # Mirror upstream ``PDSignature.getByteRange``: read the ``/ByteRange``
+        # COSArray and coerce every entry with ``COSArray.getInt(i)`` — which
+        # truncates a COSFloat toward zero and substitutes ``-1`` for any
+        # non-number element (a name, string, null, etc.). The array is
+        # returned with WHATEVER length it has (odd, 2, 6, …); shape validation
+        # is the caller's responsibility, exactly as in Java.
+        #
+        # Divergence (pinned in tests/pdmodel/test_sig_dict_fuzz_wave1517.py):
+        # upstream returns an empty ``int[0]`` when ``/ByteRange`` is absent or
+        # not an array; the lite port returns ``None`` to match the Pythonic
+        # null-sentinel convention used across pypdfbox accessors.
         v = self._dict.get_dictionary_object(_BYTE_RANGE)
         if not isinstance(v, COSArray):
             return None
-        ints = v.to_cos_number_integer_list()
-        if any(i is None for i in ints):
-            return None
-        return [int(i) for i in ints]  # type: ignore[arg-type]
+        return [v.get_int(i) for i in range(len(v))]
 
     def set_byte_range(self, byte_range: list[int] | None) -> None:
         if byte_range is None:
@@ -814,17 +900,42 @@ class PDSignature:
     def get_signed_content(self, pdf_file: bytes) -> bytes:
         """Return the bytes of ``pdf_file`` covered by ``/ByteRange``.
 
-        Mirrors upstream ``PDSignature.getSignedContent(byte[])``. This is
-        the byte sequence the signature is computed over — i.e. the PDF
-        with the ``/Contents`` hex placeholder excised.
+        Mirrors upstream ``PDSignature.getSignedContent(byte[])`` — which
+        feeds the *whole* ``getByteRange()`` array (any length) through a
+        ``COSFilterInputStream`` whose monotonic forward cursor over a
+        ``ByteArrayInputStream`` defines the exact behavior on odd-length,
+        out-of-order, overlapping, out-of-bounds and negative ranges. We
+        reproduce that cursor here byte-for-byte rather than slicing, so the
+        observable result (including which malformed shapes raise vs. yield a
+        shorter / empty result) matches PDFBox.
 
-        Raises :class:`IndexError` if ``/ByteRange`` is absent or malformed
-        (parity with upstream's ``IndexOutOfBoundsException`` contract).
+        Concretely, mirroring ``COSFilterInputStream``:
+
+        * ranges are paired ``length // 2`` times — a trailing odd entry is
+          dropped (``[a,b,c]`` reads only ``[a,b]``);
+        * each pair ``[start, length]`` defines the span ``[start, start +
+          length)`` of the underlying byte source;
+        * a single forward ``position`` cursor advances across the whole
+          source — a later range whose start is *before* the cursor reads only
+          its tail (``end - position`` bytes), and one entirely behind the
+          cursor contributes nothing;
+        * advancing to a range that starts *ahead* of the cursor skips forward;
+          if the source is exhausted before the skip completes, upstream raises
+          ``IOException`` (we raise :class:`OSError`);
+        * a span whose computed length is negative drives a negative read
+          length into ``ByteArrayInputStream.read`` — upstream raises
+          ``IndexOutOfBoundsException`` (we raise :class:`IndexError`).
+
+        Raises :class:`IndexError` for a malformed-shape access that upstream
+        answers with ``IndexOutOfBoundsException``, or :class:`OSError` for the
+        skip-past-EOF case (upstream ``IOException``).
         """
-        signed = self.get_signed_data(pdf_file)
-        if signed is None:
-            raise IndexError("missing or malformed /ByteRange")
-        return signed
+        byte_range = self.get_byte_range()
+        if byte_range is None:
+            # Upstream getByteRange() returns int[0] here, which yields a
+            # zero-range filter stream → empty result (no exception).
+            byte_range = []
+        return _filter_byte_range(pdf_file, byte_range)
 
     def get_contents_from_bytes(self, pdf_file: bytes) -> bytes:
         """Return the raw ``/Contents`` placeholder slice extracted from
@@ -853,13 +964,27 @@ class PDSignature:
         malformed (parity with upstream's ``IndexOutOfBoundsException``).
         """
         br = self.get_byte_range()
-        if br is None or len(br) != 4:
+        if br is None:
+            br = []
+        # Upstream reads br[0], br[1], br[2] unconditionally — a /ByteRange
+        # with fewer than 3 entries throws ArrayIndexOutOfBoundsException.
+        if len(br) < 3:
             raise IndexError("missing or malformed /ByteRange")
         begin = br[0] + br[1] + 1
         length = br[2] - begin - 1
-        if begin < 0 or length < 0 or begin + length > len(pdf_file):
-            raise IndexError("missing or malformed /ByteRange")
-        return self.get_converted_contents(pdf_file[begin : begin + length])
+        # Upstream wraps the slice in ``new ByteArrayInputStream(pdfFile,
+        # begin, len)``, whose constructor CLAMPS rather than validates:
+        # ``pos = begin``; ``count = min(begin + len, pdfFile.length)``. A
+        # span past EOF or with a non-positive length simply yields fewer (or
+        # zero) bytes — no exception — and an empty read produces ``parseHex("")``
+        # = empty. A negative ``begin`` with bytes still to read would index a
+        # negative array offset (ArrayIndexOutOfBoundsException).
+        n = len(pdf_file)
+        count = min(begin + length, n) if length >= 0 else begin
+        if begin < 0 and count > begin:
+            raise IndexError("negative /Contents window offset")
+        window = pdf_file[begin:count] if count > begin else b""
+        return self.get_converted_contents(window)
 
     # ---------- verify ----------
 

@@ -691,12 +691,17 @@ def test_get_contents_from_bytes_malformed_byte_range_raises() -> None:
         sig.get_contents_from_bytes(b"%PDF-1.7\n%%EOF\n")
 
 
-def test_get_contents_from_bytes_gap_out_of_range_raises() -> None:
-    """When /ByteRange points past document end, the gap extraction must
-    raise rather than silently slicing nothing (line 784-785)."""
+def test_get_contents_from_bytes_gap_out_of_range_clamps_then_decodes() -> None:
+    """Wave 1517: oracle-corrected. Upstream getContents(byte[]) wraps the
+    /Contents window in a ByteArrayInputStream(pdfFile, begin, len) whose
+    constructor CLAMPS the span to the buffer end rather than validating it.
+    With begin=11, len=99987 over a 15-byte file the read yields only the four
+    bytes that exist (``EOF\\n``); ``COSString.parseHex`` then rejects those as
+    non-hex with IOException (OSError here) — there is no length pre-check that
+    raises IndexError."""
     sig = PDSignature()
     sig.set_byte_range([0, 10, 99999, 10])  # second range way past EOF
-    with pytest.raises(IndexError, match="missing or malformed"):
+    with pytest.raises(OSError, match="Invalid hex"):
         sig.get_contents_from_bytes(b"%PDF-1.7\n%%EOF\n")
 
 

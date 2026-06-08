@@ -12,6 +12,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import io as _io
+import logging
 import os as _os
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
@@ -33,6 +34,8 @@ if TYPE_CHECKING:
 
 # AES salt used by V=4 / AESV2 per-object key derivation (PDF 32000-1 §7.6.3.2).
 _AES_SALT = b"sAlT"
+
+_LOG = logging.getLogger(__name__)
 
 
 class SecurityHandler(ABC):
@@ -522,6 +525,7 @@ class SecurityHandler(ABC):
         if self._stream_filter_name is not None and _is_identity(self._stream_filter_name):
             return
         # Skip cross-reference streams + (optional) Metadata.
+        name: object = None
         try:
             from pypdfbox.cos.cos_name import COSName  # noqa: PLC0415
         except ImportError:
@@ -554,6 +558,30 @@ class SecurityHandler(ABC):
             try:
                 raw = get_raw()
                 if isinstance(raw, (bytes, bytearray, memoryview)):
+                    # PDFBOX-3173 / PDFBOX-2603: a /Type /Metadata stream
+                    # whose raw bytes already begin with the cleartext XMP
+                    # marker ``<?xpacket`` is NOT actually encrypted — some
+                    # producers emit cleartext metadata while still declaring
+                    # /EncryptMetadata true. Upstream ``decryptStream`` warns
+                    # and returns the bytes untouched in that case; mirror it
+                    # so we don't corrupt the metadata by "decrypting"
+                    # plaintext. The authoritative lazy read path applies the
+                    # same guard in ``COSStream.set_security_handler`` (the
+                    # primary decrypt point); this mirror covers the
+                    # dict-walk entry too. Only fires when metadata decrypt is
+                    # in effect (the ``not _decrypt_metadata`` early-return
+                    # above already skips Metadata when the flag is off).
+                    if (
+                        self._decrypt_metadata
+                        and name == "Metadata"
+                        and bytes(raw)[:9] == b"<?xpacket"
+                    ):
+                        _LOG.warning(
+                            "Metadata is not encrypted, but was expected to "
+                            "be; read PDF specification about EncryptMetadata "
+                            "(default value: true)"
+                        )
+                        return
                     # Route through ``decrypt_stream`` so the V4/V5 override
                     # honours the /StmF crypt filter (Identity ⇒ cleartext);
                     # base handler delegates to ``_decrypt`` for V<4 parity.

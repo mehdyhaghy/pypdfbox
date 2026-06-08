@@ -244,12 +244,12 @@ def test_pd_signature_get_signed_content_concatenates_byte_range_slices() -> Non
     assert signed == bytes(range(10)) + bytes(range(18, 30))
 
 
-def test_pd_signature_get_signed_content_raises_when_byte_range_missing() -> None:
-    import pytest
-
+def test_pd_signature_get_signed_content_empty_when_byte_range_missing() -> None:
+    # Wave 1517: oracle-corrected. Upstream getByteRange() returns int[0] when
+    # /ByteRange is absent; getSignedContent then builds a zero-range
+    # COSFilterInputStream that reads nothing -> empty byte[], no exception.
     sig = PDSignature()
-    with pytest.raises(IndexError):
-        sig.get_signed_content(b"some pdf bytes")
+    assert sig.get_signed_content(b"some pdf bytes") == b""
 
 
 # ---------------------------------------------------------------------------

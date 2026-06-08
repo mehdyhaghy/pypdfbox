@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pytest
-
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,
@@ -12,7 +10,7 @@ from pypdfbox.cos import (
     COSStream,
 )
 from pypdfbox.io import RandomAccessReadBuffer
-from pypdfbox.pdfparser import COSParser, PDFParseError, PDFParser
+from pypdfbox.pdfparser import COSParser, PDFParser
 from pypdfbox.pdfparser.xref_trailer_resolver import XrefType
 
 
@@ -71,10 +69,13 @@ def test_wave583_handle_xref_stream_sets_encrypt_diagnostic_and_trailer() -> Non
         doc.close()
 
 
-def test_wave583_resolve_stream_length_rejects_negative_direct_length() -> None:
+def test_wave583_resolve_stream_length_returns_negative_direct_length() -> None:
+    """``_resolve_stream_length`` now mirrors upstream ``COSParser.getLength``:
+    a negative direct /Length is returned as-is (it is a valid COSNumber); the
+    later ``validate_stream_length`` rejects it and the body is recovered by the
+    endstream scan. (Wave 1517 — formerly this raised ``PDFParseError``.)"""
     parser = _parser()
     stream = COSStream()
     stream.set_item("Length", COSInteger.get(-1))
 
-    with pytest.raises(PDFParseError, match="negative"):
-        parser._resolve_stream_length(stream)  # noqa: SLF001
+    assert parser._resolve_stream_length(stream) == -1  # noqa: SLF001

@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import pytest
-
 from pypdfbox.cos import COSObjectKey
 from pypdfbox.io import RandomAccessReadBuffer
-from pypdfbox.pdfparser import PDFParseError, PDFParser
+from pypdfbox.pdfparser import PDFParser
 
 
 def _build_pdf(objects: list[bytes], trailer: bytes = b"<< /Size 2 /Root 1 0 R >>") -> bytes:
@@ -29,7 +27,13 @@ def _build_pdf(objects: list[bytes], trailer: bytes = b"<< /Size 2 /Root 1 0 R >
     return bytes(out)
 
 
-def test_wave322_pdf_parser_rejects_direct_negative_stream_length() -> None:
+def test_wave322_pdf_parser_recovers_direct_negative_stream_length() -> None:
+    """A negative direct /Length fails ``validate_stream_length`` and triggers
+    the endstream recovery scan in lenient mode — exactly as upstream PDFBox
+    ``parseCOSStream`` does (a negative ``longValue()`` simply fails
+    ``validateStreamLength``). The recovered body is the bytes up to
+    ``endstream`` and /Length is rewritten. (Wave 1517 alignment — formerly
+    pypdfbox raised a fail-fast ``PDFParseError``.)"""
     pdf = _build_pdf(
         [
             b"1 0 obj\n"
@@ -43,14 +47,15 @@ def test_wave322_pdf_parser_rejects_direct_negative_stream_length() -> None:
     doc = PDFParser(RandomAccessReadBuffer(pdf)).parse()
     try:
         stream_obj = doc.get_object_from_pool(COSObjectKey(1, 0))
-
-        with pytest.raises(PDFParseError, match="stream /Length is negative: -1"):
-            stream_obj.get_object()
+        stream = stream_obj.get_object()
+        assert stream.get_raw_data() == b"ABCDE"
+        assert stream.get_length() == 5
     finally:
         doc.close()
 
 
-def test_wave322_pdf_parser_rejects_indirect_negative_stream_length() -> None:
+def test_wave322_pdf_parser_recovers_indirect_negative_stream_length() -> None:
+    """As above, but /Length is an indirect ref resolving to ``-1``."""
     pdf = _build_pdf(
         [
             b"1 0 obj\n"
@@ -66,8 +71,8 @@ def test_wave322_pdf_parser_rejects_indirect_negative_stream_length() -> None:
     doc = PDFParser(RandomAccessReadBuffer(pdf)).parse()
     try:
         stream_obj = doc.get_object_from_pool(COSObjectKey(1, 0))
-
-        with pytest.raises(PDFParseError, match="stream /Length is negative: -1"):
-            stream_obj.get_object()
+        stream = stream_obj.get_object()
+        assert stream.get_raw_data() == b"ABCDE"
+        assert stream.get_length() == 5
     finally:
         doc.close()

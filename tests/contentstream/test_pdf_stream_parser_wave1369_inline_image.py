@@ -257,3 +257,31 @@ def test_operator_len_matches_name_length() -> None:
     assert len(Operator.get_operator("Tj")) == 2
     assert len(Operator.get_operator("BDC")) == 3
     assert len(Operator.get_operator("'")) == 1
+
+
+# ---------- wave 1517: ID operator stops at exactly two chars ----------
+
+
+def test_id_followed_by_binary_byte_no_separator() -> None:
+    """PDFBOX-1751: ``ID`` immediately followed by a non-whitespace binary
+    byte (no separator) must tokenize as the ``ID`` operator, with that
+    byte beginning the raw image payload. Before the fix the binary byte
+    was folded into a bogus ``ID<byte>`` keyword and the inline-image
+    segment was lost (image_data stayed ``None``)."""
+    tokens = _parse(b"BI /W 1 /H 1 ID\x10\x11EI Q\n")
+    bi = next(t for t in tokens if isinstance(t, Operator) and t.get_name() == "BI")
+    assert bi.get_image_data() == b"\x10\x11"
+
+
+def test_id_followed_by_high_byte_no_separator() -> None:
+    tokens = _parse(b"BI /W 1 /H 1 ID\xff\x02EI Q\n")
+    bi = next(t for t in tokens if isinstance(t, Operator) and t.get_name() == "BI")
+    assert bi.get_image_data() == b"\xff\x02"
+
+
+def test_id_followed_by_letter_no_separator() -> None:
+    """``IDX...`` tokenizes as ``ID`` plus payload starting with ``X`` —
+    ``readOperator`` stops the moment the buffer reads exactly ``ID``."""
+    tokens = _parse(b"BI /W 1 /H 1 IDX\x02EI Q\n")
+    bi = next(t for t in tokens if isinstance(t, Operator) and t.get_name() == "BI")
+    assert bi.get_image_data() == b"X\x02"

@@ -11,6 +11,7 @@ from pypdfbox.cos import (
     COSFloat,
     COSInteger,
     COSName,
+    COSNull,
     COSObject,
     COSObjectKey,
     COSStream,
@@ -1517,14 +1518,45 @@ class PDFParser:
         self._base.skip_whitespace()
         if self._base.peek_byte() != 0x74:  # not at 't'
             self._seek_to_trailer_keyword()
+        # The scan above may have run to EOF (no 'trailer' keyword in the
+        # file at all). read_keyword would raise on an empty span; in lenient
+        # mode that is a recoverable "trailer absent" condition, not a hard
+        # error — mark recovery and let the rebuild path supply a trailer.
+        if self._base.peek_byte() == RandomAccessRead.EOF:
+            if self._lenient:
+                self._xref_table_recovery_needed = True
+                return
+            raise PDFParseError("xref table not followed by a trailer")
         kw = self._base.read_keyword()
         if kw != b"trailer":
+            # Upstream COSParser.parseXrefTable does NOT hard-fail when the
+            # 'trailer' keyword is absent (e.g. a producer that wrote the xref
+            # table but no trailer at all, or whose trailer was truncated): in
+            # lenient mode it logs and continues, leaving the section's trailer
+            # unset so retrieveTrailer's rebuild (driven by a missing /Root)
+            # reconstructs it from the brute-force object scan. Reproduce that
+            # here — mark recovery and return so parse() rebuilds the trailer
+            # rather than raising. Strict mode still surfaces the error.
+            if self._lenient:
+                self._xref_table_recovery_needed = True
+                return
             raise PDFParseError(
                 f"expected 'trailer', got {kw!r}", position=self._base.position
             )
         self._base.skip_whitespace()
         assert self._cos_parser is not None  # established by parse()
-        trailer = self._cos_parser.parse_cos_dictionary()
+        try:
+            trailer = self._cos_parser.parse_cos_dictionary()
+        except PDFParseError:
+            # A trailer dictionary that opened but never closed ('<<' with no
+            # matching '>>') / is otherwise unparseable: upstream tolerates the
+            # broken trailer in lenient mode and falls back to the brute-force
+            # rebuild. Mark recovery and leave the section trailer unset so the
+            # rebuild path supplies a reconstructed trailer; re-raise in strict.
+            if self._lenient:
+                self._xref_table_recovery_needed = True
+                return
+            raise
         self._resolver.set_trailer(trailer)
 
     def _read_xref_subsection_header(self) -> tuple[int, int] | None:
@@ -2200,9 +2232,19 @@ class PDFParser:
                     )
                 stream = self._convert_dict_to_stream(body)
                 self._read_stream_body(stream)
-                # After endstream comes endobj.
+                # After endstream comes endobj. A producer that omits the
+                # closing ``endobj`` (or truncates the file right after the
+                # stream body) leaves nothing to read — upstream
+                # parseFileObject tolerates a missing trailing keyword in
+                # lenient mode, so treat a no-keyword/EOF as an empty closing
+                # keyword and let ``_check_endobj`` warn rather than raise.
                 self._base.skip_whitespace()
-                end_kw = self._base.read_keyword()
+                try:
+                    end_kw = self._base.read_keyword()
+                except PDFParseError:
+                    if not self._lenient:
+                        raise
+                    end_kw = b""
                 self._check_endobj(end_kw, on, gn, offset)
                 return stream
             # An 's'-keyword that isn't 'stream' is just a wrong closing
@@ -2268,24 +2310,41 @@ class PDFParser:
         # into ``_load_indirect_object_at`` and moves the shared cursor.
         # Snapshot here, resolve, then re-seek before reading the body.
         body_start = self._src.get_position()
-        try:
-            length = self._resolve_stream_length(stream)
-        except PDFParseError as exc:
-            if not self._lenient or "missing or malformed /Length" not in str(exc):
-                raise
-            self._src.seek(body_start)
+        # Mirror upstream ``COSParser.getLength`` (COSParser.java line 854):
+        # ``None`` means the ``/Length`` entry is missing or its indirect
+        # target resolved to ``COSNull`` — fall through to the endstream scan.
+        # A wrong-typed ``/Length`` (a name, a direct ``null``, an indirect
+        # ref whose content was never read) raises ``PDFParseError``, which
+        # propagates so the lazy ``COSObject.get_object`` leaves the object
+        # null — exactly as upstream ``parseCOSStream`` lets ``getLength``'s
+        # ``IOException`` bubble out.
+        length = self._resolve_stream_length(stream)
+        self._src.seek(body_start)
+        if length is None:
+            # No usable /Length. In lenient mode (Loader's default) recover by
+            # scanning to ``endstream``; in strict mode a stream with no length
+            # is a hard error — pypdfbox keeps the fail-fast strict contract.
+            if not self._lenient:
+                raise PDFParseError("stream missing or malformed /Length")
             self._recover_stream_body(stream, None)
             return
         # In lenient mode, a declared /Length is only trusted when it
-        # actually points at an ``endstream`` keyword. Otherwise upstream
-        # falls back to the endstream scan and rewrites /Length with the
-        # recovered value (PDFBOX validateStreamLength workaround).
-        self._src.seek(body_start)
-        if self._lenient and not self._validate_stream_length(body_start, length):
+        # actually points at an ``endstream`` keyword. A negative length, a
+        # length that overruns the file, or one that simply doesn't land on
+        # ``endstream`` all fail ``validate_stream_length`` and trigger the
+        # endstream scan, rewriting /Length with the recovered value
+        # (PDFBOX validateStreamLength workaround).
+        if self._lenient and (
+            length < 0 or not self._validate_stream_length(body_start, length)
+        ):
+            # A negative length is never directly read — even when the shared
+            # COSParser isn't bound (so ``_validate_stream_length`` can't run)
+            # the negative count would blow up ``bytearray(length)``; recover by
+            # scanning to ``endstream`` instead.
             self._src.seek(body_start)
             self._recover_stream_body(stream, length)
             return
-        body = bytearray(length)
+        body = bytearray(max(0, length))
         n = self._src.read_into(body)
         if n != length:
             raise PDFParseError(
@@ -2328,32 +2387,48 @@ class PDFParser:
             stream.set_item(COSName.LENGTH, COSInteger.get(len(body)))
 
     def _read_until_endstream(self) -> bytes:
-        """Lenient stream recovery for missing or malformed ``/Length``.
+        """Lenient stream recovery for a missing or malformed ``/Length``.
 
-        Reads from the current source position until the next ``endstream``
-        marker, strips the final stream line break using
-        :class:`EndstreamFilterStream`, and leaves the cursor immediately
-        after the consumed marker.
+        Scans from the current source position for the next ``endstream`` —
+        or, when a producer omitted ``endstream`` altogether, the next
+        ``endobj`` — and treats the bytes before it as the body. The trailing
+        stream line break is stripped via :class:`EndstreamFilterStream`.
+
+        Mirrors upstream ``COSParser.readUntilEndStream`` (COSParser.java
+        line 983), which matches either keyword. When the recovery stops on
+        ``endstream`` the cursor is left just past it; when it stops on
+        ``endobj`` the cursor is left *at* the keyword so the caller's
+        end-of-object check consumes it. When neither keyword is present the
+        whole remainder of the file is taken as the body (upstream scans to
+        EOF).
         """
         start = self._src.get_position()
         remaining = max(0, self._src.length() - start)
         buf = bytearray(remaining)
         n = self._src.read_into(buf)
-        if n == RandomAccessRead.EOF:
-            raise PDFParseError("expected 'endstream'", position=start)
-        if n < remaining:
-            del buf[n:]
+        data = bytes(buf[:n]) if n != RandomAccessRead.EOF and n > 0 else b""
 
-        marker = b"endstream"
-        marker_at = bytes(buf).find(marker)
-        if marker_at < 0:
-            raise PDFParseError("expected 'endstream'", position=self._src.get_position())
+        endstream_at = data.find(b"endstream")
+        endobj_at = data.find(b"endobj")
+        if endstream_at < 0 and endobj_at < 0:
+            # Neither terminator present — take everything to EOF (upstream
+            # readUntilEndStream returns when the source is exhausted).
+            marker_at = len(data)
+            cursor_after = start + marker_at
+        elif endstream_at >= 0 and (endobj_at < 0 or endstream_at <= endobj_at):
+            marker_at = endstream_at
+            cursor_after = start + marker_at + len(b"endstream")
+        else:
+            # ``endobj`` reached first (no ``endstream``): stop at it and
+            # leave the keyword for the caller's end-of-object check.
+            marker_at = endobj_at
+            cursor_after = start + marker_at
 
-        body = bytes(buf[:marker_at])
+        body = data[:marker_at]
         filtered = EndstreamFilterStream()
         filtered.filter(body, 0, len(body))
         length = filtered.calculate_length()
-        self._src.seek(start + marker_at + len(marker))
+        self._src.seek(cursor_after)
         return body[:length]
 
     def _consume_eol_after_stream_keyword(self) -> None:
@@ -2372,13 +2447,38 @@ class PDFParser:
         if b != RandomAccessRead.EOF:
             self._src.rewind(1)
 
-    def _resolve_stream_length(self, stream: COSStream) -> int:
-        """Read /Length from the stream dictionary. May be an indirect ref;
-        we resolve it through the COSObject loader."""
-        length_obj = stream.get_dictionary_object(COSName.LENGTH)  # type: ignore[attr-defined]
-        if isinstance(length_obj, COSInteger):
-            length = length_obj.value
-            if length < 0:
-                raise PDFParseError(f"stream /Length is negative: {length}")
-            return length
-        raise PDFParseError("stream missing or malformed /Length")
+    def _resolve_stream_length(self, stream: COSStream) -> int | None:
+        """Resolve ``/Length`` to an ``int``, or ``None`` when there is no
+        usable length (entry missing, or an indirect ref whose target is
+        ``COSNull``) and the caller must scan to ``endstream``. Mirrors
+        upstream ``COSParser.getLength(COSBase, COSName)`` (COSParser.java
+        line 854).
+
+        A wrong-typed ``/Length`` — a direct value that is neither a number
+        nor a missing entry (e.g. a name or a direct ``null``), or an
+        indirect ref whose content could not be read — raises
+        ``PDFParseError`` (upstream ``IOException``). The negative value is
+        returned as-is so ``validate_stream_length`` can reject it and the
+        caller falls back to the endstream scan, matching upstream where a
+        negative ``longValue()`` simply fails ``validateStreamLength``."""
+        length_base = stream.get_item(COSName.LENGTH)  # type: ignore[attr-defined]
+        if length_base is None:
+            return None
+        # Indirect reference: resolve through the COSObject loader.
+        if isinstance(length_base, COSObject):
+            length = length_base.get_object()
+            if length is None:
+                raise PDFParseError("Length object content was not read.")
+            if isinstance(length, COSNull):
+                return None
+            if isinstance(length, (COSInteger, COSFloat)):
+                return int(length.value)
+            raise PDFParseError(
+                f"Wrong type of referenced length object: {type(length).__name__}"
+            )
+        # Direct value.
+        if isinstance(length_base, (COSInteger, COSFloat)):
+            return int(length_base.value)
+        raise PDFParseError(
+            f"Wrong type of length object: {type(length_base).__name__}"
+        )

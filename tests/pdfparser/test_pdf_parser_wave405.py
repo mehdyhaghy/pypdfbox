@@ -164,16 +164,22 @@ def test_wave405_load_stream_recovers_missing_length_leniently() -> None:
         doc.close()
 
 
-def test_wave405_load_stream_recovers_malformed_length_leniently() -> None:
+def test_wave405_load_stream_wrong_type_length_is_fail_fast() -> None:
+    """A wrong-typed /Length (here a name ``/Bad``) makes upstream's
+    ``COSParser.getLength`` throw an ``IOException`` inside ``parseCOSStream``;
+    upstream's ``COSObject.getObject`` swallows it and the object resolves to
+    ``null``. pypdfbox raises ``PDFParseError`` from ``_read_stream_body`` and
+    the lazy ``get_object`` propagates it — a fail-fast robustness divergence
+    pinned both-sides (see CHANGES.md Wave 1517). Formerly pypdfbox silently
+    recovered a stream body here, which matched neither side."""
     pdf = _build_pdf(
         [b"1 0 obj\n<< /Type /Catalog /Length /Bad >>\nstream\nabc\nendstream\nendobj"]
     )
     parser = _parser(pdf)
     doc = parser.parse()
     try:
-        stream = doc.get_object_from_pool(COSObjectKey(1, 0)).get_object()
-        assert isinstance(stream, COSStream)
-        assert stream.get_raw_data() == b"abc"
+        with pytest.raises(PDFParseError, match="Wrong type of length object"):
+            doc.get_object_from_pool(COSObjectKey(1, 0)).get_object()
     finally:
         doc.close()
 

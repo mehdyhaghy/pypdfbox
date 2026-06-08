@@ -658,6 +658,18 @@ class PDFStreamParser(COSParser):
                 break
             cur = self.read_byte()
             out.append(cur)
+            # Inline-image-data quirk (PDFBOX-1751): the ``ID`` operator
+            # terminates the moment the buffer reads exactly ``ID`` — the
+            # very next byte begins the raw binary image payload and must
+            # NOT be folded into the operator name, even when it is a
+            # regular (non-delimiter) byte. Upstream's ``readOperator``
+            # special-cases this so e.g. ``ID\x10...`` (no whitespace after
+            # ``ID``) and ``IDX...`` both tokenize as the ``ID`` operator
+            # with ``X``/``\x10`` as the first data byte. Without this the
+            # binary first byte gets merged into a bogus ``ID<byte>...``
+            # keyword and the inline-image segment is never recognised.
+            if out == b"ID":
+                break
             # Type 3 glyph quirk: ``d0`` / ``d1`` operators include the digit.
             nxt = self.peek_byte()
             if cur == 0x64 and nxt in (0x30, 0x31):  # 'd' followed by '0' or '1'

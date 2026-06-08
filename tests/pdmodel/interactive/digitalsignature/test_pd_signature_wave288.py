@@ -26,12 +26,15 @@ def test_get_signed_data_rejects_malformed_byte_ranges(
     assert sig.get_signed_data(b"AAAAxxxxBBBB") is None
 
 
-def test_get_signed_content_raises_for_malformed_byte_range() -> None:
+def test_get_signed_content_tolerates_range_overrunning_file_end() -> None:
+    # Wave 1517: oracle-corrected. Upstream getSignedContent feeds the whole
+    # /ByteRange through COSFilterInputStream's monotonic cursor, which simply
+    # stops at EOF when a range's length overruns the file — it does NOT raise.
+    # [0,4,8,20] over a 12-byte file reads bytes [0,4) + [8,12) = "AAAABBBB".
     sig = PDSignature()
     sig.set_byte_range([0, 4, 8, 20])
 
-    with pytest.raises(IndexError, match="ByteRange"):
-        sig.get_signed_content(b"AAAAxxxxBBBB")
+    assert sig.get_signed_content(b"AAAAxxxxBBBB") == b"AAAABBBB"
 
 
 def test_verify_reports_malformed_byte_range_before_hashing() -> None:

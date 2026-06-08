@@ -126,9 +126,15 @@ def test_aes_cfm_decrypt_short_payload_returns_empty_bytes() -> None:
     assert handler.decrypt_string(b"too short", 1, 0) == b""
 
 
-def test_unknown_cfm_dispatch_is_pass_through_for_encrypt_and_decrypt() -> None:
+def test_unknown_cfm_dispatch_falls_back_to_rc4() -> None:
+    # Wave 1517 (CryptFilterFuzzProbe): PDFBox flips useAES ON only for
+    # AESV2/AESV3 and RC4-deciphers EVERY other /CFM — including unknown values.
+    # An unknown /CFM is therefore RC4, NOT a pass-through (a pass-through would
+    # leave such a document's content unreadable while PDFBox recovers it).
     handler = StandardSecurityHandler()
+    handler.set_encryption_key(b"k" * 16)
     payload = b"leave me alone"
 
-    assert handler._dispatch_encrypt("Mystery", payload, 1, 0) == payload  # noqa: SLF001
-    assert handler._dispatch_decrypt("Mystery", payload, 1, 0) == payload  # noqa: SLF001
+    enc = handler._dispatch_encrypt("Mystery", payload, 1, 0)  # noqa: SLF001
+    assert enc != payload
+    assert handler._dispatch_decrypt("Mystery", enc, 1, 0) == payload  # noqa: SLF001

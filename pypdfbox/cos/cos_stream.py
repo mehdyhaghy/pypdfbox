@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import logging
 from collections.abc import Iterable, Sequence
 from typing import Any, BinaryIO
 
@@ -12,6 +13,8 @@ from .cos_dictionary import COSDictionary
 from .cos_integer import COSInteger
 from .cos_name import COSName
 from .i_cos_visitor import ICOSVisitor
+
+_LOG = logging.getLogger(__name__)
 
 _FILTER: COSName = COSName.FILTER  # type: ignore[attr-defined]
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
@@ -314,6 +317,31 @@ class COSStream(COSDictionary):
         ):
             self._skip_encryption = True
             return
+        # PDFBOX-3173 / PDFBOX-2603: a /Type /Metadata stream whose raw bytes
+        # already begin with the cleartext XMP marker ``<?xpacket`` is not
+        # actually encrypted — some producers emit cleartext metadata while
+        # still declaring /EncryptMetadata true. Upstream ``decryptStream``
+        # detects this, warns, and leaves the bytes untouched; mirror it so we
+        # don't corrupt the metadata by deciphering plaintext. Only applies
+        # when metadata decrypt is in effect (the /EncryptMetadata=false case
+        # already returned above).
+        if (
+            isinstance(type_name, COSName)
+            and type_name.name == "Metadata"
+            and self._buffer is not None
+        ):
+            try:
+                head = bytes(self.get_raw_data()[:9])
+            except Exception:  # noqa: BLE001 — defensive; fall through to decrypt
+                head = b""
+            if head == b"<?xpacket":
+                _LOG.warning(
+                    "Metadata is not encrypted, but was expected to be; read "
+                    "PDF specification about EncryptMetadata (default value: "
+                    "true)"
+                )
+                self._skip_encryption = True
+                return
         self._security_handler = handler
         self._object_number = int(obj_num)
         self._generation_number = int(gen_num)

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pytest
-
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,
@@ -13,7 +11,7 @@ from pypdfbox.cos import (
     COSString,
 )
 from pypdfbox.io import RandomAccessReadBuffer
-from pypdfbox.pdfparser import COSParser, PDFParseError, PDFParser
+from pypdfbox.pdfparser import COSParser, PDFParser
 
 
 def _parser(data: bytes = b"") -> PDFParser:
@@ -77,10 +75,14 @@ def test_wave644_read_stream_body_rewinds_after_resolving_length() -> None:
         doc.close()
 
 
-def test_wave644_read_stream_body_rejects_negative_direct_length() -> None:
+def test_wave644_read_stream_body_recovers_negative_direct_length() -> None:
+    """A negative direct /Length fails ``validate_stream_length`` and the body
+    is recovered by scanning to ``endstream`` in lenient mode, mirroring
+    upstream PDFBox ``parseCOSStream``. (Wave 1517 — formerly pypdfbox raised a
+    fail-fast ``PDFParseError`` on a negative length.)"""
     parser = _parser(b"\nABC\nendstream\n")
     stream = COSStream()
     stream.set_item(COSName.LENGTH, COSInteger.get(-1))
 
-    with pytest.raises(PDFParseError, match="negative"):
-        parser._read_stream_body(stream)  # noqa: SLF001
+    parser._read_stream_body(stream)  # noqa: SLF001
+    assert stream.get_raw_data() == b"ABC"

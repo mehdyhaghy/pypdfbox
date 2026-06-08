@@ -415,22 +415,26 @@ def test_pdsignature_get_contents_from_bytes_strips_residual_delimiters() -> Non
     assert out == bytes.fromhex("bc")
 
 
-def test_pdsignature_get_contents_raises_on_negative_slice() -> None:
-    """A ``/ByteRange`` whose arithmetic yields a negative length raises
-    ``IndexError`` (parity with upstream ``IndexOutOfBoundsException``)."""
+def test_pdsignature_get_contents_negative_slice_yields_empty() -> None:
+    """Wave 1517: oracle-corrected. ``getContents(byte[])`` arithmetic that
+    yields a negative window length feeds a ByteArrayInputStream whose clamped
+    ``count = min(begin + len, fileLen)`` falls below ``pos``, so the stream is
+    empty and ``parseHex("")`` returns ``b""`` — upstream does not raise."""
     sig = PDSignature()
     body = b"AAAAABBBBBCCCCCDDDDDEEEEE"
-    # br[2] (5) < begin (0+10+1=11) → len = 5-11-1 = -7 → negative.
+    # br[2] (5) < begin (0+10+1=11) -> len = 5-11-1 = -7 -> negative.
     sig.set_byte_range([0, 10, 5, 10])
-    with pytest.raises(IndexError, match="missing or malformed"):
-        sig.get_contents_from_bytes(body)
+    assert sig.get_contents_from_bytes(body) == b""
 
 
-def test_pdsignature_get_contents_raises_when_slice_overruns_file() -> None:
-    """A ``/ByteRange`` whose slice runs past EOF raises ``IndexError``."""
+def test_pdsignature_get_contents_overrunning_slice_decodes_clamped() -> None:
+    """Wave 1517: oracle-corrected. A window whose length overruns EOF is
+    clamped to the file end; the clamped bytes (here non-hex) are handed to
+    ``parseHex``, which rejects them with IOException (OSError here) — there is
+    no IndexError length pre-check."""
     sig = PDSignature()
     body = b"PRE-PREFIX<abcd>POSTFIX"  # 23 bytes
-    # begin=0+10+1=11, len=100-11-1=88 → 11+88 > 23.
+    # begin=0+10+1=11, len=100-11-1=88 -> clamped to bytes [11, 23).
     sig.set_byte_range([0, 10, 100, 7])
-    with pytest.raises(IndexError, match="missing or malformed"):
+    with pytest.raises(OSError, match="Invalid hex"):
         sig.get_contents_from_bytes(body)

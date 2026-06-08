@@ -34,11 +34,17 @@ def test_verify_reports_signed_data_extraction_failure_for_negative_range() -> N
     assert result.computed_digest is None
 
 
-def test_get_signed_content_raises_for_malformed_byte_range() -> None:
+def test_get_signed_content_raises_oserror_when_skip_runs_past_eof() -> None:
+    # Wave 1517: oracle-corrected. Upstream getSignedContent reads range1
+    # ([0,4) -> "AAAA"), then must skip the monotonic cursor forward to the
+    # second range's start (50) — but the 12-byte file is exhausted first, so
+    # COSFilterInputStream.nextRange() throws IOException (OSError here). A
+    # range whose START is past EOF raises; one whose LENGTH merely overruns
+    # the end stops quietly (see test_pd_signature_wave288).
     sig = PDSignature()
     sig.set_byte_range([0, 4, 50, 1])
 
-    with pytest.raises(IndexError, match="missing or malformed /ByteRange"):
+    with pytest.raises(OSError, match="skip"):
         sig.get_signed_content(b"AAAAxxxxBBBB")
 
 

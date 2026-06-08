@@ -203,8 +203,11 @@ def test_read_until_endstream_direct_call_eof_raises() -> None:
 
     parser = _parser(b"")
     parser._src = _FakeEOFSource()  # noqa: SLF001
-    with pytest.raises(PDFParseError, match="expected 'endstream'"):
-        parser._read_until_endstream()  # noqa: SLF001
+    # Upstream COSParser.readUntilEndStream returns whatever it accumulated
+    # when the source is exhausted (no exception). With no bytes available the
+    # recovered body is empty. (Wave 1517: aligned the EOF/no-marker scan with
+    # PDFBox, which scans to EOF rather than raising.)
+    assert parser._read_until_endstream() == b""  # noqa: SLF001
 
 
 def test_read_until_endstream_partial_read_trims_buffer() -> None:
@@ -272,12 +275,16 @@ def test_read_until_endstream_partial_read_trims_buffer() -> None:
     assert b"endstream" not in body
 
 
-def test_read_until_endstream_direct_call_missing_marker_raises() -> None:
-    """Call ``_read_until_endstream`` against a buffer that has bytes
-    but no ``endstream`` marker — hits line 1272."""
+def test_read_until_endstream_direct_call_missing_marker_returns_to_eof() -> None:
+    """Call ``_read_until_endstream`` against a buffer that has bytes but no
+    ``endstream`` (nor ``endobj``) marker. Upstream
+    ``COSParser.readUntilEndStream`` scans to EOF and returns the accumulated
+    bytes (after the EndstreamFilterStream trailing-EOL trim) rather than
+    raising. (Wave 1517 alignment.)"""
     parser = _parser(b"no marker in here at all\n")
-    with pytest.raises(PDFParseError, match="expected 'endstream'"):
-        parser._read_until_endstream()  # noqa: SLF001
+    body = parser._read_until_endstream()  # noqa: SLF001
+    assert body.startswith(b"no marker in here at all")
+    assert b"endstream" not in body
 
 
 def test_read_until_endstream_direct_call_recovers_body() -> None:

@@ -149,11 +149,15 @@ def test_uppercase_i_operator_is_not_inline_image_data() -> None:
     assert isinstance(toks[1], Operator) and toks[1].name == "Q"
 
 
-def test_id_prefix_operator_is_not_inline_image_data() -> None:
+def test_id_followed_by_nonspace_starts_inline_image_data() -> None:
+    # Wave 1517 (PDFBOX-1751): readOperator terminates the operator the instant
+    # the buffer reads exactly "ID", even when the next byte is non-whitespace.
+    # So "IDx..." is the inline-image-data operator ID whose payload runs to EI
+    # (here EOF, no EI) — NOT a regular operator named "IDx". Verified against
+    # the live PDFBox 3.0.7 jar by InlineImageFuzzProbe.
     toks = tokens(b"IDx Q")
-    assert len(toks) == 2
-    assert isinstance(toks[0], Operator) and toks[0].name == "IDx"
-    assert isinstance(toks[1], Operator) and toks[1].name == "Q"
+    assert len(toks) == 1
+    assert isinstance(toks[0], Operator) and toks[0].name == "ID"
 
 
 def test_close_bracket_returns_cosnull() -> None:

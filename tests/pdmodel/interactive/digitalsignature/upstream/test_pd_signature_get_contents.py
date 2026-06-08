@@ -95,8 +95,11 @@ def test_get_contents_decodes_uppercase_and_lowercase_hex() -> None:
 
 
 def test_get_contents_with_byte_range_out_of_bounds() -> None:
-    """Offsets that exceed the document length raise ``IndexError``."""
+    """Wave 1517: oracle-corrected. Upstream ``getContents(byte[])`` wraps the
+    /Contents window in a ByteArrayInputStream(pdfFile, begin, len) whose
+    constructor CLAMPS the span to the buffer's end. With begin=101, len=98
+    over a 5-byte file the read window is entirely past EOF, so the stream is
+    empty and ``parseHex("")`` yields ``b""`` — no exception."""
     signature = PDSignature()
     signature.set_byte_range([0, 100, 200, 100])
-    with pytest.raises(IndexError):
-        signature.get_contents_from_bytes(b"short")
+    assert signature.get_contents_from_bytes(b"short") == b""

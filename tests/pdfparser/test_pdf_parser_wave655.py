@@ -134,7 +134,11 @@ def test_wave655_traditional_xref_rejects_bad_keywords_and_eof() -> None:
     with pytest.raises(PDFParseError, match="unexpected EOF"):
         parser._parse_traditional_xref_section()  # noqa: SLF001
 
+    # A keyword that is present but not exactly 'trailer' is a hard error only
+    # in STRICT mode; lenient mode recovers (the trailer is rebuilt by the
+    # brute-force path — wave 1517). Assert the strict-mode rejection here.
     parser, doc = _ready_parser(b"xref\ntrailerish")
+    parser.set_lenient(False)
     try:
         with pytest.raises(PDFParseError, match="expected 'trailer'"):
             parser._parse_traditional_xref_section()  # noqa: SLF001
