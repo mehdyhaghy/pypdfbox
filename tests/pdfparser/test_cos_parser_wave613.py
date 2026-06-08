@@ -50,13 +50,20 @@ def test_wave613_direct_length_stream_reports_truncated_body() -> None:
 @pytest.mark.parametrize(
     ("mutate", "message"),
     [
-        (lambda stream: stream.remove_item("Type"), "missing /Type /ObjStm"),
-        (lambda stream: stream.remove_item("N"), "missing /N or /First"),
-        (lambda stream: stream.set_item("N", COSInteger.get(-1)), "negative /N"),
+        # Wave 1516: aligned with upstream ``PDFObjectStreamParser`` (Apache
+        # PDFBox 3.0.7), which validates only ``/N`` and ``/First`` via
+        # ``getInt`` (-1 sentinel for absent) and never inspects ``/Type``.
+        (lambda stream: stream.remove_item("N"), "/N entry missing"),
+        (lambda stream: stream.remove_item("First"), "/First entry missing"),
+        # A literal ``/N -1`` / ``/First -1`` is indistinguishable from a
+        # missing entry under the ``getInt`` -1 sentinel — same "entry missing".
+        (lambda stream: stream.set_item("N", COSInteger.get(-1)), "/N entry missing"),
         (
             lambda stream: stream.set_item("First", COSInteger.get(-1)),
-            "negative /First",
+            "/First entry missing",
         ),
+        # A more-negative value hits the dedicated "Illegal" branch.
+        (lambda stream: stream.set_item("N", COSInteger.get(-2)), "Illegal /N entry"),
         (lambda stream: stream.set_raw_data(b"-8 0\ntrue"), "negative object number"),
     ],
 )
@@ -71,5 +78,23 @@ def test_wave613_object_stream_metadata_validation(
 
         with pytest.raises(PDFParseError, match=message):
             _parser(b"", document=doc).parse_object_stream(7)
+    finally:
+        doc.close()
+
+
+def test_wave613_object_stream_wrong_type_is_tolerated() -> None:
+    """Wave 1516: a wrong / absent ``/Type`` is TOLERATED — upstream
+    ``PDFObjectStreamParser`` never checks ``/Type``. The well-formed header
+    still decodes its member (validated against the live oracle:
+    ``type_wrong`` / ``type_missing`` resolve at parity)."""
+    doc = COSDocument()
+    try:
+        stream = _objstm(doc)
+        stream.remove_item("Type")
+        doc.get_object_from_pool(COSObjectKey(7, 0)).set_object(stream)
+
+        parsed = _parser(b"", document=doc).parse_object_stream(7)
+        assert len(parsed) == 1
+        assert doc.has_object(COSObjectKey(8, 0))
     finally:
         doc.close()

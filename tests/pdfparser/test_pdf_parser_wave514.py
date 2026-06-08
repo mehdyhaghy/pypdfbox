@@ -41,11 +41,24 @@ def _xref_stream(widths: list[int], raw: bytes) -> COSStream:
     return stream
 
 
-def test_wave514_traditional_xref_rejects_unknown_entry_flag() -> None:
+def test_wave514_traditional_xref_tolerates_unknown_entry_flag() -> None:
+    """An entry row with an unknown type char (not ``n`` / ``f``) is NOT a hard
+    error: upstream PDFBox logs "Unexpected XRefTable Entry", breaks the
+    subsection, and recovers the object by brute force (verified against the
+    live PDFBox 3.0.7 oracle, wave 1516). pypdfbox mirrors that — the malformed
+    flag breaks the table parse and the catalog is relocated from the body, so
+    ``parse()`` succeeds and the recovered catalog resolves. (Retargeted from
+    the wave-514 strict-raise contract, which encoded a pypdfbox-only
+    strictness the oracle does not share.)"""
     pdf = _build_pdf_with_xref_entry(b"0000000009 00000 z ")
 
-    with pytest.raises(PDFParseError, match="unknown xref entry flag"):
-        _parser(pdf).parse()
+    doc = _parser(pdf).parse()
+    try:
+        catalog = doc.get_catalog()
+        assert catalog is not None
+        assert catalog.get_dictionary_object(COSName.TYPE) == COSName.CATALOG
+    finally:
+        doc.close()
 
 
 def test_wave514_xref_stream_rejects_negative_width() -> None:

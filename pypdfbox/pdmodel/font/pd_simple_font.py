@@ -269,7 +269,31 @@ class PDSimpleFont(PDFont):
             return self._encoding_typed
         raw = self.get_encoding()
         if isinstance(raw, COSName):
-            self._encoding_typed = Encoding.get_instance(raw)
+            # Mirror upstream PDSimpleFont.readEncoding for the name branch:
+            # a non-embedded ZapfDingbats ignores the declared name and uses
+            # its built-in (PDFBOX-/PDF.js 16464), and an UNKNOWN name falls
+            # back to the font program's built-in encoding via
+            # ``read_encoding_from_font`` (it does NOT leave the encoding
+            # null). Both carve-outs were already present in the eager
+            # ``read_encoding`` path; the lazy accessor used to set
+            # ``Encoding.get_instance(raw)`` directly, leaving every unknown
+            # name (e.g. /PDFDocEncoding, a typo'd name) resolving to None —
+            # which diverged from Java (verified live, wave 1516).
+            if (
+                self.get_name() == Standard14Fonts.ZAPF_DINGBATS
+                and not self.is_embedded()
+            ):
+                self._encoding_typed = ZapfDingbatsEncoding.INSTANCE
+            else:
+                resolved = Encoding.get_instance(raw)
+                if resolved is None:
+                    _LOG.warning("Unknown encoding: %s", raw.name)
+                    # Guard re-entrancy the same way the ``raw is None``
+                    # branch does: ``read_encoding_from_font`` may consult
+                    # ``is_standard14()`` -> ``get_encoding_typed``.
+                    self._encoding_resolved = True
+                    resolved = self.read_encoding_from_font()
+                self._encoding_typed = resolved
         elif isinstance(raw, COSDictionary):
             # Mirror upstream PDSimpleFont.readEncoding for the dictionary
             # branch: a /Differences encoding without a (valid) /BaseEncoding

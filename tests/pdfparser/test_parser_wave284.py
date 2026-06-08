@@ -70,7 +70,7 @@ def test_parse_object_stream_rejects_first_beyond_decoded_body() -> None:
         doc.close()
 
 
-def test_compressed_object_loader_rejects_object_offset_outside_payload() -> None:
+def test_compressed_object_loader_offset_outside_payload_resolves_null() -> None:
     out = bytearray(b"%PDF-1.5\n")
     objstm_body = b"7 99\n(one)"
     objstm_off = len(out)
@@ -99,10 +99,14 @@ def test_compressed_object_loader_rejects_object_offset_outside_payload() -> Non
     )
     out += b"startxref\n" + str(xref_off).encode("ascii") + b"\n%%EOF"
 
+    # Wave 1516: an in-header offset past the payload is a malformed
+    # object-stream, which upstream ``COSParser.parseObjectStreamObject``
+    # swallows in lenient mode (the default) and resolves to null — it does not
+    # propagate. Validated against the live oracle (``header_offset_past_payload``
+    # -> null on both sides). Lenient parsing is the default load mode.
     doc = PDFParser(RandomAccessReadBuffer(bytes(out))).parse()
     try:
         obj7 = doc.get_object_from_pool(COSObjectKey(7, 0))
-        with pytest.raises(PDFParseError, match="offset 99 outside payload length"):
-            obj7.get_object()
+        assert obj7.get_object() is None
     finally:
         doc.close()

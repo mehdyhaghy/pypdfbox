@@ -48,10 +48,15 @@ def test_wave623_parse_object_stream_rejects_bad_metadata_shapes() -> None:
     doc = COSDocument()
     try:
         bad_stream = COSStream()
+        # Wave 1516: ``/Type`` is no longer validated (upstream
+        # ``PDFObjectStreamParser`` checks only ``/N`` and ``/First``), so a
+        # non-``/ObjStm`` container with NO ``/N`` surfaces the "missing /N"
+        # error instead of a "/Type" error — the bad-metadata rejection still
+        # holds, just at the field upstream actually inspects.
         bad_stream.set_item(COSName.TYPE, COSName.get_pdf_name("NotObjStm"))
         doc.get_object_from_pool(COSObjectKey(5, 0)).set_object(bad_stream)
 
-        with pytest.raises(PDFParseError, match="missing /Type /ObjStm"):
+        with pytest.raises(PDFParseError, match="/N entry missing"):
             _parser(b"", document=doc).parse_object_stream(5)
     finally:
         doc.close()

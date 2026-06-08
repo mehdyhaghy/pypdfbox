@@ -118,7 +118,9 @@ def test_wave456_rebuild_trailer_recovers_common_entries() -> None:
 @pytest.mark.parametrize(
     ("body", "n", "first", "message"),
     [
-        (b"", 0, -1, "negative /First"),
+        # Wave 1516: ``/First -1`` reads as MISSING via the upstream ``getInt``
+        # -1 sentinel (a literal -1 is indistinguishable from absent).
+        (b"", 0, -1, "/First entry missing"),
         (b"10 0", 1, 6, "exceeds decoded length"),
         (b"10 ", 1, 3, "header truncated"),
         (b"-1 0\n42", 1, 5, "negative object number"),

@@ -11,12 +11,9 @@ entries. End-to-end this exercises the cluster-#4 wiring:
 
 from __future__ import annotations
 
-import pytest
-
 from pypdfbox.cos import COSDictionary, COSInteger, COSName, COSObjectKey, COSString
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser import PDFParser
-from pypdfbox.pdfparser.parse_error import PDFParseError
 
 # --------------------------------------------------------------- helpers
 
@@ -154,9 +151,14 @@ def test_objstm_index_lookup_uses_inner_offset_not_obj_num() -> None:
     assert isinstance(body99, COSString) and body99.get_bytes() == b"third"
 
 
-def test_objstm_loader_failure_when_n_or_first_missing() -> None:
-    """Compressed lookups against a malformed ObjStm (missing /N or
-    /First) should raise PDFParseError rather than silently returning."""
+def test_objstm_loader_resolves_null_when_n_or_first_missing() -> None:
+    """Compressed lookups against a malformed ObjStm (missing /N or /First)
+    resolve to null in lenient mode (the default load path) rather than
+    propagating — wave 1516 aligned with upstream
+    ``COSParser.parseObjectStreamObject``, which catches the ``IOException``
+    raised by ``PDFObjectStreamParser``'s /N//First validation and returns
+    null. Validated against the live oracle (``n_zero`` / ``first_negative``
+    etc. all resolve null on both sides)."""
     # Hand-build an ObjStm with no /N or /First. The xref stream points
     # at object 5 (a compressed entry) so the loader has to touch the
     # malformed container.
@@ -188,14 +190,15 @@ def test_objstm_loader_failure_when_n_or_first_missing() -> None:
     out += b"startxref\n" + str(xref_off).encode("ascii") + b"\n%%EOF"
     doc = PDFParser(RandomAccessReadBuffer(bytes(out))).parse()
     obj5 = doc.get_object_from_pool(COSObjectKey(5, 0))
-    with pytest.raises(PDFParseError):
-        obj5.get_object()
+    assert obj5.get_object() is None
 
 
-def test_objstm_index_out_of_range_raises() -> None:
-    """If a type-2 xref entry points to ``inner_index >= /N`` the loader
-    must surface the contradiction as a parse error rather than silently
-    truncating."""
+def test_objstm_out_of_range_index_resolves_by_number() -> None:
+    """If a type-2 xref entry points to ``inner_index >= /N`` the index
+    is ignored: the member is resolved by its stored object NUMBER (upstream
+    ``parseAllObjects`` keys by ``COSObjectKey``), so object 7 — present in the
+    header — still resolves even though the xref's stream index is bogus.
+    Validated against the live oracle (``header_offset_unordered``)."""
     items = [(7, b"(one)")]  # only one packed object → /N == 1
     out = bytearray(b"%PDF-1.5\n")
     objstm_body, first = _build_objstm_body(items)
@@ -225,8 +228,9 @@ def test_objstm_index_out_of_range_raises() -> None:
     out += b"startxref\n" + str(xref_off).encode("ascii") + b"\n%%EOF"
     doc = PDFParser(RandomAccessReadBuffer(bytes(out))).parse()
     obj7 = doc.get_object_from_pool(COSObjectKey(7, 0))
-    with pytest.raises(PDFParseError):
-        obj7.get_object()
+    resolved = obj7.get_object()
+    assert isinstance(resolved, COSString)
+    assert resolved.get_bytes() == b"one"
 
 
 def test_objstm_indirect_refs_inside_compressed_object_resolve() -> None:

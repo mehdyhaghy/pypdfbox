@@ -117,7 +117,16 @@ def test_wave664_decode_xref_stream_records_unknown_type_as_free_entry() -> None
     assert entry.compressed_index == -1
 
 
-def test_wave664_load_compressed_object_tolerates_header_object_number_mismatch() -> None:
+def test_wave664_load_compressed_object_header_number_mismatch_resolves_null() -> None:
+    # Wave 1516: the compressed loader resolves a member by its STORED OBJECT
+    # NUMBER (upstream ``PDFObjectStreamParser.parseAllObjects`` keys by
+    # ``COSObjectKey``; ``parseObjectStreamObject`` then ``objects.remove(key)``).
+    # When the header advertises a DIFFERENT object number than the one
+    # requested (here header says obj 9, the xref asks for obj 8), the requested
+    # key is absent from the parsed map, so it resolves to null — NOT to the
+    # mis-numbered member at the positional index. This corrects the earlier
+    # by-index "tolerate mismatch -> 42" behaviour, which diverged from PDFBox.
+    # Validated against the live oracle (``n_smaller_member_second`` -> null).
     parser, doc = _ready_parser(b"")
     try:
         objstm = COSStream()
@@ -129,8 +138,7 @@ def test_wave664_load_compressed_object_tolerates_header_object_number_mismatch(
 
         loaded = parser._load_compressed_object(7, 0, COSObject(8, 0))  # noqa: SLF001
 
-        assert isinstance(loaded, COSInteger)
-        assert loaded.value == 42
+        assert loaded is None
     finally:
         doc.close()
 

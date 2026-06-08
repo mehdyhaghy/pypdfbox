@@ -134,6 +134,12 @@ class PDFParser:
         # entry points can round-trip the value. Stored only; no behaviour
         # branches off it yet.
         self._lenient: bool = True
+        # Set by :meth:`_parse_traditional_xref_section` when a classic xref
+        # table breaks mid-parse (malformed subsection header / entry row,
+        # upstream's "Unexpected XRefTable Entry"). The chain walker then runs
+        # a brute-force object merge so the incomplete table is repaired,
+        # mirroring upstream COSParser's post-break recovery.
+        self._xref_table_recovery_needed: bool = False
         # Lazy ``PDDocument`` wrapper around the parsed ``COSDocument``.
         # Built on first call to :meth:`get_pd_document`; mirrors upstream
         # ``PDFParser.getPDDocument()``.
@@ -255,6 +261,25 @@ class PDFParser:
             # via /Prev (PRD §6.5 cluster #2).
             self._document.set_start_xref(startxref)
             self.parse_xref_chain(startxref)
+            # A classic xref table that broke mid-parse (malformed subsection
+            # header / entry row) leaves an incomplete object map. Mirror
+            # upstream COSParser, which after an "Unexpected XRefTable Entry"
+            # break recovers the missing objects via bfSearchForObjects and
+            # merges them into the xref — so the orphaned / mislabelled object
+            # (e.g. the catalog itself) is still reachable. Also fires when a
+            # cleanly parsed table left the trailer's /Root pointing at a
+            # *reference* that doesn't resolve to a catalog (e.g. the catalog
+            # object mislabelled free): upstream relocates it via the same
+            # brute-force scan. A NON-reference /Root (an integer / name
+            # scalar) is left untouched — there is no object to relocate, so it
+            # stays dangling exactly as upstream's resolve finds it. Only fires
+            # when a break occurred or /Root needs relocation, so well-formed
+            # tables pay nothing.
+            if self._lenient and (
+                self._xref_table_recovery_needed
+                or self._located_root_needs_relocation()
+            ):
+                self._merge_brute_force_objects()
             # Mirror upstream COSParser.retrieveTrailer: a trailer that
             # parsed cleanly but carries NO /Root item (the key is absent —
             # checked raw via getItem, not resolved) triggers a brute-force
@@ -1431,26 +1456,67 @@ class PDFParser:
                     )
 
     def _parse_traditional_xref_section(self) -> None:
-        """Parse ``xref <subsections> trailer << ... >>``."""
+        """Parse ``xref <subsections> trailer << ... >>``.
+
+        Mirrors upstream ``COSParser.parseXrefTable``'s leniency: each
+        subsection header is read as a line and split on whitespace; a header
+        that is not exactly two integers (an orphan entry left over from a wrong
+        ``/count``, or a non-numeric / mistyped header), and likewise a
+        malformed entry row inside the declared count (wrong field count, an
+        unknown type char other than ``n`` / ``f``), is NOT a hard error —
+        upstream logs "Unexpected XRefTable Entry" and *breaks* the subsection
+        loop, then recovers the (possibly incomplete) object set with a
+        brute-force scan. We reproduce that: a malformed table breaks early and
+        sets ``_xref_table_recovery_needed`` so the chain walker merges the
+        brute-force object map afterwards, instead of raising."""
         kw = self._base.read_keyword()
         if kw != b"xref":
             raise PDFParseError(f"expected 'xref', got {kw!r}", position=self._base.position)
         # Some producers omit the EOL after 'xref' but the spec requires it
         # and PDFBox tolerates either way; skip whitespace defensively.
         self._base.skip_whitespace()
-        # Loop subsections until we hit the 'trailer' keyword.
+        broke_early = False
         while True:
+            self._base.skip_whitespace()
             peek = self._base.peek_byte()
             if peek == 0x74:  # 't' — start of 'trailer'
                 break
             if peek == RandomAccessRead.EOF:
                 raise PDFParseError("unexpected EOF inside xref section")
-            first_obj = self._base.read_int()
-            self._base.skip_whitespace()
-            count = self._base.read_int()
-            self._base.skip_whitespace()
+            header = self._read_xref_subsection_header()
+            if header is None:
+                # Malformed subsection header (upstream's "Unexpected
+                # XRefTable Entry" break): stop consuming subsections; the
+                # trailer keyword is located below and recovery fills gaps.
+                broke_early = True
+                break
+            first_obj, count = header
             for i in range(count):
-                self._read_xref_entry(first_obj + i)
+                # Defensive stop: an entry line that turns out to be the
+                # 'trailer' keyword (an over-long declared count) must not be
+                # consumed as an entry. Upstream guards with the same peek.
+                self._base.skip_whitespace()
+                p = self._base.peek_byte()
+                if p == 0x74 or p == RandomAccessRead.EOF:  # 't' / EOF
+                    break
+                try:
+                    self._read_xref_entry(first_obj + i)
+                except PDFParseError:
+                    # Malformed entry row (wrong field count / unknown type
+                    # char): upstream's "Unexpected XRefTable Entry" break.
+                    # Stop this subsection and recover the rest by brute force.
+                    broke_early = True
+                    break
+            if broke_early:
+                break
+        if broke_early:
+            self._xref_table_recovery_needed = True
+        # A malformed break may leave the cursor before an orphan entry line
+        # rather than at 'trailer'; scan forward to the 'trailer' keyword the
+        # way upstream's readLine loop does.
+        self._base.skip_whitespace()
+        if self._base.peek_byte() != 0x74:  # not at 't'
+            self._seek_to_trailer_keyword()
         kw = self._base.read_keyword()
         if kw != b"trailer":
             raise PDFParseError(
@@ -1460,6 +1526,50 @@ class PDFParser:
         assert self._cos_parser is not None  # established by parse()
         trailer = self._cos_parser.parse_cos_dictionary()
         self._resolver.set_trailer(trailer)
+
+    def _read_xref_subsection_header(self) -> tuple[int, int] | None:
+        """Read one ``<first> <count>`` subsection header.
+
+        Returns ``(first_obj, count)`` on success, or ``None`` when the line
+        is not exactly two integers — mirroring upstream
+        ``COSParser.parseXrefTable``'s ``splitString.length != 2`` /
+        ``NumberFormatException`` "Unexpected XRefTable Entry" break. The
+        cursor is left at the start of the offending line so the caller's
+        trailer-keyword scan can recover. Note an orphan *entry* line such as
+        ``0000000115 00000 n`` splits into THREE tokens and so is correctly
+        rejected as a header here."""
+        saved = self._base.position
+        line = self._base.read_until_eol()
+        self._base.skip_eol()
+        parts = line.split()
+        if len(parts) != 2:
+            self._src.seek(saved)
+            return None
+        try:
+            first_obj = int(parts[0].decode("ascii"))
+            count = int(parts[1].decode("ascii"))
+        except ValueError:
+            self._src.seek(saved)
+            return None
+        if count < 0:
+            self._src.seek(saved)
+            return None
+        return first_obj, count
+
+    def _seek_to_trailer_keyword(self) -> None:
+        """Advance the cursor to the next ``trailer`` keyword, skipping over
+        orphan xref-entry lines left behind by a lenient subsection break.
+
+        Mirrors upstream's ``readLine`` loop, which keeps consuming lines after
+        an "Unexpected XRefTable Entry" until it reaches ``trailer`` (or EOF).
+        Bounded by a sane line budget so a pathological file can't spin."""
+        for _ in range(1 << 16):
+            self._base.skip_whitespace()
+            peek = self._base.peek_byte()
+            if peek == 0x74 or peek == RandomAccessRead.EOF:  # 't' / EOF
+                return
+            self._base.read_until_eol()
+            self._base.skip_eol()
 
     def _read_xref_entry(self, object_number: int) -> None:
         """Read one traditional xref entry line."""
@@ -1632,6 +1742,97 @@ class PDFParser:
                 ref = self._document.get_object_from_pool(key)
                 trailer.set_item(COSName.get_pdf_name("Info"), ref)
                 info_set = True
+
+    def _located_root_needs_relocation(self) -> bool:
+        """``True`` when the located trailer's ``/Root`` is an indirect
+        *reference* that does not resolve to a catalog dictionary.
+
+        Used to decide whether the cleanly parsed classic table needs a
+        brute-force object merge to relocate a catalog the xref dropped /
+        mislabelled free. A non-reference ``/Root`` (an integer / name scalar)
+        returns ``False`` — there is no object to relocate, so it is left to
+        surface as a dangling root (matching upstream's resolve, which finds
+        no catalog there either)."""
+        trailer = self._resolver.get_trailer()
+        if trailer is None:
+            return False
+        root_item = trailer.get_item(COSName.ROOT)
+        if not isinstance(root_item, COSObject):
+            return False
+        # If the /Root object already has a usable xref entry (an in-use table
+        # entry, an uncompressed xref-stream entry, or a compressed object that
+        # lives inside an /ObjStm), it is present and WILL resolve once the
+        # document is fully populated — most modern PDFs put the catalog in an
+        # object stream, and that member is not yet loadable at this early
+        # post-chain-walk check. Relocation is only warranted when the /Root
+        # key is genuinely absent from the table or carries merely a *free*
+        # stub (``compressed_index == -1``, the same predicate the merge uses
+        # to decide a key is unusable). Without this guard the relocation merge
+        # spuriously fired on every file whose catalog is compressed, pulling
+        # the /XRef-stream object (and any other body objects) into the pool.
+        root_key = COSObjectKey(
+            root_item.get_object_number(), root_item.get_generation_number()
+        )
+        entry = self._resolver.get_xref_table().get(root_key)
+        if entry is not None and entry.compressed_index != -1:
+            return False
+        try:
+            resolved = trailer.get_dictionary_object(COSName.ROOT)
+        except PDFParseError:
+            return True
+        return not isinstance(resolved, COSDictionary)
+
+    def _merge_brute_force_objects(self) -> None:
+        """Repair an incompletely parsed classic xref table by merging the
+        brute-force object scan into the resolver.
+
+        Fired when :meth:`_parse_traditional_xref_section` broke mid-parse (a
+        malformed subsection header / entry row) or when the cleanly parsed
+        table left ``/Root`` pointing at an unresolvable reference. Mirrors
+        upstream COSParser, which after an "Unexpected XRefTable Entry" break —
+        or an inconsistent table — recovers the missing / mislabelled objects
+        via ``bfSearchForObjects`` so the body's real ``n g obj`` definitions
+        (including a catalog the table dropped or mislabelled free) remain
+        reachable. Brute-force offsets are registered in a synthetic resolver
+        section for keys the partial table did not carry AND for keys it carried
+        only as a *free* stub (those are overridden with the in-use offset so a
+        catalog mislabelled ``f`` is relocated); cleanly parsed in-use entries
+        keep their parsed offsets and ``/Prev``-chain precedence."""
+        assert self._cos_parser is not None
+        assert self._document is not None
+        offsets = self._cos_parser.bf_search_for_objects()
+        if not offsets:
+            return
+        existing = self._resolver.get_xref_table()
+        new_entries: dict[COSObjectKey, int] = {}
+        for key, offset in offsets.items():
+            entry = existing.get(key)
+            # Skip keys the table already carries as a usable in-use entry; a
+            # free stub (compressed_index == -1) is overridden with the
+            # brute-force in-use offset so a mislabelled-free object recovers.
+            if entry is not None and entry.compressed_index != -1:
+                continue
+            new_entries[key] = offset
+        if new_entries:
+            # begin_section(-1) keeps the synthetic merge out of visited-offset
+            # tracking; the regular populate_document step then attaches lazy
+            # loaders for these recovered keys.
+            self._resolver.begin_section(-1)
+            for key, offset in new_entries.items():
+                self._resolver.set_entry(
+                    key, XrefEntry(type=XrefType.TABLE, offset=offset)
+                )
+        # If the trailer's /Root key now dangles (the broken table dropped the
+        # catalog entry), repair it from the brute-force scan the same way the
+        # missing-/Root path does.
+        trailer = self._resolver.get_trailer()
+        if trailer is not None:
+            root = trailer.get_dictionary_object(COSName.ROOT)
+            if not isinstance(root, COSDictionary):
+                rebuilt = self._cos_parser.rebuild_trailer()
+                rebuilt_root = rebuilt.get_item(COSName.ROOT)
+                if rebuilt_root is not None:
+                    trailer.set_item(COSName.ROOT, rebuilt_root)
 
     def _rebuild_trailer_for_missing_root(self) -> None:
         """Brute-force-rebuild the trailer when a cleanly parsed xref's
@@ -1864,41 +2065,83 @@ class PDFParser:
             raise PDFParseError(
                 f"object stream {objstm_obj_num} is not a stream"
             )
-        decoded, pairs, first = _read_object_stream_offsets(
-            objstm_body, objstm_obj_num
-        )
-        object_count = len(pairs)
-        if not 0 <= inner_index < object_count:
-            raise PDFParseError(
-                f"compressed-object index {inner_index} out of range "
-                f"[0, {object_count}) for ObjStm {objstm_obj_num}"
-            )
-        target_obj_num, target_byte_offset = pairs[inner_index]
-        # Optional sanity check: the obj_num stored in the header should
-        # match the placeholder's own number (PDFBox warns when they
-        # disagree but trusts the xref entry; we follow).
-        if target_obj_num != obj.object_number:
-            # Tolerate the discrepancy — match upstream's permissive
-            # behaviour for malformed object streams.
-            pass
-        # Parse the requested direct object from the decoded payload.
-        body_view = RandomAccessReadBuffer(decoded[first + target_byte_offset:])
-        body_parser = COSParser(body_view, document=self._document)
+        # Mirror upstream ``COSParser.parseObjectStreamObject`` (Apache PDFBox
+        # 3.0.7, COSParser.java:812-833): the whole object-stream parse —
+        # the ``PDFObjectStreamParser`` constructor's /N//First validation
+        # plus the header-pair decode and member parse — runs inside a single
+        # ``try { ... } catch (IOException ex)``. In lenient mode (the default
+        # for ``Loader.loadPDF``) the exception is logged and the compressed
+        # member resolves to ``null`` rather than failing the whole resolve;
+        # only in strict (non-lenient) mode is it rethrown. pypdfbox formerly
+        # always propagated, so malformed /N//First//header bytes raised where
+        # PDFBox returns null (wave 1516 fuzz divergence — every malformed
+        # case below now resolves to None at parity).
         try:
-            obj_body = body_parser.parse_direct_object()
-            # A compressed object's body is the indirect object itself — reset
-            # the direct flag (set by parse_direct_object on inline dicts) so
-            # the writer keeps it as a keyed object. Mirrors upstream
-            # PDFObjectStreamParser (Java line 102/160: setDirect(false)).
-            # Restricted to dict/array — scalar bodies are interned singletons.
-            if isinstance(obj_body, (COSDictionary, COSArray)):
-                obj_body.set_direct(False)
-                obj_body.set_key(
-                    COSObjectKey(obj.object_number, obj.generation_number)
+            decoded, pairs, first = _read_object_stream_offsets(
+                objstm_body, objstm_obj_num
+            )
+            # Resolve the member by its STORED OBJECT NUMBER, not by the xref's
+            # positional ``inner_index``. Upstream
+            # ``PDFObjectStreamParser.parseAllObjects`` (Apache PDFBox 3.0.7)
+            # keys every parsed member by ``COSObjectKey(storedObjNum, 0)`` and
+            # ``COSParser.parseObjectStreamObject`` then does
+            # ``objects.remove(requestedKey)`` — so an inflated /N, a missing
+            # trailing pair, or header pairs whose order does not match the
+            # xref's recorded stream-index all still resolve correctly (or to
+            # null) by NUMBER. pypdfbox previously indexed ``pairs[inner_index]``
+            # positionally, which diverged whenever the header order and the
+            # xref index disagreed (wave 1516 fuzz: ``n_smaller_member_second``,
+            # ``header_offset_unordered``). We mirror the by-number lookup and
+            # use ``inner_index`` only to disambiguate genuine DUPLICATE object
+            # numbers (the upstream ``getStreamIndex`` tiebreak).
+            matches = [
+                (pair_index, off)
+                for pair_index, (stored_num, off) in enumerate(pairs)
+                if stored_num == obj.object_number
+            ]
+            if not matches:
+                # The requested object is not among the header pairs that were
+                # actually read — upstream's ``objects.remove(key)`` returns
+                # null for the same case.
+                return None
+            if len(matches) > 1 and 0 <= inner_index < len(pairs):
+                # Duplicate object numbers: prefer the occurrence at the xref's
+                # recorded stream index when it points at a matching pair.
+                stored_at_index = pairs[inner_index][0]
+                if stored_at_index == obj.object_number:
+                    target_byte_offset = pairs[inner_index][1]
+                else:
+                    target_byte_offset = matches[0][1]
+            else:
+                target_byte_offset = matches[0][1]
+            # Parse the requested direct object from the decoded payload.
+            body_view = RandomAccessReadBuffer(decoded[first + target_byte_offset:])
+            body_parser = COSParser(body_view, document=self._document)
+            try:
+                obj_body = body_parser.parse_direct_object()
+                # A compressed object's body is the indirect object itself —
+                # reset the direct flag (set by parse_direct_object on inline
+                # dicts) so the writer keeps it as a keyed object. Mirrors
+                # upstream PDFObjectStreamParser (Java line 102/160:
+                # setDirect(false)). Restricted to dict/array — scalar bodies
+                # are interned singletons.
+                if isinstance(obj_body, (COSDictionary, COSArray)):
+                    obj_body.set_direct(False)
+                    obj_body.set_key(
+                        COSObjectKey(obj.object_number, obj.generation_number)
+                    )
+                return obj_body
+            finally:
+                body_view.close()
+        except PDFParseError:
+            if self._lenient:
+                _LOG.error(
+                    "object stream %s could not be parsed due to an exception",
+                    objstm_obj_num,
+                    exc_info=True,
                 )
-            return obj_body
-        finally:
-            body_view.close()
+                return None
+            raise
 
     def _load_indirect_object_at(self, offset: int, obj: COSObject) -> COSBase | None:
         """Seek to ``offset`` and parse the indirect-object definition.

@@ -276,12 +276,17 @@ def test_extract_cmap_table_promotes_unicode_platform_to_win_unicode(
 # ---------- read_encoding_from_font branches -------------------------------
 
 
-def test_read_encoding_from_font_returns_none_for_standard14_external(
+def test_read_encoding_from_font_returns_type1_encoding_for_standard14_external(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When the font isn't embedded but is a Standard 14 (with an AFM),
-    line 744 returns None — upstream would create a Type1Encoding."""
+    """When the font isn't embedded but is a Standard 14 (with an AFM), the
+    AFM branch returns a Type1Encoding built from the bundled metrics — exactly
+    as upstream PDTrueTypeFont.readEncodingFromFont does. (Wave 1516 landed the
+    Type1Encoding(afm) port that this branch had been stubbing out as None;
+    verified against the live oracle in
+    tests/pdmodel/font/oracle/test_font_encoding_fuzz_wave1516.py.)"""
     from pypdfbox.cos import COSName
+    from pypdfbox.pdmodel.font.encoding.type1_encoding import Type1Encoding
 
     font = PDTrueTypeFont()
     font.get_cos_object().set_name(
@@ -289,8 +294,9 @@ def test_read_encoding_from_font_returns_none_for_standard14_external(
     )
     # Force is_embedded → False so the AFM-branch fires.
     monkeypatch.setattr(font, "is_embedded", lambda: False)
-    # Lines 740-744.
-    assert font.read_encoding_from_font() is None
+    out = font.read_encoding_from_font()
+    assert isinstance(out, Type1Encoding)
+    assert out.get_name(65) == "A"
 
 
 def test_read_encoding_from_font_returns_standard_encoding_for_standard14_embedded(

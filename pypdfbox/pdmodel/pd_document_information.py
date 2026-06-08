@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime as _dt
-import re
 from collections.abc import Iterator
 
 from pypdfbox.cos import COSDictionary, COSName, COSString
@@ -50,92 +49,53 @@ _STANDARD_KEYS: frozenset[str] = frozenset(
 )
 
 
-# Matches PDF 32000-1:2008 §7.9.4 date strings: ``D:YYYYMMDDHHmmSSOHH'mm'``.
-# Every component after the year is optional (per spec, missing components
-# default to zero / GMT). The trailing apostrophes are also optional in
-# practice — many writers omit the closing one.
-_PDF_DATE_RE = re.compile(
-    r"^D?:?"
-    r"(?P<year>\d{4})"
-    r"(?P<month>\d{2})?"
-    r"(?P<day>\d{2})?"
-    r"(?P<hour>\d{2})?"
-    r"(?P<minute>\d{2})?"
-    r"(?P<second>\d{2})?"
-    r"(?:(?P<offsign>[Z+\-])"
-    r"(?P<offhour>\d{2})?'?"
-    r"(?P<offminute>\d{2})?'?)?"
-    r"$"
-)
-
-
 def _parse_pdf_date(value: str) -> _dt.datetime | None:
-    """Parse a PDF date string into a timezone-aware ``datetime``.
+    """Parse a PDF date string the way ``COSDictionary.getDate`` does.
 
-    Mirrors ``org.apache.pdfbox.util.DateConverter.toCalendar`` for the
-    common subset; returns ``None`` if the string is unparseable. Operates
-    in lenient mode per real-world PDF producers (Adobe / Word / etc.):
+    Thin delegate to the canonical COS-layer parser
+    (:func:`pypdfbox.cos.cos_dictionary._parse_pdf_date`, itself a 1:1 delegate
+    to the oracle-pinned ``DateConverter.toCalendar`` port) so every PDF-date
+    read goes through one faithful implementation. Retained as a module-level
+    symbol because ``PDSignature`` / ``PDFormXObject`` import it from here.
 
-    * The ``D:`` prefix is optional.
-    * Time components may be truncated; missing fields default to 1
-      (month/day) or 0 (time) per PDF 32000-1:2008 §7.9.4.
-    * Missing timezone is treated as UTC.
-    * Bare ``Z`` (no offset) is UTC; offsets accept either ``+0530`` or
-      ``+05'30'`` form.
-    * Surrounding whitespace is stripped.
-    * A ``60``-second leap-second value is clamped to ``59`` (Python's
-      ``datetime`` does not represent leap seconds).
+    Earlier this module carried its own narrower ``_PDF_DATE_RE`` regex that
+    handled only the ``D:YYYYMMDD…`` subset and clamped a ``60``-second value
+    to ``59``; that diverged from upstream (which accepts the broader
+    DateConverter shape and rejects a 60-second value with ``null``). Folded
+    into the COS delegate in wave 1516.
     """
-    if not value:
-        return None
-    stripped = value.strip()
-    if not stripped:
-        return None
-    m = _PDF_DATE_RE.match(stripped)
-    if m is None:
-        return None
-    year = int(m.group("year"))
-    month = int(m.group("month") or 1)
-    day = int(m.group("day") or 1)
-    hour = int(m.group("hour") or 0)
-    minute = int(m.group("minute") or 0)
-    second = int(m.group("second") or 0)
-    # Clamp leap-second padding (e.g. "235960") — Python's datetime does
-    # not represent leap seconds; upstream PDFBox silently truncates.
-    if second == 60:
-        second = 59
-    sign = m.group("offsign")
-    if sign is None or sign == "Z":
-        tz: _dt.tzinfo = _dt.UTC
-    else:
-        off_hour = int(m.group("offhour") or 0)
-        off_minute = int(m.group("offminute") or 0)
-        delta = _dt.timedelta(hours=off_hour, minutes=off_minute)
-        if sign == "-":
-            delta = -delta
-        tz = _dt.timezone(delta)
-    try:
-        return _dt.datetime(year, month, day, hour, minute, second, tzinfo=tz)
-    except ValueError:
-        return None
+    from pypdfbox.cos.cos_dictionary import _parse_pdf_date as _cos_parse
+
+    return _cos_parse(value)
+
+
+def _anchor_naive(date: _dt.datetime | None) -> _dt.datetime | None:
+    """Anchor a naive (tz-less) ``datetime`` to UTC.
+
+    A naive datetime has no ``java.util.Calendar`` equivalent (a Calendar
+    always carries a zone). Anchoring to UTC makes the offset render as
+    ``+00'00'`` — matching upstream's GMT default rather than omitting the
+    zone, which is what the bare COS-layer formatter would do for naive input.
+    """
+    if date is not None and (date.tzinfo is None or date.utcoffset() is None):
+        return date.replace(tzinfo=_dt.UTC)
+    return date
 
 
 def _format_pdf_date(value: _dt.datetime) -> str:
-    """Format a ``datetime`` as a PDF date string (``D:YYYYMMDDHHmmSSOHH'mm'``)."""
-    base = value.strftime("D:%Y%m%d%H%M%S")
-    offset = value.utcoffset()
-    # Upstream ``PDDocumentInformation.setCreationDate`` delegates to
-    # ``COSDictionary.setDate`` -> ``DateConverter.toString``, which always
-    # renders the zone as ``(+|-)HH'mm'`` via ``formatTZoffset`` — "For offset
-    # of 0 millis, the String returned is +00'00', never Z"
-    # (DateConverter.java line 234). A naive (tz-less) datetime is treated as
-    # UTC, matching upstream's GMT default. Never emit ``Z`` or ``Z00'00'``.
-    total_seconds = 0 if offset is None else int(offset.total_seconds())
-    sign = "+" if total_seconds >= 0 else "-"
-    total_seconds = abs(total_seconds)
-    hours = total_seconds // 3600
-    minutes = (total_seconds % 3600) // 60
-    return f"{base}{sign}{hours:02d}'{minutes:02d}'"
+    """Format a ``datetime`` as a PDF date string (``D:YYYYMMDDHHmmSSOHH'mm'``).
+
+    Thin delegate to the canonical COS-layer formatter
+    (:func:`pypdfbox.cos.cos_dictionary._format_pdf_date`) so every PDF-date
+    write goes through one implementation. Retained as a module-level symbol
+    because ``PDEmbeddedFile`` / ``PDSignature`` / ``PDAnnotation`` /
+    ``PDFormXObject`` import it from here to share the exact formatting (zero
+    offset renders ``+00'00'``, never ``Z`` — DateConverter.toString); a naive
+    datetime is anchored to UTC first.
+    """
+    from pypdfbox.cos.cos_dictionary import _format_pdf_date as _cos_format
+
+    return _cos_format(_anchor_naive(value)) or ""
 
 
 def _get_info_string(info: COSDictionary, key: COSName | str) -> str | None:
@@ -238,24 +198,21 @@ class PDDocumentInformation:
     # ---------- dates ----------
 
     def get_creation_date(self) -> _dt.datetime | None:
-        raw = _get_info_string(self._info, _CREATION_DATE)
-        return _parse_pdf_date(raw) if raw is not None else None
+        # Upstream ``getCreationDate`` delegates straight to
+        # ``COSDictionary.getDate`` (which itself routes through the faithful
+        # DateConverter port). Delegating here keeps the Info-dict date
+        # leniency identical to the COS layer rather than carrying a separate,
+        # narrower regex copy.
+        return self._info.get_date(_CREATION_DATE)
 
     def set_creation_date(self, date: _dt.datetime | None) -> None:
-        if date is None:
-            self._info.remove_item(_CREATION_DATE)
-            return
-        self._info.set_item(_CREATION_DATE, COSString(_format_pdf_date(date)))
+        self._info.set_date(_CREATION_DATE, _anchor_naive(date))
 
     def get_modification_date(self) -> _dt.datetime | None:
-        raw = _get_info_string(self._info, _MOD_DATE)
-        return _parse_pdf_date(raw) if raw is not None else None
+        return self._info.get_date(_MOD_DATE)
 
     def set_modification_date(self, date: _dt.datetime | None) -> None:
-        if date is None:
-            self._info.remove_item(_MOD_DATE)
-            return
-        self._info.set_item(_MOD_DATE, COSString(_format_pdf_date(date)))
+        self._info.set_date(_MOD_DATE, _anchor_naive(date))
 
     # ---------- trapped ----------
 

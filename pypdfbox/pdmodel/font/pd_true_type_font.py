@@ -862,16 +862,21 @@ class PDTrueTypeFont(PDSimpleFont):
           up in the TTF's ``post`` table; missing names fall back to the
           decimal GID pseudo-name (``"42"`` etc.), matching upstream.
 
-        Returns ``None`` for the AFM-driven branch (we currently have no
-        ``Type1Encoding`` port) — callers should fall through to their
-        usual encoding-resolution path.
+        Non-embedded Standard 14 fonts return ``Type1Encoding`` built from
+        their bundled AFM (matches upstream and the ``PDType1Font`` sibling).
         """
-        # Non-symbolic, non-embedded fonts: PDF spec defaults to Standard.
-        if not self.is_embedded() and self.get_standard14_afm() is not None:
-            # Upstream returns ``new Type1Encoding(getStandard14AFM())`` here.
-            # We don't have a Type1Encoding-from-AFM port yet; fall through
-            # to None and let the caller use its standard encoding chain.
-            return None
+        # Non-embedded Standard 14: read the built-in encoding from the
+        # bundled Adobe AFM, exactly as upstream
+        # ``PDTrueTypeFont.readEncodingFromFont`` does:
+        #     if (!isEmbedded() && getStandard14AFM() != null)
+        #         return new Type1Encoding(getStandard14AFM());
+        # (verified live, wave 1516: a non-embedded Arial/TrueType with no
+        # /Encoding resolves to Type1Encoding, not null).
+        afm = self.get_standard14_afm()
+        if not self.is_embedded() and afm is not None:
+            from .encoding.type1_encoding import Type1Encoding  # noqa: PLC0415
+
+            return Type1Encoding(afm)
         if self.get_symbolic_flag() is False:
             return StandardEncoding.INSTANCE
         standard14_name = Standard14Fonts.get_mapped_font_name(self.get_name())

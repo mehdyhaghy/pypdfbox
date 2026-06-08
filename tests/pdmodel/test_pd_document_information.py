@@ -6,7 +6,20 @@ import pytest
 
 from pypdfbox.cos import COSDictionary, COSName, COSString
 from pypdfbox.pdmodel import PDDocument, PDDocumentInformation
-from pypdfbox.pdmodel.pd_document_information import _parse_pdf_date
+
+
+def _parse_pdf_date(raw: str) -> _dt.datetime | None:
+    """Drive an Info-dict ``/CreationDate`` through the public accessor.
+
+    As of wave 1516 ``PDDocumentInformation.get_creation_date`` delegates to
+    ``COSDictionary.get_date`` (mirroring upstream ``getCreationDate`` ->
+    ``getDate``), which routes through the faithful, separately oracle-pinned
+    DateConverter port — instead of a private narrower regex. This shim keeps
+    the lenient-parse regression suite exercising exactly that public path.
+    """
+    d = COSDictionary()
+    d.set_item(COSName.get_pdf_name("CreationDate"), COSString(raw))
+    return PDDocumentInformation(d).get_creation_date()
 
 
 def test_default_construction_yields_empty_dict() -> None:
@@ -218,12 +231,15 @@ def test_parse_date_strips_whitespace() -> None:
     )
 
 
-def test_parse_date_clamps_leap_second() -> None:
-    """Time HHmm60 — clamp to HHmm59 (Python datetime has no leap-second
-    representation; upstream PDFBox silently truncates as well)."""
-    assert _parse_pdf_date("D:20230101235960Z") == _dt.datetime(
-        2023, 1, 1, 23, 59, 59, tzinfo=_dt.UTC
-    )
+def test_parse_date_rejects_leap_second() -> None:
+    """Time HHmm60 is rejected (returns ``None``), matching Apache PDFBox.
+
+    The pre-1516 private regex clamped ``60`` -> ``59``; that was a regex-era
+    artifact. The Info-dict accessor now delegates to ``COSDictionary.get_date``
+    -> the faithful DateConverter port, which (per the wave-1510 oracle pin
+    ``second_60_at_2359``) returns ``null`` for a 60-second value rather than
+    truncating. This regression now pins the upstream-faithful behaviour."""
+    assert _parse_pdf_date("D:20230101235960Z") is None
 
 
 @pytest.mark.parametrize(

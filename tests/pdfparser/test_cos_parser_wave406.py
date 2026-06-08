@@ -156,7 +156,11 @@ def test_wave406_rebuild_trailer_empty_when_no_objects_found() -> None:
     assert trailer.size() == 0
 
 
-def test_wave406_object_stream_requires_type_objstm_and_nonnegative_n() -> None:
+def test_wave406_object_stream_tolerates_type_and_validates_n() -> None:
+    # Wave 1516: aligned with upstream ``PDFObjectStreamParser`` (Apache PDFBox
+    # 3.0.7), which validates only ``/N`` and ``/First`` and never inspects
+    # ``/Type``. A non-``/ObjStm`` ``/Type`` with ``/N 0 /First 0`` is a valid
+    # EMPTY object stream — it decodes to zero members rather than raising.
     doc = COSDocument()
     try:
         parser = _parser(
@@ -167,11 +171,12 @@ def test_wave406_object_stream_requires_type_objstm_and_nonnegative_n() -> None:
             document=doc,
         )
         parser.parse_indirect_object_definition()
-        with pytest.raises(PDFParseError, match="missing /Type /ObjStm"):
-            _parser(b"", document=doc).parse_object_stream(5)
+        assert _parser(b"", document=doc).parse_object_stream(5) == []
     finally:
         doc.close()
 
+    # ``/N -1`` reads as MISSING via the ``getInt`` -1 sentinel (a literal -1
+    # is indistinguishable from absent), matching PDFBox's "entry missing".
     doc = COSDocument()
     try:
         parser = _parser(
@@ -182,7 +187,7 @@ def test_wave406_object_stream_requires_type_objstm_and_nonnegative_n() -> None:
             document=doc,
         )
         parser.parse_indirect_object_definition()
-        with pytest.raises(PDFParseError, match="negative /N"):
+        with pytest.raises(PDFParseError, match="/N entry missing"):
             _parser(b"", document=doc).parse_object_stream(5)
     finally:
         doc.close()

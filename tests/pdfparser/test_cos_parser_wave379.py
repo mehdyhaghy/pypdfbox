@@ -109,12 +109,16 @@ def test_wave379_rebuild_trailer_copies_encrypt_reference() -> None:
 
 
 def test_wave379_parse_object_stream_rejects_negative_first() -> None:
+    # Wave 1516: ``/First`` is read via ``getInt`` (upstream
+    # ``PDFObjectStreamParser`` parity), whose -1 sentinel makes a literal
+    # ``/First -1`` indistinguishable from a MISSING ``/First`` — both surface
+    # the same "entry missing" error PDFBox raises.
     doc = COSDocument()
     parser = _parser(_objstm_source(b"", n=0, first=-1), document=doc)
 
     try:
         parser.parse_indirect_object_definition()
-        with pytest.raises(PDFParseError, match="negative /First"):
+        with pytest.raises(PDFParseError, match="/First entry missing"):
             _parser(b"", document=doc).parse_object_stream(1)
     finally:
         doc.close()

@@ -133,14 +133,27 @@ def test_encoding_raw_typed_and_dictionary_round_trip_from_cos() -> None:
     assert font.get_encoding_typed() is typed
 
 
-def test_unknown_or_malformed_encoding_resolves_to_none_and_is_cached() -> None:
+def test_unknown_name_encoding_falls_back_to_builtin_and_is_cached() -> None:
+    # Wave 1516: an UNKNOWN /Encoding NAME no longer resolves to None — the
+    # lazy get_encoding_typed() now mirrors the eager read_encoding() (and
+    # upstream PDSimpleFont.readEncoding) and falls back to the font program's
+    # built-in encoding via read_encoding_from_font(). For a bare Type 1 font
+    # with no AFM and no embedded program that fallback is StandardEncoding
+    # (verified against the live oracle in
+    # tests/pdmodel/font/oracle/test_font_encoding_fuzz_wave1516.py).
     font = PDType1Font()
     font.get_cos_object().set_item(_name("Encoding"), _name("BogusEncoding"))
 
-    assert font.get_encoding_typed() is None
+    resolved = font.get_encoding_typed()
+    assert isinstance(resolved, StandardEncoding)
+    # Cached: a later /Encoding mutation does not re-resolve.
     font.get_cos_object().set_item(_name("Encoding"), _name("WinAnsiEncoding"))
-    assert font.get_encoding_typed() is None
+    assert font.get_encoding_typed() is resolved
 
+    # A present-but-malformed /Encoding that is neither a name nor a dict
+    # (e.g. a stray integer) still resolves to None — upstream's readEncoding
+    # nests the name/dict tests with no else, so it leaves encoding null and
+    # does NOT consult the font program.
     fresh = PDType1Font()
     fresh.get_cos_object().set_item(_name("Encoding"), COSInteger.get(7))
     assert fresh.get_encoding() == COSInteger.get(7)

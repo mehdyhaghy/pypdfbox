@@ -127,7 +127,12 @@ def test_wave455_decode_xref_stream_rejects_truncated_body() -> None:
         parser._decode_xref_stream_entries(stream)
 
 
-def test_wave455_load_compressed_object_rejects_out_of_range_index() -> None:
+def test_wave455_load_compressed_object_resolves_by_number_not_index() -> None:
+    # Wave 1516: the compressed loader resolves by STORED OBJECT NUMBER
+    # (mirroring upstream ``PDFObjectStreamParser.parseAllObjects``, keyed by
+    # ``COSObjectKey``), not by the xref's positional stream index — so a stale
+    # / out-of-range index is ignored when the object number is in the header.
+    # Validated against the live oracle (``header_offset_unordered``).
     doc = COSDocument()
     try:
         objstm = COSStream(scratch_file=doc.scratch_file)
@@ -140,7 +145,8 @@ def test_wave455_load_compressed_object_rejects_out_of_range_index() -> None:
         parser = _parser(b"")
         parser._document = doc
 
-        with pytest.raises(PDFParseError, match="out of range"):
-            parser._load_compressed_object(7, 1, COSObject(10, 0))
+        loaded = parser._load_compressed_object(7, 1, COSObject(10, 0))
+        assert isinstance(loaded, COSInteger)
+        assert loaded.value == 42
     finally:
         doc.close()

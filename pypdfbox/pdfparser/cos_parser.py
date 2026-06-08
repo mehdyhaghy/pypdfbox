@@ -2489,21 +2489,30 @@ def _read_object_stream_offsets(
     malformed-metadata checks shared by eager ``COSParser.parse_object_stream``
     and lazy ``PDFParser`` compressed-object loading.
     """
-    type_obj = objstm_body.get_dictionary_object(COSName.TYPE)  # type: ignore[attr-defined]
-    if not (isinstance(type_obj, COSName) and type_obj.name == "ObjStm"):
-        raise PDFParseError(f"object stream {objstm_obj_num} missing /Type /ObjStm")
-
-    n_obj = objstm_body.get_dictionary_object(COSName.get_pdf_name("N"))
-    first_obj = objstm_body.get_dictionary_object(COSName.get_pdf_name("First"))
-    if not isinstance(n_obj, COSInteger) or not isinstance(first_obj, COSInteger):
-        raise PDFParseError(f"object stream {objstm_obj_num} missing /N or /First")
-
-    object_count = n_obj.value
-    first = first_obj.value
+    # Mirror upstream ``PDFObjectStreamParser`` constructor (Apache PDFBox
+    # 3.0.7, PDFObjectStreamParser.java:55-72): it validates ONLY /N and
+    # /First via ``COSStream.getInt`` (which yields -1 for a missing or
+    # non-integer entry), and never inspects /Type. A wrong or absent
+    # /Type /ObjStm is therefore tolerated upstream — the header pairs are
+    # decoded regardless. We previously hard-required /Type /ObjStm, which
+    # made pypdfbox raise where PDFBox happily resolves the compressed
+    # member (wave 1516 fuzz divergence). ``get_int`` here matches the
+    # upstream -1-default semantics so a non-integer /N or /First surfaces
+    # as the same "missing" error PDFBox raises.
+    object_count = objstm_body.get_int(COSName.get_pdf_name("N"))
+    first = objstm_body.get_int(COSName.get_pdf_name("First"))
+    if object_count == -1:
+        raise PDFParseError(f"/N entry missing in object stream {objstm_obj_num}")
     if object_count < 0:
-        raise PDFParseError(f"object stream {objstm_obj_num} has negative /N")
+        raise PDFParseError(
+            f"Illegal /N entry in object stream {objstm_obj_num}: {object_count}"
+        )
+    if first == -1:
+        raise PDFParseError(f"/First entry missing in object stream {objstm_obj_num}")
     if first < 0:
-        raise PDFParseError(f"object stream {objstm_obj_num} has negative /First")
+        raise PDFParseError(
+            f"Illegal /First entry in object stream {objstm_obj_num}: {first}"
+        )
 
     with objstm_body.create_input_stream() as src:
         decoded = src.read()
@@ -2514,16 +2523,20 @@ def _read_object_stream_offsets(
         )
 
     payload_length = len(decoded) - first
-    header_view = RandomAccessReadBuffer(decoded[:first])
+    # Upstream ``PDFObjectStreamParser.privateReadObjectOffsets`` reads the
+    # ``<objnum> <offset>`` pairs from the FULL decoded stream (not a slice
+    # truncated at /First), bounded only by the running position check
+    # ``position >= firstObjectPosition`` where ``firstObjectPosition =
+    # streamStart + first - 1``. Reading from the full buffer matters when
+    # /First is SMALLER than the real header length: the loop still completes
+    # the in-flight pair (whose digits spill past the /First byte) before the
+    # boundary break fires on the NEXT iteration, instead of slicing a pair in
+    # half (wave 1516 ``first_too_small`` divergence — slicing produced a
+    # spurious "header truncated"). An inflated /N is naturally bounded by the
+    # same break so /N-too-large recovers at parity rather than failing.
+    header_view = RandomAccessReadBuffer(decoded)
     header_parser = BaseParser(header_view)
     pairs: list[tuple[int, int]] = []
-    # Upstream PDFObjectStreamParser.privateReadObjectOffsets reads at most
-    # /N pairs but breaks as soon as the cursor reaches the /First boundary
-    # (``firstObjectPosition = position + first - 1``). An inflated /N (larger
-    # than the actual number of header pairs — a common corruption) is thus
-    # naturally bounded by the header region instead of failing. We mirror that
-    # break so /N-too-large recovers at parity rather than raising
-    # "header truncated".
     first_object_position = first - 1
     try:
         for pair_index in range(object_count):

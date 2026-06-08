@@ -289,15 +289,30 @@ def test_parse_pdf_with_prev_chain() -> None:
     assert body.get_bytes() == b"new version"
 
 
-def test_xref_entry_with_unknown_flag_raises() -> None:
+def test_xref_entry_with_unknown_flag_is_tolerated_then_rejected_at_initial_parse() -> None:
+    """An unknown xref entry flag is tolerated at parse time (upstream PDFBox
+    logs "Unexpected XRefTable Entry" and breaks the subsection rather than
+    failing — verified against the live PDFBox 3.0.7 oracle, wave 1516). Here
+    ``/Root`` points at a non-catalog scalar (``42``), so the brute-force
+    recovery finds no catalog and ``get_catalog()`` is ``None``; the strict
+    ``initial_parse`` then raises "Missing root", mirroring upstream's
+    load-time IOException for this exact file. (Retargeted from the wave-379
+    flag-strictness contract the oracle does not share.)"""
     out = bytearray(b"%PDF-1.4\n1 0 obj\n42\nendobj\n")
     xref_off = len(out)
     out += b"xref\n0 2\n0000000000 65535 f \n"
     out += b"0000000009 00000 z \n"  # 'z' isn't a valid flag
     out += b"trailer\n<< /Size 2 /Root 1 0 R >>\n"
     out += b"startxref\n" + str(xref_off).encode("ascii") + b"\n%%EOF"
-    with pytest.raises(PDFParseError):
-        PDFParser(RandomAccessReadBuffer(bytes(out))).parse()
+    parser = PDFParser(RandomAccessReadBuffer(bytes(out)))
+    doc = parser.parse()
+    try:
+        # Parse tolerates the bad flag; no catalog resolves from /Root 42.
+        assert doc.get_catalog() is None
+        with pytest.raises(PDFParseError, match="Missing root"):
+            parser.initial_parse()
+    finally:
+        doc.close()
 
 
 def test_xref_stream_malformed_dict_raises() -> None:

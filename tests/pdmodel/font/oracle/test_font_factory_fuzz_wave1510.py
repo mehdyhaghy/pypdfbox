@@ -428,14 +428,14 @@ _DIVERGENCES: dict[str, str] = {
         "create=ok class=PDType1CFont name=MyMMFont emb=0 dmg=1 "
         "wA=0.000 wSp=0.000"
     ),
-    "truetype_no_widths": (
-        "create=ok class=PDTrueTypeFont name=Arial emb=0 dmg=0 "
-        "wA=250.000 wSp=250.000"
-    ),
-    "truetype_fontfile2_garbage": (
-        "create=ok class=PDTrueTypeFont name=Arial emb=0 dmg=1 "
-        "wA=250.000 wSp=250.000"
-    ),
+    # (truetype_no_widths / truetype_fontfile2_garbage were pinned here at
+    # wA=wSp=250.000 — the .notdef substitute width — because PDTrueTypeFont's
+    # read_encoding_from_font used to stub out the non-embedded-Standard14 AFM
+    # branch as None, leaving no encoding so getStandard14Width collapsed every
+    # code to 250. Wave 1516 landed the Type1Encoding(afm) port for that branch
+    # (Arial is a Standard14 Helvetica alias), so both sides now agree on the
+    # real AFM advances 667.000 / 278.000 — the divergence collapsed and these
+    # cases fall through to the normal java==py comparison.)
     # --- (B) lazy Type0 construction ---
     # Upstream's PDType0Font constructor eagerly reads /DescendantFonts and
     # throws IOException when it's missing / empty / a non-array. pypdfbox's

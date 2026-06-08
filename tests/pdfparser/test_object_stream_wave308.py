@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import pytest
-
-from pypdfbox.cos import COSDocument, COSObjectKey
+from pypdfbox.cos import COSDocument, COSObjectKey, COSString
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser import COSParser, PDFParser
-from pypdfbox.pdfparser.parse_error import PDFParseError
 
 
 def _pack_record(type_byte: int, field2: int, field3: int) -> bytes:
@@ -16,7 +13,12 @@ def _pack_record(type_byte: int, field2: int, field3: int) -> bytes:
     )
 
 
-def test_wave308_cos_parser_rejects_non_objstm_container() -> None:
+def test_wave308_cos_parser_tolerates_non_objstm_container_type() -> None:
+    # Wave 1516: upstream ``PDFObjectStreamParser`` validates only ``/N`` and
+    # ``/First`` — it never inspects ``/Type``. A container advertising a
+    # non-``/ObjStm`` ``/Type`` but carrying a well-formed header therefore
+    # decodes its members rather than raising (validated against the live
+    # oracle: ``type_wrong`` / ``type_missing`` resolve at parity).
     body = b"5 0 (payload) "
     doc = COSDocument()
     source = (
@@ -30,11 +32,17 @@ def test_wave308_cos_parser_rejects_non_objstm_container() -> None:
     parser = COSParser(RandomAccessReadBuffer(source), document=doc)
     parser.parse_indirect_object_definition()
 
-    with pytest.raises(PDFParseError, match="/Type /ObjStm"):
-        COSParser(RandomAccessReadBuffer(b""), document=doc).parse_object_stream(1)
+    parsed = COSParser(
+        RandomAccessReadBuffer(b""), document=doc
+    ).parse_object_stream(1)
+    assert len(parsed) == 1
+    assert isinstance(parsed[0], COSString)
+    assert parsed[0].get_bytes() == b"payload"
+    assert doc.has_object(COSObjectKey(5, 0))
+    doc.close()
 
 
-def test_wave308_lazy_compressed_loader_rejects_non_objstm_container() -> None:
+def test_wave308_lazy_compressed_loader_tolerates_non_objstm_container_type() -> None:
     out = bytearray(b"%PDF-1.5\n")
     body = b"5 0 (payload) "
     stream_offset = len(out)
@@ -64,6 +72,10 @@ def test_wave308_lazy_compressed_loader_rejects_non_objstm_container() -> None:
     )
     out += b"startxref\n" + str(xref_offset).encode("ascii") + b"\n%%EOF"
 
+    # Wave 1516: the lazy compressed loader no longer rejects a non-``/ObjStm``
+    # ``/Type`` (upstream checks only ``/N`` / ``/First``) — the member resolves.
     doc = PDFParser(RandomAccessReadBuffer(bytes(out))).parse()
-    with pytest.raises(PDFParseError, match="/Type /ObjStm"):
-        doc.get_object_from_pool(COSObjectKey(5, 0)).get_object()
+    resolved = doc.get_object_from_pool(COSObjectKey(5, 0)).get_object()
+    assert isinstance(resolved, COSString)
+    assert resolved.get_bytes() == b"payload"
+    doc.close()
