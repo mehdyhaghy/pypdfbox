@@ -165,7 +165,7 @@ def test_thread_bead_has_clear_helpers_and_aliases() -> None:
     assert bead.is_first_bead() is False
 
 
-def test_thread_bead_predicates_ignore_malformed_cos_values() -> None:
+def test_thread_bead_predicates_and_malformed_rectangle_values() -> None:
     raw = COSDictionary()
     raw.set_item(_name("T"), COSString("not a thread dictionary"))
     raw.set_item(_name("N"), COSString("not a next bead dictionary"))
@@ -189,7 +189,12 @@ def test_thread_bead_predicates_ignore_malformed_cos_values() -> None:
     assert bead.get_next_bead() is None
     assert bead.get_previous_bead() is None
     assert bead.get_page() is None
-    assert bead.get_rectangle() is None
+    rectangle = bead.get_rectangle()
+    assert rectangle is not None
+    assert rectangle.get_lower_left_x() == 0.0
+    assert rectangle.get_lower_left_y() == 1.0
+    assert rectangle.get_upper_right_x() == 0.0
+    assert rectangle.get_upper_right_y() == 2.0
     assert bead.has_thread() is False
     assert bead.has_next_bead() is False
     assert bead.has_previous_bead() is False

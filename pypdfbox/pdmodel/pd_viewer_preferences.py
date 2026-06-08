@@ -257,10 +257,11 @@ class PDViewerPreferences:
     # ---------- name-valued accessors (with documented defaults) ----------
 
     def get_non_full_screen_page_mode(self) -> str:
-        return self._prefs.get_name_as_string(
+        value = self._prefs.get_name_as_string(
             _NON_FULL_SCREEN_PAGE_MODE,
             self.NON_FULL_SCREEN_PAGE_MODE.UseNone.value,
-        ) or self.NON_FULL_SCREEN_PAGE_MODE.UseNone.value
+        )
+        return self.NON_FULL_SCREEN_PAGE_MODE.UseNone.value if value is None else value
 
     def set_non_full_screen_page_mode(
         self, value: NON_FULL_SCREEN_PAGE_MODE | str | None
@@ -274,9 +275,10 @@ class PDViewerPreferences:
         self._prefs.remove_item(_NON_FULL_SCREEN_PAGE_MODE)
 
     def get_reading_direction(self) -> str:
-        return self._prefs.get_name_as_string(
+        value = self._prefs.get_name_as_string(
             _DIRECTION, self.READING_DIRECTION.L2R.value
-        ) or self.READING_DIRECTION.L2R.value
+        )
+        return self.READING_DIRECTION.L2R.value if value is None else value
 
     def set_reading_direction(
         self, value: READING_DIRECTION | str | None
@@ -300,9 +302,10 @@ class PDViewerPreferences:
         self.clear_reading_direction()
 
     def get_view_area(self) -> str:
-        return self._prefs.get_name_as_string(
+        value = self._prefs.get_name_as_string(
             _VIEW_AREA, self.BOUNDARY.CropBox.value
-        ) or self.BOUNDARY.CropBox.value
+        )
+        return self.BOUNDARY.CropBox.value if value is None else value
 
     def set_view_area(self, value: BOUNDARY | str | None) -> None:
         if value is None:
@@ -314,9 +317,10 @@ class PDViewerPreferences:
         self._prefs.remove_item(_VIEW_AREA)
 
     def get_view_clip(self) -> str:
-        return self._prefs.get_name_as_string(
+        value = self._prefs.get_name_as_string(
             _VIEW_CLIP, self.BOUNDARY.CropBox.value
-        ) or self.BOUNDARY.CropBox.value
+        )
+        return self.BOUNDARY.CropBox.value if value is None else value
 
     def set_view_clip(self, value: BOUNDARY | str | None) -> None:
         if value is None:
@@ -328,9 +332,10 @@ class PDViewerPreferences:
         self._prefs.remove_item(_VIEW_CLIP)
 
     def get_print_area(self) -> str:
-        return self._prefs.get_name_as_string(
+        value = self._prefs.get_name_as_string(
             _PRINT_AREA, self.BOUNDARY.CropBox.value
-        ) or self.BOUNDARY.CropBox.value
+        )
+        return self.BOUNDARY.CropBox.value if value is None else value
 
     def set_print_area(self, value: BOUNDARY | str | None) -> None:
         if value is None:
@@ -342,9 +347,10 @@ class PDViewerPreferences:
         self._prefs.remove_item(_PRINT_AREA)
 
     def get_print_clip(self) -> str:
-        return self._prefs.get_name_as_string(
+        value = self._prefs.get_name_as_string(
             _PRINT_CLIP, self.BOUNDARY.CropBox.value
-        ) or self.BOUNDARY.CropBox.value
+        )
+        return self.BOUNDARY.CropBox.value if value is None else value
 
     def set_print_clip(self, value: BOUNDARY | str | None) -> None:
         if value is None:
@@ -369,9 +375,10 @@ class PDViewerPreferences:
         self._prefs.remove_item(_DUPLEX)
 
     def get_print_scaling(self) -> str:
-        return self._prefs.get_name_as_string(
+        value = self._prefs.get_name_as_string(
             _PRINT_SCALING, self.PRINT_SCALING.AppDefault.value
-        ) or self.PRINT_SCALING.AppDefault.value
+        )
+        return self.PRINT_SCALING.AppDefault.value if value is None else value
 
     def set_print_scaling(self, value: PRINT_SCALING | str | None) -> None:
         if value is None:

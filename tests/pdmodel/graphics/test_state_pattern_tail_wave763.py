@@ -37,12 +37,13 @@ def test_line_dash_tail_branches_for_phase_cos_and_debug_helpers() -> None:
     assert from_bad_phase.__eq__(object()) is NotImplemented
 
 
-def test_soft_mask_get_group_returns_none_when_import_fails(
+def test_soft_mask_get_group_propagates_import_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    mask = PDSoftMask()
     stream = COSStream()
-    mask.set_group(stream)
+    raw = COSDictionary()
+    raw.set_item(COSName.get_pdf_name("G"), stream)
+    mask = PDSoftMask(raw)
     original_import = builtins.__import__
 
     def blocked_import(name: str, *args: object, **kwargs: object) -> object:
@@ -52,32 +53,37 @@ def test_soft_mask_get_group_returns_none_when_import_fails(
 
     monkeypatch.setattr(builtins, "__import__", blocked_import)
 
-    assert mask.get_group() is None
+    with pytest.raises(ImportError, match="blocked for branch coverage"):
+        mask.get_group()
 
 
-def test_soft_mask_get_group_returns_none_for_invalid_xobject_subtype() -> None:
-    mask = PDSoftMask()
+def test_soft_mask_get_group_rejects_invalid_xobject_subtype() -> None:
     stream = COSStream()
     stream.set_item(COSName.SUBTYPE, COSName.get_pdf_name("Bogus"))  # type: ignore[attr-defined]
-    mask.set_group(stream)
+    raw = COSDictionary()
+    raw.set_item(COSName.get_pdf_name("G"), stream)
+    mask = PDSoftMask(raw)
 
-    assert mask.get_group() is None
+    with pytest.raises(OSError, match="Invalid XObject Subtype: Bogus"):
+        mask.get_group()
 
 
-def test_soft_mask_get_group_returns_none_for_unexpected_factory_error(
+def test_soft_mask_get_group_propagates_unexpected_factory_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    mask = PDSoftMask()
     stream = COSStream()
     stream.set_item(COSName.SUBTYPE, COSName.get_pdf_name("Form"))  # type: ignore[attr-defined]
-    mask.set_group(stream)
+    raw = COSDictionary()
+    raw.set_item(COSName.get_pdf_name("G"), stream)
+    mask = PDSoftMask(raw)
 
     def boom(base: object, resources: object = None) -> object:
         raise RuntimeError("factory failure")
 
     monkeypatch.setattr(PDXObject, "create_x_object", staticmethod(boom))
 
-    assert mask.get_group() is None
+    with pytest.raises(RuntimeError, match="factory failure"):
+        mask.get_group()
 
 
 def test_tiling_pattern_tail_clear_and_non_stream_content_error() -> None:

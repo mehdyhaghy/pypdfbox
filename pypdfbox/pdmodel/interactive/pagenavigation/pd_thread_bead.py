@@ -237,10 +237,14 @@ class PDThreadBead:
 
         arr = self._bead.get_dictionary_object(_R)
         if isinstance(arr, COSArray):
-            try:
-                return PDRectangle.from_cos_array(arr)
-            except (TypeError, ValueError):
-                return None
+            normalized = COSArray()
+            for index in range(4):
+                value = arr.get_object(index) if index < arr.size() else None
+                if isinstance(value, (COSFloat, COSInteger)):
+                    normalized.add(value)
+                else:
+                    normalized.add(COSInteger.ZERO)
+            return PDRectangle.from_cos_array(normalized)
         return None
 
     def set_rectangle(self, rect: PDRectangle | None) -> None:

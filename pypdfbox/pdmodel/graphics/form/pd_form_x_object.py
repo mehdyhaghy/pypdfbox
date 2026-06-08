@@ -102,7 +102,17 @@ class PDFormXObject(PDXObject):
         cos = self.get_cos_object()
         value = cos.get_dictionary_object(_BBOX)
         if isinstance(value, COSArray):
-            return PDRectangle.from_cos_array(value)
+            # PDRectangle(COSArray) reads each coordinate with
+            # COSArray.getFloat(index), whose default is 0 for a missing or
+            # non-numeric entry. Normalize the malformed array here because
+            # PDRectangle.from_cos_array deliberately validates standalone
+            # rectangle construction more strictly.
+            coordinates: list[COSFloat] = []
+            for index in range(4):
+                entry = value.get_object(index) if index < value.size() else None
+                number = entry.value if isinstance(entry, (COSInteger, COSFloat)) else 0
+                coordinates.append(COSFloat(float(number)))
+            return PDRectangle.from_cos_array(COSArray(coordinates))
         return None
 
     # PDFBox spells it ``getBBox`` — keep both forms for camelCase fidelity
