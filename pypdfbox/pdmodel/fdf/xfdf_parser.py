@@ -162,27 +162,20 @@ def _populate_annotation_base(annot: FDFAnnotation, element: Element) -> None:
     contents, contents-richtext).
 
     Mirrors the body of ``FDFAnnotation.FDFAnnotation(Element)`` (Java
-    lines 130-308) — kept lenient: missing optional attributes are
-    skipped silently instead of raising, so a partial XFDF still
-    round-trips through ingest.
+    lines 130-308). Missing optional attributes are skipped, while malformed
+    present values retain upstream's per-attribute error behavior.
     """
     page = element.getAttribute("page")
     if page:
-        try:
-            annot.set_page(int(page))
-        except ValueError:
-            logger.warning("XFDF annotation has non-integer 'page' %r", page)
+        annot.set_page(int(page))
 
     color = element.getAttribute("color")
     if color and len(color) == 7 and color[0] == "#":
-        try:
-            cv = int(color[1:7], 16)
-            r = ((cv >> 16) & 0xFF) / 255.0
-            g = ((cv >> 8) & 0xFF) / 255.0
-            b = (cv & 0xFF) / 255.0
-            annot.set_color((r, g, b))
-        except ValueError:
-            pass
+        cv = int(color[1:7], 16)
+        r = ((cv >> 16) & 0xFF) / 255.0
+        g = ((cv >> 8) & 0xFF) / 255.0
+        b = (cv & 0xFF) / 255.0
+        annot.set_color((r, g, b))
 
     date = element.getAttribute("date")
     if date:
@@ -213,15 +206,10 @@ def _populate_annotation_base(annot: FDFAnnotation, element: Element) -> None:
 
     rect = element.getAttribute("rect")
     if rect:
-        try:
-            values = annot.parse_rectangle_attributes(
-                rect, "Error: wrong amount of numbers in attribute 'rect'"
-            )
-            annot.set_rectangle(
-                (values[0], values[1], values[2], values[3])
-            )
-        except OSError:
-            pass
+        values = annot.parse_rectangle_attributes(
+            rect, "Error: wrong amount of numbers in attribute 'rect'"
+        )
+        annot.set_rectangle((values[0], values[1], values[2], values[3]))
 
     title = element.getAttribute("title")
     if title:

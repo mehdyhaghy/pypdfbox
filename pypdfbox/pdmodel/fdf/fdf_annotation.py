@@ -553,15 +553,13 @@ class FDFAnnotation:
     # ---------- factory ----------
 
     @classmethod
-    def create(cls, annot: COSDictionary) -> FDFAnnotation:
+    def create(cls, annot: COSDictionary) -> FDFAnnotation | None:
         """Dispatch to the concrete ``FDFAnnotation`` subtype based on
         ``/Subtype``. Mirrors ``FDFAnnotation.create(COSDictionary)`` upstream.
 
-        Falls back to the bare ``FDFAnnotation`` base when the subtype is
-        unknown or absent so callers always receive a usable wrapper.
+        Returns ``None`` when the subtype is unknown or absent.
         """
-        sub = annot.get_dictionary_object(_SUBTYPE)
-        name = sub.name if isinstance(sub, COSName) else None
+        name = annot.get_name_as_string(_SUBTYPE)
 
         # Lazy-import to avoid an import cycle: subtypes import this module.
         if name == "Text":
@@ -592,7 +590,7 @@ class FDFAnnotation:
             from .fdf_annotation_polygon import FDFAnnotationPolygon
 
             return FDFAnnotationPolygon(annot)
-        if name in ("PolyLine", "Polyline"):
+        if name == "Polyline":
             from .fdf_annotation_polyline import FDFAnnotationPolyline
 
             return FDFAnnotationPolyline(annot)
@@ -632,7 +630,7 @@ class FDFAnnotation:
             from .fdf_annotation_sound import FDFAnnotationSound
 
             return FDFAnnotationSound(annot)
-        return cls(annot)
+        return None
 
 
 def _float_values(array: COSArray, size: int) -> tuple[float, ...] | None:

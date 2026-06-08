@@ -47,9 +47,8 @@ class FDFDocument:
     - :meth:`save` writing to a path / stream / :class:`RandomAccessWrite`;
     - :meth:`close` + context manager.
 
-    XFDF (the XML-encoded variant) is **not** supported in this cluster —
-    it requires its own SAX-based parser/serializer and will land in a
-    later wave (see ``CHANGES.md`` once that wave ships).
+    XFDF (the XML-encoded variant) is supported through
+    :meth:`Loader.load_xfdf`, :meth:`set_xfdf`, and :meth:`save_xfdf`.
     """
 
     def __init__(
@@ -101,20 +100,22 @@ class FDFDocument:
         """Parse an FDF file from a path, bytes, stream, or
         :class:`RandomAccessRead`.
 
-        FDF shares PDF's object/xref/trailer wire structure but begins with
-        an ``%FDF-x.y`` header, not ``%PDF-``. ``Loader.load_pdf`` drives the
-        full xref-walking parser, whose header check accepts either marker
-        (see ``PDFParser.parse_header``), so a real FDF file — including one
-        pypdfbox itself just saved with its ``%FDF-`` header — parses
-        correctly. (Routing through the bare ``%PDF-``-only header check
-        previously rejected every genuine FDF.)
+        FDF shares PDF's object/xref/trailer wire structure but requires its
+        own ``%FDF-x.y`` header. The dedicated :class:`FDFParser` preserves
+        that stricter entry contract while reusing the COS parser machinery.
 
         Mirrors ``Loader.loadFDF(...)`` upstream.
         """
         from pypdfbox.loader import Loader
+        from pypdfbox.pdfparser.fdf_parser import FDFParser
 
-        cos_doc = Loader.load_pdf(source)
-        return cls(cos_doc)
+        access, owned = Loader._coerce_source(source)
+        try:
+            return FDFParser(access).parse()
+        except BaseException:
+            if owned:
+                access.close()
+            raise
 
     # ---------- COS surface ----------
 

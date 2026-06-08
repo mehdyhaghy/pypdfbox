@@ -125,10 +125,7 @@ class PDOutlineItem(PDOutlineNode):
         )
 
         raw = self._dictionary.get_dictionary_object(_DEST)
-        try:
-            return PDDestination.create(raw)
-        except OSError:
-            return None
+        return PDDestination.create(raw)
 
     def set_destination(self, dest: PDDestination | PDPage | None) -> None:
         """Set the outline's ``/Dest``.
@@ -434,8 +431,6 @@ class PDOutlineItem(PDOutlineNode):
         if page_number < 0:
             return None
         pages = document.get_pages()
-        if page_number >= len(pages):
-            return None
         return pages[page_number].get_cos_object()
 
     @staticmethod

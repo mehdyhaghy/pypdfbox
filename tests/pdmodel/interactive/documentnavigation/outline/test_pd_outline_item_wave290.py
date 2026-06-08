@@ -1,6 +1,8 @@
 """Wave 290 coverage for outline item optional-entry helpers."""
 from __future__ import annotations
 
+import pytest
+
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,
@@ -18,12 +20,14 @@ _F = COSName.get_pdf_name("F")
 _SE = COSName.get_pdf_name("SE")
 
 
-def test_malformed_destination_array_is_absent_and_clearable() -> None:
+def test_malformed_destination_array_raises_and_is_clearable() -> None:
     item = PDOutlineItem()
     item.get_cos_object().set_item(_DEST, COSArray([COSInteger.get(0)]))
 
-    assert item.get_destination() is None
-    assert item.has_destination() is False
+    with pytest.raises(OSError):
+        item.get_destination()
+    with pytest.raises(OSError):
+        item.has_destination()
 
     item.clear_destination()
     assert item.get_cos_object().get_dictionary_object(_DEST) is None

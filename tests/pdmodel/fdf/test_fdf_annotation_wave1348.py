@@ -45,12 +45,11 @@ def test_create_dispatches_polygon() -> None:
 
 
 def test_create_dispatches_polyline_capitalised() -> None:
-    annot = FDFAnnotation.create(_dict_with_subtype("PolyLine"))
-    assert isinstance(annot, FDFAnnotationPolyline)
+    assert FDFAnnotation.create(_dict_with_subtype("PolyLine")) is None
 
 
 def test_create_dispatches_polyline_lowercase_l() -> None:
-    """Both ``PolyLine`` and ``Polyline`` (lowercase l) are accepted."""
+    """Upstream recognizes the canonical ``Polyline`` spelling."""
     annot = FDFAnnotation.create(_dict_with_subtype("Polyline"))
     assert isinstance(annot, FDFAnnotationPolyline)
 
@@ -78,19 +77,12 @@ def test_create_dispatches_text_markup_variants(subtype: str) -> None:
     assert isinstance(annot, FDFAnnotationTextMarkup)
 
 
-def test_create_unknown_subtype_falls_back_to_base() -> None:
-    """Line 615: an unrecognised ``/Subtype`` returns the bare
-    ``FDFAnnotation`` rather than raising."""
-    annot = FDFAnnotation.create(_dict_with_subtype("UnknownSubtype"))
-    assert type(annot) is FDFAnnotation
+def test_create_unknown_subtype_returns_none() -> None:
+    assert FDFAnnotation.create(_dict_with_subtype("UnknownSubtype")) is None
 
 
-def test_create_missing_subtype_falls_back_to_base() -> None:
-    """Line 615: a dictionary with no ``/Subtype`` also returns the bare
-    ``FDFAnnotation`` — ``sub`` is ``None`` so the dispatch chain falls
-    through."""
-    annot = FDFAnnotation.create(COSDictionary())
-    assert type(annot) is FDFAnnotation
+def test_create_missing_subtype_returns_none() -> None:
+    assert FDFAnnotation.create(COSDictionary()) is None
 
 
 # ----------------------------------------------------------------------

@@ -91,14 +91,10 @@ def test_build_unknown_annotation_returns_none() -> None:
 # --- _populate_annotation_base lenient parsing branches -------------------
 
 
-def test_invalid_page_attribute_logged_but_does_not_raise(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
+def test_invalid_page_attribute_raises() -> None:
     el = _annot_element('<text page="not-a-number" rect="0,0,10,10"/>')
-    caplog.set_level("WARNING")
-    annot = build_annotation_from_xfdf(el)
-    assert isinstance(annot, FDFAnnotationText)
-    assert any("non-integer" in rec.getMessage() for rec in caplog.records)
+    with pytest.raises(ValueError):
+        build_annotation_from_xfdf(el)
 
 
 def test_color_attribute_parsed() -> None:
@@ -108,11 +104,10 @@ def test_color_attribute_parsed() -> None:
     assert color is not None
 
 
-def test_invalid_color_silently_skipped() -> None:
-    # Invalid hex falls into the ``except ValueError: pass`` branch.
+def test_invalid_color_raises() -> None:
     el = _annot_element('<text page="0" rect="0,0,10,10" color="#ZZZZZZ"/>')
-    annot = build_annotation_from_xfdf(el)
-    assert annot is not None  # no raise
+    with pytest.raises(ValueError):
+        build_annotation_from_xfdf(el)
 
 
 def test_date_attribute_set() -> None:
@@ -144,11 +139,10 @@ def test_name_attribute_sets_unique_name() -> None:
     assert annot.get_name() == "annot-1"  # type: ignore[union-attr]
 
 
-def test_invalid_rect_attribute_silently_skipped() -> None:
-    # parse_rectangle_attributes raises OSError on wrong count.
+def test_invalid_rect_attribute_raises() -> None:
     el = _annot_element('<text page="0" rect="1,2,3"/>')
-    annot = build_annotation_from_xfdf(el)
-    assert annot is not None  # no raise
+    with pytest.raises(OSError):
+        build_annotation_from_xfdf(el)
 
 
 def test_title_attribute_set() -> None:

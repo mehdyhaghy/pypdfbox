@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 from pypdfbox.pdmodel import PDDocument, PDPage
 from pypdfbox.pdmodel.interactive.action import PDActionGoTo
@@ -108,7 +110,7 @@ def test_find_destination_page_resolves_named_goto_action_string() -> None:
         assert item.find_destination_page(document) is target.get_cos_object()
 
 
-def test_find_destination_page_returns_none_for_negative_or_out_of_range_page_number() -> None:
+def test_find_destination_page_handles_negative_and_raises_for_out_of_range() -> None:
     with PDDocument() as document:
         document.add_page(PDPage())
 
@@ -120,7 +122,8 @@ def test_find_destination_page_returns_none_for_negative_or_out_of_range_page_nu
         out_of_range = PDPageFitDestination()
         out_of_range.set_page_number(5)
         item.set_destination(out_of_range)
-        assert item.find_destination_page(document) is None
+        with pytest.raises(IndexError):
+            item.find_destination_page(document)
 
 
 def test_find_destination_page_resolves_wrapped_legacy_d_entry() -> None:

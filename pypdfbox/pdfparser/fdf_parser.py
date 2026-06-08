@@ -58,11 +58,28 @@ class FDFParser(COSParser):
             # pypdfbox's ``parse_fdf_header`` returns the parsed version
             # number (float) — ``0`` or below would mean a failed parse,
             # matching upstream's boolean-returning shape.
-            if not self.parse_fdf_header():
+            try:
+                version = self.parse_fdf_header()
+            except PDFParseError as exc:
+                if "malformed %FDF- version" not in exc.message:
+                    raise PDFParseError(
+                        "Error: Header doesn't contain versioninfo"
+                    ) from exc
+                version = 1.7
+            if not version:
                 raise PDFParseError("Error: Header doesn't contain versioninfo")
+            if self._document is None:
+                from .pdf_parser import PDFParser  # noqa: PLC0415
+
+                self._src.seek(0)
+                parser = PDFParser(self._src)
+                parser.parse_header = lambda: version  # type: ignore[method-assign]
+                self._document = parser.parse()
+            else:
+                self._document.set_version(version)
             self._initial_parse()
             exception_occurred = False
-            return FDFDocument(self.document, self.source)
+            return FDFDocument(self._document, self._src)
         finally:
             if exception_occurred and self.document is not None:
                 close_quietly(self.document)

@@ -76,8 +76,10 @@ class PDLinearizationDictionary:
         out: list[int] = []
         for i in range(arr.size()):
             entry = arr.get_object(i)
-            if isinstance(entry, (COSInteger, COSFloat)):
-                out.append(int(entry.value))
+            if isinstance(entry, COSInteger):
+                out.append(((entry.value + 2**31) % 2**32) - 2**31)
+            elif isinstance(entry, COSFloat):
+                out.append(entry.int_value())
             else:
                 return None
         if len(out) == 2:

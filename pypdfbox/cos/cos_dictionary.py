@@ -472,9 +472,9 @@ class COSDictionary(COSBase):
             v = self.get_dictionary_object(key)
             default_value = default
         if isinstance(v, COSInteger):
-            return v.value
+            return ((v.value + 2**31) % 2**32) - 2**31
         if isinstance(v, COSFloat):
-            return int(v.value)
+            return v.int_value()
         return default_value
 
     def has_int(self, key: COSName | str) -> bool:

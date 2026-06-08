@@ -191,7 +191,9 @@ class FDFDictionary:
         for entry in v:
             resolved = entry.get_object() if isinstance(entry, COSObject) else entry
             if isinstance(resolved, COSDictionary):
-                out.append(FDFAnnotation.create(resolved))
+                annotation = FDFAnnotation.create(resolved)
+                if annotation is not None:
+                    out.append(annotation)
         return out
 
     def has_annotations(self) -> bool:
