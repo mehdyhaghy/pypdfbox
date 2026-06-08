@@ -324,9 +324,11 @@ def test_mixed_content_stream_smoke() -> None:
 # ---------- error path: unterminated literal string ----------
 
 
-def test_unterminated_literal_string_raises() -> None:
-    with pytest.raises(PDFParseError):
-        _parse(b"(unterminated Tj")
+def test_unterminated_literal_string_returns_partial_operand() -> None:
+    tokens = _parse(b"(unterminated Tj")
+    assert len(tokens) == 1
+    assert isinstance(tokens[0], COSString)
+    assert tokens[0].get_bytes() == b"unterminated Tj"
 
 
 def test_unterminated_hex_string_raises() -> None:

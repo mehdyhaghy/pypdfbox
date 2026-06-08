@@ -11,20 +11,19 @@ from __future__ import annotations
 
 import io
 
-import pytest
-
 from pypdfbox.filter import PredictorOutputStream
 
 
-def test_constructor_raises_on_negative_row_length() -> None:
-    """``calculate_row_length`` returning < 0 must raise an ``OSError``.
-
-    ``columns = -1`` drives the bit-rounding helper into a negative
-    result, which the constructor must reject with an ``OSError``.
-    """
+def test_constructor_uses_java_truncation_for_negative_columns() -> None:
+    """Java integer division truncates ``(-8 + 7) / 8`` to zero."""
     sink = io.BytesIO()
-    with pytest.raises(OSError, match="negative"):
-        PredictorOutputStream(sink, predictor=2, colors=1, bits_per_component=8, columns=-1)
+    stream = PredictorOutputStream(
+        sink, predictor=2, colors=1, bits_per_component=8, columns=-1
+    )
+    try:
+        assert stream._row_length == 0  # noqa: SLF001
+    finally:
+        stream.close()
 
 
 def test_writable_returns_true() -> None:

@@ -20,7 +20,7 @@ class PDStructureNode:
     PDMarkedContentReference / PDObjectReference / int MCID), kid
     insertion/removal helpers, and cheap kid-count/emptiness predicates.
     Typed parent-chain helpers live on ``PDStructureElement``. Unknown
-    ``/K`` entries are preserved as raw COS objects.
+    ``/K`` entries are skipped, matching upstream ``createObject``.
     """
 
     #: ``/Type`` value identifying a :class:`PDStructureTreeRoot` dictionary.
@@ -126,8 +126,7 @@ class PDStructureNode:
         Returns the typed ``/K`` children. ``/K`` may be a single structure
         element dictionary, a single integer MCID, or a COSArray mixing
         dictionaries, integer MCIDs, and marked-content references. Known
-        structure-tree dictionaries are wrapped; unknown entries are returned
-        unchanged as raw COS fallback.
+        structure-tree dictionaries are wrapped; unknown entries are skipped.
         """
         k = self._dictionary.get_dictionary_object(_K)
         if k is None:
@@ -136,10 +135,12 @@ class PDStructureNode:
             out: list[Any] = []
             for i in range(k.size()):
                 base = k.get_object(i)
-                if base is not None:
-                    out.append(self.wrap_kid(base))
+                value = self.create_object(base)
+                if value is not None:
+                    out.append(value)
             return out
-        return [self.wrap_kid(k)]
+        value = self.create_object(k)
+        return [] if value is None else [value]
 
     def set_kids(self, kids: list[Any] | None) -> None:
         if not kids:

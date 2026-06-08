@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSString
 from pypdfbox.pdmodel import PDPageLabelRange, PDPageLabels, PDViewerPreferences
 
@@ -75,7 +77,7 @@ def test_page_labels_unknown_style_falls_back_to_decimal() -> None:
     assert labels.get_label_for_page(0) == "raw-1"
 
 
-def test_page_labels_malformed_nums_entries_are_ignored() -> None:
+def test_page_labels_rejects_non_dictionary_value_for_valid_key() -> None:
     nums = COSArray()
     nums.add(COSString("not-an-integer-key"))
     nums.add(COSDictionary())
@@ -86,6 +88,5 @@ def test_page_labels_malformed_nums_entries_are_ignored() -> None:
     tree = COSDictionary()
     tree.set_item(COSName.get_pdf_name("Nums"), nums)
 
-    labels = PDPageLabels(None, tree)  # type: ignore[arg-type]
-
-    assert labels.get_page_indices() == [0]
+    with pytest.raises(OSError, match="index 2"):
+        PDPageLabels(None, tree)  # type: ignore[arg-type]

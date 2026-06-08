@@ -17,7 +17,7 @@ Where ``typeName`` is the destination array's ``/D[1]`` type name (XYZ / Fit /
 FitB / FitH / FitBH / FitV / FitBV / FitR) — the behaviourally-meaningful
 identity, NOT the Java wrapper class, which upstream collapses (FitH and FitBH
 both resolve to ``PDPageFitWidthDestination``; pypdfbox keeps dedicated
-``PDPageFitBoundingBox*`` subclasses — see ``CHANGES.md``). ``coords`` are the
+same page-fit classes as PDFBox). ``coords`` are the
 type-appropriate getters, with both languages normalising the "unset" slot to
 ``-1`` (upstream's int / float sentinel; pypdfbox's ``None``).
 
@@ -38,9 +38,6 @@ from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSNull, 
 from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
     PDDestination,
     PDPageDestination,
-    PDPageFitBoundingBoxDestination,
-    PDPageFitBoundingBoxHeightDestination,
-    PDPageFitBoundingBoxWidthDestination,
     PDPageFitDestination,
     PDPageFitHeightDestination,
     PDPageFitRectangleDestination,
@@ -201,11 +198,11 @@ def test_destination_types_and_coordinates_match_pdfbox(battery_pdf: Path) -> No
 _DISPATCH_CASES = [
     ("XYZ", PDPageXYZDestination),
     ("Fit", PDPageFitDestination),
-    ("FitB", PDPageFitBoundingBoxDestination),
+    ("FitB", PDPageFitDestination),
     ("FitH", PDPageFitWidthDestination),
-    ("FitBH", PDPageFitBoundingBoxWidthDestination),
+    ("FitBH", PDPageFitWidthDestination),
     ("FitV", PDPageFitHeightDestination),
-    ("FitBV", PDPageFitBoundingBoxHeightDestination),
+    ("FitBV", PDPageFitHeightDestination),
     ("FitR", PDPageFitRectangleDestination),
 ]
 
@@ -219,13 +216,8 @@ def test_create_dispatches_to_expected_subclass(type_name: str, expected_cls) ->
     """``PDDestination.create`` builds the expected concrete subclass and keeps
     the ``/D[1]`` type name intact.
 
-    Note the deliberate divergence (see ``CHANGES.md``): for the bounding-box
-    variants FitB / FitBH / FitBV pypdfbox returns dedicated
-    ``PDPageFitBoundingBox*`` subclasses, whereas upstream reuses
-    ``PDPageFitDestination`` / ``PDPageFitWidthDestination`` /
-    ``PDPageFitHeightDestination``. The behaviourally-observable ``/D[1]`` type
-    name and the coordinate getters are identical either way — which is what
-    the oracle test above asserts against live PDFBox.
+    Bounding-box variants reuse the same classes as PDFBox while preserving
+    the distinct ``/D[1]`` type name.
     """
     arr = _array([COSInteger.get(0), COSName.get_pdf_name(type_name)])
     dest = PDDestination.create(arr)

@@ -48,27 +48,15 @@ class PDDestination:
             if type_str == PDPageFitDestination.TYPE:
                 return PDPageFitDestination(base)
             if type_str == PDPageFitDestination.TYPE_BOUNDED:
-                from .pd_page_fit_bounding_box_destination import (
-                    PDPageFitBoundingBoxDestination,
-                )
-
-                return PDPageFitBoundingBoxDestination(base)
+                return PDPageFitDestination(base)
             if type_str == PDPageFitWidthDestination.TYPE:
                 return PDPageFitWidthDestination(base)
             if type_str == PDPageFitWidthDestination.TYPE_BOUNDED:
-                from .pd_page_fit_bounding_box_width_destination import (
-                    PDPageFitBoundingBoxWidthDestination,
-                )
-
-                return PDPageFitBoundingBoxWidthDestination(base)
+                return PDPageFitWidthDestination(base)
             if type_str == PDPageFitHeightDestination.TYPE:
                 return PDPageFitHeightDestination(base)
             if type_str == PDPageFitHeightDestination.TYPE_BOUNDED:
-                from .pd_page_fit_bounding_box_height_destination import (
-                    PDPageFitBoundingBoxHeightDestination,
-                )
-
-                return PDPageFitBoundingBoxHeightDestination(base)
+                return PDPageFitHeightDestination(base)
             if type_str == PDPageFitRectangleDestination.TYPE:
                 return PDPageFitRectangleDestination(base)
             if type_str == PDPageXYZDestination.TYPE:

@@ -565,7 +565,7 @@ class PDStructureElement(PDStructureNode):
     #
     # ``get_kids`` / ``set_kids`` / ``append_kid`` / ``remove_kid`` come from
     # PDStructureNode. The base node treats ``/K`` as a flat list of typed
-    # structure-tree entries, preserving unknown values as raw COS fallback.
+    # structure-tree entries, skipping unknown values like upstream.
 
     # ---------- traversal helpers (pypdfbox additions) ----------
     #
@@ -578,8 +578,8 @@ class PDStructureElement(PDStructureNode):
 
         Items are wrapped per :meth:`PDStructureNode.wrap_kid`:
         ``PDStructureElement`` / ``PDMarkedContentReference`` /
-        ``PDObjectReference`` / ``int`` MCID, or raw COS fallback for
-        unknown entries. This is a streaming view of :meth:`get_kids`.
+        ``PDObjectReference`` / ``int`` MCID. Unknown entries are skipped.
+        This is a streaming view of :meth:`get_kids`.
         """
         yield from self.get_kids()
 

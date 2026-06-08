@@ -149,12 +149,9 @@ def test_check_for_end_of_string_crlf_slash() -> None:
 
 
 def test_literal_string_eof_after_backslash() -> None:
-    """``\\`` immediately followed by EOF inside a literal string must
-    leave the ``_consume_escape`` helper at depth unchanged and surface
-    as the unterminated-string error from the outer loop."""
+    """PDFBox writes the EOF sentinel as ``0xFF`` after a trailing slash."""
     p = _parser(b"(abc\\")
-    with pytest.raises(PDFParseError, match="unterminated literal string"):
-        p.read_literal_string()
+    assert p.read_literal_string() == b"abc\xff"
 
 
 def test_literal_string_crlf_line_continuation() -> None:

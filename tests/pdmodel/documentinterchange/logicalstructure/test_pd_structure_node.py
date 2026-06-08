@@ -52,7 +52,9 @@ def test_structure_node_append_kid_then_get_kids_round_trip() -> None:
     child = COSDictionary()
     node.append_kid(child)
     kids = node.get_kids()
-    assert kids == [child]
+    assert len(kids) == 1
+    assert isinstance(kids[0], PDStructureElement)
+    assert kids[0].get_cos_object() is child
 
 
 def test_structure_node_append_two_kids_promotes_to_array() -> None:
@@ -62,7 +64,7 @@ def test_structure_node_append_two_kids_promotes_to_array() -> None:
     node.append_kid(child_a)
     node.append_kid(child_b)
     kids = node.get_kids()
-    assert kids == [child_a, child_b]
+    assert [kid.get_cos_object() for kid in kids] == [child_a, child_b]
 
 
 def test_structure_node_remove_kid_removes() -> None:
@@ -72,7 +74,9 @@ def test_structure_node_remove_kid_removes() -> None:
     node.append_kid(child_a)
     node.append_kid(child_b)
     assert node.remove_kid(child_a) is True
-    assert node.get_kids() == [child_b]
+    kids = node.get_kids()
+    assert len(kids) == 1
+    assert kids[0].get_cos_object() is child_b
 
 
 def test_structure_node_remove_only_kid_clears_k() -> None:
@@ -118,7 +122,7 @@ def test_structure_node_get_kids_dispatches_mixed_k_array() -> None:
     assert isinstance(kids[2], PDObjectReference)
     assert kids[2].get_cos_object() is objr
     assert kids[3] == 12
-    assert kids[4] is unknown
+    assert len(kids) == 4
 
 
 def test_structure_node_append_and_remove_typed_kids() -> None:
@@ -207,7 +211,7 @@ def test_structure_node_insert_before_into_array() -> None:
     new_kid = COSDictionary()
     assert node.insert_before(new_kid, c) is True
     kids = node.get_kids()
-    assert kids == [a, new_kid, c]
+    assert [kid.get_cos_object() for kid in kids] == [a, new_kid, c]
     # The 'b' wasn't used — keep this branch readable.
     assert b is not new_kid
 

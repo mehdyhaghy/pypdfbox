@@ -146,11 +146,13 @@ class PDPageLabels:
             i += 2
             if not isinstance(key_obj, COSInteger):
                 continue
-            if not isinstance(value_obj, COSDictionary):
-                continue
             key = key_obj.value
             if key < 0:
                 continue
+            if not isinstance(value_obj, COSDictionary):
+                raise OSError(
+                    f"Page label range at index {key} is not a COSDictionary"
+                )
             self._labels[key] = PDPageLabelRange(value_obj, start_index=key)
 
     # ---------- COS surface ----------

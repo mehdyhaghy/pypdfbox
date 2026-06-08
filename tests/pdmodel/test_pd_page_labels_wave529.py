@@ -55,10 +55,8 @@ def test_wave529_nums_parser_skips_malformed_and_negative_entries() -> None:
     root = COSDictionary()
     root.set_item(_name("Nums"), nums)
 
-    labels = PDPageLabels(PDDocument(), root)
-
-    assert labels.get_page_indices() == [0, 3]
-    assert labels.get_page_label_range(3) is not None
+    with pytest.raises(OSError, match="index 2"):
+        PDPageLabels(PDDocument(), root)
 
 
 def test_wave529_page_count_falls_back_to_zero_when_document_raises() -> None:

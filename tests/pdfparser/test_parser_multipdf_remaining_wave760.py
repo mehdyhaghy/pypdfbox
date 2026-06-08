@@ -8,7 +8,7 @@ import pytest
 from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSObject, COSStream
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.multipdf import PDFCloneUtility, PDFMergerUtility
-from pypdfbox.pdfparser import BaseParser, PDFParseError
+from pypdfbox.pdfparser import BaseParser
 from pypdfbox.pdfparser.pdf_stream_parser import PDFStreamParser
 from pypdfbox.pdmodel import PDDocument
 
@@ -31,14 +31,12 @@ def test_read_name_falls_back_to_latin1_for_invalid_utf8_escape() -> None:
     assert base_parser(b"/bad#FFname").read_name() == "bad\xffname"
 
 
-def test_literal_string_inner_close_near_eof_keeps_depth_then_raises() -> None:
-    with pytest.raises(PDFParseError, match="unterminated"):
-        base_parser(b"((x)").read_literal_string()
+def test_literal_string_inner_close_near_eof_returns_partial_value() -> None:
+    assert base_parser(b"((x)").read_literal_string() == b"(x)"
 
 
-def test_literal_string_trailing_backslash_hits_escape_eof_then_raises() -> None:
-    with pytest.raises(PDFParseError, match="unterminated"):
-        base_parser(b"(abc\\").read_literal_string()
+def test_literal_string_trailing_backslash_writes_eof_sentinel() -> None:
+    assert base_parser(b"(abc\\").read_literal_string() == b"abc\xff"
 
 
 class _FalseEofBuffer(RandomAccessReadBuffer):

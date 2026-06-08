@@ -47,7 +47,15 @@ def calculate_row_length(colors: int, bits_per_component: int, columns: int) -> 
     ``(colors, bitsPerComponent, columns)`` rather than the internal
     helper's ``(columns, colors, bitsPerComponent)``.
     """
-    return _row_bytes(columns, colors, bits_per_component)
+    # Upstream performs this arithmetic in signed Java ``int`` space and
+    # integer division truncates toward zero. Preserve both details for
+    # malformed negative/overflowing decode parameters.
+    value = columns * colors
+    value = ((value + 2**31) % 2**32) - 2**31
+    value *= bits_per_component
+    value = ((value + 2**31) % 2**32) - 2**31
+    value = ((value + 7 + 2**31) % 2**32) - 2**31
+    return int(value / 8)
 
 
 def _bytes_per_pixel(colors: int, bits_per_component: int) -> int:

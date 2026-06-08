@@ -5,6 +5,8 @@ Upstream baseline: PDFBox 3.0.
 
 from __future__ import annotations
 
+import pytest
+
 from pypdfbox import PDDocument, PDPage
 from pypdfbox.cos import COSArray, COSBoolean, COSDictionary, COSInteger, COSName
 from pypdfbox.pdmodel.graphics.color import PDOutputIntent
@@ -65,9 +67,8 @@ def test_retrieve_page_labels_on_malformed_pdf() -> None:
             COSName.get_pdf_name("PageLabels"), tree
         )
 
-        fetched = doc.get_document_catalog().get_page_labels()
-        assert fetched is not None
-        assert fetched.get_labels_by_page_indices() == ["1", "2", "i", "ii"]
+        with pytest.raises(OSError, match="index 1"):
+            doc.get_document_catalog().get_page_labels()
 
 
 def test_retrieve_number_of_pages() -> None:

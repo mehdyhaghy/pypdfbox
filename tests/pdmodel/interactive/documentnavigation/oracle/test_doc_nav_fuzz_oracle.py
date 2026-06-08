@@ -15,26 +15,16 @@ surfaces against the live ``DocNavFuzzProbe`` Java oracle:
   page count, duplicate start, ``/Kids`` non-dictionary child with a sibling
   ``/Nums``).
 
-Two normalisations / divergences are baked in (all pre-existing, documented):
-
-1. ``PDPageFitBoundingBox*`` subclass identity. Upstream collapses ``FitB`` /
-   ``FitBH`` / ``FitBV`` onto ``PDPageFit`` / ``PDPageFitWidth`` /
-   ``PDPageFitHeight`` respectively; pypdfbox keeps dedicated subclasses (see
-   ``CHANGES.md``). Both sides are compared on the behaviourally-meaningful
-   ``/D[1]`` type identity via :data:`_CLASS_NORMALISE`, matching the
-   convention of the sibling ``test_destination_type_oracle``.
-
-2. Intentional robustness divergences where pypdfbox is the more-lenient
-   superset (it fails closed / recovers where upstream throws or drops):
+Intentional robustness divergences where pypdfbox is the more-lenient
+superset (it fails closed / recovers where upstream throws or drops):
 
    * ``PDOutlineItem.get_destination`` swallows the ``OSError`` from a
      malformed ``/Dest`` and returns ``None`` where upstream propagates the
      ``IOException`` (HISTORY wave 344-class note; CHANGES Wave 1511).
-   * ``PDPageLabels`` tolerates a non-dictionary ``/Nums`` value (skips it)
-     where upstream's reflective ``convertCOSToPD`` throws ``IOException``;
-     and it recovers a same-node sibling ``/Nums`` when ``/Kids`` carries only
-     junk (non-dictionary) children, where upstream's ``/Kids`` else-if branch
-     drops the ``/Nums`` entirely (HISTORY wave 310; CHANGES Wave 1511).
+   * ``PDPageLabels`` recovers a same-node sibling ``/Nums`` when ``/Kids``
+     carries only junk (non-dictionary) children, where upstream's ``/Kids``
+     else-if branch drops the ``/Nums`` entirely (HISTORY wave 310; CHANGES
+     Wave 1511).
 
    These rows are pinned both-sides: the test asserts pypdfbox's tolerant
    token AND records the upstream token, so a future "match upstream exactly"
@@ -74,16 +64,6 @@ from pypdfbox.pdmodel.pd_page import PDPage
 from pypdfbox.pdmodel.pd_page_labels import PDPageLabels
 from tests.oracle.harness import requires_oracle, run_probe_text
 
-# Upstream collapses the bounded-box fit variants onto the unbounded wrapper
-# class; pypdfbox keeps dedicated subclasses. Normalise pypdfbox's class name
-# onto upstream's so the dispatch comparison is on behaviour, not wrapper
-# identity (see CHANGES.md / sibling destination-type oracle).
-_CLASS_NORMALISE: dict[str, str] = {
-    "PDPageFitBoundingBoxDestination": "PDPageFitDestination",
-    "PDPageFitBoundingBoxWidthDestination": "PDPageFitWidthDestination",
-    "PDPageFitBoundingBoxHeightDestination": "PDPageFitHeightDestination",
-}
-
 # Rows where pypdfbox is the more-lenient documented superset. The value is the
 # UPSTREAM token; the Python token below is asserted to be the tolerant one.
 _KNOWN_DIVERGENCES: dict[str, str] = {
@@ -91,8 +71,6 @@ _KNOWN_DIVERGENCES: dict[str, str] = {
     "outline:dest_bad_array": "EXC:IOException",
     "outline:dest_bad_int": "EXC:IOException",
     "outline:dest_bad_dict": "EXC:IOException",
-    # Non-dictionary /Nums value: upstream throws, pypdfbox skips it.
-    "labels:nondict_value": "EXC:IOException",
     # /Kids junk child with a sibling /Nums: upstream drops /Nums, pypdfbox
     # recovers it.
     "labels:kids_nonchild_with_nums": "[1,2,3,4,5]",
@@ -102,7 +80,6 @@ _PYTHON_TOLERANT: dict[str, str] = {
     "outline:dest_bad_array": "null",
     "outline:dest_bad_int": "null",
     "outline:dest_bad_dict": "null",
-    "labels:nondict_value": "[1,2,3,4,5]",
     "labels:kids_nonchild_with_nums": "[I,II,III,IV,V]",
 }
 
@@ -162,10 +139,6 @@ def _goto_action() -> COSDictionary:
 # --------------------------------------------------------------------------
 
 
-def _normalise_class(name: str) -> str:
-    return _CLASS_NORMALISE.get(name, name)
-
-
 def _create_token(base: COSBase | None) -> str:
     try:
         d = PDDestination.create(base)
@@ -173,7 +146,7 @@ def _create_token(base: COSBase | None) -> str:
         return "EXC:IOException"
     if d is None:
         return "null"
-    cls = _normalise_class(type(d).__name__)
+    cls = type(d).__name__
     if isinstance(d, PDNamedDestination):
         return cls + ":" + (d.get_named_destination() or "")
     return cls
@@ -201,7 +174,7 @@ def _outline_token(dest: COSBase | None, action: COSDictionary | None) -> str:
         return "EXC:IOException"
     if d is None:
         return "null"
-    cls = _normalise_class(type(d).__name__)
+    cls = type(d).__name__
     if isinstance(d, PDNamedDestination):
         return cls + ":" + (d.get_named_destination() or "")
     return cls

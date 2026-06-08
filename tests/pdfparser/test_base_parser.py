@@ -279,9 +279,8 @@ def test_literal_string_escaped_close_recovers_before_next_name_line() -> None:
     assert p.peek_byte() == ord("\n")
 
 
-def test_literal_string_unterminated_raises() -> None:
-    with pytest.raises(PDFParseError):
-        parser(b"(unterminated").read_literal_string()
+def test_literal_string_unterminated_returns_accumulated_bytes() -> None:
+    assert parser(b"(unterminated").read_literal_string() == b"unterminated"
 
 
 def test_literal_string_missing_open_paren_raises() -> None:

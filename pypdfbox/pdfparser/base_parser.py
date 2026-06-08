@@ -607,7 +607,9 @@ class BaseParser:
         while True:
             b = self._src.read()
             if b == RandomAccessRead.EOF:
-                raise PDFParseError("unterminated literal string", position=start_pos)
+                # PDFBox's lenient literal-string loop returns the bytes
+                # accumulated so far when EOF arrives before a closing ')'.
+                return bytes(out)
             if b == 0x28:  # '(' — nested
                 depth += 1
                 out.append(b)
@@ -667,6 +669,10 @@ class BaseParser:
     def _consume_escape(self, out: bytearray, depth: int) -> int:
         b = self._src.read()
         if b == RandomAccessRead.EOF:
+            # Java writes the EOF sentinel through its byte-oriented output
+            # stream on a trailing backslash, yielding 0xFF, then exits the
+            # outer loop at EOF.
+            out.append(0xFF)
             return depth
         if b == 0x29:  # ')' — PDFBox-276 malformed string recovery.
             depth = self._check_for_end_of_string(depth)

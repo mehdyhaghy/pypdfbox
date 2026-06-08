@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from typing import Any, cast
 
-from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName
+from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName, COSString
 from pypdfbox.pdmodel.common.pd_name_tree_node import PDNameTreeNode
 from pypdfbox.pdmodel.common.pd_number_tree_node import PDNumberTreeNode
 
@@ -147,6 +147,8 @@ class PDStructureTreeRoot(PDStructureNode):
         for key, value in rm.entry_set():
             if isinstance(value, COSName):
                 out[key.get_name()] = value.get_name()
+            elif isinstance(value, COSString):
+                out[key.get_name()] = value.get_string()
         return out
 
     def set_role_map(self, role_map: dict[str, str] | None) -> None:
@@ -267,9 +269,9 @@ class PDStructureTreeRoot(PDStructureNode):
 
     def get_parent_tree_next_key(self) -> int:
         """Return ``/ParentTreeNextKey`` (the next-available integer key for
-        the parent tree). Defaults to ``0`` when the entry is absent.
+        the parent tree). Defaults to ``-1`` when the entry is absent.
         Mirrors upstream ``PDStructureTreeRoot.getParentTreeNextKey()``."""
-        return self._dictionary.get_int(_PARENT_TREE_NEXT_KEY, 0)
+        return self._dictionary.get_int(_PARENT_TREE_NEXT_KEY, -1)
 
     def set_parent_tree_next_key(self, key: int) -> None:
         """Set ``/ParentTreeNextKey``. Mirrors upstream
@@ -286,7 +288,7 @@ class PDStructureTreeRoot(PDStructureNode):
         ``getParentTreeNextKey()`` then writing ``setParentTreeNextKey()``;
         this helper folds those two calls so the slot stays consistent.
         """
-        current = self.get_parent_tree_next_key()
+        current = max(0, self.get_parent_tree_next_key())
         self.set_parent_tree_next_key(current + 1)
         return current
 
@@ -515,6 +517,8 @@ class PDStructureTreeRoot(PDStructureNode):
         self.set_parent_tree(tree)
         if max_key >= 0:
             self.set_parent_tree_next_key(max_key + 1)
+        else:
+            self.set_parent_tree_next_key(0)
         return tree
 
     # ---------- /K append ----------

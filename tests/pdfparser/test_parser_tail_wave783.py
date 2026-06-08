@@ -48,7 +48,7 @@ def test_wave783_consume_escape_at_eof_leaves_depth_unchanged() -> None:
     out = bytearray()
 
     assert parser._consume_escape(out, 3) == 3  # noqa: SLF001
-    assert out == bytearray()
+    assert out == bytearray(b"\xff")
 
 
 def test_wave783_inline_image_data_breaks_when_false_eof_reports_eof_byte() -> None:

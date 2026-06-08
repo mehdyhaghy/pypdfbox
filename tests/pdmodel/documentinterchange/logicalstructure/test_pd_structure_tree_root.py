@@ -66,7 +66,7 @@ def test_struct_tree_root_set_parent_tree_accepts_typed_number_tree() -> None:
 
 def test_struct_tree_root_parent_tree_next_key_round_trip() -> None:
     root = PDStructureTreeRoot()
-    assert root.get_parent_tree_next_key() == 0
+    assert root.get_parent_tree_next_key() == -1
     root.set_parent_tree_next_key(7)
     assert root.get_parent_tree_next_key() == 7
 
@@ -160,15 +160,15 @@ def test_struct_element_append_kid_round_trip() -> None:
 
     kids = elem.get_kids()
     assert len(kids) == 1
-    assert kids[0] is child
+    assert kids[0].get_cos_object() is child
 
     second = COSDictionary()
     second.set_name(COSName.get_pdf_name("S"), "Span")
     elem.append_kid(second)
     kids = elem.get_kids()
     assert len(kids) == 2
-    assert kids[0] is child
-    assert kids[1] is second
+    assert kids[0].get_cos_object() is child
+    assert kids[1].get_cos_object() is second
 
 
 def test_struct_tree_root_type_constant_matches_pdf_spec() -> None:

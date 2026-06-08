@@ -41,7 +41,7 @@ def test_wave530_raw_k_setter_round_trips_and_none_removes_entry() -> None:
     assert root.get_kids() == []
 
 
-def test_wave530_role_map_skips_non_name_values_and_depth_cap_stops_chain() -> None:
+def test_wave530_role_map_reads_string_values_and_depth_cap_stops_chain() -> None:
     root = PDStructureTreeRoot()
     role_map = COSDictionary()
     role_map.set_item("Ignored", COSString("P"))
@@ -50,7 +50,7 @@ def test_wave530_role_map_skips_non_name_values_and_depth_cap_stops_chain() -> N
     role_map.set_name("Custom17", "P")
     root.get_cos_object().set_item(_name("RoleMap"), role_map)
 
-    assert "Ignored" not in root.get_role_map()
+    assert root.get_role_map()["Ignored"] == "P"
     assert root.resolve_role_map("Custom0") == "Custom16"
     assert root.resolve_role_map(None) is None
 

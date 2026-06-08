@@ -12,9 +12,9 @@ from pypdfbox.pdmodel.pd_page import PDPage
 # ---------- /ParentTreeNextKey ----------
 
 
-def test_parent_tree_next_key_default_zero() -> None:
+def test_parent_tree_next_key_default_negative_one() -> None:
     root = PDStructureTreeRoot()
-    assert root.get_parent_tree_next_key() == 0
+    assert root.get_parent_tree_next_key() == -1
 
 
 def test_parent_tree_next_key_round_trip() -> None:

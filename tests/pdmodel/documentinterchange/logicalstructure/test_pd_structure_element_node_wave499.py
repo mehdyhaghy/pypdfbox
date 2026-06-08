@@ -324,7 +324,9 @@ def test_structure_element_direct_kid_filters_and_clear_kids() -> None:
     assert marked_content_refs[0].get_cos_object() is mcr.get_cos_object()
     assert marked_content_refs[0].get_mcid() == 4
     assert marked_content_refs[1] == 9
-    assert elem.count_kids() == 5
+    # The raw COSBoolean from ``True`` is not a recognized structure kid and
+    # PDFBox filters it from getKids().
+    assert elem.count_kids() == 4
 
     elem.clear_kids()
     assert elem.get_kids() == []
