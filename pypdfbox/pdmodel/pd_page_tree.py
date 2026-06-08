@@ -132,6 +132,7 @@ class PDPageTree:
                 root = wrapper
         self._root = root
         self._document = document
+        self._page_set: set[int] = set()
 
     # ---------- COS surface ----------
 
@@ -163,19 +164,26 @@ class PDPageTree:
         return iter(self)
 
     def _walk(
-        self, node: COSDictionary, seen: set[int]
+        self, node: COSDictionary, seen_nodes: set[int]
     ) -> Iterator[PDPage]:
-        """Depth-first traversal yielding leaf ``/Type /Page`` nodes."""
-        if id(node) in seen:
-            return
-        seen.add(id(node))
+        """Depth-first traversal matching upstream ``PageIterator``.
 
-        if _is_page_dict(node):
-            yield PDPage(node)
+        Only intermediate dictionaries are cycle-suppressed. Repeated leaf
+        references remain repeated pages in iteration order, while malformed
+        leaves whose ``/Type`` is missing or not exactly ``/Page`` are skipped.
+        """
+        if not _is_page_tree_node(node):
+            if node.get_dictionary_object(_TYPE) == _PAGE:
+                yield PDPage(node)
             return
 
         for kid in self.get_kids(node):
-            yield from self._walk(kid, seen)
+            kid_id = id(kid)
+            if kid_id in seen_nodes:
+                continue
+            if kid.contains_key(_KIDS):
+                seen_nodes.add(kid_id)
+            yield from self._walk(kid, seen_nodes)
 
     # ---------- Python protocols ----------
 
@@ -213,7 +221,7 @@ class PDPageTree:
         # to the upstream-faithful, ``/Count``-trusting descent.
         if index < 0:
             index += sum(1 for _ in self)
-        dict_ = self._get_cos(index + 1, self._root, 0, set())
+        dict_ = self._get_cos(index + 1, self._root, 0, self._page_set)
         self._sanitize_type(dict_)
         return PDPage(dict_)
 
@@ -595,7 +603,6 @@ class PDPageTree:
                 # Repair-in-place: empty /Type /Page placeholder.
                 empty_page = COSDictionary()
                 empty_page.set_item(_TYPE, _PAGE)
-                empty_page.set_item(_PARENT, node)
                 kids.set(i, empty_page)
                 result.append(empty_page)
         return result
@@ -616,7 +623,11 @@ class PDPageTree:
             value = cursor.get_dictionary_object(key)
             if value is not None:
                 return value
-            cursor = _resolve_parent(cursor)
+            parent = _resolve_parent(cursor)
+            parent_type = (
+                parent.get_dictionary_object(_TYPE) if parent is not None else None
+            )
+            cursor = parent if parent_type == _PAGES else None
         return None
 
     # ---------- internals ----------

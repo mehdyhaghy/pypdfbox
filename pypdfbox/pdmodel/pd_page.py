@@ -112,6 +112,7 @@ class PDPage:
         # to fall back to ``getattr`` with a default — keeps the read path
         # symmetric with upstream's instance field.
         self._resource_cache = resource_cache
+        self._page_resources: PDResources | None = None
 
     # ---------- COS surface ----------
 
@@ -216,11 +217,13 @@ class PDPage:
         ``page.getResources() == null ? new PDResources() : ...`` idiom
         upstream call-sites spell out inline.
         """
-        resolved = self._get_inheritable(_RESOURCES)
-        cache = self.get_resource_cache()
-        if isinstance(resolved, COSDictionary):
-            return PDResources(resolved, resource_cache=cache)
-        return None
+        if self._page_resources is None:
+            resolved = self._get_inheritable(_RESOURCES)
+            if isinstance(resolved, COSDictionary):
+                self._page_resources = PDResources(
+                    resolved, resource_cache=self.get_resource_cache()
+                )
+        return self._page_resources
 
     def get_or_create_resources(self) -> PDResources:
         """Return the page's resolved :class:`PDResources`, materialising and
@@ -249,13 +252,17 @@ class PDPage:
 
     def set_resources(self, resources: PDResources | COSDictionary | None) -> None:
         if resources is None:
+            self._page_resources = None
             self._page.remove_item(_RESOURCES)
             return
-        cos = (
-            resources.get_cos_object()
-            if isinstance(resources, PDResources)
-            else resources
-        )
+        if isinstance(resources, PDResources):
+            self._page_resources = resources
+            cos = resources.get_cos_object()
+        else:
+            self._page_resources = PDResources(
+                resources, resource_cache=self.get_resource_cache()
+            )
+            cos = resources
         self._page.set_item(_RESOURCES, cos)
 
     # ---------- PDContentStream surface ----------

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from typing import Any
 
 from .cos_base import COSBase
 from .cos_update_state import COSUpdateState
 from .i_cos_visitor import ICOSVisitor
+
+_LOG = logging.getLogger(__name__)
 
 
 class COSObject(COSBase):
@@ -65,9 +68,17 @@ class COSObject(COSBase):
             # call (object graph cycles) doesn't re-enter and loop forever.
             # Mirrors upstream ``COSObject.getObject``.
             self._dereferenced = True
-            self._object = self._loader(self)
-            self._loader = None
-            self._update_state.dereference_child(self._object)
+            try:
+                self._object = self._loader(self)
+                self._update_state.dereference_child(self._object)
+            except OSError:
+                # PDFBox catches parser IOExceptions here: a malformed xref
+                # target resolves to null and is not retried.
+                _LOG.error("Can't dereference %s", self, exc_info=True)
+            finally:
+                # Upstream drops the parser callback after success, an
+                # IOException, or an unchecked exception.
+                self._loader = None
         return self._object
 
     def set_object(self, value: COSBase | None) -> None:

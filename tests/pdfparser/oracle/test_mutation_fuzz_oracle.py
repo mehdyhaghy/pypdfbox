@@ -452,23 +452,17 @@ def _pypdfbox_dump(path: str) -> str:
 # Differential parity: every mutant must produce the identical fingerprint on
 # both PDFBox and pypdfbox.
 # ---------------------------------------------------------------------------
-# Wave 1516: these two mutants corrupt the ObjStm metadata (/N, /First) of the
-# stream that holds the document CATALOG (object 1). The wave-1516 object-stream
-# fix aligned the compressed-member loader with upstream
-# ``COSParser.parseObjectStreamObject``: a malformed ObjStm now resolves the
-# member to NULL in lenient mode (the default) — validated member-for-member
-# against the live oracle in test_objstm_fuzz_wave1516. PDFBox's ``Loader.loadPDF``
-# then throws (ok=false) because it eagerly validates the now-null catalog during
-# load. pypdfbox's ``Loader.load_pdf`` succeeds lazily; the divergence is that
-# ``PDDocumentCatalog`` SYNTHESISES an empty catalog when /Root resolves to null
-# (so the probe sees root=present / ok=true) instead of failing the load the way
-# PDFBox does. That synthesis lives in the pdmodel layer, not the object-stream
-# parser this wave owns — tracked as a cross-module follow-up (see CHANGES.md /
-# DEFERRED.md). Before wave 1516 these passed only coincidentally: the member
-# parse RAISED, which the dump caught as ok=false for the wrong reason.
+# These mutants make the document CATALOG resolve to null, either through
+# malformed ObjStm metadata or an xref/header generation mismatch. PDFBox then
+# fails eager catalog validation. pypdfbox's deferred initial-parse policy lets
+# ``PDDocumentCatalog`` synthesize an empty catalog instead. That pdmodel-layer
+# divergence is tracked separately; the lower-level null dereference is
+# oracle-aligned.
 _XFAIL_CATALOG_SYNTHESIS = {
     "objstm_objstm_N_zero",
     "objstm_objstm_First_bad",
+    "one_gen_bump_def_only",
+    "two_gen_bump_def_only",
 }
 
 

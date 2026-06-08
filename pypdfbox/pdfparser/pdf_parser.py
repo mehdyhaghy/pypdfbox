@@ -2063,15 +2063,22 @@ class PDFParser:
             inner_index = entry.compressed_index
 
             def _compressed_loader(obj: COSObject) -> COSBase | None:
-                return self._load_compressed_object(
-                    objstm_obj_num, inner_index, obj
-                )
+                try:
+                    return self._load_compressed_object(
+                        objstm_obj_num, inner_index, obj
+                    )
+                except PDFParseError as exc:
+                    raise OSError(str(exc)) from exc
+
             return _compressed_loader
 
         offset = entry.offset
 
         def _loader(obj: COSObject) -> COSBase | None:
-            return self._load_indirect_object_at(offset, obj)
+            try:
+                return self._load_indirect_object_at(offset, obj)
+            except PDFParseError as exc:
+                raise OSError(str(exc)) from exc
 
         return _loader
 
@@ -2205,7 +2212,9 @@ class PDFParser:
                 f"to wrong object: {on}:{gn} at offset {offset}"
             )
         assert self._cos_parser is not None
-        body = self._cos_parser.parse_direct_object()
+        body = self._cos_parser.parse_direct_object(
+            allow_indirect_reference=False
+        )
         # The top-level body of an indirect object is itself the indirect
         # object — it must NOT be flagged direct, otherwise the writer would
         # try to inline it instead of emitting it as a keyed object. Upstream
@@ -2252,7 +2261,7 @@ class PDFParser:
             # trailing keyword the same (warn in lenient, raise in strict).
             self._check_endobj(kw2, on, gn, offset)
             return body
-        end_kw = self._base.read_keyword()
+        end_kw = self._base.read_string().encode("latin-1")
         self._check_endobj(end_kw, on, gn, offset)
         return body
 

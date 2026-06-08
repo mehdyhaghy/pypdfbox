@@ -179,8 +179,10 @@ def test_iterates_nested_page_tree() -> None:
 
 def test_get_inheritable_attribute() -> None:
     grandparent = COSDictionary()
+    grandparent.set_item(COSName.TYPE, COSName.PAGES)  # type: ignore[attr-defined]
     grandparent.set_int(COSName.get_pdf_name("Rotate"), 90)
     parent = COSDictionary()
+    parent.set_item(COSName.TYPE, COSName.PAGES)  # type: ignore[attr-defined]
     parent.set_item(COSName.PARENT, grandparent)  # type: ignore[attr-defined]
     leaf = COSDictionary()
     leaf.set_item(COSName.PARENT, parent)  # type: ignore[attr-defined]
@@ -295,8 +297,10 @@ def test_inheritable_attribute_walks_via_p_alias() -> None:
     when ``/Parent`` is absent (matches upstream
     ``getCOSDictionary(PARENT, P)``)."""
     grandparent = COSDictionary()
+    grandparent.set_item(COSName.TYPE, COSName.PAGES)  # type: ignore[attr-defined]
     grandparent.set_int(COSName.get_pdf_name("Rotate"), 270)
     parent = COSDictionary()
+    parent.set_item(COSName.TYPE, COSName.PAGES)  # type: ignore[attr-defined]
     parent.set_item(COSName.get_pdf_name("P"), grandparent)
     leaf = COSDictionary()
     leaf.set_item(COSName.get_pdf_name("P"), parent)

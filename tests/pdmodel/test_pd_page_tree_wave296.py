@@ -24,23 +24,24 @@ def _nested_tree_with_null_kid() -> tuple[PDPageTree, COSDictionary]:
     return PDPageTree(root), inner
 
 
-def test_repaired_null_kid_inherits_from_owning_page_tree_node_wave296() -> None:
+def test_repaired_null_kid_has_no_synthetic_parent_or_inheritance_wave296() -> None:
     tree, inner = _nested_tree_with_null_kid()
 
     [page] = list(tree)
 
-    assert page.get_cos_parent() is inner
-    assert page.get_rotation() == 90
+    assert page.get_cos_parent() is None
+    assert page.get_rotation() == 0
+    assert inner.get_dictionary_object(COSName.KIDS)[0] is page.get_cos_object()  # type: ignore[attr-defined,index]
 
 
-def test_repaired_null_kid_can_be_removed_from_nested_node_wave296() -> None:
+def test_repaired_null_kid_without_parent_is_not_removed_from_nested_node_wave296() -> None:
     tree, inner = _nested_tree_with_null_kid()
     [page] = list(tree)
 
-    assert tree.remove(page) is True
+    assert tree.remove(page) is False
 
-    assert list(tree) == []
-    assert tree.get_count() == 0
+    assert [item.get_cos_object() for item in tree] == [page.get_cos_object()]
+    assert tree.get_count() == 1
     count = inner.get_dictionary_object(COSName.COUNT)  # type: ignore[attr-defined]
     assert isinstance(count, COSInteger)
-    assert count.value == 0
+    assert count.value == 1

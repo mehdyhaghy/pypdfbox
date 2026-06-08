@@ -35,34 +35,20 @@ Projection grammar (per case, one line ``CASE <name> <projection>``):
 Floats are compared as their IEEE-754 float32 bit pattern (repr-independent);
 string bytes as raw hex.
 
-WAVE 1516 — 67 of the 81 cases are byte-for-byte identical between Apache
-PDFBox 3.0.7 and pypdfbox. 14 are pinned BOTH-SIDES as DEFENSIBLE ROBUSTNESS
-DIVERGENCES (``_DIVERGENT`` below): pypdfbox's body object parser
-(``COSParser.parse_direct_object`` and the ``parse_cos_array`` /
-``parse_cos_dictionary`` / number readers it dispatches to) is **fail-fast** on
-two malformed shapes where upstream's ``BaseParser`` silently recovers:
+WAVE 1516 originally pinned 14 robustness divergences where pypdfbox surfaced
+``PDFParseError`` out of lazy object resolution while upstream swallowed
+parser ``IOException`` inside ``COSObject.getObject``. Wave 1520 aligned that
+lazy-dereference contract, closing most of those pins. The remaining
+``_DIVERGENT`` cases below are shapes where the now-null-or-partial pypdfbox
+result still differs from PDFBox's recovered value:
 
-  * malformed NUMBER tokens (``--1``, ``+-1``, ``-+1``, ``1.2.3``, ``1..2``,
-    ``.``, ``+``, ``-``, ``.e3``): pypdfbox raises ``PDFParseError`` (the object
-    stays unresolved); upstream's ``parseCOSNumber`` accumulates the sign/dot
-    bytes into a string and hands it to ``COSNumber.get``, which yields the
-    ``int(0)`` fallback for ``.`` / ``-`` and lets the whole object silently
-    fail (``ABSENT``) for the double-sign / multi-dot shapes;
-  * FRAMING recovery (unbalanced ``(a(b)``, unclosed ``[1 2 3``, dict missing
-    ``>>`` ``<< /A 1``, odd dict token count ``<< /A 1 /B >>``, non-name dict
-    key ``<< 1 2 >>``): pypdfbox raises ``PDFParseError`` and discards the whole
-    object; upstream's container parsers log-and-recover, returning the partial
-    array / dictionary.
+  * malformed NUMBER tokens where PDFBox returns ``int(0)``/``ABSENT`` but
+    pypdfbox parses a different float fallback or dereferences to null;
+  * FRAMING recovery where PDFBox returns a partial array/dictionary/string
+    but pypdfbox dereferences to null or a layout-specific unterminated string.
 
-Both behaviours are internally consistent with pypdfbox's existing parser
-hardening (the documented ``base_parser`` divergences: deeply-nested
-``[``/``<<`` -> ``PDFParseError``, overlong-int -> ``PDFParseError``). They are
-pinned, not aligned to upstream's silent recovery. Note: ``BaseParser``'s
-*own* (non-authoritative) ``parse_dir_object`` DOES recover the framing cases
-like upstream — only ``COSParser``'s authoritative overrides, used by the real
-document parse, fail-fast. See CHANGES.md Wave 1516 and the wave-1516 agent-A
-hand-off note for the optional alignment of ``cos_parser.py`` to upstream's
-recovery.
+The remaining values are pinned both-sides rather than conflated with the
+now-aligned lazy-dereference error contract.
 """
 
 from __future__ import annotations
@@ -195,24 +181,14 @@ _IDS = [c[0] for c in _CASES]
 # --------------------------------------------------------------------------- #
 
 _DIVERGENT: dict[str, tuple[str, str]] = {
-    # malformed numbers: upstream parseCOSNumber recovers (int(0) / silent
-    # object-fail); pypdfbox raises PDFParseError so the object stays unresolved.
-    "num_double_minus": ("ABSENT", "ERR:PDFParseError"),
-    "num_plus_minus": ("ABSENT", "ERR:PDFParseError"),
-    "num_minus_plus": ("ABSENT", "ERR:PDFParseError"),
-    "num_two_dots": ("ABSENT", "ERR:PDFParseError"),
-    "num_three_dots": ("ABSENT", "ERR:PDFParseError"),
-    "num_dot_only": ("int(0)", "ERR:PDFParseError"),
-    "num_plus_only": ("ABSENT", "ERR:PDFParseError"),
-    "num_minus_only": ("int(0)", "ERR:PDFParseError"),
-    "num_exp_dot": ("ABSENT", "ERR:PDFParseError"),
-    # framing recovery: upstream container parsers log-and-recover the partial
-    # object; pypdfbox raises PDFParseError and discards it.
-    "str_unbalanced_open": ("__JAVA_RAW__", "ERR:PDFParseError"),
-    "array_unclosed": ("array[int(1),int(2),int(3)]", "ERR:PDFParseError"),
-    "dict_odd_tokens": ("ABSENT", "ERR:PDFParseError"),
-    "dict_missing_close": ("dict{/A->int(1)}", "ERR:PDFParseError"),
-    "dict_nonname_key": ("dict{}", "ERR:PDFParseError"),
+    "num_two_dots": ("ABSENT", "real(3f99999a)"),
+    "num_three_dots": ("ABSENT", "real(3f800000)"),
+    "num_dot_only": ("int(0)", "ABSENT"),
+    "num_minus_only": ("int(0)", "ABSENT"),
+    "str_unbalanced_open": ("__JAVA_RAW__", "__PY_RAW__"),
+    "array_unclosed": ("array[int(1),int(2),int(3)]", "ABSENT"),
+    "dict_missing_close": ("dict{/A->int(1)}", "ABSENT"),
+    "dict_nonname_key": ("dict{}", "ABSENT"),
 }
 
 
@@ -352,7 +328,13 @@ def test_cos_object_parse_matches_pdfbox(tmp_path: Path) -> None:
         if case_id in _DIVERGENT:
             exp_java, exp_py = _DIVERGENT[case_id]
             # pypdfbox side is pinned exactly.
-            if p != exp_py:
+            if exp_py == "__PY_RAW__":
+                if not p.startswith("str("):
+                    mismatches.append(
+                        f"{case_id} (py should recover a string):\n"
+                        f"  actual py: {p}"
+                    )
+            elif p != exp_py:
                 mismatches.append(
                     f"{case_id} (pinned py drifted):\n"
                     f"  expected py: {exp_py}\n  actual py:   {p}"
@@ -388,16 +370,18 @@ def test_cos_object_parse_matches_pdfbox(tmp_path: Path) -> None:
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.parametrize(
-    "case_id", [c for c in _DIVERGENT if _DIVERGENT[c][1] == "ERR:PDFParseError"]
-)
-def test_divergent_cases_are_fail_fast(case_id: str, tmp_path: Path) -> None:
-    """pypdfbox raises ``PDFParseError`` (object unresolved) for every pinned
-    divergence — both the malformed-number and the framing-recovery families."""
+@pytest.mark.parametrize("case_id", list(_DIVERGENT), ids=list(_DIVERGENT))
+def test_divergent_cases_stay_pinned(case_id: str, tmp_path: Path) -> None:
+    """Oracle-free pin for pypdfbox's side of the remaining divergences."""
     body = dict(_CASES)[case_id]
     pdf = tmp_path / f"{case_id}.pdf"
     pdf.write_bytes(_build_pdf(body))
-    assert _project(pdf) == "ERR:PDFParseError"
+    expected = _DIVERGENT[case_id][1]
+    actual = _project(pdf)
+    if expected == "__PY_RAW__":
+        assert actual.startswith("str(")
+    else:
+        assert actual == expected
 
 
 def test_well_formed_round_trip(tmp_path: Path) -> None:

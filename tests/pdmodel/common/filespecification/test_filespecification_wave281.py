@@ -125,6 +125,10 @@ def test_embedded_file_mac_predicates_and_clearers() -> None:
     assert embedded.has_mac_subtype() is True
     assert embedded.has_mac_creator() is True
     assert embedded.has_mac_resource_fork() is True
+    assert embedded.has_mac_res_fork() is False
+
+    embedded.set_mac_res_fork("fork")
+    assert embedded.has_mac_resource_fork() is False
     assert embedded.has_mac_res_fork() is True
 
     embedded.clear_mac_subtype()
@@ -133,6 +137,7 @@ def test_embedded_file_mac_predicates_and_clearers() -> None:
 
     assert embedded.has_mac_subtype() is False
     assert embedded.has_mac_creator() is False
+    assert embedded.has_mac_res_fork() is False
     assert embedded.has_mac_resource_fork() is False
     assert embedded.has_mac_info() is True
 

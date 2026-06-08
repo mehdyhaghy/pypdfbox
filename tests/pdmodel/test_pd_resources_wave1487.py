@@ -2,9 +2,9 @@
 
 Upstream ``org.apache.pdfbox.pdmodel.PDResources.getFont(COSName)`` wraps
 every font entry — direct (inline) and indirect alike — via
-``PDFontFactory.createFont`` and returns a typed ``PDFont``; the document
-resource cache is keyed by the indirect ``COSObject`` only, so direct entries
-are wrapped fresh on each lookup and never cached.
+``PDFontFactory.createFont`` and returns a typed ``PDFont``. Indirect entries
+use the document resource cache; direct entries use the per-``PDResources``
+font cache and preserve wrapper identity by resource name.
 
 pypdfbox previously preserved a legacy "raw ``COSDictionary`` for direct
 entries" surface (cluster #1). This wave aligns it to upstream.
@@ -38,9 +38,8 @@ def test_direct_entry_returns_typed_pd_font() -> None:
     assert font.get_cos_object() is font_dict
 
 
-def test_direct_entry_not_cached_wrapped_fresh_each_lookup() -> None:
-    # Upstream caches by indirect COSObject only; a direct (inline) dict is
-    # wrapped fresh on each call, so identity is NOT preserved.
+def test_direct_entry_cached_by_resource_name() -> None:
+    # Upstream keeps a per-PDResources cache for direct font dictionaries.
     doc = PDDocument()
     try:
         res = PDResources(document=doc)
@@ -51,7 +50,7 @@ def test_direct_entry_not_cached_wrapped_fresh_each_lookup() -> None:
 
         assert isinstance(first, PDFont)
         assert isinstance(second, PDFont)
-        assert first is not second
+        assert first is second
     finally:
         doc.close()
 

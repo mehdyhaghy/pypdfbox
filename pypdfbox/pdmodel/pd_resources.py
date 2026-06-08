@@ -92,16 +92,16 @@ class PDResources:
         resource_cache: PDResourceCache | None = None,
         *,
         document: PDDocument | None = None,
-        direct_font_cache: dict[COSName, Any] | None = None,
+        direct_font_cache: dict[COSName, PDFont] | None = None,
     ) -> None:
         self._resources: COSDictionary = resources if resources is not None else COSDictionary()
         self._document = document
         self._resource_cache = resource_cache
-        # Accepted for constructor parity with PDFBox 3.x. Direct (inline)
-        # font dictionaries are wrapped fresh on every get_font() call —
-        # matching upstream, which keys its resource cache by indirect
-        # COSObject only — so this cache is intentionally unused.
-        self._direct_font_cache = direct_font_cache
+        # PDFBox keeps a per-PDResources soft cache for direct fonts because
+        # the document ResourceCache is keyed only by indirect COSObject.
+        self._direct_font_cache = (
+            direct_font_cache if direct_font_cache is not None else {}
+        )
         self._resolving_color_spaces: set[COSName] = set()
 
     # ---------- COS surface ----------
@@ -287,7 +287,11 @@ class PDResources:
         subtype = entry.get_name(COSName.SUBTYPE)  # type: ignore[attr-defined]
         if subtype == "Form":
             xobject: PDXObject = PDFormXObject(entry)
-            if cache is not None and isinstance(raw, COSObject):
+            if (
+                cache is not None
+                and isinstance(raw, COSObject)
+                and self.is_allowed_cache(xobject)
+            ):
                 cache.put_x_object(raw, xobject)
             return xobject
         if subtype == "Image":
@@ -296,7 +300,11 @@ class PDResources:
             # colour-space cache. Mirrors upstream PDImageXObject(stream,
             # resources) construction via PDXObject.createXObject.
             xobject = PDImageXObject(entry, self)
-            if cache is not None and isinstance(raw, COSObject):
+            if (
+                cache is not None
+                and isinstance(raw, COSObject)
+                and self.is_allowed_cache(xobject)
+            ):
                 cache.put_x_object(raw, xobject)
             return xobject
         raise OSError(f"Invalid XObject Subtype: {subtype!r}")
@@ -349,9 +357,8 @@ class PDResources:
         Mirrors upstream ``PDResources.getFont(COSName)``: every entry —
         direct (inline) or indirect — is wrapped via ``PDFontFactory`` so
         the return is always a typed ``PDFont``. The document resource cache
-        is consulted and populated only for *indirect* entries (upstream
-        keys the cache by the indirect ``COSObject``); direct entries are
-        wrapped fresh on each lookup, never cached.
+        handles indirect entries; direct entries use this wrapper's
+        name-keyed direct-font cache, matching upstream.
         """
         from pypdfbox.pdmodel.font import PDFontFactory  # noqa: PLC0415
 
@@ -364,9 +371,15 @@ class PDResources:
             cached = cache.get_font(raw)
             if cached is not None:
                 return cached
+        elif not is_indirect:
+            cached = self._direct_font_cache.get(name)
+            if cached is not None:
+                return cached
         font = PDFontFactory.create_font(base, cache)
         if cache is not None and is_indirect and font is not None:
             cache.put_font(raw, font)
+        elif not is_indirect and font is not None:
+            self._direct_font_cache[name] = font
         return font
 
     # ---------- name-listing accessors ----------
@@ -442,7 +455,12 @@ class PDResources:
             return self._color_space_for_bare_name(name, was_default)
 
         color_space = PDColorSpace.create(base, self, was_default)
-        if cache is not None and isinstance(raw, COSObject) and color_space is not None:
+        if (
+            cache is not None
+            and isinstance(raw, COSObject)
+            and color_space is not None
+            and color_space.get_name() != "Pattern"
+        ):
             cache.put_color_space(raw, color_space)
         return color_space
 
@@ -500,7 +518,7 @@ class PDResources:
 
     def has_color_space(self, name: COSName) -> bool:
         """Return ``True`` if a ``/ColorSpace`` entry exists for ``name``."""
-        return self._has(_COLOR_SPACE, name)
+        return self.get(_COLOR_SPACE, name) is not None
 
     def has_font(self, name: COSName) -> bool:
         """Return ``True`` if a ``/Font`` entry exists for ``name``."""
@@ -641,7 +659,7 @@ class PDResources:
             if cached is not None:
                 return cached
         if isinstance(base, COSDictionary):
-            ext_g_state = PDExtendedGraphicsState(base)
+            ext_g_state = PDExtendedGraphicsState(base, resource_cache=cache)
             if cache is not None and isinstance(raw, COSObject):
                 cache.put_ext_g_state(raw, ext_g_state)
             return ext_g_state

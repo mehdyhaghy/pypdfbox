@@ -183,23 +183,20 @@ def test_create_fs_with_unresolved_indirect_returns_none() -> None:
     assert PDFileSpecification.create_fs(ref) is None
 
 
-# ---------- PDEmbeddedFile mac-res-fork mechanical-name aliases ----------
+# ---------- PDEmbeddedFile upstream Mac ResFork string accessors ----------
 
 
-def test_embedded_file_mac_res_fork_aliases_round_trip() -> None:
+def test_embedded_file_mac_res_fork_string_round_trip() -> None:
     embedded = PDEmbeddedFile()
-    rf = COSStream()
-    embedded.set_mac_res_fork(rf)
-    fetched = embedded.get_mac_res_fork()
-    assert fetched is rf
-    # The pythonic-named accessor should see the same stream.
-    assert embedded.get_mac_resource_fork() is rf
+    embedded.set_mac_res_fork("fork")
+    assert embedded.get_mac_res_fork() == "fork"
+    assert embedded.get_mac_resource_fork() is None
     embedded.set_mac_res_fork(None)
     assert embedded.get_mac_res_fork() is None
     assert embedded.get_mac_resource_fork() is None
 
 
-def test_embedded_file_mac_res_fork_alias_default_none() -> None:
+def test_embedded_file_mac_res_fork_default_none() -> None:
     embedded = PDEmbeddedFile()
     assert embedded.get_mac_res_fork() is None
 

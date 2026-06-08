@@ -250,13 +250,7 @@ class PDEmbeddedFile(PDStream):
         missing or malformed entries use the embedded-int default of ``-1``,
         and numeric COS values are converted through ``int_value()``.
         """
-        params = self._params_dict()
-        if params is None:
-            return -1
-        v = params.get_dictionary_object(_SIZE)
-        if isinstance(v, COSNumber):
-            return v.int_value()
-        return -1
+        return self.get_cos_object().get_embedded_int(_PARAMS, _SIZE)
 
     def has_size(self) -> bool:
         """Return ``True`` when ``/Params/Size`` is present as a number."""
@@ -494,22 +488,25 @@ class PDEmbeddedFile(PDStream):
         """Remove ``/Params/Mac/ResFork``. No-op if absent."""
         self.set_mac_resource_fork(None)
 
-    # Upstream Java method names ``getMacResFork`` / ``setMacResFork`` —
-    # mechanical snake_case aliases delegating to the resource-fork accessors.
-    # The parameter type stays ``COSStream`` (deviation noted in CHANGES.md);
-    # upstream Java types it as ``String`` but the PDF spec defines /ResFork
-    # as a stream entry.
-    def get_mac_res_fork(self) -> COSStream | None:
-        return self.get_mac_resource_fork()
+    # Upstream Java method names ``getMacResFork`` / ``setMacResFork`` are
+    # string-based wrappers over COSDictionary.getEmbeddedString/setEmbeddedString.
+    # Keep the spec-shaped stream helpers above as the pypdfbox extension.
+    def get_mac_res_fork(self) -> str | None:
+        params = self._params_dict()
+        if params is None:
+            return None
+        return _get_embedded_string(params, _MAC, _RES_FORK)
 
-    def set_mac_res_fork(self, stream: COSStream | None) -> None:
-        self.set_mac_resource_fork(stream)
+    def set_mac_res_fork(self, value: str | None) -> None:
+        params = self._params_dict() if value is None else self._ensure_params_dict()
+        if params is not None:
+            _set_embedded_string(params, _MAC, _RES_FORK, value)
 
     def has_mac_res_fork(self) -> bool:
-        return self.has_mac_resource_fork()
+        return self.get_mac_res_fork() is not None
 
     def clear_mac_res_fork(self) -> None:
-        self.clear_mac_resource_fork()
+        self.set_mac_res_fork(None)
 
 
 __all__ = ["PDEmbeddedFile"]

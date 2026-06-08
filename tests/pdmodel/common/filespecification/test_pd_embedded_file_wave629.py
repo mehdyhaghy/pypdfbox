@@ -90,7 +90,7 @@ def test_wave629_set_mac_resource_fork_replaces_malformed_mac_dict() -> None:
     embedded.set_mac_resource_fork(stream)
 
     assert embedded.get_mac_resource_fork() is stream
-    assert embedded.has_mac_res_fork() is True
+    assert embedded.has_mac_res_fork() is False
 
 
 def test_wave629_has_date_predicates_track_presence_not_parse_success() -> None:

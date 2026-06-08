@@ -131,9 +131,20 @@ class COSParser(BaseParser):
 
     # ---------- top-level dispatch ----------
 
-    def parse_direct_object(self) -> COSBase:
+    def parse_direct_object(
+        self,
+        *,
+        allow_indirect_reference: bool = True,
+    ) -> COSBase:
         """Parse one direct object (or an indirect reference, returned as
-        an unresolved ``COSObject``). Whitespace is consumed first."""
+        an unresolved ``COSObject``). Whitespace is consumed first.
+
+        ``allow_indirect_reference=False`` mirrors the top-level
+        ``COSParser.parseFileObject`` call to ``parseDirObject``: a malformed
+        indirect object whose body starts ``n g R`` is parsed as the first
+        number. Array and dictionary value parsers keep the default and
+        recognize the full indirect-reference token sequence.
+        """
         self.skip_whitespace()
         b = self.peek_byte()
         if b == RandomAccessRead.EOF:
@@ -155,6 +166,9 @@ class COSParser(BaseParser):
         if b == 0x5B:  # '['
             return self.parse_cos_array()
         if b in (0x2B, 0x2D, 0x2E) or self.is_digit(b):
+            if not allow_indirect_reference:
+                start = self.position
+                return self._wrap_number(self.read_number(), start)
             return self._parse_number_or_indirect_reference()
         if b in (0x74, 0x66, 0x6E):  # 't', 'f', 'n' — true / false / null
             return self._parse_keyword_value()
@@ -376,7 +390,7 @@ class COSParser(BaseParser):
             raise PDFParseError(
                 f"expected 'obj' after object header, got {kw!r}", position=start
             )
-        body = self.parse_direct_object()
+        body = self.parse_direct_object(allow_indirect_reference=False)
         # Top-level indirect-object body must not be flagged direct (it is the
         # indirect object). parse_direct_object marks inline dicts direct;
         # reset it here, matching upstream parseFileObject (Java line 634).

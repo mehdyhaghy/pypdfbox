@@ -325,22 +325,7 @@ def _strip(line: str) -> str:
 # byte-for-byte.
 # --------------------------------------------------------------------------- #
 
-_DIVERGENT: dict[str, tuple[str, str]] = {
-    # A wrong-typed /Length (a name, a direct null, or an indirect ref whose
-    # target is missing) makes upstream's COSParser.getLength throw an
-    # IOException inside parseCOSStream. Upstream's COSObject.getObject catches
-    # that IOException, logs it, and leaves the indirect object NULL — so the
-    # whole stream resolves to ``null``. pypdfbox raises PDFParseError out of
-    # _read_stream_body and the lazy COSObject.get_object propagates it (it does
-    # NOT swallow loader errors the way upstream does). This is a fail-fast
-    # robustness divergence pinned BOTH-SIDES (same family as the wave-1516
-    # container-framing pins): aligning it would require making COSObject swallow
-    # all loader IOExceptions document-wide, a far broader behavioural change
-    # than this stream-recovery surface. See CHANGES.md Wave 1517.
-    "len_name": ("null", "ERR:PDFParseError"),
-    "len_null": ("null", "ERR:PDFParseError"),
-    "len_indirect_missing": ("null", "ERR:PDFParseError"),
-}
+_DIVERGENT: dict[str, tuple[str, str]] = {}
 
 
 @requires_oracle
@@ -416,15 +401,18 @@ def test_indirect_length_resolves(tmp_path: Path) -> None:
     assert _project(pdf) == f"stream(raw={_PLAIN_LEN},len={_PLAIN_LEN},dec={_PLAIN_LEN})"
 
 
-@pytest.mark.parametrize("case_id", list(_DIVERGENT))
-def test_wrong_type_length_is_fail_fast(case_id: str, tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "case_id",
+    ["len_name", "len_null", "len_indirect_missing"],
+    ids=["len_name", "len_null", "len_indirect_missing"],
+)
+def test_wrong_type_length_resolves_to_null(case_id: str, tmp_path: Path) -> None:
     """A wrong-typed /Length (name / direct null / missing indirect target)
-    raises PDFParseError in pypdfbox (object unresolved). Upstream swallows the
-    getLength IOException and the object resolves to null — pinned divergence."""
+    resolves to null after COSObject swallows the parser I/O failure."""
     obj1, extra = next((o, e) for cid, o, e in _CASES if cid == case_id)
     pdf = tmp_path / f"{case_id}.pdf"
     pdf.write_bytes(_build_pdf(obj1, extra))
-    assert _project(pdf) == "ERR:PDFParseError"
+    assert _project(pdf) == "null"
 
 
 def test_missing_endstream_recovers_to_endobj(tmp_path: Path) -> None:
