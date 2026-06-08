@@ -1164,9 +1164,16 @@ def test_append_document_with_annots_containing_non_dict_entries() -> None:
     src = PDDocument()
     page = PDPage()
     src.add_page(page)
-    # Mix dict + non-dict entries in /Annots.
+    # Mix null + dict entries in /Annots. Wave 1515 aligned
+    # ``PDPage.get_annotations`` with upstream: only ``null`` members are
+    # skipped, a non-dict member RAISES (upstream's createAnnotation throws
+    # IOException). The merger calls ``get_annotations`` during append, so a
+    # COSString member would now (correctly) abort the merge on both sides.
+    # A COSNull member still exercises the merger's struct-tree
+    # ``isinstance(entry, COSDictionary)`` false-branch without violating the
+    # annotation-construction contract.
     annots = COSArray()
-    annots.add(COSString("not a dict"))
+    annots.add(COSNull.NULL)
     annots.add(COSDictionary())
     page.get_cos_object().set_item(_ANNOTS, annots)
 

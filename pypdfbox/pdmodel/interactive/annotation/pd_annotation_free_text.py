@@ -288,19 +288,30 @@ class PDAnnotationFreeText(PDAnnotationMarkup):
     def get_rect_difference(self) -> PDRectangle | None:
         """Return the ``/RD`` entry as a :class:`PDRectangle`, or ``None``.
 
-        Mirrors upstream's ``getRectDifference()``: ``/RD`` is stored as a
-        4-element COSArray of left/top/right/bottom margins, and PDFBox
-        wraps it in a ``PDRectangle`` for the singular-named accessor.
-        Returns ``None`` when the entry is missing or has fewer than four
-        numeric entries.
-        """
+        Mirrors upstream's ``getRectDifference()`` (Java bytecode): when
+        ``/RD`` is ANY COSArray it is wrapped in a ``PDRectangle`` with NO
+        arity or numeric gate — the constructor itself is tolerant. Upstream
+        ``PDRectangle(COSArray)`` runs ``toFloatArray()`` (non-numeric
+        members → ``0.0``), pads/truncates to exactly four floats, clamps
+        absurd magnitudes at ``±(2**31-1)``, then normalizes corners with
+        ``min``/``max``. We replicate that here rather than via
+        ``PDRectangle.from_cos_array`` (which deliberately raises on a
+        short or non-numeric array) so a malformed 2-element or non-numeric
+        ``/RD`` round-trips byte-for-byte with PDFBox instead of vanishing.
+        Returns ``None`` only when ``/RD`` is absent or not an array."""
         value = self._dict.get_dictionary_object(_RD)
-        if (
-            isinstance(value, COSArray)
-            and self._numeric_array_prefix(value, 4) is not None
-        ):
-            return PDRectangle.from_cos_array(value)
-        return None
+        if not isinstance(value, COSArray):
+            return None
+        floats = value.to_float_array()[:4]
+        while len(floats) < 4:
+            floats.append(0.0)
+        clamp = PDRectangle._INT32_MAX
+        floats = [
+            (clamp if f > 0 else -clamp) if abs(f) > clamp else f
+            for f in floats
+        ]
+        x0, y0, x1, y1 = floats
+        return PDRectangle(min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1))
 
     def set_rect_difference(self, rd: PDRectangle | None) -> None:
         """Set ``/RD`` from a :class:`PDRectangle`.

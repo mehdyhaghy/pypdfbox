@@ -24,6 +24,9 @@ def test_wave616_constructor_inheritance_parent_alias_and_resources() -> None:
         PDPage(object())  # type: ignore[arg-type]
 
     parent = COSDictionary()
+    # The inheritable walk only ascends through /Type /Pages ancestors
+    # (PDPageTree.getInheritableAttribute); mark the parent accordingly.
+    parent.set_item(COSName.TYPE, COSName.PAGES)  # type: ignore[attr-defined]
     resources_dict = COSDictionary()
     parent.set_item(COSName.RESOURCES, resources_dict)  # type: ignore[attr-defined]
     parent.set_item(COSName.get_pdf_name("Rotate"), COSInteger.get(-90))

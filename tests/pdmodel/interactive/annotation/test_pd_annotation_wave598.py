@@ -50,6 +50,9 @@ def test_wave598_rectangle_and_contents_presence_predicates() -> None:
     assert rect.get_lower_left_x() == 1.0
     assert annotation.has_rectangle() is True
 
+    # Wave 1515: oracle-validated against PDFBox 3.0.7. getRectangle() gates
+    # on size()==4 AND every entry a COSNumber; a non-numeric member yields
+    # None (upstream logs a warning and returns null) — it never raises.
     annotation.get_cos_object().set_item(
         _name("Rect"),
         COSArray(
@@ -61,8 +64,15 @@ def test_wave598_rectangle_and_contents_presence_predicates() -> None:
             ]
         ),
     )
-    with pytest.raises(TypeError, match="PDRectangle entry 1 is not numeric"):
-        annotation.get_rectangle()
+    assert annotation.get_rectangle() is None
+    assert annotation.has_rectangle() is False
+
+    # A 5-element /Rect also fails the exact-arity gate -> None.
+    annotation.get_cos_object().set_item(
+        _name("Rect"),
+        COSArray([COSInteger.get(i) for i in range(5)]),
+    )
+    assert annotation.get_rectangle() is None
 
     annotation.set_rectangle(None)
     assert annotation.get_rectangle() is None

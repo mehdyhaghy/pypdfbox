@@ -66,6 +66,8 @@ def test_set_rotation() -> None:
 
 def test_rotation_inherited_from_parent() -> None:
     parent = COSDictionary()
+    # Upstream getInheritableAttribute only ascends through /Type /Pages nodes.
+    parent.set_item(COSName.TYPE, COSName.PAGES)  # type: ignore[attr-defined]
     parent.set_int(COSName.get_pdf_name("Rotate"), 180)
     child_dict = COSDictionary()
     child_dict.set_item(COSName.TYPE, COSName.PAGE)  # type: ignore[attr-defined]
@@ -77,6 +79,7 @@ def test_rotation_inherited_from_parent() -> None:
 def test_resources_inherited_from_parent() -> None:
     parent_res = COSDictionary()
     parent = COSDictionary()
+    parent.set_item(COSName.TYPE, COSName.PAGES)  # type: ignore[attr-defined]
     parent.set_item(COSName.RESOURCES, parent_res)  # type: ignore[attr-defined]
     child_dict = COSDictionary()
     child_dict.set_item(COSName.TYPE, COSName.PAGE)  # type: ignore[attr-defined]
@@ -152,6 +155,7 @@ def test_get_or_create_resources_resolves_inherited_without_back_write() -> None
     leaf (it only creates+attaches when the resolved value is None)."""
     parent_res = COSDictionary()
     parent = COSDictionary()
+    parent.set_item(COSName.TYPE, COSName.PAGES)  # type: ignore[attr-defined]
     parent.set_item(COSName.RESOURCES, parent_res)  # type: ignore[attr-defined]
     child_dict = COSDictionary()
     child_dict.set_item(COSName.TYPE, COSName.PAGE)  # type: ignore[attr-defined]
@@ -168,6 +172,7 @@ def test_get_resources_inherited_still_resolved() -> None:
     the strict-null flip (the production-real path is unaffected)."""
     parent_res = COSDictionary()
     parent = COSDictionary()
+    parent.set_item(COSName.TYPE, COSName.PAGES)  # type: ignore[attr-defined]
     parent.set_item(COSName.RESOURCES, parent_res)  # type: ignore[attr-defined]
     child_dict = COSDictionary()
     child_dict.set_item(COSName.TYPE, COSName.PAGE)  # type: ignore[attr-defined]
@@ -403,6 +408,7 @@ def test_get_resources_threads_page_resource_cache() -> None:
 def test_get_resources_threads_resource_cache_for_inherited_resources() -> None:
     parent_resources = COSDictionary()
     parent = COSDictionary()
+    parent.set_item(COSName.TYPE, COSName.PAGES)  # type: ignore[attr-defined]
     parent.set_item(COSName.RESOURCES, parent_resources)  # type: ignore[attr-defined]
     child_dict = COSDictionary()
     child_dict.set_item(COSName.TYPE, COSName.PAGE)  # type: ignore[attr-defined]
@@ -422,8 +428,11 @@ def test_inheritable_walks_via_p_alias() -> None:
     (``COSDictionary.getCOSDictionary(PARENT, P)``); inheritable lookups
     must traverse that legacy short form too."""
     grandparent = COSDictionary()
+    grandparent.set_item(COSName.TYPE, COSName.PAGES)  # type: ignore[attr-defined]
     grandparent.set_int(COSName.get_pdf_name("Rotate"), 90)
     parent = COSDictionary()
+    # The walk still requires the ancestor be a /Pages node even via /P.
+    parent.set_item(COSName.TYPE, COSName.PAGES)  # type: ignore[attr-defined]
     # Legacy /P short form, not /Parent.
     parent.set_item(COSName.get_pdf_name("P"), grandparent)
     child_dict = COSDictionary()
@@ -1036,6 +1045,7 @@ def test_is_rotated_handles_negative_rotation() -> None:
 
 def test_is_rotated_inherits_from_parent() -> None:
     parent = COSDictionary()
+    parent.set_item(COSName.TYPE, COSName.PAGES)  # type: ignore[attr-defined]
     parent.set_int(COSName.get_pdf_name("Rotate"), 270)
     child = COSDictionary()
     child.set_item(COSName.TYPE, COSName.PAGE)  # type: ignore[attr-defined]
@@ -1103,6 +1113,7 @@ def test_get_rotation_in_radians_inherits_from_parent() -> None:
     import math
 
     parent = COSDictionary()
+    parent.set_item(COSName.TYPE, COSName.PAGES)  # type: ignore[attr-defined]
     parent.set_int(COSName.get_pdf_name("Rotate"), 180)
     child = COSDictionary()
     child.set_item(COSName.TYPE, COSName.PAGE)  # type: ignore[attr-defined]

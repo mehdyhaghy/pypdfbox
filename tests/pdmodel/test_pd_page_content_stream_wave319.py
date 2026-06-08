@@ -22,6 +22,9 @@ def test_wave319_content_stream_reuses_inherited_resources_without_shadowing() -
     parent_resources.set_item(_FONT, parent_fonts)
 
     parent = COSDictionary()
+    # The inheritable walk only ascends through /Type /Pages ancestors
+    # (PDPageTree.getInheritableAttribute, wave 1515).
+    parent.set_item(_TYPE, COSName.get_pdf_name("Pages"))
     parent.set_item(_RESOURCES, parent_resources)
     page_dict = COSDictionary()
     page_dict.set_item(_TYPE, _PAGE)

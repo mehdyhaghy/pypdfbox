@@ -62,7 +62,9 @@ def test_accessors_ignore_malformed_array_entries_and_keep_numeric_defaults() ->
     assert fn.get_size() is None
     assert fn.get_encode() is None
     assert fn.get_decode() is None
-    assert fn.get_bits_per_sample() == 0
+    # Upstream parity: absent /BitsPerSample yields -1 (single-arg getInt
+    # default), not 0.
+    assert fn.get_bits_per_sample() == -1
     assert fn.get_order() == 1
 
 

@@ -217,13 +217,27 @@ def test_malformed_callout_shapes_return_none() -> None:
 def test_malformed_rectangle_differences_return_none_without_coercion() -> None:
     ann = PDAnnotationFreeText()
 
+    # Non-array /RD: every accessor returns None / [] (Java returns null too).
     ann.get_cos_object().set_item(_RD, COSString("not an array"))
     assert ann.get_rectangle_differences() is None
     assert ann.get_rect_difference() is None
 
+    # Wave 1515: oracle-validated. get_rectangle_differences /
+    # get_rect_differences are pypdfbox-specific STRICT accessors that keep
+    # returning None / [] for a short or non-numeric /RD. But the
+    # upstream-named get_rect_difference() mirrors PDFBox 3.0.7's tolerant
+    # PDRectangle(COSArray) wrap: a short [1 2 3] pads to [1 2 3 0] then
+    # normalizes -> (1,0,3,2); a non-numeric member becomes 0.0.
     ann.get_cos_object().set_item(_RD, _float_array(1, 2, 3))
     assert ann.get_rectangle_differences() is None
-    assert ann.get_rect_difference() is None
+    rd3 = ann.get_rect_difference()
+    assert rd3 is not None
+    assert (
+        rd3.get_lower_left_x(),
+        rd3.get_lower_left_y(),
+        rd3.get_upper_right_x(),
+        rd3.get_upper_right_y(),
+    ) == (1.0, 0.0, 3.0, 2.0)
 
     ann.get_cos_object().set_item(
         _RD,
@@ -238,4 +252,12 @@ def test_malformed_rectangle_differences_return_none_without_coercion() -> None:
     )
     assert ann.get_rectangle_differences() is None
     assert ann.get_rect_differences() == []
-    assert ann.get_rect_difference() is None
+    # Non-numeric member -> 0.0, so [1 0 3 4] normalizes to (1,0,3,4).
+    rd_bad = ann.get_rect_difference()
+    assert rd_bad is not None
+    assert (
+        rd_bad.get_lower_left_x(),
+        rd_bad.get_lower_left_y(),
+        rd_bad.get_upper_right_x(),
+        rd_bad.get_upper_right_y(),
+    ) == (1.0, 0.0, 3.0, 4.0)

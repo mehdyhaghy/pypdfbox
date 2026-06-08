@@ -133,11 +133,21 @@ def test_free_text_rect_difference_via_plural_round_trip() -> None:
     assert rt.get_upper_right_y() == 4.0
 
 
-def test_free_text_rect_difference_short_array_returns_none() -> None:
+def test_free_text_rect_difference_short_array_pads_to_four() -> None:
+    # Wave 1515: oracle-validated against PDFBox 3.0.7. Upstream
+    # getRectDifference() wraps ANY /RD COSArray in a PDRectangle with no
+    # arity gate; the constructor pads a short array to four floats with 0.0
+    # (Arrays.copyOf) and normalizes corners. A 2-element [1 2] therefore
+    # yields [min(1,0) min(2,0) max(1,0) max(2,0)] = (0,0,1,2), NOT None.
     ann = PDAnnotationFreeText()
     cos = ann.get_cos_object()
     cos.set_item(  # type: ignore[attr-defined]
         COSName.get_pdf_name("RD"),
         COSArray([COSFloat(1.0), COSFloat(2.0)]),
     )
-    assert ann.get_rect_difference() is None
+    rd = ann.get_rect_difference()
+    assert rd is not None
+    assert rd.get_lower_left_x() == 0.0
+    assert rd.get_lower_left_y() == 0.0
+    assert rd.get_upper_right_x() == 1.0
+    assert rd.get_upper_right_y() == 2.0

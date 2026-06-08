@@ -52,14 +52,20 @@ def test_line_coordinates_setter_writes_four_float_entries_wave278() -> None:
     assert raw.to_float_array() == [10.0, -2.5, 30.25, 40.0]
 
 
-def test_line_coordinates_raw_long_array_is_truncated_wave278() -> None:
+def test_line_coordinates_raw_long_array_returned_whole_wave278() -> None:
+    # Wave 1515: oracle-validated against PDFBox 3.0.7. getLine() returns the
+    # WHOLE /L array via toFloatArray() with no arity check or slicing, so a
+    # malformed 5-element /L round-trips all five values (a well-formed /L is
+    # the spec's 4-element [x1 y1 x2 y2]).
     dictionary = COSDictionary()
     dictionary.set_item(_L, _float_array([1.0, 2.0, 3.0, 4.0, 999.0]))
 
-    assert PDAnnotationLine(dictionary).get_line() == [1.0, 2.0, 3.0, 4.0]
+    assert PDAnnotationLine(dictionary).get_line() == [1.0, 2.0, 3.0, 4.0, 999.0]
 
 
-def test_line_coordinates_malformed_shapes_return_none_wave278() -> None:
+def test_line_coordinates_malformed_shapes_wave278() -> None:
+    # Wave 1515: oracle-validated. Only a non-array /L returns None; a short
+    # array is returned as-is (PDFBox getLine() applies no arity gate).
     dictionary = COSDictionary()
     ann = PDAnnotationLine(dictionary)
 
@@ -67,7 +73,7 @@ def test_line_coordinates_malformed_shapes_return_none_wave278() -> None:
     assert ann.get_line() is None
 
     dictionary.set_item(_L, _float_array([1.0, 2.0, 3.0]))
-    assert ann.get_line() is None
+    assert ann.get_line() == [1.0, 2.0, 3.0]
 
 
 # ---------- /LE line endings ----------

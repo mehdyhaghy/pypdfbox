@@ -69,7 +69,11 @@ class PDBorderStyleDictionary:
         self._dict.set_name(_S, s)
 
     def get_style(self) -> str:
-        value = self._dict.get_name(_S)
+        # Upstream ``PDBorderStyleDictionary.getStyle()`` reads ``/S`` via
+        # ``getNameAsString(COSName.S, STYLE_SOLID)``, which coerces BOTH a
+        # ``COSName`` and a (malformed) ``COSString`` to its text — only an
+        # absent or otherwise-typed entry falls back to the ``S`` default.
+        value = self._dict.get_name_as_string(_S)
         return value if value is not None else self.STYLE_SOLID
 
     # ---------- /S predicate helpers ----------

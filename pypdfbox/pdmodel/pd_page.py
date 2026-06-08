@@ -20,6 +20,7 @@ from .pd_resources import PDResources
 # lazily here to avoid mutating the catalog from this file.
 _TYPE: COSName = COSName.TYPE  # type: ignore[attr-defined]
 _PAGE: COSName = COSName.PAGE  # type: ignore[attr-defined]
+_PAGES: COSName = COSName.PAGES  # type: ignore[attr-defined]
 _RESOURCES: COSName = COSName.RESOURCES  # type: ignore[attr-defined]
 _MEDIA_BOX: COSName = COSName.MEDIA_BOX  # type: ignore[attr-defined]
 _CROP_BOX: COSName = COSName.get_pdf_name("CropBox")
@@ -45,6 +46,13 @@ _METADATA: COSName = COSName.get_pdf_name("Metadata")
 _TABS: COSName = COSName.get_pdf_name("Tabs")
 _VP: COSName = COSName.get_pdf_name("VP")
 _DUR: COSName = COSName.get_pdf_name("Dur")
+
+# PDFBOX-2818 box-clamp constants. The threshold is the true Java
+# ``Integer.MAX_VALUE`` (2**31 - 1); the assigned clamp value is that same
+# constant narrowed to a Java ``float`` (rounds up to 2147483648.0). See
+# :meth:`PDPage._rect_from_cos_array`.
+_INT32_MAX: float = float(2**31 - 1)
+_INT32_MAX_FLOAT32: float = 2147483648.0
 
 
 class PDPage:
@@ -114,12 +122,26 @@ class PDPage:
 
     def _get_inheritable(self, key: COSName) -> COSBase | None:
         """Walk this page's ``/Parent`` chain looking for ``key``.
-        Mirrors upstream ``PDPageTree.getInheritableAttribute``.
+        Mirrors upstream ``PDPageTree.getInheritableAttribute`` exactly
+        (PDFBox 3.0.7, ``PDPageTree.java`` line 114)::
+
+            COSBase value = node.getDictionaryObject(key);
+            if (value != null) return value;
+            COSDictionary parent =
+                node.getCOSDictionary(COSName.PARENT, COSName.P);
+            if (parent != null
+                    && COSName.PAGES.equals(parent.getCOSName(COSName.TYPE))) {
+                return getInheritableAttribute(parent, key, visited);
+            }
+            return null;
 
         Upstream PDFBox accepts ``/P`` as a legacy alias for ``/Parent``
-        (see ``COSDictionary.getCOSDictionary(COSName.PARENT, COSName.P)``
-        used throughout PDPageTree); we honour the same fallback here so
-        pages that use the short-form key still resolve their ancestors.
+        and — crucially — only ascends to the parent when the parent's
+        ``/Type`` is ``/Pages``. A ``/Parent`` that is missing, not a
+        dictionary, or whose ``/Type`` is anything other than ``/Pages``
+        terminates the walk (the attribute is reported as unset rather than
+        inherited from a non-page-tree ancestor). The ``visited`` set guards
+        the self-referential-parent cycle upstream defends against.
         """
         node: COSDictionary | None = self._page
         seen: set[int] = set()
@@ -128,10 +150,12 @@ class PDPage:
             value = node.get_dictionary_object(key)
             if value is not None:
                 return value
-            parent = node.get_dictionary_object(_PARENT)
-            if not isinstance(parent, COSDictionary):
-                parent = node.get_dictionary_object(_P)
-            node = parent if isinstance(parent, COSDictionary) else None
+            parent = node.get_cos_dictionary(_PARENT)
+            if parent is None:
+                parent = node.get_cos_dictionary(_P)
+            # Upstream only recurses when the parent is a /Pages node.
+            is_pages = parent is not None and parent.get_cos_name(_TYPE) is _PAGES
+            node = parent if is_pages else None
         return None
 
     def get_inherited_cos_object(self, name: COSName | str) -> COSBase | None:
@@ -456,15 +480,68 @@ class PDPage:
 
     # ---------- boxes ----------
 
+    @staticmethod
+    def _rect_from_cos_array(array: COSArray) -> PDRectangle:
+        """Upstream-faithful ``new PDRectangle(COSArray)`` conversion.
+
+        Mirrors PDFBox 3.0.7 ``PDRectangle(COSArray)`` (``PDRectangle.java``
+        line 143) — which is intentionally LENIENT and never throws on a
+        malformed box array::
+
+            float[] values = Arrays.copyOf(array.toFloatArray(), 4);
+            // huge-magnitude clamp to ±Integer.MAX_VALUE
+            // then min/max-normalise the two corners
+
+        ``COSArray.toFloatArray`` maps every non-``COSNumber`` entry to
+        ``0`` and ``Arrays.copyOf(..., 4)`` truncates a too-long array and
+        zero-pads a too-short one. So a 2-entry, non-numeric, or oversized
+        ``/MediaBox`` resolves to a real rectangle (with zeros filling the
+        gaps) rather than raising.
+
+        pypdfbox's shared :meth:`PDRectangle.from_cos_array` deviates from
+        upstream here: it raises ``ValueError`` on arity ``< 4`` and
+        ``TypeError`` on a non-numeric entry (a stricter local contract that
+        ~40 other call-sites depend on). The page box accessors must match
+        upstream's parse-leniency, so they go through this private helper
+        instead of the shared strict converter. See CHANGES.md (wave 1515).
+        """
+        from pypdfbox.cos import COSFloat, COSInteger
+
+        n = array.size()
+        vals: list[float] = []
+        for i in range(4):
+            if i < n:
+                entry = array.get_object(i)
+                # COSArray.toFloatArray maps a non-number entry to 0.
+                v = (
+                    float(entry.value)
+                    if isinstance(entry, (COSInteger, COSFloat))
+                    else 0.0
+                )
+            else:
+                # Arrays.copyOf zero-pads a short array.
+                v = 0.0
+            # PDFBOX-2818 huge-magnitude clamp. Upstream compares against
+            # Integer.MAX_VALUE (2**31 - 1) but ASSIGNS ``(float)
+            # Integer.MAX_VALUE`` — which, once narrowed to a Java float,
+            # rounds UP to 2147483648.0. We mirror both: threshold at the
+            # true int ceiling, clamp to the float32-rounded constant so a
+            # huge box reads byte-identically to PDFBox.
+            if abs(v) > _INT32_MAX:
+                v = _INT32_MAX_FLOAT32 if v > 0 else -_INT32_MAX_FLOAT32
+            vals.append(v)
+        x0, y0, x1, y1 = vals
+        return PDRectangle(min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1))
+
     def _get_box(self, key: COSName, fallback: PDRectangle | None = None) -> PDRectangle:
         value = self._get_inheritable(key) if key is _MEDIA_BOX else (
             self._page.get_dictionary_object(key)
         )
         if isinstance(value, COSArray):
-            return PDRectangle.from_cos_array(value)
+            return self._rect_from_cos_array(value)
         if fallback is not None:
             return fallback
-        # MediaBox absent everywhere — upstream defaults to Letter.
+        # MediaBox absent everywhere — upstream defaults to U.S. Letter.
         return PDRectangle(0.0, 0.0, 612.0, 792.0)
 
     def clip_to_media_box(self, box: PDRectangle) -> PDRectangle:
@@ -516,7 +593,7 @@ class PDPage:
         # CropBox is inheritable per spec (PDF 1.7 §14.11.2).
         value = self._get_inheritable(_CROP_BOX)
         if isinstance(value, COSArray):
-            return self._clip_to_media_box(PDRectangle.from_cos_array(value))
+            return self._clip_to_media_box(self._rect_from_cos_array(value))
         return self.get_media_box()
 
     def set_crop_box(self, rect: PDRectangle | COSArray | None) -> None:
@@ -534,7 +611,7 @@ class PDPage:
         """
         value = self._page.get_dictionary_object(_BLEED_BOX)
         if isinstance(value, COSArray):
-            return self._clip_to_media_box(PDRectangle.from_cos_array(value))
+            return self._clip_to_media_box(self._rect_from_cos_array(value))
         return self.get_crop_box()
 
     def set_bleed_box(self, rect: PDRectangle | COSArray | None) -> None:
@@ -548,7 +625,7 @@ class PDPage:
         """``/TrimBox`` if present, else ``/CropBox`` (clipped to media)."""
         value = self._page.get_dictionary_object(_TRIM_BOX)
         if isinstance(value, COSArray):
-            return self._clip_to_media_box(PDRectangle.from_cos_array(value))
+            return self._clip_to_media_box(self._rect_from_cos_array(value))
         return self.get_crop_box()
 
     def set_trim_box(self, rect: PDRectangle | COSArray | None) -> None:
@@ -562,7 +639,7 @@ class PDPage:
         """``/ArtBox`` if present, else ``/CropBox`` (clipped to media)."""
         value = self._page.get_dictionary_object(_ART_BOX)
         if isinstance(value, COSArray):
-            return self._clip_to_media_box(PDRectangle.from_cos_array(value))
+            return self._clip_to_media_box(self._rect_from_cos_array(value))
         return self.get_crop_box()
 
     def set_art_box(self, rect: PDRectangle | COSArray | None) -> None:
@@ -657,10 +734,16 @@ class PDPage:
     ) -> list[Any]:
         """Resolve ``/Annots`` into a list of :class:`PDAnnotation`.
 
-        Returns an empty list when ``/Annots`` is absent. Each entry is
-        dispatched to the appropriate subclass via
-        :meth:`PDAnnotation.create`. Non-dictionary entries (rare but
-        legal under defensive parsing) are skipped.
+        Returns an empty list when ``/Annots`` is absent or not an array.
+        Each non-``null`` entry is dispatched to the appropriate subclass
+        via :meth:`PDAnnotation.create`. Mirroring upstream's
+        ``getAnnotations`` loop exactly (PDFBox 3.0.7), only ``null`` array
+        members are skipped (``if (item == null) continue;``); a non-``null``
+        member that is **not** a dictionary is passed to
+        ``PDAnnotation.createAnnotation``, which raises (upstream throws
+        ``IOException("Error: Unknown annotation type ...")`` — pypdfbox's
+        ``PDAnnotation.create`` raises ``TypeError`` for the same case).
+        pypdfbox does NOT silently swallow a non-dict annotation member.
 
         ``annotation_filter`` mirrors upstream's
         ``getAnnotations(AnnotationFilter)``: a ``Callable[[PDAnnotation],
@@ -683,10 +766,12 @@ class PDPage:
             if entry is None:
                 # Match upstream's ``if (item == null) continue;`` defensive skip.
                 continue
-            if isinstance(entry, COSDictionary):
-                created = PDAnnotation.create(entry)
-                if annotation_filter is None or annotation_filter(created):
-                    result.append(created)
+            # A non-null, non-dict member reaches createAnnotation upstream,
+            # which raises. We do the same (no silent skip) so a malformed
+            # /Annots member fails loudly, matching PDFBox.
+            created = PDAnnotation.create(entry)
+            if annotation_filter is None or annotation_filter(created):
+                result.append(created)
         return result
 
     def set_annotations(self, annotations: list[Any] | None) -> None:

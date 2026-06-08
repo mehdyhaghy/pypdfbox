@@ -6,10 +6,12 @@ from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
 from pypdfbox.pdmodel import PDDocument, PDDocumentCatalog
 from pypdfbox.pdmodel.interactive.action import PDActionURI
 from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
-    PDDestinationNameTreeNode,
     PDPageXYZDestination,
 )
 from pypdfbox.pdmodel.interactive.documentnavigation.outline import PDDocumentOutline
+from pypdfbox.pdmodel.pd_document_name_destination_dictionary import (
+    PDDocumentNameDestinationDictionary,
+)
 
 
 def test_catalog_attached_to_fresh_document() -> None:
@@ -146,23 +148,26 @@ def test_open_action_accepts_action_or_destination() -> None:
     assert resolved_dest.get_page_number() == 0
 
 
-def test_get_dests_wraps_destination_name_tree() -> None:
+def test_get_dests_wraps_legacy_destination_dictionary() -> None:
+    # Upstream PDDocumentCatalog.getDests wraps the flat (PDF 1.1) /Dests
+    # catalog entry in PDDocumentNameDestinationDictionary (whose keys map
+    # directly to destinations), NOT the name-tree node form.
     doc = PDDocument()
     catalog = doc.get_document_catalog()
     dests_dict = COSDictionary()
     catalog.get_cos_object().set_item(COSName.get_pdf_name("Dests"), dests_dict)
 
     dests = catalog.get_dests()
-    assert isinstance(dests, PDDestinationNameTreeNode)
+    assert isinstance(dests, PDDocumentNameDestinationDictionary)
     assert dests.get_cos_object() is dests_dict
 
     dest = PDPageXYZDestination()
     dest.set_page_number(1)
-    dests.set_value("Chapter1", dest)
+    dests.set_destination("Chapter1", dest)
 
     resolved = catalog.get_dests()
-    assert isinstance(resolved, PDDestinationNameTreeNode)
-    fetched = resolved.get_value("Chapter1")
+    assert isinstance(resolved, PDDocumentNameDestinationDictionary)
+    fetched = resolved.get_destination("Chapter1")
     assert isinstance(fetched, PDPageXYZDestination)
     assert fetched.get_page_number() == 1
 

@@ -98,8 +98,10 @@ def test_default_size_encode_decode_are_none_when_absent() -> None:
     assert fn.get_size() is None
     assert fn.get_encode() is None
     assert fn.get_decode() is None
-    # /BitsPerSample falls back to 0 when absent (rejected by eval).
-    assert fn.get_bits_per_sample() == 0
+    # /BitsPerSample falls back to -1 when absent — upstream parity:
+    # PDFunctionType0.getBitsPerSample() is the single-arg getInt (default -1),
+    # not 0 (rejected by eval either way).
+    assert fn.get_bits_per_sample() == -1
 
 
 # ---------- setters ----------

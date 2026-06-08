@@ -147,6 +147,9 @@ def test_wave606_page_constructor_parent_resources_and_bbox_aliases() -> None:
 
     page_dict = COSDictionary()
     parent = COSDictionary()
+    # The inheritable walk only ascends through /Type /Pages ancestors
+    # (PDPageTree.getInheritableAttribute, wave 1515).
+    parent.set_item(_name("Type"), _name("Pages"))
     resources = COSDictionary()
     parent.set_item(_name("Resources"), resources)
     page_dict.set_item(_name("P"), parent)

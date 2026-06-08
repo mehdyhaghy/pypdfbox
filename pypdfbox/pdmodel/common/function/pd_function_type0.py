@@ -65,7 +65,13 @@ class PDFunctionType0(PDFunction):
             self.get_cos_object().set_item(_SIZE, size)
 
     def get_bits_per_sample(self) -> int:
-        return self.get_cos_object().get_int(_BITS_PER_SAMPLE, 0)
+        # Upstream parity: PDFunctionType0.getBitsPerSample() is
+        # ``getCOSObject().getInt(COSName.BITS_PER_SAMPLE)`` — the single-arg
+        # ``COSDictionary.getInt`` returns -1 when the key is absent / non-int,
+        # NOT 0. The absent-key value never feeds a valid eval (it is rejected
+        # against the supported-bit set on either default), but the accessor's
+        # return must match upstream for introspection / parity.
+        return self.get_cos_object().get_int(_BITS_PER_SAMPLE, -1)
 
     def set_bits_per_sample(self, bits: int) -> None:
         """Set ``/BitsPerSample`` — must be one of {1, 2, 4, 8, 12, 16,

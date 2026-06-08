@@ -614,13 +614,25 @@ class PDDocumentCatalog:
         self._catalog.set_item(_NAMES, names.get_cos_object())
 
     def get_dests(self) -> Any:
-        from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
-            PDDestinationNameTreeNode,
+        """Return the catalog's legacy ``/Dests`` dictionary wrapped as a
+        :class:`PDDocumentNameDestinationDictionary`, or ``None`` when absent
+        or not a dictionary.
+
+        Mirrors upstream ``PDDocumentCatalog.getDests()`` exactly — including
+        the wrapper type. Upstream wraps the flat (PDF 1.1) ``/Dests``
+        catalog entry in ``PDDocumentNameDestinationDictionary`` (whose keys
+        are destination names mapping to destinations / page dictionaries),
+        NOT the name-tree node type used for the modern ``/Names /Dests``
+        sub-tree. The two have different traversal contracts, so the wrapper
+        choice is observable; this matches the upstream return type.
+        """
+        from .pd_document_name_destination_dictionary import (
+            PDDocumentNameDestinationDictionary,
         )
 
         value = self._catalog.get_dictionary_object(_DESTS)
         if isinstance(value, COSDictionary):
-            return PDDestinationNameTreeNode(value)
+            return PDDocumentNameDestinationDictionary(value)
         return None
 
     def set_dests(self, dests: Any) -> None:

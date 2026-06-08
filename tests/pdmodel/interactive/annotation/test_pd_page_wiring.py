@@ -40,19 +40,22 @@ def test_page_get_annotations_dispatches_per_subtype() -> None:
     assert isinstance(result[5], PDAnnotationUnknown)
 
 
-def test_page_get_annotations_skips_non_dict_entries() -> None:
+def test_page_get_annotations_raises_on_non_dict_entry() -> None:
+    """A non-``null``, non-dict /Annots member is NOT silently skipped:
+    upstream ``getAnnotations`` passes it to ``createAnnotation``, which
+    throws ``IOException``. pypdfbox propagates the equivalent ``TypeError``
+    (wave 1515 aligned the page loop to upstream — only ``null`` is skipped)."""
     page = PDPage()
     annots = COSArray()
-    # A stray name in /Annots is illegal but defensive parsing should skip it.
+    # A stray name in /Annots is illegal; upstream raises rather than skip.
     annots.add(COSName.get_pdf_name("garbage"))
     d = COSDictionary()
     d.set_name(COSName.SUBTYPE, "Text")  # type: ignore[attr-defined]
     annots.add(d)
     page.get_cos_object().set_item(COSName.get_pdf_name("Annots"), annots)
 
-    result = page.get_annotations()
-    assert len(result) == 1
-    assert isinstance(result[0], PDAnnotationText)
+    with pytest.raises(TypeError):
+        page.get_annotations()
 
 
 def test_page_set_annotations_round_trip() -> None:

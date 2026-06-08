@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from pypdfbox.cos import COSArray, COSDictionary, COSName, COSString
+from pypdfbox.cos import COSDictionary, COSName, COSString
 from pypdfbox.pdmodel.common.filespecification.pd_complex_file_specification import (
     PDComplexFileSpecification,
 )
@@ -137,11 +137,13 @@ def test_wave746_open_embedded_pdf_rejects_filespec_without_embedded_stream() ->
 
 
 def test_wave746_resolve_named_destination_uses_legacy_catalog_dests() -> None:
+    # Wave 1515: get_dests now returns a PDDocumentNameDestinationDictionary
+    # whose lookup method is get_destination (matching the upstream type).
     destination = PDPageFitDestination()
     destination.set_page_number(2)
 
     class LegacyDests:
-        def get_value(self, name: str) -> PDPageFitDestination | None:
+        def get_destination(self, name: str) -> PDPageFitDestination | None:
             return destination if name == "legacy" else None
 
     class Catalog:
@@ -159,11 +161,10 @@ def test_wave746_resolve_named_destination_uses_legacy_catalog_dests() -> None:
 
 
 def test_wave746_resolve_named_destination_falls_back_from_non_destination_legacy_value() -> None:
-    legacy_dict = COSDictionary()
-    legacy_dict.set_item(COSName.get_pdf_name("Names"), COSArray())
-
+    # Wave 1515: legacy get_dests().get_destination returns a non-destination,
+    # so the isinstance arm is False and resolution returns None.
     class LegacyDests:
-        def get_value(self, name: str) -> Any:
+        def get_destination(self, name: str) -> Any:
             assert name == "missing"
             return object()
 
@@ -173,11 +174,6 @@ def test_wave746_resolve_named_destination_falls_back_from_non_destination_legac
 
         def get_dests(self) -> LegacyDests:
             return LegacyDests()
-
-        def get_cos_object(self) -> COSDictionary:
-            catalog = COSDictionary()
-            catalog.set_item(COSName.get_pdf_name("Dests"), legacy_dict)
-            return catalog
 
     class Scope:
         def get_document_catalog(self) -> Catalog:

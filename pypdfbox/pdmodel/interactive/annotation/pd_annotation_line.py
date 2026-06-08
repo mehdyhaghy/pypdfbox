@@ -82,11 +82,18 @@ class PDAnnotationLine(PDAnnotationMarkup):
     # ---------- /L (line coordinates) ----------
 
     def get_line(self) -> list[float] | None:
-        """Return the 4-element ``[x1, y1, x2, y2]`` line or ``None`` when
-        unset. Upstream returns ``float[]`` — Python uses ``list[float]``."""
+        """Return the ``/L`` line coordinates or ``None`` when unset.
+
+        Mirrors upstream ``PDAnnotationLine.getLine()`` (Java bytecode):
+        when ``/L`` is a COSArray the WHOLE array is returned via
+        ``toFloatArray()`` — no arity check and no slicing — so a malformed
+        2- or 6-element ``/L`` round-trips byte-for-byte with PDFBox (a
+        well-formed ``/L`` is the spec's 4-element ``[x1 y1 x2 y2]``). Non-
+        numeric members become ``0.0`` (COSArray.toFloatArray convention).
+        Returns ``None`` only when ``/L`` is absent or not an array."""
         value = self._dict.get_dictionary_object(_L)
-        if isinstance(value, COSArray) and value.size() >= 4:
-            return value.to_float_array()[:4]
+        if isinstance(value, COSArray):
+            return value.to_float_array()
         return None
 
     def set_line(self, line: list[float] | tuple[float, ...]) -> None:

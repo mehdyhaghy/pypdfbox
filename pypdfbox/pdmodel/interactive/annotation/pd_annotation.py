@@ -246,8 +246,21 @@ class PDAnnotation:
     # ---------- /Rect ----------
 
     def get_rectangle(self) -> PDRectangle | None:
+        # Mirror upstream PDAnnotation.getRectangle() (Java bytecode): the
+        # /Rect array must have EXACTLY four entries AND every one must be a
+        # COSNumber, otherwise the accessor returns null (upstream logs a
+        # warning and proceeds). A 5-element /Rect, a 3-element /Rect, or a
+        # /Rect with a non-numeric element all yield None — never a partial
+        # rectangle and never a raised exception.
         value = self._dict.get_dictionary_object(_RECT)
-        if isinstance(value, COSArray) and value.size() >= 4:
+        if (
+            isinstance(value, COSArray)
+            and value.size() == 4
+            and all(
+                isinstance(value.get_object(i), (COSInteger, COSFloat))
+                for i in range(4)
+            )
+        ):
             return PDRectangle.from_cos_array(value)
         return None
 

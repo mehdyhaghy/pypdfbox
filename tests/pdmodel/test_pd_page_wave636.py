@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,
@@ -57,15 +59,32 @@ def test_wave636_single_empty_stream_does_not_count_as_contents() -> None:
     assert page.get_contents() == b""
 
 
-def test_wave636_annotations_skip_null_and_malformed_entries() -> None:
+def test_wave636_annotations_skip_null_entries() -> None:
+    """Only ``null`` /Annots members are skipped (upstream's
+    ``if (item == null) continue;``). A well-formed dict member dispatches."""
     page = PDPage()
     text = PDAnnotationText()
-    annots = COSArray([COSNull.NULL, COSName.get_pdf_name("Bad"), text.get_cos_object()])
+    annots = COSArray([COSNull.NULL, text.get_cos_object()])
     page.get_cos_object().set_item("Annots", annots)
 
     assert [annotation.get_cos_object() for annotation in page.get_annotations()] == [
         text.get_cos_object()
     ]
+
+
+def test_wave636_annotations_raise_on_non_dict_member() -> None:
+    """A non-``null``, non-dictionary /Annots member is NOT silently skipped:
+    upstream passes it to ``PDAnnotation.createAnnotation``, which throws
+    ``IOException("Error: Unknown annotation type ...")``. pypdfbox's
+    ``PDAnnotation.create`` raises ``TypeError`` for the same case — wave 1515
+    aligned the page loop to propagate it rather than swallow the member."""
+    page = PDPage()
+    text = PDAnnotationText()
+    annots = COSArray([COSName.get_pdf_name("Bad"), text.get_cos_object()])
+    page.get_cos_object().set_item("Annots", annots)
+
+    with pytest.raises(TypeError):
+        page.get_annotations()
 
 
 def test_wave636_box_fallbacks_and_clipping_are_independent() -> None:

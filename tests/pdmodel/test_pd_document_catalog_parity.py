@@ -4,8 +4,10 @@ from pypdfbox.cos import COSDictionary
 from pypdfbox.pdmodel import PDDocument
 from pypdfbox.pdmodel.interactive.action import PDActionURI
 from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
-    PDDestinationNameTreeNode,
     PDPageXYZDestination,
+)
+from pypdfbox.pdmodel.pd_document_name_destination_dictionary import (
+    PDDocumentNameDestinationDictionary,
 )
 
 
@@ -124,19 +126,23 @@ def test_get_outlines_alias_matches_get_document_outline() -> None:
 
 
 def test_set_dests_round_trip_legacy_catalog_entry() -> None:
+    # Upstream PDDocumentCatalog.getDests wraps the flat (PDF 1.1) /Dests
+    # catalog entry in PDDocumentNameDestinationDictionary (not the name-tree
+    # node form). Set a flat-dict entry and read it back through the same
+    # wrapper type.
     doc = PDDocument()
     catalog = doc.get_document_catalog()
-    dests = PDDestinationNameTreeNode()
+    dests = PDDocumentNameDestinationDictionary()
     dest = PDPageXYZDestination()
     dest.set_page_number(3)
-    dests.set_value("chapter", dest)
+    dests.set_destination("chapter", dest)
 
     catalog.set_dests(dests)
 
     resolved = catalog.get_dests()
-    assert isinstance(resolved, PDDestinationNameTreeNode)
+    assert isinstance(resolved, PDDocumentNameDestinationDictionary)
     assert resolved.get_cos_object() is dests.get_cos_object()
-    fetched = resolved.get_value("chapter")
+    fetched = resolved.get_destination("chapter")
     assert isinstance(fetched, PDPageXYZDestination)
     assert fetched.get_page_number() == 3
 
@@ -144,7 +150,7 @@ def test_set_dests_round_trip_legacy_catalog_entry() -> None:
 def test_set_dests_none_clears_legacy_catalog_entry() -> None:
     doc = PDDocument()
     catalog = doc.get_document_catalog()
-    catalog.set_dests(PDDestinationNameTreeNode())
+    catalog.set_dests(PDDocumentNameDestinationDictionary())
 
     catalog.set_dests(None)
 
