@@ -8,8 +8,9 @@ Round-out tests for paths not yet covered:
   regardless of ``str`` vs ``bytes`` input.
 * ``write_pdf`` encodes bytes outside the printable-name set using
   ``#XX`` escapes (e.g. ``/`` → ``#2F``, space → ``#20``).
-* ``get_name`` falls back to Latin-1 when the bytes are not valid UTF-8
-  (matches PDFBox's ``getName`` substitute behaviour).
+* ``get_name`` falls back to Windows-1252 (cp1252) when the bytes are not
+  valid UTF-8 — upstream's ``ALTERNATIVE_CHARSET``. cp1252 agrees with
+  Latin-1 on 0xA0-0xFF but differs across 0x80-0x9F (wave 1523).
 * Lexicographic ordering via ``compare_to`` and the ``__lt__`` /
   ``__le__`` / ``__gt__`` / ``__ge__`` comparison operators.
 * ``hash_code`` returns a signed 32-bit Java-style hash.
@@ -76,12 +77,22 @@ def test_name_property_matches_get_name() -> None:
     assert n.name == n.get_name() == "Foo"
 
 
-def test_get_name_falls_back_to_latin1_for_non_utf8_bytes() -> None:
+def test_get_name_falls_back_to_cp1252_for_non_utf8_bytes() -> None:
     raw = bytes([0xC0, 0xC1])  # Invalid UTF-8 start bytes.
     n = COSName.get_pdf_name(raw)
     decoded = n.get_name()
-    # Latin-1 maps 0xC0/0xC1 to the corresponding Unicode code points.
+    # 0xC0/0xC1 are in the 0xA0-0xFF range where cp1252 == Latin-1.
     assert decoded == "ÀÁ"
+
+
+def test_get_name_cp1252_fallback_differs_from_latin1_in_c1_range() -> None:
+    # 0x80-0x9F is where upstream's Windows-1252 ALTERNATIVE_CHARSET diverges
+    # from Latin-1: 0x80 -> euro, 0x9F -> U+0178, and the undefined slots
+    # (0x81/0x8D/0x8F/0x90/0x9D) decode to U+FFFD. Pinned by the live oracle in
+    # tests/cos/oracle/test_cos_name_hex_escape_fuzz_wave1523.py.
+    assert COSName.get_pdf_name(bytes([0x80])).get_name() == "€"
+    assert COSName.get_pdf_name(bytes([0x9F])).get_name() == "Ÿ"
+    assert COSName.get_pdf_name(bytes([0x8D])).get_name() == "�"
 
 
 def test_is_empty_only_for_empty_name() -> None:

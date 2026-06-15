@@ -75,14 +75,21 @@ class COSName(COSBase):
         return self.get_name()
 
     def get_name(self) -> str:
-        # Match Java's ``new String(bytes, UTF_8)`` substitute behavior:
-        # invalid UTF-8 bytes are replaced with U+FFFD, then if any U+FFFD
-        # appears we fall back to ISO-8859-1 (Latin-1), which can decode any
-        # byte sequence without loss. This mirrors COSName.getName() exactly.
-        utf8_string = self._bytes.decode("utf-8", errors="replace")
-        if "�" in utf8_string:
-            return self._bytes.decode("latin-1")
-        return utf8_string
+        # Mirror upstream's name-decode contract. ``BaseParser.parseCOSName``
+        # decodes the raw name bytes with a strict UTF-8 decoder and, on any
+        # malformed/unmappable input, falls back to ``ALTERNATIVE_CHARSET`` —
+        # which is ``Windows-1252`` (cp1252), NOT ISO-8859-1. The two charsets
+        # agree on 0x00-0x7F and 0xA0-0xFF but differ across 0x80-0x9F, where
+        # cp1252 maps the printable C1 slots (e.g. 0x80 -> euro U+20AC,
+        # 0x9F -> U+0178) and leaves the five undefined slots (0x81/0x8D/0x8F/
+        # 0x90/0x9D) to decode as U+FFFD — exactly Java's
+        # ``new String(bytes, Charset.forName("Windows-1252"))``. ``get_name``
+        # is the lazy equivalent (pypdfbox stores raw name bytes and decodes
+        # here) so it must use the same cp1252 fallback to round-trip parity.
+        try:
+            return self._bytes.decode("utf-8")
+        except UnicodeDecodeError:
+            return self._bytes.decode("cp1252", errors="replace")
 
     def get_bytes(self) -> bytes:
         return bytes(self._bytes)

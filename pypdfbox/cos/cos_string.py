@@ -5,6 +5,64 @@ from typing import Any, ClassVar
 from .cos_base import COSBase
 from .i_cos_visitor import ICOSVisitor
 
+_REPLACEMENT_CHARACTER = "�"
+
+
+def _decode_java_utf16(data: bytes, *, big_endian: bool) -> str:
+    """Decode UTF-16 the way Java's ``StandardCharsets.UTF_16BE/LE`` decoder
+    does with the default REPLACE action — the W3C / ICU "maximal subpart"
+    substitution rather than Python's per-unit ``errors="replace"``.
+
+    Rules (verified byte-for-byte against PDFBox 3.0.7's ``getString()`` over
+    the surrogate / truncation battery in wave 1523's oracle test):
+
+    * A valid high+low surrogate pair forms one supplementary code point.
+    * A high surrogate followed by a full 16-bit unit that is **not** a low
+      surrogate is one ill-formed two-unit sequence → a single U+FFFD that
+      consumes both units (so the trailing unit is dropped, never re-decoded).
+    * A high surrogate with fewer than two trailing bytes remaining → a single
+      U+FFFD consuming the remainder.
+    * A lone low surrogate → a single U+FFFD (one unit).
+    * A trailing odd byte → a single U+FFFD.
+    """
+    out: list[str] = []
+    n = len(data)
+    i = 0
+    while i < n:
+        if i + 1 >= n:
+            # trailing odd byte
+            out.append(_REPLACEMENT_CHARACTER)
+            break
+        unit = (data[i] << 8) | data[i + 1] if big_endian else (data[i + 1] << 8) | data[i]
+        i += 2
+        if 0xD800 <= unit <= 0xDBFF:
+            # High surrogate: require a following full low-surrogate unit.
+            if i + 1 < n:
+                nxt = (
+                    (data[i] << 8) | data[i + 1]
+                    if big_endian
+                    else (data[i + 1] << 8) | data[i]
+                )
+                if 0xDC00 <= nxt <= 0xDFFF:
+                    cp = 0x10000 + ((unit - 0xD800) << 10) + (nxt - 0xDC00)
+                    out.append(chr(cp))
+                    i += 2
+                    continue
+                # Next is a full non-low unit: consume it as part of the
+                # single replacement (do NOT re-decode it).
+                out.append(_REPLACEMENT_CHARACTER)
+                i += 2
+                continue
+            # High surrogate with < 2 trailing bytes: one replacement, done.
+            out.append(_REPLACEMENT_CHARACTER)
+            break
+        if 0xDC00 <= unit <= 0xDFFF:
+            # Lone low surrogate.
+            out.append(_REPLACEMENT_CHARACTER)
+            continue
+        out.append(chr(unit))
+    return "".join(out)
+
 
 class COSString(COSBase):
     """
@@ -73,11 +131,19 @@ class COSString(COSBase):
         * UTF-16LE when the ``FF FE`` BOM is present;
         * PDFDocEncoding (PDF 32000-1 §D.3) otherwise.
 
-        The UTF-16 branches use **lenient** decoding (malformed / truncated
-        input becomes U+FFFD), mirroring Java's ``new String(byte[], offset,
-        length, StandardCharsets.UTF_16BE)`` which substitutes the
-        replacement character rather than throwing — e.g. an odd trailing
-        byte after the BOM decodes to ``…\\uFFFD`` instead of raising.
+        The UTF-16 branches mirror Java's ``new String(byte[], offset,
+        length, StandardCharsets.UTF_16BE)`` — malformed / truncated input is
+        substituted with U+FFFD rather than throwing. Java's substitution
+        follows the W3C / ICU "maximal subpart" rule, which is **not** the
+        same as Python's per-unit ``errors="replace"`` for surrogate
+        sequences: a lone high surrogate followed by any other 16-bit unit (a
+        non-low-surrogate, including a BMP character or another high
+        surrogate) is treated as one ill-formed two-unit sequence and yields a
+        **single** U+FFFD that consumes **both** units; a lone low surrogate,
+        or a high surrogate followed by fewer than two trailing bytes, yields a
+        single U+FFFD consuming just what remains. Python's codec would emit
+        one U+FFFD per unit (e.g. ``D83D 0041`` → ``U+FFFD 'A'``), so we
+        implement the Java rule directly in :func:`_decode_java_utf16`.
 
         We additionally strip a UTF-8 BOM (``EF BB BF``) and decode the rest
         as UTF-8. This is a deliberate forward-port of PDF 2.0 §7.9.2.2 /
@@ -86,9 +152,9 @@ class COSString(COSBase):
         Recorded as an active divergence in CHANGES.md.
         """
         if self._bytes.startswith(b"\xfe\xff"):
-            return self._bytes[2:].decode("utf-16-be", errors="replace")
+            return _decode_java_utf16(self._bytes[2:], big_endian=True)
         if self._bytes.startswith(b"\xff\xfe"):
-            return self._bytes[2:].decode("utf-16-le", errors="replace")
+            return _decode_java_utf16(self._bytes[2:], big_endian=False)
         if self._bytes.startswith(b"\xef\xbb\xbf"):
             return self._bytes[3:].decode("utf-8", errors="replace")
         from pypdfbox.pdmodel.common.pdfdoc_encoding import decode_bytes

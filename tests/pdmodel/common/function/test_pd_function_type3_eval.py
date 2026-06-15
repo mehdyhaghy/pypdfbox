@@ -281,11 +281,14 @@ def test_eval_without_domain_raises() -> None:
 
 
 def test_eval_with_empty_input_raises() -> None:
+    # Upstream PDFunctionType3.eval reads input[0] directly; an empty array
+    # raises ArrayIndexOutOfBoundsException (-> IndexError here). Retargeted
+    # wave 1523 to mirror that (was ValueError pre-wave-1523).
     fn = _stitch(
         functions=[_type2([0.0], [1.0], 1.0)],
         domain=[0.0, 1.0],
         bounds=[],
         encode=[0.0, 1.0],
     )
-    with pytest.raises(ValueError):
+    with pytest.raises(IndexError):
         fn.eval([])

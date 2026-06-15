@@ -243,25 +243,29 @@ def test_mixed_type2_and_type4_subfunctions() -> None:
 # ---------- /Bounds longer than n-1 fails ----------
 
 
-def test_bounds_too_long_raises() -> None:
-    """/Bounds must have exactly n-1 entries for n subfunctions per spec;
-    an over-long /Bounds is a malformed dictionary and must raise."""
+def test_bounds_too_long_with_single_function_ignores_bounds() -> None:
+    """Upstream's single-subfunction path dispatches straight to function[0]
+    and interpolates over the *whole* /Domain into /Encode pair 0 — /Bounds is
+    ignored entirely, even when over-long. Retargeted wave 1523 (oracle:
+    FunctionType3FuzzProbe single_with_bound; was a ValueError pre-wave-1523)."""
     fn = _stitch(
         functions=[_type2(c0=[0.0], c1=[1.0], n=1.0)],
         domain=[0.0, 1.0],
-        bounds=[0.3, 0.7],  # 2 bounds for 1 function — invalid
+        bounds=[0.3, 0.7],  # 2 bounds for 1 function — ignored upstream
         encode=[0.0, 1.0],
     )
-    with pytest.raises(ValueError, match="Bounds"):
-        fn.eval([0.5])
+    assert fn.eval([0.5]) == pytest.approx([0.5])
 
 
 # ---------- Empty /Functions fails ----------
 
 
 def test_empty_functions_raises() -> None:
-    """A stitching wrapper with no subfunctions has nothing to dispatch
-    to."""
+    """A stitching wrapper with no subfunctions has nothing to dispatch to.
+    Upstream builds a zero-length functionsArray, selects partition 0 (the only
+    one, [domain_min, domain_max]), then indexes functionsArray[0] ->
+    ArrayIndexOutOfBoundsException (-> IndexError here). Retargeted wave 1523
+    (oracle: FunctionType3FuzzProbe fns_empty; was ValueError "...Functions...")."""
     parent = COSDictionary()
     parent.set_int("FunctionType", 3)
     domain_arr = COSArray()
@@ -271,7 +275,7 @@ def test_empty_functions_raises() -> None:
     parent.set_item("Bounds", COSArray())
     parent.set_item("Encode", COSArray())
     fn = PDFunctionType3(parent)
-    with pytest.raises(ValueError, match="Functions"):
+    with pytest.raises(IndexError):
         fn.eval([0.5])
 
 

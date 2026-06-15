@@ -1,12 +1,39 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSStream
+from pypdfbox.cos import (
+    COSArray,
+    COSBase,
+    COSDictionary,
+    COSNumber,
+    COSStream,
+)
 
 from .pd_function import PDFunction
 
 _FUNCTIONS = "Functions"
 _BOUNDS = "Bounds"
 _ENCODE = "Encode"
+
+
+def _float_compare(a: float, b: float) -> int:
+    """Port of Java ``Float.compare(float, float)`` for the single comparison
+    Type 3 eval needs — the last-interval boundary test ``x == partition[last]``.
+
+    Returns ``-1`` / ``0`` / ``+1``. NaN sorts greater than everything (so a NaN
+    input never equality-matches the closing bound), matching upstream."""
+    if a < b:
+        return -1
+    if a > b:
+        return 1
+    a_nan = a != a
+    b_nan = b != b
+    if a_nan and b_nan:
+        return 0
+    if a_nan:
+        return 1
+    if b_nan:
+        return -1
+    return 0
 
 
 class PDFunctionType3(PDFunction):
@@ -158,60 +185,118 @@ class PDFunctionType3(PDFunction):
 
     # ---------- evaluation ----------
 
+    @staticmethod
+    def _clip_to_range_scalar(x: float, range_min: float, range_max: float) -> float:
+        """Non-normalising scalar clamp — direct port of upstream
+        ``PDFunction.clipToRange(float, float, float)`` (PDFunction.java).
+
+        Unlike :meth:`PDFunction.clip_value_to_range`, this does **not** swap a
+        reversed ``(min, max)`` pair: ``if x < range_min -> range_min``;
+        ``if x > range_max -> range_max``; else ``x``. Type 3 eval relies on
+        this exact (un-normalised) behaviour so a reversed ``/Domain`` produces
+        the same "partition not found" failure as upstream rather than silently
+        evaluating against a normalised interval."""
+        if x < range_min:
+            return range_min
+        if x > range_max:
+            return range_max
+        return x
+
+    def _encode_pair(self, n: int) -> tuple[float, float]:
+        """Return the ``(min, max)`` ``/Encode`` pair for subfunction ``n``.
+
+        Mirrors upstream ``getEncodeForParameter(int)`` =
+        ``new PDRange(getEncode(), n).getMin()/getMax()``, which reads
+        ``encode[2n]`` / ``encode[2n+1]`` and casts each to ``COSNumber``.
+        Raises ``ValueError`` when ``/Encode`` is absent, too short, or carries
+        a non-numeric entry at either index — upstream raises ``NPE`` /
+        ``ClassCastException`` (surfaced as eval failure) on the same inputs.
+        Defensive ``[0, 1]`` defaults are *not* used: that would make pypdfbox
+        accept malformed ``/Encode`` arrays upstream rejects."""
+        encode = self.get_encode()
+        if encode is None:
+            raise ValueError("PDFunctionType3 /Encode is absent")
+        lo = encode.get_object(2 * n) if 2 * n < encode.size() else None
+        hi = encode.get_object(2 * n + 1) if 2 * n + 1 < encode.size() else None
+        if not isinstance(lo, COSNumber) or not isinstance(hi, COSNumber):
+            raise ValueError(
+                f"PDFunctionType3 /Encode missing numeric pair for subfunction {n}"
+            )
+        return (float(lo.float_value()), float(hi.float_value()))
+
     def eval(self, input: list[float]) -> list[float]:  # noqa: A002 - upstream parameter name
         """Stitching evaluation per PDF 32000-1 §7.10.4.
 
-        Selects subfunction ``k`` based on which subdomain (built from
-        ``/Domain`` and ``/Bounds``) the clipped input falls into, maps the
-        input into that subfunction's encoded interval, then delegates.
-        """
-        clipped = self.clip_input(input)
-        if not clipped:
-            raise ValueError("PDFunctionType3.eval requires at least one input")
-        x = clipped[0]
+        Faithful port of upstream ``PDFunctionType3.eval(float[])``:
 
-        functions = self.get_functions()
-        if not functions:
-            raise ValueError("PDFunctionType3 has no /Functions entries to dispatch to")
+        * Clip ``input[0]`` to ``/Domain`` (non-normalising —
+          :meth:`_clip_to_range_scalar`).
+        * Materialise every ``/Functions`` entry via ``PDFunction.create``.
+        * **Single subfunction:** dispatch to it directly, interpolating the
+          input across the *whole* ``/Domain`` into ``/Encode`` pair 0;
+          ``/Bounds`` is ignored entirely (no length validation).
+        * **Multiple subfunctions:** build a partition array
+          ``[domain_min, *bounds, domain_max]`` and select interval ``i`` where
+          ``x >= partition[i]`` and (``x < partition[i+1]`` or ``i`` is the last
+          interval and ``x == partition[i+1]``); interpolate over
+          ``[partition[i], partition[i+1]]`` into ``/Encode`` pair ``i``.
+        * If no interval matches, raise ``ValueError`` ("partition not found").
+        """
+        if not input:
+            raise IndexError("PDFunctionType3.eval requires at least one input")
+        x = input[0]
 
         domain_ranges = self.get_ranges_for_inputs()
         if not domain_ranges:
+            # Upstream getDomainForInput(0) dereferences a null /Domain -> NPE.
             raise ValueError("PDFunctionType3.eval requires /Domain to be defined")
         domain_lo, domain_hi = domain_ranges[0]
+        x = self._clip_to_range_scalar(x, domain_lo, domain_hi)
 
-        bounds_arr = self.get_bounds()
-        bounds: list[float] = bounds_arr.to_float_array() if bounds_arr is not None else []
-        if len(bounds) > len(functions) - 1:
-            raise ValueError(
-                "PDFunctionType3 /Bounds has more partitions than /Functions"
-            )
+        # Build the typed subfunction array exactly as upstream does — every
+        # /Functions entry passes through PDFunction.create (a malformed child
+        # raises here, surfacing as an eval failure). A null /Functions array
+        # mirrors upstream's NPE on getFunctions().size().
+        functions_array = self.get_functions_array()
+        if functions_array is None:
+            raise ValueError("PDFunctionType3 /Functions is absent or not an array")
+        functions: list[PDFunction | None] = []
+        for i in range(functions_array.size()):
+            functions.append(PDFunction.create(functions_array.get_object(i)))
 
-        encode_arr = self.get_encode()
-        encode: list[float] = encode_arr.to_float_array() if encode_arr is not None else []
+        selected: PDFunction | None = None
 
-        # Find subfunction index k. Per spec: x in [domain_lo, bounds[0]) -> 0,
-        # [bounds[i-1], bounds[i]) -> i, [bounds[-1], domain_hi] -> last.
-        k = len(functions) - 1
-        for i, b in enumerate(bounds):
-            if x < b:
-                k = i
-                break
-
-        # Subdomain boundaries for interval k.
-        sub_lo = domain_lo if k == 0 else bounds[k - 1]
-        sub_hi = domain_hi if k >= len(bounds) else bounds[k]
-
-        # Encoded target interval; use [0, 1] as a defensive default when
-        # malformed /Encode data is missing the pair for the selected child.
-        enc_lo = encode[2 * k] if 2 * k < len(encode) else 0.0
-        enc_hi = encode[2 * k + 1] if 2 * k + 1 < len(encode) else 1.0
-
-        if sub_hi == sub_lo:
-            mapped_x = enc_lo
+        if len(functions) == 1:
+            # Single subfunction: ignore /Bounds, encode over the whole domain.
+            selected = functions[0]
+            enc_lo, enc_hi = self._encode_pair(0)
+            x = self.interpolate(x, domain_lo, domain_hi, enc_lo, enc_hi)
         else:
-            mapped_x = enc_lo + (x - sub_lo) * (enc_hi - enc_lo) / (sub_hi - sub_lo)
+            bounds_arr = self.get_bounds()
+            bounds: list[float] = (
+                bounds_arr.to_float_array() if bounds_arr is not None else []
+            )
+            # partition = [domain_lo, *bounds, domain_hi]
+            partition = [domain_lo, *bounds, domain_hi]
+            n_intervals = len(partition) - 1
+            for i in range(n_intervals):
+                if x < partition[i]:
+                    continue
+                is_last = i == n_intervals - 1
+                if x < partition[i + 1] or (
+                    is_last and _float_compare(x, partition[i + 1]) == 0
+                ):
+                    selected = functions[i]
+                    enc_lo, enc_hi = self._encode_pair(i)
+                    x = self.interpolate(
+                        x, partition[i], partition[i + 1], enc_lo, enc_hi
+                    )
+                    break
 
-        result = functions[k].eval([mapped_x])
+        if selected is None:
+            raise ValueError("partition not found in type 3 function")
+
+        result = selected.eval([x])
         return self.clip_output(result)
 
 

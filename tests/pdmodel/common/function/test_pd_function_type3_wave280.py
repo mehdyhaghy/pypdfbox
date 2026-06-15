@@ -145,7 +145,11 @@ def test_wave280_encode_values_and_pairs_are_index_safe() -> None:
     assert fn.get_encode_for_parameter(-1) is None
 
 
-def test_wave280_eval_uses_defensive_encode_default_when_absent() -> None:
+def test_wave280_eval_raises_when_encode_absent() -> None:
+    # Upstream getEncodeForParameter -> PDRange(getEncode(), i).getMin() casts
+    # encode[2i] to COSNumber; an absent /Encode dereferences null -> NPE
+    # (eval failure). Retargeted wave 1523 (oracle: FunctionType3FuzzProbe
+    # single_encode_missing). pypdfbox previously substituted a [0, 1] default.
     fn = _stitch(
         functions=[_type2()],
         domain=[10.0, 20.0],
@@ -153,9 +157,8 @@ def test_wave280_eval_uses_defensive_encode_default_when_absent() -> None:
         encode=None,
     )
 
-    assert fn.eval([10.0]) == pytest.approx([0.0])
-    assert fn.eval([15.0]) == pytest.approx([0.5])
-    assert fn.eval([20.0]) == pytest.approx([1.0])
+    with pytest.raises(ValueError, match="Encode"):
+        fn.eval([15.0])
 
 
 def test_wave280_eval_interpolates_parent_domain_into_encode_pairs() -> None:
@@ -173,7 +176,13 @@ def test_wave280_eval_interpolates_parent_domain_into_encode_pairs() -> None:
     assert fn.eval([3.0]) == pytest.approx([40.0])
 
 
-def test_wave280_eval_rejects_bounds_with_more_partitions_than_functions() -> None:
+def test_wave280_eval_over_long_bounds_indexes_past_functions() -> None:
+    # 2 functions but 2 bounds (need k-1=1). Upstream does NOT validate the
+    # /Bounds length; it builds partition [0, .25, .5, 1] (3 intervals) and for
+    # x=0.75 selects interval 2, then indexes functionsArray[2] ->
+    # ArrayIndexOutOfBoundsException (-> IndexError here). Retargeted wave 1523
+    # (oracle: FunctionType3FuzzProbe bounds_too_many; pypdfbox previously
+    # raised a "/Bounds has more partitions" ValueError up front).
     fn = _stitch(
         functions=[_type2(), _type2()],
         domain=[0.0, 1.0],
@@ -181,5 +190,5 @@ def test_wave280_eval_rejects_bounds_with_more_partitions_than_functions() -> No
         encode=[0.0, 1.0, 0.0, 1.0],
     )
 
-    with pytest.raises(ValueError, match="/Bounds has more partitions"):
+    with pytest.raises(IndexError):
         fn.eval([0.75])

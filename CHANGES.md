@@ -31,6 +31,9 @@ Per-release notes go here; trivial naming changes (camelCase → snake_case) are
 
 Divergences that remain live (will affect observable behaviour vs Java PDFBox):
 
+- **Wave 1523 — malformed Type 3 (stitching) function dictionaries fuzzed against PDFBox 3.0.7 (`PDFunctionType3.eval`).** Rewrote `pypdfbox/pdmodel/common/function/pd_function_type3.py::eval` as a faithful port of upstream's bytecode, fixing four real divergences: (1) the single-subfunction path now dispatches straight to `functions[0]` and interpolates over the *whole* `/Domain` into `/Encode` pair 0, ignoring `/Bounds` entirely (pypdfbox previously rejected a single function carrying any `/Bounds` with a "too many partitions" `ValueError`). (2) `/Bounds` length is never validated up front; an over/under-long `/Bounds` either selects the wrong interval or indexes past the function array (`IndexError`, mirroring upstream `ArrayIndexOutOfBoundsException`). (3) `/Encode` is read through PDRange-equivalent COSNumber access (`_encode_pair`), so an absent / too-short / non-numeric `/Encode` pair now raises instead of silently substituting a `[0, 1]` default. (4) the input is clipped to `/Domain` with the non-normalising upstream `clipToRange(float, float, float)` (`_clip_to_range_scalar`), so a reversed `/Domain` yields the same "partition not found" failure as upstream rather than evaluating against a normalised interval. Five stale non-oracle tests retargeted to the oracle-proven contract.
+  upstream: PDFBox 3.0.7 `org.apache.pdfbox.pdmodel.common.function.PDFunctionType3.eval` / `getEncodeForParameter`, `org.apache.pdfbox.pdmodel.common.PDRange`, `PDFunction.clipToRange(float, float, float)`
+
 - **Wave 1522 — malformed Type 3 font dictionaries / char-procs fuzzed against PDFBox 3.0.7.** Fixed two real divergences in `pypdfbox/pdmodel/font/pd_type3_font.py`: (1) `get_font_bbox` required a 4+-entry numeric `/FontBBox` array and otherwise returned `None` (or raised `TypeError`/`ValueError` via `PDRectangle.from_cos_array` on short / non-numeric arrays); upstream `getFontBBox` builds a `PDRectangle` from *any* COSArray — short arrays are zero-padded to four (`Arrays.copyOf(toFloatArray(), 4)`), long arrays keep the first four, non-numeric entries coerce to `0`, and corners normalise via min/max. Now mirrored locally (returns `None` only when `/FontBBox` is absent or not an array). (2) `get_char_proc(int)` special-cased `.notdef` and returned `None` even when a `.notdef` char proc existed; upstream `getCharProc(int)` has no such filter — it resolves the code to a glyph name and looks that exact name up in `/CharProcs`. Now the `.notdef` short-circuit is removed; only a `None` name or a missing/non-stream entry yields `None`. One stale non-oracle test retargeted to the padded-bbox contract.
   upstream: PDFBox 3.0.7 `org.apache.pdfbox.pdmodel.font.PDType3Font.getFontBBox` / `getCharProc(int)`, `org.apache.pdfbox.pdmodel.common.PDRectangle(COSArray)`
 - **Wave 1522 — Type 3 char-proc `getWidth` leniency (pinned both-sides).** `PDType3CharProc.get_width()` / `parse_width()` return `0.0` for a char proc whose leading operator is not `d0`/`d1` (a garbage proc) or whose first operand is missing/non-numeric (and the font-level `get_width(code)` likewise yields `0.0` for a no-`/Widths` garbage glyph), where upstream raises `IOException`. Deliberate robustness choice so the text-extraction / rendering loop keeps walking the font's other glyphs instead of aborting on one broken proc; the well-formed path is byte-exact. Pinned both-sides (3 cases) in `tests/pdmodel/font/oracle/test_type3_font_fuzz_wave1522.py`.
@@ -39,6 +42,12 @@ Divergences that remain live (will affect observable behaviour vs Java PDFBox):
 
 - **Wave 1522 — malformed PDF date-string parsing fuzzed against PDFBox 3.0.7 (`DateConverter.toCalendar`, the parser behind `COSDictionary.getDate`).** Fixed a real leniency bug: pypdfbox used Python `str.strip()` / `str.lstrip()` in `to_calendar`, `_try_parse_date_fallback`, and `_from_iso8601`, which strip *all* Unicode whitespace and so silently accepted tab / newline / CR / vertical-tab / form-feed bracketed inputs (e.g. `"\tD:20240315120000"`, `"D:20240315120000\t"`, `"2024-03-15T12:00:00Z\t"`) that PDFBox rejects (returns `null`). Upstream's tokenizer treats only the ASCII space (0x20) as skippable and enforces `where.index == text.length()`, so non-space whitespace fails the residue check. The parser core was already correct; the divergence was confined to the wrapper pre-strip. Now strips only spaces, matching PDFBox: a surrounding space is tolerated, any other whitespace is rejected.
   upstream: PDFBox 3.0.7 `org.apache.pdfbox.util.DateConverter.toCalendar(String)` / `parseDate` / `fromISO8601`
+
+- **Wave 1523 — malformed LZW-compressed streams fuzzed against PDFBox 3.0.7 (`LZWFilter.doLZWDecode`).** Verification-only: 42 hand-crafted bit-level LZW code streams stressing the codec's own state machine — reserved codes (`CLEAR_TABLE`/`EOD`), the 9→10→11→12 variable-width transitions, the `/EarlyChange` boundary (1 vs 0), KwKwK valid vs out-of-range codes, premature EOF (missing EOD), EOD mid-stream, no-leading-CLEAR, table growth past 4096 with no intervening CLEAR, and `/Predictor` (TIFF 2 / PNG 12) over the LZW core. pypdfbox's `LZWDecode` already matched upstream byte-for-byte on every case (lenient EOFException-as-stop contract, 258-entry initial table with null placeholders at 256/257, post-growth `calculate_chunk` width). No production change; the parity is now pinned exact (ok + len + sha) so a future LZW refactor cannot silently regress malformed-input behaviour.
+  upstream: PDFBox 3.0.7 `org.apache.pdfbox.filter.LZWFilter.doLZWDecode` / `calculateChunk` / `createInitialCodeTable`
+
+- **Wave 1523 — COSName `#XX` hex-escape decode + byte→String round-trip fuzzed against PDFBox 3.0.7 (`COSName.getName` / `BaseParser.parseCOSName`).** Fixed a real divergence in `pypdfbox/cos/cos_name.py::get_name`: the non-UTF-8 fallback decoded with **Latin-1**, but upstream's name decoder uses `ALTERNATIVE_CHARSET = Charset.forName("Windows-1252")` (a strict UTF-8 decoder first, then a replacing Windows-1252 decoder on failure). Latin-1 and cp1252 agree on 0x00–0x7F and 0xA0–0xFF but diverge across 0x80–0x9F: a name byte `0x80` decodes to the euro sign U+20AC (not U+0080), `0x9F` to U+0178, and the five cp1252-undefined slots (0x81/0x8D/0x8F/0x90/0x9D) to U+FFFD. `get_name` now does strict UTF-8 then `bytes.decode("cp1252", errors="replace")`, matching `new String(bytes, Windows-1252)` byte-for-byte over the full 0x00–0xFF range (both raw high bytes and `#XX` escapes). 413-case sweep (including all 256 byte values via escape + raw, multi-byte UTF-8 via consecutive `#XX`, malformed `#`-recovery, and the empty name) is now zero-divergence. One stale hand-written test (`test_cos_name_wave1368.py`) retargeted from "Latin-1" to the cp1252 contract.
+  upstream: PDFBox 3.0.7 `org.apache.pdfbox.cos.COSName.getName`, `org.apache.pdfbox.pdfparser.BaseParser` (`ALTERNATIVE_CHARSET` = Windows-1252)
 
 - **Wave 1521 — five malformed model-dictionary surfaces fuzzed against PDFBox 3.0.7.** Viewer-preference name getters now preserve an explicitly stored empty `COSString` instead of replacing it with the spec default. `PDFormXObject.get_b_box` and `PDThreadBead.get_rectangle` now zero-pad missing/non-numeric array coordinates like upstream `PDRectangle(COSArray)`. `PDSoftMask` now mirrors upstream lazy accessor caching, returns only transparency groups from valid `/G` XObjects, propagates malformed-XObject errors, threads the resource cache, and rejects dictionary-backed Type-4 transfer functions that require a stream. The tiling-pattern dictionary surface was already production-correct.
   upstream: PDFBox 3.0.7 `interactive/viewerpreferences/PDViewerPreferences.java`, `interactive/pagenavigation/{PDThread,PDThreadBead}.java`, `graphics/form/PDFormXObject.java`, `graphics/pattern/PDTilingPattern.java`, `graphics/state/PDSoftMask.java`
@@ -4029,6 +4038,47 @@ than "False arm missing".
     the angle-bracketed `CH <41>` char-code form is rejected upstream
     (`parseInt` on a bare hex token) but accepted by pypdfbox; bare-hex `CH 41`
     parity is preserved. Both sides asserted in the wave-1522 oracle test.
+
+- Wave 1523 agent B: COSString text-string raw-byte decoding
+  (`pypdfbox/cos/cos_string.py` `get_string()`) now matches PDFBox 3.0.7's
+  UTF-16 surrogate substitution, surfaced by `CosStringTextDecodeFuzzProbe` /
+  `tests/cos/oracle/test_cos_string_text_decode_fuzz_wave1523.py` (44 cases via
+  the `new COSString(byte[]).getString()` path).
+  - BUG FIXED: the UTF-16BE/LE branches used Python's per-unit
+    `bytes.decode("utf-16-*", errors="replace")`, which emits one U+FFFD per
+    16-bit unit. Java's `StandardCharsets.UTF_16BE/LE` decoder (REPLACE) uses
+    the W3C / ICU "maximal subpart" rule: a lone high surrogate followed by any
+    non-low-surrogate unit (a BMP char or another high surrogate) is ONE
+    ill-formed two-unit sequence yielding a SINGLE U+FFFD that consumes both
+    units (so e.g. `FEFF D83D 0041` → `U+FFFD` with the `A` dropped, not
+    `U+FFFD 'A'`). Replaced both branches with `_decode_java_utf16`, a
+    byte-faithful port of that rule (verified across the surrogate / truncation
+    battery for both endiannesses). Lone-low-surrogate, valid-pair, odd-trailing
+    -byte, and PDFDocEncoding behaviour are unchanged.
+  - Pinned divergence (forward-port, pre-existing — kept): pypdfbox strips a
+    UTF-8 BOM (`EF BB BF`) and decodes the remainder as UTF-8 (PDF 2.0
+    §7.9.2.2 / PDFBox 4.0); PDFBox 3.0.7 has no such branch and decodes those
+    bytes as PDFDocEncoding. Both sides asserted in the wave-1523 oracle test.
+
+- Wave 1523 agent E: ASCII85 / ASCIIHex decode fuzz parity
+  (`pypdfbox/filter/ascii85_decode.py`), surfaced by
+  `Ascii85HexDecodeFuzzProbe` /
+  `tests/filter/oracle/test_ascii85_hex_decode_fuzz_wave1523.py` (58 cases).
+  - BUG FIXED: `ASCII85Decode._decode_bytes` stopped only at the two-byte
+    `~>` marker, but upstream's `ASCII85InputStream` ends the stream at the
+    FIRST `~` byte alone (the `>` is incidental framing). So `87cURD~X`
+    over-decoded the trailing `X`, and the Adobe `<~` intro — whose `~` sits at
+    index 1 — was mis-handled (PDFBox does NOT strip `<~`; `<` is an ordinary
+    base-85 digit and the following `~` terminates, yielding a dropped lone
+    digit = 0 bytes). `_decode_bytes` now truncates at the first `~` and the
+    effective digit range is `!`..`}` (0x21..0x7d). ASCIIHex was already
+    fully convergent across odd-nibble, whitespace-split, non-hex, case-fold,
+    embedded-control and EOD cases — no change.
+  - Pinned divergence (loose, `ok`-only — pre-existing artifact): a full body
+    with NO `~` terminator. Upstream's `ASCII85InputStream` reads past EOF and
+    over-extends the final partial group by one byte; pypdfbox stops at the
+    buffer end. Real PDF ASCII85 streams always carry the terminator, so only
+    the `ok` boolean is compared (`a85_no_eod_full`).
 
 ## See also
 

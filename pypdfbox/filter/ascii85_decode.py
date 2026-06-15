@@ -15,8 +15,11 @@ from .filter_factory import FilterFactory
 # A 4-zero group has the special abbreviation b'z' (a single byte). A trailing
 # group of 1, 2, or 3 bytes is encoded as 2, 3, or 4 base-85 digits with the
 # missing low bytes padded as zeros and the corresponding low digits trimmed.
-# The encoded stream is terminated by b'~>'. Whitespace inside the stream is
-# ignored on decode.
+# The encoder frames the stream with a trailing b'~>'. On DECODE upstream's
+# ASCII85InputStream actually ends the stream at the FIRST b'~' byte alone (the
+# b'>' is incidental); whatever follows that b'~' is never read. The Adobe b'<~'
+# intro is NOT special-cased — b'<' is an ordinary base-85 digit. Whitespace
+# inside the stream is ignored on decode.
 #
 # ENCODE delegates to ``ASCII85OutputStream`` (mirroring upstream
 # ``ASCII85Filter.encode``, which wraps its destination in that stream). The
@@ -35,9 +38,10 @@ from .filter_factory import FilterFactory
 #     digits and fall under the range check below.
 #   * A digit byte ``c`` contributes ``c - '!'`` to the base-85 accumulator.
 #     PDFBox raises ("Invalid data in Ascii85 stream") iff ``c - '!'`` is
-#     ``< 0 or > 93`` — i.e. it accepts the whole range b'!'(0x21)..b'~'
-#     (0x7e), wider than the b'!'..b'u' the encoder ever emits, and lets the
-#     32-bit wrap mask any per-group overflow.
+#     ``< 0 or > 93`` — i.e. it accepts the whole range b'!'(0x21)..b'}'
+#     (0x7d) as a digit (b'~' (0x7e) being the EOD byte stripped above),
+#     wider than the b'!'..b'u' the encoder ever emits, and lets the 32-bit
+#     wrap mask any per-group overflow.
 #   * The b'z' 4-zero shortcut fires ONLY at a group boundary. Mid-group a
 #     b'z' is an ordinary digit (0x7a - 0x21 = 89).
 #   * A trailing partial group of ``n`` digits is padded with b'u' and yields
@@ -48,7 +52,20 @@ from .filter_factory import FilterFactory
 # duplicate output — a harness artifact, not a real-PDF case; real PDF
 # ASCII85 streams always carry the b'~>' terminator, so we honour it strictly.)
 
-_EOD: Final[bytes] = b"~>"
+# Upstream ASCII85InputStream treats the single byte b'~' (0x7e) as end-of-data
+# on its own: its read loop returns EOF the moment it sees b'~', without
+# requiring the b'>' that the encoder pairs with it. A stream therefore ends at
+# the FIRST b'~', whatever (if anything) follows it. Two consequences this
+# byte-for-byte parity (verified against the live PDFBox 3.0.7 oracle, wave
+# 1523) depends on:
+#   * b'87cURD~X' decodes the b'87cURD' body and stops at b'~' (the trailing
+#     b'X' is never seen), NOT only at the literal pair b'~>'.
+#   * The Adobe b'<~' intro marker is NOT special-cased by the filter. b'<' is
+#     an ordinary base-85 digit (0x3c - '!' = 27) and the b'~' immediately
+#     after it terminates the stream — so b'<~...~>' yields a lone leading
+#     digit that is dropped (a partial group of 1), i.e. zero bytes, exactly as
+#     upstream produces. (Real PDF ASCII85 streams omit the b'<~' intro.)
+_EOD: Final[int] = 0x7E  # b'~' — end-of-data byte (the b'>' that follows is incidental)
 # Upstream ASCII85InputStream skips only LF, CR and SPACE — NOT NUL/TAB/FF/VT.
 _WHITESPACE: Final[frozenset[int]] = frozenset(b"\n\r ")
 _Z: Final[int] = 0x7A  # b'z' — 4-zero-byte shortcut at a group boundary
@@ -118,7 +135,9 @@ class ASCII85Decode(Filter):
 
     @staticmethod
     def _decode_bytes(data: bytes) -> bytes:
-        # Strip everything from the EOD marker onward, if present.
+        # Strip everything from the first EOD byte (b'~') onward, if present.
+        # Upstream's ASCII85InputStream ends the stream at the first b'~', not
+        # only at the literal b'~>' pair (the b'>' is incidental framing).
         eod = data.find(_EOD)
         if eod >= 0:
             data = data[:eod]
