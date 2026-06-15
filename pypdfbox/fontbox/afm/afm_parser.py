@@ -209,15 +209,15 @@ class AFMParser:
             elif next_command == self.START_CHAR_METRICS:
                 char_metrics_read = self.parse_char_metrics(font_metrics)
             elif next_command == self.START_KERN_DATA:
+                # Upstream simply skips the call in reduced mode (no skip-to-
+                # terminator): the main loop then re-encounters the inner kern
+                # tokens as unknown keys, which are tolerated once char metrics
+                # have been read and otherwise raise. We mirror that exactly.
                 if not reduced_dataset:
                     self.parse_kern_data(font_metrics)
-                else:
-                    self._skip_to(self.END_KERN_DATA)
             elif next_command == self.START_COMPOSITES:
                 if not reduced_dataset:
                     self.parse_composites(font_metrics)
-                else:
-                    self._skip_to(self.END_COMPOSITES)
             else:
                 if not reduced_dataset or not char_metrics_read:
                     raise OSError(f"Unknown AFM key '{next_command}'")
@@ -258,10 +258,13 @@ class AFMParser:
                     i += 1
                     i = self.verify_semicolon(tokens, i)
                 elif tok == self.CHARMETRICS_CH:
-                    # Hex-encoded character code. Spec is unclear whether
-                    # the value is bare hex (e.g. ``41``) or angle-bracketed
-                    # (e.g. ``<41>``); we accept either, matching upstream's
-                    # "wait and see if it breaks anything" comment.
+                    # Hex-encoded character code. The spec is unclear whether
+                    # the value is bare hex (``41``) or angle-bracketed
+                    # (``<41>``). Upstream parses it as bare hex via
+                    # ``parseInt(token, BITS_IN_HEX)`` and therefore rejects
+                    # the ``<41>`` form; pypdfbox deliberately accepts both
+                    # (a documented intentional leniency — see CHANGES.md
+                    # wave316 / wave1522). Bare hex parity is preserved.
                     char_metric.set_character_code(
                         self._parse_hex_character_code(tokens[i])
                     )
@@ -498,18 +501,6 @@ class AFMParser:
         except (IndexError, ValueError) as e:
             raise OSError(f"Malformed Composite line '{line}'") from e
         return composite
-
-    # ------------------------------------------------------------------
-    # Skip helpers (for reduced_dataset)
-    # ------------------------------------------------------------------
-
-    def _skip_to(self, terminator: str) -> None:
-        while True:
-            tok = self.read_string()
-            if tok == terminator:
-                return
-            if not tok:
-                raise OSError(f"EOF before '{terminator}'")
 
     # ------------------------------------------------------------------
     # Low-level lexer (byte-oriented, mirrors upstream's logic)

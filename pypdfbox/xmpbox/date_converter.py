@@ -220,7 +220,11 @@ def _from_iso8601(date_string: str) -> datetime:
     decimal minute and rounds; we drop the fraction to match upstream's
     observed result of ``second=0``).
     """
-    cleaned = date_string.strip()
+    # Only the ASCII space is skippable whitespace upstream (Java's ISO
+    # formatter rejects a leading/trailing TAB / newline; a surrounding space
+    # is tolerated). Mirror that: strip spaces only so a tab-bracketed ISO
+    # string falls through to ``datetime.fromisoformat`` and is rejected.
+    cleaned = date_string.strip(" ")
     iso = cleaned
     if iso.endswith("Z"):
         iso = iso[:-1] + "+00:00"
@@ -260,7 +264,20 @@ def to_calendar(date_string: str | None) -> datetime | None:
     """
     if date_string is None:
         return None
-    date = date_string.strip()
+    # Upstream's ``DateConverter.toCalendar`` only ever treats the ASCII space
+    # character (0x20) as skippable whitespace — its ``parseDate`` walks
+    # ``skipOptionals(text, where, " ")`` and then enforces
+    # ``where.index == text.length()``, so a leading/trailing TAB / newline /
+    # CR / vertical-tab / form-feed is NOT consumed and the residue check
+    # rejects the input (verified live: ``"\tD:2024…"`` and
+    # ``"D:2024…\t"`` -> null, while ``" D:2024…"`` and ``"D:2024… "`` ->
+    # parse). Python's ``str.strip()`` strips *all* Unicode whitespace, so
+    # using it here silently accepted tab/newline-bracketed inputs PDFBox
+    # rejects. Strip ONLY spaces to mirror the upstream contract; the
+    # empty-input guard still fires for an all-space string, and an
+    # all-tab/newline string falls through to ``parse_date`` which rejects it
+    # (matching upstream's null).
+    date = date_string.strip(" ")
     if not date:
         return None
 
@@ -311,8 +328,14 @@ def _try_parse_date_fallback(date_string: str) -> datetime | None:
     big-endian + TZ prefix parses to a valid moment but leaves a residue
     that disqualifies the result).
     """
-    # Pre-strip + ``D:`` skip mirrors upstream lines 727-728 exactly.
-    text = date_string.lstrip()
+    # Pre-strip + ``D:`` skip mirrors upstream lines 727-728 exactly. Upstream
+    # only skips the ASCII space here (its tokenizer's ``skipOptionals`` is
+    # space-only), so a leading TAB / newline must survive to ``parse_date``,
+    # where it fails the ``where.index == len(text)`` residue check (matching
+    # PDFBox's null). Python's ``str.lstrip()`` strips all whitespace, which
+    # silently accepted tab/newline-led inputs PDFBox rejects — use a
+    # space-only lstrip instead.
+    text = date_string.lstrip(" ")
     if text.startswith("D:"):
         text = text[2:]
     pos = ParsePosition(0)

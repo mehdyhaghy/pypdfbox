@@ -555,7 +555,14 @@ def test_composites_block() -> None:
 
 
 def test_composites_skipped_in_reduced_dataset() -> None:
+    # In reduced mode upstream omits the parseComposites() call; the inner
+    # composite tokens then flow back through the main loop as unknown keys,
+    # which are tolerated once char metrics have been read. Net effect: the
+    # composite block is NOT collected (oracle-pinned, wave 1522).
     body = (
+        "StartCharMetrics 1\n"
+        "C 65 ; WX 720 ; N A ;\n"
+        "EndCharMetrics\n"
         "StartComposites 1\n"
         "CC Aacute 1 ; PCC A 0 0 ;\n"
         "EndComposites\n"
@@ -565,7 +572,13 @@ def test_composites_skipped_in_reduced_dataset() -> None:
 
 
 def test_kern_data_skipped_in_reduced_dataset() -> None:
+    # As above: reduced mode omits parseKernData(); the inner kern tokens
+    # become tolerated unknown keys after char metrics, so no kern pair is
+    # collected (oracle-pinned, wave 1522).
     body = (
+        "StartCharMetrics 1\n"
+        "C 65 ; WX 720 ; N A ;\n"
+        "EndCharMetrics\n"
         "StartKernData\n"
         "StartKernPairs 1\n"
         "KPX A B -1\n"
@@ -608,9 +621,12 @@ def test_missing_start_font_metrics_raises() -> None:
         AFMParser(b"NotAValidStart\n").parse()
 
 
-def test_skip_to_eof_before_terminator_raises() -> None:
-    # reduced_dataset enters _skip_to via StartKernData; truncating before
-    # EndKernData triggers the EOF guard.
+def test_reduced_kern_block_before_char_metrics_raises() -> None:
+    # In reduced mode upstream does NOT skip-to-EndKernData; it simply skips
+    # the parseKernData() call and lets the main loop re-encounter the inner
+    # kern tokens (StartKernPairs, ...) as unknown keys. Because no char
+    # metrics were read yet, the first unknown inner key raises — matching
+    # Apache PDFBox 3.0.7 (pinned by the wave-1522 oracle).
     truncated = (
         b"StartFontMetrics 4.1\n"
         b"StartKernData\n"
@@ -620,7 +636,7 @@ def test_skip_to_eof_before_terminator_raises() -> None:
     )
     with pytest.raises(OSError) as exc:
         AFMParser(truncated).parse(reduced_dataset=True)
-    assert "EndKernData" in str(exc.value)
+    assert "StartKernPairs" in str(exc.value)
 
 
 def test_boolean_case_insensitive() -> None:

@@ -164,7 +164,16 @@ def test_type3_font_ignores_malformed_top_level_shapes() -> None:
     assert font.get_char_procs() is None
     assert font.get_char_proc("A") is None
     assert font.get_resources() is None
-    assert font.get_font_bbox() is None
+    # Upstream getFontBBox() builds a PDRectangle from ANY COSArray: a short
+    # [0, 1] array is zero-padded to four ([0, 1, 0, 0]) and the corners
+    # normalise via min/max -> (0, 0, 0, 1). Pinned live by
+    # tests/pdmodel/font/oracle/test_type3_font_fuzz_wave1522.py (bbox_len2).
+    bbox = font.get_font_bbox()
+    assert bbox is not None
+    assert bbox.get_lower_left_x() == 0.0
+    assert bbox.get_lower_left_y() == 0.0
+    assert bbox.get_upper_right_x() == 0.0
+    assert bbox.get_upper_right_y() == 1.0
     assert font.get_font_b_box() is cos.get_dictionary_object(_FONT_BBOX)
     assert font.get_font_matrix() == [0.001, 0.0, 0.0, 0.001, 0.0, 0.0]
     # Upstream COSArray.toCOSNumberFloatList keeps a None slot for the

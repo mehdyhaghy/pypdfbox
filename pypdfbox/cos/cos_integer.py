@@ -52,7 +52,17 @@ class COSInteger(COSNumber):
         return self._value
 
     def int_value(self) -> int:
-        return self._value
+        # Java ``COSInteger.intValue()`` returns ``(int) value`` — a narrowing
+        # primitive cast that keeps only the low 32 bits (wrapping modulo
+        # 2**32, two's-complement). Python ints are unbounded, so reproduce the
+        # truncation explicitly: a stored value outside signed-32-bit range
+        # (e.g. the ``OUT_OF_RANGE_*`` sentinels at Long.MAX/MIN, or any int
+        # parsed above 2**31-1) yields the same wrapped result Java does
+        # (``2147483648 -> -2147483648``, ``Long.MAX_VALUE -> -1``).
+        truncated = self._value & 0xFFFFFFFF
+        if truncated >= 0x80000000:
+            truncated -= 0x1_0000_0000
+        return truncated
 
     def long_value(self) -> int:
         # Python ints are unbounded; long_value exists for PDFBox API parity.

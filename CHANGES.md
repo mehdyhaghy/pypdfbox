@@ -31,6 +31,15 @@ Per-release notes go here; trivial naming changes (camelCase → snake_case) are
 
 Divergences that remain live (will affect observable behaviour vs Java PDFBox):
 
+- **Wave 1522 — malformed Type 3 font dictionaries / char-procs fuzzed against PDFBox 3.0.7.** Fixed two real divergences in `pypdfbox/pdmodel/font/pd_type3_font.py`: (1) `get_font_bbox` required a 4+-entry numeric `/FontBBox` array and otherwise returned `None` (or raised `TypeError`/`ValueError` via `PDRectangle.from_cos_array` on short / non-numeric arrays); upstream `getFontBBox` builds a `PDRectangle` from *any* COSArray — short arrays are zero-padded to four (`Arrays.copyOf(toFloatArray(), 4)`), long arrays keep the first four, non-numeric entries coerce to `0`, and corners normalise via min/max. Now mirrored locally (returns `None` only when `/FontBBox` is absent or not an array). (2) `get_char_proc(int)` special-cased `.notdef` and returned `None` even when a `.notdef` char proc existed; upstream `getCharProc(int)` has no such filter — it resolves the code to a glyph name and looks that exact name up in `/CharProcs`. Now the `.notdef` short-circuit is removed; only a `None` name or a missing/non-stream entry yields `None`. One stale non-oracle test retargeted to the padded-bbox contract.
+  upstream: PDFBox 3.0.7 `org.apache.pdfbox.pdmodel.font.PDType3Font.getFontBBox` / `getCharProc(int)`, `org.apache.pdfbox.pdmodel.common.PDRectangle(COSArray)`
+- **Wave 1522 — Type 3 char-proc `getWidth` leniency (pinned both-sides).** `PDType3CharProc.get_width()` / `parse_width()` return `0.0` for a char proc whose leading operator is not `d0`/`d1` (a garbage proc) or whose first operand is missing/non-numeric (and the font-level `get_width(code)` likewise yields `0.0` for a no-`/Widths` garbage glyph), where upstream raises `IOException`. Deliberate robustness choice so the text-extraction / rendering loop keeps walking the font's other glyphs instead of aborting on one broken proc; the well-formed path is byte-exact. Pinned both-sides (3 cases) in `tests/pdmodel/font/oracle/test_type3_font_fuzz_wave1522.py`.
+  upstream: PDFBox 3.0.7 `org.apache.pdfbox.pdmodel.font.PDType3CharProc.getWidth` / `parseWidth`
+  reason: hostile/buggy-producer robustness — one malformed char proc must not abort the whole font.
+
+- **Wave 1522 — malformed PDF date-string parsing fuzzed against PDFBox 3.0.7 (`DateConverter.toCalendar`, the parser behind `COSDictionary.getDate`).** Fixed a real leniency bug: pypdfbox used Python `str.strip()` / `str.lstrip()` in `to_calendar`, `_try_parse_date_fallback`, and `_from_iso8601`, which strip *all* Unicode whitespace and so silently accepted tab / newline / CR / vertical-tab / form-feed bracketed inputs (e.g. `"\tD:20240315120000"`, `"D:20240315120000\t"`, `"2024-03-15T12:00:00Z\t"`) that PDFBox rejects (returns `null`). Upstream's tokenizer treats only the ASCII space (0x20) as skippable and enforces `where.index == text.length()`, so non-space whitespace fails the residue check. The parser core was already correct; the divergence was confined to the wrapper pre-strip. Now strips only spaces, matching PDFBox: a surrounding space is tolerated, any other whitespace is rejected.
+  upstream: PDFBox 3.0.7 `org.apache.pdfbox.util.DateConverter.toCalendar(String)` / `parseDate` / `fromISO8601`
+
 - **Wave 1521 — five malformed model-dictionary surfaces fuzzed against PDFBox 3.0.7.** Viewer-preference name getters now preserve an explicitly stored empty `COSString` instead of replacing it with the spec default. `PDFormXObject.get_b_box` and `PDThreadBead.get_rectangle` now zero-pad missing/non-numeric array coordinates like upstream `PDRectangle(COSArray)`. `PDSoftMask` now mirrors upstream lazy accessor caching, returns only transparency groups from valid `/G` XObjects, propagates malformed-XObject errors, threads the resource cache, and rejects dictionary-backed Type-4 transfer functions that require a stream. The tiling-pattern dictionary surface was already production-correct.
   upstream: PDFBox 3.0.7 `interactive/viewerpreferences/PDViewerPreferences.java`, `interactive/pagenavigation/{PDThread,PDThreadBead}.java`, `graphics/form/PDFormXObject.java`, `graphics/pattern/PDTilingPattern.java`, `graphics/state/PDSoftMask.java`
 
@@ -3955,6 +3964,71 @@ than "False arm missing".
   require exact `/Type /Page`, null-child repair does not invent `/Parent`,
   inheritable lookup stops at non-`/Pages` parents, and failed indexed lookup
   retains the upstream recursion set. Pinned by `PageTreeCycleFuzzProbe`.
+
+- Wave 1522 agent B: `COSInteger.int_value()` now reproduces Java's `(int)`
+  narrowing cast — it truncates the stored value to a signed 32-bit int
+  (wrapping modulo 2**32) instead of returning the unbounded Python int. A
+  `COSInteger` above signed-32-bit range now matches upstream `intValue()`
+  (`2147483648 -> -2147483648`, `4294967296 -> 0`, and the `OUT_OF_RANGE_MAX` /
+  `OUT_OF_RANGE_MIN` sentinels at `Long.MAX/MIN` -> `-1` / `0`). `long_value()`
+  is unchanged (a stored value always fits Java's `long` for any
+  Java-constructible input). Pinned by
+  `tests/cos/oracle/test_cos_number_fuzz_wave1522.py` via
+  `oracle/probes/CosNumberFuzzProbe.java`.
+  - Pinned divergence (unalignable): `COSNumber.get` rejects non-ASCII Unicode
+    decimal digits (e.g. Arabic-Indic `"١٢٣"`, fullwidth `"１２３"`) that Java's
+    `Long.parseLong`/`Character.digit` accepts as `123`. PDF number tokens are
+    ASCII by spec and Java's accepted-digit set is idiosyncratic (it rejects
+    U+06F5 EXTENDED ARABIC-INDIC FIVE), so pypdfbox stays ASCII-only; both
+    sides asserted in the wave-1522 oracle test.
+
+- Wave 1522 agent A: Type 4 PostScript calculator (`PDFunctionType4` +
+  `type4/` operators) now matches the live PDFBox 3.0.7 jar on five evaluator
+  corners surfaced by `FunctionType4FuzzProbe`:
+  - `bitshift` masks the shift count to the low 5 bits and wraps the result to
+    a signed 32-bit int, mirroring Java's `int` `<<` / `>>` (`1 40 bitshift`
+    -> `256`, `1 31 bitshift` -> `Integer.MIN_VALUE`). Previously pypdfbox did
+    an unbounded Python shift.
+  - `abs` on `Integer.MIN_VALUE` (`-2147483648`) now returns it unchanged
+    (negative), reproducing Java's `Math.abs(int)` overflow rather than the
+    positive Python `abs`.
+  - `eq` / `ne` treat a boolean-vs-number pair as unequal (Java's
+    `Boolean.equals(Integer)` is false), instead of Python's `True == 1`.
+  - `roll` raises when the operand `n` exceeds the stack depth (Java's
+    `StackOperators$Roll` pops `n` entries and throws `EmptyStackException`)
+    instead of silently rotating a short slice.
+  - A boolean left in a declared `/Range` output slot now raises (upstream
+    `PDFunctionType4.eval` reads each output via `(Number) popReal`, throwing
+    `ClassCastException`); the lenient no-`/Range` whole-stack path still
+    coerces booleans to `1.0` / `0.0` (Type4Tester-style helpers depend on it).
+    Pinned by `tests/pdmodel/common/function/oracle/test_function_type4_fuzz_wave1522.py`.
+  - Pinned divergence (unalignable): an integer literal that overflows a 32-bit
+    `int` (`9999999999`, `2147483648`) is accepted and clamped to `/Range` at
+    eval, where Java rejects it at construction with `NumberFormatException`
+    (eager `Integer.parseInt`). pypdfbox uses unbounded Python ints and a lazy
+    parse; both sides asserted in the wave-1522 oracle test.
+
+- Wave 1522 agent E: AFM parser (`pypdfbox/fontbox/afm/afm_parser.py`) now
+  matches the live PDFBox 3.0.7 jar on malformed Adobe-Font-Metric input,
+  surfaced by `AfmParserFuzzProbe` /
+  `tests/fontbox/afm/oracle/test_afm_parser_fuzz_wave1522.py` (71 cases).
+  - Reduced-dataset (`parse(reduced_dataset=True)`) kern/composite handling
+    fixed to mirror upstream exactly: pypdfbox previously did
+    `_skip_to(EndKernData)` / `_skip_to(EndComposites)`. Upstream simply omits
+    the `parseKernData` / `parseComposites` call and lets the main loop
+    re-encounter the inner block tokens (`StartKernPairs`, `CC`, ...) as
+    *unknown keys* — tolerated once char metrics have been read, otherwise
+    raised. Malformed kern/composite blocks with no preceding char metrics now
+    raise in reduced mode (matching Java's `ok=false`) instead of being
+    silently swallowed. The dead `_skip_to` helper was removed.
+  - Pinned divergence (unalignable): an integer char-code/count token beyond
+    Java's `Integer.MAX_VALUE` (e.g. `C 99999999999999999999`) makes upstream's
+    `parseInt` throw; Python ints are unbounded so pypdfbox parses it. Both
+    sides asserted in the wave-1522 oracle test.
+  - Pinned divergence (intentional leniency, pre-existing — CHANGES wave316):
+    the angle-bracketed `CH <41>` char-code form is rejected upstream
+    (`parseInt` on a bare hex token) but accepted by pypdfbox; bare-hex `CH 41`
+    parity is preserved. Both sides asserted in the wave-1522 oracle test.
 
 ## See also
 

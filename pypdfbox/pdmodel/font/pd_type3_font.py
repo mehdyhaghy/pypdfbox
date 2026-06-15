@@ -106,8 +106,15 @@ class PDType3Font(PDSimpleFont):
         encoding = self.get_encoding_typed()
         if encoding is None:
             return None
+        # Upstream ``getCharProc(int)`` does NOT special-case ``.notdef`` —
+        # it resolves the code to a glyph name via the encoding and looks
+        # that exact name up in ``/CharProcs``. A malformed font that maps
+        # a code to ``.notdef`` *and* ships a ``.notdef`` char proc is
+        # honoured (the proc is returned); only a missing name or a
+        # missing/non-stream entry yields ``None``. (Verified against
+        # PDFBox 3.0.7 via Type3FontFuzzProbe ``enc_notdef_has_proc``.)
         name = encoding.get_name(code)
-        if name is None or name == ".notdef":
+        if name is None:
             return None
         stream = self._get_char_proc_by_name(name)
         if stream is None:
@@ -174,13 +181,37 @@ class PDType3Font(PDSimpleFont):
     # ---------- /FontBBox ----------
 
     def get_font_bbox(self) -> PDRectangle | None:
-        """Return the ``/FontBBox`` rectangle, or ``None`` when absent."""
+        """Return the ``/FontBBox`` rectangle, or ``None`` when absent.
+
+        Mirrors upstream ``PDType3Font.getFontBBox()`` which is
+        ``getCOSArray(FONT_BBOX)`` followed by ``new PDRectangle(array)``:
+        the rectangle is built from **any** COSArray, regardless of length.
+        Upstream's ``PDRectangle(COSArray)`` ctor calls
+        ``Arrays.copyOf(array.toFloatArray(), 4)`` so a short array (0..3
+        entries) is zero-padded to four and a long array keeps only the
+        first four; ``toFloatArray()`` coerces any non-numeric element to
+        ``0``. Returns ``None`` only when ``/FontBBox`` is absent or is not
+        an array. (Verified against PDFBox 3.0.7 via Type3FontFuzzProbe
+        ``bbox_len2`` / ``bbox_len3`` / ``bbox_nonnumeric``.)
+        """
         from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
         entry = self._dict.get_dictionary_object(_FONT_BBOX)
-        if isinstance(entry, COSArray) and entry.size() >= 4:
-            return PDRectangle.from_cos_array(entry)
-        return None
+        if not isinstance(entry, COSArray):
+            return None
+        # Reproduce upstream ``Arrays.copyOf(toFloatArray(), 4)``: take the
+        # first four entries, zero-padding when fewer and coercing any
+        # non-number to 0 (matches ``COSArray.toFloatArray``).
+        corners: list[float] = [0.0, 0.0, 0.0, 0.0]
+        for i in range(min(4, entry.size())):
+            item = entry.get_object(i)
+            if isinstance(item, (COSInteger, COSFloat)):
+                corners[i] = float(item.value)
+        x0, y0, x1, y1 = corners
+        # Upstream's ``PDRectangle(COSArray)`` normalises the corners with
+        # ``Math.min`` / ``Math.max`` so the lower-left pair is always the
+        # smaller corner (PDFBOX bbox-reversal tolerance).
+        return PDRectangle(min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1))
 
     def set_font_bbox(self, rect: PDRectangle | None) -> None:
         """Set or clear the ``/FontBBox`` rectangle."""

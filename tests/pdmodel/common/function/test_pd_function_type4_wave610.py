@@ -63,10 +63,18 @@ def test_eval_raises_when_range_declares_more_outputs_than_stack_has() -> None:
         fn.eval([])
 
 
-def test_boolean_output_is_coerced_before_range_clipping() -> None:
+def test_boolean_output_with_range_raises() -> None:
+    # Wave 1522: a Boolean left in a declared /Range slot is NOT coerced to
+    # 1.0 / 0.0 — upstream PDFunctionType4.eval reads each output via
+    # ``((Number) stack.pop()).floatValue()`` (popReal), so a Boolean throws
+    # ClassCastException. Verified against the live PDFBox 3.0.7 jar
+    # (FunctionType4FuzzProbe: ``{ pop 5 5 eq }`` over a non-empty /Range ->
+    # ClassCastException). pypdfbox surfaces it as OSError. (Pre-wave-1522 this
+    # test asserted coercion to [0.5, 0.0]; that contradicted the jar.)
     fn = _make("{ true false }", domain=[], rng=[0.0, 0.5, 0.0, 1.0])
 
-    assert fn.eval([]) == pytest.approx([0.5, 0.0])
+    with pytest.raises(OSError, match="boolean left in function output"):
+        fn.eval([])
 
 
 def test_numeric_operators_reject_boolean_operands() -> None:

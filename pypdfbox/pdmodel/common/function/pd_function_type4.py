@@ -109,12 +109,18 @@ class PDFunctionType4(PDFunction):
             # (PDFunctionType4.eval fills output[N-1..0] via popReal), so any
             # surplus values left BELOW the top N — e.g. the original inputs a
             # pure-stack program never consumed — are discarded. Mirror that by
-            # keeping only the last N stack entries before clipping.
+            # keeping only the last N stack entries before clipping. The strict
+            # popReal cast (``_pop_output_value``) raises on a Boolean left in a
+            # declared /Range slot, exactly like upstream's
+            # ``(Number) stack.pop()`` ClassCastException.
             stack = stack[-declared:]
-
-        # Booleans surviving in the output are coerced to floats (1.0 / 0.0)
-        # before /Range clipping; /Range is defined over numeric outputs.
-        result = [_to_output_float(v) for v in stack]
+            result = [_pop_output_value(v) for v in stack]
+        else:
+            # /Range absent: pypdfbox's lenient whole-stack return. Booleans are
+            # coerced to 1.0 / 0.0 (Type4Tester-style helpers depend on this);
+            # upstream returns an empty output here instead, but the lenient
+            # whole-stack behaviour is a long-standing pypdfbox convenience.
+            result = [_to_output_float(v) for v in stack]
 
         return self.clip_output(result)
 
@@ -327,8 +333,28 @@ def _pop_int_value(stack: Stack) -> int:
 
 
 def _to_output_float(value: object) -> float:
+    # When /Range is absent (pypdfbox's lenient whole-stack-return mode, used by
+    # Type4Tester-style helpers and inline shading callers) a surviving Boolean
+    # is coerced to 1.0 / 0.0. The strict /Range path raises on a Boolean
+    # instead (see ``_pop_output_value`` / PDFunctionType4.eval) — that is the
+    # branch that mirrors upstream's ``(Number) popReal`` cast.
     if isinstance(value, bool):
         return float(value)
+    if isinstance(value, (int, float)):
+        return float(value)
+    raise OSError(f"type mismatch: expected numeric output, got {type(value).__name__}")
+
+
+def _pop_output_value(value: object) -> float:
+    # Strict /Range output path: upstream PDFunctionType4.eval fills the output
+    # array with ``((Number) stack.pop()).floatValue()`` (popReal). A Boolean
+    # left in the declared /Range slots is cast to Number and throws
+    # ClassCastException, which we surface as OSError. So ``{ pop true }`` or
+    # ``{ pop 5 5 eq }`` over a non-empty /Range is a runtime fault, NOT a
+    # 1.0/0.0 coercion — verified against the jar. A Boolean is legal only as an
+    # intermediate consumed by if/ifelse/and/or/xor/not before the program ends.
+    if isinstance(value, bool):
+        raise OSError("type mismatch: boolean left in function output (Number cast)")
     if isinstance(value, (int, float)):
         return float(value)
     raise OSError(f"type mismatch: expected numeric output, got {type(value).__name__}")
@@ -380,6 +406,15 @@ def _execute(sequence: Instruction, stack: Stack) -> None:
 # Integer when the result fits in the 32-bit range, otherwise overflow to Float.
 _INT_MIN = -(2**31)
 _INT_MAX = 2**31 - 1
+
+
+def _wrap_int32(value: int) -> int:
+    """Reduce ``value`` to the signed 32-bit two's-complement range, mirroring
+    how a Java ``int`` truncates an out-of-range result. Java's ``<<`` / ``>>``
+    operate on 32-bit ints, so ``1 << 31`` wraps to ``Integer.MIN_VALUE`` and
+    ``65536 << 16`` wraps to ``0`` rather than growing without bound the way a
+    Python ``int`` would."""
+    return ((value & 0xFFFFFFFF) ^ 0x80000000) - 0x80000000
 
 
 def _is_int(value: object) -> bool:
@@ -495,7 +530,14 @@ def _op_neg(s: Stack) -> None:
 def _op_abs(s: Stack) -> None:
     a = _pop_number(s)
     # Integer in => Integer out; Float in => Float out (upstream branches on tag).
-    s.append(abs(a) if _is_int(a) else abs(float(a)))
+    # Upstream ArithmeticOperators$Abs on an Integer is ``Math.abs(int)``, which
+    # leaves ``Integer.MIN_VALUE`` NEGATIVE (its magnitude overflows a 32-bit
+    # int, so ``Math.abs`` returns it unchanged). Mirror that single overflow
+    # corner; every other int negates normally.
+    if _is_int(a):
+        s.append(a if a == _INT_MIN else abs(a))
+    else:
+        s.append(abs(float(a)))
 
 
 def _op_ceiling(s: Stack) -> None:
@@ -673,6 +715,14 @@ def _op_roll(s: Stack) -> None:
         raise OSError("roll: rotation count out of range (stack underflow)")
     if n == 0:
         return
+    if n > len(s):
+        # Upstream StackOperators$Roll pops ``n`` entries off the stack before
+        # rotating; when the stack holds fewer than ``n`` the pop loop drains it
+        # and the next pop throws EmptyStackException. Surface that as OSError
+        # (our IOException analogue) instead of silently rolling the short slice
+        # a Python ``s[-n:]`` would otherwise produce (jar: ``{ 1 2 9 1 roll }``
+        # over a 2-deep stack raises EmptyStackException).
+        raise OSError("roll: n exceeds stack depth (stack underflow)")
     top = s[-n:]
     # Split point in the top-``n`` window matching upstream StackOperators$Roll:
     #   j > 0: the top ``j`` entries wrap to the bottom; cut at ``n - j``.
@@ -702,6 +752,22 @@ def _float32_compare_eq(a: int | float, b: int | float) -> bool:
     return fa == fb
 
 
+def _boxed_equals(a: object, b: object) -> bool:
+    """Mirror Java ``Object.equals`` across the boxed Type-4 value types.
+
+    Upstream RelationalOperators$Eq does ``op1.equals(op2)`` when not both are
+    Numbers. Java's ``Boolean.equals`` returns false for any non-Boolean
+    argument and ``Integer.equals`` for any non-Integer, so a Boolean and a
+    Number are NEVER equal — unlike Python where ``True == 1`` is true (``bool``
+    subclasses ``int``). Treat a mixed boolean/number pair as unequal to match."""
+    a_bool = isinstance(a, bool)
+    b_bool = isinstance(b, bool)
+    if a_bool != b_bool:
+        # One side is a Boolean, the other isn't — Java's equals is always false.
+        return False
+    return a == b
+
+
 def _op_eq(s: Stack) -> None:
     a, b = _cmp_pop(s)
     # Upstream: both Number => float32 compare; otherwise Object.equals. A
@@ -709,7 +775,7 @@ def _op_eq(s: Stack) -> None:
     if _is_number(a) and _is_number(b):
         s.append(_float32_compare_eq(a, b))
     else:
-        s.append(a == b)
+        s.append(_boxed_equals(a, b))
 
 
 def _op_ne(s: Stack) -> None:
@@ -717,7 +783,7 @@ def _op_ne(s: Stack) -> None:
     if _is_number(a) and _is_number(b):
         s.append(not _float32_compare_eq(a, b))
     else:
-        s.append(a != b)
+        s.append(not _boxed_equals(a, b))
 
 
 def _op_lt(s: Stack) -> None:
@@ -789,12 +855,23 @@ def _op_not(s: Stack) -> None:
 def _op_bitshift(s: Stack) -> None:
     # Both operands are ``(Integer)`` casts — a Float shift count or value
     # raises ClassCastException. Result keeps the Integer tag.
+    #
+    # Upstream BitwiseOperators$Bitshift is plain Java ``int1 << shift`` /
+    # ``int1 >> -shift``. Java's shift operators use only the low 5 bits of the
+    # shift count (``shift & 0x1f``) and compute in 32-bit two's-complement, so
+    # ``1 40 bitshift`` is ``1 << (40 & 31)`` == 256 (not ``1 << 40``) and
+    # ``1 31 bitshift`` wraps to ``Integer.MIN_VALUE``. The right shift is
+    # arithmetic (sign-preserving). A Python ``int`` is unbounded, so we mask
+    # the count to 5 bits, then wrap the result back into the 32-bit range to
+    # reproduce Java's truncation exactly.
     shift = _pop_int_strict(s)
     val = _pop_int_strict(s)
     if shift >= 0:
-        s.append(val << shift)
+        s.append(_wrap_int32(val << (shift & 0x1F)))
     else:
-        s.append(val >> -shift)
+        # Java arithmetic right shift: ``val >> (-shift & 0x1f)``. Python's
+        # ``>>`` is already arithmetic on a (sign-correct) int; wrap defensively.
+        s.append(_wrap_int32(val >> ((-shift) & 0x1F)))
 
 
 def _op_true(s: Stack) -> None:
