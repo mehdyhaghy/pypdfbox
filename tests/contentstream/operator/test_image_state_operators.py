@@ -83,8 +83,8 @@ def test_registry_lookup_returns_correct_instance_per_new_operator() -> None:
 
 
 def test_registry_process_each_new_operator_does_not_raise() -> None:
-    """Every stub must accept its operator without raising. Stubs that
-    validate arity upstream-parity (``Do``, ``cm``, ``d``, ``ri``,
+    """Every stub must accept its operator without raising. Operators that
+    validate arity upstream-parity (``Do``, ``cm``, ``d``, ``i``, ``ri``,
     ``gs``) are exercised with valid operands; the rest are
     zero-operand."""
     registry = OperatorRegistry()
@@ -92,6 +92,7 @@ def test_registry_process_each_new_operator_does_not_raise() -> None:
         "Do": [COSName.get_pdf_name("Im0")],
         "cm": [COSFloat(v) for v in (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)],
         "d": [COSArray(), COSInteger.get(0)],
+        "i": [COSFloat(1.0)],
         "ri": [COSName.get_pdf_name("RelativeColorimetric")],
         "gs": [COSName.get_pdf_name("GS1")],
     }

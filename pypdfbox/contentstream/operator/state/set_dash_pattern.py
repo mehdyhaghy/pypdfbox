@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import logging
+
 from pypdfbox.cos import COSArray, COSBase, COSNumber
 
 from .. import MissingOperandException, Operator
 from ..operator_processor import OperatorProcessor
+
+_log = logging.getLogger(__name__)
 
 
 class SetDashPattern(OperatorProcessor):
@@ -73,13 +77,26 @@ class SetDashPattern(OperatorProcessor):
 
     @staticmethod
     def get_sanitized_dash_array(dash_array: COSArray) -> COSArray:
-        """Return ``dash_array`` when all entries resolve to numbers.
+        """Return ``dash_array`` sanitised the way upstream's
+        ``SetLineDashPattern`` does.
 
-        PDFBox treats a dash array containing any non-number as malformed
-        and applies an empty array instead, yielding a solid line rather
-        than propagating bogus values into graphics state.
+        Upstream iterates the array and **breaks on the first non-zero
+        numeric entry** — only if a *non-number* entry is reached *before*
+        any non-zero number does it warn-log and replace the whole array
+        with an empty (solid) one. So ``[3 /Bogus]`` keeps its two entries
+        (the loop breaks at ``3``), while ``[0 /Bogus]`` and
+        ``[/Bogus 3]`` become empty. Mirroring the early-break is required
+        for parity: a naive "any non-number → empty" scan diverges on the
+        ``[non-zero-number, non-number]`` case.
         """
         for index in range(dash_array.size()):
-            if not isinstance(dash_array.get_object(index), COSNumber):
+            entry = dash_array.get_object(index)
+            if isinstance(entry, COSNumber):
+                if entry.float_value() != 0:
+                    break
+            else:
+                _log.warning(
+                    "dash array has non number element %r, ignored", entry
+                )
                 return COSArray()
         return dash_array

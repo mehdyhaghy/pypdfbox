@@ -12,8 +12,10 @@ import logging
 
 import pytest
 
-from pypdfbox.contentstream.operator import Operator
-from pypdfbox.contentstream.operator.operator_processor import OperatorProcessor
+from pypdfbox.contentstream.operator import MissingOperandException, Operator
+from pypdfbox.contentstream.operator.operator_processor import (
+    OperatorProcessor,
+)
 from pypdfbox.contentstream.operator.operator_registry import OperatorRegistry
 from pypdfbox.contentstream.operator.state.set_line_miter_limit import (
     SetLineMiterLimit,
@@ -73,9 +75,11 @@ def test_process_accepts_non_numeric_operand() -> None:
     )
 
 
-def test_process_accepts_empty_operand_list() -> None:
-    """Short list tolerated — no ``MissingOperandException``."""
-    SetLineMiterLimit().process(Operator.get_operator("M"), [])
+def test_process_empty_operand_list_raises_missing_operand() -> None:
+    """Upstream SetLineMiterLimit throws MissingOperandException on empty
+    operands (oracle-pinned, wave 1534)."""
+    with pytest.raises(MissingOperandException):
+        SetLineMiterLimit().process(Operator.get_operator("M"), [])
 
 
 def test_process_accepts_extra_operands_without_raising() -> None:

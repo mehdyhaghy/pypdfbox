@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import struct
 from typing import TYPE_CHECKING, Any
 
 from .ttf_table import TTFTable
@@ -7,6 +8,30 @@ from .ttf_table import TTFTable
 if TYPE_CHECKING:
     from .true_type_font import TrueTypeFont
     from .ttf_data_stream import TTFDataStream
+
+# fontTools raises a grab-bag of low-level exceptions when it lazily
+# decompiles a malformed GPOS sub-structure (a bad ScriptList /
+# FeatureList / LookupList offset, a truncated table, a count that runs
+# past the table bytes, ...): ``struct.error`` from the binary readers,
+# ``AssertionError`` from its bounds checks, ``KeyError`` /
+# ``IndexError`` / ``ValueError`` from offset-to-object resolution, and
+# ``OverflowError`` from absurd counts. Upstream Apache FontBox 3.0.7
+# never *parses* GPOS at all — it has no ``GlyphPositioningTable`` class,
+# so a present-but-corrupt GPOS is stored as a generic, never-decoded
+# ``TTFTable`` and never raises. We follow that contract: a GPOS whose
+# internal structure fontTools cannot decode degrades to an empty (but
+# present) inventory rather than leaking a fontTools-internal exception
+# out of an accessor. See ``CHANGES.md`` Wave 1534.
+_FONTTOOLS_DECODE_ERRORS: tuple[type[BaseException], ...] = (
+    struct.error,
+    AssertionError,
+    KeyError,
+    IndexError,
+    ValueError,
+    OverflowError,
+    TypeError,
+    AttributeError,
+)
 
 
 class GlyphPositioningTable(TTFTable):
@@ -111,32 +136,52 @@ class GlyphPositioningTable(TTFTable):
         :class:`GlyphSubstitutionTable` / :class:`DigitalSignatureTable`.
         """
         self._tt_font = tt_font
-        gpos_wrapper = tt_font["GPOS"]
-        # fontTools exposes the parsed structure on ``.table`` (an
-        # ``otTables.GPOS`` instance). Hold a reference so callers that
-        # want the upstream-equivalent raw view can reach it via
-        # :meth:`get_raw_table`.
-        self._gpos_table = getattr(gpos_wrapper, "table", None)
+        # Touching ``tt_font["GPOS"]`` / ``.table`` triggers fontTools'
+        # lazy decompile of the GPOS table. A corrupt header (bad
+        # version, truncated bytes, out-of-bounds sub-table offset) can
+        # throw a low-level fontTools exception here. Upstream never
+        # parses GPOS at all, so a present-but-corrupt table must not
+        # propagate — bind ``_gpos_table = None`` and surface an empty
+        # inventory instead (the table still counts as "present" in the
+        # font's table map, matching upstream).
+        try:
+            gpos_wrapper = tt_font["GPOS"]
+            # fontTools exposes the parsed structure on ``.table`` (an
+            # ``otTables.GPOS`` instance). Hold a reference so callers
+            # that want the upstream-equivalent raw view can reach it via
+            # :meth:`get_raw_table`.
+            self._gpos_table = getattr(gpos_wrapper, "table", None)
+        except _FONTTOOLS_DECODE_ERRORS:
+            self._gpos_table = None
         self._glyph_order = list(tt_font.getGlyphOrder())
         self._glyph_name_to_gid = {n: i for i, n in enumerate(self._glyph_order)}
 
         # Populate shallow tag lists from the fontTools structures.
         # Use ``LinkedHashMap``-style dedup-with-order semantics to
         # match upstream — first occurrence wins on duplicate tags.
+        # Each ScriptList / FeatureList access can lazily decompile a
+        # malformed sub-table; swallow the fontTools decode error per
+        # list so a broken FeatureList doesn't lose an intact ScriptList.
         seen_scripts: dict[str, None] = {}
         seen_features: dict[str, None] = {}
         if self._gpos_table is not None:
-            sl = getattr(self._gpos_table, "ScriptList", None)
-            if sl is not None:
-                for sr in getattr(sl, "ScriptRecord", None) or []:
-                    tag = str(sr.ScriptTag)
-                    if tag not in seen_scripts:
-                        seen_scripts[tag] = None
-            fl = getattr(self._gpos_table, "FeatureList", None)
-            if fl is not None:
-                for fr in getattr(fl, "FeatureRecord", None) or []:
-                    tag = str(fr.FeatureTag).strip()
-                    seen_features.setdefault(tag, None)
+            try:
+                sl = getattr(self._gpos_table, "ScriptList", None)
+                if sl is not None:
+                    for sr in getattr(sl, "ScriptRecord", None) or []:
+                        tag = str(sr.ScriptTag)
+                        if tag not in seen_scripts:
+                            seen_scripts[tag] = None
+            except _FONTTOOLS_DECODE_ERRORS:
+                pass
+            try:
+                fl = getattr(self._gpos_table, "FeatureList", None)
+                if fl is not None:
+                    for fr in getattr(fl, "FeatureRecord", None) or []:
+                        tag = str(fr.FeatureTag).strip()
+                        seen_features.setdefault(tag, None)
+            except _FONTTOOLS_DECODE_ERRORS:
+                pass
         self._script_tags = list(seen_scripts.keys())
         self._feature_tags = list(seen_features.keys())
         self.initialized = True
@@ -179,13 +224,22 @@ class GlyphPositioningTable(TTFTable):
         return list(self._feature_tags)
 
     def get_lookup_count(self) -> int:
-        """Number of lookups in this GPOS's LookupList (0 if absent)."""
+        """Number of lookups in this GPOS's LookupList (0 if absent).
+
+        A malformed LookupList (out-of-bounds offset, truncated count)
+        degrades to ``0`` rather than leaking a fontTools decode error —
+        upstream never parses GPOS, so a present-but-corrupt LookupList
+        is invisible there. See ``CHANGES.md`` Wave 1534.
+        """
         if self._gpos_table is None:
             return 0
-        ll = getattr(self._gpos_table, "LookupList", None)
-        if ll is None:
+        try:
+            ll = getattr(self._gpos_table, "LookupList", None)
+            if ll is None:
+                return 0
+            return len(getattr(ll, "Lookup", None) or [])
+        except _FONTTOOLS_DECODE_ERRORS:
             return 0
-        return len(getattr(ll, "Lookup", None) or [])
 
     def get_lookup_types(self) -> list[int]:
         """Per-lookup ``LookupType`` integer in directory order.
@@ -197,10 +251,13 @@ class GlyphPositioningTable(TTFTable):
         """
         if self._gpos_table is None:
             return []
-        ll = getattr(self._gpos_table, "LookupList", None)
-        if ll is None:
+        try:
+            ll = getattr(self._gpos_table, "LookupList", None)
+            if ll is None:
+                return []
+            return [int(lk.LookupType) for lk in (getattr(ll, "Lookup", None) or [])]
+        except _FONTTOOLS_DECODE_ERRORS:
             return []
-        return [int(lk.LookupType) for lk in (getattr(ll, "Lookup", None) or [])]
 
     # ------------------------------------------------------------------
     # OT-aliased structural accessors
@@ -226,10 +283,15 @@ class GlyphPositioningTable(TTFTable):
         ``i`` dotted-i handling under the ``latn`` script).
 
         Not present on upstream; pypdfbox-only structural accessor.
+        A malformed ScriptList that fontTools cannot decode surfaces as
+        ``None`` (see ``CHANGES.md`` Wave 1534).
         """
         if self._gpos_table is None:
             return None
-        return getattr(self._gpos_table, "ScriptList", None)
+        try:
+            return getattr(self._gpos_table, "ScriptList", None)
+        except _FONTTOOLS_DECODE_ERRORS:
+            return None
 
     def get_feature_list(self) -> Any | None:
         """Underlying ``otTables.FeatureList`` (or ``None`` when absent).
@@ -241,10 +303,15 @@ class GlyphPositioningTable(TTFTable):
         position is what ``ScriptList``'s LangSys entries point into.
 
         Not present on upstream; pypdfbox-only structural accessor.
+        A malformed FeatureList that fontTools cannot decode surfaces as
+        ``None`` (see ``CHANGES.md`` Wave 1534).
         """
         if self._gpos_table is None:
             return None
-        return getattr(self._gpos_table, "FeatureList", None)
+        try:
+            return getattr(self._gpos_table, "FeatureList", None)
+        except _FONTTOOLS_DECODE_ERRORS:
+            return None
 
     def get_lookup_list(self) -> Any | None:
         """Underlying ``otTables.LookupList`` (or ``None`` when absent).
@@ -257,10 +324,15 @@ class GlyphPositioningTable(TTFTable):
         are the actual positioning records.
 
         Not present on upstream; pypdfbox-only structural accessor.
+        A malformed LookupList that fontTools cannot decode surfaces as
+        ``None`` (see ``CHANGES.md`` Wave 1534).
         """
         if self._gpos_table is None:
             return None
-        return getattr(self._gpos_table, "LookupList", None)
+        try:
+            return getattr(self._gpos_table, "LookupList", None)
+        except _FONTTOOLS_DECODE_ERRORS:
+            return None
 
     def get_lookup(self, lookup_index: int) -> Any | None:
         """Return the ``otTables.Lookup`` at ``lookup_index`` (or
@@ -274,10 +346,13 @@ class GlyphPositioningTable(TTFTable):
         ll = self.get_lookup_list()
         if ll is None:
             return None
-        lookups = getattr(ll, "Lookup", None) or []
-        if lookup_index < 0 or lookup_index >= len(lookups):
+        try:
+            lookups = getattr(ll, "Lookup", None) or []
+            if lookup_index < 0 or lookup_index >= len(lookups):
+                return None
+            return lookups[lookup_index]
+        except _FONTTOOLS_DECODE_ERRORS:
             return None
-        return lookups[lookup_index]
 
     def get_lookup_subtables(self, lookup_index: int) -> list[Any]:
         """Return the ordered ``SubTable`` list for the lookup at
@@ -305,7 +380,10 @@ class GlyphPositioningTable(TTFTable):
         lookup = self.get_lookup(lookup_index)
         if lookup is None:
             return []
-        return list(getattr(lookup, "SubTable", None) or [])
+        try:
+            return list(getattr(lookup, "SubTable", None) or [])
+        except _FONTTOOLS_DECODE_ERRORS:
+            return []
 
     def get_feature_record(self, feature_index: int) -> Any | None:
         """Return the ``otTables.FeatureRecord`` at ``feature_index``,
@@ -319,10 +397,13 @@ class GlyphPositioningTable(TTFTable):
         fl = self.get_feature_list()
         if fl is None:
             return None
-        records = getattr(fl, "FeatureRecord", None) or []
-        if feature_index < 0 or feature_index >= len(records):
+        try:
+            records = getattr(fl, "FeatureRecord", None) or []
+            if feature_index < 0 or feature_index >= len(records):
+                return None
+            return records[feature_index]
+        except _FONTTOOLS_DECODE_ERRORS:
             return None
-        return records[feature_index]
 
     def get_lookup_indices_for_feature(self, feature_tag: str) -> list[int]:
         """Return every lookup-index referenced by a feature whose tag
@@ -343,19 +424,22 @@ class GlyphPositioningTable(TTFTable):
             return []
         out: list[int] = []
         seen: set[int] = set()
-        for fr in getattr(fl, "FeatureRecord", None) or []:
-            tag = str(getattr(fr, "FeatureTag", "")).strip()
-            if tag != feature_tag:
-                continue
-            feature = getattr(fr, "Feature", None)
-            if feature is None:
-                continue
-            for li in getattr(feature, "LookupListIndex", None) or []:
-                li_i = int(li)
-                if li_i in seen:
+        try:
+            for fr in getattr(fl, "FeatureRecord", None) or []:
+                tag = str(getattr(fr, "FeatureTag", "")).strip()
+                if tag != feature_tag:
                     continue
-                seen.add(li_i)
-                out.append(li_i)
+                feature = getattr(fr, "Feature", None)
+                if feature is None:
+                    continue
+                for li in getattr(feature, "LookupListIndex", None) or []:
+                    li_i = int(li)
+                    if li_i in seen:
+                        continue
+                    seen.add(li_i)
+                    out.append(li_i)
+        except _FONTTOOLS_DECODE_ERRORS:
+            return out
         return out
 
     def get_raw_table(self) -> Any | None:
@@ -444,20 +528,30 @@ class GlyphPositioningTable(TTFTable):
         upstream's stop-short coverage.
         """
         pairs: dict[tuple[int, int], int] = {}
-        ll = getattr(self._gpos_table, "LookupList", None)
-        if ll is None:
+        if self._gpos_table is None:
             return pairs
-        for lk in getattr(ll, "Lookup", None) or []:
-            if int(lk.LookupType) != self.LOOKUP_TYPE_PAIR_ADJUSTMENT:
-                continue
-            for sub in getattr(lk, "SubTable", None) or []:
-                fmt = int(getattr(sub, "Format", 0))
-                if fmt == 1:
-                    self._absorb_pair_format1(sub, pairs)
-                elif fmt == 2:
-                    self._absorb_pair_format2(sub, pairs)
-                # Other formats are non-spec and silently ignored —
-                # matches upstream's "skip unknown subtable" pattern.
+        # Any lazily-decompiled sub-structure (LookupList, a Lookup, a
+        # PairPos SubTable) can throw a fontTools decode error on a
+        # malformed GPOS. Upstream never parses GPOS, so a corrupt
+        # pair-adjustment table must degrade to "no kerning", not raise.
+        # See ``CHANGES.md`` Wave 1534.
+        try:
+            ll = getattr(self._gpos_table, "LookupList", None)
+            if ll is None:
+                return pairs
+            for lk in getattr(ll, "Lookup", None) or []:
+                if int(lk.LookupType) != self.LOOKUP_TYPE_PAIR_ADJUSTMENT:
+                    continue
+                for sub in getattr(lk, "SubTable", None) or []:
+                    fmt = int(getattr(sub, "Format", 0))
+                    if fmt == 1:
+                        self._absorb_pair_format1(sub, pairs)
+                    elif fmt == 2:
+                        self._absorb_pair_format2(sub, pairs)
+                    # Other formats are non-spec and silently ignored —
+                    # matches upstream's "skip unknown subtable" pattern.
+        except _FONTTOOLS_DECODE_ERRORS:
+            return pairs
         return pairs
 
     def _absorb_pair_format1(

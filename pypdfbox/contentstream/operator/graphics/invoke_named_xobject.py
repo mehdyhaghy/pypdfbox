@@ -24,7 +24,11 @@ class InvokeNamedXObject(OperatorProcessor):
     ``PDXObject``:
 
     * an unresolved name raises :class:`MissingResourceException`;
-    * an image XObject is forwarded to ``context.draw_image(image)``;
+    * an image XObject is forwarded to ``context.draw_image(image)`` —
+      unless it is non-stencil *and* colour-operator processing is
+      suppressed, in which case it is skipped (upstream's
+      ``!image.isStencil() && !context.isShouldProcessColorOperators()``
+      early return);
     * a transparency group is forwarded to
       ``context.show_transparency_group(group)``;
     * any other form XObject is forwarded to ``context.show_form(form)``.
@@ -59,6 +63,17 @@ class InvokeNamedXObject(OperatorProcessor):
             raise MissingResourceException(f"Missing XObject: {name.get_name()}")
 
         if _is_image_xobject(xobject):
+            # Upstream graphics ``DrawObject`` skips a non-stencil image when
+            # colour operators are suppressed (uncoloured tiling pattern /
+            # Type3 ``d1`` charproc): ``if (!image.isStencil() &&
+            # !context.isShouldProcessColorOperators()) return;``. Only then
+            # is the image painted.
+            is_stencil = getattr(xobject, "is_stencil", None)
+            stencil = bool(is_stencil()) if callable(is_stencil) else False
+            should = getattr(context, "is_should_process_color_operators", None)
+            process_colors = bool(should()) if callable(should) else True
+            if not stencil and not process_colors:
+                return
             context.draw_image(xobject)
         elif _is_transparency_group(xobject):
             context.show_transparency_group(xobject)

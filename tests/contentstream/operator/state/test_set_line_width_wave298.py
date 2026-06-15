@@ -24,15 +24,22 @@ class _Engine:
 
 
 def test_wave298_get_line_width_returns_numeric_operand() -> None:
-    width = SetLineWidth.get_line_width([COSInteger.get(3)])
+    # ``get_line_width`` is now an instance method so it can run the
+    # whole-list ``check_array_types_class`` guard (oracle-pinned, wave 1534).
+    width = SetLineWidth().get_line_width([COSInteger.get(3)])
 
     assert width is not None
     assert width.float_value() == 3.0
 
 
 def test_wave298_get_line_width_skips_missing_or_non_number_operand() -> None:
-    assert SetLineWidth.get_line_width([]) is None
-    assert SetLineWidth.get_line_width([COSString(b"bad")]) is None
+    assert SetLineWidth().get_line_width([]) is None
+    assert SetLineWidth().get_line_width([COSString(b"bad")]) is None
+    # Whole-list guard: a trailing non-number drops the whole update.
+    assert (
+        SetLineWidth().get_line_width([COSInteger.get(3), COSString(b"x")])
+        is None
+    )
 
 
 def test_wave298_process_updates_bound_graphics_state_for_number() -> None:

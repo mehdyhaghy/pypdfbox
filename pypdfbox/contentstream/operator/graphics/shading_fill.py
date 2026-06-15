@@ -12,16 +12,27 @@ class ShadingFill(OperatorProcessor):
     sub-resource on the current page or form XObject). Mirrors
     ``org.apache.pdfbox.contentstream.operator.graphics.ShadingFill``.
 
-    Operand validation matches upstream:
+    Operand validation matches upstream bytecode
+    (``ShadingFill.process`` in PDFBox 3.0.7) exactly:
 
-    * Fewer than one operand raises :class:`MissingOperandException`
-      (upstream throws the same exception type).
-    * If the first operand is not a :class:`COSName`, the operator is
-      silently skipped — upstream raises ``MissingOperandException``,
-      but pypdfbox follows the leniency precedent of the path
-      operators (``MoveTo``, ``LineTo``, ``CurveTo``,
-      ``AppendRectangleToPath``) and returns without raising for type
-      mismatches in malformed streams.
+    * Fewer than one operand raises :class:`MissingOperandException`.
+    * If the first operand is not a :class:`COSName`, upstream *also*
+      raises :class:`MissingOperandException` — it does **not** silently
+      skip. ``sh`` differs here from the path operators (``MoveTo``,
+      ``LineTo``, ``CurveTo``, ``AppendRectangleToPath``), which use
+      ``checkArrayTypesClass`` to skip non-number operand stacks; ``sh``
+      has no such leniency in upstream, so a non-name leading operand is
+      a missing-operand error. The exception is logged and swallowed by
+      ``PDFStreamEngine.operatorException`` (it is a
+      ``MissingOperandException``), so the stream still continues — the
+      net effect through the engine is that ``shadingFill`` is not
+      invoked, matching the live oracle.
+    * No shading-resource lookup happens in the operator itself.
+      Upstream calls ``getGraphicsContext().shadingFill(shadingName)``
+      unconditionally once the operand is a name; an unknown shading
+      name, a missing ``/Shading`` sub-dict, a wrong-typed ``/Shading``
+      entry, and even ``null`` resources are all resolved (or skipped)
+      inside the ``shadingFill`` hook downstream, not here.
 
     The shading-resource lookup and dispatch to the shading-type
     painter lands with the rendering cluster; until then a successful
@@ -34,5 +45,5 @@ class ShadingFill(OperatorProcessor):
         if len(operands) < 1:
             raise MissingOperandException(operator, operands)
         if not isinstance(operands[0], COSName):
-            return
+            raise MissingOperandException(operator, operands)
         self._log_invocation(operator, operands)

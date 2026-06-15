@@ -28,8 +28,12 @@ class ConcatenateMatrix(OperatorProcessor):
     Edge cases (parity with upstream):
 
     * Fewer than six operands raises :class:`MissingOperandException`.
-    * Any operand not a :class:`COSNumber` causes a silent skip (mirrors
-      upstream's ``checkArrayTypesClass`` short-circuit).
+    * Any operand not a :class:`COSNumber` causes a silent skip. Upstream's
+      ``Concatenate.process`` calls ``checkArrayTypesClass(arguments,
+      COSNumber.class)`` over the **whole** operand list (not just the first
+      six), so a malformed ``a b c d e f /Name cm`` (seven operands, trailing
+      non-number) is dropped silently rather than applied — matching the same
+      whole-list guard ``SetMatrix`` (``Tm``) uses.
     """
 
     OPERATOR_NAME = OperatorName.CONCAT
@@ -37,7 +41,7 @@ class ConcatenateMatrix(OperatorProcessor):
     def process(self, operator: Operator, operands: list[COSBase]) -> None:
         if len(operands) < 6:
             raise MissingOperandException(operator, operands)
-        if not self.check_array_types_class(operands[:6], COSNumber):
+        if not self.check_array_types_class(operands, COSNumber):
             return
         numbers = cast("list[COSNumber]", operands[:6])
         matrix = tuple(number.float_value() for number in numbers)

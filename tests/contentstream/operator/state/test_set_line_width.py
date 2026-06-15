@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from pypdfbox.contentstream.operator import Operator
+import pytest
+
+from pypdfbox.contentstream.operator import MissingOperandException, Operator
 from pypdfbox.contentstream.operator.operator_processor import (
     OperatorProcessor,
 )
@@ -25,11 +27,12 @@ def test_process_with_one_operand_does_not_raise() -> None:
     p.process(Operator.get_operator("w"), [COSFloat(1.5)])
 
 
-def test_process_with_zero_operands_does_not_raise() -> None:
-    # Lite scaffold tolerates short operand lists — actual validation
-    # belongs to the rendering-prep cluster.
+def test_process_with_zero_operands_raises_missing_operand() -> None:
+    # Matches upstream SetLineWidth: empty operands throw
+    # MissingOperandException (oracle-pinned, wave 1534).
     p = SetLineWidth()
-    p.process(Operator.get_operator("w"), [])
+    with pytest.raises(MissingOperandException):
+        p.process(Operator.get_operator("w"), [])
 
 
 def test_default_registry_routes_w_to_set_line_width() -> None:

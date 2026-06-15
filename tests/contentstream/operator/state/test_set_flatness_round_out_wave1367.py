@@ -11,8 +11,10 @@ import logging
 
 import pytest
 
-from pypdfbox.contentstream.operator import Operator
-from pypdfbox.contentstream.operator.operator_processor import OperatorProcessor
+from pypdfbox.contentstream.operator import MissingOperandException, Operator
+from pypdfbox.contentstream.operator.operator_processor import (
+    OperatorProcessor,
+)
 from pypdfbox.contentstream.operator.operator_registry import OperatorRegistry
 from pypdfbox.contentstream.operator.state.set_flatness import SetFlatness
 from pypdfbox.cos import COSFloat, COSInteger, COSName, COSString
@@ -58,8 +60,11 @@ def test_process_accepts_non_numeric_operand() -> None:
     )
 
 
-def test_process_accepts_empty_operand_list() -> None:
-    SetFlatness().process(Operator.get_operator("i"), [])
+def test_process_empty_operand_list_raises_missing_operand() -> None:
+    # Upstream SetFlatness throws MissingOperandException on empty operands
+    # (oracle-pinned, wave 1534).
+    with pytest.raises(MissingOperandException):
+        SetFlatness().process(Operator.get_operator("i"), [])
 
 
 def test_process_accepts_extra_operands_without_raising() -> None:

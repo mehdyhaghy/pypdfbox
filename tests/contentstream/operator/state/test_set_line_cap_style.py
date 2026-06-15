@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from pypdfbox.contentstream.operator import Operator
+import pytest
+
+from pypdfbox.contentstream.operator import MissingOperandException, Operator
 from pypdfbox.contentstream.operator.operator_processor import (
     OperatorProcessor,
 )
@@ -29,9 +31,12 @@ def test_process_with_one_integer_operand_does_not_raise() -> None:
         p.process(Operator.get_operator("J"), [COSInteger.get(cap)])
 
 
-def test_process_with_zero_operands_does_not_raise() -> None:
+def test_process_with_zero_operands_raises_missing_operand() -> None:
+    # Matches upstream SetLineCapStyle: empty operands throw
+    # MissingOperandException (oracle-pinned, wave 1534).
     p = SetLineCapStyle()
-    p.process(Operator.get_operator("J"), [])
+    with pytest.raises(MissingOperandException):
+        p.process(Operator.get_operator("J"), [])
 
 
 def test_default_registry_routes_capital_J_to_set_line_cap_style() -> None:

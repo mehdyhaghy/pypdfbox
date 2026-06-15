@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from pypdfbox.contentstream.operator import Operator
+import pytest
+
+from pypdfbox.contentstream.operator import MissingOperandException, Operator
 from pypdfbox.contentstream.operator.operator_processor import (
     OperatorProcessor,
 )
@@ -27,9 +29,12 @@ def test_process_with_one_operand_does_not_raise() -> None:
         p.process(Operator.get_operator("i"), [COSFloat(f)])
 
 
-def test_process_with_zero_operands_does_not_raise() -> None:
+def test_process_with_zero_operands_raises_missing_operand() -> None:
+    # Matches upstream SetFlatness: an empty operand list throws
+    # MissingOperandException (oracle-pinned, wave 1534).
     p = SetFlatness()
-    p.process(Operator.get_operator("i"), [])
+    with pytest.raises(MissingOperandException):
+        p.process(Operator.get_operator("i"), [])
 
 
 def test_default_registry_routes_lowercase_i_to_set_flatness() -> None:

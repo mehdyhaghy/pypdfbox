@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from pypdfbox.contentstream.operator import Operator
+import pytest
+
+from pypdfbox.contentstream.operator import MissingOperandException, Operator
 from pypdfbox.contentstream.operator.operator_processor import (
     OperatorProcessor,
 )
@@ -27,9 +29,12 @@ def test_process_with_one_operand_does_not_raise() -> None:
     p.process(Operator.get_operator("M"), [COSFloat(10.0)])
 
 
-def test_process_with_zero_operands_does_not_raise() -> None:
+def test_process_with_zero_operands_raises_missing_operand() -> None:
+    # Matches upstream SetLineMiterLimit: empty operands throw
+    # MissingOperandException (oracle-pinned, wave 1534).
     p = SetLineMiterLimit()
-    p.process(Operator.get_operator("M"), [])
+    with pytest.raises(MissingOperandException):
+        p.process(Operator.get_operator("M"), [])
 
 
 def test_default_registry_routes_capital_M_to_set_line_miter_limit() -> None:

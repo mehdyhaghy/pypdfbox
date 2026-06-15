@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from pypdfbox.contentstream.operator import Operator
+import pytest
+
+from pypdfbox.contentstream.operator import MissingOperandException, Operator
 from pypdfbox.contentstream.operator.operator_processor import (
     OperatorProcessor,
 )
@@ -40,9 +42,12 @@ def test_process_with_one_integer_operand_does_not_raise() -> None:
         p.process(Operator.get_operator("j"), [COSInteger.get(join)])
 
 
-def test_process_with_zero_operands_does_not_raise() -> None:
+def test_process_with_zero_operands_raises_missing_operand() -> None:
+    # Matches upstream SetLineJoinStyle: empty operands throw
+    # MissingOperandException (oracle-pinned, wave 1534).
     p = SetLineJoinStyle()
-    p.process(Operator.get_operator("j"), [])
+    with pytest.raises(MissingOperandException):
+        p.process(Operator.get_operator("j"), [])
 
 
 def test_default_registry_routes_lowercase_j_to_set_line_join_style() -> None:

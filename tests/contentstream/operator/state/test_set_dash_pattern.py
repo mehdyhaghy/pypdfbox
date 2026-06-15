@@ -79,6 +79,28 @@ def test_process_truncates_float_phase_for_engine() -> None:
 
 
 def test_process_replaces_dash_array_with_non_number_as_solid() -> None:
+    # Upstream's loop only solidifies (replaces with an empty array) when a
+    # non-number entry is reached BEFORE any non-zero number — a leading
+    # zero lets the iteration continue to the bogus name (oracle-pinned,
+    # wave 1534).
+    engine = _DashRecordingEngine()
+    array = COSArray()
+    array.add(COSFloat(0.0))
+    array.add(COSName.get_pdf_name("Bogus"))
+    p = SetDashPattern(engine)
+
+    p.process(Operator.get_operator("d"), [array, COSInteger.get(0)])
+
+    [(dash_array, phase)] = engine.line_dash_calls
+    assert dash_array is not array
+    assert dash_array.is_empty()
+    assert phase == 0
+
+
+def test_process_keeps_array_when_nonzero_number_precedes_non_number() -> None:
+    # ``[3 /Bogus]`` — upstream's loop breaks at the non-zero ``3`` before
+    # it ever inspects the name, so the array is kept verbatim (NOT
+    # solidified). Oracle-pinned, wave 1534.
     engine = _DashRecordingEngine()
     array = COSArray()
     array.add(COSFloat(3.0))
@@ -88,8 +110,8 @@ def test_process_replaces_dash_array_with_non_number_as_solid() -> None:
     p.process(Operator.get_operator("d"), [array, COSInteger.get(0)])
 
     [(dash_array, phase)] = engine.line_dash_calls
-    assert dash_array is not array
-    assert dash_array.is_empty()
+    assert dash_array is array
+    assert dash_array.size() == 2
     assert phase == 0
 
 
@@ -208,11 +230,23 @@ def test_get_sanitized_dash_array_returns_original_for_numbers() -> None:
 
 
 def test_get_sanitized_dash_array_returns_empty_for_non_number() -> None:
+    # Solidify only when a non-number is reached before any non-zero number:
+    # ``[0 /Bogus]`` — the leading zero lets the loop reach the name.
     array = COSArray()
-    array.add(COSFloat(3.0))
+    array.add(COSFloat(0.0))
     array.add(COSName.get_pdf_name("Bogus"))
 
     sanitized = SetDashPattern.get_sanitized_dash_array(array)
 
     assert sanitized is not array
     assert sanitized.is_empty()
+
+
+def test_get_sanitized_dash_array_keeps_array_breaking_on_nonzero() -> None:
+    # ``[3 /Bogus]`` — upstream's loop breaks at the non-zero ``3`` before
+    # inspecting the name, so the array is kept (oracle-pinned, wave 1534).
+    array = COSArray()
+    array.add(COSFloat(3.0))
+    array.add(COSName.get_pdf_name("Bogus"))
+
+    assert SetDashPattern.get_sanitized_dash_array(array) is array

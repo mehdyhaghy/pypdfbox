@@ -11,8 +11,10 @@ import logging
 
 import pytest
 
-from pypdfbox.contentstream.operator import Operator
-from pypdfbox.contentstream.operator.operator_processor import OperatorProcessor
+from pypdfbox.contentstream.operator import MissingOperandException, Operator
+from pypdfbox.contentstream.operator.operator_processor import (
+    OperatorProcessor,
+)
 from pypdfbox.contentstream.operator.operator_registry import OperatorRegistry
 from pypdfbox.contentstream.operator.state.set_line_join_style import (
     SetLineJoinStyle,
@@ -64,9 +66,11 @@ def test_process_accepts_non_numeric_operand() -> None:
     )
 
 
-def test_process_accepts_empty_operand_list() -> None:
-    """No ``MissingOperandException`` — short list is tolerated."""
-    SetLineJoinStyle().process(Operator.get_operator("j"), [])
+def test_process_empty_operand_list_raises_missing_operand() -> None:
+    """Upstream SetLineJoinStyle throws MissingOperandException on empty
+    operands (oracle-pinned, wave 1534)."""
+    with pytest.raises(MissingOperandException):
+        SetLineJoinStyle().process(Operator.get_operator("j"), [])
 
 
 def test_process_accepts_extra_operands_without_raising() -> None:

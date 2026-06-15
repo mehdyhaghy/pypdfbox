@@ -49,22 +49,24 @@ def test_process_with_empty_operands_raises_missing_operand() -> None:
         ShadingFill().process(Operator.get_operator("sh"), [])
 
 
-def test_process_with_non_name_operand_silently_returns() -> None:
-    """Upstream raises for non-COSName operand 0; pypdfbox follows the
-    leniency precedent of the path operators (``MoveTo``, ``LineTo``,
-    ``CurveTo``, ``AppendRectangleToPath``) and silently skips
-    type-mismatched operands."""
-    ShadingFill().process(
-        Operator.get_operator("sh"),
-        [COSString("not-a-name")],
-    )
+def test_process_with_non_name_operand_raises_missing_operand() -> None:
+    """Upstream ``ShadingFill.process`` (PDFBox 3.0.7 bytecode) raises
+    ``MissingOperandException`` when operand 0 is not a ``COSName`` — it
+    does *not* skip silently. The live oracle confirms a non-name
+    leading operand never reaches ``shadingFill``."""
+    with pytest.raises(MissingOperandException):
+        ShadingFill().process(
+            Operator.get_operator("sh"),
+            [COSString("not-a-name")],
+        )
 
 
-def test_process_with_integer_operand_silently_returns() -> None:
-    ShadingFill().process(
-        Operator.get_operator("sh"),
-        [COSInteger.get(3)],
-    )
+def test_process_with_integer_operand_raises_missing_operand() -> None:
+    with pytest.raises(MissingOperandException):
+        ShadingFill().process(
+            Operator.get_operator("sh"),
+            [COSInteger.get(3)],
+        )
 
 
 def test_registered_in_default_registry() -> None:
