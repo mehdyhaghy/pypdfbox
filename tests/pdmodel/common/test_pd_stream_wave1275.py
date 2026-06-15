@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSNull, COSStream
 from pypdfbox.pdmodel.common.pd_stream import PDStream
 
@@ -63,7 +61,11 @@ def test_no_alias_returns_none_when_only_alias_key_used() -> None:
     assert pds.internal_get_decode_params(_F_DECODE_PARMS, None) is None
 
 
-def test_cosnull_array_entry_yields_empty_dict() -> None:
+def test_cosnull_array_entry_is_skipped() -> None:
+    # Wave 1529: aligned to Apache PDFBox 3.0.7
+    # internalGetDecodeParams, which LOGS + DROPS any non-dict array
+    # element (it does not insert an empty-dict placeholder). The
+    # surviving list is therefore NOT index-aligned with /Filter.
     cos = COSStream()
     arr = COSArray()
     arr.add(COSNull.NULL)
@@ -75,17 +77,15 @@ def test_cosnull_array_entry_yields_empty_dict() -> None:
 
     result = pds.internal_get_decode_params(_DECODE_PARMS, _DP)
     assert result is not None
-    assert len(result) == 2
-    # Empty placeholder for COSNull
-    assert isinstance(result[0], COSDictionary)
-    assert result[0].is_empty()
-    assert result[1] is valid
+    assert len(result) == 1
+    assert result[0] is valid
 
 
-def test_unexpected_type_raises() -> None:
+def test_unexpected_type_returns_none() -> None:
+    # Wave 1529: a /DecodeParms value that is neither a COSDictionary nor
+    # a COSArray (here a COSInteger) yields None upstream, not an error.
     cos = COSStream()
     cos.set_int(_DECODE_PARMS, 42)
     pds = PDStream(cos)
 
-    with pytest.raises(TypeError):
-        pds.internal_get_decode_params(_DECODE_PARMS, _DP)
+    assert pds.internal_get_decode_params(_DECODE_PARMS, _DP) is None

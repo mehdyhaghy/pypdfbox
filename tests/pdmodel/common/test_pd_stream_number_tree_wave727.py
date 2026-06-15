@@ -55,21 +55,22 @@ def test_wave727_pd_stream_defensive_error_paths_and_empty_raw_copy() -> None:
     stream.get_cos_object().set_item(_LENGTH, COSName.get_pdf_name("BadLength"))
     assert stream.get_length() == 0
 
+    # Wave 1529: filter / decode-parms accessors mirror Apache PDFBox
+    # 3.0.7's lenient normalisation — a /Filter that is neither a COSName
+    # nor a COSArray (here a COSDictionary) yields an empty list, a
+    # non-dict/non-array /DecodeParms yields None, and a /FDecodeParms
+    # array carrying a non-dict element drops it (empty but non-None list).
     stream.get_cos_object().set_item(_FILTER, COSDictionary())
-    with pytest.raises(TypeError, match="unexpected /Filter type"):
-        stream.get_filters()
+    assert stream.get_filters() == []
 
     stream.get_cos_object().set_item(_DECODE_PARMS, COSString("bad"))
-    with pytest.raises(TypeError, match="unexpected /DecodeParms type"):
-        stream.get_decode_parms()
+    assert stream.get_decode_parms() is None
 
     stream.get_cos_object().set_item(_FFILTER, COSDictionary())
-    with pytest.raises(TypeError, match="unexpected /FFilter type"):
-        stream.get_file_filters()
+    assert stream.get_file_filters() == []
 
     stream.get_cos_object().set_item(_FDECODE_PARMS, COSArray([COSString("bad")]))
-    with pytest.raises(TypeError, match="unexpected /FDecodeParms entry type"):
-        stream.get_file_decode_parms()
+    assert stream.get_file_decode_parms() == []
 
     empty = PDStream()
     sink = io.BytesIO()

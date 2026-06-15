@@ -26,7 +26,11 @@ def test_decode_parms_falls_back_to_dp_alias_wave493() -> None:
     assert out[0].get_int("Predictor") == 12
 
 
-def test_decode_parms_array_preserves_null_slots_wave493() -> None:
+def test_decode_parms_array_skips_null_slots_wave493() -> None:
+    # Wave 1529: aligned to Apache PDFBox 3.0.7, which DROPS non-dict
+    # array elements (here the COSNull hole) rather than padding the list
+    # with an empty-dict placeholder. The surviving list is no longer
+    # index-aligned with /Filter.
     stream = PDStream()
     first = COSDictionary()
     first.set_int("Columns", 4)
@@ -40,8 +44,8 @@ def test_decode_parms_array_preserves_null_slots_wave493() -> None:
     out = stream.get_decode_parms()
 
     assert out is not None
-    assert [d.get_int("Columns", -1) for d in out] == [4, -1, -1]
-    assert [d.get_int("Colors", -1) for d in out] == [-1, -1, 3]
+    assert [d.get_int("Columns", -1) for d in out] == [4, -1]
+    assert [d.get_int("Colors", -1) for d in out] == [-1, 3]
 
 
 def test_set_decode_parms_none_removes_canonical_and_alias_wave493() -> None:
@@ -55,20 +59,34 @@ def test_set_decode_parms_none_removes_canonical_and_alias_wave493() -> None:
     assert stream.get_cos_object().contains_key(_DP) is False
 
 
-def test_decode_parms_rejects_unexpected_array_entry_wave493() -> None:
+def test_decode_parms_drops_unexpected_array_entry_wave493() -> None:
+    # Wave 1529: upstream logs + ignores a non-dict /DecodeParms array
+    # element instead of raising — a sole COSString element leaves an
+    # empty (but non-None) list.
     stream = PDStream()
     stream.get_cos_object().set_item(_DECODE_PARMS, COSArray([COSString("bad")]))
 
-    with pytest.raises(TypeError, match="unexpected /DecodeParms entry type"):
-        stream.get_decode_parms()
+    assert stream.get_decode_parms() == []
 
 
-def test_filter_arrays_reject_non_name_entries_wave493() -> None:
+def test_filter_array_keeps_non_name_entries_wave493() -> None:
+    # Wave 1529: upstream getFilters() returns COSArray.toList() verbatim
+    # — a non-name element is preserved, not rejected (behavioral parity
+    # with Apache PDFBox 3.0.7).
+    bad = COSString("FlateDecode")
     stream = PDStream()
-    stream.get_cos_object().set_item(_FILTER, COSArray([COSString("FlateDecode")]))
+    stream.get_cos_object().set_item(_FILTER, COSArray([bad]))
 
-    with pytest.raises(TypeError, match="non-name entry in /Filter array"):
-        stream.get_filters()
+    assert stream.get_filters() == [bad]
+
+
+def test_filter_non_name_non_array_yields_empty_wave493() -> None:
+    # Wave 1529: a /Filter value that is neither a COSName nor a COSArray
+    # (here a COSString) normalises to an empty list upstream.
+    stream = PDStream()
+    stream.get_cos_object().set_item(_FILTER, COSString("FlateDecode"))
+
+    assert stream.get_filters() == []
 
 
 def test_metadata_rejects_non_stream_entry_wave493() -> None:
@@ -108,12 +126,17 @@ def test_file_filter_helpers_round_trip_and_clear_wave493() -> None:
     assert stream.get_file_filters() == []
 
 
-def test_file_filter_array_rejects_non_name_entries_wave493() -> None:
+def test_file_filter_array_keeps_non_name_entries_wave493() -> None:
+    # Wave 1529: get_file_filters() now mirrors getFilters' lenient
+    # COSArray.toList() contract — a non-name element is preserved verbatim
+    # rather than raising. (The string-form get_file_filters_as_strings
+    # still raises on a non-name element, matching upstream's
+    # toCOSNameStringList ClassCastException.)
+    bad = COSString("bad")
     stream = PDStream()
-    stream.get_cos_object().set_item(_FFILTER, COSArray([COSString("bad")]))
+    stream.get_cos_object().set_item(_FFILTER, COSArray([bad]))
 
-    with pytest.raises(TypeError, match="non-name entry in /FFilter array"):
-        stream.get_file_filters()
+    assert stream.get_file_filters() == [bad]
 
 
 def test_file_decode_parms_alias_methods_round_trip_array_wave493() -> None:
@@ -132,24 +155,27 @@ def test_file_decode_parms_alias_methods_round_trip_array_wave493() -> None:
     assert [d.get_int("Predictor") for d in out] == [1, 15]
 
 
-def test_file_decode_parms_array_preserves_null_slots_wave493() -> None:
+def test_file_decode_parms_array_skips_null_slots_wave493() -> None:
+    # Wave 1529: aligned to Apache PDFBox 3.0.7 — the COSNull hole is
+    # dropped, leaving only the real dictionary.
+    real = COSDictionary()
     stream = PDStream()
     stream.get_cos_object().set_item(
         _FDECODE_PARMS,
-        COSArray([COSNull.NULL, COSDictionary()]),
+        COSArray([COSNull.NULL, real]),
     )
 
     out = stream.get_file_decode_parms()
 
     assert out is not None
-    assert len(out) == 2
-    assert all(isinstance(entry, COSDictionary) for entry in out)
+    assert out == [real]
 
 
-def test_file_decode_parms_rejects_unexpected_type_wave493() -> None:
+def test_file_decode_parms_unexpected_type_returns_none_wave493() -> None:
+    # Wave 1529: a /FDecodeParms value that is neither dict nor array
+    # yields None upstream, not a TypeError.
     stream = PDStream()
     stream.get_cos_object().set_item(_FDECODE_PARMS, COSString("bad"))
 
-    with pytest.raises(TypeError, match="unexpected /FDecodeParms type"):
-        stream.get_file_decode_parms()
+    assert stream.get_file_decode_parms() is None
 

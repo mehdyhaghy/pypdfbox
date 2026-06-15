@@ -31,6 +31,15 @@ Per-release notes go here; trivial naming changes (camelCase → snake_case) are
 
 Divergences that remain live (will affect observable behaviour vs Java PDFBox):
 
+- **Wave 1529 — `/MK` appearance-characteristics malformed-entry fuzz surfaced + fixed a `PDColor` colour-component positional-alignment bug (removal of a divergence).** Built `oracle/probes/AppearanceCharacteristicsFuzzProbe.java`, which drives `PDAppearanceCharacteristicsDictionary` over fuzzed `/MK` dictionaries and projects `getRotation`, `getBorderColour`/`getBackground` (colour-space name + `getComponents`), the three captions, and the three typed icons. **Fixed one real divergence** in `pypdfbox/pdmodel/graphics/color/pd_color.py` `PDColor._parse_cos_array`: a non-numeric colour component in the *middle* of a `/BC`//`/BG` array was dropped and the later numeric components were packed left, whereas upstream `PDColor.initComponents` writes by index into a pre-zeroed `float[]`, so a skipped component leaves a `0.0` *at that index*. For `/BC = [0.1 /X 0.3]` pypdfbox emitted `DeviceRGB[0.1, 0.3, 0.0]`; Apache PDFBox emits `DeviceRGB[0.1, 0.0, 0.3]`. Now appends a `0.0` placeholder for each skipped index, preserving positional alignment (a too-short tail is still padded by `get_components`), matching PDFBox byte-for-byte. The remaining 30 cases (`/R` int/float/name/string/45/360/neg/huge, colour arrays of arity 0/1/2/3/4/5, `/BC` not-an-array/null/dict/indirect, wrong-typed captions, icon stream/dict/name/null/indirect) already matched. The stale wave-257 unit `test_parse_cos_array_warns_on_non_numeric_component` was retargeted to the oracle-proven `[0.5, 0.0, 0.25]`. 31-case parity pinned in `tests/pdmodel/interactive/annotation/oracle/test_appearance_characteristics_fuzz_wave1529.py`.
+  upstream: PDFBox 3.0.7 `org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceCharacteristicsDictionary`, `org.apache.pdfbox.pdmodel.graphics.color.PDColor#initComponents`
+- **Wave 1529 — `PDFontDescriptor` malformed-dictionary leniency fuzzed against PDFBox 3.0.7 (no divergence).** Built `oracle/probes/FontDescriptorFuzzProbe.java`, which builds deliberately malformed font-descriptor `COSDictionary`s in memory and projects every `/Flags` bit-predicate, the typed `getFontBoundingBox`, the full 12-entry numeric-metric block, `getFontName`/`getFontFamily`/`getFontStretch`/`getCharSet`, and `/FontFile`/`/FontFile2`/`/FontFile3` presence. The 29-case battery covers `/Flags` as float (incl. truncate-toward-zero), string, bool, a huge int past the signed-32 range (wraps), and negative (all bits — reserved bits must not leak into named predicates); `/FontBBox` short (2/3), over-long (5), non-numeric (coerced to 0), and non-array (→ `None`); metrics missing / non-numeric / integer-typed; PDFBOX-429 negative `/CapHeight`+`/XHeight` (read back absolute); `/FontName` string-vs-int; `/FontStretch` string; `/FontWeight` non-numeric; `/CharSet` string-vs-name. **All 29 cases match Apache PDFBox 3.0.7 byte-for-byte — no production divergence; no fix needed.** `pypdfbox/pdmodel/font/pd_font_descriptor.py` already mirrors the Java `getInt`/`getFloat`/`getNameAsString` coercion + signed-32 bit-extraction semantics exactly. Parity pinned in `tests/pdmodel/font/oracle/test_font_descriptor_fuzz_wave1529.py`.
+  upstream: PDFBox 3.0.7 `org.apache.pdfbox.pdmodel.font.PDFontDescriptor`
+- **Wave 1529 — pdmodel `PDType1Font` Standard-14 / AFM-backed metric surface fuzzed against PDFBox 3.0.7 (no fix; `getWidth` confirmed at full parity).** Built `oracle/probes/PdType1FontFuzzProbe.java`, which drives the *pdmodel*-level `PDType1Font` (distinct from the fontbox-level `Type1Font*` PFB/charstring probes) over non-embedded font dicts — Helvetica / Times-Roman / Symbol / ZapfDingbats / Courier-BoldOblique bare dicts, a `/Widths` override, a `/FirstChar`//`/LastChar` short-array mismatch, an unknown base-font name, `/Encoding` as WinAnsi/MacRoman/Standard names, a `/Differences` dict overlay, and a missing `/FontDescriptor` — and projects `getWidth`, `getWidthFromFont`, `isStandard14`, `isEmbedded`, the typed `getEncoding()` class, and `getEncoding().getName(code)` over 11 probe codes each. **`getWidth(code)` — the layout-driving advance — matches Apache PDFBox byte-for-byte for every Standard-14 font across all encodings, the `/Widths` override, and the `/FirstChar`//`/LastChar` mismatch; `isStandard14`/`isEmbedded`/encoding-class/glyph-name all match. No production change (zero real bugs).** Two systematic divergences are pinned BOTH-sides (next bullet). 5 tests / 143-code corpus in `tests/pdmodel/font/oracle/test_pd_type1_font_fuzz_wave1529.py`.
+  upstream: PDFBox 3.0.7 `org.apache.pdfbox.pdmodel.font.PDType1Font.getWidth` / `getStandard14Width` / `getWidthFromFont`
+- **Wave 1529 — `PDType1Font.getWidthFromFont` returns the bundled Adobe AFM advance (not a machine-dependent substitute-program advance) for non-embedded fonts (pinned both-sides).** Upstream `PDType1Font.getWidthFromFont(code)` reads the *substitute* FontBox program the platform `FontMapper` loads for a non-embedded font (e.g. Helvetica → a system Liberation/Arial face), so it returns that program's scaled advance (`666.9922` for `A`, `744.1406` for the WinAnsi `Euro`); for an unknown non-Standard-14 name `getWidth` itself follows the same substitute path and reports its advances. pypdfbox deliberately keeps machine-dependent substitute-program resolution in the renderer (see DEFERRED.md wave 1488: "substitute-GID resolution in the renderer (documented divergence)"), so `getWidthFromFont` instead returns the bundled Adobe AFM *integer* advance for the resolved glyph (`667.0` for `A`), or `0.0` when the AFM lacks the glyph (e.g. `sfthyphen`/`Euro` under some encodings) or the font is the unknown non-Standard-14 name (no AFM). The integer magnitude agrees; only the sub-unit substitute remainder (and the AFM-absent glyphs / unknown font) differ. Pinned both-sides in `tests/pdmodel/font/oracle/test_pd_type1_font_fuzz_wave1529.py`.
+  upstream: PDFBox 3.0.7 `org.apache.pdfbox.pdmodel.font.PDType1Font.getWidthFromFont`
+  reason: substitute-font (FontMapper) program loading is machine-dependent and intentionally lives in the renderer, not the model layer; the deterministic AFM advance is used for non-embedded Standard-14 widths.
 - **Wave 1528 — `PDCIDFont` `/W` `/W2` `/DW` `/DW2` width-table parsing fuzzed against PDFBox 3.0.7.** Built `oracle/probes/CidFontWidthFuzzProbe.java`, which builds malformed descendant-CIDFont dictionaries in memory (wrapped in a minimal Identity-H `PDType0Font` so `codeToCID(code) == code`) and projects `getWidth`/`hasExplicitWidth`/`getVerticalDisplacementVectorY`/`getPositionVector` + the `/DW` default across both `/W` run forms (`c [w1 w2 ...]` list, `c1 c2 w` range), mixed forms, and a malformed-run battery (non-numeric c/w, array-vs-number swaps, odd trailing tokens, premature end, `c2 < c1`, negative/huge CIDs, `null` entries, overlapping runs). **Fixed one real divergence** in `pypdfbox/pdmodel/font/pd_cid_font.py`: `get_position_vector` treated its argument as an already-resolved CID and skipped the `code -> CID` step, whereas upstream `PDCIDFont.getPositionVector(int code)` calls `codeToCID(code)` first (confirmed against the 3.0.7 bytecode) — so for a code whose CMap mapping is not the identity (exposed by a negative probe code) the default position-vector `v_x = widthForCID(cid)/2` was computed from the wrong CID. Now resolves `code -> CID` first, matching `get_width`/`get_vertical_displacement_vector_y`. The well-formed `/W` list/range parsing, `/DW` fallback (missing/non-numeric → 1000), and `/DW2` defaults already matched. Four malformed-`/W2`/`/DW2` cases are pinned BOTH sides (next bullet). 31 cases (27 byte-exact parity + 4 pinned) in `tests/pdmodel/font/oracle/test_cid_font_width_fuzz_wave1528.py`.
   upstream: PDFBox 3.0.7 `org.apache.pdfbox.pdmodel.font.PDCIDFont.getPositionVector(int)` / `readWidths` / `readVerticalDisplacements`
 - **Wave 1528 — malformed `/W2` / one-element `/DW2` leniency (pinned both-sides).** Apache PDFBox 3.0.7's `PDCIDFont.readVerticalDisplacements` (run from the CIDFont constructor) casts `/W2` elements to `COSNumber` *without* an `instanceof` guard and reads `/DW2` `getObject(0)`/`getObject(1)` unconditionally, so a `/W2` with a non-number leading CID or a non-number range metric throws `ClassCastException`, a `/W2` whose inner triple array is ragged (size not divisible by 3) throws `IndexOutOfBoundsException`, and a one-element `/DW2` throws `IndexOutOfBoundsException` — all from font construction, which propagates out of `new PDType0Font(...)`. pypdfbox guards every access in `_parse_w2_array` / `get_default_position_vector`, so construction succeeds and the malformed `/W2` simply contributes no vertical metrics (falls back to `/DW2` defaults). Deliberate hostile-producer robustness: one broken `/W2` run must not abort loading the whole composite font. Pinned both-sides (4 cases: `dw2_short`, `w2_nonnumeric_c`, `w2_ragged_inner`, `w2_range_nonnumeric`) in `tests/pdmodel/font/oracle/test_cid_font_width_fuzz_wave1528.py`.
@@ -4257,6 +4266,66 @@ than "False arm missing".
     upstream `PDRange.getMin()` throws on a non-numeric `/Range` entry whereas
     pypdfbox's `to_float_array` coerces non-numerics to `0.0`. All pinned by
     `tests/pdmodel/graphics/color/oracle/test_icc_based_fuzz_wave1528.py`.
+
+## Wave 1529
+
+- `pypdfbox/pdmodel/pd_document_name_dictionary.py` /
+  `pypdfbox/pdmodel/pd_document_name_destination_dictionary.py`: malformed
+  catalog `/Names` sub-entry fuzz audit (agent E) vs Apache PDFBox 3.0.7 — no
+  deviation found. The live-oracle differential
+  (`tests/pdmodel/oracle/test_document_name_dictionary_fuzz_wave1529.py`, probe
+  `oracle/probes/DocumentNameDictionaryFuzzProbe.java`, 31 cases) confirms
+  byte-exact parity across: `/Names` absent / present as a wrong type (name /
+  string / array / number → `get_names()` is `None`), empty `/Names`, every
+  sub-entry as an empty dict (each accessor wraps its typed node), each
+  sub-entry individually as a dict, each sub-entry as a wrong type (→ accessor
+  `None`), `/Dests` + `/EmbeddedFiles` in name-tree (Kids / leaf-Names) form,
+  the `getDests()` catalog-`/Dests` fallback (present / wrong-typed / overridden
+  by a `/Names /Dests` dict), and the `getCOSObject()` round-trip entry count.
+  pypdfbox already matched upstream's `getCOSDictionary`-style type guard,
+  fallback wrapper choice (`PDDestinationNameTreeNode`, not the flat-dict
+  wrapper), and round-trip on every case. The probe covers only the three
+  upstream-present accessors (`getDests` / `getEmbeddedFiles` / `getJavaScript`)
+  plus `getCOSObject`; pypdfbox's forward-looking `get_pages` / `get_templates`
+  / `get_ids` / `get_urls` / `get_renditions` / `get_ap` extensions have no
+  upstream counterpart and stay covered by the value-based unit suite.
+
+- `pypdfbox/pdmodel/common/pd_stream.py`: `PDStream` filter-chain read-side
+  accessors (`get_filters`, `get_decode_parms`, `internal_get_decode_params`,
+  `get_file_filters`, `get_file_decode_parms`) re-aligned to Apache PDFBox
+  3.0.7's *lenient* normalisation after a malformed-`/Filter` / `/DecodeParms`
+  fuzz audit (agent D; probe `oracle/probes/PdStreamFilterChainFuzzProbe.java`,
+  27-case live-oracle differential
+  `tests/pdmodel/common/oracle/test_pd_stream_filter_chain_fuzz_wave1529.py`,
+  all byte-exact). Four prior pypdfbox-strict behaviours were *removed* to match
+  upstream:
+  - `get_filters`: a `/Filter` value that is neither a `COSName` nor a
+    `COSArray` (e.g. a `COSString` / `COSInteger` / `COSDictionary`) now returns
+    `[]` (upstream `getFilters` returns `Collections.emptyList()`), and a
+    `COSArray` is returned via `COSArray.toList()` *verbatim* — a non-name
+    element (`COSString`, `COSNull`) is preserved in the list, not rejected with
+    a `TypeError` (upstream does no per-element validation). `get_file_filters`
+    follows the same lenient `toList()` contract.
+  - `get_decode_parms` / `internal_get_decode_params` / `get_file_decode_parms`:
+    now delegate through the shared `internal_get_decode_params` helper, which
+    mirrors upstream `PDStream.internalGetDecodeParams` exactly — a `/DecodeParms`
+    array element that is not a `COSDictionary` (a `COSNull` hole, a stray name)
+    is **logged-and-skipped**, not replaced with an empty-dict placeholder, so
+    the returned list is intentionally *not* index-aligned with `get_filters()`
+    when the array has null holes; and a `/DecodeParms` value that is neither a
+    dict nor an array returns `None` (not a `TypeError`).
+  upstream: PDFBox 3.0.7 `org/apache/pdfbox/pdmodel/common/PDStream.java`
+  (`getFilters`, `getDecodeParms`, `internalGetDecodeParams`, `getFileFilters`,
+  `getFileDecodeParams`) + `org/apache/pdfbox/cos/COSArray.java`
+  (`toList` / `toCOSNameStringList`).
+  reason: behavioral parity over Python type-strictness — upstream tolerates
+  malformed filter chains rather than raising; matching that prevents pypdfbox
+  from rejecting documents PDFBox loads. The retargeted stale unit pins
+  (`test_pd_stream_wave493.py`, `test_pd_stream_wave1275.py`,
+  `test_pd_stream_number_tree_wave727.py`) now assert the oracle-proven lenient
+  behaviour. `get_filters_as_strings` / `get_file_filters_as_strings` still
+  raise on a non-name element, matching upstream `COSArray.toCOSNameStringList`
+  (`ClassCastException`).
 
 ## See also
 

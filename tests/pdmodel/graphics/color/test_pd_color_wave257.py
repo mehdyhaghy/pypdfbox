@@ -250,8 +250,10 @@ def test_parse_cos_array_warns_on_non_numeric_component(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Mid-array non-numeric, non-name entries should log a warning and
-    be skipped (matches upstream
-    ``LOG.warn("color component i ... isn't a number, ignored")``).
+    leave a ``0.0`` placeholder *at that index* (matches upstream
+    ``initComponents``, which writes into a pre-zeroed ``float[]`` by
+    position so later numeric components are not shifted left — see the
+    wave-1529 ``bc_mixed`` oracle case).
     """
     from pypdfbox.cos import COSBoolean
 
@@ -261,7 +263,7 @@ def test_parse_cos_array_warns_on_non_numeric_component(
     array.add(COSFloat(0.25))
     with caplog.at_level(logging.WARNING, logger="pypdfbox.pdmodel.graphics.color.pd_color"):
         components, pattern = PDColor._parse_cos_array(array)
-    assert components == [0.5, 0.25]
+    assert components == [0.5, 0.0, 0.25]
     assert pattern is None
     messages = [r.getMessage() for r in caplog.records]
     assert any(

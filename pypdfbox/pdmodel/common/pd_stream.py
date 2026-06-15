@@ -235,23 +235,23 @@ class PDStream:
 
     def get_filters(self) -> list[COSName]:
         """``/Filter`` chain as a list. Empty when absent. Mirrors
-        upstream ``getFilters() : List<COSName>``."""
+        upstream ``getFilters() : List<COSName>``.
+
+        Upstream normalises the resolved ``/Filter`` value with no
+        per-entry validation: a single ``COSName`` becomes a one-element
+        list, a ``COSArray`` is returned via ``COSArray.toList()`` *as-is*
+        (so a malformed array element is preserved verbatim, not rejected),
+        and anything else (including a missing entry or a non-name /
+        non-array value such as a ``COSString``) yields an empty list.
+        We mirror that lenient contract exactly rather than raising on a
+        malformed chain — see ``CHANGES.md`` Wave 1529."""
         f = self._stream.get_dictionary_object(_FILTER)
-        if f is None:
-            return []
         if isinstance(f, COSName):
             return [f]
         if isinstance(f, COSArray):
-            out: list[COSName] = []
-            for entry in f:
-                if isinstance(entry, COSName):
-                    out.append(entry)
-                else:
-                    raise TypeError(
-                        f"non-name entry in /Filter array: {type(entry).__name__}"
-                    )
-            return out
-        raise TypeError(f"unexpected /Filter type: {type(f).__name__}")
+            # toList(): raw, unvalidated entries (matches upstream).
+            return f.to_list()  # type: ignore[return-value]
+        return []
 
     def set_filters(
         self,
@@ -326,32 +326,9 @@ class PDStream:
         Per PDF Reference 1.5 implementation note 7, some producers spell
         the entry ``/DP`` rather than ``/DecodeParms``; we fall back to
         ``/DP`` when the canonical key is absent. Mirrors upstream
-        ``getDecodeParms()``."""
-        from pypdfbox.cos import COSNull  # noqa: PLC0415 — local to avoid cycle
-
-        parms = self._stream.get_dictionary_object(_DECODE_PARMS)
-        if parms is None:
-            parms = self._stream.get_dictionary_object(_DP)
-        if parms is None:
-            return None
-        if isinstance(parms, COSDictionary):
-            return [parms]
-        if isinstance(parms, COSArray):
-            out: list[COSDictionary] = []
-            for entry in parms:
-                if isinstance(entry, COSDictionary):
-                    out.append(entry)
-                elif entry is None or isinstance(entry, COSNull):
-                    # "No parameters for this filter" sentinel — record
-                    # an empty dict so the list-index alignment with the
-                    # filter chain is preserved.
-                    out.append(COSDictionary())
-                else:
-                    raise TypeError(
-                        f"unexpected /DecodeParms entry type: {type(entry).__name__}"
-                    )
-            return out
-        raise TypeError(f"unexpected /DecodeParms type: {type(parms).__name__}")
+        ``getDecodeParms()`` (which delegates to
+        ``internalGetDecodeParams(DECODE_PARMS, DP)``)."""
+        return self.internal_get_decode_params(_DECODE_PARMS, _DP)
 
     def internal_get_decode_params(
         self, name1: COSName, name2: COSName | None = None
@@ -363,23 +340,28 @@ class PDStream:
         ``name2`` (legacy spelling alias — typically ``/DP`` for
         ``/DecodeParms``). When the entry is a ``COSDictionary`` it is
         returned as a single-element list; when it is a ``COSArray``,
-        each ``COSDictionary`` member is collected (``COSNull`` /
-        ``None`` placeholders are kept as empty dicts so list-index
-        alignment with the filter chain is preserved). Returns ``None``
-        when the entry is absent.
+        each ``COSDictionary`` member is collected **in order, and every
+        non-dictionary member (``COSNull`` placeholders, names, numbers)
+        is skipped** — exactly as upstream's
+        ``internalGetDecodeParams`` does (it logs "Expected COSDictionary,
+        got …, ignored" and drops the element). Returns ``None`` when the
+        entry is absent, or when it resolves to a value that is neither a
+        ``COSDictionary`` nor a ``COSArray`` (e.g. a stray ``COSName``).
+
+        Note: because non-dict array entries are dropped (not replaced
+        with a placeholder), the returned list does **not** stay
+        index-aligned with ``get_filters()`` when the ``/DecodeParms``
+        array carries ``null`` holes. This matches Java PDFBox 3.0.7 —
+        see ``CHANGES.md`` Wave 1529.
 
         Public counterpart to the upstream private helper — surfaced for
         callers that need the same lookup against an arbitrary key pair
         (e.g. inline-image filter inspection or non-standard decode
         parameter aliases).
         """
-        from pypdfbox.cos import COSNull  # noqa: PLC0415 — local to avoid cycle
-
         parms = self._stream.get_dictionary_object(name1)
         if parms is None and name2 is not None:
             parms = self._stream.get_dictionary_object(name2)
-        if parms is None:
-            return None
         if isinstance(parms, COSDictionary):
             return [parms]
         if isinstance(parms, COSArray):
@@ -387,17 +369,9 @@ class PDStream:
             for entry in parms:
                 if isinstance(entry, COSDictionary):
                     out.append(entry)
-                elif entry is None or isinstance(entry, COSNull):
-                    out.append(COSDictionary())
-                else:
-                    raise TypeError(
-                        f"unexpected decode-params entry type: "
-                        f"{type(entry).__name__}"
-                    )
+                # else: upstream logs + ignores the malformed element.
             return out
-        raise TypeError(
-            f"unexpected {name1.name} type: {type(parms).__name__}"
-        )
+        return None
 
     def set_decode_parms(
         self,
@@ -498,23 +472,18 @@ class PDStream:
         """``/FFilter`` chain — filter chain to apply when the body is
         sourced from the external file referenced by ``/F``. Same shape
         rules as ``/Filter``. Empty when absent. Mirrors upstream
-        ``getFileFilters() : List<COSName>``."""
+        ``getFileFilters()`` shape rules: single ``COSName`` →
+        one-element list, ``COSArray`` → its entries, anything else
+        (absent, or a non-name / non-array value) → empty list. (Upstream
+        returns ``List<String>`` and we deliberately keep ``list[COSName]``
+        here for symmetry with :meth:`get_filters`; use
+        :meth:`get_file_filters_as_strings` for the string-form parity.)"""
         f = self._stream.get_dictionary_object(_FFILTER)
-        if f is None:
-            return []
         if isinstance(f, COSName):
             return [f]
         if isinstance(f, COSArray):
-            out: list[COSName] = []
-            for entry in f:
-                if isinstance(entry, COSName):
-                    out.append(entry)
-                else:
-                    raise TypeError(
-                        f"non-name entry in /FFilter array: {type(entry).__name__}"
-                    )
-            return out
-        raise TypeError(f"unexpected /FFilter type: {type(f).__name__}")
+            return f.to_list()  # type: ignore[return-value]
+        return []
 
     def get_file_filters_as_strings(self) -> list[str]:
         """``/FFilter`` chain as a list of plain filter-name strings (no
@@ -549,28 +518,11 @@ class PDStream:
         """``/FDecodeParms`` — decode-parameter chain paired with
         ``/FFilter`` (one dict per file-filter, in matching order).
         Returns ``None`` when absent. Mirrors upstream
-        ``getFileDecodeParams() : List<COSDictionary>``."""
-        from pypdfbox.cos import COSNull  # noqa: PLC0415 — local to avoid cycle
-
-        parms = self._stream.get_dictionary_object(_FDECODE_PARMS)
-        if parms is None:
-            return None
-        if isinstance(parms, COSDictionary):
-            return [parms]
-        if isinstance(parms, COSArray):
-            out: list[COSDictionary] = []
-            for entry in parms:
-                if isinstance(entry, COSDictionary):
-                    out.append(entry)
-                elif entry is None or isinstance(entry, COSNull):
-                    out.append(COSDictionary())
-                else:
-                    raise TypeError(
-                        f"unexpected /FDecodeParms entry type: "
-                        f"{type(entry).__name__}"
-                    )
-            return out
-        raise TypeError(f"unexpected /FDecodeParms type: {type(parms).__name__}")
+        ``getFileDecodeParams() : List<COSDictionary>`` (which delegates to
+        ``internalGetDecodeParams(F_DECODE_PARMS, null)`` — no legacy-alias
+        fallback, and the same skip-non-dict normalisation as
+        :meth:`get_decode_parms`)."""
+        return self.internal_get_decode_params(_FDECODE_PARMS)
 
     def set_file_decode_parms(
         self,

@@ -742,6 +742,13 @@ class PDColor:
             if isinstance(item, (COSFloat, COSInteger)):
                 components.append(float(item.value))
             else:
+                # Upstream ``initComponents`` writes into a pre-zeroed
+                # ``float[]`` indexed by position, so a non-numeric entry
+                # leaves a ``0.0`` *at that index* — it does not shift the
+                # later numeric components left. Append the placeholder to
+                # preserve positional alignment (a too-short tail is later
+                # padded by ``get_components``).
+                components.append(0.0)
                 _logger.warning(
                     "color component %d in %r isn't a number, ignored",
                     index,
