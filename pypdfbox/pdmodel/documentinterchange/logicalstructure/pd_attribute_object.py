@@ -54,7 +54,12 @@ class PDAttributeObject:
             PDUserAttributeObject,
         )
 
-        owner = dictionary.get_name(_O)
+        # Upstream PDAttributeObject.create() dispatches on
+        # getNameAsString(/O), which resolves a /O stored as either a
+        # COSName or a COSString (and falls back to null for any other
+        # shape). Mirror that so a string-valued /O still routes to its
+        # typed subclass rather than collapsing to the default wrapper.
+        owner = dictionary.get_name_as_string(_O)
         if owner == PDLayoutAttributeObject.OWNER:
             return PDLayoutAttributeObject(dictionary)
         if owner == PDListAttributeObject.OWNER:
@@ -77,7 +82,10 @@ class PDAttributeObject:
     # ---------- /O owner ----------
 
     def get_owner(self) -> str | None:
-        return self._dictionary.get_name(_O)
+        # Upstream getOwner() returns getNameAsString(/O): a /O stored as a
+        # COSName yields its name, a /O stored as a COSString yields its
+        # decoded text, and any other shape yields null.
+        return self._dictionary.get_name_as_string(_O)
 
     def set_owner(self, owner: str) -> None:
         self._dictionary.set_name(_O, owner)

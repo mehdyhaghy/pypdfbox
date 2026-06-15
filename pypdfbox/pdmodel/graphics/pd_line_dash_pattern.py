@@ -43,9 +43,16 @@ class PDLineDashPattern:
 
         self._array = list(array.to_float_array())
 
+        # Upstream's constructor parameter is ``int phase``; the field is
+        # ``private final int phase``. Java truncates the caller's argument to
+        # int at the call boundary, so mirror that here before normalisation.
+        phase = int(phase)
+
         # PDF 2.0 §8.4.3.6: "If the dash phase is negative, it shall be
         # incremented by twice the sum of all lengths in the dash array
-        # until it is positive."
+        # until it is positive." Upstream computes the increment in float
+        # arithmetic and truncates the result back to int (``d2i``), so the
+        # stored phase is always an ``int``.
         if phase < 0:
             sum2 = sum(self._array) * 2
             if sum2 > 0:
@@ -55,7 +62,7 @@ class PDLineDashPattern:
                     phase += (math.floor(-phase / sum2) + 1) * sum2
             else:
                 phase = 0
-        self._phase = phase
+        self._phase = int(phase)
 
     @classmethod
     def from_cos_array(cls, cos: COSArray) -> PDLineDashPattern:
@@ -115,23 +122,25 @@ class PDLineDashPattern:
             return
         self._array = [float(v) for v in values]
 
-    def get_phase(self) -> _Number:
+    def get_phase(self) -> int:
+        # Upstream ``getPhase()`` returns ``int`` (the field is ``int``); the
+        # stored phase is always an int, so this returns one too.
         return self._phase
 
     def get_phase_int(self) -> int:
         """Return the dash phase as ``int``, matching upstream's
         ``getPhase()`` (which is typed ``int`` in Java).
 
-        The pythonic :meth:`get_phase` may return a float when the
-        construction phase was a float. Callers porting upstream code
-        verbatim can use this helper to get the strict-int return.
-        Truncates toward zero (matches Java's ``(int) floatValue``).
+        The stored phase is always an ``int`` (the constructor truncates),
+        so this is identical to :meth:`get_phase`; kept for callers porting
+        upstream code verbatim that want the explicitly-int spelling.
         """
         return int(self._phase)
 
     def set_phase(self, value: _Number) -> None:
-        """Replace the dash phase with ``value``."""
-        self._phase = value
+        """Replace the dash phase with ``value``. Truncated to ``int`` to
+        preserve the upstream ``int phase`` field invariant."""
+        self._phase = int(value)
 
     def is_solid(self) -> bool:
         """True when the dash array is empty (solid line)."""

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSArray, COSFloat, COSInteger
+from pypdfbox.cos import COSArray, COSInteger
 from pypdfbox.pdmodel.graphics.pd_line_dash_pattern import PDLineDashPattern
 
 
@@ -38,8 +38,11 @@ def test_get_set_phase_round_trip() -> None:
     pattern = _make([3.0, 2.0], 0)
     assert pattern.get_phase() == 0
 
+    # Upstream's phase field is ``int``; a fractional phase is truncated toward
+    # zero (wave-1531 live oracle).
     pattern.set_phase(2.5)
-    assert pattern.get_phase() == 2.5
+    assert pattern.get_phase() == 2
+    assert isinstance(pattern.get_phase(), int)
 
     pattern.set_phase(7)
     assert pattern.get_phase() == 7
@@ -83,12 +86,15 @@ def test_get_cos_object_returns_cos_array_of_dash_array_and_phase() -> None:
     assert phase_entry.value == 2
 
 
-def test_get_cos_object_with_float_phase() -> None:
+def test_get_cos_object_phase_truncated_to_cos_integer() -> None:
+    # Upstream ``getCOSObject`` always emits the phase as a ``COSInteger`` (the
+    # field is ``int``); a fractional phase argument is truncated toward zero.
+    # Proven by the wave-1531 live oracle.
     pattern = _make([3.0, 2.0], 1.5)
     cos = pattern.get_cos_object()
     phase_entry = cos.get_object(1)
-    assert isinstance(phase_entry, COSFloat)
-    assert phase_entry.value == 1.5
+    assert isinstance(phase_entry, COSInteger)
+    assert phase_entry.value == 1
 
 
 def test_to_cos_array_alias() -> None:

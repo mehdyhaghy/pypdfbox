@@ -3,7 +3,16 @@ from __future__ import annotations
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
-from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSInteger, COSName
+from pypdfbox.cos import (
+    COSArray,
+    COSBase,
+    COSBoolean,
+    COSDictionary,
+    COSFloat,
+    COSInteger,
+    COSName,
+    COSString,
+)
 
 from .pd_structure_node import PDStructureNode
 
@@ -293,7 +302,11 @@ class PDStructureElement(PDStructureNode):
     # ---------- /S structure type ----------
 
     def get_structure_type(self) -> str | None:
-        return self._dictionary.get_name(_S)
+        # Upstream ``getStructureType`` uses ``getNameAsString(S)`` (PDFBox
+        # 3.0.7), which decodes a ``/S`` value that is *either* a ``COSName``
+        # *or* a ``COSString`` to text — not just a name. Verified against the
+        # live oracle ``StructureElementFuzzProbe`` case ``s_string``.
+        return self._dictionary.get_name_as_string(_S)
 
     def set_structure_type(self, structure_type: str) -> None:
         self._dictionary.set_name(_S, structure_type)
@@ -329,15 +342,23 @@ class PDStructureElement(PDStructureNode):
 
         Mirrors upstream ``PDStructureElement.getStandardStructureType()``
         exactly (PDFBox 3.0.7): it reads ``/S``, looks it up once in the
-        role-map, and — only when the mapped value is a ``/Name`` (Java:
-        ``instanceof String``) — returns that mapped name; otherwise it
-        returns ``/S`` unchanged. Upstream does **not** recurse through a
-        multi-hop role-map chain, and does **not** short-circuit on standard
-        structure types, so neither does this method (verified against the
-        live oracle ``RoleMapResolveProbe``). A non-name mapped value leaves
-        ``/S`` unchanged.
+        role-map, and — only when the mapped value ``instanceof String`` —
+        returns that mapped value; otherwise it returns ``/S`` unchanged.
+        Upstream's role map is built via
+        ``COSDictionaryMap.convertBasicTypesToMap``, so a mapped value that
+        is a ``/Name`` **or** a string object both satisfy ``instanceof
+        String`` and resolve ``/S`` (see :func:`_read_role_map`). A
+        mapped integer / float / boolean is *not* a String and leaves ``/S``
+        unchanged; a role map containing any unconvertible value (array,
+        dict, …) is discarded wholesale. Upstream does **not** recurse
+        through a multi-hop role-map chain, and does **not** short-circuit on
+        standard structure types, so neither does this method (verified
+        against the live oracle ``StructureElementFuzzProbe``).
         """
-        struct_type = self._dictionary.get_name(_S)
+        # Upstream calls ``getStructureType()`` here, which is
+        # ``getNameAsString(S)`` — decoding both ``COSName`` and ``COSString``
+        # ``/S`` values to text.
+        struct_type = self._dictionary.get_name_as_string(_S)
         if struct_type is None:
             return None
 
@@ -527,8 +548,12 @@ class PDStructureElement(PDStructureNode):
         return value is not None and value != ""
 
     def has_structure_type(self) -> bool:
-        """Return ``True`` when ``/S`` is present (any name)."""
-        return self._dictionary.get_name(_S) is not None
+        """Return ``True`` when ``/S`` resolves to a structure type.
+
+        Mirrors :meth:`get_structure_type`'s ``getNameAsString`` semantics:
+        a ``/S`` that is a ``COSName`` *or* a ``COSString`` counts as present.
+        """
+        return self._dictionary.get_name_as_string(_S) is not None
 
     def has_parent(self) -> bool:
         """Return ``True`` when ``/P`` is present and is a dictionary."""
@@ -1236,8 +1261,26 @@ class PDStructureElement(PDStructureNode):
 
 def _read_role_map(root: COSDictionary) -> dict[str, str]:
     """Extract ``/RoleMap`` from a structure-tree-root dict as a Python
-    ``{name: name}`` map. Non-name values are skipped (they cannot resolve
-    to a standard structure type in any meaningful way)."""
+    ``{name: str}`` map of the *string-valued* entries only.
+
+    Mirrors upstream ``PDStructureTreeRoot.getRoleMap()``, which runs the
+    ``/RoleMap`` dictionary through ``COSDictionaryMap.convertBasicTypesToMap``
+    (PDFBox 3.0.7). That converter maps each value by COS type:
+
+    * ``COSString`` / ``COSName`` → Java ``String``
+    * ``COSInteger`` → ``Integer``, ``COSFloat`` → ``Float``,
+      ``COSBoolean`` → ``Boolean``
+    * **any other type** (array, dictionary, …) → throws ``IOException``,
+      which ``getRoleMap`` catches and turns into an **empty** map.
+
+    ``PDStructureElement.getStandardStructureType`` only substitutes ``/S``
+    when the mapped value ``instanceof String`` — i.e. only the
+    ``COSString`` / ``COSName`` entries matter for resolution. So this helper
+    keeps exactly those entries (verified against the live oracle
+    ``StructureElementFuzzProbe`` cases ``role_string`` / ``role_int`` /
+    ``role_badmap``): integer/float/boolean values are dropped, and a single
+    unconvertible value collapses the whole map to empty.
+    """
     rm = root.get_dictionary_object(_ROLE_MAP)
     if not isinstance(rm, COSDictionary):
         return {}
@@ -1245,6 +1288,15 @@ def _read_role_map(root: COSDictionary) -> dict[str, str]:
     for key, value in rm.entry_set():
         if isinstance(value, COSName):
             out[key.get_name()] = value.get_name()
+        elif isinstance(value, COSString):
+            out[key.get_name()] = value.get_string()
+        elif isinstance(value, (COSInteger, COSFloat, COSBoolean)):
+            # Convertible by upstream but not a String — does not resolve /S.
+            continue
+        else:
+            # Unconvertible value: upstream's converter raises IOException and
+            # the whole role map is discarded (empty map returned).
+            return {}
     return out
 
 

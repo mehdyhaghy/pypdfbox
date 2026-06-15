@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.cos import COSArray, COSFloat, COSInteger
+from pypdfbox.cos import COSArray, COSInteger
 from pypdfbox.pdmodel.graphics.pd_line_dash_pattern import PDLineDashPattern
 
 
@@ -15,10 +15,14 @@ def test_default_is_empty_with_zero_phase() -> None:
 def test_construct_with_dash_array_and_phase() -> None:
     array = COSArray()
     array.set_float_array([3, 2])
+    # Upstream's constructor parameter is ``int phase`` (the field is ``int``);
+    # a fractional phase argument is truncated toward zero at the call boundary
+    # (proven by the wave-1531 live oracle).
     pattern = PDLineDashPattern(array, 1.5)
 
     assert pattern.get_dash_array() == [3.0, 2.0]
-    assert pattern.get_phase() == 1.5
+    assert pattern.get_phase() == 1
+    assert isinstance(pattern.get_phase(), int)
 
 
 def test_get_dash_array_returns_defensive_copy() -> None:
@@ -54,15 +58,19 @@ def test_get_cos_array_round_trip() -> None:
     assert rebuilt.get_phase() == 2
 
 
-def test_get_cos_array_with_float_phase_uses_cos_float() -> None:
+def test_get_cos_array_phase_is_cos_integer() -> None:
+    # Upstream ``getCOSObject`` always serialises the phase via
+    # ``COSInteger.get((long) phase)`` — the field is ``int``, never a float,
+    # so even a fractional phase argument round-trips as a ``COSInteger``
+    # (truncated toward zero). Proven by the wave-1531 live oracle.
     array = COSArray()
     array.set_float_array([3.0, 2.0])
     pattern = PDLineDashPattern(array, 1.5)
 
     cos = pattern.get_cos_array()
     phase_entry = cos.get_object(1)
-    assert isinstance(phase_entry, COSFloat)
-    assert phase_entry.value == pytest.approx(1.5)
+    assert isinstance(phase_entry, COSInteger)
+    assert phase_entry.value == 1
 
 
 def test_get_cos_object_alias_for_get_cos_array() -> None:

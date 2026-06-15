@@ -150,17 +150,23 @@ def test_standard_structure_type_no_root_in_chain_returns_raw_s() -> None:
     assert elem.get_standard_structure_type() == "MyHeader"
 
 
-def test_standard_structure_type_role_map_with_non_name_value_is_ignored() -> None:
+def test_standard_structure_type_role_map_with_string_value_resolves() -> None:
+    # Retargeted in wave 1531 from the pre-fix contract (which assumed a
+    # COSString role-map value was ignored). The live oracle
+    # ``StructureElementFuzzProbe`` (case ``role_string``) proves upstream
+    # builds the role map via ``COSDictionaryMap.convertBasicTypesToMap`` —
+    # which decodes a COSString value to a Java String — and
+    # ``getStandardStructureType`` substitutes any value that is
+    # ``instanceof String`` (COSName *or* COSString).
     root = COSDictionary()
     root.set_name(_TYPE, "StructTreeRoot")
     rm = COSDictionary()
-    rm.set_string("MyHeader", "NotAName")  # /MyHeader (string) — not a /Name.
+    rm.set_string("MyHeader", "NotAName")  # /MyHeader (string) — resolves.
     root.set_item(_ROLE_MAP, rm)
 
     elem = PDStructureElement(structure_type="MyHeader")
     elem.get_cos_object().set_item(_P, root)
-    # Non-name role-map entry skipped → /S returned as-is.
-    assert elem.get_standard_structure_type() == "MyHeader"
+    assert elem.get_standard_structure_type() == "NotAName"
 
 
 # ---------- /Alt alias ----------

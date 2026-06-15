@@ -4377,6 +4377,75 @@ than "False arm missing".
   upstream: PDFBox 3.0.7 `org/apache/pdfbox/pdfwriter/COSWriter.java`
   (`getObjectKey` / `doWriteXRefTable` / `doWriteTrailer`)
 
+## Wave 1531
+
+- **rich-media rendition / media-clip / media-play fuzz audit — no live oracle
+  possible; cluster confirmed to have NO upstream counterpart in PDFBox 3.0.7.**
+  Apache PDFBox 3.0.7 ships no `PDRendition` / `PDMediaRendition` /
+  `PDSelectorRendition` / `PDMediaClip` / `PDMediaClipData` /
+  `PDMediaClipSection` / `PDMediaPlayParameters` classes — verified by
+  `unzip -l oracle/jars/pdfbox-app-3.0.7.jar | grep -iE
+  'rendition|mediaclip|mediaplay'` returning zero hits (the
+  `interactive.action` package in 3.0.7 holds only the action classes).
+  PROVENANCE.md already records these pypdfbox classes as original Python
+  additions with no upstream source, so a differential probe is impossible.
+  Coverage is therefore the hand-test fuzz layer the brief mandates for
+  no-counterpart accessors: a 60-case suite
+  (`tests/pdmodel/interactive/measurement/oracle/test_rendition_fuzz_wave1531.py`)
+  pinning malformed-`/Rendition` / media-clip / media-play behaviour against the
+  PDFBox-modelled COS accessor semantics the production code builds on
+  (`getName` / `getNameAsString` / `getString` / `getDictionaryObject`):
+  `/S` subtype missing/unknown/wrong-type create-dispatch (returns `None`;
+  raises `TypeError` only on a non-dictionary base), `/N` and `/CT` non-string
+  → `None` (COSString-only `getString`), `/C` / `/D` missing/wrong-type → `None`,
+  nested clip/section dispatch, selector `/R` array entry skipping, and indirect
+  references (resolved / unresolved / null / cyclic / wrong-type-after-deref).
+  No production bug surfaced — the cluster was already hardened by waves
+  324/344/367/368/751/752. Gap noted (not a bug): no `get_base_url` /
+  `get_permissions` accessor on `PDMediaClipData` (`/BU` / `/P`); there is no
+  upstream 3.0.7 method to mirror, so adding one would be invention, not parity.
+
+- **Wave 1531 (agent E)** — `PDAppearanceEntry` + `PDAppearanceStream` per-state
+  appearance-entry value resolution and form-XObject accessor parity, verified
+  against the live PDFBox 3.0.7 jar via `oracle/probes/AppearanceEntryFuzzProbe.java`
+  (drills below the wave-1520 `/AP` dictionary probe into the entry *value* and the
+  appearance-stream numeric accessors). 21 oracle-projected cases, all byte-exact:
+  `is_stream`/`is_sub_dictionary` dispatch on a single appearance `COSStream` vs a
+  state sub-dictionary, the `ValueError` raised by the wrong accessor, the
+  `get_sub_dictionary` value filter (only direct/indirect `COSStream` state values
+  survive — scalars/nulls/dicts/strings/indirect-null skipped, matching
+  `COSDictionary.getCOSStream` / PDFBOX-1599), and `PDAppearanceStream`'s `get_bbox`
+  (partial 3-element box → `PDRectangle` coordinate normalisation `1,2,3`→`1,0,3,2`,
+  over-long/non-numeric/wrong-type/empty), `get_matrix` (wrong-length/non-numeric/
+  wrong-type → identity fallback), `get_resources` (name/null → PDFBOX-4372 empty
+  `PDResources`), and indirect `/BBox`//`/Matrix`//`/Resources` resolution. **No
+  production change — zero real bugs; the entry/stream cluster was already at full
+  parity.** Parity-lock test `tests/pdmodel/interactive/annotation/oracle/test_appearance_entry_fuzz_wave1531.py`;
+  no single upstream JUnit source.
+
+- **Wave 1531 (agent B)** — `PDLineDashPattern` dash phase is now always an
+  `int` (was kept as a `float` after negative-phase normalisation). Upstream's
+  class stores the phase in a `private final int phase` field and its only
+  multi-arg constructor is `PDLineDashPattern(COSArray, int)`; `getPhase()`
+  returns `int` and `getCOSObject()` serialises the phase via
+  `COSInteger.get((long) phase)` — never a `COSFloat`. The PDF 2.0 negative-
+  phase normalisation is computed in float arithmetic upstream but truncated
+  back to `int` (`d2i`). pypdfbox previously preserved a fractional phase
+  argument and emitted a `COSFloat` phase entry, diverging on four oracle cases
+  (`negphase_small`, `negphase_large`, `phase_in_array_sum`,
+  `frac_phase_normalize`). The constructor (and `set_phase`) now truncate the
+  phase to `int`, matching upstream exactly. Verified by the live oracle
+  (`oracle/probes/LineDashPatternFuzzProbe.java`,
+  `tests/pdmodel/graphics/oracle/test_line_dash_pattern_fuzz_wave1531.py`,
+  22-case corpus, byte-exact). Four stale hand-tests that pinned the old
+  float-phase contract were retargeted to the int-phase contract.
+  upstream: PDFBox 3.0.7
+  `org/apache/pdfbox/pdmodel/graphics/PDLineDashPattern.java`.
+- **Wave 1531 — `PDAttributeObject` create()/getOwner string-`/O` dispatch: fixed two real divergences (removal of divergences).** Built `oracle/probes/AttributeObjectFuzzProbe.java`, which feeds a 35-case malformed attribute-dictionary corpus (saved to one `corpus.pdf`) to `PDAttributeObject.create(COSDictionary)` and projects the resulting subclass simple name, `getOwner()`, `isEmpty()`, and (for the default wrapper) the attribute-name/value-shape list. Upstream `PDAttributeObject.create()` and `getOwner()` both resolve `/O` via `COSDictionary.getNameAsString`, which accepts a `/O` stored as *either* a `COSName` **or** a `COSString`; pypdfbox used `get_name` (name-only), so a string-valued `/O` collapsed to the default wrapper in `create()` and `get_owner()` returned `None` (which also made `is_empty()` return `False` for an owner-only string-`/O` dict). Both now delegate to `get_name_as_string(_O)`, matching upstream byte-for-byte: a string-valued `/O` dispatches to its typed subclass and reports its owner. The `/O` wrong-type (int/array/dict/bool/real → default wrapper, owner `null`), unknown-owner, empty-name, missing-`/O`, empty-dict, indirect-`/O`, case-sensitivity (`layout`/`HTML-3.20` typo → default wrapper), and `PDDefaultAttributeObject` generic key/value (present/absent/nested) cases all already matched. Parity pinned in `tests/pdmodel/documentinterchange/logicalstructure/oracle/test_attribute_object_fuzz_wave1531.py`.
+  upstream: PDFBox 3.0.7 `org.apache.pdfbox.pdmodel.documentinterchange.logicalstructure.PDAttributeObject#create` / `#getOwner`
+- **Wave 1531 (agent C) — `PDStructureElement` `/S` and `/RoleMap` string-value resolution: fixed two real divergences (removal of divergences).** Built `oracle/probes/StructureElementFuzzProbe.java`, a 24-case malformed structure-element accessor corpus diffed against the live PDFBox 3.0.7 jar. (1) `get_structure_type` / `get_standard_structure_type` previously read `/S` via `COSDictionary.get_name` (COSName-only); upstream `getStructureType` uses `getNameAsString(S)`, so a `/S` stored as a `COSString` returned `None` instead of its text — both now use `get_name_as_string(_S)`. (2) `_read_role_map` previously kept only COSName-valued role-map entries; upstream builds the role map via `COSDictionaryMap.convertBasicTypesToMap` and `getStandardStructureType` substitutes any mapped value that is `instanceof String` (COSName **or** COSString). `_read_role_map` now keeps COSString values too, drops COSInteger/COSFloat/COSBoolean values (convertible but not Strings → do not resolve `/S`), and discards the whole role map when any value is unconvertible (array/dict → upstream's converter throws `IOException`, caught into an empty map). All 24 cases now byte-exact (`s_string`, `role_string`, `role_int`, `role_badmap` were the diverging cases; `/R` float/string/negative, `/P` typed dispatch, `/K` polymorphism, `/A` revisions, `/Pg` already matched). One stale hand-test (`test_standard_structure_type_role_map_with_non_name_value_is_ignored`) that pinned the pre-fix contract was retargeted. Parity pinned in `tests/pdmodel/documentinterchange/logicalstructure/oracle/test_structure_element_fuzz_wave1531.py`.
+  upstream: PDFBox 3.0.7 `org.apache.pdfbox.pdmodel.documentinterchange.logicalstructure.PDStructureElement#getStructureType` / `#getStandardStructureType`
+
 ## See also
 
 - [`HISTORY.md`](HISTORY.md) — chronological wave log (Wave 7 → Wave 1377).
