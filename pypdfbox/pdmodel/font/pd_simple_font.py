@@ -626,12 +626,17 @@ class PDSimpleFont(PDFont):
         upstream's "don't break Zapf Dingbats" guard). Returns ``None``
         when no mapping can be produced.
         """
-        # /ToUnicode CMap wins when present.
-        cmap = self.get_to_unicode_cmap()
-        if cmap is not None:
-            mapped = cmap.to_unicode(code)
-            if mapped is not None:
-                return mapped
+        # /ToUnicode CMap wins when present. Delegate the CMap step to the
+        # base ``PDFont.to_unicode`` rather than calling ``cmap.to_unicode``
+        # directly: the base carries upstream's Identity-as-ToUnicode fixup
+        # (PDFBOX-3123 / PDFBOX-4322 / PDFBOX-3550) where a ``/ToUnicode`` that
+        # is an Identity CMap — a ``COSName`` /Identity-H or a stream whose CMap
+        # has no Unicode mappings — maps each code to itself (``chr(code)``)
+        # rather than falling through to the encoding. Upstream
+        # ``PDSimpleFont.toUnicode`` likewise starts with ``super.toUnicode``.
+        mapped = super().to_unicode(code)
+        if mapped is not None:
+            return mapped
         # Don't override Zapf's glyph list — upstream guard.
         font_glyph_list = self.get_glyph_list()
         if custom_glyph_list is not None and font_glyph_list is GlyphList.DEFAULT:
