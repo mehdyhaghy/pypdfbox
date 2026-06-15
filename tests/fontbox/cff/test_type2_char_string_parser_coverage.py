@@ -75,18 +75,24 @@ def test_parse_sequence_callgsubr_without_global_index_no_op() -> None:
 
 # ---------- get_subr_bytes non-int operand --------------------------------
 
-def test_get_subr_bytes_non_int_operand_returns_none() -> None:
-    """Hit line 155 — operand not an int → bail out."""
+def test_get_subr_bytes_non_int_operand_raises() -> None:
+    """Wave 1525: upstream casts the popped operand to (Integer); a
+    non-Integer top-of-stack throws ClassCastException. pypdfbox now raises
+    TypeError instead of returning None."""
     parser = Type2CharStringParser("F")
     # A CharStringCommand on top of the stack — not an int.
     gd = _GlyphData(sequence=[CharStringCommand.get_instance(14)])
-    assert parser.get_subr_bytes([b"\x0e"], gd) is None
+    with pytest.raises(TypeError):
+        parser.get_subr_bytes([b"\x0e"], gd)
 
 
-def test_get_subr_bytes_float_operand_returns_none() -> None:
+def test_get_subr_bytes_float_operand_raises() -> None:
+    # Wave 1525: a Double operand (255 fixed encoding) likewise fails the
+    # (Integer) cast upstream; pypdfbox raises TypeError.
     parser = Type2CharStringParser("F")
     gd = _GlyphData(sequence=[3.14])
-    assert parser.get_subr_bytes([b"\x0e"], gd) is None
+    with pytest.raises(TypeError):
+        parser.get_subr_bytes([b"\x0e"], gd)
 
 
 # ---------- read_number happy paths for 247-250 / 251-254 -----------------

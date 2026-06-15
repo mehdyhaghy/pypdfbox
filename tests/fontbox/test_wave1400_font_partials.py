@@ -809,8 +809,10 @@ def test_call_other_subr_results_empty_skips_append() -> None:
     parser._current_glyph = "g"  # noqa: SLF001
     # othersubr_num=99 (default branch), num_args=0 → ``results`` empty.
     sequence: list[Any] = [0, 99]
-    # Provide POP bytes following the callothersubr byte.
-    data = b"\x00\x0c\x11\x0c\x11"  # callothersubr + 2x (escape POP)
+    # Provide POP bytes following the callothersubr byte, then a non-POP
+    # terminator (``0x0e`` ENDCHAR) so the wave-1525 unconditional pop-peek
+    # has a readable byte and ends the loop cleanly instead of throwing at EOF.
+    data = b"\x00\x0c\x11\x0c\x11\x0e"  # callothersubr + 2x (escape POP) + endchar
     new_i = parser.process_call_other_subr(data, 0, sequence)
     # Cursor advanced past callothersubr + two POP escapes (1 + 2 + 2 = 5).
     assert new_i == 5

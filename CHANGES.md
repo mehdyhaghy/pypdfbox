@@ -31,6 +31,11 @@ Per-release notes go here; trivial naming changes (camelCase → snake_case) are
 
 Divergences that remain live (will affect observable behaviour vs Java PDFBox):
 
+- **Wave 1525 — contentstream text-state / text-positioning OPERATOR operand handling fuzzed against PDFBox 3.0.7 (`SetCharSpacing` / `SetWordSpacing` / `SetTextLeading` / `SetTextHorizontalScaling` / `SetTextRise` / `SetTextRenderingMode` / `SetFontAndSize` / `MoveText` / `MoveTextSetLeading` / `SetMatrix` / `NextLine`).** Built `TextStateOperatorFuzzProbe.java`, which calls each operator processor's `process(Operator, List)` DIRECTLY with hand-built malformed operand windows (empty / too-few / too-many operands, `COSName`/`COSString`/`COSArray`/`COSNull` where a number is expected, out-of-range `Tr` modes, zero/negative `Tz`) — direct invocation is required because `PDFStreamEngine.processOperator` swallows `MissingOperandException` into `operatorException`, hiding the arity/type contract. The probe projects per case `ERR:<class>` or `OK|<text-state fingerprint>` (Tc/Tw/TL/Tz/Ts/Tr/Tf + text matrix) so a silent-ignore is distinguishable from an applied mutation. **Fixed one real divergence** in `pypdfbox/contentstream/operator/text/set_matrix.py` (`Tm`): pypdfbox type-guarded only `operands[:6]` for `COSNumber`-ness, while upstream `org.apache.pdfbox.contentstream.operator.state.SetMatrix` calls `checkArrayTypesClass(operands, COSNumber.class)` over the WHOLE operand list — so a malformed `a b c d e f /Name Tm` (seven operands, trailing non-number) made pypdfbox APPLY the matrix while upstream silently drops it. Changed to `check_array_types_class(operands, COSNumber)` over the full list. Confirmed against the 3.0.7 bytecode that the single-operand setters match exactly (`Tc` uses `arguments.get(size-1)` / empty→throw; `Tw` and `Ts` empty→silent-return; `TL`/`Tz`/`Tr` empty→`MissingOperandException`; `Tr` range-check `<0 || >= RenderingMode.values().length`→return; `Tf`/`Td`/`TD` `<2`→throw). 67 cases (66 byte-exact parity + 1 Tm regression pin) in `tests/contentstream/oracle/test_text_state_operator_fuzz_wave1525.py`.
+  upstream: PDFBox 3.0.7 `org.apache.pdfbox.contentstream.operator.text.*` and `org.apache.pdfbox.contentstream.operator.state.SetMatrix`
+  note: pypdfbox's text-state notification hooks (`set_character_spacing` etc.) are cluster-#2 no-ops by design — Tc/Tw/TL/Ts/Tr/Tf state-tracking lives in the rendering cluster, not the base engine, so the fuzz harness records the mutations through a test-only recording engine. `MoveTextSetLeading` (`TD`) carries a deliberate divergence already noted in source: upstream always re-enters via `processOperator("TL", ...)` (a no-op when no `TL` handler is registered), whereas pypdfbox falls back to a direct `set_text_leading` when `TL` is unregistered so subclasses still observe the change; in the realistic engine config (TL registered) both paths set the leading identically and the probe confirms parity.
+- **Wave 1525 — TrueType `glyf` GLYPH-DECODE fuzzed against PDFBox 3.0.7 (`GlyfSimpleDescript` / `GlyfCompositeDescript` / `GlyfCompositeComp`).** Built `GlyfDecodeFuzzProbe.java`, which splices one HOSTILE glyph's bytes into the bundled `DejaVuSans.ttf` in place (padded/truncated to the original length so `loca` and all downstream tables stay valid) and projects the decoded `numberOfContours` / resolved contour count / point count / bbox (or an error/`null` marker) per gid. **No production change** — `pypdfbox/fontbox/ttf/glyph_data.py` decodes the `glyf` payload through fontTools (library-first per CLAUDE.md), and every divergence found is rooted in fontTools' strict decoder vs FontBox's deliberately lenient hand-rolled reader, so matching them would mean reimplementing the byte-level glyf readers (out of scope, same precedent as the wave-1505 CCITT and wave-1506 lazy-vs-eager TTF-parse library-gaps). TEN mutations where the two engines agree on the full projection are pinned as exact-match parity (empty glyph `numberOfContours == 0`, all-zero glyf bytes, header-only truncation, non-monotonic `endPtsOfContours`, truncation to the 2-byte count, a clean composite, `MORE_COMPONENTS` set with no follower, a self-referencing component that borrows the half-built outline, an out-of-range component glyph index, all-zero composite bytes). NINE library-gap mutations are pinned BOTH-SIDES as divergences (negative `numberOfContours` other than -1, which FontBox treats as composite while fontTools rejects; simple- and composite-glyph streams truncated mid coordinate/component, which FontBox zero-pads while fontTools raises; a true cyclic composite, which FontBox detects and returns a zero-point outline while fontTools errors; huge / `Integer.MAX` contour counts, where both fail at different stages). Every mutant TERMINATES on both engines (no hang/crash). 20 cases in `tests/fontbox/ttf/oracle/test_glyf_decode_fuzz_wave1525.py`.
+  upstream: PDFBox 3.0.7 `org.apache.fontbox.ttf.GlyphData` / `GlyfSimpleDescript` / `GlyfCompositeDescript` / `GlyfCompositeComp`
 - **Wave 1524 — `StandardSecurityHandler` key-derivation / password-auth algorithms fuzzed against PDFBox 3.0.7 (`computeEncryptedKey` / `isUserPassword` / `isOwnerPassword` / `getUserPassword`).** Built `StandardSecurityHandlerFuzzProbe.java` driving the instance-level algorithm methods with deterministic malformed `/O` `/U` `/OE` `/UE` byte strings, out-of-range `/R` (0/7/99), odd `/Length` (0/5/16), short/empty/over-long entries and >32-byte passwords. Fixed **three real divergences** in `pypdfbox/pdmodel/encryption/standard_security_handler.py`, all rooted in pypdfbox using `>=` revision tests where the 3.0.7 bytecode uses exact equalities: (1) `compute_encrypted_key` dispatched `revision >= 5` to the AES-256 Rev56 path, so revisions 7/99 wrongly entered Rev56 (absent `/OE` `/UE` → empty result); upstream dispatches only `== 5 || == 6` and falls every other revision through to Algorithm 2 (Rev234), which derives a key — changed to `revision in (5, 6)`. (2) `_compute_encryption_key` (Algorithm 2) ran the 50-round MD5 re-hash on `revision >= 3` and the `0xFFFFFFFF` metadata mix on `revision >= 4`; upstream `computeEncryptedKeyRev234` gates them on `== 3 || == 4` and `== 4`, so an out-of-range revision reaching Algorithm 2 now derives the plain rev-2 key. (3) `get_user_password` ran the r3/r4 RC4 unwind for any revision below 5; upstream `getUserPassword234` returns empty bytes for any revision not in {2,3,4} — guarded the whole derivation on the {2,3,4} set. Remaining divergences pinned both-sides: Java `IOException` ↔ pypdfbox `OSError` (unknown-revision validators, short r6 `/O`/`/U`), Java `IllegalArgumentException` ↔ `ValueError` (zero-length RC4 key), and Java `ArrayIndexOutOfBoundsException` (unguarded array-slice crash on too-short `/O` / empty `/U` in the r6 path) ↔ pypdfbox's lenient slice. 55 cases (43 byte-exact parity + 12 pinned) in `tests/pdmodel/encryption/oracle/test_standard_security_handler_fuzz_wave1524.py`.
 - **Wave 1524 — TrueType cmap subtable FORMAT-body parsing fuzzed against PDFBox 3.0.7 (`CmapSubtable.processSubtype4` / `processSubtype6`).** Fixed two real divergences in `pypdfbox/fontbox/ttf/cmap_subtable.py`: both the format-4 (`processSubtype4`) and format-6 (`processSubtype6`) body readers were filtering out any glyph id `>= numGlyphs` (logging "Format N cmap contains an invalid glyph index" and dropping the mapping). Upstream PDFBox 3.0.7 has **no such num_glyphs bound** in either method — whatever the segment arithmetic / glyph-id array yields is stored verbatim (confirmed by bytecode: neither `processSubtype4` nor `processSubtype6` compares the gid against `numGlyphs`). A malformed `/idDelta` or out-of-range glyph-id-array entry therefore now keeps the resulting (possibly out-of-range) gid, matching `get_glyph_id` byte-for-byte. The other fuzzed format bodies (0, 2, 12, unknown/truncated/zero-length, odd/zero `segCountX2`, `startCode > endCode`, `endCode` not ending 0xFFFF, `idRangeOffset` OOB, huge `entryCount`, `nGroups` overflow, overlapping/surrogate format-12 groups) already matched. Five stale non-oracle tests that pinned the old filtering behaviour were retargeted to the oracle-proven contract. Pinned both-sides (20 cases) in `tests/fontbox/ttf/oracle/test_cmap_subtable_format_fuzz_wave1524.py`.
   upstream: PDFBox 3.0.7 `org.apache.fontbox.ttf.CmapSubtable.processSubtype4` / `processSubtype6`
@@ -4130,6 +4135,82 @@ than "False arm missing".
     deliberately keeps the huge-magnitude width/height cases on float-exact
     operand pairs so the parity assertion holds; the residual float32-vs-float64
     width cliff at the overflow boundary is an inherent numeric-type divergence.
+
+- Wave 1525 (CFF charset/encoding table readers fuzz): **no deviation found.**
+  `CFFParser.read_charset` / `read_format0_charset` / `read_format1_charset` /
+  `read_format2_charset` / `read_encoding` / `read_format0_encoding` /
+  `read_format1_encoding` / `read_supplement` were driven directly on hostile,
+  truncated/overflowing byte buffers and matched Apache FontBox 3.0.7 byte-for-byte
+  across 31 cases (Format 0/1/2 charset truncation + `nLeft` overflow + range
+  overshoot + CID vs non-CID + unknown format byte; Format 0/1 encoding
+  `nCodes`/`nRanges` overflow + truncation + the 0x80 supplement bit + out-of-range
+  supplement SID + unknown base format). Pinned both-sides by
+  `tests/fontbox/cff/oracle/test_cff_charset_encoding_fuzz_wave1525.py` (probe
+  `oracle/probes/CffCharsetEncodingFuzzProbe.java`) so a future re-sync cannot drift
+  the hand-ported readers from upstream. No production code changed.
+
+- Wave 1525 (Type2 charstring INTERPRETER / stack-execution fuzz): fed
+  hand-built malformed Type2 bytecode straight into
+  `pypdfbox/fontbox/cff/type2_char_string_parser.py` (no CFF wrapper) and
+  diffed the token stream / thrown exception against Apache FontBox 3.0.7.
+  Fixed **five** real divergences where pypdfbox silently succeeded on input
+  upstream rejects with a runtime exception:
+  - `get_subr_bytes`: an **empty operand stack** returned `None`; upstream's
+    unguarded `sequence.remove(size-1)` is `remove(-1)` ->
+    `IndexOutOfBoundsException`. Now pops unconditionally (raises `IndexError`).
+  - `get_subr_bytes`: a **non-integer subr operand** (e.g. a `255` 16.16 fixed
+    value left on the stack) returned `None`; upstream's `(Integer)` cast throws
+    `ClassCastException`. Now raises `TypeError`.
+  - `get_subr_bytes`: a **negative post-bias subr number** silently wrapped to
+    the list tail via Python negative indexing (returning the *wrong* subr);
+    upstream's `array[negativeIndex]` throws `ArrayIndexOutOfBoundsException`.
+    Now guards `subr_number < 0` and raises `IndexError`.
+  - `process_call_subr` / `process_call_g_subr`: an **out-of-range (too-large)
+    subr number** was swallowed by a `if subr_bytes is not None` guard; upstream
+    forwards the `null` into `processSubr` -> `new DataInputByteArray(null)` ->
+    `NullPointerException`. The guard is removed and `process_subr(None)` now
+    raises `TypeError` (mirroring `bytes(None)`).
+  - `parse_sequence` `hintmask`/`cntrmask`: **truncated mask bytes** were
+    silently skipped via `i += mask_length`; upstream reads each mask byte
+    through `DataInput.readUnsignedByte()` which raises `IOException` past EOF.
+    Now raises `ValueError` when the mask runs past the program end.
+  - **Pinned divergences (unalignable error taxonomy)** — the exact exception
+    *class* differs (Java `IndexOutOfBoundsException`/`ClassCastException`/
+    `NullPointerException`/`IOException`/`StackOverflowError` vs Python
+    `IndexError`/`TypeError`/`ValueError`/`RecursionError`); the raise-vs-not
+    behaviour is now identical and pinned both-sides by
+    `tests/fontbox/cff/oracle/test_type2_charstring_interp_fuzz_wave1525.py`
+    (probe `oracle/probes/Type2CharStringInterpFuzzProbe.java`, 36 cases).
+
+- Wave 1525 (Type1 charstring INTERPRETER / operator-stack fuzz): fed
+  hand-built malformed Type1 bytecode straight into
+  `pypdfbox/fontbox/cff/type1_char_string_parser.py` (`parse()` token stream,
+  no Type1Font wrapper) and diffed against Apache FontBox 3.0.7
+  `Type1CharStringParser.parse()`. Fixed **two** real divergences:
+  - `read_number` / `read_command`: a **truncated operand / escape** (a
+    `247`-`254` two-byte operand, a `255` int32, or a `12` two-byte command
+    cut off at EOF) raised `ValueError`. Upstream reads the follow-up bytes
+    through `DataInputByteArray.readUnsignedByte` / `readInt`, which throw
+    `IOException` at end-of-buffer (DataInputByteArray.java:103). Per the
+    CLAUDE.md `IOException` -> `OSError` mapping these now raise `OSError`.
+  - `process_call_other_subr` pop-peel loop: the mandatory `pop` peek after a
+    `callothersubr` was guarded with a bounds check (`i + 1 < n`) that silently
+    exited the loop on a truncated charstring. Upstream peeks unconditionally
+    via `DataInputByteArray.peekUnsignedByte`, which throws `IOException` when
+    the offset is past the end of the buffer (DataInputByteArray.java:126); a
+    flex-end (`OtherSubr 0`) at the very end of the charstring therefore throws
+    upstream but succeeded in pypdfbox. Now mirrored via a new
+    `_peek_unsigned_byte` helper that raises `OSError` at EOF.
+  - **Intentional divergences (pinned both-sides)** — a degenerate operand
+    stack feeding `callsubr` / `callothersubr` (empty / 1-element / non-int)
+    makes upstream throw an *uncaught* `IndexOutOfBoundsException` /
+    `ClassCastException` (its `parse` is `throws IOException`, so these
+    propagate as hard failures), whereas pypdfbox degrades gracefully
+    (warn-and-drop). The `div`-by-zero inside `removeInteger` throws Java
+    `ArithmeticException` vs Python `ZeroDivisionError` (same throw, different
+    class). All pinned by
+    `tests/fontbox/cff/oracle/test_type1_charstring_interp_fuzz_wave1525.py`
+    (probe `oracle/probes/Type1CharStringInterpFuzzProbe.java`, 54 cases).
 
 ## See also
 

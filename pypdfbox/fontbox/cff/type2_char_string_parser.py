@@ -87,7 +87,13 @@ class Type2CharStringParser:
                     glyph_data.hstem_count, glyph_data.vstem_count
                 )
                 # Drop the mask bytes - we don't act on hint masks but
-                # have to advance past them.
+                # have to advance past them. Upstream reads each mask byte
+                # via DataInput.readUnsignedByte(), which raises IOException
+                # ("End off buffer reached") when the mask runs past the end
+                # of the program; mirror that instead of silently advancing.
+                if i + mask_length > n:
+                    msg = "Truncated Type 2 hint-mask bytes"
+                    raise ValueError(msg)
                 i += mask_length
                 glyph_data.sequence.append(CharStringCommand.get_instance(b0))
             elif (0 <= b0 <= 18) or (21 <= b0 <= 27) or (29 <= b0 <= 31):
@@ -107,11 +113,18 @@ class Type2CharStringParser:
         lsi: list[bytes | bytearray],
         glyph_data: _GlyphData,
     ) -> None:
-        """Mirrors upstream ``processCallSubr`` (Type2CharStringParser.java:120)."""
+        """Mirrors upstream ``processCallSubr`` (Type2CharStringParser.java:120).
+
+        Upstream only short-circuits when the local subr index is null/empty;
+        once it decides to call, it feeds ``getSubrBytes``'s result straight
+        into ``processSubr`` with **no** null guard. A malformed operand
+        (empty stack, non-integer, or out-of-range subr number) therefore
+        propagates as the same kind of runtime error Java raises rather than
+        being silently swallowed.
+        """
         if lsi:
             subr_bytes = self.get_subr_bytes(lsi, glyph_data)
-            if subr_bytes is not None:
-                self.process_subr(gsi, lsi, subr_bytes, glyph_data)
+            self.process_subr(gsi, lsi, subr_bytes, glyph_data)
 
     def process_call_g_subr(
         self,
@@ -119,20 +132,37 @@ class Type2CharStringParser:
         lsi: list[bytes | bytearray],
         glyph_data: _GlyphData,
     ) -> None:
-        """Mirrors upstream ``processCallGSubr`` (Type2CharStringParser.java:130)."""
+        """Mirrors upstream ``processCallGSubr`` (Type2CharStringParser.java:130).
+
+        Like ``process_call_subr``, upstream forwards ``getSubrBytes``'s result
+        into ``processSubr`` unconditionally once the global subr index is
+        non-empty (no null guard).
+        """
         if gsi:
             subr_bytes = self.get_subr_bytes(gsi, glyph_data)
-            if subr_bytes is not None:
-                self.process_subr(gsi, lsi, subr_bytes, glyph_data)
+            self.process_subr(gsi, lsi, subr_bytes, glyph_data)
 
     def process_subr(
         self,
         gsi: list[bytes | bytearray],
         lsi: list[bytes | bytearray],
-        subr_bytes: bytes | bytearray,
+        subr_bytes: bytes | bytearray | None,
         glyph_data: _GlyphData,
     ) -> None:
-        """Mirrors upstream ``processSubr`` (Type2CharStringParser.java:140)."""
+        """Mirrors upstream ``processSubr`` (Type2CharStringParser.java:140).
+
+        Upstream takes the raw subr bytes with no null check: an out-of-range
+        subr number yields ``null`` from ``getSubrBytes`` and the subsequent
+        ``new DataInputByteArray(null)`` / ``hasRemaining()`` throws a
+        ``NullPointerException``. We mirror that by letting ``bytes(None)``
+        raise ``TypeError`` rather than silently no-op'ing.
+        """
+        if subr_bytes is None:
+            # bytes(None) would raise TypeError("cannot convert 'NoneType' ...")
+            # which is the closest analogue to upstream's NullPointerException
+            # path; surface it explicitly so the intent is clear.
+            msg = "out-of-range subr index resolved to no bytes"
+            raise TypeError(msg)
         self.parse_sequence(bytes(subr_bytes), gsi, lsi, glyph_data)
         if glyph_data.sequence:
             last = glyph_data.sequence[-1]
@@ -147,15 +177,38 @@ class Type2CharStringParser:
         subr_index: list[bytes | bytearray],
         glyph_data: _GlyphData,
     ) -> bytes | bytearray | None:
-        """Mirrors upstream ``getSubrBytes`` (Type2CharStringParser.java:112)."""
-        if not glyph_data.sequence:
-            return None
+        """Mirrors upstream ``getSubrBytes`` (Type2CharStringParser.java:112).
+
+        Upstream is deliberately unguarded:
+
+        * ``(Integer) sequence.remove(sequence.size() - 1)`` on an empty stack
+          calls ``remove(-1)`` -> ``IndexOutOfBoundsException``; we mirror that
+          by popping unconditionally so an empty sequence raises ``IndexError``.
+        * the cast to ``Integer`` throws ``ClassCastException`` when the popped
+          operand is a ``Double`` (the ``255`` 16.16 fixed encoding); we raise
+          ``TypeError`` for any non-``int`` operand.
+        * ``if (subrNumber < array.length) return array[subrNumber]`` indexes
+          with no lower bound, so a negative post-bias subr number throws
+          ``ArrayIndexOutOfBoundsException``; we guard ``subr_number < 0``
+          explicitly to raise ``IndexError`` (and to avoid Python's silent
+          negative-index wrap, which would return the *wrong* subr).
+        """
+        # remove(size-1) on an empty list raises IndexOutOfBoundsException
+        # upstream; pop() on an empty list raises IndexError here.
         operand = glyph_data.sequence.pop()
-        if not isinstance(operand, int):
-            return None
+        if isinstance(operand, bool) or not isinstance(operand, int):
+            # Upstream's (Integer) cast throws ClassCastException for a Double
+            # operand (e.g. a 255 fixed value left on the stack).
+            msg = f"subr operand is not an integer: {operand!r}"
+            raise TypeError(msg)
         subr_number = self.calculate_subr_number(operand, len(subr_index))
-        if subr_number < len(subr_index):
+        if 0 <= subr_number < len(subr_index):
             return subr_index[subr_number]
+        if subr_number < 0:
+            # Mirror upstream's array[negativeIndex] ->
+            # ArrayIndexOutOfBoundsException; never wrap to the list tail.
+            msg = f"negative subr index {subr_number}"
+            raise IndexError(msg)
         return None
 
     @staticmethod

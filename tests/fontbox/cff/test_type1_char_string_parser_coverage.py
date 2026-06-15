@@ -129,7 +129,10 @@ def test_process_call_other_subr_end_flex_pops_three_values() -> None:
     parser._current_glyph = "g"
     # Stack layout (top-of-stack last): extra=99, y=20, x=10, num_args=3, othersubr=0
     seq: list = [99, 20, 10, 3, 0]
-    new_i = parser.process_call_other_subr(bytes([16]), 0, seq)
+    # The pop-peek (wave 1525) peeks unconditionally, so the buffer must
+    # carry a readable non-POP terminator after CALLOTHERSUBR; ``0x0e``
+    # (ENDCHAR) ends the loop cleanly without consuming.
+    new_i = parser.process_call_other_subr(bytes([16, 14]), 0, seq)
     assert new_i == 1
     # End-flex appends 0 + COMMAND_CALLOTHERSUBR (the extra was popped).
     # The stack-leftover warning fires because results still holds 2 ints.
@@ -146,8 +149,10 @@ def test_process_call_other_subr_hint_replacement_pops_one(
     parser = Type1CharStringParser("Test")
     parser._current_glyph = "g"
     seq: list = [77, 1, 3]
+    # Trailing ``0x0e`` (ENDCHAR) so the wave-1525 unconditional pop-peek
+    # has a readable non-POP byte and ends the loop cleanly.
     with caplog.at_level("WARNING"):
-        new_i = parser.process_call_other_subr(bytes([16]), 0, seq)
+        new_i = parser.process_call_other_subr(bytes([16, 14]), 0, seq)
     assert new_i == 1
     assert any("PostScript stack" in r.message for r in caplog.records)
 
@@ -159,7 +164,8 @@ def test_process_call_other_subr_default_branch_pops_num_args() -> None:
     parser._current_glyph = "g"
     # Stack: x, y, z, num_args=3, othersubr=5
     seq: list = [1, 2, 3, 3, 5]
-    new_i = parser.process_call_other_subr(bytes([16]), 0, seq)
+    # Trailing ``0x0e`` terminator for the unconditional pop-peek (wave 1525).
+    new_i = parser.process_call_other_subr(bytes([16, 14]), 0, seq)
     assert new_i == 1
 
 
@@ -169,8 +175,10 @@ def test_process_call_other_subr_consumes_trailing_pop_pair() -> None:
     parser = Type1CharStringParser("Test")
     parser._current_glyph = "g"
     seq: list = [1, 1, 3]  # results from othersubr 3 (1 int popped)
-    # Bytes: CALLOTHERSUBR (16) at index 0, then 12 17 (POP) at 1-2.
-    data = bytes([16, 12, 17])
+    # Bytes: CALLOTHERSUBR (16) at index 0, then 12 17 (POP) at 1-2, then a
+    # ``0x0e`` (ENDCHAR) terminator so the wave-1525 unconditional pop-peek
+    # ends cleanly after consuming the single POP pair.
+    data = bytes([16, 12, 17, 14])
     new_i = parser.process_call_other_subr(data, 0, seq)
     assert new_i == 3  # consumed CALLOTHERSUBR + 2-byte POP
     # The popped result (1) was pushed back onto the stack.
@@ -215,19 +223,22 @@ def test_remove_integer_rejects_non_int_non_div_command() -> None:
 
 
 def test_read_number_two_byte_positive_truncated_raises() -> None:
-    """247-250 needs a follow-up byte; missing → ValueError (line
-    227-228)."""
+    """247-250 needs a follow-up byte; missing → OSError.
+
+    Upstream reads the follow-up byte through ``DataInput.readUnsignedByte``,
+    which raises ``IOException`` (mapped to ``OSError``) at EOF
+    (wave 1525 oracle parity)."""
     parser = Type1CharStringParser("Test")
-    with pytest.raises(ValueError, match="Truncated"):
+    with pytest.raises(OSError, match="End off buffer"):
         # b0=247, no following byte.
         parser.read_number(bytes([247]), 1, 247)
 
 
 def test_read_number_two_byte_negative_truncated_raises() -> None:
-    """251-254 needs a follow-up byte; missing → ValueError (line
-    233-234)."""
+    """251-254 needs a follow-up byte; missing → OSError (IOException
+    parity, wave 1525)."""
     parser = Type1CharStringParser("Test")
-    with pytest.raises(ValueError, match="Truncated"):
+    with pytest.raises(OSError, match="End off buffer"):
         parser.read_number(bytes([251]), 1, 251)
 
 

@@ -161,11 +161,19 @@ class Type1CharStringParser:
                 results.append(self.remove_integer(sequence))
 
         # Pop must follow immediately (Type1CharStringParser.java:182).
-        n = len(data)
+        #
+        # Upstream peeks ``input.peekUnsignedByte(0)`` then
+        # ``peekUnsignedByte(1)`` unconditionally; ``DataInputByteArray``
+        # raises ``IOException`` (-> ``OSError`` here) when either offset
+        # is past the end of the buffer (DataInputByteArray.java:126). A
+        # truncated charstring whose ``callothersubr`` is not followed by
+        # the bytes the pop-peek needs therefore throws, rather than
+        # silently exiting the loop. We mirror that EOF-throws contract
+        # via ``_peek_unsigned_byte`` instead of guarding with a bounds
+        # check (which would swallow the upstream error).
         while (
-            i + 1 < n
-            and data[i] == _TWO_BYTE
-            and data[i + 1] == _POP
+            self._peek_unsigned_byte(data, i) == _TWO_BYTE
+            and self._peek_unsigned_byte(data, i + 1) == _POP
         ):
             i += 2
             if results:
@@ -204,14 +212,35 @@ class Type1CharStringParser:
         raise OSError(msg)
 
     # ---------- byte-level readers -----------------------------------------
+    @staticmethod
+    def _peek_unsigned_byte(data: bytes, offset: int) -> int:
+        """Mirror upstream ``DataInputByteArray.peekUnsignedByte``
+        (DataInputByteArray.java:120). A negative offset or an offset at /
+        past the end of the buffer raises ``OSError`` (upstream's
+        ``IOException``); otherwise returns the unsigned byte. The
+        ``callothersubr`` pop-peel loop relies on this throwing at EOF so
+        a truncated charstring matches upstream rather than silently
+        ending the loop."""
+        if offset < 0:
+            msg = "offset is negative"
+            raise OSError(msg)
+        if offset >= len(data):
+            msg = f"Offset position is out of range {offset} >= {len(data)}"
+            raise OSError(msg)
+        return data[offset]
+
     def read_command(
         self, data: bytes, i: int, b0: int
     ) -> tuple[CharStringCommand, int]:
-        """Mirrors upstream ``readCommand`` (Type1CharStringParser.java:217)."""
+        """Mirrors upstream ``readCommand`` (Type1CharStringParser.java:217).
+
+        The two-byte escape reads its second byte through
+        ``readUnsignedByte``, which throws ``IOException`` (-> ``OSError``)
+        on a truncated buffer (DataInputByteArray.java:103)."""
         if b0 == 12:
             if i >= len(data):
-                msg = "Truncated two-byte Type 1 command"
-                raise ValueError(msg)
+                msg = "End off buffer reached"
+                raise OSError(msg)
             b1 = data[i]
             return CharStringCommand.get_instance(b0, b1), i + 1
         return CharStringCommand.get_instance(b0), i
@@ -219,27 +248,33 @@ class Type1CharStringParser:
     def read_number(
         self, data: bytes, i: int, b0: int
     ) -> tuple[int, int]:
-        """Mirrors upstream ``readNumber`` (Type1CharStringParser.java:227)."""
+        """Mirrors upstream ``readNumber`` (Type1CharStringParser.java:227).
+
+        Operand follow-up bytes are read through ``readUnsignedByte`` /
+        ``readInt``, which raise ``IOException`` (-> ``OSError``) when the
+        buffer is exhausted mid-operand (DataInputByteArray.java:103)."""
         if 32 <= b0 <= 246:
             return b0 - 139, i
         if 247 <= b0 <= 250:
             if i >= len(data):
-                msg = "Truncated Type 1 operand"
-                raise ValueError(msg)
+                msg = "End off buffer reached"
+                raise OSError(msg)
             b1 = data[i]
             return (b0 - 247) * 256 + b1 + 108, i + 1
         if 251 <= b0 <= 254:
             if i >= len(data):
-                msg = "Truncated Type 1 operand"
-                raise ValueError(msg)
+                msg = "End off buffer reached"
+                raise OSError(msg)
             b1 = data[i]
             return -(b0 - 251) * 256 - b1 - 108, i + 1
         if b0 == 255:
             if i + 4 > len(data):
-                msg = "Truncated Type 1 32-bit operand"
-                raise ValueError(msg)
+                msg = "End off buffer reached"
+                raise OSError(msg)
             value = int.from_bytes(data[i : i + 4], "big", signed=True)
             return value, i + 4
+        # Upstream throws ``IllegalArgumentException`` here
+        # (Type1CharStringParser.java:249) -> ``ValueError``.
         msg = f"Invalid Type 1 operand byte {b0:#x}"
         raise ValueError(msg)
 

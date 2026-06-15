@@ -184,8 +184,10 @@ def test_type1_read_number_32bit() -> None:
 
 
 def test_type1_read_number_32bit_truncated() -> None:
+    # Upstream reads the operand through ``DataInput.readInt`` which raises
+    # ``IOException`` (-> ``OSError``) at EOF (wave 1525 oracle parity).
     parser = Type1CharStringParser("Test")
-    with pytest.raises(ValueError):
+    with pytest.raises(OSError, match="End off buffer"):
         parser.read_number(bytes([255, 0, 0]), 1, 255)
 
 
@@ -204,8 +206,10 @@ def test_type1_read_command_two_byte() -> None:
 
 
 def test_type1_read_command_two_byte_truncated() -> None:
+    # The escape's second byte is read through ``readUnsignedByte`` which
+    # raises ``IOException`` (-> ``OSError``) at EOF (wave 1525 oracle parity).
     parser = Type1CharStringParser("Test")
-    with pytest.raises(ValueError):
+    with pytest.raises(OSError, match="End off buffer"):
         parser.read_command(bytes([12]), 1, 12)
 
 
@@ -241,8 +245,9 @@ def test_type1_process_call_other_subr_begin_flex() -> None:
     parser._current_glyph = "g"
     # othersubr 1 (begin flex), num_args=0
     seq: list = [0, 1]
-    # data: [16] CALLOTHERSUBR byte at i=0; we pass i=0
-    new_i = parser.process_call_other_subr(bytes([16]), 0, seq)
+    # data: [16] CALLOTHERSUBR at i=0 + a ``0x0e`` (ENDCHAR) terminator so
+    # the wave-1525 unconditional pop-peek has a readable non-POP byte.
+    new_i = parser.process_call_other_subr(bytes([16, 14]), 0, seq)
     assert new_i == 1
     assert seq[-2] == 1
     assert seq[-1] is CharStringCommand.COMMAND_CALLOTHERSUBR
@@ -359,10 +364,15 @@ def test_type2_get_subr_bytes_out_of_range_returns_none() -> None:
     assert parser.get_subr_bytes(subrs, gd) is None
 
 
-def test_type2_get_subr_bytes_empty_sequence_returns_none() -> None:
+def test_type2_get_subr_bytes_empty_sequence_raises() -> None:
+    # Wave 1525: upstream getSubrBytes does an unguarded
+    # sequence.remove(size-1); on an empty stack that is remove(-1) ->
+    # IndexOutOfBoundsException. pypdfbox now mirrors that by popping
+    # unconditionally (IndexError) instead of returning None.
     parser = Type2CharStringParser("Test")
     gd = _GlyphData()
-    assert parser.get_subr_bytes([b"\x0e"], gd) is None
+    with pytest.raises(IndexError):
+        parser.get_subr_bytes([b"\x0e"], gd)
 
 
 def test_type2_process_call_subr_with_local_index() -> None:

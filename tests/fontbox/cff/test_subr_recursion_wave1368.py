@@ -70,46 +70,42 @@ def test_nested_subr_calls_inline_both_bodies() -> None:
     assert seq[-1].get_type2_key_word() is Type2KeyWord.ENDCHAR
 
 
-def test_subr_call_with_no_pending_operand_is_noop() -> None:
-    # callgsubr with no operand on the stack: parser pops from an empty
-    # sequence and short-circuits (returns None from get_subr_bytes).
-    # The actual short-circuit happens *before* the pop because the
-    # check ``if not glyph_data.sequence`` returns early.
+def test_subr_call_with_no_pending_operand_raises() -> None:
+    # Wave 1525: callgsubr with no operand on the stack. Upstream
+    # getSubrBytes does an unguarded sequence.remove(size-1) -> remove(-1)
+    # -> IndexOutOfBoundsException; pypdfbox now mirrors that by popping
+    # the empty stack (IndexError) instead of short-circuiting to None.
     gsi = [b"\xc8\x0b"]  # Must not be reached.
     main = b"\x1d\x0e"  # callgsubr (no operand), then endchar
     parser = Type2CharStringParser("F")
-    seq = parser.parse(main, gsi, None, "")
-    # Only the endchar should be in the sequence; 61 must NOT appear.
-    assert 61 not in seq
-    assert seq[-1].get_type2_key_word() is Type2KeyWord.ENDCHAR
+    with pytest.raises(IndexError):
+        parser.parse(main, gsi, None, "")
 
 
-def test_subr_call_with_float_operand_does_not_resolve() -> None:
-    # Sole top-of-stack is a fixed-point float (b0=255) followed by
-    # callgsubr. Per upstream behaviour, get_subr_bytes returns None
-    # when the popped operand isn't an int.
+def test_subr_call_with_float_operand_raises() -> None:
+    # Wave 1525: sole top-of-stack is a fixed-point float (b0=255) followed
+    # by callgsubr. Upstream casts the popped operand to (Integer), which
+    # throws ClassCastException for a Double; pypdfbox now raises TypeError
+    # instead of returning None and leaving the float on the stack.
     gsi = [b"\xc8\x0b"]
     # Push 1.0 (b0=255, 0x00010000 → 1 + 0/65535) then callgsubr.
     main = b"\xff\x00\x01\x00\x00\x1d\x0e"
     parser = Type2CharStringParser("F")
-    seq = parser.parse(main, gsi, None, "")
-    # The float remained on the stack; callgsubr inert; 61 not inlined.
-    assert 61 not in seq
+    with pytest.raises(TypeError):
+        parser.parse(main, gsi, None, "")
 
 
-def test_subr_call_out_of_range_index_no_op() -> None:
-    # Single gsubr → bias 107. Push operand=200 → subr_number = 307;
-    # 307 >= len(gsi)==1 → get_subr_bytes returns None.
-    # Encode 200: tinyint range is [-107, 107]; need 2-byte encoding.
-    # (b0=247..250) → first form: b0=248, b1=0 → 1*256+0+108 = 364.
-    # Actually for 200: b0=247, b1=200-108 = 92 → (0)*256+92+108=200.
+def test_subr_call_out_of_range_index_raises() -> None:
+    # Wave 1525: single gsubr → bias 107. Push operand=200 → subr_number =
+    # 307; 307 >= len(gsi)==1 so getSubrBytes returns null upstream, which
+    # is then fed unguarded into processSubr -> new DataInputByteArray(null)
+    # -> NullPointerException. pypdfbox now propagates the None as TypeError
+    # (bytes(None)) instead of swallowing it via a null guard.
     gsi = [b"\xc8\x0b"]
     main = b"\xf7\x5c\x1d\x0e"  # push 200 (b0=247, b1=92), callgsubr, endchar
     parser = Type2CharStringParser("F")
-    seq = parser.parse(main, gsi, None, "")
-    # 61 NOT inlined because the bias lookup misses.
-    assert 61 not in seq
-    assert seq[-1].get_type2_key_word() is Type2KeyWord.ENDCHAR
+    with pytest.raises(TypeError):
+        parser.parse(main, gsi, None, "")
 
 
 def test_self_referencing_global_subr_terminates_via_recursion_error() -> None:
