@@ -62,9 +62,15 @@ class PDAnnotationWidget(PDAnnotation):
     # ---------- /H (highlighting mode) ----------
 
     def get_highlighting_mode(self) -> str:
-        """Default per spec is INVERT (``I``)."""
-        value = self._dict.get_name(_H)
-        return value if value is not None else "I"
+        """Default per spec is INVERT (``I``).
+
+        Mirrors upstream ``getCOSObject().getNameAsString(COSName.H, "I")``
+        (PDFBox 3.0.7): a ``/H`` name returns its name, a ``/H`` *string*
+        returns its decoded value, and any other shape (int, array, null,
+        absent) falls back to the spec default ``I``. Using ``get_name``
+        here would wrongly discard a string-typed ``/H``.
+        """
+        return self._dict.get_name_as_string(_H, "I")
 
     def set_highlighting_mode(self, mode: str | None) -> None:
         if mode is None:

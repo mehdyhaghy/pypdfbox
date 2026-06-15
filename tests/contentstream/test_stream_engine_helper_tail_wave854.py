@@ -58,19 +58,18 @@ def test_wave854_recording_graphics_engine_records_paint_clip_and_shading() -> N
         engine.process_operator(name, [])
     engine.process_operator("sh", [shade])
 
+    # No MoveTo establishes a current point, so ``h`` and the close-then-paint
+    # operators (``s``, ``b``, ``b*``) guard out their ``close_path`` step
+    # (upstream ``ClosePath`` warn-skips without a current point).
     assert engine.events == [
-        ("close_path", ()),
         ("stroke_path", ()),
-        ("close_path", ()),
         ("stroke_path", ()),
         ("fill_path", (1,)),
         ("fill_path", (1,)),
         ("fill_path", (0,)),
         ("fill_and_stroke_path", (1,)),
         ("fill_and_stroke_path", (0,)),
-        ("close_path", ()),
         ("fill_and_stroke_path", (1,)),
-        ("close_path", ()),
         ("fill_and_stroke_path", (0,)),
         ("end_path", ()),
         ("clip", (1,)),

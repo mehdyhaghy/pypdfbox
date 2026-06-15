@@ -15,8 +15,11 @@ def metadata() -> XMPMetadata:
 
 def test_to_string_empty(metadata: XMPMetadata) -> None:
     dim = DimensionsType(metadata)
-    # Unset fields surface as ``None`` in the upstream-style format.
-    assert dim.to_string() == "DimensionsType{None x None None}"
+    # Unset fields render as the literal ``null`` — upstream
+    # ``DimensionsType.toString()`` concatenates the (null) Float/String field
+    # references, which Java renders as ``"null"`` (proven against the live
+    # xmpbox 3.0.7 jar in wave 1536's oracle test, ``dim_tostring_empty``).
+    assert dim.to_string() == "DimensionsType{null x null null}"
 
 
 def test_to_string_populated(metadata: XMPMetadata) -> None:

@@ -302,21 +302,19 @@ def test_round_trip_painting_operators() -> None:
     engine.process_stream(stream)
 
     sequence = [(name, args) for name, args in engine.events]
-    # ``s``  : close_path + stroke_path
-    # ``b``  : close_path + fill_and_stroke_path(non_zero)
-    # ``b*`` : close_path + fill_and_stroke_path(even_odd)
+    # No MoveTo precedes these operators, so there is no current point.
+    # Per upstream ``ClosePath`` (warn-skip without a current point), the
+    # close-then-paint operators (``s``, ``b``, ``b*``) emit only the paint
+    # hook — the ``close_path`` step is guarded out.
     assert sequence == [
         ("stroke_path", ()),
-        ("close_path", ()),
         ("stroke_path", ()),
         ("fill_path", (WIND_NON_ZERO,)),
         ("fill_path", (WIND_NON_ZERO,)),
         ("fill_path", (WIND_EVEN_ODD,)),
         ("fill_and_stroke_path", (WIND_NON_ZERO,)),
         ("fill_and_stroke_path", (WIND_EVEN_ODD,)),
-        ("close_path", ()),
         ("fill_and_stroke_path", (WIND_NON_ZERO,)),
-        ("close_path", ()),
         ("fill_and_stroke_path", (WIND_EVEN_ODD,)),
         ("end_path", ()),
     ]
@@ -387,13 +385,19 @@ def test_round_trip_device_color_operators() -> None:
 
 
 def test_close_and_stroke_decomposes_to_close_then_stroke() -> None:
-    """The ``s`` operator should fire ``close_path`` *before*
-    ``stroke_path`` — order matters because subclasses may rely on the
-    closed subpath being part of the stroke."""
+    """With a current point, the ``s`` operator should fire ``close_path``
+    *before* ``stroke_path`` — order matters because subclasses may rely on
+    the closed subpath being part of the stroke."""
     engine = _RecordingGraphicsEngine()
-    stream = _BytesContentStream(b"s")
+    # A preceding MoveTo establishes the current point so ``close_path`` is
+    # not guarded out (upstream ``ClosePath`` warn-skips without one).
+    stream = _BytesContentStream(b"10 20 m s")
     engine.process_stream(stream)
-    assert engine.events == [("close_path", ()), ("stroke_path", ())]
+    assert engine.events == [
+        ("move_to", (10.0, 20.0)),
+        ("close_path", ()),
+        ("stroke_path", ()),
+    ]
 
 
 def test_path_then_paint_full_sequence() -> None:

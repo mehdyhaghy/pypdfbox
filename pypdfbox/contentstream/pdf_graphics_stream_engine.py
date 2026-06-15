@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any
 
 from pypdfbox.cos import COSBase, COSName, COSNumber
 
-from .operator import Operator, OperatorName
+from .operator import MissingOperandException, Operator, OperatorName
 from .operator.color.set_non_stroking_cmyk import SetNonStrokingCMYK
 from .operator.color.set_non_stroking_color import SetNonStrokingColor
 from .operator.color.set_non_stroking_color_n import SetNonStrokingColorN
@@ -89,6 +89,36 @@ if TYPE_CHECKING:
 # refer to them by name without pulling in java.awt.
 WIND_EVEN_ODD: int = 0
 WIND_NON_ZERO: int = 1
+
+# The operators whose semantics ``PDFGraphicsStreamEngine.process_operator``
+# handles inline (driving the abstract path / painting / clipping / shading /
+# save-restore hooks) rather than deferring to the registered lite stubs.
+_INLINE_PATH_OPERATORS: frozenset[str] = frozenset(
+    {
+        OperatorName.MOVE_TO,
+        OperatorName.LINE_TO,
+        OperatorName.CURVE_TO,
+        OperatorName.CURVE_TO_REPLICATE_INITIAL_POINT,
+        OperatorName.CURVE_TO_REPLICATE_FINAL_POINT,
+        OperatorName.APPEND_RECT,
+        OperatorName.CLOSE_PATH,
+        OperatorName.STROKE_PATH,
+        OperatorName.CLOSE_AND_STROKE,
+        OperatorName.FILL_NON_ZERO,
+        OperatorName.LEGACY_FILL_NON_ZERO,
+        OperatorName.FILL_EVEN_ODD,
+        OperatorName.FILL_NON_ZERO_AND_STROKE,
+        OperatorName.FILL_EVEN_ODD_AND_STROKE,
+        OperatorName.CLOSE_FILL_NON_ZERO_AND_STROKE,
+        OperatorName.CLOSE_FILL_EVEN_ODD_AND_STROKE,
+        OperatorName.ENDPATH,
+        OperatorName.CLIP_NON_ZERO,
+        OperatorName.CLIP_EVEN_ODD,
+        OperatorName.SAVE,
+        OperatorName.RESTORE,
+        OperatorName.SHADING_FILL,
+    }
+)
 
 
 class PDFGraphicsStreamEngine(PDFStreamEngine):
@@ -283,8 +313,47 @@ class PDFGraphicsStreamEngine(PDFStreamEngine):
             operator = Operator.get_operator(operator)
         name = operator.get_name()
 
+        # The path / painting / clipping / shading operators are handled
+        # inline here (rather than by the registered lite stubs). Upstream
+        # routes EVERY operator through ``PDFStreamEngine.processOperator``,
+        # which wraps the processor call in a try/catch that funnels
+        # ``IOException`` into ``operatorException`` (so a
+        # ``MissingOperandException`` from a malformed path op is logged and
+        # swallowed, not propagated). Mirror that wrapper here so the inline
+        # path-op dispatch gets the same lenient error policy.
+        if self._is_inline_path_operator(name):
+            try:
+                self._process_path_operator(name, operator, operands)
+            except OSError as exc:  # IOException on the upstream side
+                self.operator_exception(operator, operands, exc)
+            return
+
+        # Anything else: defer to the standard registered-processor path
+        # (q / Q / cm / colour / text / Do / BI / marked content /
+        # set-state operators) — those drive the existing engine hooks
+        # (save_graphics_state / restore_graphics_state / begin_text /
+        # end_text / show_text_string / etc.) without further wiring.
+        super().process_operator(operator, operands)
+
+    @staticmethod
+    def _is_inline_path_operator(name: str) -> bool:
+        """True for the path-construction / painting / clipping / save /
+        restore / shading operators handled inline by
+        :meth:`_process_path_operator`."""
+        return name in _INLINE_PATH_OPERATORS
+
+    def _process_path_operator(
+        self,
+        name: str,
+        operator: Operator,
+        operands: list[COSBase],
+    ) -> None:
         # Path construction
         if name == OperatorName.MOVE_TO:
+            # Upstream MoveTo raises MissingOperandException when fewer than
+            # two operands are present (before the per-operand type check).
+            if len(operands) < 2:
+                raise MissingOperandException(operator, operands)
             x = self._coerce_float(operands, 0)
             y = self._coerce_float(operands, 1)
             if x is None or y is None:
@@ -293,14 +362,23 @@ class PDFGraphicsStreamEngine(PDFStreamEngine):
             self.move_to(tx, ty)
             return
         if name == OperatorName.LINE_TO:
+            if len(operands) < 2:
+                raise MissingOperandException(operator, operands)
             x = self._coerce_float(operands, 0)
             y = self._coerce_float(operands, 1)
             if x is None or y is None:
                 return
             tx, ty = self.transformed_point(x, y)
-            self.line_to(tx, ty)
+            # Upstream LineTo: without an initial MoveTo (no current point)
+            # it warn-logs and falls back to moveTo rather than lineTo.
+            if self.get_current_point() is None:
+                self.move_to(tx, ty)
+            else:
+                self.line_to(tx, ty)
             return
         if name == OperatorName.CURVE_TO:
+            if len(operands) < 6:
+                raise MissingOperandException(operator, operands)
             coords = self._coerce_floats(operands, 6)
             if coords is None:
                 return
@@ -308,32 +386,55 @@ class PDFGraphicsStreamEngine(PDFStreamEngine):
             p1 = self.transformed_point(x1, y1)
             p2 = self.transformed_point(x2, y2)
             p3 = self.transformed_point(x3, y3)
-            self.curve_to(p1[0], p1[1], p2[0], p2[1], p3[0], p3[1])
+            # Upstream CurveTo: without an initial MoveTo (no current point)
+            # it warn-logs and falls back to moveTo(x3, y3).
+            if self.get_current_point() is None:
+                self.move_to(p3[0], p3[1])
+            else:
+                self.curve_to(p1[0], p1[1], p2[0], p2[1], p3[0], p3[1])
             return
         if name == OperatorName.CURVE_TO_REPLICATE_INITIAL_POINT:
             # v: first control point = current point
+            if len(operands) < 4:
+                raise MissingOperandException(operator, operands)
             coords = self._coerce_floats(operands, 4)
             if coords is None:
                 return
             x2, y2, x3, y3 = coords
-            current = self.get_current_point()
-            if current is None:
-                return
             p2 = self.transformed_point(x2, y2)
             p3 = self.transformed_point(x3, y3)
-            self.curve_to(current[0], current[1], p2[0], p2[1], p3[0], p3[1])
+            current = self.get_current_point()
+            # Upstream CurveToReplicateInitialPoint: without an initial
+            # MoveTo (no current point) it warn-logs and falls back to
+            # moveTo(x3, y3) — not a silent skip.
+            if current is None:
+                self.move_to(p3[0], p3[1])
+            else:
+                self.curve_to(
+                    current[0], current[1], p2[0], p2[1], p3[0], p3[1]
+                )
             return
         if name == OperatorName.CURVE_TO_REPLICATE_FINAL_POINT:
             # y: second control point = end point
+            if len(operands) < 4:
+                raise MissingOperandException(operator, operands)
             coords = self._coerce_floats(operands, 4)
             if coords is None:
                 return
             x1, y1, x3, y3 = coords
             p1 = self.transformed_point(x1, y1)
             p3 = self.transformed_point(x3, y3)
-            self.curve_to(p1[0], p1[1], p3[0], p3[1], p3[0], p3[1])
+            # Upstream CurveToReplicateFinalPoint: without an initial
+            # MoveTo (no current point) it warn-logs and falls back to
+            # moveTo(x3, y3).
+            if self.get_current_point() is None:
+                self.move_to(p3[0], p3[1])
+            else:
+                self.curve_to(p1[0], p1[1], p3[0], p3[1], p3[0], p3[1])
             return
         if name == OperatorName.APPEND_RECT:
+            if len(operands) < 4:
+                raise MissingOperandException(operator, operands)
             coords = self._coerce_floats(operands, 4)
             if coords is None:
                 return
@@ -345,7 +446,7 @@ class PDFGraphicsStreamEngine(PDFStreamEngine):
             self.append_rectangle(p0, p1, p2, p3)
             return
         if name == OperatorName.CLOSE_PATH:
-            self.close_path()
+            self._close_path_if_open()
             return
 
         # Path painting
@@ -353,7 +454,7 @@ class PDFGraphicsStreamEngine(PDFStreamEngine):
             self.stroke_path()
             return
         if name == OperatorName.CLOSE_AND_STROKE:
-            self.close_path()
+            self._close_path_if_open()
             self.stroke_path()
             return
         if name == OperatorName.FILL_NON_ZERO:
@@ -372,11 +473,11 @@ class PDFGraphicsStreamEngine(PDFStreamEngine):
             self.fill_and_stroke_path(WIND_EVEN_ODD)
             return
         if name == OperatorName.CLOSE_FILL_NON_ZERO_AND_STROKE:
-            self.close_path()
+            self._close_path_if_open()
             self.fill_and_stroke_path(WIND_NON_ZERO)
             return
         if name == OperatorName.CLOSE_FILL_EVEN_ODD_AND_STROKE:
-            self.close_path()
+            self._close_path_if_open()
             self.fill_and_stroke_path(WIND_EVEN_ODD)
             return
         if name == OperatorName.ENDPATH:
@@ -410,13 +511,6 @@ class PDFGraphicsStreamEngine(PDFStreamEngine):
             if shading_name is not None:
                 self.shading_fill(shading_name)
             return
-
-        # Anything else: defer to the standard registered-processor path
-        # (q / Q / cm / colour / text / Do / BI / marked content /
-        # set-state operators) — those drive the existing engine hooks
-        # (save_graphics_state / restore_graphics_state / begin_text /
-        # end_text / show_text_string / etc.) without further wiring.
-        super().process_operator(operator, operands)
 
     # ---------- abstract hooks ----------
 
@@ -519,6 +613,20 @@ class PDFGraphicsStreamEngine(PDFStreamEngine):
 
     # ---------- helpers ----------
 
+    def _close_path_if_open(self) -> None:
+        """Close the current subpath only when a subpath is open.
+
+        Mirrors upstream ``ClosePath.process``: it fetches
+        ``getCurrentPoint()`` and warn-logs + returns without calling
+        ``closePath()`` when there is no current point ("ClosePath
+        without initial MoveTo"). The ``s`` / ``b`` / ``b*`` operators
+        route their close step through ``processOperator("h", ...)``
+        upstream, so they inherit the same guard; pypdfbox funnels all
+        four through this helper for parity."""
+        if self.get_current_point() is None:
+            return
+        self.close_path()
+
     @staticmethod
     def _coerce_float(operands: list[COSBase], index: int) -> float | None:
         if index >= len(operands):
@@ -534,12 +642,20 @@ class PDFGraphicsStreamEngine(PDFStreamEngine):
     ) -> tuple[float, ...] | None:
         if len(operands) < count:
             return None
-        out: list[float] = []
-        for i in range(count):
-            v = operands[i]
+        # Upstream c / v / y / re call
+        # ``checkArrayTypesClass(operands, COSNumber.class)`` over the WHOLE
+        # operand list, not just the consumed window: a trailing non-number
+        # operand (e.g. ``x y w h /Name re``) makes the operator a silent
+        # no-op. Mirror that whole-list guard here (same divergence class as
+        # ``cm`` / ``Tm`` in waves 1525 / 1534).
+        for v in operands:
             if not isinstance(v, COSNumber):
                 return None
-            out.append(v.float_value())
+        out: list[float] = []
+        for i in range(count):
+            value = operands[i]
+            assert isinstance(value, COSNumber)
+            out.append(value.float_value())
         return tuple(out)
 
 

@@ -82,20 +82,25 @@ def test_stream_engine_to_float_returns_none_for_non_number() -> None:
     assert PDFStreamEngine._to_float(COSString(b"bad")) is None
 
 
-def test_graphics_engine_uses_first_operands_and_ignores_trailing_noise() -> None:
+def test_graphics_engine_rejects_trailing_non_number_operand() -> None:
     engine = _RecordingGraphicsEngine()
 
     engine.process_operator("c", [*_ints(1, 2, 3, 4, 5, 6), COSString(b"noise")])
 
-    assert engine.events == [("curve_to", (1.0, 2.0, 3.0, 4.0, 5.0, 6.0))]
+    # Upstream ``checkArrayTypesClass`` guards the WHOLE operand list: a
+    # trailing non-number operand makes the operator a silent no-op rather
+    # than consuming just the first N operands.
+    assert engine.events == []
 
 
-def test_graphics_engine_skips_replicated_initial_curve_without_current_point() -> None:
+def test_graphics_engine_replicated_initial_curve_falls_back_to_move_to_without_point() -> None:
     engine = _RecordingGraphicsEngine()
 
     engine.process_operator("v", _ints(1, 2, 3, 4))
 
-    assert engine.events == []
+    # Upstream ``CurveToReplicateInitialPoint`` warn-logs and falls back to a
+    # MoveTo to the curve's end point (x3, y3) when there is no current point.
+    assert engine.events == [("move_to", (3.0, 4.0))]
 
 
 def test_graphics_engine_skips_shading_fill_when_operand_is_not_name() -> None:
@@ -109,9 +114,13 @@ def test_graphics_engine_skips_shading_fill_when_operand_is_not_name() -> None:
 def test_graphics_engine_close_fill_and_stroke_routes_close_then_nonzero() -> None:
     engine = _RecordingGraphicsEngine()
 
+    # A preceding MoveTo establishes the current point so ``close_path`` is
+    # not guarded out (upstream ``ClosePath`` warn-skips without one).
+    engine.process_operator("m", _ints(10, 20))
     engine.process_operator("b", None)
 
     assert engine.events == [
+        ("move_to", (10.0, 20.0)),
         ("close_path", ()),
         ("fill_and_stroke_path", (WIND_NON_ZERO,)),
     ]

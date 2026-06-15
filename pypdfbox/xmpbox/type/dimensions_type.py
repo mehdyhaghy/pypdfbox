@@ -85,5 +85,17 @@ class DimensionsType(AbstractStructuredType):
         """Mirrors upstream ``DimensionsType.toString()`` —
         ``DimensionsType{<w> x <h> <unit>}``. Surfaced explicitly so
         callers porting from PDFBox can keep the literal
-        ``.toString()`` invocation spelled snake_case."""
-        return f"DimensionsType{{{self.get_w()} x {self.get_h()} {self.get_unit()}}}"
+        ``.toString()`` invocation spelled snake_case.
+
+        Missing fields render as the literal ``null`` (upstream interpolates
+        the ``Float`` / ``String`` field objects via Java string concatenation,
+        which renders a ``null`` reference as ``"null"`` — not Python's
+        ``"None"``)."""
+
+        def _render(value: object | None) -> str:
+            return "null" if value is None else str(value)
+
+        return (
+            f"DimensionsType{{{_render(self.get_w())} x "
+            f"{_render(self.get_h())} {_render(self.get_unit())}}}"
+        )

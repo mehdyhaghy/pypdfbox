@@ -167,8 +167,19 @@ def test_append_rect_dispatches_four_corners() -> None:
 
 def test_close_path_h_dispatches() -> None:
     engine = _RecordingEngine()
+    # Upstream ClosePath is a no-op without an initial MoveTo (no current
+    # point); open a subpath first so the close actually fires.
+    engine.process_operator("m", [_f(1.0), _f(2.0)])
     engine.process_operator("h", [])
-    assert engine.events == [("close_path", ())]
+    assert engine.events == [("move_to", (1.0, 2.0)), ("close_path", ())]
+
+
+def test_close_path_h_without_current_point_is_noop() -> None:
+    """``h`` with no current point warn-logs and does not close (mirrors
+    upstream ``ClosePath.process``'s ``getCurrentPoint() == null`` guard)."""
+    engine = _RecordingEngine()
+    engine.process_operator("h", [])
+    assert engine.events == []
 
 
 # ---------- path painting routing ----------
@@ -182,8 +193,15 @@ def test_stroke_path_S_dispatches() -> None:
 
 def test_close_and_stroke_s_dispatches_close_then_stroke() -> None:
     engine = _RecordingEngine()
+    # ``s`` routes its close through ``h`` upstream, so it only closes when
+    # a subpath is open; open one first.
+    engine.process_operator("m", [_f(1.0), _f(2.0)])
     engine.process_operator("s", [])
-    assert engine.events == [("close_path", ()), ("stroke_path", ())]
+    assert engine.events == [
+        ("move_to", (1.0, 2.0)),
+        ("close_path", ()),
+        ("stroke_path", ()),
+    ]
 
 
 def test_fill_path_f_uses_non_zero_winding() -> None:
@@ -219,8 +237,10 @@ def test_fill_and_stroke_B_star_even_odd() -> None:
 
 def test_close_fill_and_stroke_b_non_zero() -> None:
     engine = _RecordingEngine()
+    engine.process_operator("m", [_f(1.0), _f(2.0)])
     engine.process_operator("b", [])
     assert engine.events == [
+        ("move_to", (1.0, 2.0)),
         ("close_path", ()),
         ("fill_and_stroke_path", (WIND_NON_ZERO,)),
     ]
@@ -228,8 +248,10 @@ def test_close_fill_and_stroke_b_non_zero() -> None:
 
 def test_close_fill_and_stroke_b_star_even_odd() -> None:
     engine = _RecordingEngine()
+    engine.process_operator("m", [_f(1.0), _f(2.0)])
     engine.process_operator("b*", [])
     assert engine.events == [
+        ("move_to", (1.0, 2.0)),
         ("close_path", ()),
         ("fill_and_stroke_path", (WIND_EVEN_ODD,)),
     ]
@@ -305,13 +327,27 @@ def test_curve_to_with_short_operand_list_skipped() -> None:
     assert engine.events == []
 
 
-def test_v_without_current_point_silently_skipped() -> None:
-    """``v`` requires a current path point (replicates it). When no
-    path is open ``get_current_point`` returns ``None`` and the dispatch
-    silently no-ops."""
+def test_v_without_current_point_falls_back_to_move_to() -> None:
+    """``v`` replicates the current point as its first control point. When
+    no subpath is open (``get_current_point`` is ``None``) upstream
+    ``CurveToReplicateInitialPoint`` warn-logs and falls back to
+    ``moveTo(x3, y3)`` — the endpoint — rather than a silent skip."""
     engine = _RecordingEngine()  # no preceding move_to
     engine.process_operator("v", [_f(1.0), _f(2.0), _f(3.0), _f(4.0)])
-    assert engine.events == []
+    # x3, y3 = operands[2], operands[3] = (3.0, 4.0)
+    assert engine.events == [("move_to", (3.0, 4.0))]
+
+
+def test_v_with_current_point_dispatches_curve() -> None:
+    """With a subpath open, ``v`` uses the current point as the first
+    control point and dispatches ``curve_to``."""
+    engine = _RecordingEngine()
+    engine.process_operator("m", [_f(10.0), _f(20.0)])
+    engine.process_operator("v", [_f(1.0), _f(2.0), _f(3.0), _f(4.0)])
+    assert engine.events == [
+        ("move_to", (10.0, 20.0)),
+        ("curve_to", (10.0, 20.0, 1.0, 2.0, 3.0, 4.0)),
+    ]
 
 
 # ---------- unsupported (unknown operator) ----------

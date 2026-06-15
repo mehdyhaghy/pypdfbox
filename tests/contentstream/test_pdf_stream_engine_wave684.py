@@ -182,7 +182,7 @@ def test_wave684_graphics_drops_short_or_non_numeric_path_operands() -> None:
     assert engine.events == []
 
 
-def test_wave684_graphics_v_drops_when_current_point_missing() -> None:
+def test_wave684_graphics_v_falls_back_to_move_to_when_current_point_missing() -> None:
     engine = _RecordingGraphicsEngine()
 
     engine.process_operator(
@@ -190,4 +190,6 @@ def test_wave684_graphics_v_drops_when_current_point_missing() -> None:
         [COSInteger.get(1), COSInteger.get(2), COSInteger.get(3), COSInteger.get(4)],
     )
 
-    assert engine.events == []
+    # Upstream ``CurveToReplicateInitialPoint`` warn-logs and falls back to a
+    # MoveTo to the curve's end point (x3, y3) when there is no current point.
+    assert engine.events == [("move_to", (3.0, 4.0))]

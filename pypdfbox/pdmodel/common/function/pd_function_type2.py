@@ -31,10 +31,19 @@ class PDFunctionType2(PDFunction):
 
     def get_c0(self) -> list[float]:
         """Return ``/C0`` as a Python list of floats. Defaults to ``[0.0]``
-        when the key is absent, per PDF 32000-1 §7.10.3."""
+        when the key is absent, per PDF 32000-1 §7.10.3.
+
+        Upstream parity: the PDFBox constructor materialises ``[0]`` not only
+        when ``/C0`` is missing but also when it is **present yet empty** — it
+        does ``if (c0.size() == 0) c0.add(new COSFloat(0))``
+        (PDFunctionType2 constructor). So an explicit empty ``/C0`` array must
+        also yield ``[0.0]`` here; returning ``[]`` would make eval produce
+        zero output components instead of one (oracle-confirmed wave 1536)."""
         item = self.get_cos_object().get_dictionary_object(_C0)
         if isinstance(item, COSArray):
-            return item.to_float_array()
+            values = item.to_float_array()
+            if values:
+                return values
         return [0.0]
 
     def get_c0_array(self) -> COSArray:
@@ -48,7 +57,7 @@ class PDFunctionType2(PDFunction):
         underlying COS object in place.
         """
         item = self.get_cos_object().get_dictionary_object(_C0)
-        if isinstance(item, COSArray):
+        if isinstance(item, COSArray) and len(item) > 0:
             return item
         default = COSArray()
         default.set_float_array([0.0])
@@ -69,17 +78,25 @@ class PDFunctionType2(PDFunction):
 
     def get_c1(self) -> list[float]:
         """Return ``/C1`` as a Python list of floats. Defaults to ``[1.0]``
-        when the key is absent, per PDF 32000-1 §7.10.3."""
+        when the key is absent, per PDF 32000-1 §7.10.3.
+
+        Upstream parity: as with :meth:`get_c0`, the PDFBox constructor
+        materialises ``[1]`` for a ``/C1`` that is present but empty
+        (``if (c1.size() == 0) c1.add(new COSFloat(1))``). An explicit empty
+        ``/C1`` array therefore yields ``[1.0]`` here (oracle-confirmed
+        wave 1536)."""
         item = self.get_cos_object().get_dictionary_object(_C1)
         if isinstance(item, COSArray):
-            return item.to_float_array()
+            values = item.to_float_array()
+            if values:
+                return values
         return [1.0]
 
     def get_c1_array(self) -> COSArray:
         """Return the underlying ``/C1`` ``COSArray`` (or the spec default
         ``[1.0]`` when absent). See :meth:`get_c0_array` for rationale."""
         item = self.get_cos_object().get_dictionary_object(_C1)
-        if isinstance(item, COSArray):
+        if isinstance(item, COSArray) and len(item) > 0:
             return item
         default = COSArray()
         default.set_float_array([1.0])
@@ -227,7 +244,24 @@ class PDFunctionType2(PDFunction):
 
 
 def _pow_as_pdf_float(base: float, exponent: float) -> float:
-    """Evaluate exponentiation in the Java/PDFBox-style float domain."""
+    """Evaluate exponentiation matching Java ``Math.pow`` semantics.
+
+    PDFBox eval does ``(float) Math.pow((double) x, (double) exponent)``. Java
+    ``Math.pow`` and Python ``math.pow`` agree on most inputs but differ on the
+    boundary cases that Type 2 fuzz hits:
+
+    - ``Math.pow(0.0, negative)`` returns ``+Infinity`` (per the Java spec:
+      "if the first argument is +0 and the second is < 0, the result is
+      +Infinity"). Python ``math.pow(0.0, -1.0)`` raises ``ValueError``. A
+      Type 2 function with ``/N`` negative evaluated at ``x == 0`` must yield
+      ``Infinity`` to match PDFBox (oracle-confirmed wave 1536), not ``NaN``.
+    - ``Math.pow(negative, non-integer)`` returns ``NaN``. Python raises
+      ``ValueError`` for the same input; we map that to ``NaN``.
+    """
+    if base == 0.0 and exponent < 0.0:
+        # Java: +0 ** negative -> +Infinity. (Type 2 inputs are non-negative
+        # zero in practice; mirror the spec's +0 branch.)
+        return math.inf
     try:
         return math.pow(base, exponent)
     except ValueError:

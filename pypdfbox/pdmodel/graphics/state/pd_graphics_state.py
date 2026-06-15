@@ -22,8 +22,8 @@ from .rendering_intent import RenderingIntent
 
 if TYPE_CHECKING:
     from pypdfbox.cos import COSBase
-    from pypdfbox.pdmodel.common.pd_rectangle import PDRectangle
     from pypdfbox.pdmodel.graphics.color.pd_color_space import PDColorSpace
+    from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
     from .pd_soft_mask import PDSoftMask
 
