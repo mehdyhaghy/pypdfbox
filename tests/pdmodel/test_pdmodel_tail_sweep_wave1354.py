@@ -94,23 +94,29 @@ def test_label_generator_remove_unsupported() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_pd_stream_internal_get_decode_params_rejects_bogus_entry() -> None:
+def test_pd_stream_internal_get_decode_params_skips_bogus_entry() -> None:
+    # Wave 1529 aligned PDStream.internal_get_decode_params with upstream
+    # leniency: a non-dict/non-null /DecodeParms array element is SKIPPED
+    # (upstream logs and ignores it), not rejected. The list is therefore
+    # intentionally not index-aligned with /Filter on such holes.
     from pypdfbox.cos.cos_stream import COSStream
     from pypdfbox.pdmodel.common.pd_stream import PDStream
 
     cs = COSStream()
     # Build a /DecodeParms array with a stray non-dict/non-null entry.
     arr = COSArray()
-    arr.add(COSDictionary())
-    arr.add(COSInteger(42))  # not a dict and not COSNull → should raise
+    good = COSDictionary()
+    arr.add(good)
+    arr.add(COSInteger(42))  # not a dict and not COSNull → skipped, not raised
     cs.set_item(COSName.get_pdf_name("DecodeParms"), arr)
 
     pdstream = PDStream(cs)
-    with pytest.raises(TypeError, match="unexpected decode-params entry type"):
-        pdstream.internal_get_decode_params(
-            COSName.get_pdf_name("DecodeParms"),
-            COSName.get_pdf_name("DP"),
-        )
+    params = pdstream.internal_get_decode_params(
+        COSName.get_pdf_name("DecodeParms"),
+        COSName.get_pdf_name("DP"),
+    )
+    # The bogus COSInteger entry is dropped; only the dict survives.
+    assert [type(p).__name__ for p in params] == ["COSDictionary"]
 
 
 # ---------------------------------------------------------------------------

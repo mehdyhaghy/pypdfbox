@@ -497,7 +497,14 @@ def test_is_compress_tracks_object_stream_toggle() -> None:
 def test_write_reference_emits_indirect_token() -> None:
     """``write_reference(obj)`` is the public alias over the internal
     helper. Drives the writer to assign a key, then checks the emitted
-    ``num gen R`` token."""
+    ``num gen R`` token.
+
+    Note the classic full-save path RENUMBERS: upstream ``getObjectKey``
+    keys off the resolved actual's own ``getKey()``, which is ``None`` for a
+    freshly-built ``COSObject(7, 0, resolved=...)`` wrapper, so a fresh
+    contiguous ``(1, 0)`` is minted and the wrapper's declared ``7`` is
+    discarded — emitting ``1 0 R``, not ``7 0 R`` (oracle-confirmed against
+    PDFBox 3.0.7 ``COSWriter.writeReference``; CHANGES.md Wave 1530)."""
     sink = io.BytesIO()
     w = COSWriter(sink)
     try:
@@ -506,7 +513,7 @@ def test_write_reference_emits_indirect_token() -> None:
         # Wrap in a COSObject so the writer can attach a key.
         ref_holder = COSObject(7, 0, resolved=target)
         w.write_reference(ref_holder)
-        assert sink.getvalue() == b"7 0 R"
+        assert sink.getvalue() == b"1 0 R"
     finally:
         w.close()
 

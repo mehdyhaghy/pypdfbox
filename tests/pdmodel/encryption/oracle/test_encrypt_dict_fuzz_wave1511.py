@@ -36,6 +36,7 @@ of the open contract this probe validates, and is pinned in CHANGES.md.
 from __future__ import annotations
 
 import io
+import re
 from pathlib import Path
 
 import pytest
@@ -213,7 +214,13 @@ def _build_corpus() -> dict[str, bytes]:
     cases["p_zero_rc4"] = rc4_128.replace(b"/P -4", b"/P 0", 1)
 
     # ----- /CF and /CFM mutations (V4/V6) -----
-    cases["cf_missing_aes128"] = _drop_name_entry(aes_128, b"/CF 55 0 R")
+    # The /CF crypt-filter reference object number is assigned by the writer at
+    # save time (wave 1530 made the classic full-save path renumber objects
+    # contiguously like upstream COSWriter), so locate it dynamically rather
+    # than hard-coding a number that drifts when the writer renumbers.
+    _cf_ref = re.search(rb"/CF \d+ 0 R", aes_128)
+    assert _cf_ref is not None, "AES-128 /Encrypt dict has no indirect /CF reference"
+    cases["cf_missing_aes128"] = _drop_name_entry(aes_128, _cf_ref.group(0))
     cases["cfm_unknown_aes128"] = aes_128.replace(b"/CFM /AESV2", b"/CFM /BogusXX", 1)
     cases["stmf_unknown_aes128"] = aes_128.replace(b"/StmF /StdCF", b"/StmF /NoCF", 1)
 

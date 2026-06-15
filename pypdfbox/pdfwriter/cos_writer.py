@@ -2143,10 +2143,41 @@ class COSWriter(ICOSVisitor):
     def _get_object_key(self, obj: COSBase) -> COSObjectKey:
         """Return (and lazily assign) the indirect-object key for ``obj``.
 
-        For a ``COSObject`` we use its declared ``(num, gen)`` if present;
-        otherwise we mint a new key. The resolved actual is also tracked
-        so dictionaries that hold the same target reuse the same key.
+        Faithful port of upstream ``COSWriter.getObjectKey(COSBase)``
+        (PDFBox 3.0.7). The key is read from the *resolved actual's* own
+        ``COSBase.getKey()`` — the (num, gen) stamped on the underlying
+        object by the parser (``cos_parser`` / ``pdf_parser`` call
+        ``set_key`` on the body) — NOT from a ``COSObject`` wrapper's
+        declared number. A freshly-built ``COSObject(n, g, resolved=...)``
+        wrapper that carries a declared number but whose actual has no key
+        set is therefore RENUMBERED contiguously from 1, exactly as
+        upstream does (upstream's ``computeIfAbsent(actual, ...)`` mints a
+        fresh ``(++number, 0)`` for any actual not already keyed, and when
+        that computed key differs from the wrapper key the computed one
+        wins). This matters for the cross-reference table: a programmatic
+        document with sparse object numbers is emitted as a single
+        contiguous xref subsection, not a gap-filled sparse table
+        (CHANGES.md Wave 1530).
+
+        For parser-loaded documents the parser already stamped the actual's
+        key, so re-saves preserve the original numbering — the same outcome
+        as before, just sourced from the actual rather than the wrapper.
         """
+        # The classic (traditional ``xref`` table + ``trailer``) full-save
+        # path renumbers per upstream ``getObjectKey``: the key comes from the
+        # *actual's* own ``get_key()`` (stamped by the parser on a re-save) and
+        # any actual lacking one is minted a fresh contiguous ``(++number, 0)``
+        # — a programmatic ``COSObject`` wrapper's declared number is discarded.
+        # The object-stream / xref-stream / hybrid / incremental paths instead
+        # honour the wrapper's declared ``(num, gen)`` because their type-2
+        # entry geometry and ObjStm packability decisions depend on the
+        # caller-declared numbering being preserved.
+        honor_declared = (
+            self._object_stream
+            or self._xref_stream
+            or self._hybrid_xref
+            or self._incremental_update
+        )
         actual: COSBase
         if isinstance(obj, COSObject):
             resolved = obj.get_object()
@@ -2171,21 +2202,37 @@ class COSWriter(ICOSVisitor):
                 self._key_holders[id(obj)] = obj
             return existing
 
-        if declared_key is not None and declared_key.object_number > 0:
-            key = declared_key
+        if honor_declared:
+            # Stream / compressed / incremental path: keep the caller's
+            # declared (num, gen) verbatim (legacy behaviour).
+            if declared_key is not None and declared_key.object_number > 0:
+                key = declared_key
+            else:
+                key = self._mint_fresh_object_key()
         else:
-            self._number += 1
-            key = COSObjectKey(self._number, 0)
+            # Classic full-save: upstream reads the actual's OWN key (parser
+            # stamps it on re-saves); a programmatic actual whose own
+            # ``get_key()`` is None is renumbered contiguously, discarding any
+            # wrapper-declared number — so a sparse object-number set collapses
+            # to one contiguous xref subsection (CHANGES.md Wave 1530).
+            actual_key = actual.get_key()
+            if actual_key is not None and actual_key.object_number > 0:
+                key = actual_key
+            else:
+                key = self._mint_fresh_object_key()
 
-        # Avoid number collisions when minting fresh keys: bump if the
-        # generated number is already in use under a different actual.
+        # Avoid number collisions when honouring a declared key: bump a fresh
+        # number if the chosen key is already bound to a different actual.
         while key in self._key_object and self._key_object[key] is not actual:
-            self._number += 1
-            key = COSObjectKey(self._number, 0)
+            key = self._mint_fresh_object_key()
 
         self._object_keys[id(actual)] = key
         self._key_holders[id(actual)] = actual
         self._key_object[key] = actual
+        if not honor_declared:
+            # Stamp the actual with its assigned key (upstream
+            # ``actual.setKey``) so a subsequent re-save preserves it.
+            actual.set_key(key)
         if isinstance(obj, COSObject):
             self._object_keys[id(obj)] = key
             self._key_holders[id(obj)] = obj

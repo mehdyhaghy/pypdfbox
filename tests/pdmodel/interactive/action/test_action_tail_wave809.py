@@ -26,13 +26,17 @@ _SOUND = COSName.get_pdf_name("Sound")
 _SUBTYPE = COSName.SUBTYPE  # type: ignore[attr-defined]
 
 
-def test_uri_dictionary_base_can_be_stored_as_cos_name() -> None:
+def test_uri_dictionary_base_as_cos_name_returns_none() -> None:
+    # Wave 1530: upstream ``PDURIDictionary.getBase`` is plain
+    # ``COSDictionary.getString(Base)``, which returns null for a COSName
+    # (only a COSString decodes). The live PDFBox 3.0.7 oracle confirms a
+    # ``/Base`` stored as a name yields ``None``, not the name text.
     raw = COSDictionary()
     raw.set_item(_BASE, COSName.get_pdf_name("NamedBase"))
 
     uri_dict = PDURIDictionary(raw)
 
-    assert uri_dict.get_base() == "NamedBase"
+    assert uri_dict.get_base() is None
     assert uri_dict.get_base_as_cos_string() is None
 
 

@@ -318,6 +318,21 @@ class TrueTypeCollection:
         from fontTools.ttLib import TTCollection  # type: ignore[import-untyped]  # noqa: PLC0415
 
         ttc_bytes = self._stream.get_original_data()
+        # Upstream FontBox treats the 4-byte TTC version purely as a DSIG
+        # presence marker: it is read via ``read32Fixed`` and the only
+        # decision it drives is ``version >= 2`` (consume the trailing DSIG
+        # tag/length/offset). FontBox never gates on the version being one of
+        # the two canonical values, so a header carrying ``0x00000000`` /
+        # ``0xFFFFFFFF`` / any other version still parses and yields its
+        # fonts. fontTools' ``TTCollection`` reader is stricter — it asserts
+        # ``version in (0x00010000, 0x00020000)`` and crashes otherwise. We
+        # already consumed/recorded the real version (``self._version``) and
+        # the DSIG fields in the header parse, so before handing the bytes to
+        # the fontTools slicer we normalise the version DWORD to the
+        # canonical value matching the DSIG decision we already made. This
+        # keeps per-font offset slicing intact while removing the spurious
+        # version gate FontBox does not impose. (Wave 1530 differential fuzz.)
+        ttc_bytes = self._normalise_ttc_version(ttc_bytes)
         collection = TTCollection(_io.BytesIO(ttc_bytes))
         if not 0 <= idx < len(collection.fonts):
             msg = f"font index out of range: {idx} (have {len(collection.fonts)})"
@@ -327,6 +342,25 @@ class TrueTypeCollection:
         payload = sink.getvalue()
         self._font_byte_cache[idx] = payload
         return payload
+
+    def _normalise_ttc_version(self, ttc_bytes: bytes) -> bytes:
+        """Rewrite the TTC version DWORD to a fontTools-accepted value.
+
+        FontBox does not validate the TTC version field (it only checks
+        ``version >= 2`` to decide whether DSIG fields follow), but
+        fontTools' ``TTCollection`` asserts the version is one of the two
+        canonical values. We already parsed the real version into
+        :attr:`_version`; pick the canonical DWORD that preserves the same
+        DSIG decision so fontTools' slicer accepts a header FontBox would
+        have tolerated. Bytes that are too short to hold the version field
+        are returned unchanged (the constructor would already have failed).
+        """
+        if len(ttc_bytes) < 8:
+            return ttc_bytes
+        canonical = 0x00020000 if self._version >= 2 else 0x00010000
+        buf = bytearray(ttc_bytes)
+        buf[4:8] = canonical.to_bytes(4, "big")
+        return bytes(buf)
 
     def create_font_parser_at_index_and_seek(self, idx: int) -> TTFParser:
         """Mirror the upstream private ``createFontParserAtIndexAndSeek``

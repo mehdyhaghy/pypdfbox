@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from pypdfbox.cos import COSDictionary, COSName, COSString
 
-from .pd_action_uri import _decode_uri_cos_string
-
 __all__ = ["PDURIDictionary"]
 
 _BASE: COSName = COSName.get_pdf_name("Base")
@@ -37,15 +35,14 @@ class PDURIDictionary:
     def get_base(self) -> str | None:
         """Return the base URI string from ``/Base`` or ``None`` when absent.
 
-        ``/Base`` is a URI string like ``PDActionURI``'s ``/URI`` entry, so
-        decode non-BOM byte strings as UTF-8 rather than PDFDocEncoding.
+        Mirrors upstream ``PDURIDictionary.getBase`` exactly: it delegates to
+        ``COSDictionary.getString(Base)``, which decodes only a ``COSString``
+        (via ``COSString.getString`` — PDFDocEncoding / UTF-16-BOM) and returns
+        ``None`` for a ``COSName`` or any other shape. Notably upstream does
+        **not** apply the UTF-8 tolerance that ``PDActionURI.getURI`` uses for
+        ``/URI``; ``/Base`` is read with plain ``getString`` semantics.
         """
-        value = self._dict.get_dictionary_object(_BASE)
-        if isinstance(value, COSString):
-            return _decode_uri_cos_string(value)
-        if isinstance(value, COSName):
-            return value.name
-        return None
+        return self._dict.get_string(_BASE)
 
     def set_base(self, base: str | None) -> None:
         """Write ``/Base``. ``None`` removes the entry."""

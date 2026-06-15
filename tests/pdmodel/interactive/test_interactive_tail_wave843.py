@@ -49,9 +49,11 @@ class _DictionaryBackedWrapper:
 def test_wave843_action_raw_and_malformed_entries_cover_tail_branches(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Wave 1530: a COSName /Base yields None (upstream getString returns null
+    # for a name; only a COSString decodes).
     raw_base = COSDictionary()
     raw_base.set_item(_BASE, COSName.get_pdf_name("NamedBase"))
-    assert PDURIDictionary(raw_base).get_base() == "NamedBase"
+    assert PDURIDictionary(raw_base).get_base() is None
 
     uri = PDActionURI()
     uri.set_uri("ht*tp://example.test")

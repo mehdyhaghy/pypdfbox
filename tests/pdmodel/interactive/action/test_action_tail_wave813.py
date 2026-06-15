@@ -93,11 +93,14 @@ def test_uri_scheme_with_disallowed_character_is_treated_as_relative() -> None:
     assert action.is_relative() is True
 
 
-def test_uri_dictionary_base_accepts_name_form() -> None:
+def test_uri_dictionary_base_name_form_returns_none() -> None:
+    # Wave 1530: upstream ``PDURIDictionary.getBase`` (plain getString) returns
+    # null for a COSName ``/Base``; only a COSString decodes. Verified against
+    # the live PDFBox 3.0.7 oracle.
     raw = COSDictionary()
     raw.set_item(_BASE, COSName.get_pdf_name("NamedBase"))
 
     uri_dictionary = PDURIDictionary(raw)
 
-    assert uri_dictionary.get_base() == "NamedBase"
+    assert uri_dictionary.get_base() is None
     assert uri_dictionary.get_base_as_cos_string() is None

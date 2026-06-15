@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
+from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSString
 from pypdfbox.pdmodel import PDDocument, PDPageTree
 from pypdfbox.pdmodel.documentinterchange.logicalstructure.pd_structure_node import (
     PDStructureNode,
@@ -60,7 +60,12 @@ def test_wave841_hide_single_raw_annotation_dictionary_and_uri_name_base() -> No
     assert action.get_target() is annotation
     assert action.get_annotations()[0].get_cos_object() is annotation  # type: ignore[index]
 
+    # Wave 1530: upstream getBase (plain getString) only decodes a COSString;
+    # a COSName /Base returns None. Use a COSString to exercise the decode path.
     uri = PDURIDictionary()
-    uri.get_cos_object().set_item(_BASE, COSName.get_pdf_name("https://example.test/"))
-
+    uri.get_cos_object().set_item(_BASE, COSString("https://example.test/"))
     assert uri.get_base() == "https://example.test/"
+
+    uri_name = PDURIDictionary()
+    uri_name.get_cos_object().set_item(_BASE, COSName.get_pdf_name("nope"))
+    assert uri_name.get_base() is None

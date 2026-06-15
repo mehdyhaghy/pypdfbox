@@ -121,16 +121,21 @@ def test_shared_indirect_round_trips() -> None:
 
 
 def test_get_number_does_not_overcount_shared() -> None:
-    """``get_number`` tracks the auto-mint counter only. Every declared
-    COSObject (catalog #1, shared #2, info #3) keeps its declared key,
-    so no fresh number was minted for the duplicate reference — the
-    counter must stay at zero (no minting happened)."""
+    """A SHARED object must be emitted exactly once — even though the
+    classic full-save path renumbers (upstream ``getObjectKey`` keys off
+    each resolved actual's own ``getKey()``, which is ``None`` for these
+    freshly-built wrappers, so three fresh contiguous numbers are minted:
+    catalog→1, shared→2, info→3; CHANGES.md Wave 1530). The duplicated
+    reference to the shared dict resolves to the SAME actual, so it reuses
+    the already-assigned key rather than minting a fourth — the counter
+    lands at 3, not 4, and exactly three in-use xref entries are written."""
     doc, _ = _shared_target_doc()
     sink = io.BytesIO()
     with COSWriter(sink) as w:
         w.write(doc)
-        # Three declared keys were used as-is; no auto-mint fired.
-        assert w.get_number() == 0
+        # Three distinct actuals were minted contiguous keys; the duplicate
+        # reference reused the shared key, so no fourth number was allocated.
+        assert w.get_number() == 3
         # And exactly three xref entries (free head + 3 in-use rows is
         # checked elsewhere; here we confirm the writer didn't allocate
         # a fourth entry for the duplicated reference).
