@@ -386,6 +386,11 @@ def test_eval_cubic_order_unknown_falls_back_to_linear() -> None:
 
 
 def test_eval_unsupported_bits_raises() -> None:
+    # Upstream PDFBox does NOT reject off-spec widths — it reads any width in
+    # [0, 64] via readBits. pypdfbox mirrors that for the determinate [0, 32]
+    # range and raises only outside it. 33 is past the parity range (the Java
+    # int-cast/stateful-zero quirk for 33..64 is not bit-reproducible — pinned
+    # in CHANGES.md Wave 1535), so eval must raise here.
     raw = COSStream()
     raw.set_int("FunctionType", 0)
     domain_arr = COSArray()
@@ -397,7 +402,7 @@ def test_eval_unsupported_bits_raises() -> None:
     size_arr = COSArray()
     size_arr.add(COSFloat(2.0))
     raw.set_item("Size", size_arr)
-    raw.set_int("BitsPerSample", 7)  # invalid
+    raw.set_int("BitsPerSample", 33)  # out of pypdfbox's [0, 32] parity range
     raw.set_data(b"\x00\x00")
     fn = PDFunctionType0(raw)
     with pytest.raises(ValueError):

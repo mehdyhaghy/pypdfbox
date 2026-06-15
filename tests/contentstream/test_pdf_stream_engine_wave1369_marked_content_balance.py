@@ -148,17 +148,17 @@ def test_bdc_with_named_property_resolves_via_resources() -> None:
     assert begin[2].get_string("ActualText") == "ok"
 
 
-def test_bdc_unresolvable_named_property_passes_none() -> None:
-    """When the named property can't be resolved (no resources, or no
-    matching ``/Properties`` entry), the hook receives ``properties=None``
-    — the dispatch still fires."""
+def test_bdc_unresolvable_named_property_does_not_fire() -> None:
+    """Wave-1535 oracle: when the named property can't be resolved (no
+    resources, or no matching ``/Properties`` entry), upstream ``BDC``
+    returns WITHOUT opening a sequence — the hook does not fire."""
     engine = _MarkedContentEngine()
     _register_marked_content_ops(engine)
     engine.process_operator("BDC", [
         COSName.get_pdf_name("Span"),
         COSName.get_pdf_name("Missing"),
     ])
-    assert engine.events[0] == ("begin", COSName.get_pdf_name("Span"), None)
+    assert engine.events == []
 
 
 # ---------- unbalanced sequences ----------
@@ -209,14 +209,15 @@ def test_bmc_without_tag_operand_passes_none() -> None:
     assert engine.events[0] == ("begin", None, None)
 
 
-def test_bdc_without_operands_passes_none() -> None:
-    """Same defensive contract for ``BDC``: malformed operand stack ⇒
-    the hook fires with ``tag=None, properties=None`` rather than
-    raising."""
+def test_bdc_without_operands_is_swallowed_by_engine() -> None:
+    """Wave-1535 oracle: ``BDC`` with no operands raises
+    MissingOperandException inside the operator; the engine's
+    ``process_operator`` catches it (via ``operator_exception``), logs,
+    and continues — so the hook never fires and no event is recorded."""
     engine = _MarkedContentEngine()
     _register_marked_content_ops(engine)
     engine.process_operator("BDC", [])
-    assert engine.events[0] == ("begin", None, None)
+    assert engine.events == []
 
 
 # ---------- base engine carries no marked-content hooks (no crash) ----------

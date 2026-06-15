@@ -96,7 +96,12 @@ def test_setters_round_trip_to_cos_stream_and_clear_optional_arrays() -> None:
     assert raw.contains_key("Decode") is False
 
 
-def test_partial_encode_defaults_missing_dimensions_to_size_minus_one() -> None:
+def test_partial_encode_returns_none_for_missing_dimensions() -> None:
+    # Upstream PDFBox's getEncodeValues() fills the [0, Size[i]-1] default ONLY
+    # when /Encode is absent — a present-but-short /Encode is returned verbatim,
+    # so getEncodeForParameter returns null (here None) for the missing dim and
+    # eval NPEs. pypdfbox mirrors that (wave-1535 sampled-fuzz oracle): no
+    # default fill-in for a partial /Encode.
     fn = _build_type0(
         domain=[0.0, 1.0, 0.0, 1.0],
         range_=[0.0, 1.0],
@@ -107,10 +112,14 @@ def test_partial_encode_defaults_missing_dimensions_to_size_minus_one() -> None:
     )
 
     assert fn.get_encode_for_parameter(0) == (10.0, 20.0)
-    assert fn.get_encode_for_parameter(1) == (0.0, 8.0)
+    assert fn.get_encode_for_parameter(1) is None
 
 
-def test_partial_decode_defaults_missing_outputs_to_range_pairs() -> None:
+def test_partial_decode_returns_none_for_missing_outputs() -> None:
+    # Upstream PDFBox's getDecodeValues() falls back to /Range ONLY when /Decode
+    # is absent — a present-but-short /Decode is returned verbatim, so
+    # getDecodeForParameter returns null (here None) for the missing output and
+    # eval NPEs. pypdfbox mirrors that (wave-1535 sampled-fuzz oracle).
     fn = _build_type0(
         domain=[0.0, 1.0],
         range_=[-1.0, 1.0, -2.0, 2.0],
@@ -121,7 +130,7 @@ def test_partial_decode_defaults_missing_outputs_to_range_pairs() -> None:
     )
 
     assert fn.get_decode_for_parameter(0) == (10.0, 20.0)
-    assert fn.get_decode_for_parameter(1) == (-2.0, 2.0)
+    assert fn.get_decode_for_parameter(1) is None
 
 
 def test_get_samples_cache_is_invalidated_when_bits_per_sample_changes() -> None:

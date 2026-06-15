@@ -420,7 +420,11 @@ def test_get_samples_rejects_unsupported_bits() -> None:
     size_arr = COSArray()
     size_arr.add(COSFloat(2.0))
     raw.set_item("Size", size_arr)
-    raw.set_int("BitsPerSample", 7)  # invalid
+    # Off-spec widths in [0, 32] (e.g. 7) are now accepted like upstream PDFBox
+    # (wave-1535 sampled-fuzz oracle); only widths outside the determinate
+    # [0, 32] parity range raise. 33 is past it (the 33..64 Java int-cast quirk
+    # is pinned-divergent — CHANGES.md Wave 1535).
+    raw.set_int("BitsPerSample", 33)  # out of pypdfbox's [0, 32] parity range
     raw.set_data(b"\x00\x00")
     fn = PDFunctionType0(raw)
     with pytest.raises(ValueError):

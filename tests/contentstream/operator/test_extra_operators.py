@@ -214,7 +214,9 @@ def test_registry_lookup_returns_correct_instance_per_new_operator() -> None:
 # blanket "every stub accepts empty operands" smoke test below skips
 # these — see the dedicated arity-validation test that follows.
 _OPERATORS_WITH_ARITY_VALIDATION: frozenset[str] = frozenset(
-    {"m", "l", "c", "v", "y", "re"}
+    # BDC/DP added wave 1535: upstream's property-list-bearing marked-
+    # content operators raise MissingOperandException on <2 operands.
+    {"m", "l", "c", "v", "y", "re", "BDC", "DP"}
 )
 
 

@@ -14,8 +14,27 @@ _ORDER = "Order"
 _ENCODE = "Encode"
 _DECODE = "Decode"
 
-# Supported /BitsPerSample values per PDF 32000-1 §7.10.2 Table 38.
-_SUPPORTED_BITS = frozenset({1, 2, 4, 8, 12, 16, 24, 32})
+# Upstream PDFBox does NOT validate /BitsPerSample against the Table-38 set
+# ({1,2,4,8,12,16,24,32}): its
+# eval reads each sample with ``MemoryCacheImageInputStream.readBits(bits)``,
+# whose contract accepts any width in [0, 64]. So an off-spec width like 3, 5, 7
+# (or 0) is read bit-for-bit rather than rejected — PDFBox parity over the
+# stricter spec set (CLAUDE.md "Behavior over style"). For widths 0..32 the
+# read is fully determinate and pypdfbox reproduces PDFBox's output to the bit
+# (verified by the wave-1535 sampled-fuzz oracle). Widths 33..64 are accepted by
+# PDFBox too, but its output there depends on a Java ``(int)`` long-truncation
+# plus a stateful "first eval throws, the cached sample grid is left zeroed, so
+# later evals return 0" quirk that is not bit-reproducible in Python; pypdfbox
+# raises for those (pinned divergence, CHANGES.md Wave 1535). Width > 64 or < 0
+# is an error on both sides (PDFBox IllegalArgumentException from readBits;
+# pypdfbox ValueError).
+_MIN_BITS = 0
+_MAX_BITS = 32
+
+
+def _bits_supported(bits: int) -> bool:
+    """True when pypdfbox can evaluate this /BitsPerSample bit-for-bit vs PDFBox."""
+    return _MIN_BITS <= bits <= _MAX_BITS
 
 
 class PDFunctionType0(PDFunction):
@@ -68,16 +87,16 @@ class PDFunctionType0(PDFunction):
         # Upstream parity: PDFunctionType0.getBitsPerSample() is
         # ``getCOSObject().getInt(COSName.BITS_PER_SAMPLE)`` — the single-arg
         # ``COSDictionary.getInt`` returns -1 when the key is absent / non-int,
-        # NOT 0. The absent-key value never feeds a valid eval (it is rejected
-        # against the supported-bit set on either default), but the accessor's
+        # NOT 0. The absent-key value (-1) never feeds a valid eval (it is below
+        # the supported [0, 32] range so eval raises), but the accessor's
         # return must match upstream for introspection / parity.
         return self.get_cos_object().get_int(_BITS_PER_SAMPLE, -1)
 
     def set_bits_per_sample(self, bits: int) -> None:
-        """Set ``/BitsPerSample`` — must be one of {1, 2, 4, 8, 12, 16,
-        24, 32} per PDF 32000-1 §7.10.2 Table 38, but the value is not
-        validated here (mirrors upstream's permissive setter — eval
-        rejects unsupported widths)."""
+        """Set ``/BitsPerSample`` — per PDF 32000-1 §7.10.2 Table 38 one of
+        {1, 2, 4, 8, 12, 16, 24, 32}, but the value is not validated here
+        (mirrors upstream's permissive setter). eval reads any width in
+        [0, 32] bit-for-bit like PDFBox and raises only outside that range."""
         self._invalidate_samples()
         self.get_cos_object().set_int(_BITS_PER_SAMPLE, bits)
 
@@ -179,55 +198,45 @@ class PDFunctionType0(PDFunction):
     def get_encode_for_parameter(self, n: int) -> tuple[float, float] | None:
         """Return the ``(min, max)`` ``/Encode`` pair for input dimension ``n``.
 
-        Mirrors PDFBox ``getEncodeForParameter(int)``. When ``/Encode`` is
-        absent or too short for ``n``, the default ``(0, Size[n] - 1)`` pair
-        is returned per PDF 32000-1 §7.10.2 Table 38. Returns ``None`` when
-        ``n`` is negative or exceeds the declared input dimension count
-        (mirrors upstream's "null when out of range" contract — upstream
-        returns null for ``encodeValues.size() < paramNum * 2 + 1`` after
-        defaults are filled in).
+        Mirrors PDFBox ``getEncodeForParameter(int)`` exactly: it resolves
+        :meth:`get_encode_values` (which fills the spec default ``[0 Size[i]-1]``
+        ONLY when ``/Encode`` is absent — never when present-but-short) and
+        returns the pair only when that array is long enough
+        (``size() >= 2*n + 1``). When ``/Encode`` is present but too short for
+        ``n`` it returns ``None`` — upstream does NOT default-fill a partial
+        ``/Encode``; eval then NPEs on the null PDRange, so a too-short
+        ``/Encode`` is a hard error there (parity, CHANGES.md Wave 1535).
+        ``None`` is also returned when ``n`` is negative or ``/Encode`` and
+        ``/Size`` are both absent.
         """
         if n < 0:
             return None
-        sizes = self._get_size_list()
-        num_in = self.get_number_of_input_parameters()
-        if n >= max(num_in, len(sizes)):
+        values = self.get_encode_values()
+        if values is None or values.size() < 2 * n + 1:
             return None
-        encode = self.get_encode()
-        if encode is not None:
-            flat = encode.to_float_array()
-            if 2 * n + 1 < len(flat):
-                return (flat[2 * n], flat[2 * n + 1])
-        # Default: (0, Size[n] - 1)
-        if n < len(sizes):
-            upper = sizes[n] - 1
-            return (0.0, float(max(0, upper)))
-        return None
+        flat = values.to_float_array()
+        return (flat[2 * n], flat[2 * n + 1])
 
     def get_decode_for_parameter(self, n: int) -> tuple[float, float] | None:
         """Return the ``(min, max)`` ``/Decode`` pair for output dimension ``n``.
 
-        Mirrors PDFBox ``getDecodeForParameter(int)``. When ``/Decode`` is
-        absent or too short for ``n``, the default falls back to the
-        function's ``/Range`` pair for output dimension ``n`` per PDF 32000-1
-        §7.10.2 Table 38. Returns ``None`` when ``n`` is negative or exceeds
-        the declared output dimension count.
+        Mirrors PDFBox ``getDecodeForParameter(int)`` exactly: it resolves
+        :meth:`get_decode_values` (which falls back to ``/Range`` ONLY when
+        ``/Decode`` is absent — never when present-but-short) and returns the
+        pair only when that array is long enough (``size() >= 2*n + 1``). When
+        ``/Decode`` is present but too short for ``n`` it returns ``None`` —
+        upstream does NOT default-fill a partial ``/Decode``; eval then NPEs on
+        the null PDRange, so a too-short ``/Decode`` is a hard error there
+        (parity, CHANGES.md Wave 1535). ``None`` is also returned when ``n`` is
+        negative or both ``/Decode`` and ``/Range`` are absent.
         """
         if n < 0:
             return None
-        num_out = self.get_number_of_output_parameters()
-        if n >= num_out:
+        values = self.get_decode_values()
+        if values is None or values.size() < 2 * n + 1:
             return None
-        decode = self.get_decode()
-        if decode is not None:
-            flat = decode.to_float_array()
-            if 2 * n + 1 < len(flat):
-                return (flat[2 * n], flat[2 * n + 1])
-        # Default: /Range pair for output n.
-        rng_pairs = self.get_ranges_for_outputs()
-        if n < len(rng_pairs):
-            return rng_pairs[n]
-        return None
+        flat = values.to_float_array()
+        return (flat[2 * n], flat[2 * n + 1])
 
     # ---------- sample table ----------
 
@@ -247,9 +256,10 @@ class PDFunctionType0(PDFunction):
         num_in = self.get_number_of_input_parameters()
         num_out = self.get_number_of_output_parameters()
         bits = self.get_bits_per_sample()
-        if bits not in _SUPPORTED_BITS:
+        if not _bits_supported(bits):
             raise ValueError(
-                f"unsupported /BitsPerSample={bits}; expected one of {sorted(_SUPPORTED_BITS)}"
+                f"/BitsPerSample={bits} out of supported range "
+                f"[{_MIN_BITS}, {_MAX_BITS}]"
             )
         sizes = self._get_size_list()
         if len(sizes) < num_in or any(s < 1 for s in sizes[:num_in]):
@@ -306,36 +316,43 @@ class PDFunctionType0(PDFunction):
         return out
 
     def _get_encode_pairs(self, num_in: int, sizes: list[int]) -> list[tuple[float, float]]:
-        """``/Encode`` paired ``(min, max)``; default per dim = ``(0, Size[i]-1)``."""
-        encode = self.get_encode()
-        if encode is None:
-            return [(0.0, max(0.0, sizes[i] - 1)) for i in range(num_in)]
-        flat = encode.to_float_array()
+        """``/Encode`` paired ``(min, max)`` per input dim, via
+        :meth:`get_encode_for_parameter`.
+
+        When ``/Encode`` is absent the default ``(0, Size[i]-1)`` per dim is
+        used; when ``/Encode`` is present but too short for some dim,
+        ``get_encode_for_parameter`` returns ``None`` (no default fill-in) and
+        this raises ``ValueError`` — mirroring upstream eval's NullPointerException
+        on the null PDRange returned by ``getEncodeForParameter`` for a
+        too-short ``/Encode`` (CHANGES.md Wave 1535)."""
         pairs: list[tuple[float, float]] = []
         for i in range(num_in):
-            if 2 * i + 1 < len(flat):
-                pairs.append((flat[2 * i], flat[2 * i + 1]))
-            else:
-                pairs.append((0.0, max(0.0, sizes[i] - 1)))
+            pair = self.get_encode_for_parameter(i)
+            if pair is None:
+                raise ValueError(
+                    f"/Encode present but too short for input dimension {i}"
+                )
+            pairs.append(pair)
         return pairs
 
     def _get_decode_pairs(self, num_out: int) -> list[tuple[float, float]]:
-        """``/Decode`` paired ``(min, max)``; default = ``/Range``."""
-        decode = self.get_decode()
-        if decode is None:
-            return self.get_ranges_for_outputs()[:num_out] or [
-                (0.0, 0.0) for _ in range(num_out)
-            ]
-        flat = decode.to_float_array()
-        rng_pairs = self.get_ranges_for_outputs()
+        """``/Decode`` paired ``(min, max)`` per output dim, via
+        :meth:`get_decode_for_parameter`.
+
+        When ``/Decode`` is absent it defaults to the ``/Range`` pair per dim;
+        when ``/Decode`` is present but too short for some dim,
+        ``get_decode_for_parameter`` returns ``None`` (no default fill-in) and
+        this raises ``ValueError`` — mirroring upstream eval's NullPointerException
+        on the null PDRange returned by ``getDecodeForParameter`` for a
+        too-short ``/Decode`` (CHANGES.md Wave 1535)."""
         pairs: list[tuple[float, float]] = []
         for j in range(num_out):
-            if 2 * j + 1 < len(flat):
-                pairs.append((flat[2 * j], flat[2 * j + 1]))
-            elif j < len(rng_pairs):
-                pairs.append(rng_pairs[j])
-            else:
-                pairs.append((0.0, 0.0))
+            pair = self.get_decode_for_parameter(j)
+            if pair is None:
+                raise ValueError(
+                    f"/Decode present but too short for output dimension {j}"
+                )
+            pairs.append(pair)
         return pairs
 
     def _read_sample(
@@ -413,9 +430,10 @@ class PDFunctionType0(PDFunction):
         num_in = self.get_number_of_input_parameters()
         num_out = self.get_number_of_output_parameters()
         bits = self.get_bits_per_sample()
-        if bits not in _SUPPORTED_BITS:
+        if not _bits_supported(bits):
             raise ValueError(
-                f"unsupported /BitsPerSample={bits}; expected one of {sorted(_SUPPORTED_BITS)}"
+                f"/BitsPerSample={bits} out of supported range "
+                f"[{_MIN_BITS}, {_MAX_BITS}]"
             )
         sizes = self._get_size_list()
         if len(sizes) < num_in or any(s < 1 for s in sizes[:num_in]):
@@ -526,9 +544,10 @@ class PDFunctionType0(PDFunction):
         bits = self.get_bits_per_sample()
         if num_in == 0 or num_out == 0:
             raise ValueError("PDFunctionType0 requires /Domain and /Range")
-        if bits not in _SUPPORTED_BITS:
+        if not _bits_supported(bits):
             raise ValueError(
-                f"unsupported /BitsPerSample={bits}; expected one of {sorted(_SUPPORTED_BITS)}"
+                f"/BitsPerSample={bits} out of supported range "
+                f"[{_MIN_BITS}, {_MAX_BITS}]"
             )
 
         sizes = self._get_size_list()

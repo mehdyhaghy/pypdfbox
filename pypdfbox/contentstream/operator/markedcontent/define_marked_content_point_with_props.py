@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSBase, COSDictionary
+from pypdfbox.cos import COSBase, COSName
 
-from .. import Operator, OperatorName, OperatorProcessor
-from ._props import extract_tag, resolve_property_dict
+from .. import MissingOperandException, Operator, OperatorName, OperatorProcessor
+from ._props import resolve_property_dict
 
 
 class DefineMarkedContentPointWithProps(OperatorProcessor):
@@ -16,28 +16,33 @@ class DefineMarkedContentPointWithProps(OperatorProcessor):
     or a ``COSName`` referencing the page resources' ``/Properties``
     subdictionary.
 
-    Forwards ``(tag, properties)`` to the engine's
-    :meth:`marked_content_point` hook when the engine exposes one.
-    Property resolution mirrors :class:`BeginMarkedContentWithProps`.
+    Upstream semantics (mirrored exactly, identical to ``BDC``):
+
+    * fewer than two operands raises :class:`MissingOperandException`;
+    * if the first operand is not a ``COSName`` the operator returns;
+    * the tag is the **first** operand (``operands[0]``), never the last
+      ``COSName`` (which may be the property-list name);
+    * if the property list cannot be resolved the operator returns
+      **without** notifying the engine.
     """
 
     OPERATOR_NAME = OperatorName.MARKED_CONTENT_POINT_WITH_PROPS  # "DP"
 
     def process(self, operator: Operator, operands: list[COSBase]) -> None:
-        del operator  # unused — operator name fixed by registration
-        tag = extract_tag(operands)
-        properties = self._resolve_properties(operands)
+        if len(operands) < 2:
+            raise MissingOperandException(operator, operands)
+        tag = operands[0]
+        if not isinstance(tag, COSName):
+            return
+        properties = resolve_property_dict(operands, self._context)
+        if properties is None:
+            return
         context = self._context
         if context is None:
             return
         hook = getattr(context, "marked_content_point", None)
         if hook is not None:
             hook(tag, properties)
-
-    def _resolve_properties(
-        self, operands: list[COSBase]
-    ) -> COSDictionary | None:
-        return resolve_property_dict(operands, self._context)
 
     def get_name(self) -> str:
         return self.OPERATOR_NAME

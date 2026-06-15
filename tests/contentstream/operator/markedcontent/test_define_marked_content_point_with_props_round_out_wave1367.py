@@ -1,8 +1,11 @@
-"""Round-out tests for the lenient :class:`DefineMarkedContentPointWithProps`
-(``DP``) — wave 1367.
+"""Round-out tests for :class:`DefineMarkedContentPointWithProps` (``DP``)
+— wave 1367, retargeted to upstream-strict semantics in wave 1535.
 
 Parallel to ``BeginMarkedContentWithProps`` but uses the
-``marked_content_point`` engine hook (no balanced ``EMC``).
+``marked_content_point`` engine hook (no balanced ``EMC``). Wave 1535's
+oracle proved upstream ``DP`` is strict on malformed input (raises
+MissingOperandException on underflow; returns without notifying the
+engine when the tag is not a name or the property list is unresolvable).
 """
 
 from __future__ import annotations
@@ -43,8 +46,8 @@ def test_operator_name_constant_and_get_name_match() -> None:
     assert DefineMarkedContentPointWithProps().name == "DP"
 
 
-def test_process_with_non_name_tag_passes_none() -> None:
-    """Lenient: string tag → ``None``, hook still fires."""
+def test_process_with_non_name_tag_returns_silently() -> None:
+    """Wave-1535 oracle: a non-name tag makes DP return without firing."""
     engine = _Spy()
     p = DefineMarkedContentPointWithProps()
     engine.add_operator(p)
@@ -52,13 +55,10 @@ def test_process_with_non_name_tag_passes_none() -> None:
         Operator.get_operator("DP"),
         [COSString("not-a-name"), COSDictionary()],
     )
-    assert len(engine.calls) == 1
-    tag, props = engine.calls[0]
-    assert tag is None
-    assert isinstance(props, COSDictionary)
+    assert engine.calls == []
 
 
-def test_process_with_non_dict_non_name_property_operand_passes_none() -> None:
+def test_process_with_non_dict_non_name_property_operand_does_not_fire() -> None:
     engine = _Spy()
     p = DefineMarkedContentPointWithProps()
     engine.add_operator(p)
@@ -66,10 +66,10 @@ def test_process_with_non_dict_non_name_property_operand_passes_none() -> None:
     p.process(
         Operator.get_operator("DP"), [tag, COSString("oops")]
     )
-    assert engine.calls == [(tag, None)]
+    assert engine.calls == []
 
 
-def test_process_with_integer_property_operand_passes_none() -> None:
+def test_process_with_integer_property_operand_does_not_fire() -> None:
     engine = _Spy()
     p = DefineMarkedContentPointWithProps()
     engine.add_operator(p)
@@ -77,10 +77,10 @@ def test_process_with_integer_property_operand_passes_none() -> None:
     p.process(
         Operator.get_operator("DP"), [tag, COSInteger.get(99)]
     )
-    assert engine.calls == [(tag, None)]
+    assert engine.calls == []
 
 
-def test_process_with_named_property_no_resources_passes_none() -> None:
+def test_process_with_named_property_no_resources_does_not_fire() -> None:
     engine = _Spy()  # no resources
     p = DefineMarkedContentPointWithProps()
     engine.add_operator(p)
@@ -89,7 +89,7 @@ def test_process_with_named_property_no_resources_passes_none() -> None:
         Operator.get_operator("DP"),
         [tag, COSName.get_pdf_name("MyProps")],
     )
-    assert engine.calls == [(tag, None)]
+    assert engine.calls == []
 
 
 def test_process_with_inline_dict_ignores_resources() -> None:
@@ -150,21 +150,27 @@ def test_set_context_late_binding_works() -> None:
     assert len(engine.calls) == 1
 
 
-def test_process_empty_operands_fires_hook_with_none_pair() -> None:
+def test_process_empty_operands_raises_missing_operand() -> None:
+    from pypdfbox.contentstream.operator import MissingOperandException
+
     engine = _Spy()
     p = DefineMarkedContentPointWithProps()
     engine.add_operator(p)
-    p.process(Operator.get_operator("DP"), [])
-    assert engine.calls == [(None, None)]
+    with pytest.raises(MissingOperandException):
+        p.process(Operator.get_operator("DP"), [])
+    assert engine.calls == []
 
 
-def test_process_with_only_tag_passes_none_properties() -> None:
+def test_process_with_only_tag_raises_missing_operand() -> None:
+    from pypdfbox.contentstream.operator import MissingOperandException
+
     engine = _Spy()
     p = DefineMarkedContentPointWithProps()
     engine.add_operator(p)
     tag = COSName.get_pdf_name("Marker")
-    p.process(Operator.get_operator("DP"), [tag])
-    assert engine.calls == [(tag, None)]
+    with pytest.raises(MissingOperandException):
+        p.process(Operator.get_operator("DP"), [tag])
+    assert engine.calls == []
 
 
 def test_dp_uses_distinct_hook_from_bdc() -> None:

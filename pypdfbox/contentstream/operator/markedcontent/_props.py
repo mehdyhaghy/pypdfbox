@@ -42,18 +42,29 @@ MCID_DEFAULT: int = -1
 # ---- Tag extraction --------------------------------------------------
 
 def extract_tag(operands: list[COSBase]) -> COSName | None:
-    """Return the first operand cast to ``COSName`` or ``None``.
+    """Return the **last** ``COSName`` among the operands, or ``None``.
+
+    Mirrors upstream ``BeginMarkedContentSequence.process`` /
+    ``MarkedContentPoint.process``: both iterate the entire operand list
+    and keep the most recent ``COSName`` seen
+    (``for (COSBase b : arguments) if (b instanceof COSName) tag = ...``).
+    The *last* name wins, and any leading non-name junk (numbers,
+    strings) is skipped rather than aborting tag selection — so
+    ``1 (x) /Span BMC`` yields the tag ``/Span`` and ``/A /B BMC`` yields
+    ``/B``.
 
     The marked-content operators tolerate malformed input by simply
-    silently dropping the tag — upstream throws ``MissingOperandException``
-    for the property-list-bearing operators (BDC/DP) but the bare
-    BMC/MP forms simply early-return when the operand isn't a name.
-    pypdfbox is uniformly tolerant: caller code branches on
-    ``tag is None``.
+    dropping the tag (returning ``None``) when no name is present —
+    upstream throws ``MissingOperandException`` for the
+    property-list-bearing operators (BDC/DP) but the bare BMC/MP forms
+    proceed with a ``null`` tag. pypdfbox is uniformly tolerant: caller
+    code branches on ``tag is None``.
     """
-    if operands and isinstance(operands[0], COSName):
-        return operands[0]
-    return None
+    tag: COSName | None = None
+    for argument in operands:
+        if isinstance(argument, COSName):
+            tag = argument
+    return tag
 
 
 # ---- Property resolution --------------------------------------------

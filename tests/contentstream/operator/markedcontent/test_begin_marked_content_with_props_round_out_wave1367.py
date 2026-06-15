@@ -1,14 +1,16 @@
-"""Round-out tests for the lenient :class:`BeginMarkedContentWithProps`
-(``BDC``) — wave 1367.
+"""Round-out tests for :class:`BeginMarkedContentWithProps` (``BDC``) —
+wave 1367, retargeted to upstream-strict semantics in wave 1535.
 
-The lenient ``BDC`` variant lives at
+The registered ``BDC`` processor lives at
 ``pypdfbox.contentstream.operator.markedcontent.begin_marked_content_with_props``
-(while the strict ``BeginMarkedContentSequenceWithProperties`` lives in
-``..begin_marked_content_sequence_with_properties``). Both are dispatched
-under the same operator token, but the lenient one preserves operands of
-the wrong shape via ``None`` instead of raising — the original tests
-cover the happy paths, this file pins down the edge / defensive paths
-flagged in wave 1367's scoping notes.
+(a parallel ``BeginMarkedContentSequenceWithProperties`` lives in
+``..begin_marked_content_sequence_with_properties``). Wave 1535's live
+oracle proved upstream ``BDC`` is strict on malformed input — it raises
+:class:`MissingOperandException` on operand underflow and returns
+without opening a sequence when the tag is not a name or the property
+list cannot be resolved. The earlier "lenient" expectations (fire the
+hook with ``None``) were a divergence; this file now pins the
+oracle-proven behavior.
 """
 
 from __future__ import annotations
@@ -49,9 +51,10 @@ def test_operator_name_constant_and_get_name_match() -> None:
     assert BeginMarkedContentWithProps().name == "BDC"
 
 
-def test_process_with_non_name_tag_passes_none_tag() -> None:
-    """Lenient: a string in the tag slot is tolerated by passing ``None``
-    rather than raising. The strict variant returns silently instead."""
+def test_process_with_non_name_tag_returns_silently() -> None:
+    """Wave-1535 oracle: a non-name in the tag slot makes BDC return
+    without opening a sequence (upstream ``if (!(operands.get(0)
+    instanceof COSName)) return;``)."""
     engine = _Spy()
     p = BeginMarkedContentWithProps()
     engine.add_operator(p)
@@ -59,17 +62,12 @@ def test_process_with_non_name_tag_passes_none_tag() -> None:
         Operator.get_operator("BDC"),
         [COSString("not-a-name"), COSDictionary()],
     )
-    # Hook still fires; tag is None.
-    assert len(engine.calls) == 1
-    tag, props = engine.calls[0]
-    assert tag is None
-    # The dict was inline so it should still resolve.
-    assert isinstance(props, COSDictionary)
+    assert engine.calls == []
 
 
-def test_process_with_non_name_non_dict_property_operand_passes_none() -> None:
-    """A string in the properties slot resolves to ``None`` — neither
-    inline dict nor named property-list lookup applies."""
+def test_process_with_non_name_non_dict_property_operand_does_not_fire() -> None:
+    """Wave-1535 oracle: a string in the properties slot resolves to None,
+    so BDC returns without opening a sequence."""
     engine = _Spy()
     p = BeginMarkedContentWithProps()
     engine.add_operator(p)
@@ -77,12 +75,12 @@ def test_process_with_non_name_non_dict_property_operand_passes_none() -> None:
     p.process(
         Operator.get_operator("BDC"), [tag, COSString("oops")]
     )
-    assert engine.calls == [(tag, None)]
+    assert engine.calls == []
 
 
-def test_process_with_integer_property_operand_passes_none() -> None:
-    """Integers in the properties slot are also tolerated (resolve to
-    ``None``)."""
+def test_process_with_integer_property_operand_does_not_fire() -> None:
+    """Wave-1535 oracle: an integer in the properties slot resolves to
+    None → no sequence opened."""
     engine = _Spy()
     p = BeginMarkedContentWithProps()
     engine.add_operator(p)
@@ -90,11 +88,12 @@ def test_process_with_integer_property_operand_passes_none() -> None:
     p.process(
         Operator.get_operator("BDC"), [tag, COSInteger.get(5)]
     )
-    assert engine.calls == [(tag, None)]
+    assert engine.calls == []
 
 
-def test_process_with_named_property_no_engine_resources_passes_none() -> None:
-    """No resources on the engine context → named lookup yields None."""
+def test_process_with_named_property_no_engine_resources_does_not_fire() -> None:
+    """Wave-1535 oracle: no resources → named lookup yields None → BDC
+    returns without opening a sequence."""
     engine = _Spy()  # no resources
     p = BeginMarkedContentWithProps()
     engine.add_operator(p)
@@ -103,11 +102,7 @@ def test_process_with_named_property_no_engine_resources_passes_none() -> None:
         Operator.get_operator("BDC"),
         [tag, COSName.get_pdf_name("MyProps")],
     )
-    assert len(engine.calls) == 1
-    seen_tag, seen_props = engine.calls[0]
-    assert seen_tag is tag
-    # Resources are absent — resolution returns None.
-    assert seen_props is None
+    assert engine.calls == []
 
 
 def test_process_engine_without_hook_is_silent() -> None:
@@ -121,13 +116,17 @@ def test_process_engine_without_hook_is_silent() -> None:
     )
 
 
-def test_process_empty_operands_passes_none_tag_and_props() -> None:
-    """Zero operands: tag → ``None``, props → ``None``, hook still fires."""
+def test_process_empty_operands_raises_missing_operand() -> None:
+    """Wave-1535 oracle: zero operands → MissingOperandException (the
+    engine catches + continues; no sequence opens)."""
+    from pypdfbox.contentstream.operator import MissingOperandException
+
     engine = _Spy()
     p = BeginMarkedContentWithProps()
     engine.add_operator(p)
-    p.process(Operator.get_operator("BDC"), [])
-    assert engine.calls == [(None, None)]
+    with pytest.raises(MissingOperandException):
+        p.process(Operator.get_operator("BDC"), [])
+    assert engine.calls == []
 
 
 def test_get_context_round_trips_engine() -> None:
@@ -152,22 +151,26 @@ def test_set_context_late_binding_works() -> None:
     assert len(engine.calls) == 1
 
 
-def test_process_with_only_tag_works_engine_hook_receives_none_props() -> None:
-    """``BDC`` upstream requires both operands; the lenient variant
-    still fires the hook with ``properties=None`` when only the tag is
-    present."""
+def test_process_with_only_tag_raises_missing_operand() -> None:
+    """Wave-1535 oracle: ``BDC`` requires both operands; a single operand
+    raises MissingOperandException upstream (engine catches + continues)."""
+    from pypdfbox.contentstream.operator import MissingOperandException
+
     engine = _Spy()
     p = BeginMarkedContentWithProps()
     engine.add_operator(p)
     tag = COSName.get_pdf_name("Span")
-    p.process(Operator.get_operator("BDC"), [tag])
-    assert engine.calls == [(tag, None)]
+    with pytest.raises(MissingOperandException):
+        p.process(Operator.get_operator("BDC"), [tag])
+    assert engine.calls == []
 
 
 def test_lenient_variant_is_distinct_from_strict_variant() -> None:
-    """The lenient and strict BDC variants are different classes with
-    different policy on malformed input. They live at distinct module
-    paths."""
+    """The two BDC implementations are different classes living at
+    distinct module paths. Since wave 1535 both follow upstream's strict
+    policy on malformed input (return without opening a sequence /
+    MissingOperandException on underflow); they remain separate classes
+    that coexist under one upstream-faithful token."""
     from pypdfbox.contentstream.operator.markedcontent.begin_marked_content_sequence_with_properties import (  # noqa: E501
         BeginMarkedContentSequenceWithProperties,
     )

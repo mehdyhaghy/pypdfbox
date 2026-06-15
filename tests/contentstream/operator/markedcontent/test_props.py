@@ -45,12 +45,12 @@ def test_mcid_default_is_minus_one() -> None:
 
 # ---- extract_tag -----------------------------------------------------
 
-def test_extract_tag_returns_first_name_operand() -> None:
+def test_extract_tag_returns_only_name_operand() -> None:
     tag = COSName.get_pdf_name("Span")
     assert extract_tag([tag]) is tag
 
 
-def test_extract_tag_with_extra_operands_picks_first() -> None:
+def test_extract_tag_with_trailing_non_name_keeps_the_name() -> None:
     tag = COSName.get_pdf_name("P")
     extra = COSDictionary()
     assert extract_tag([tag, extra]) is tag
@@ -60,18 +60,21 @@ def test_extract_tag_with_empty_operands_returns_none() -> None:
     assert extract_tag([]) is None
 
 
-def test_extract_tag_with_non_name_first_operand_returns_none() -> None:
+def test_extract_tag_with_no_name_operand_returns_none() -> None:
     # A malformed BMC with a string instead of a name — pypdfbox is
     # tolerant: the helper returns None and the operator silently no-ops
     # the tag.
     assert extract_tag([COSString("not-a-name")]) is None
 
 
-def test_extract_tag_with_non_name_first_operand_does_not_scan() -> None:
-    # Even if a later operand is a name, only the first slot counts —
-    # the operand grammar for BMC/BDC/MP/DP places the tag at index 0.
-    later = COSName.get_pdf_name("Span")
-    assert extract_tag([COSDictionary(), later]) is None
+def test_extract_tag_scans_for_last_name() -> None:
+    # Wave-1535 oracle: upstream BMC/MP iterate the whole operand list and
+    # keep the LAST COSName seen — leading junk is skipped, and a later
+    # name wins over an earlier one.
+    early = COSName.get_pdf_name("Early")
+    late = COSName.get_pdf_name("Span")
+    assert extract_tag([COSDictionary(), late]) is late
+    assert extract_tag([early, COSString("x"), late]) is late
 
 
 # ---- resolve_property_dict ------------------------------------------

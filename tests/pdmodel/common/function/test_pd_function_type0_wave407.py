@@ -94,7 +94,11 @@ def test_decode_parameter_returns_none_when_range_pairs_are_unavailable(
     assert fn.get_decode_for_parameter(0) is None
 
 
-def test_eval_uses_default_encode_for_missing_trailing_pairs() -> None:
+def test_eval_raises_for_partial_encode_missing_trailing_pairs() -> None:
+    # /Encode present but too short for the 2nd input dim: upstream PDFBox does
+    # NOT default-fill a partial /Encode — getEncodeForParameter(1) is null and
+    # eval NPEs. pypdfbox raises ValueError to mirror that hard failure
+    # (wave-1535 sampled-fuzz oracle).
     fn = _stream_function(
         domain=[0.0, 1.0, 0.0, 1.0],
         range_=[0.0, 255.0],
@@ -103,24 +107,33 @@ def test_eval_uses_default_encode_for_missing_trailing_pairs() -> None:
         encode=[0.0, 1.0],
     )
 
-    assert fn.eval([1.0, 1.0]) == pytest.approx([30.0])
+    with pytest.raises(ValueError, match="/Encode"):
+        fn.eval([1.0, 1.0])
 
 
-def test_decode_pairs_fill_from_range_and_then_zero_when_decode_is_short(
+def test_decode_pairs_raise_when_decode_present_but_short(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # A present-but-short /Decode is NOT default-filled (upstream returns it
+    # verbatim; getDecodeForParameter is null past its length). _get_decode_pairs
+    # therefore raises for the missing output dims rather than padding from
+    # /Range / zero (wave-1535 sampled-fuzz oracle).
     fn = PDFunctionType0(COSDictionary())
     fn.set_decode(_arr([10.0, 20.0]))
     monkeypatch.setattr(
         fn, "get_ranges_for_outputs", lambda: [(-1.0, 1.0), (-2.0, 2.0)]
     )
 
-    assert fn._get_decode_pairs(3) == [(10.0, 20.0), (-2.0, 2.0), (0.0, 0.0)]
+    with pytest.raises(ValueError, match="/Decode"):
+        fn._get_decode_pairs(3)
 
 
-def test_decode_sample_grid_rejects_invalid_bits_and_size() -> None:
-    bad_bits = _stream_function(bits=3)
-    with pytest.raises(ValueError, match="unsupported /BitsPerSample"):
+def test_decode_sample_grid_rejects_out_of_range_bits_and_invalid_size() -> None:
+    # bits=33 is past pypdfbox's [0, 32] parity range (off-spec widths 0..32 are
+    # now accepted like upstream; 33..64 are pinned-divergent — CHANGES.md Wave
+    # 1535), so decode_sample_grid must raise on it.
+    bad_bits = _stream_function(bits=33)
+    with pytest.raises(ValueError, match="BitsPerSample"):
         bad_bits.decode_sample_grid()
 
     bad_size = _stream_function(size=[0])

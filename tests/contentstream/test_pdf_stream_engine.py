@@ -254,8 +254,8 @@ def test_round_trip_minimal_text_object() -> None:
     # Filter to the top-level engine notifications. ``BT`` fires
     # set_text_matrix + set_text_line_matrix + begin_text; ``Tf`` fires
     # set_font; ``Td`` fires move_text_position; ``Tj`` fires
-    # show_text_string; ``ET`` fires set_text_matrix(None) +
-    # set_text_line_matrix(None) + end_text.
+    # show_text_string; ``ET`` fires set_text_line_matrix(None) +
+    # set_text_matrix(None) + end_text (upstream clear order, wave 1535).
     sequence = [name for name, _ in engine.events]
     assert sequence == [
         "set_text_matrix",
@@ -264,8 +264,8 @@ def test_round_trip_minimal_text_object() -> None:
         "set_font",
         "move_text_position",
         "show_text_string",
-        "set_text_matrix",
         "set_text_line_matrix",
+        "set_text_matrix",
         "end_text",
     ]
     # Spot-check operands for the load-bearing handlers.

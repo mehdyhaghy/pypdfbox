@@ -61,7 +61,9 @@ def test_process_with_named_property_resolves_via_resources() -> None:
     assert seen_props.get_int(COSName.get_pdf_name("MCID")) == 5
 
 
-def test_process_with_unresolved_named_property_passes_none() -> None:
+def test_process_with_unresolved_named_property_does_not_fire() -> None:
+    # Wave-1535 oracle: DP returns without notifying the engine when the
+    # property list cannot be resolved (mirrors BDC).
     res = PDResources()
     engine = _Spy(resources=res)
     p = DefineMarkedContentPointWithProps()
@@ -71,16 +73,23 @@ def test_process_with_unresolved_named_property_passes_none() -> None:
         Operator.get_operator("DP"),
         [tag, COSName.get_pdf_name("Missing")],
     )
-    assert engine.calls == [(tag, None)]
+    assert engine.calls == []
 
 
-def test_process_with_only_tag() -> None:
+def test_process_with_only_tag_raises_missing_operand() -> None:
+    # Wave-1535 oracle: DP requires two operands; underflow raises
+    # MissingOperandException upstream.
+    import pytest
+
+    from pypdfbox.contentstream.operator import MissingOperandException
+
     engine = _Spy()
     p = DefineMarkedContentPointWithProps()
     engine.add_operator(p)
     tag = COSName.get_pdf_name("Marker")
-    p.process(Operator.get_operator("DP"), [tag])
-    assert engine.calls == [(tag, None)]
+    with pytest.raises(MissingOperandException):
+        p.process(Operator.get_operator("DP"), [tag])
+    assert engine.calls == []
 
 
 def test_process_without_context_is_no_op() -> None:

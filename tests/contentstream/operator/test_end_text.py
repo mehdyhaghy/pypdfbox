@@ -32,6 +32,8 @@ def test_process_clears_matrices_and_notifies() -> None:
     p = EndText()
     engine.add_operator(p)
     p.process(Operator.get_operator("ET"), [])
-    assert engine.calls == ["set_text_matrix", "set_text_line_matrix", "end_text"]
+    # Upstream ``EndText`` clears the text-line matrix first, then the text
+    # matrix, then notifies the engine (wave 1535 oracle parity).
+    assert engine.calls == ["set_text_line_matrix", "set_text_matrix", "end_text"]
     assert engine.text_matrix is None
     assert engine.text_line_matrix is None

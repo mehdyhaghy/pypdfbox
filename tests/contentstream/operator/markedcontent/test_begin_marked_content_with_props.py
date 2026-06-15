@@ -62,8 +62,11 @@ def test_process_with_named_property_resolves_via_resources() -> None:
     assert seen_props.get_int(COSName.get_pdf_name("MCID")) == 3
 
 
-def test_process_with_unresolved_named_property_passes_none() -> None:
-    # Resources lack /Properties/Missing — property resolution returns None.
+def test_process_with_unresolved_named_property_does_not_fire() -> None:
+    # Resources lack /Properties/Missing — property resolution returns
+    # None. Wave-1535 oracle: upstream BDC returns WITHOUT opening a
+    # sequence when the property list cannot be resolved (it does not
+    # push a marked-content node with null properties).
     res = PDResources()
     engine = _Spy(resources=res)
     p = BeginMarkedContentWithProps()
@@ -73,24 +76,36 @@ def test_process_with_unresolved_named_property_passes_none() -> None:
         Operator.get_operator("BDC"),
         [tag, COSName.get_pdf_name("Missing")],
     )
-    assert engine.calls == [(tag, None)]
+    assert engine.calls == []
 
 
-def test_process_with_only_tag_passes_none_properties() -> None:
+def test_process_with_only_tag_raises_missing_operand() -> None:
+    # Wave-1535 oracle: fewer than two operands raises
+    # MissingOperandException upstream (the engine catches + continues).
+    import pytest
+
+    from pypdfbox.contentstream.operator import MissingOperandException
+
     engine = _Spy()
     p = BeginMarkedContentWithProps()
     engine.add_operator(p)
     tag = COSName.get_pdf_name("Span")
-    p.process(Operator.get_operator("BDC"), [tag])
-    assert engine.calls == [(tag, None)]
+    with pytest.raises(MissingOperandException):
+        p.process(Operator.get_operator("BDC"), [tag])
+    assert engine.calls == []
 
 
-def test_process_with_no_operands() -> None:
+def test_process_with_no_operands_raises_missing_operand() -> None:
+    import pytest
+
+    from pypdfbox.contentstream.operator import MissingOperandException
+
     engine = _Spy()
     p = BeginMarkedContentWithProps()
     engine.add_operator(p)
-    p.process(Operator.get_operator("BDC"), [])
-    assert engine.calls == [(None, None)]
+    with pytest.raises(MissingOperandException):
+        p.process(Operator.get_operator("BDC"), [])
+    assert engine.calls == []
 
 
 def test_process_without_context_is_no_op() -> None:

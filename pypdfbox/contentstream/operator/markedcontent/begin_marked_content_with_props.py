@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from pypdfbox.cos import COSBase, COSDictionary
+from pypdfbox.cos import COSBase, COSName
 
-from .. import Operator, OperatorName, OperatorProcessor
-from ._props import extract_tag, resolve_property_dict
+from .. import MissingOperandException, Operator, OperatorName, OperatorProcessor
+from ._props import resolve_property_dict
 
 
 class BeginMarkedContentWithProps(OperatorProcessor):
@@ -18,29 +18,38 @@ class BeginMarkedContentWithProps(OperatorProcessor):
     up via :meth:`PDResources.get_property_list` on the engine's current
     resources.
 
-    Forwards ``(tag, properties)`` to the engine's
-    :meth:`begin_marked_content_sequence` hook when the engine exposes
-    one. ``properties`` may be ``None`` if the named property list cannot
-    be resolved or the operands are malformed.
+    Upstream semantics (mirrored exactly):
+
+    * fewer than two operands raises :class:`MissingOperandException`
+      (the engine catches it, logs, and continues — no sequence opens);
+    * if the first operand is not a ``COSName`` the operator returns
+      without opening a sequence;
+    * the tag is the **first** operand (``operands[0]``), *not* the last
+      ``COSName`` — the property operand of the ``/Name`` form is itself
+      a ``COSName`` and must not be mistaken for the tag;
+    * if the property list cannot be resolved to a ``COSDictionary``
+      (unknown ``/Name``, wrong operand type, ``null`` lookup) the
+      operator returns **without** opening a sequence — upstream does not
+      push a marked-content node for an unresolved property list.
     """
 
     OPERATOR_NAME = OperatorName.BEGIN_MARKED_CONTENT_SEQ  # "BDC"
 
     def process(self, operator: Operator, operands: list[COSBase]) -> None:
-        del operator  # unused — operator name fixed by registration
-        tag = extract_tag(operands)
-        properties = self._resolve_properties(operands)
+        if len(operands) < 2:
+            raise MissingOperandException(operator, operands)
+        tag = operands[0]
+        if not isinstance(tag, COSName):
+            return
+        properties = resolve_property_dict(operands, self._context)
+        if properties is None:
+            return
         context = self._context
         if context is None:
             return
         hook = getattr(context, "begin_marked_content_sequence", None)
         if hook is not None:
             hook(tag, properties)
-
-    def _resolve_properties(
-        self, operands: list[COSBase]
-    ) -> COSDictionary | None:
-        return resolve_property_dict(operands, self._context)
 
     def get_name(self) -> str:
         return self.OPERATOR_NAME

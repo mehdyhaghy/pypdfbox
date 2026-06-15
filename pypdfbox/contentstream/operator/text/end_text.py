@@ -15,8 +15,12 @@ class EndText(OperatorProcessor):
 
     def process(self, operator: Operator, operands: list[COSBase]) -> None:
         ctx = self.get_context()
-        ctx.set_text_matrix(None)
+        # Upstream clears the text-line matrix first, then the text matrix,
+        # then notifies the engine. Operand window is ignored (extra
+        # operands tolerated; an ``ET`` with no preceding ``BT`` is a no-op
+        # clear, never an error).
         ctx.set_text_line_matrix(None)
+        ctx.set_text_matrix(None)
         ctx.end_text()
 
     def get_name(self) -> str:

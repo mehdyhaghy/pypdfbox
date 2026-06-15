@@ -210,17 +210,10 @@ def test_2d_table_first_dim_varies_fastest(bits: int) -> None:
         )
 
 
-# ---------- Unsupported bit widths reject ----------
+# ---------- Off-spec but readable bit widths (0..32) are accepted ----------
 
 
-@pytest.mark.parametrize(
-    "bits",
-    [0, 3, 5, 6, 7, 9, 11, 17, 33, 64],
-    ids=[f"reject-bits-{b}" for b in [0, 3, 5, 6, 7, 9, 11, 17, 33, 64]],
-)
-def test_eval_rejects_unsupported_bits_per_sample(bits: int) -> None:
-    """PDF 32000-1 §7.10.2 Table 38 only lists ``{1, 2, 4, 8, 12, 16, 24,
-    32}`` — every other value must raise ``ValueError`` at eval time."""
+def _build_bits_only(bits: int) -> PDFunctionType0:
     raw = COSStream()
     raw.set_int("FunctionType", 0)
     domain = COSArray()
@@ -234,6 +227,36 @@ def test_eval_rejects_unsupported_bits_per_sample(bits: int) -> None:
     raw.set_item("Size", size_arr)
     raw.set_int("BitsPerSample", bits)
     raw.set_data(b"\x00\x00\x00\x00")
-    fn = PDFunctionType0(raw)
+    return PDFunctionType0(raw)
+
+
+@pytest.mark.parametrize(
+    "bits",
+    [0, 3, 5, 6, 7, 9, 11, 17],
+    ids=[f"accept-bits-{b}" for b in [0, 3, 5, 6, 7, 9, 11, 17]],
+)
+def test_eval_accepts_off_spec_bits_per_sample(bits: int) -> None:
+    """Although PDF 32000-1 §7.10.2 Table 38 only lists ``{1, 2, 4, 8, 12,
+    16, 24, 32}``, upstream PDFBox does NOT validate ``/BitsPerSample`` — its
+    eval reads any width in ``[0, 64]`` via ``readBits``. pypdfbox mirrors that
+    for the determinate ``[0, 32]`` range (wave-1535 sampled-fuzz oracle), so an
+    off-spec width must evaluate (not raise) — the all-zero body here yields
+    0.0."""
+    fn = _build_bits_only(bits)
+    assert fn.eval([0.0]) == [0.0]
+
+
+@pytest.mark.parametrize(
+    "bits",
+    [33, 48, 64, 65, 128, -1],
+    ids=[f"reject-bits-{b}" for b in [33, 48, 64, 65, 128, -1]],
+)
+def test_eval_rejects_out_of_range_bits_per_sample(bits: int) -> None:
+    """Widths outside pypdfbox's determinate ``[0, 32]`` parity range raise
+    ``ValueError``. Upstream PDFBox accepts 33..64 too, but its output there
+    depends on a Java ``(int)`` long-truncation plus a stateful zeroed-cache
+    quirk that is not bit-reproducible in Python (pinned divergence, CHANGES.md
+    Wave 1535); > 64 / < 0 errors on both sides."""
+    fn = _build_bits_only(bits)
     with pytest.raises(ValueError, match="BitsPerSample"):
         fn.eval([0.0])
