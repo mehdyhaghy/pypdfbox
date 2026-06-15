@@ -3215,7 +3215,26 @@ class COSWriter(ICOSVisitor):
 
         # Update /Length to match what we'll actually emit. Streams are
         # always indirect, so this is safe.
-        obj.set_int(COSName.LENGTH, len(raw))  # type: ignore[attr-defined]
+        #
+        # Upstream invariant: ``/Length`` is the FIRST dictionary entry. The
+        # PDFBox ``COSStream()`` constructor seeds ``setInt(COSName.LENGTH, 0)``
+        # before anything else, and the parser updates that seeded entry
+        # IN PLACE (keeping its leading position) even when the source file
+        # spells ``/Length`` after ``/Type``. pypdfbox's ``COSStream`` does not
+        # carry a ``/Length`` entry until the body is committed, so a
+        # freshly-built or parsed stream can end up with ``/Length`` in a
+        # trailing position. Move it to the front here so the emitted dictionary
+        # matches upstream byte-for-byte (``<< /Length N /Type ... >>``). The
+        # writer is the right place: COSStream's ``/Length``-absent state is
+        # load-bearing elsewhere (length queries return -1, parser
+        # commit hooks), so the reorder is applied only at serialization time.
+        obj.remove_item(COSName.LENGTH)  # type: ignore[attr-defined]
+        length_value = COSInteger.get(len(raw))
+        existing_items = list(obj.entry_set())  # type: ignore[attr-defined]
+        obj.clear()  # type: ignore[attr-defined]
+        obj.set_item(COSName.LENGTH, length_value)  # type: ignore[attr-defined]
+        for entry_key, entry_value in existing_items:
+            obj.set_item(entry_key, entry_value)  # type: ignore[attr-defined]
 
         # Emit the dictionary first. For xref streams the dict subsumes
         # the trailer — its /ID strings must stay cleartext (the standard

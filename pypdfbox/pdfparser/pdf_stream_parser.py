@@ -5,6 +5,7 @@ from threading import Lock
 from typing import TYPE_CHECKING, ClassVar
 
 from pypdfbox.cos import (
+    COSArray,
     COSBase,
     COSBoolean,
     COSDictionary,
@@ -249,6 +250,82 @@ class PDFStreamParser(COSParser):
         byte-identical to Apache PDFBox while leaving the document-level
         round-trip preservation in ``COSParser`` untouched."""
         return COSString(self.read_hex_string())
+
+    # ---------- container operands (lenient EOF recovery) ----------
+
+    def parse_cos_array(self) -> COSArray:
+        """Parse a ``[ ... ]`` array operand, recovering the partial array
+        at EOF instead of raising.
+
+        ``COSParser.parse_cos_array`` (the document-loader variant) raises
+        ``unterminated array`` when the closing ``]`` is missing before EOF
+        — correct for the strict document body, where a truncated array
+        means a corrupt object. Upstream's *content-stream* path
+        (``BaseParser.parseCOSArray``, which ``PDFStreamParser`` inherits in
+        Java) is lenient instead: at EOF it simply returns the elements
+        accumulated so far. A content stream that ends mid-array (``[1 2 3``)
+        therefore yields the array ``[1 2 3]`` and a clean EOF, matching
+        Apache PDFBox. Overriding here keeps the document-loader strictness
+        in ``COSParser`` untouched while restoring upstream content-stream
+        leniency."""
+        start = self.position
+        b = self.read_byte()
+        if b != 0x5B:
+            raise PDFParseError("expected array '['", position=start)
+        self._enter_recursion("array", start)
+        try:
+            items: list[COSBase] = []
+            while True:
+                self.skip_whitespace()
+                nxt = self.peek_byte()
+                if nxt == RandomAccessRead.EOF:
+                    # Lenient: return the partial array (upstream BaseParser).
+                    return COSArray(items)
+                if nxt == 0x5D:  # ']'
+                    self.read_byte()
+                    return COSArray(items)
+                items.append(self.parse_direct_object())
+        finally:
+            self._leave_recursion()
+
+    def parse_cos_dictionary(self, is_direct: bool = False) -> COSDictionary:
+        """Parse a ``<< ... >>`` dictionary operand, recovering the partial
+        dictionary at EOF instead of raising.
+
+        Same divergence rationale as :meth:`parse_cos_array`: the
+        document-loader ``COSParser.parse_cos_dictionary`` raises
+        ``unterminated dictionary`` at EOF, but upstream's content-stream
+        parser inherits ``BaseParser.parseCOSDictionary``, which returns the
+        name/value pairs gathered so far. A content stream that ends
+        mid-dictionary (``<< /A 1 /B 2``) therefore yields the dictionary
+        ``{/A 1 /B 2}`` and a clean EOF, matching Apache PDFBox."""
+        start = self.position
+        self.read_expected(b"<<")
+        self._enter_recursion("dictionary", start)
+        try:
+            d = COSDictionary()
+            d.set_direct(is_direct)
+            while True:
+                self.skip_whitespace()
+                nxt = self.peek_byte()
+                if nxt == RandomAccessRead.EOF:
+                    # Lenient: return the partial dictionary (upstream BaseParser).
+                    return d
+                if nxt == 0x3E:  # '>'
+                    self.read_expected(b">>")
+                    return d
+                if nxt != 0x2F:  # '/'
+                    raise PDFParseError(
+                        f"expected name in dictionary at byte {self.position}",
+                        position=self.position,
+                    )
+                key = COSName.get_pdf_name(self.read_name_bytes())
+                value = self.parse_direct_object()
+                if isinstance(value, (COSArray, COSDictionary)):
+                    value.set_direct(True)
+                d.set_item(key, value)
+        finally:
+            self._leave_recursion()
 
     # ---------- public API ----------
 

@@ -90,20 +90,30 @@ def test_dict_operand() -> None:
     assert isinstance(toks[1], Operator) and toks[1].name == "def"
 
 
-def test_malformed_dictionary_stops_parsing_and_closes() -> None:
-    p = parser(b"q << /A 1")
+def test_unterminated_dictionary_recovers_partial_at_eof() -> None:
+    # Upstream PDFBox's content-stream parser inherits BaseParser's lenient
+    # dictionary parse: a dictionary truncated at EOF (no closing ``>>``)
+    # yields the name/value pairs gathered so far, not a parse error
+    # (oracle: StreamParserFuzzProbe ``unbalanced_dict_open``, wave 1528).
+    p = parser(b"q << /A 1 /B 2")
     toks = p.parse()
-    assert len(toks) == 1
+    assert len(toks) == 2
     assert isinstance(toks[0], Operator) and toks[0].name == "q"
-    assert p.is_closed()
+    assert isinstance(toks[1], COSDictionary)
+    assert toks[1].get_int("A") == 1
+    assert toks[1].get_int("B") == 2
 
 
-def test_malformed_array_stops_parsing_and_closes() -> None:
-    p = parser(b"q [1 2")
+def test_unterminated_array_recovers_partial_at_eof() -> None:
+    # Same leniency for arrays: a content stream ending mid-array (no closing
+    # ``]``) yields the elements gathered so far (oracle:
+    # StreamParserFuzzProbe ``unbalanced_array_open``, wave 1528).
+    p = parser(b"q [1 2 3")
     toks = p.parse()
-    assert len(toks) == 1
+    assert len(toks) == 2
     assert isinstance(toks[0], Operator) and toks[0].name == "q"
-    assert p.is_closed()
+    assert isinstance(toks[1], COSArray)
+    assert [e.value for e in toks[1]] == [1, 2, 3]
 
 
 def test_apostrophe_text_show_operator() -> None:

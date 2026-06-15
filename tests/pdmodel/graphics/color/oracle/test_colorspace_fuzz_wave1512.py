@@ -525,7 +525,7 @@ _EXPECTED_DIVERGENCES: dict[str, tuple[str, str]] = {
     ),
     "iccbased_n4": (
         "CASE iccbased_n4 create=ok class=PDICCBased nc=4 "
-        "init=0.000,0.000,0.000,0.000 rgb=64;64;64",
+        "init=0.000,0.000,0.000,1.000 rgb=64;64;64",
         _CMM,
     ),
     "calgray_missing_whitepoint": (

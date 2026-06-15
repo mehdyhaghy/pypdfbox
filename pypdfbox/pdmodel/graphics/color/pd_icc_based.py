@@ -97,8 +97,75 @@ class PDICCBased(PDColorSpace):
             stream.set_int(_N, 3)
             array.add(stream)
         super().__init__(array)
+        self._initial_color = self._compute_initial_color()
+
+    def _compute_initial_color(self) -> PDColor:
+        """Compute the initial colour the way upstream's ``loadICCProfile``
+        does, branching on whether the embedded ICC profile is parseable.
+
+        Mirrors ``PDICCBased.loadICCProfile`` (PDFBox 3.0.7):
+
+        * **Profile parses** (and its component count matches ``/N``):
+          ``initialColor[i] = max(0, getRangeForComponent(i).getMin())`` for
+          each of the ``/N`` components — for the usual 0..1 ``/Range`` that
+          is all-zeros, including a four-component CMYK profile.
+        * **Profile unreadable** (corrupt / absent / arity mismatch): upstream
+          takes ``fallbackToAlternateColorSpace`` →
+          ``initialColor = alternateColorSpace.getInitialColor()``. The
+          components then come from the alternate verbatim — a DeviceCMYK
+          alternate yields ``(0, 0, 0, 1)`` (K=1 black), and the count
+          follows the alternate (which can differ from ``/N`` when
+          ``/Alternate`` disagrees).
+        * **No alternate resolvable** (invalid ``/N`` with no ``/Alternate``
+          — the permissive path where upstream would have thrown): fall back
+          to ``[0.0] * N``.
+
+        pypdfbox parses the embedded profile through Pillow's ImageCms (same
+        LittleCMS2 backend AWT's CMM uses), so the profile-parses branch is
+        taken exactly when upstream's AWT ``ICC_Profile.getInstance`` would
+        have succeeded.
+        """
+        if self._embedded_profile_parses():
+            n = self.get_n()
+            components = [max(0.0, self.get_range_for_component(i)[0])
+                         for i in range(n)]
+            return PDColor(components, self)
+        alternate = self.get_alternate_color_space()
+        if alternate is not None:
+            return alternate.get_initial_color()
         n = self.get_n()
-        self._initial_color = PDColor([0.0] * n, self)
+        return PDColor([0.0] * max(n, 0), self)
+
+    def _embedded_profile_parses(self) -> bool:
+        """Return ``True`` when the embedded ICC profile parses *and* its
+        component count matches ``/N`` — the condition under which upstream's
+        ``loadICCProfile`` keeps the AWT ``ICC_ColorSpace`` rather than
+        falling back to the alternate. Mirrors upstream's parse-then-arity
+        guard without throwing on failure (returns ``False`` instead)."""
+        n = self.get_n()
+        if n not in (1, 3, 4):
+            return False
+        profile_bytes = self.get_iccprofile_bytes()
+        if not profile_bytes:
+            return False
+        if self._get_input_profile(profile_bytes) is None:
+            return False
+        # Profile parsed; mirror upstream's arity guard (Using N components
+        # warning + alternate fallback when the profile's component count
+        # disagrees with /N) by cross-checking the data-colour-space arity.
+        count = self._profile_component_count(profile_bytes)
+        return count is None or count == n
+
+    @staticmethod
+    def _profile_component_count(profile_bytes: bytes) -> int | None:
+        """Best-effort component count of an ICC profile from its data
+        colour-space signature (header bytes 16..19). Returns ``None`` when
+        the signature is unrecognised or the buffer is too short."""
+        if len(profile_bytes) < 20:
+            return None
+        sig = profile_bytes[16:20].decode("ascii", errors="replace")
+        return {"GRAY": 1, "RGB ": 3, "Lab ": 3, "XYZ ": 3,
+                "CMYK": 4}.get(sig)
 
     # ---------- factory ----------
 
@@ -255,10 +322,24 @@ class PDICCBased(PDColorSpace):
         self.set_alternate(None)
 
     def get_alternate_color_space(self) -> PDColorSpace | None:
-        """``/Alternate`` — typed alternate color space, or ``None``.
-        Upstream-named alias of :meth:`get_alternate`. Mirrors upstream
-        ``PDICCBased.getAlternateColorSpace() : PDColorSpace``."""
-        return self.get_alternate()
+        """``/Alternate`` — typed alternate color space. Mirrors upstream
+        ``PDICCBased.getAlternateColorSpace() : PDColorSpace``.
+
+        Upstream's accessor never simply returns the raw ``/Alternate``:
+        when ``/Alternate`` is absent it synthesises the default alternate
+        by component count (1 → DeviceGray, 3 → DeviceRGB, 4 → DeviceCMYK)
+        and *throws* ``IOException`` for any other count. pypdfbox keeps
+        the default-by-N synthesis but stays permissive on the invalid-N
+        path (returns ``None`` instead of raising — the documented
+        permissive-factory contract; see CHANGES.md "wave 1528").
+
+        Use :meth:`get_alternate` for the literal ``/Alternate`` read
+        without the default-by-N synthesis.
+        """
+        alt = self.get_alternate()
+        if alt is not None:
+            return alt
+        return self.fallback_to_alternate_color_space()
 
     def set_alternate_color_space(self, alternate: PDColorSpace | None) -> None:
         """Upstream-named alias of :meth:`set_alternate`."""

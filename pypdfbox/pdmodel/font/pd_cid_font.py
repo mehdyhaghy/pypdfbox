@@ -567,17 +567,20 @@ class PDCIDFont(PDFont):
         """
         return (self.get_glyph_width(cid) / 1000.0, 0.0)
 
-    def get_position_vector(self, cid: int) -> tuple[float, float]:
-        """Position vector ``(v_x, v_y)`` for ``cid`` in 1/1000 em.
+    def get_position_vector(self, code: int) -> tuple[float, float]:
+        """Position vector ``(v_x, v_y)`` for character ``code`` in 1/1000 em.
 
-        Looks up ``/W2`` triples ``(w1y, v_x, v_y)``; CIDs outside the
+        Mirrors upstream ``PDCIDFont.getPositionVector(int code)``: it
+        resolves ``code -> CID`` via :meth:`code_to_cid` first, then looks
+        up the per-CID ``/W2`` triple ``(w1y, v_x, v_y)``. CIDs outside the
         table fall back to upstream's default-position-vector formula
-        ``(width(cid)/2, dw2[0])`` — half the horizontal advance for
+        ``(widthForCID(cid)/2, dw2[0])`` — half the horizontal advance for
         ``v_x`` and ``/DW2``'s position-vector-y (defaulting to ``880``)
-        for ``v_y``. Mirrors upstream
-        ``PDCIDFont.getDefaultPositionVector`` /
-        ``PDCIDFont.getPositionVector``.
+        for ``v_y``. The ``code -> CID`` resolution matters when the two
+        differ (a non-identity CMap, or out-of-range codes whose CMap
+        mapping is not the identity).
         """
+        cid = self.code_to_cid(code)
         triple = self._get_w2_metrics(cid)
         if triple is not None:
             _, v_x, v_y = triple
