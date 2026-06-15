@@ -2311,23 +2311,50 @@ def _aes128_cbc_encrypt(key: bytes, data: bytes) -> bytes:
 
 
 def _aes128_cbc_decrypt(key: bytes, data: bytes) -> bytes:
-    """AES-CBC inverse of :func:`_aes128_cbc_encrypt`.
+    """AES-CBC inverse of :func:`_aes128_cbc_encrypt` for AESV2 / AESV3.
 
-    Tolerant of malformed PKCS#7 padding (returns the raw padded bytes) to
-    match PDFBox's loose decryption behaviour — strict callers should wrap
-    this in their own validation.
+    Mirrors the upstream ``SecurityHandler`` IV-prefix + PKCS#5 decrypt contract
+    exactly (the V4/V5 ``StandardSecurityHandler._dispatch_decrypt`` AESV2 / AESV3
+    cases route here). The bad-final-block behaviour splits by the same dispatch
+    upstream uses (``useAES && key.length == 32``):
+
+    - **AESV3** (32-byte file key → ``encryptDataAES256`` → ``CipherInputStream``):
+      a bad / incomplete final block is silently dropped, emitting only the
+      cleanly-decrypted leading blocks.
+    - **AESV2** (16-byte per-object key → ``encryptDataAESother`` →
+      ``Cipher.update``+``doFinal``): a bad final block raises (IOException
+      upstream → :class:`OSError`).
+
+    Empty input is a silent zero-length skip; a partial IV (``0 < n < 16``) raises
+    :class:`OSError` ("AES initialization vector not fully read"); an IV with no
+    ciphertext yields empty output.
     """
-    if len(data) < 16:
+    if len(data) == 0:
         return b""
+    if len(data) < 16:
+        raise OSError(
+            "AES initialization vector not fully read: only "
+            f"{len(data)} bytes read instead of 16"
+        )
     iv, ct = data[:16], data[16:]
+    if len(ct) == 0:
+        return b""
+    tolerant = len(key) == 32  # AESV3 wraps a CipherInputStream
     cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
     dec = cipher.decryptor()
+    if len(ct) % 16 != 0:
+        if tolerant:
+            whole = ct[: len(ct) - (len(ct) % 16)]
+            return dec.update(whole) + dec.finalize()
+        raise OSError("AES ciphertext is not a multiple of the block size")
     padded = dec.update(ct) + dec.finalize()
     unpadder = _aes_padding.PKCS7(128).unpadder()
     try:
         return unpadder.update(padded) + unpadder.finalize()
-    except ValueError:
-        return padded
+    except ValueError as exc:
+        if tolerant:
+            return padded[:-16] if len(padded) >= 16 else b""
+        raise OSError("AES padding is invalid") from exc
 
 
 def _aes_cbc_no_padding_encrypt(key: bytes, iv: bytes, data: bytes) -> bytes:

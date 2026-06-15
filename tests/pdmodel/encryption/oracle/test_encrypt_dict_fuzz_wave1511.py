@@ -487,13 +487,16 @@ def test_encrypt_dict_fuzz_open_contract_matches_pdfbox(tmp_path: Path) -> None:
 _PINNED_DIVERGENCES: dict[str, tuple[str, str | None, str | None]] = {
     # --- /V mismatch:
     # * /V 9 (unknown, on a V2/RC4 file): pypdfbox rejects the unknown
-    #   algorithm version up front (a clean error before any cipher is chosen)
-    #   where Java opens with a no-op cipher and yields no readable text. Both
-    #   refuse to expose the plaintext; pypdfbox fails closed, Java fails open
-    #   to garbage — pypdfbox is the safer of the two.
+    #   algorithm version (a clean error before any plaintext is exposed) where
+    #   Java opens with a no-op cipher and yields no readable text. Both refuse
+    #   to expose the plaintext; pypdfbox fails closed, Java fails open to
+    #   garbage — pypdfbox is the safer of the two. Since wave 1532 the AES
+    #   decrypt path raises ``OSError`` (was an ``OTHER``-category error) when it
+    #   meets the malformed/short ciphertext produced under the unknown version,
+    #   so the category is now ``IO`` — still a clean fail-closed.
     # * /V 6 forced on an AES-256 file: pypdfbox keeps the /CF-derived routing
     #   and recovers text; Java's V6 path can't and yields NOTEXT. Both open.
-    "v_unknown_high": ("ERR:OTHER", None, "NOTEXT"),
+    "v_unknown_high": ("ERR:IO", None, "NOTEXT"),
     "v6_on_aes256": ("ok", "1", "TEXT"),
     # --- /R mismatch: both libs reject the (now-inconsistent) /R, but pypdfbox
     # surfaces a clean InvalidPasswordException where Java throws IOException.

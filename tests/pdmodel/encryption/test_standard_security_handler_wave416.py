@@ -118,12 +118,23 @@ def test_decrypt_perms_rejects_malformed_lengths() -> None:
     )
 
 
-def test_aes_cfm_decrypt_short_payload_returns_empty_bytes() -> None:
+def test_aes_cfm_decrypt_partial_iv_raises() -> None:
+    # Retargeted in wave 1532 to the oracle-proven SecurityHandler contract.
+    # Upstream prepareAESInitializationVector returns empty only on a TRULY
+    # empty payload (IV read 0); a partial IV (0 < n < 16) raises IOException
+    # ("AES initialization vector not fully read") → OSError here. See
+    # oracle/test_decrypt_data_fuzz_wave1532.py.
+    import pytest
+
     handler = StandardSecurityHandler()
     handler.set_encryption_key(b"k" * 16)
     handler._string_cfm = "AESV2"  # noqa: SLF001
 
-    assert handler.decrypt_string(b"too short", 1, 0) == b""
+    # Empty payload → empty (silent zero-length skip).
+    assert handler.decrypt_string(b"", 1, 0) == b""
+    # Partial IV (9 of 16 bytes) → raises.
+    with pytest.raises(OSError):
+        handler.decrypt_string(b"too short", 1, 0)
 
 
 def test_unknown_cfm_dispatch_falls_back_to_rc4() -> None:

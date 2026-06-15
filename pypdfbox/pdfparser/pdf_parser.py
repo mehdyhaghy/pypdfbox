@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import logging
 from typing import Any
 
@@ -1659,6 +1660,72 @@ class PDFParser:
         if offset_table:
             self._document.add_xref_table(offset_table)
 
+    def _brute_force_recovered_offsets(self) -> dict[COSObjectKey, int]:
+        """``bf_search_for_objects`` with upstream's final-object EOF rule.
+
+        Mirrors the deferred-``put`` shape of upstream
+        ``BruteForceParser.bfSearchForObjects``: each ``n g obj`` header is only
+        committed to the offset map once the NEXT object header is seen, and the
+        final deferred object is committed at loop end ONLY when either the file
+        contained a ``%%EOF`` marker (``bfSearchForLastEOFMarker`` returned a
+        real position rather than its ``Long.MAX_VALUE`` "none found" sentinel)
+        OR that last object was terminated by ``endobj`` / ``endstream``
+        (``endOfObjFound``). A trailing object that runs straight to EOF with no
+        ``endobj`` and no ``%%EOF`` anywhere in the file is therefore DROPPED —
+        upstream treats it as an incomplete tail, not a recoverable object.
+
+        ``bf_search_for_objects`` itself records every header unconditionally
+        (it has no document-level view of the EOF marker), so the
+        whole-document rebuild applies the drop here. The dropped key is the one
+        whose header offset is the largest — i.e. the last header in scan order
+        — matching the single deferred slot upstream never flushes."""
+        assert self._cos_parser is not None
+        offsets = self._cos_parser.bf_search_for_objects()
+        if not offsets:
+            return offsets
+        data = self._read_source_bytes()
+        if data is None:
+            return offsets
+        # A real ``%%EOF`` anywhere → upstream always flushes the last object.
+        if data.rfind(b"%%EOF") != -1:
+            return offsets
+        # No ``%%EOF``: the last object (highest header offset) is flushed only
+        # if it was ``endobj`` / ``endstream`` terminated. Find the object whose
+        # body is the file tail and check for a terminator after its header.
+        last_key = max(offsets, key=lambda k: offsets[k])
+        last_offset = offsets[last_key]
+        tail = data[last_offset:]
+        if b"endobj" in tail or b"endstream" in tail:
+            return offsets
+        # Drop the unterminated trailing object (return a fresh dict so the
+        # caller's later mutations don't leak back into the parser).
+        return {k: v for k, v in offsets.items() if k != last_key}
+
+    def _read_source_bytes(self) -> bytes | None:
+        """Snapshot the whole source as ``bytes`` (position preserved), or
+        ``None`` if it cannot be read. Used by the brute-force recovery
+        helpers that need a document-level view of the raw file."""
+        try:
+            saved = self._src.get_position()
+        except Exception:  # noqa: BLE001 - source without a position cursor
+            return None
+        try:
+            length = self._src.length()
+            self._src.seek(0)
+            buf = bytearray(length)
+            read = 0
+            while read < length:
+                n = self._src.read_into(buf, read, length - read)
+                if n <= 0:
+                    break
+                read += n
+            return bytes(buf[:read])
+        except Exception:  # noqa: BLE001 - unreadable source: skip the EOF rule
+            return None
+        finally:
+            with contextlib.suppress(Exception):
+                self._src.seek(saved)
+
     def _rebuild_document_from_brute_force(self) -> None:
         """Reconstruct the cross-reference + trailer entirely from a
         brute-force ``n g obj`` scan of the body.
@@ -1671,7 +1738,7 @@ class PDFParser:
         rebuilt trailer (with brute-force ``/Root`` / ``/Info`` detection)
         is registered on that section."""
         assert self._cos_parser is not None
-        offsets = self._cos_parser.bf_search_for_objects()
+        offsets = self._brute_force_recovered_offsets()
         if not offsets:
             # No ``n g obj`` definition anywhere in the body: there is nothing
             # to rebuild a cross-reference from. PDFBox's brute-force recovery
@@ -1977,17 +2044,32 @@ class PDFParser:
             return
         if self._lenient and not root.contains_key(COSName.TYPE):
             root.set_item(COSName.TYPE, COSName.CATALOG)
-        # Prune dangling / truncated kids and rewrite /Count, but ONLY when a
-        # page tree exists. We deliberately call ``check_pages_dictionary``
-        # rather than ``check_pages`` here: ``check_pages`` additionally raises
-        # "Page tree root must be a dictionary" when /Pages is absent, which is
-        # legitimate for the FDF catalogs pypdfbox also loads through this
-        # generic ``load_pdf`` path (upstream routes FDF through a separate
-        # parser that never reaches checkPages). The /Root presence was already
-        # validated by ``_reject_full_rebuild_without_root``.
-        pages = root.get_dictionary_object(COSName.get_pdf_name("Pages"))
+        # Mirror upstream ``COSParser.checkPages``: when the trailer was
+        # rebuilt it prunes the page tree's dangling / truncated /Kids and
+        # rewrites /Count, then ALWAYS asserts ``root.getCOSDictionary(PAGES)
+        # != null`` — raising IOException("Page tree root must be a dictionary")
+        # otherwise. ``getCOSDictionary`` returns null both when /Pages is
+        # absent AND when /Pages resolves to something that is not a
+        # dictionary (a dangling reference to a missing object, or a
+        # non-dictionary value).
+        #
+        # pypdfbox honours that rejection ONLY when the catalog actually
+        # carries a /Pages key that fails to resolve to a dictionary — a
+        # non-FDF catalog whose page tree dangles must fail at load time,
+        # matching upstream. A catalog with NO /Pages key at all is left
+        # lenient: those are the FDF root dictionaries pypdfbox loads through
+        # this generic ``load_pdf`` path (upstream routes FDF through a
+        # separate parser that never reaches checkPages). The /Root presence
+        # was already validated by ``_reject_full_rebuild_without_root``.
+        pages_name = COSName.get_pdf_name("Pages")
+        pages = root.get_dictionary_object(pages_name)
         if isinstance(pages, COSDictionary):
             self._cos_parser.check_pages_dictionary(pages, set())
+        elif root.contains_key(pages_name):
+            # /Pages key present but it does not resolve to a page-tree
+            # dictionary (missing target / non-dictionary value) — upstream
+            # checkPages throws here.
+            raise PDFParseError("Page tree root must be a dictionary")
 
     def _check_xref_offsets_lenient(self) -> None:
         """Verify every parsed xref offset points at its ``n g obj`` header

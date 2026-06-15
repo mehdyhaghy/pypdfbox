@@ -368,19 +368,26 @@ def _split(line: str) -> str:
 # case is recorded in the comment.
 _PINNED_DIVERGENCES: dict[str, str] = {
     # A recovered/located /Root that resolves to a catalog dictionary which has
-    # NO usable page tree (/Pages absent — the catalog-only rebuild and the FDF
-    # root — or /Root pointing at a missing object). Upstream's initialParse
-    # calls checkPages(root), which raises IOException ("Page tree root must be
-    # a dictionary") so Loader.loadPDF fails. pypdfbox deliberately uses
-    # check_pages_dictionary (NOT check_pages) on these paths so FDF catalogs
-    # — which legitimately omit /Pages and which upstream routes through a
-    # SEPARATE parser that never reaches checkPages — still load through the
-    # generic loader. No data is fabricated: the catalog opens as a valid
-    # 0-page document instead of a hard failure. This is the long-standing
-    # FDF-leniency / deferred-initialParse policy (see wave 1516 root_dangling),
-    # independent of the trailer/rebuild parse this wave owns.
-    #   java (all three): loaded=ERR:IOException pages=? root=? nobj=?
-    "rebuild_catalog_only": "loaded=1 pages=0 root=present nobj=1",
+    # NO usable page tree. Two distinct sub-cases:
+    #
+    #   * /Pages key ABSENT entirely (FDF root): upstream's checkPages raises
+    #     IOException("Page tree root must be a dictionary"), but pypdfbox keeps
+    #     these lenient — they are the FDF root dictionaries pypdfbox loads
+    #     through the generic load_pdf path (upstream routes FDF through a
+    #     SEPARATE parser that never reaches checkPages). The catalog opens as a
+    #     valid 0-page document instead of a hard failure. (rebuild_fdf_root)
+    #
+    #   * /Root present but DANGLING on the located-xref path: pypdfbox defers
+    #     initial_parse there for lazy /Root resolution, so the dangling root is
+    #     synthesised into a 0-page document rather than failing eagerly the way
+    #     upstream's initialParse does. (trailer_root_dangling)
+    #
+    # Wave 1532 (agent D) tightened the FULL brute-force rebuild path: a non-FDF
+    # catalog whose /Pages KEY IS PRESENT but does not resolve to a page-tree
+    # dictionary now raises "Page tree root must be a dictionary", matching
+    # upstream checkPages. rebuild_catalog_only (a catalog with a dangling
+    # /Pages 2 0 R) therefore now FAILS on both sides and dropped off this pin.
+    #   java (both remaining): loaded=ERR:IOException pages=? root=? nobj=?
     "rebuild_fdf_root": "loaded=1 pages=0 root=present nobj=1",
     "trailer_root_dangling": "loaded=1 pages=0 root=present nobj=3",
 }

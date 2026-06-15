@@ -167,13 +167,30 @@ def test_security_handler_aes_round_trip_uses_aes_decrypt_branch() -> None:
     assert handler.decrypt_data(ciphertext, 12, 0) == b"secret"
 
 
-def test_security_handler_aes_decrypt_tolerates_short_and_bad_padding() -> None:
+def test_security_handler_aes_decrypt_matches_upstream_iv_and_padding() -> None:
+    """Retargeted in wave 1532 to the oracle-proven ``SecurityHandler``
+    decrypt-data contract (was a pre-1532 stub asserting the old over-tolerant
+    behaviour). Upstream ``prepareAESInitializationVector`` raises on a partial
+    IV (``0 < n < 16``); the AES-256 ``CipherInputStream`` path silently drops a
+    bad final block. See ``oracle/test_decrypt_data_fuzz_wave1532.py``."""
+    import pytest
+
     from pypdfbox.pdmodel.encryption.security_handler import _aes_cbc_decrypt
 
     key = b"\x00" * 16
 
-    assert _aes_cbc_decrypt(key, b"short") == b""  # noqa: SLF001
-    assert _aes_cbc_decrypt(key, b"\x00" * 32) != b""  # noqa: SLF001
+    # Partial IV (5 of 16 bytes) → IOException upstream → OSError here.
+    with pytest.raises(OSError):
+        _aes_cbc_decrypt(key, b"short")  # noqa: SLF001
+    # Empty input → silent zero-length skip (IV read returns 0).
+    assert _aes_cbc_decrypt(key, b"") == b""  # noqa: SLF001
+    # IV only (no ciphertext) → empty output.
+    assert _aes_cbc_decrypt(key, b"\xaa" * 16) == b""  # noqa: SLF001
+    # IV + one bad-padding block, tolerant (AES-256) → final block dropped → empty.
+    assert _aes_cbc_decrypt(key, b"\xaa" * 32) == b""  # noqa: SLF001
+    # Same input, strict (AES-128 per-object) → raises.
+    with pytest.raises(OSError):
+        _aes_cbc_decrypt(key, b"\xaa" * 32, tolerant_padding=False)  # noqa: SLF001
 
 
 def test_pd_encryption_preserves_owner_key_length_for_unknown_revision() -> None:

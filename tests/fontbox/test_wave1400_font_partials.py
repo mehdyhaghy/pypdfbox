@@ -823,9 +823,12 @@ def test_call_other_subr_results_empty_skips_append() -> None:
 # ============================================================
 
 
-def test_process_call_subr_returns_when_subr_bytes_none() -> None:
-    """Branch [113, -104]: when ``get_subr_bytes`` returns None, exit
-    process_call_subr without recursing."""
+def test_process_call_subr_raises_on_empty_operand_stack() -> None:
+    """Wave 1525 aligned the Type2 interpreter with upstream: an empty operand
+    stack on callsubr raises (upstream ``charStringElements.remove(size-1)`` →
+    ``IndexOutOfBoundsException``), instead of the old silent return."""
+    import pytest
+
     from pypdfbox.fontbox.cff.type2_char_string_parser import (
         Type2CharStringParser,
         _GlyphData,
@@ -833,11 +836,9 @@ def test_process_call_subr_returns_when_subr_bytes_none() -> None:
 
     parser = Type2CharStringParser("test_font")
     glyph = _GlyphData()
-    # Empty sequence → ``get_subr_bytes`` finds no integer on the stack
-    # and returns None → process_call_subr's inner `if subr_bytes is not
-    # None:` is False, exit immediately (branch [113, -104]).
-    parser.process_call_subr([], [b"\x8b"], glyph)
-    assert glyph.sequence == []  # untouched
+    # No integer on the operand stack → get_subr_bytes pops from empty → raises.
+    with pytest.raises(IndexError):
+        parser.process_call_subr([], [b"\x8b"], glyph)
 
 
 def test_process_subr_skips_pop_when_sequence_empty() -> None:

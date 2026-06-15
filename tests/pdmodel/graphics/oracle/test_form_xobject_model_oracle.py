@@ -127,13 +127,14 @@ def test_form_xobject_model_matches_pdfbox() -> None:
     assert str(ei4.value) == oracle["dispatch.unknown.msg"]
     assert oracle["dispatch.unknown.msg"] == "Invalid XObject Subtype: Bogus"
 
-    # missing subtype: Java prints "null", Python prints "None" — accepted
-    # idiom difference; the message *prefix* is identical.
+    # missing subtype: Java concatenates the absent name as "null"; wave 1532
+    # aligned pypdfbox to emit the same literal (plain string formatting, not a
+    # Java FQN, so exactly alignable). Message now identical.
     s5 = COSStream()
     with pytest.raises(OSError) as ei5:
         PDXObject.create_x_object(s5)
     assert oracle["dispatch.missing.msg"] == "Invalid XObject Subtype: null"
-    assert str(ei5.value) == "Invalid XObject Subtype: None"
+    assert str(ei5.value) == "Invalid XObject Subtype: null"
 
     # non-stream base: Java uses the FQN, Python the short class name —
     # accepted idiom difference; the prefix is identical.

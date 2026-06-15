@@ -802,7 +802,9 @@ class SecurityHandler(ABC):
                 raise TypeError("data must be bytes-like or expose .read()")
             payload = bytes(read())
         if decrypt:
-            result = _aes_cbc_decrypt(final_key, payload)
+            # encryptDataAESother uses Cipher.update+doFinal: a bad final block
+            # raises (IOException upstream → OSError here), unlike AES-256.
+            result = _aes_cbc_decrypt(final_key, payload, tolerant_padding=False)
         else:
             result = _aes_cbc_encrypt(final_key, payload)
         if output is not None:
@@ -832,7 +834,10 @@ class SecurityHandler(ABC):
                 raise TypeError("data must be bytes-like or expose .read()")
             payload = bytes(read())
         if decrypt:
-            result = _aes_cbc_decrypt(self._encryption_key, payload)
+            # AES-256 wraps a CipherInputStream → tolerant of a bad final block.
+            result = _aes_cbc_decrypt(
+                self._encryption_key, payload, tolerant_padding=True
+            )
         else:
             result = _aes_cbc_encrypt(self._encryption_key, payload)
         if output is not None:
@@ -844,17 +849,28 @@ class SecurityHandler(ABC):
     # ------------------------------------------------------------ internals
 
     def _decrypt(self, data: bytes, obj_num: int, gen_num: int) -> bytes:
-        if self._revision >= 5:
-            # AES-256 with the file-encryption key directly.
-            return _aes_cbc_decrypt(self._encryption_key or b"", data)
+        # Mirror the upstream ``SecurityHandler.encryptData`` dispatch exactly
+        # (the single funnel for both encrypt and decrypt). The AES-256 branch
+        # is selected by ``useAES && encryptionKey.length == 32`` — NOT by a
+        # revision test — so a 32-byte AES key routes to the file-key path and a
+        # 16-byte AES key routes to the per-object AES path, regardless of /R.
+        file_key = self._encryption_key or b""
+        if self._aes and len(file_key) == 32:
+            # AES-256: file key directly, no per-object salt. The JCE call site
+            # uses a CipherInputStream which silently drops a bad final block
+            # rather than raising — mirror that tolerance.
+            return _aes_cbc_decrypt(file_key, data, tolerant_padding=True)
         key = self.compute_object_key(obj_num, gen_num)
         if self._aes:
-            return _aes_cbc_decrypt(key, data)
+            # AES-128 / per-object (encryptDataAESother): Cipher.update+doFinal
+            # raises on bad padding (wrapped as IOException upstream → OSError).
+            return _aes_cbc_decrypt(key, data, tolerant_padding=False)
         return _rc4(key, data)
 
     def _encrypt(self, data: bytes, obj_num: int, gen_num: int) -> bytes:
-        if self._revision >= 5:
-            return _aes_cbc_encrypt(self._encryption_key or b"", data)
+        file_key = self._encryption_key or b""
+        if self._aes and len(file_key) == 32:
+            return _aes_cbc_encrypt(file_key, data)
         key = self.compute_object_key(obj_num, gen_num)
         if self._aes:
             return _aes_cbc_encrypt(key, data)
@@ -872,21 +888,62 @@ def _rc4(key: bytes, data: bytes) -> bytes:
     return enc.update(data) + enc.finalize()
 
 
-def _aes_cbc_decrypt(key: bytes, data: bytes) -> bytes:
-    if len(data) < 16:
+def _aes_cbc_decrypt(
+    key: bytes, data: bytes, *, tolerant_padding: bool = True
+) -> bytes:
+    """Decrypt AES-CBC data laid out as ``IV(16) || ciphertext``.
+
+    Mirrors the upstream IV-prefix + PKCS#5 contract of
+    ``SecurityHandler.prepareAESInitializationVector`` +
+    ``encryptDataAESother`` / ``encryptDataAES256``:
+
+    - **Empty input** (0 bytes): the IV read returns 0, so the whole transform
+      is skipped and empty bytes are returned (PDFBox's silent zero-length skip).
+    - **Partial IV** (``0 < len(data) < 16``): upstream throws an ``IOException``
+      ("AES initialization vector not fully read"); we raise :class:`OSError`
+      (the project-wide I/O exception mapping).
+    - **IV only / non-block-multiple / bad padding**: behaviour depends on the
+      JCE call site upstream:
+        * ``tolerant_padding=True`` (AES-256, ``encryptDataAES256`` →
+          ``CipherInputStream``): a bad or incomplete final block is silently
+          dropped, emitting only the cleanly-decrypted leading blocks.
+        * ``tolerant_padding=False`` (AES-128 per-object, ``encryptDataAESother``
+          → ``Cipher.update``+``doFinal``): a bad final block raises
+          (``IOException`` upstream → :class:`OSError`).
+    """
+    if len(data) == 0:
         return b""
+    if len(data) < 16:
+        raise OSError(
+            "AES initialization vector not fully read: only "
+            f"{len(data)} bytes read instead of 16"
+        )
     iv, ct = data[:16], data[16:]
+    if len(ct) == 0:
+        # IV present but no ciphertext: the JCE doFinal()/CipherInputStream
+        # close on an empty payload yields empty output (no padding to strip).
+        return b""
     cipher = Cipher(algorithms.AES(key), modes.CBC(iv))
     dec = cipher.decryptor()
+    if len(ct) % 16 != 0:
+        # A non-block-multiple tail can't form a final CBC block.
+        if tolerant_padding:
+            # CipherInputStream emits only the full blocks it could decrypt and
+            # silently drops the incomplete remainder on close.
+            whole = ct[: len(ct) - (len(ct) % 16)]
+            return dec.update(whole) + dec.finalize()
+        raise OSError("AES ciphertext is not a multiple of the block size")
     padded = dec.update(ct) + dec.finalize()
     unpadder = _padding.PKCS7(128).unpadder()
     try:
         return unpadder.update(padded) + unpadder.finalize()
-    except ValueError:
-        # Malformed padding — return raw to mirror PDFBox's tolerant behaviour
-        # (it logs and returns what it could decrypt). Strict callers should
-        # wrap this in their own validation.
-        return padded
+    except ValueError as exc:
+        if tolerant_padding:
+            # CipherInputStream streams out every block via update() but holds
+            # the final block for doFinal(); a BadPaddingException there is
+            # swallowed, so the caller sees everything EXCEPT the last block.
+            return padded[:-16] if len(padded) >= 16 else b""
+        raise OSError("AES padding is invalid") from exc
 
 
 def _aes_cbc_encrypt(key: bytes, data: bytes) -> bytes:

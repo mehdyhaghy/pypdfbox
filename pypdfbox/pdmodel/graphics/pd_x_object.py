@@ -58,11 +58,20 @@ class PDXObject:
           plain :class:`PDFormXObject` which still exposes the group dict
           via :meth:`PDFormXObject.get_group_attributes`.)
         - ``COSStream`` with ``/Subtype /PS`` → :class:`PDPostScriptXObject`.
-        - any other ``COSStream`` /Subtype value → ``OSError`` with the
-          subtype reproduced verbatim (matches upstream's
+        - any other ``COSStream`` /Subtype value (including absent — upstream
+          renders the missing subtype as the literal ``null``) → ``OSError``
+          with the subtype reproduced verbatim (matches upstream's
           ``IOException("Invalid XObject Subtype: ...")``).
         - non-stream ``base`` → ``OSError`` (mirrors upstream's
           ``IOException("Unexpected object type: ...")``).
+
+        Note on the ``/Subtype`` read: upstream resolves it via
+        ``COSStream.getNameAsString(SUBTYPE)``, so a ``/Subtype`` that is a
+        ``COSString`` (e.g. ``(Image)``) is treated as its decoded text — a
+        string ``(Image)`` dispatches to :class:`PDImageXObject`, exactly as a
+        name ``/Image`` would. We mirror that with
+        :meth:`COSDictionary.get_name_as_string` rather than the name-only
+        ``get_name`` (which would reject the string and raise).
         """
         if base is None:
             return None
@@ -89,7 +98,7 @@ class PDXObject:
         cache = (
             resources.get_resource_cache() if resources is not None else None
         )
-        subtype = base.get_name(_SUBTYPE)
+        subtype = base.get_name_as_string(_SUBTYPE)
         if subtype == "Image":
             # Mirror upstream ``new PDImageXObject(new PDStream(stream),
             # resources)`` — thread the owning /Resources so the image's
@@ -117,7 +126,11 @@ class PDXObject:
             )
 
             return PDPostScriptXObject(base)
-        raise OSError(f"Invalid XObject Subtype: {subtype}")
+        # Upstream builds the message with Java string concatenation, so a
+        # null subtype (absent /Subtype, or a non-name/non-string value) is
+        # rendered as the literal ``null`` — match that text exactly.
+        rendered_subtype = "null" if subtype is None else subtype
+        raise OSError(f"Invalid XObject Subtype: {rendered_subtype}")
 
     def __init__(
         self,

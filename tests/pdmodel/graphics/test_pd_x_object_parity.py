@@ -236,22 +236,23 @@ def test_create_x_object_form_with_non_dict_group_returns_plain_form() -> None:
 
 def test_create_x_object_missing_subtype_raises_oserror() -> None:
     """A stream with NO ``/Subtype`` entry at all must raise
-    ``OSError`` with the upstream-shaped "Invalid XObject Subtype: None"
+    ``OSError`` with the upstream-exact "Invalid XObject Subtype: null"
     message — there's no other branch to fall through to.
 
     Live PDFBox 3.0.7 raises ``IOException("Invalid XObject Subtype: null")``
-    (Java renders a missing name as ``null``); pypdfbox renders the absent
-    name as Python ``None`` — an accepted Java/Python idiom difference. The
-    message prefix and exception class are identical. (Oracle-confirmed in
-    ``oracle/probes/FormXObjectModelProbe.java`` →
-    ``test_form_xobject_model_oracle.py``.)
+    (Java renders a missing name via string concatenation as ``null``).
+    Wave 1532 aligned pypdfbox to emit the same literal ``null`` rather than
+    Python ``None`` — this is plain string formatting, not a Java FQN, so it
+    is exactly alignable. (Oracle-confirmed in
+    ``oracle/probes/XObjectDispatchFuzzProbe.java`` →
+    ``test_xobject_dispatch_fuzz_wave1532.py``.)
     """
     import pytest
 
     stream = COSStream()
     with pytest.raises(OSError) as excinfo:
         PDXObject.create_x_object(stream)
-    assert str(excinfo.value) == "Invalid XObject Subtype: None"
+    assert str(excinfo.value) == "Invalid XObject Subtype: null"
 
 
 def test_create_x_object_non_stream_base_message_is_exact() -> None:

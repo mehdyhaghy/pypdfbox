@@ -101,22 +101,40 @@ def test_wave547_is_aes_v4_uses_crypt_filter_cfm_over_filter_name() -> None:
     assert StandardSecurityHandler._is_aes_v4(encryption) is True  # noqa: SLF001
 
 
-def test_wave547_aes_decrypt_helpers_tolerate_short_and_badly_padded_inputs() -> None:
+def test_wave547_aes_decrypt_helpers_match_upstream_iv_and_padding() -> None:
+    # Retargeted in wave 1532 to the oracle-proven SecurityHandler decrypt
+    # contract (was a pre-1532 stub asserting over-tolerant short/bad-padding
+    # behaviour). AESV2 (16-byte key) routes through the strict
+    # Cipher.update+doFinal path: a partial IV and bad padding both raise; an
+    # AESV3 (32-byte key) payload uses the tolerant CipherInputStream path. See
+    # oracle/test_decrypt_data_fuzz_wave1532.py.
+    import pytest
+
     from pypdfbox.pdmodel.encryption import standard_security_handler as ssh_module
 
-    key = b"k" * 16
+    key16 = b"k" * 16
+    key32 = b"k" * 32
     iv = b"i" * 16
-    encrypted_bad_padding = ssh_module._aes_cbc_no_padding_encrypt(  # noqa: SLF001
-        key,
-        iv,
-        b"not-pkcs7-padding",
+    bad_block = ssh_module._aes_cbc_no_padding_encrypt(  # noqa: SLF001
+        key16, iv, b"not-pkcs7-paddin"  # exactly one 16-byte block
     )
 
-    assert ssh_module._aes128_cbc_decrypt(key, b"short") == b""  # noqa: SLF001
-    assert ssh_module._aes128_cbc_decrypt(  # noqa: SLF001
-        key,
-        iv + encrypted_bad_padding,
-    ).startswith(b"not-pkcs7-padding")
+    # Empty / IV-only → empty in both modes.
+    assert ssh_module._aes128_cbc_decrypt(key16, b"") == b""  # noqa: SLF001
+    assert ssh_module._aes128_cbc_decrypt(key16, iv) == b""  # noqa: SLF001
+    # Partial IV (5 of 16) → raises (project-wide I/O mapping).
+    with pytest.raises(OSError):
+        ssh_module._aes128_cbc_decrypt(key16, b"short")  # noqa: SLF001
+    # AESV2 (strict) bad padding → raises.
+    with pytest.raises(OSError):
+        ssh_module._aes128_cbc_decrypt(key16, iv + bad_block)  # noqa: SLF001
+    # AESV3 (tolerant) single bad block → final block dropped → empty.
+    bad_block32 = ssh_module._aes_cbc_no_padding_encrypt(  # noqa: SLF001
+        key32, iv, b"not-pkcs7-paddin"
+    )
+    assert (
+        ssh_module._aes128_cbc_decrypt(key32, iv + bad_block32) == b""  # noqa: SLF001
+    )
 
 
 def test_wave547_r6_dictionary_uses_existing_key_and_random_salts(
