@@ -293,11 +293,12 @@ class PDAnnotationFreeText(PDAnnotationMarkup):
         arity or numeric gate — the constructor itself is tolerant. Upstream
         ``PDRectangle(COSArray)`` runs ``toFloatArray()`` (non-numeric
         members → ``0.0``), pads/truncates to exactly four floats, clamps
-        absurd magnitudes at ``±(2**31-1)``, then normalizes corners with
-        ``min``/``max``. We replicate that here rather than via
-        ``PDRectangle.from_cos_array`` (which deliberately raises on a
-        short or non-numeric array) so a malformed 2-element or non-numeric
-        ``/RD`` round-trips byte-for-byte with PDFBox instead of vanishing.
+        absurd magnitudes at ``±(float)Integer.MAX_VALUE`` (= 2147483648.0,
+        ``PDRectangle._INT32_MAX``), then normalizes corners with
+        ``min``/``max``. As of wave 1524 ``PDRectangle.from_cos_array`` is
+        itself upstream-faithful and behaves identically; this method keeps the
+        logic inlined as a documented seam, so a malformed 2-element or
+        non-numeric ``/RD`` round-trips byte-for-byte with PDFBox.
         Returns ``None`` only when ``/RD`` is absent or not an array."""
         value = self._dict.get_dictionary_object(_RD)
         if not isinstance(value, COSArray):

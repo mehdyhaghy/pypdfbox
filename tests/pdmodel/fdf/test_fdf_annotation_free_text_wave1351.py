@@ -1,22 +1,23 @@
-"""Wave 1351 coverage boost: ``FDFAnnotationFreeText`` /RD parse-error swallow.
+"""Wave 1351 coverage boost: ``FDFAnnotationFreeText`` /RD lenient coercion.
 
-Targets lines 169-170 of
-``pypdfbox/pdmodel/fdf/fdf_annotation_free_text.py`` — the
-``except (TypeError, ValueError): return None`` arm of
-``get_fringe()`` when ``/RD`` is a 4-entry COSArray but the entries
-are non-numeric.
+Exercises ``get_fringe()`` when ``/RD`` is a 4-entry COSArray whose
+entries are non-numeric. Mirroring upstream ``new PDRectangle(COSArray)``,
+``PDRectangle.from_cos_array`` coerces each non-numeric slot to ``0.0``
+and normalizes corners, so the annotation returns a real (zeroed)
+rectangle rather than ``None``.
 """
 
 from __future__ import annotations
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName
 from pypdfbox.pdmodel.fdf import FDFAnnotationFreeText
+from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
 
-def test_get_fringe_returns_none_when_entries_non_numeric() -> None:
-    """4-entry /RD whose entries are non-numeric COSNames triggers
-    ``PDRectangle.from_cos_array`` to raise ``TypeError``; the
-    annotation swallows it and returns ``None``.
+def test_get_fringe_coerces_non_numeric_entries_to_zero_rectangle() -> None:
+    """4-entry /RD whose entries are non-numeric COSNames: every slot
+    coerces to ``0.0`` (matching upstream ``new PDRectangle(COSArray)``),
+    so the annotation returns ``PDRectangle(0, 0, 0, 0)``.
     """
     annot = COSDictionary()
     annot.set_name("Subtype", "FreeText")
@@ -25,4 +26,4 @@ def test_get_fringe_returns_none_when_entries_non_numeric() -> None:
         arr.add(COSName.A)
     annot.set_item(COSName.get_pdf_name("RD"), arr)
     ann = FDFAnnotationFreeText(annot)
-    assert ann.get_fringe() is None
+    assert ann.get_fringe() == PDRectangle(0.0, 0.0, 0.0, 0.0)

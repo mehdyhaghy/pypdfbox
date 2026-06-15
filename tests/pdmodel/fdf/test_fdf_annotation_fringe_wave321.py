@@ -53,6 +53,24 @@ def test_wave321_fringe_resolves_indirect_numeric_entries(annotation_cls: type) 
     [
         COSString("not an array"),
         COSArray([COSFloat(1.0), COSFloat(2.0), COSFloat(3.0)]),
+    ],
+)
+def test_wave321_malformed_fringe_reports_absent(raw: object) -> None:
+    """Non-array values and short (<4 entry) arrays are still reported
+    absent via the caller's own length guard."""
+    annotation = FDFAnnotationSquare()
+    annotation.get_cos_object().set_item(_RD, raw)  # type: ignore[arg-type]
+
+    assert annotation.get_fringe() is None
+
+
+def test_wave321_four_entry_malformed_fringe_coerces_to_rectangle() -> None:
+    """A 4-entry /RD with a non-numeric slot passes the length guard;
+    upstream ``new PDRectangle(COSArray)`` coerces the bad slot to ``0.0``
+    and normalizes, so ``[1, /Bad, 3, 4]`` yields ``PDRectangle(1, 0, 3, 4)``."""
+    annotation = FDFAnnotationSquare()
+    annotation.get_cos_object().set_item(
+        _RD,
         COSArray(
             [
                 COSFloat(1.0),
@@ -61,10 +79,6 @@ def test_wave321_fringe_resolves_indirect_numeric_entries(annotation_cls: type) 
                 COSFloat(4.0),
             ]
         ),
-    ],
-)
-def test_wave321_malformed_fringe_reports_absent(raw: object) -> None:
-    annotation = FDFAnnotationSquare()
-    annotation.get_cos_object().set_item(_RD, raw)  # type: ignore[arg-type]
+    )
 
-    assert annotation.get_fringe() is None
+    assert annotation.get_fringe() == PDRectangle(1.0, 0.0, 3.0, 4.0)

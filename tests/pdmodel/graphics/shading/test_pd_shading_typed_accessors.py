@@ -72,10 +72,11 @@ def test_get_b_box_rect_returns_none_for_short_array():
     assert s.get_b_box_rect() is None
 
 
-def test_get_b_box_rect_returns_none_for_non_numeric_entries():
-    # Heterogeneous arrays (e.g. a stray name) are rejected by
-    # PDRectangle.from_cos_array; the typed accessor swallows the error
-    # and returns None instead of bubbling.
+def test_get_b_box_rect_coerces_non_numeric_entries():
+    # Heterogeneous 4-entry arrays (e.g. a stray name) are coerced by
+    # upstream ``new PDRectangle(COSArray)``: the non-numeric slot becomes
+    # 0.0 and corners normalize, so ``[0, 0, 100, /NotANumber]`` yields
+    # ``PDRectangle(0, 0, 100, 0)``.
     s = PDShadingType2()
     bogus = COSArray()
     for v in (0.0, 0.0, 100.0):
@@ -83,7 +84,7 @@ def test_get_b_box_rect_returns_none_for_non_numeric_entries():
     bogus.add(COSName.get_pdf_name("NotANumber"))
     s.set_b_box(bogus)
 
-    assert s.get_b_box_rect() is None
+    assert s.get_b_box_rect() == PDRectangle(0.0, 0.0, 100.0, 0.0)
 
 
 def test_set_b_box_rect_accepts_pd_rectangle():

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pypdfbox.cos import COSArray, COSFloat, COSInteger
+from pypdfbox.cos import COSArray, COSFloat
 
 
 class PDRectangle:
@@ -67,46 +67,49 @@ class PDRectangle:
         return cls(float(x), float(y), float(x) + float(width), float(y) + float(height))
 
     #: Clamp threshold for malformed COS values — matches upstream's
-    #: ``Integer.MAX_VALUE`` (Java ``int`` ceiling). Values whose absolute
-    #: magnitude exceeds this are deemed malformed (PDFBOX-2818) and clipped
-    #: in :meth:`from_cos_array`.
-    _INT32_MAX: float = float(2**31 - 1)
+    #: ``(float) Integer.MAX_VALUE``. Java's ``int`` ceiling ``2**31 - 1``
+    #: (= 2147483647) has no exact ``float`` representation, so the cast
+    #: rounds up to ``2147483648.0``. Upstream compares ``Math.abs(value)``
+    #: against this rounded ``float`` literal (PDFBOX-2818); values above it
+    #: are clamped to ``±2147483648.0``.
+    _INT32_MAX: float = 2147483648.0
 
     @classmethod
     def from_cos_array(cls, array: COSArray) -> PDRectangle:
-        """Build from the 4-entry array form found in PDF dictionaries.
+        """Build from the array form found in PDF dictionaries.
 
-        Mirrors upstream's ``PDRectangle(COSArray)``: any combination of
-        ``COSInteger`` / ``COSFloat`` is accepted, and lower-left/upper-right
-        ordering is normalized so ``width`` / ``height`` are non-negative.
+        Mirrors upstream's ``PDRectangle(COSArray)`` exactly, which is
+        defensively tolerant of malformed arrays:
 
-        Huge magnitudes (``abs(value) > 2**31 - 1``) are clamped to
-        ``±(2**31 - 1)``, matching upstream's defensive guard against
-        malformed PDFs whose rectangles overflow Java ``int`` range
-        (PDFBOX-2818).
+        * The array is coerced via ``COSArray.toFloatArray()`` then
+          ``Arrays.copyOf(arr, 4)`` — i.e. **truncated** to its first four
+          entries if longer, and **zero-padded** if shorter. Arrays of any
+          length (including empty) are therefore accepted, never raising.
+        * Each entry is read through ``toFloatArray``: numeric entries
+          (``COSInteger`` / ``COSFloat``, possibly behind an indirect
+          reference) yield their value; any non-numeric entry (``COSName``,
+          ``COSString``, ``COSNull``, an indirect reference resolving to a
+          non-number) becomes ``0.0``.
+        * Huge magnitudes (``abs(value) > (float) Integer.MAX_VALUE``) are
+          clamped to ``±2147483648.0`` (PDFBOX-2818), per-element, before
+          normalization.
+        * Lower-left / upper-right ordering is normalized via ``min`` / ``max``
+          so ``width`` / ``height`` are non-negative (PDF spec §7.9.5: "the
+          order of these values is unimportant").
         """
-        if array.size() < 4:
-            raise ValueError(
-                f"PDRectangle requires a 4-entry COSArray, got {array.size()}"
-            )
-        nums: list[float] = []
+        # toFloatArray(): numeric → value, non-numeric / null → 0.0,
+        # indirect references resolved. Mirrors upstream COSArray.toFloatArray.
+        floats = array.to_float_array()
+        # Arrays.copyOf(arr, 4): truncate-or-zero-pad to exactly four entries.
+        nums = [floats[i] if i < len(floats) else 0.0 for i in range(4)]
         for i in range(4):
-            entry = array.get_object(i)
-            if isinstance(entry, (COSInteger, COSFloat)):
-                value = float(entry.value)
-                # PDFBOX-2818: malformed PDFs sometimes encode rectangles
-                # with absurdly large numbers; upstream clamps at the Java
-                # ``Integer.MAX_VALUE`` boundary. Mirror that here.
-                if abs(value) > cls._INT32_MAX:
-                    value = cls._INT32_MAX if value > 0 else -cls._INT32_MAX
-                nums.append(value)
-            else:
-                raise TypeError(
-                    f"PDRectangle entry {i} is not numeric: {type(entry).__name__}"
-                )
+            value = nums[i]
+            # PDFBOX-2818: malformed PDFs sometimes encode rectangles with
+            # absurdly large numbers; upstream clamps at the (float-rounded)
+            # Integer.MAX_VALUE boundary, per element, before min/max.
+            if abs(value) > cls._INT32_MAX:
+                nums[i] = cls._INT32_MAX if value > 0 else -cls._INT32_MAX
         x0, y0, x1, y1 = nums
-        # Normalize so the "lower-left" pair really is the smaller corner —
-        # PDF spec §7.9.5: "the order of these values is unimportant".
         return cls(min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1))
 
     # ---------- accessors ----------

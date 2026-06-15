@@ -124,7 +124,11 @@ def test_set_b_box_rejects_unsupported_type():
         pattern.set_b_box(42)  # type: ignore[arg-type]
 
 
-def test_get_b_box_returns_none_when_array_has_non_numeric_entries():
+def test_get_b_box_coerces_non_numeric_entries_in_four_entry_array():
+    # A 4-entry /BBox passes get_b_box's own length guard; upstream
+    # ``new PDRectangle(COSArray)`` coerces the non-numeric slot to 0.0 and
+    # normalizes, so ``[0, /Bogus, 100, 100]`` yields a real rectangle and
+    # has_b_box() is True.
     pattern = PDTilingPattern()
     arr = COSArray()
     arr.add(COSFloat(0.0))
@@ -132,8 +136,8 @@ def test_get_b_box_returns_none_when_array_has_non_numeric_entries():
     arr.add(COSFloat(100.0))
     arr.add(COSFloat(100.0))
     pattern.get_cos_object().set_item(COSName.get_pdf_name("BBox"), arr)
-    assert pattern.get_b_box() is None
-    assert pattern.has_b_box() is False
+    assert pattern.get_b_box() == PDRectangle(0.0, 0.0, 100.0, 100.0)
+    assert pattern.has_b_box() is True
 
 
 # ---------------------------------------------------------------------------

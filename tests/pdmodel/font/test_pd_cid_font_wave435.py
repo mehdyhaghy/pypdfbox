@@ -5,6 +5,7 @@ import pytest
 from pypdfbox.cos import COSArray, COSFloat, COSInteger, COSName, COSStream
 from pypdfbox.pdmodel.font.pd_cid_font import PDCIDFont
 from pypdfbox.pdmodel.font.pd_font_descriptor import PDFontDescriptor
+from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
 
 class _MappedCIDFont(PDCIDFont):
@@ -162,13 +163,18 @@ def test_program_detection_reads_first_available_descriptor_stream() -> None:
     assert font.get_program() == b"font-file"
 
 
-def test_descriptor_bbox_returns_none_for_short_or_malformed_arrays() -> None:
+def test_descriptor_bbox_short_array_returns_none_four_entry_malformed_coerces() -> None:
+    # Short (<4 entry) arrays are still rejected by get_bounding_box's own
+    # ``bbox.size() < 4`` guard.
     descriptor = PDFontDescriptor()
     descriptor.set_font_b_box(COSArray([COSInteger.get(0), COSInteger.get(1)]))
     font = _MappedCIDFont()
     font.set_font_descriptor(descriptor)
     assert font.get_bounding_box() is None
 
+    # A 4-entry array passes the length guard; upstream
+    # ``new PDRectangle(COSArray)`` coerces the non-numeric slot to 0.0 and
+    # normalizes, so ``[0, 1, /bad, 3]`` yields ``PDRectangle(0, 1, 0, 3)``.
     descriptor.set_font_b_box(
         COSArray(
             [
@@ -179,4 +185,4 @@ def test_descriptor_bbox_returns_none_for_short_or_malformed_arrays() -> None:
             ]
         )
     )
-    assert font.get_bounding_box() is None
+    assert font.get_bounding_box() == PDRectangle(0.0, 1.0, 0.0, 3.0)

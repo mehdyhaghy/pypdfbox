@@ -137,9 +137,10 @@ class CmapSubtable(CmapLookup):
             for j in range(start, end + 1):
                 if range_offset == 0:
                     glyph_id = (j + delta) & 0xFFFF
-                    if glyph_id >= num_glyphs:
-                        _LOG.warning("Format 4 cmap contains an invalid glyph index")
-                        continue
+                    # Upstream processSubtype4 (PDFBox 3.0.7) does NOT bound the
+                    # glyph id against num_glyphs here; whatever the segment
+                    # arithmetic yields is stored verbatim. Mirror that so a
+                    # malformed delta keeps the out-of-range gid (parity).
                     if glyph_id > max_glyph_id:
                         max_glyph_id = glyph_id
                     self._character_code_to_glyph_id[j] = glyph_id
@@ -149,9 +150,6 @@ class CmapSubtable(CmapLookup):
                     glyph_index = data.read_unsigned_short()
                     if glyph_index != 0:
                         glyph_index = (glyph_index + delta) & 0xFFFF
-                        if glyph_index >= num_glyphs:
-                            _LOG.warning("Format 4 cmap contains an invalid glyph index")
-                            continue
                         if glyph_index > max_glyph_id:
                             max_glyph_id = glyph_index
                         self._character_code_to_glyph_id[j] = glyph_index
@@ -176,9 +174,8 @@ class CmapSubtable(CmapLookup):
         max_glyph_id = 0
         for i in range(entry_count):
             glyph_id = glyph_id_array[i]
-            if glyph_id >= num_glyphs:
-                _LOG.warning("Format 6 cmap contains an invalid glyph index")
-                continue
+            # Upstream processSubtype6 (PDFBox 3.0.7) stores every entry without
+            # a num_glyphs bound; mirror that so an out-of-range gid survives.
             if glyph_id > max_glyph_id:
                 max_glyph_id = glyph_id
             self._character_code_to_glyph_id[first_code + i] = glyph_id

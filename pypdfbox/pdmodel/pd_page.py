@@ -505,12 +505,12 @@ class PDPage:
         ``/MediaBox`` resolves to a real rectangle (with zeros filling the
         gaps) rather than raising.
 
-        pypdfbox's shared :meth:`PDRectangle.from_cos_array` deviates from
-        upstream here: it raises ``ValueError`` on arity ``< 4`` and
-        ``TypeError`` on a non-numeric entry (a stricter local contract that
-        ~40 other call-sites depend on). The page box accessors must match
-        upstream's parse-leniency, so they go through this private helper
-        instead of the shared strict converter. See CHANGES.md (wave 1515).
+        As of wave 1524 the shared :meth:`PDRectangle.from_cos_array` is itself
+        upstream-faithful (it formerly raised on arity ``< 4`` or a non-numeric
+        entry — see CHANGES.md wave 1524). This private helper predates that fix
+        and is now behaviourally identical apart from a hair-thin clamp-threshold
+        edge (it thresholds at ``2**31 - 1`` rather than the float-rounded
+        ``2147483648.0``); it is kept as a named seam for the page-box accessors.
         """
         from pypdfbox.cos import COSFloat, COSInteger
 

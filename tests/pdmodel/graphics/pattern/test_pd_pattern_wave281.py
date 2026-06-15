@@ -7,6 +7,7 @@ from pypdfbox.pdmodel.graphics.pattern import PDShadingPattern, PDTilingPattern
 from pypdfbox.pdmodel.graphics.state.pd_extended_graphics_state import (
     PDExtendedGraphicsState,
 )
+from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 from pypdfbox.pdmodel.pd_resources import PDResources
 
 _BBOX = COSName.get_pdf_name("BBox")
@@ -16,7 +17,11 @@ _RESOURCES = COSName.RESOURCES  # type: ignore[attr-defined]
 _SHADING = COSName.get_pdf_name("Shading")
 
 
-def test_tiling_malformed_b_box_returns_none_and_has_false() -> None:
+def test_tiling_four_entry_malformed_b_box_coerces_and_has_true() -> None:
+    # A 4-entry /BBox passes get_b_box's own length guard; upstream
+    # ``new PDRectangle(COSArray)`` coerces the non-numeric slot to 0.0 and
+    # normalizes, so ``[0, /NotANumber, 10, 20]`` yields a real rectangle and
+    # has_b_box() is True.
     pattern = PDTilingPattern()
     malformed = COSArray(
         [
@@ -28,8 +33,8 @@ def test_tiling_malformed_b_box_returns_none_and_has_false() -> None:
     )
     pattern.get_cos_object().set_item(_BBOX, malformed)
 
-    assert pattern.get_b_box() is None
-    assert pattern.has_b_box() is False
+    assert pattern.get_b_box() == PDRectangle(0.0, 0.0, 10.0, 20.0)
+    assert pattern.has_b_box() is True
 
 
 def test_pattern_matrix_has_and_clear_ignore_malformed_arrays() -> None:

@@ -21,6 +21,7 @@ from pypdfbox.pdmodel.fdf.fdf_annotation_stamp import FDFAnnotationStamp
 from pypdfbox.pdmodel.fdf.fdf_annotation_text_markup import (
     FDFAnnotationTextMarkup,
 )
+from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
 _SUBTYPE = COSName.get_pdf_name("Subtype")
 _RC = COSName.get_pdf_name("RC")
@@ -90,19 +91,20 @@ def test_create_missing_subtype_returns_none() -> None:
 # ----------------------------------------------------------------------
 
 
-def test_get_rectangle_as_pd_rectangle_returns_none_on_non_numeric_entry() -> None:
-    """A /Rect array with a non-numeric entry triggers
-    ``PDRectangle.from_cos_array``'s TypeError -> caller swallows it."""
+def test_get_rectangle_as_pd_rectangle_coerces_non_numeric_entry() -> None:
+    """A 4-entry /Rect array with a non-numeric slot is coerced by
+    upstream ``new PDRectangle(COSArray)``: the bad slot becomes ``0.0``
+    and corners normalize, so ``[0, 0, /Bad, 10]`` yields
+    ``PDRectangle(0, 0, 0, 10)``."""
     a = FDFAnnotation()
     bogus = COSArray()
     bogus.add(COSFloat(0.0))
     bogus.add(COSFloat(0.0))
-    # Insert a name instead of a number in slot 2 — triggers TypeError
-    # in PDRectangle.from_cos_array.
+    # A name in slot 2 — coerced to 0.0 by PDRectangle.from_cos_array.
     bogus.add(COSName.get_pdf_name("Bad"))
     bogus.add(COSFloat(10.0))
     a.get_cos_object().set_item(_RECT, bogus)
-    assert a.get_rectangle_as_pd_rectangle() is None
+    assert a.get_rectangle_as_pd_rectangle() == PDRectangle(0.0, 0.0, 0.0, 10.0)
 
 
 def test_get_rectangle_as_pd_rectangle_returns_none_when_absent() -> None:

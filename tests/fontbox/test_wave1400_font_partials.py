@@ -93,16 +93,18 @@ def test_format4_glyph_index_lte_max_skips_update() -> None:
     assert sub.get_glyph_id(66) == 3
 
 
-def test_format6_all_invalid_glyph_ids_skip_build() -> None:
-    """Format 6 branch [185, exit]: every entry has glyph_id >= num_glyphs,
-    so they are all skipped, dict is empty, skip build_..._lookup."""
+def test_format6_out_of_range_glyph_ids_are_kept() -> None:
+    """Format 6: upstream processSubtype6 (PDFBox 3.0.7) does NOT bound entries
+    against num_glyphs — every entry is stored verbatim and the reverse lookup
+    is built. (Retargeted in wave 1524 after the live PDFBox oracle proved the
+    earlier num_glyphs filter was a divergence.)"""
     # first_code=100, entry_count=2; both glyph_ids=99 with num_glyphs=10.
     body = struct.pack(">HH", 100, 2) + struct.pack(">HH", 99, 99)
     sub = CmapSubtable()
-    sub._glyph_id_to_character_code = [42]  # noqa: SLF001 sentinel
     sub.process_subtype6(MemoryTTFDataStream(body), num_glyphs=10)
-    # Build was skipped — sentinel survives.
-    assert sub._glyph_id_to_character_code == [42]  # noqa: SLF001
+    # Out-of-range gids are kept (no num_glyphs filter).
+    assert sub.get_glyph_id(100) == 99
+    assert sub.get_glyph_id(101) == 99
 
 
 def test_format4_glyph_index_zero_is_skipped() -> None:

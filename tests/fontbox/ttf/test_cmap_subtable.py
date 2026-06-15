@@ -187,16 +187,19 @@ def test_format_6_trimmed_table_round_trip() -> None:
     assert sub.get_char_codes(99) is None
 
 
-def test_format_6_invalid_glyph_index_skipped() -> None:
+def test_format_6_out_of_range_glyph_index_kept() -> None:
+    # Upstream processSubtype6 (PDFBox 3.0.7) does not bound entries against
+    # num_glyphs; an out-of-range gid is stored verbatim. (Retargeted in wave
+    # 1524 after the live PDFBox oracle proved the earlier filter diverged.)
     blob = _build_format6(0x30, [1, 99, 3])
     data = MemoryTTFDataStream(blob)
     sub = CmapSubtable()
     sub.init_subtable(_CmapStub(), num_glyphs=5, data=data)
 
     assert sub.get_glyph_id(0x30) == 1
-    assert sub.get_glyph_id(0x31) == 0
+    assert sub.get_glyph_id(0x31) == 99
     assert sub.get_glyph_id(0x32) == 3
-    assert sub.get_char_codes(99) is None
+    assert sub.get_char_codes(99) == [0x31]
 
 
 def test_cmap_subtable_snake_case_lookup_methods() -> None:

@@ -216,6 +216,15 @@ def _build_cases() -> dict[str, COSDictionary]:
 _CASES = _build_cases()
 _CASE_IDS = tuple(_CASES)
 _SHORT_IDS = tuple(f"c{index:02d}" for index in range(len(_CASE_IDS)))
+# Wave 1524 (PDRectangle agent) aligned ``PDRectangle.from_cos_array`` with the
+# lenient upstream ``new PDRectangle(COSArray)`` constructor (zero-pad short
+# arrays, coerce non-numeric/null slots to 0). ``PDTilingPattern.get_b_box`` now
+# converges with PDFBox for ``bbox-mixed`` (a 4-entry array with mistyped slots),
+# which previously diverged. ``bbox-empty`` and ``bbox-short`` remain pinned: they
+# are gated earlier by ``_b_box_or_none``'s ``value.size() < 4`` guard (pypdfbox
+# returns ``none`` where upstream ``getBBox`` has no size check and builds a
+# zero-padded rectangle). Removing that guard would change ``has_b_box`` semantics
+# and is a candidate for its own oracle-verified wave.
 _PINNED_BBOX = {
     "bbox-empty": (
         "none",
@@ -224,10 +233,6 @@ _PINNED_BBOX = {
     "bbox-short": (
         "none",
         "00000000,00000000,3f800000,40000000",
-    ),
-    "bbox-mixed": (
-        "none",
-        "00000000,00000000,3f800000,40900000",
     ),
 }
 

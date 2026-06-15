@@ -35,7 +35,11 @@ def _format4_subtable(
     return struct.pack(">HHH", 4, len(payload) + 6, 0) + payload
 
 
-def test_wave300_format4_ignores_direct_glyph_id_beyond_num_glyphs() -> None:
+def test_wave300_format4_keeps_direct_glyph_id_beyond_num_glyphs() -> None:
+    # Upstream processSubtype4 (PDFBox 3.0.7) does not bound the direct
+    # (range_offset == 0) glyph id against num_glyphs. (Retargeted in wave 1524
+    # after the live PDFBox oracle proved the earlier num_glyphs filter
+    # diverged.)
     blob = _format4_subtable(
         start_count=[0x0041, 0xFFFF],
         end_count=[0x0042, 0xFFFF],
@@ -51,12 +55,15 @@ def test_wave300_format4_ignores_direct_glyph_id_beyond_num_glyphs() -> None:
     )
 
     assert subtable.get_glyph_id(0x0041) == 0x0042
-    assert subtable.get_glyph_id(0x0042) == 0
+    assert subtable.get_glyph_id(0x0042) == 0x0043  # kept, even though >= num_glyphs
     assert subtable.get_char_codes(0x0042) == [0x0041]
-    assert subtable.get_char_codes(0x0043) is None
+    assert subtable.get_char_codes(0x0043) == [0x0042]
 
 
-def test_wave300_format4_ignores_array_glyph_id_beyond_num_glyphs() -> None:
+def test_wave300_format4_keeps_array_glyph_id_beyond_num_glyphs() -> None:
+    # Upstream processSubtype4 (PDFBox 3.0.7) does not bound the indirect
+    # (glyphIdArray) glyph id against num_glyphs. (Retargeted in wave 1524 after
+    # the live PDFBox oracle proved the earlier num_glyphs filter diverged.)
     blob = _format4_subtable(
         start_count=[0x0041, 0xFFFF],
         end_count=[0x0042, 0xFFFF],
@@ -73,6 +80,6 @@ def test_wave300_format4_ignores_array_glyph_id_beyond_num_glyphs() -> None:
     )
 
     assert subtable.get_glyph_id(0x0041) == 5
-    assert subtable.get_glyph_id(0x0042) == 0
+    assert subtable.get_glyph_id(0x0042) == 6  # kept, even though >= num_glyphs
     assert subtable.get_char_codes(5) == [0x0041]
-    assert subtable.get_char_codes(6) is None
+    assert subtable.get_char_codes(6) == [0x0042]

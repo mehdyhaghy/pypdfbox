@@ -31,6 +31,13 @@ Per-release notes go here; trivial naming changes (camelCase → snake_case) are
 
 Divergences that remain live (will affect observable behaviour vs Java PDFBox):
 
+- **Wave 1524 — `StandardSecurityHandler` key-derivation / password-auth algorithms fuzzed against PDFBox 3.0.7 (`computeEncryptedKey` / `isUserPassword` / `isOwnerPassword` / `getUserPassword`).** Built `StandardSecurityHandlerFuzzProbe.java` driving the instance-level algorithm methods with deterministic malformed `/O` `/U` `/OE` `/UE` byte strings, out-of-range `/R` (0/7/99), odd `/Length` (0/5/16), short/empty/over-long entries and >32-byte passwords. Fixed **three real divergences** in `pypdfbox/pdmodel/encryption/standard_security_handler.py`, all rooted in pypdfbox using `>=` revision tests where the 3.0.7 bytecode uses exact equalities: (1) `compute_encrypted_key` dispatched `revision >= 5` to the AES-256 Rev56 path, so revisions 7/99 wrongly entered Rev56 (absent `/OE` `/UE` → empty result); upstream dispatches only `== 5 || == 6` and falls every other revision through to Algorithm 2 (Rev234), which derives a key — changed to `revision in (5, 6)`. (2) `_compute_encryption_key` (Algorithm 2) ran the 50-round MD5 re-hash on `revision >= 3` and the `0xFFFFFFFF` metadata mix on `revision >= 4`; upstream `computeEncryptedKeyRev234` gates them on `== 3 || == 4` and `== 4`, so an out-of-range revision reaching Algorithm 2 now derives the plain rev-2 key. (3) `get_user_password` ran the r3/r4 RC4 unwind for any revision below 5; upstream `getUserPassword234` returns empty bytes for any revision not in {2,3,4} — guarded the whole derivation on the {2,3,4} set. Remaining divergences pinned both-sides: Java `IOException` ↔ pypdfbox `OSError` (unknown-revision validators, short r6 `/O`/`/U`), Java `IllegalArgumentException` ↔ `ValueError` (zero-length RC4 key), and Java `ArrayIndexOutOfBoundsException` (unguarded array-slice crash on too-short `/O` / empty `/U` in the r6 path) ↔ pypdfbox's lenient slice. 55 cases (43 byte-exact parity + 12 pinned) in `tests/pdmodel/encryption/oracle/test_standard_security_handler_fuzz_wave1524.py`.
+- **Wave 1524 — TrueType cmap subtable FORMAT-body parsing fuzzed against PDFBox 3.0.7 (`CmapSubtable.processSubtype4` / `processSubtype6`).** Fixed two real divergences in `pypdfbox/fontbox/ttf/cmap_subtable.py`: both the format-4 (`processSubtype4`) and format-6 (`processSubtype6`) body readers were filtering out any glyph id `>= numGlyphs` (logging "Format N cmap contains an invalid glyph index" and dropping the mapping). Upstream PDFBox 3.0.7 has **no such num_glyphs bound** in either method — whatever the segment arithmetic / glyph-id array yields is stored verbatim (confirmed by bytecode: neither `processSubtype4` nor `processSubtype6` compares the gid against `numGlyphs`). A malformed `/idDelta` or out-of-range glyph-id-array entry therefore now keeps the resulting (possibly out-of-range) gid, matching `get_glyph_id` byte-for-byte. The other fuzzed format bodies (0, 2, 12, unknown/truncated/zero-length, odd/zero `segCountX2`, `startCode > endCode`, `endCode` not ending 0xFFFF, `idRangeOffset` OOB, huge `entryCount`, `nGroups` overflow, overlapping/surrogate format-12 groups) already matched. Five stale non-oracle tests that pinned the old filtering behaviour were retargeted to the oracle-proven contract. Pinned both-sides (20 cases) in `tests/fontbox/ttf/oracle/test_cmap_subtable_format_fuzz_wave1524.py`.
+  upstream: PDFBox 3.0.7 `org.apache.fontbox.ttf.CmapSubtable.processSubtype4` / `processSubtype6`
+
+- **Wave 1524 — COSDictionary typed-accessor coercion fuzzed against PDFBox 3.0.7 (no divergence; parity pinned).** Built `CosDictionaryAccessorFuzzProbe.java` (fuzz complement to `CosDictAccessorProbe.java`) driving `get_int/get_long/get_float/get_boolean/get_cos_name/get_name_as_string/get_string/get_dictionary_object/get_item` over the corners the basic probe omits: a wrong-type coercion matrix (each accessor over string / numeric-string / name / both booleans / array / sub-dict / explicit `COSNull` / absent → sentinel or default for every mismatch; `get_name_as_string` coerces a `COSString` but `get_string` never coerces a `COSName`), signed-32-bit `get_int` wrap and `f2i`/`f2l` saturation over `COSInteger`/`COSFloat` at `2**31`, `Long.MAX/MIN`, ±1e30, ±0.4, indirect-`COSObject` resolution with the two-key fallback through both direct and indirect `COSNull`, and `COSName`-key vs `str`-key overload equivalence. pypdfbox already matches Apache PDFBox byte-for-byte across the whole matrix — **no production change**; parity is pinned both-sides for regression protection in `tests/cos/oracle/test_cos_dictionary_accessor_fuzz_wave1524.py`.
+  upstream: PDFBox 3.0.7 `org.apache.pdfbox.cos.COSDictionary` (`getInt`/`getLong`/`getFloat`/`getBoolean`/`getCOSName`/`getNameAsString`/`getString`/`getDictionaryObject`/`getItem` + COSName/String overloads), `COSInteger.intValue`, `COSFloat.intValue`/`longValue`
+
 - **Wave 1523 — malformed Type 3 (stitching) function dictionaries fuzzed against PDFBox 3.0.7 (`PDFunctionType3.eval`).** Rewrote `pypdfbox/pdmodel/common/function/pd_function_type3.py::eval` as a faithful port of upstream's bytecode, fixing four real divergences: (1) the single-subfunction path now dispatches straight to `functions[0]` and interpolates over the *whole* `/Domain` into `/Encode` pair 0, ignoring `/Bounds` entirely (pypdfbox previously rejected a single function carrying any `/Bounds` with a "too many partitions" `ValueError`). (2) `/Bounds` length is never validated up front; an over/under-long `/Bounds` either selects the wrong interval or indexes past the function array (`IndexError`, mirroring upstream `ArrayIndexOutOfBoundsException`). (3) `/Encode` is read through PDRange-equivalent COSNumber access (`_encode_pair`), so an absent / too-short / non-numeric `/Encode` pair now raises instead of silently substituting a `[0, 1]` default. (4) the input is clipped to `/Domain` with the non-normalising upstream `clipToRange(float, float, float)` (`_clip_to_range_scalar`), so a reversed `/Domain` yields the same "partition not found" failure as upstream rather than evaluating against a normalised interval. Five stale non-oracle tests retargeted to the oracle-proven contract.
   upstream: PDFBox 3.0.7 `org.apache.pdfbox.pdmodel.common.function.PDFunctionType3.eval` / `getEncodeForParameter`, `org.apache.pdfbox.pdmodel.common.PDRange`, `PDFunction.clipToRange(float, float, float)`
 
@@ -4079,6 +4086,50 @@ than "False arm missing".
     over-extends the final partial group by one byte; pypdfbox stops at the
     buffer end. Real PDF ASCII85 streams always carry the terminator, so only
     the `ok` boolean is compared (`a85_no_eod_full`).
+
+- Wave 1524 agent A: RunLengthDecode decode fuzz parity
+  (`pypdfbox/filter/run_length_decode.py`), surfaced by
+  `RunLengthDecodeFuzzProbe` /
+  `tests/filter/oracle/test_run_length_decode_fuzz_wave1524.py` (29 cases).
+  - No bug found: `RunLengthDecode.decode` is already at byte-for-byte parity
+    with `org.apache.pdfbox.filter.RunLengthDecodeFilter` (confirmed via
+    `javap` of the upstream bytecode). Both engines treat EOF anywhere — before
+    a length byte, mid literal run (partial copy then stop), or before a repeat
+    byte — as a clean stop returning whatever decoded so far, stop at the first
+    `128` EOD marker (ignoring any trailing data), and apply the `L+1` literal /
+    `257-L` repeat counts identically. Empty input, EOD-first, all-EOD, literal
+    overrun, repeat-with-no-byte, missing/multiple trailing EOD, data-after-EOD,
+    max literal (127) and max repeat (129/255), lone length byte, and
+    interleaved literal+repeat runs all pin EXACT (`ok`+`len`+`sha`). No
+    production change; the corpus locks the codec's malformed-input parity.
+
+- Wave 1524 agent D: PDRectangle malformed-COSArray construction parity
+  (`pypdfbox/pdmodel/pd_rectangle.py`), surfaced by `RectangleFuzzProbe` /
+  `tests/pdmodel/oracle/test_rectangle_fuzz_wave1524.py` (29 cases).
+  - **Bug fixed** — `from_cos_array` previously raised on a COSArray of fewer
+    than 4 entries and on any non-numeric slot, and clamped huge magnitudes at
+    `2**31 - 1`. Upstream `PDRectangle(COSArray)` is far more lenient: it runs
+    `COSArray.toFloatArray()` then `Arrays.copyOf(arr, 4)`, so a short array is
+    **zero-padded** and a long array **truncated** to its first four entries;
+    any non-numeric slot (`COSName` / `COSString` / `COSNull`, including indirect
+    references that resolve to a non-number) becomes `0.0` rather than raising;
+    indirect numeric references are resolved. The constructor never throws for a
+    malformed array. Rewrote `from_cos_array` to mirror this exactly (truncate /
+    zero-pad / non-numeric→0.0 / resolve indirect, then per-element clamp, then
+    min/max normalization).
+  - **Clamp constant corrected** — upstream clamps against
+    `(float) Integer.MAX_VALUE`, which rounds the odd int ceiling `2147483647`
+    up to `2147483648.0` (no exact float for the odd value). `_INT32_MAX` was
+    `2**31 - 1 = 2147483647`; changed to `2147483648.0` so over-magnitude
+    coordinates clamp to the same value PDFBox uses.
+  - **Pinned divergence (not fixable)** — `getWidth()` / `getHeight()` are
+    computed in Java `float` (32-bit); pypdfbox uses Python `float` (64-bit).
+    For a coordinate clamped to ±`2147483648` the float32 subtraction
+    `urx - llx` re-rounds back to the clamp magnitude (its ULP dwarfs small
+    offsets), whereas the float64 subtraction is exact. The oracle corpus
+    deliberately keeps the huge-magnitude width/height cases on float-exact
+    operand pairs so the parity assertion holds; the residual float32-vs-float64
+    width cliff at the overflow boundary is an inherent numeric-type divergence.
 
 ## See also
 

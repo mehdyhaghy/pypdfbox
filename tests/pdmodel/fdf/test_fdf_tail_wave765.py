@@ -11,6 +11,7 @@ from pypdfbox.cos import (
     COSString,
 )
 from pypdfbox.pdmodel.fdf import FDFAnnotationCircle, FDFAnnotationLine, FDFDictionary
+from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
 
 def test_wave765_line_start_point_pads_short_line_array() -> None:
@@ -72,7 +73,10 @@ def test_wave765_caption_offsets_default_for_unresolved_or_non_numeric_entries()
     assert line.get_caption_vertical_offset() == 0.0
 
 
-def test_wave765_circle_malformed_numeric_fringe_reports_absent() -> None:
+def test_wave765_circle_four_entry_malformed_fringe_coerces_to_rectangle() -> None:
+    """A 4-entry /RD with a non-numeric slot passes the length guard;
+    upstream ``new PDRectangle(COSArray)`` coerces the bad slot to ``0.0``
+    and normalizes, so ``[0, /Bad, 10, 20]`` yields ``PDRectangle(0, 0, 10, 20)``."""
     circle = FDFAnnotationCircle()
     circle.get_cos_object().set_item(
         COSName.get_pdf_name("RD"),
@@ -86,7 +90,7 @@ def test_wave765_circle_malformed_numeric_fringe_reports_absent() -> None:
         ),
     )
 
-    assert circle.get_fringe() is None
+    assert circle.get_fringe() == PDRectangle(0.0, 0.0, 10.0, 20.0)
 
 
 def test_wave765_dictionary_set_file_accepts_raw_cosbase_and_file_path_swallows_error() -> None:

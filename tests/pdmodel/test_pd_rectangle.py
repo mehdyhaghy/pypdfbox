@@ -66,18 +66,41 @@ def test_from_cos_array_accepts_integers() -> None:
     assert r.height == 792.0
 
 
-def test_from_cos_array_rejects_short_array() -> None:
+def test_from_cos_array_zero_pads_short_array() -> None:
+    # Upstream PDRectangle(COSArray) does Arrays.copyOf(toFloatArray(), 4):
+    # a short array is zero-padded, never rejected (wave 1524 oracle).
     arr = COSArray([COSFloat(0.0), COSFloat(0.0), COSFloat(10.0)])
-    with pytest.raises(ValueError):
-        PDRectangle.from_cos_array(arr)
+    r = PDRectangle.from_cos_array(arr)
+    assert r.lower_left_x == 0.0
+    assert r.lower_left_y == 0.0
+    assert r.upper_right_x == 10.0
+    assert r.upper_right_y == 0.0
 
 
-def test_from_cos_array_rejects_non_numeric() -> None:
+def test_from_cos_array_truncates_long_array() -> None:
+    # copyOf(..., 4) keeps only the first four entries.
     arr = COSArray(
-        [COSFloat(0.0), COSFloat(0.0), COSString("nope"), COSFloat(0.0)]
+        [COSFloat(1.0), COSFloat(2.0), COSFloat(3.0), COSFloat(4.0), COSFloat(99.0)]
     )
-    with pytest.raises(TypeError):
-        PDRectangle.from_cos_array(arr)
+    r = PDRectangle.from_cos_array(arr)
+    assert (r.lower_left_x, r.lower_left_y, r.upper_right_x, r.upper_right_y) == (
+        1.0,
+        2.0,
+        3.0,
+        4.0,
+    )
+
+
+def test_from_cos_array_treats_non_numeric_as_zero() -> None:
+    # Upstream COSArray.toFloatArray() maps any non-COSNumber slot to 0.0
+    # rather than raising (wave 1524 oracle).
+    arr = COSArray([COSFloat(1.0), COSFloat(2.0), COSString("nope"), COSFloat(4.0)])
+    r = PDRectangle.from_cos_array(arr)
+    # slot 2 (would-be urx) becomes 0.0, then min/max normalizes the corners.
+    assert r.lower_left_x == 0.0
+    assert r.upper_right_x == 1.0
+    assert r.lower_left_y == 2.0
+    assert r.upper_right_y == 4.0
 
 
 def test_letter_constant() -> None:
@@ -241,14 +264,19 @@ def test_to_general_path_negative_coordinates() -> None:
 # ---------- huge-value clamping (PDFBOX-2818) ----------
 
 
+# Upstream clamps against ``(float) Integer.MAX_VALUE``, which rounds the
+# Java int ceiling 2147483647 up to 2147483648.0 (no exact float for the odd
+# value). Mirrored in PDRectangle._INT32_MAX (wave 1524 oracle).
+_CLAMP = 2147483648.0
+
+
 def test_from_cos_array_clamps_huge_positive_values() -> None:
-    # Upstream PDFBOX-2818: values > Integer.MAX_VALUE are clipped.
-    huge = 1e20  # well past 2**31 - 1
+    # Upstream PDFBOX-2818: values > (float) Integer.MAX_VALUE are clipped.
+    huge = 1e20  # well past the clamp boundary
     arr = COSArray([COSFloat(0.0), COSFloat(0.0), COSFloat(huge), COSFloat(huge)])
     r = PDRectangle.from_cos_array(arr)
-    int32_max = float(2**31 - 1)
-    assert r.upper_right_x == int32_max
-    assert r.upper_right_y == int32_max
+    assert r.upper_right_x == _CLAMP
+    assert r.upper_right_y == _CLAMP
 
 
 def test_from_cos_array_clamps_huge_negative_values() -> None:
@@ -257,9 +285,8 @@ def test_from_cos_array_clamps_huge_negative_values() -> None:
         [COSFloat(huge_neg), COSFloat(huge_neg), COSFloat(0.0), COSFloat(0.0)]
     )
     r = PDRectangle.from_cos_array(arr)
-    int32_max = float(2**31 - 1)
-    assert r.lower_left_x == -int32_max
-    assert r.lower_left_y == -int32_max
+    assert r.lower_left_x == -_CLAMP
+    assert r.lower_left_y == -_CLAMP
 
 
 def test_from_cos_array_does_not_clamp_normal_values() -> None:
@@ -273,16 +300,16 @@ def test_from_cos_array_does_not_clamp_normal_values() -> None:
 
 
 def test_from_cos_array_clamps_at_int32_boundary() -> None:
-    # Value exactly at ``2**31 - 1`` is *not* clamped (boundary is exclusive).
-    int32_max = float(2**31 - 1)
+    # Value exactly at the clamp boundary is *not* clamped (the upstream
+    # guard is ``abs(value) > boundary`` — strictly greater).
     arr = COSArray(
         [
             COSFloat(0.0),
             COSFloat(0.0),
-            COSFloat(int32_max),
-            COSFloat(int32_max),
+            COSFloat(_CLAMP),
+            COSFloat(_CLAMP),
         ]
     )
     r = PDRectangle.from_cos_array(arr)
-    assert r.upper_right_x == int32_max
-    assert r.upper_right_y == int32_max
+    assert r.upper_right_x == _CLAMP
+    assert r.upper_right_y == _CLAMP

@@ -341,7 +341,16 @@ class StandardSecurityHandler(SecurityHandler):
                 bool(encrypt_metadata) if encrypt_metadata is not None else True
             )
             is_owner = bool(is_owner_password) if is_owner_password is not None else False
-            if revision >= 5:
+            # Upstream ``computeEncryptedKey`` dispatches ONLY ``encRevision ==
+            # 5`` or ``== 6`` to the AES-256 Rev56 path (verified against the
+            # 3.0.7 bytecode: ``iconst_5 if_icmpeq … bipush 6 if_icmpne``).
+            # Every other revision — including out-of-range values like 7 or 99
+            # — falls through to ``computeEncryptedKeyRev234`` (Algorithm 2),
+            # which derives a key rather than failing. A ``>= 5`` test would
+            # mis-route revision 7/99 into the Rev56 branch, where the absent
+            # /OE /UE makes it raise/return empty instead of producing the
+            # Algorithm 2 key PDFBox returns.
+            if revision in (5, 6):
                 return cls._compute_encryption_key_rev_5_6(
                     password, is_owner, bytes(o), u, oe, ue, revision
                 )
@@ -379,8 +388,16 @@ class StandardSecurityHandler(SecurityHandler):
         r2-r4. Returns the (padded) user password bytes; r5/r6 do not have
         a recoverable user password from the owner side, so upstream
         returns an empty byte array — we mirror that.
+
+        Upstream dispatches ``encRevision == 5`` / ``== 6`` straight to an
+        empty return, and routes everything else through
+        ``getUserPassword234`` — whose own RC4-unwind only runs for revisions
+        2, 3 and 4 and returns an empty ``ByteArrayOutputStream`` for any other
+        value (verified against the 3.0.7 bytecode). So an out-of-range
+        revision such as 0, 1, 7 or 99 yields empty bytes, NOT a spurious
+        r3/r4 unwind result — guard the whole derivation on the {2,3,4} set.
         """
-        if int(revision) >= 5:
+        if int(revision) not in (2, 3, 4):
             return b""
         padded_owner = cls._pad_password(owner_password)
         digest = hashlib.md5(padded_owner, usedforsecurity=False).digest()
@@ -1360,10 +1377,19 @@ class StandardSecurityHandler(SecurityHandler):
         md5.update(o)
         md5.update(struct.pack("<i", _signed32(permissions)))
         md5.update(document_id)
-        if revision >= 4 and not encrypt_metadata:
+        # Upstream ``computeEncryptedKeyRev234`` gates the 0xFFFFFFFF metadata
+        # mix on ``encRevision == 4 && !encryptMetadata`` and the 50-round
+        # re-hash on ``encRevision == 3 || encRevision == 4`` — both EXACT
+        # equalities, verified against the 3.0.7 bytecode (``iconst_4
+        # if_icmpne``; ``iconst_3 if_icmpeq … iconst_4 if_icmpne``). A ``>=``
+        # test over-fires for an out-of-range revision (7, 99): such a value
+        # reaches Algorithm 2 (the non-{5,6} dispatch) and must derive the
+        # plain rev-2 key — no FF mix, no 50-round loop — or pypdfbox derives a
+        # different key than PDFBox for the same malformed dictionary.
+        if revision == 4 and not encrypt_metadata:
             md5.update(b"\xff\xff\xff\xff")
         digest = md5.digest()
-        if revision >= 3:
+        if revision in (3, 4):
             for _ in range(50):
                 digest = hashlib.md5(
                     digest[:key_len_bytes], usedforsecurity=False
