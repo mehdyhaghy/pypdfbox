@@ -10,14 +10,14 @@ FitR / FitB+FitBH+FitBV bounding-box variants) and two indirection surfaces
 * ``surface`` — ``"tree"`` for /Names /Dests, ``"dests"`` for legacy /Dests.
 * ``key`` — the destination name (sort key).
 * ``dest_type`` — upstream Java simple class name of the resolved
-  :class:`PDPageDestination` subclass. Upstream collapses the FitB / FitBH /
-  FitBV bounding-box variants into the non-bounded wrapper classes (``FitB``
-  → ``PDPageFitDestination``, ``FitBH`` → ``PDPageFitWidthDestination``,
-  ``FitBV`` → ``PDPageFitHeightDestination``); pypdfbox keeps dedicated
-  ``PDPageFitBoundingBox*`` subclasses (see CHANGES.md). The test maps
-  pypdfbox's expanded hierarchy back to the upstream collapse so the
-  ``dest_type`` field compares cleanly — the behaviourally-observable
-  ``type_name`` (/D[1]) and the coordinate getters are identical either way.
+  :class:`PDPageDestination` subclass. Both upstream and pypdfbox collapse the
+  FitB / FitBH / FitBV bounding-box variants onto the non-bounded wrapper
+  classes (``FitB`` → ``PDPageFitDestination``, ``FitBH`` →
+  ``PDPageFitWidthDestination``, ``FitBV`` → ``PDPageFitHeightDestination``);
+  the bounded type is carried by each class's ``TYPE_BOUNDED`` flag in the
+  ``/D[1]`` name, not by a dedicated subclass. The ``dest_type`` field
+  therefore compares byte-for-byte, and the behaviourally-observable
+  ``type_name`` (/D[1]) and the coordinate getters are identical too.
 * ``type_name`` — the array's ``/D[1]`` PDF name (XYZ / Fit / FitB / FitH /
   FitBH / FitV / FitBV / FitR). This is the behaviourally-meaningful identity.
 * ``page_index`` — 0-based, via :meth:`PDPageDestination.retrieve_page_number`.
@@ -47,9 +47,6 @@ from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
     PDDestination,
     PDNamedDestination,
     PDPageDestination,
-    PDPageFitBoundingBoxDestination,
-    PDPageFitBoundingBoxHeightDestination,
-    PDPageFitBoundingBoxWidthDestination,
     PDPageFitDestination,
     PDPageFitHeightDestination,
     PDPageFitRectangleDestination,
@@ -60,19 +57,16 @@ from pypdfbox.pdmodel.pd_document import PDDocument
 from pypdfbox.pdmodel.pd_page import PDPage
 from tests.oracle.harness import requires_oracle, run_probe_text
 
-# Map pypdfbox concrete class (which keeps dedicated bounding-box subclasses)
-# back to the upstream Java simple class name (which collapses the FitB / FitBH
-# / FitBV variants onto the non-bounded wrappers). The mapping mirrors the
-# divergence noted in CHANGES.md and is what makes the JSON ``dest_type`` field
-# compare byte-for-byte across the language boundary.
+# pypdfbox mirrors upstream's class set exactly: the FitB / FitBH / FitBV
+# bounding-box variants are carried by the non-bounded wrapper classes'
+# ``TYPE_BOUNDED`` flag (in /D[1]), not by dedicated subclasses. The concrete
+# Python class name therefore equals the upstream Java simple class name, so
+# the JSON ``dest_type`` field compares byte-for-byte with no remapping.
 _PYPDFBOX_TO_UPSTREAM_CLASS = {
     PDPageXYZDestination: "PDPageXYZDestination",
     PDPageFitDestination: "PDPageFitDestination",
-    PDPageFitBoundingBoxDestination: "PDPageFitDestination",
     PDPageFitWidthDestination: "PDPageFitWidthDestination",
-    PDPageFitBoundingBoxWidthDestination: "PDPageFitWidthDestination",
     PDPageFitHeightDestination: "PDPageFitHeightDestination",
-    PDPageFitBoundingBoxHeightDestination: "PDPageFitHeightDestination",
     PDPageFitRectangleDestination: "PDPageFitRectangleDestination",
 }
 
@@ -281,11 +275,11 @@ def test_destination_types_match_pdfbox(battery_pdf: Path) -> None:
 _DISPATCH_CASES = [
     ("XYZ", PDPageXYZDestination, "PDPageXYZDestination"),
     ("Fit", PDPageFitDestination, "PDPageFitDestination"),
-    ("FitB", PDPageFitBoundingBoxDestination, "PDPageFitDestination"),
+    ("FitB", PDPageFitDestination, "PDPageFitDestination"),
     ("FitH", PDPageFitWidthDestination, "PDPageFitWidthDestination"),
-    ("FitBH", PDPageFitBoundingBoxWidthDestination, "PDPageFitWidthDestination"),
+    ("FitBH", PDPageFitWidthDestination, "PDPageFitWidthDestination"),
     ("FitV", PDPageFitHeightDestination, "PDPageFitHeightDestination"),
-    ("FitBV", PDPageFitBoundingBoxHeightDestination, "PDPageFitHeightDestination"),
+    ("FitBV", PDPageFitHeightDestination, "PDPageFitHeightDestination"),
     ("FitR", PDPageFitRectangleDestination, "PDPageFitRectangleDestination"),
 ]
 

@@ -1225,9 +1225,6 @@ The Type 1 PFB-style and CFF (Type1C) parsing internals are NOT ported from upst
 | `pypdfbox/pdmodel/interactive/annotation/pd_annotation_screen.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/annotation/PDAnnotationScreen.java` |
 | `tests/pdmodel/common/function/upstream/test_pd_function_type_4.py` | 3.0.x | `pdfbox/src/test/java/org/apache/pdfbox/pdmodel/common/function/TestPDFunctionType4.java` |
 | `pypdfbox/pdmodel/common/function/pd_function_type3.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/common/function/PDFunctionType3.java` |
-| `pypdfbox/pdmodel/interactive/documentnavigation/destination/pd_page_fit_bounding_box_destination.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/documentnavigation/destination/PDPageFitBoundingBoxDestination.java` |
-| `pypdfbox/pdmodel/interactive/documentnavigation/destination/pd_page_fit_bounding_box_height_destination.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/documentnavigation/destination/PDPageFitBoundingBoxHeightDestination.java` |
-| `pypdfbox/pdmodel/interactive/documentnavigation/destination/pd_page_fit_bounding_box_width_destination.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/interactive/documentnavigation/destination/PDPageFitBoundingBoxWidthDestination.java` |
 | `pypdfbox/text/pdf_marked_content_extractor.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/text/PDFMarkedContentExtractor.java` |
 | `pypdfbox/pdmodel/fdf/fdf_annotation_text.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FDFAnnotationText.java` |
 | `pypdfbox/pdmodel/fdf/fdf_annotation_free_text.py` | 3.0.x | `pdfbox/src/main/java/org/apache/pdfbox/pdmodel/fdf/FDFAnnotationFreeText.java` |

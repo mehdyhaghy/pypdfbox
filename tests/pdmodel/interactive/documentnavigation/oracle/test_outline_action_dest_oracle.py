@@ -173,9 +173,6 @@ _DEST_TYPE_NAME = {
     "PDPageFitHeightDestination": "PDPageFitHeightDestination",
     "PDPageFitWidthDestination": "PDPageFitWidthDestination",
     "PDPageFitRectangleDestination": "PDPageFitRectangleDestination",
-    "PDPageFitBoundingBoxDestination": "PDPageFitBoundingBoxDestination",
-    "PDPageFitBoundingBoxHeightDestination": "PDPageFitBoundingBoxHeightDestination",
-    "PDPageFitBoundingBoxWidthDestination": "PDPageFitBoundingBoxWidthDestination",
 }
 
 

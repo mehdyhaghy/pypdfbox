@@ -15,20 +15,22 @@ surfaces against the live ``DocNavFuzzProbe`` Java oracle:
   page count, duplicate start, ``/Kids`` non-dictionary child with a sibling
   ``/Nums``).
 
-Intentional robustness divergences where pypdfbox is the more-lenient
-superset (it fails closed / recovers where upstream throws or drops):
+Intentional robustness divergence where pypdfbox is the more-lenient
+superset (it recovers where upstream drops):
 
-   * ``PDOutlineItem.get_destination`` swallows the ``OSError`` from a
-     malformed ``/Dest`` and returns ``None`` where upstream propagates the
-     ``IOException`` (HISTORY wave 344-class note; CHANGES Wave 1511).
    * ``PDPageLabels`` recovers a same-node sibling ``/Nums`` when ``/Kids``
      carries only junk (non-dictionary) children, where upstream's ``/Kids``
      else-if branch drops the ``/Nums`` entirely (HISTORY wave 310; CHANGES
      Wave 1511).
 
-   These rows are pinned both-sides: the test asserts pypdfbox's tolerant
+   This row is pinned both-sides: the test asserts pypdfbox's tolerant
    token AND records the upstream token, so a future "match upstream exactly"
    change is a conscious, test-visible decision.
+
+Wave 1526 note: ``PDOutlineItem.get_destination`` over a malformed ``/Dest``
+NO LONGER diverges — wave 1519 made ``PDDestination.create`` propagate the
+conversion ``OSError``, so the ``outline:dest_bad_*`` cases now CONVERGE with
+upstream (both raise ``IOException``). They are compared directly, not pinned.
 """
 
 from __future__ import annotations
@@ -67,19 +69,12 @@ from tests.oracle.harness import requires_oracle, run_probe_text
 # Rows where pypdfbox is the more-lenient documented superset. The value is the
 # UPSTREAM token; the Python token below is asserted to be the tolerant one.
 _KNOWN_DIVERGENCES: dict[str, str] = {
-    # Malformed /Dest: upstream propagates IOException, pypdfbox falls closed.
-    "outline:dest_bad_array": "EXC:IOException",
-    "outline:dest_bad_int": "EXC:IOException",
-    "outline:dest_bad_dict": "EXC:IOException",
     # /Kids junk child with a sibling /Nums: upstream drops /Nums, pypdfbox
     # recovers it.
     "labels:kids_nonchild_with_nums": "[1,2,3,4,5]",
 }
 
 _PYTHON_TOLERANT: dict[str, str] = {
-    "outline:dest_bad_array": "null",
-    "outline:dest_bad_int": "null",
-    "outline:dest_bad_dict": "null",
     "labels:kids_nonchild_with_nums": "[I,II,III,IV,V]",
 }
 

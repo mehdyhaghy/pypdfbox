@@ -38,9 +38,6 @@ from pypdfbox.pdmodel.interactive.action.pd_action_remote_go_to import (
 from pypdfbox.pdmodel.interactive.annotation import PDAnnotationLink
 from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
     PDPageDestination,
-    PDPageFitBoundingBoxDestination,
-    PDPageFitBoundingBoxHeightDestination,
-    PDPageFitBoundingBoxWidthDestination,
     PDPageFitDestination,
     PDPageFitHeightDestination,
     PDPageFitRectangleDestination,
@@ -102,22 +99,28 @@ def _fitr(page: PDPage) -> PDPageFitRectangleDestination:
     return dest
 
 
-def _fitb(page: PDPage) -> PDPageFitBoundingBoxDestination:
-    dest = PDPageFitBoundingBoxDestination()
+def _fitb(page: PDPage) -> PDPageFitDestination:
+    # /FitB — the bounding-box variant of /Fit, carried by the TYPE_BOUNDED flag.
+    dest = PDPageFitDestination()
     dest.set_page(page)
+    dest.set_fit_bounding_box(True)
     return dest
 
 
-def _fitbh(page: PDPage) -> PDPageFitBoundingBoxWidthDestination:
-    dest = PDPageFitBoundingBoxWidthDestination()
+def _fitbh(page: PDPage) -> PDPageFitWidthDestination:
+    # /FitBH — the bounding-box variant of /FitH, carried by TYPE_BOUNDED.
+    dest = PDPageFitWidthDestination()
     dest.set_page(page)
+    dest.set_fit_bounding_box(True)
     dest.set_top(300.0)
     return dest
 
 
-def _fitbv(page: PDPage) -> PDPageFitBoundingBoxHeightDestination:
-    dest = PDPageFitBoundingBoxHeightDestination()
+def _fitbv(page: PDPage) -> PDPageFitHeightDestination:
+    # /FitBV — the bounding-box variant of /FitV, carried by TYPE_BOUNDED.
+    dest = PDPageFitHeightDestination()
     dest.set_page(page)
+    dest.set_fit_bounding_box(True)
     dest.set_left(75.0)
     return dest
 

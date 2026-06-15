@@ -4,13 +4,6 @@ from .pd_destination import PDDestination
 from .pd_destination_name_tree_node import PDDestinationNameTreeNode
 from .pd_named_destination import PDNamedDestination
 from .pd_page_destination import PDPageDestination
-from .pd_page_fit_bounding_box_destination import PDPageFitBoundingBoxDestination
-from .pd_page_fit_bounding_box_height_destination import (
-    PDPageFitBoundingBoxHeightDestination,
-)
-from .pd_page_fit_bounding_box_width_destination import (
-    PDPageFitBoundingBoxWidthDestination,
-)
 from .pd_page_fit_destination import PDPageFitDestination
 from .pd_page_fit_height_destination import PDPageFitHeightDestination
 from .pd_page_fit_rectangle_destination import PDPageFitRectangleDestination
@@ -22,9 +15,6 @@ __all__ = [
     "PDDestinationNameTreeNode",
     "PDNamedDestination",
     "PDPageDestination",
-    "PDPageFitBoundingBoxDestination",
-    "PDPageFitBoundingBoxHeightDestination",
-    "PDPageFitBoundingBoxWidthDestination",
     "PDPageFitDestination",
     "PDPageFitHeightDestination",
     "PDPageFitRectangleDestination",

@@ -2,13 +2,20 @@ from __future__ import annotations
 
 from pypdfbox.cos import COSArray, COSInteger, COSName, COSNull, COSString
 from pypdfbox.pdmodel.interactive.documentnavigation.destination import (
-    PDPageFitBoundingBoxHeightDestination,
-    PDPageFitBoundingBoxWidthDestination,
+    PDPageFitHeightDestination,
+    PDPageFitWidthDestination,
 )
+
+# The /FitBH (bounding-box width) and /FitBV (bounding-box height) variants are
+# carried by the real PDPageFitWidthDestination / PDPageFitHeightDestination
+# classes via their TYPE_BOUNDED flag — PDFBox has no dedicated bounding-box
+# subclass. These tests exercise the axis-specific top/left slot behaviour for
+# the bounded variant.
 
 
 def test_fit_bounding_box_width_top_unset_predicate_and_clear() -> None:
-    dest = PDPageFitBoundingBoxWidthDestination()
+    dest = PDPageFitWidthDestination()
+    dest.set_fit_bounding_box(True)
 
     assert dest.is_top_unset() is True
 
@@ -29,7 +36,7 @@ def test_fit_bounding_box_width_top_unset_for_malformed_value() -> None:
             COSString("not numeric"),
         ]
     )
-    dest = PDPageFitBoundingBoxWidthDestination(arr)
+    dest = PDPageFitWidthDestination(arr)
 
     assert dest.get_top() is None
     assert dest.is_top_unset() is True
@@ -37,7 +44,7 @@ def test_fit_bounding_box_width_top_unset_for_malformed_value() -> None:
 
 def test_fit_bounding_box_width_clear_grows_short_array() -> None:
     arr = COSArray([COSInteger.get(0), COSName.get_pdf_name("FitBH")])
-    dest = PDPageFitBoundingBoxWidthDestination(arr)
+    dest = PDPageFitWidthDestination(arr)
 
     dest.clear_top()
 
@@ -46,7 +53,8 @@ def test_fit_bounding_box_width_clear_grows_short_array() -> None:
 
 
 def test_fit_bounding_box_height_left_unset_predicate_and_clear() -> None:
-    dest = PDPageFitBoundingBoxHeightDestination()
+    dest = PDPageFitHeightDestination()
+    dest.set_fit_bounding_box(True)
 
     assert dest.is_left_unset() is True
 
@@ -67,7 +75,7 @@ def test_fit_bounding_box_height_left_unset_for_malformed_value() -> None:
             COSString("not numeric"),
         ]
     )
-    dest = PDPageFitBoundingBoxHeightDestination(arr)
+    dest = PDPageFitHeightDestination(arr)
 
     assert dest.get_left() is None
     assert dest.is_left_unset() is True
@@ -75,7 +83,7 @@ def test_fit_bounding_box_height_left_unset_for_malformed_value() -> None:
 
 def test_fit_bounding_box_height_clear_grows_short_array() -> None:
     arr = COSArray([COSInteger.get(0), COSName.get_pdf_name("FitBV")])
-    dest = PDPageFitBoundingBoxHeightDestination(arr)
+    dest = PDPageFitHeightDestination(arr)
 
     dest.clear_left()
 
