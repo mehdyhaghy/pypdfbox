@@ -284,7 +284,11 @@ class PDResources:
             raise OSError(
                 f"/XObject entry {key!s} is not a stream: {type(entry).__name__}"
             )
-        subtype = entry.get_name(COSName.SUBTYPE)  # type: ignore[attr-defined]
+        # Upstream PDXObject.createXObject reads /Subtype via
+        # COSStream.getNameAsString(SUBTYPE), which decodes a COSString as well
+        # as a COSName. Using get_name (name-only) would mis-classify a stream
+        # whose /Subtype is stored as a string "Form"/"Image" — a parity bug.
+        subtype = entry.get_name_as_string(COSName.SUBTYPE)  # type: ignore[attr-defined]
         if subtype == "Form":
             xobject: PDXObject = PDFormXObject(entry)
             if (
@@ -307,7 +311,11 @@ class PDResources:
             ):
                 cache.put_x_object(raw, xobject)
             return xobject
-        raise OSError(f"Invalid XObject Subtype: {subtype!r}")
+        # Upstream message: "Invalid XObject Subtype: " + subtype (the raw
+        # getNameAsString value, or "null" when absent).
+        raise OSError(
+            f"Invalid XObject Subtype: {subtype if subtype is not None else 'null'}"
+        )
 
     def get_x_object_names(self) -> list[COSName]:
         """``/XObject`` keys. Upstream method name is ``getXObjectNames``."""

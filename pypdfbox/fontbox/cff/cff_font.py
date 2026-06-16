@@ -587,11 +587,18 @@ class CFFFont:
         are PostScript names, not CIDs).
 
         For CIDKeyed fonts fontTools synthesises ``cid<NNNNN>`` glyph
-        names; we parse the suffix back out to recover the CID.
+        names; we parse the suffix back out to recover the CID. A GID
+        with no CID mapping (out of range, or ``.notdef``) resolves to
+        ``0`` for CID fonts, matching upstream ``CFFCharsetCID.getCIDForGID``
+        (``gidToCid.get(gid)`` → ``0`` on a map miss). The raw-GID
+        fallback applies only to name-keyed fonts, where the upstream
+        ``CFFCharsetType1`` would instead throw "Not a CIDFont".
         """
         name = self.get_name_for_gid(gid)
         if name.startswith("cid") and name[3:].isdigit():
             return int(name[3:])
+        if self.is_cid_font():
+            return 0
         return gid
 
     def get_gid_for_cid(self, cid: int) -> int:

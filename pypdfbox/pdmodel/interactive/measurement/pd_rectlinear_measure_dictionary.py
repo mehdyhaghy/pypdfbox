@@ -53,11 +53,22 @@ class PDRectlinearMeasureDictionary(PDMeasureDictionary):
     def _array_to_number_formats(
         arr: COSArray,
     ) -> list[PDNumberFormatDictionary]:
+        # Upstream ``PDRectlinearMeasureDictionary.arrayToNumberFormat`` casts
+        # every array member straight to ``COSDictionary``
+        # (``(COSDictionary) array.getObject(i)``) with no type guard, so a
+        # malformed array containing a non-dictionary member raises a
+        # ``ClassCastException``. We mirror that exactly — a defensive
+        # ``isinstance`` skip would silently drop the bad member and diverge
+        # from PDFBox (verified against the live oracle, MeasureDictFuzzProbe
+        # ``d.mixed`` case). ``TypeError`` is Python's ``ClassCastException``.
         retval: list[PDNumberFormatDictionary] = []
         for i in range(arr.size()):
             entry = arr.get_object(i)
-            if isinstance(entry, COSDictionary):
-                retval.append(PDNumberFormatDictionary(entry))
+            if not isinstance(entry, COSDictionary):
+                raise TypeError(
+                    f"{type(entry).__name__} cannot be cast to COSDictionary"
+                )
+            retval.append(PDNumberFormatDictionary(entry))
         return retval
 
     @staticmethod
