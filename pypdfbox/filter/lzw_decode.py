@@ -5,10 +5,11 @@ from typing import BinaryIO, Final
 
 from pypdfbox.cos import COSDictionary
 
-from ._predictor import predict, unpredict
+from ._predictor import predict
 from .decode_result import DecodeResult
 from .filter import Filter
 from .filter_factory import FilterFactory
+from .predictor import Predictor
 
 # Reserved LZW codes per ISO 32000-1 §7.4.4.
 CLEAR_TABLE: Final[int] = 256
@@ -190,12 +191,17 @@ class LZWDecode(Filter):
         raw_bytes = raw_buffer.getvalue()
 
         if predictor > 1:
-            colors = min(decode_params.get_int("Colors", 1), 32)
-            bits_per_component = decode_params.get_int("BitsPerComponent", 8)
-            columns = decode_params.get_int("Columns", 1)
-            raw_bytes = unpredict(
-                raw_bytes, predictor, columns, colors, bits_per_component
-            )
+            # Route through ``PredictorOutputStream`` (``Predictor.wrapPredictor``)
+            # exactly as upstream's ``LZWFilter.decode`` does, rather than the
+            # standalone one-shot ``unpredict`` which diverged on malformed
+            # geometry (unknown /Predictor passthrough, partial-row handling).
+            buf = BytesIO()
+            predictor_stream = Predictor.wrap_predictor(buf, decode_params)
+            predictor_stream.write(raw_bytes)
+            flush_pred = getattr(predictor_stream, "flush", None)
+            if callable(flush_pred):
+                flush_pred()
+            raw_bytes = buf.getvalue()
 
         decoded.write(raw_bytes)
         flush = getattr(decoded, "flush", None)

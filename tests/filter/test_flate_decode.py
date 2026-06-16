@@ -280,14 +280,20 @@ class TestErrors:
         flate.decode(io.BytesIO(b"not zlib at all"), out, None)
         assert out.getvalue() == b""
 
-    def test_unsupported_predictor_raises(self) -> None:
-        # Predictor numbers other than 1, 2, and 10..15 are not defined.
+    def test_undefined_predictor_passes_through(self) -> None:
+        # Predictor numbers other than 1, 2, and 10..15 are undefined, but
+        # PDFBox does NOT raise on them: ``Predictor.wrapPredictor`` builds a
+        # ``PredictorOutputStream`` for any predictor > 1, and
+        # ``decodePredictorRow``'s switch hits ``default: break`` for an
+        # unhandled value — the row is written through unchanged. Verified
+        # against Apache PDFBox 3.0.7 (wave 1543); the former one-shot
+        # ``unpredict`` raised here, a divergence now fixed.
         compressed = zlib.compress(b"abcd")
         params = COSDictionary()
         params.set_int("Predictor", 7)
-        flate = FlateDecode()
-        with pytest.raises(OSError):
-            flate.decode(io.BytesIO(compressed), io.BytesIO(), params)
+        out = io.BytesIO()
+        FlateDecode().decode(io.BytesIO(compressed), out, params)
+        assert out.getvalue() == b"abcd"
 
 
 class TestFilterFactoryIntegration:
