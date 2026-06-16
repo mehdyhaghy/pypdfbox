@@ -122,13 +122,21 @@ class PDFTextStripperByArea(PDFTextStripper):
 
         ``rect`` may be a :class:`PDRectangle` (PDF user space) or a
         ``(x, y, width, height)`` tuple/list where ``y`` is the
-        lower-left edge in user space. Adding the same name twice
-        overwrites the rectangle but keeps the name's first position in
-        :meth:`get_regions`.
+        lower-left edge in user space.
+
+        Adding the same name twice **appends the name again** to the
+        :meth:`get_regions` list while overwriting the rectangle in the
+        backing area map — byte-for-byte upstream parity. Upstream's
+        ``addRegion`` (PDFTextStripperByArea.java) unconditionally calls
+        ``regions.add(regionName)`` *and* ``regionArea.put(regionName,
+        rect)``, so a name added N times appears N times in
+        ``getRegions()`` (an ``ArrayList``) but only once in
+        ``regionArea`` (a ``HashMap``, last rect wins). Verified against
+        the live PDFBox 3.0.7 oracle: ``add("r"); add("r")`` yields
+        ``getRegions() == ["r", "r"]``. See ``CHANGES.md``.
         """
         bounds = _normalize_rect(rect)
-        if region_name not in self._region_area:
-            self._regions.append(region_name)
+        self._regions.append(region_name)
         self._region_area[region_name] = bounds
 
     def remove_region(self, region_name: str) -> None:

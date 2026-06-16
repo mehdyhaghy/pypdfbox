@@ -30,13 +30,16 @@ def test_format0_malformed_fd_entry_falls_back_to_default() -> None:
     assert select.get_fd_index(1) == 0
 
 
-def test_format3_negative_sentinel_behaves_like_empty_select() -> None:
+def test_format3_negative_sentinel_clamps_to_zero() -> None:
     select = Format3FDSelect(ranges=[(0, 2)], sentinel=-4)
-
+    # Negative sentinel clamps to 0, so the count/membership views collapse. But
+    # get_fd_index mirrors upstream CFFParser$Format3FDSelect.getFDIndex (verified
+    # by disassembly + CffFdSelectFuzzProbe oracle): the range walk does NOT
+    # short-circuit on a zero sentinel, so GID 0 (last range, gid >= sentinel)
+    # returns -1, not 0 (the pre-wave-1551 short-circuit bug).
     assert select.get_num_glyphs() == 0
-    assert len(select) == 0
     assert select.get_sentinel() == 0
-    assert select.get_fd_index(0) == 0
+    assert select.get_fd_index(0) == -1
     assert 0 not in select
 
 

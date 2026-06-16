@@ -61,13 +61,18 @@ def test_remove_region_unknown_is_noop() -> None:
     assert s.get_regions() == ["a"]
 
 
-def test_add_region_overwrites_rect_keeps_position() -> None:
+def test_add_region_duplicate_name_appends_upstream_parity() -> None:
     s = PDFTextStripperByArea()
     s.add_region("a", (0.0, 0.0, 10.0, 10.0))
     s.add_region("b", (0.0, 0.0, 10.0, 10.0))
     s.add_region("a", (5.0, 5.0, 50.0, 50.0))
-    # Re-adding "a" must not re-order or duplicate it.
-    assert s.get_regions() == ["a", "b"]
+    # Upstream parity (wave 1551, verified live vs PDFBox 3.0.7): ``addRegion``
+    # unconditionally appends the name to the ``regions`` ArrayList AND puts the
+    # rect into the ``regionArea`` HashMap, so re-adding "a" appends a SECOND
+    # "a" to ``getRegions()`` while the map keeps only the last rect. Previously
+    # this test asserted dedup (``["a", "b"]``) — a divergence retargeted when
+    # the live oracle proved upstream returns the duplicate.
+    assert s.get_regions() == ["a", "b", "a"]
 
 
 def test_add_region_accepts_pdrectangle() -> None:

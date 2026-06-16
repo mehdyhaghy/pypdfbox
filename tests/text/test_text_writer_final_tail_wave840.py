@@ -22,14 +22,19 @@ def _position(angle_90: bool = False) -> TextPosition:
     )
 
 
-def test_wave840_by_area_duplicate_region_overwrites_bounds_without_reordering() -> None:
+def test_wave840_by_area_duplicate_region_appends_name_overwrites_bounds() -> None:
     stripper = PDFTextStripperByArea()
 
     stripper.add_region("body", (0, 0, 10, 10))
     stripper.add_region("margin", (20, 20, 5, 5))
     stripper.add_region("body", (2, 3, 4, 5))
 
-    assert stripper.get_regions() == ["body", "margin"]
+    # Upstream parity (wave 1551, verified live vs PDFBox 3.0.7): ``addRegion``
+    # unconditionally appends to the ``regions`` ArrayList, so a re-added name
+    # appears twice in ``getRegions()`` while the ``regionArea`` HashMap keeps
+    # only the last rect. Previously asserted dedup (``["body", "margin"]``);
+    # retargeted when the live oracle proved the duplicate.
+    assert stripper.get_regions() == ["body", "margin", "body"]
     assert stripper._region_area["body"] == (2.0, 3.0, 6.0, 8.0)
 
 

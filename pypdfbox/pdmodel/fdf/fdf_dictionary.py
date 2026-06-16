@@ -183,17 +183,20 @@ class FDFDictionary:
 
     # ---------- /Annots ----------
 
-    def get_annotations(self) -> list[FDFAnnotation] | None:
+    def get_annotations(self) -> list[FDFAnnotation | None] | None:
         v = self._fdf.get_dictionary_object(_ANNOTS)
         if not isinstance(v, COSArray):
             return None
-        out: list[FDFAnnotation] = []
+        # Mirror upstream ``FDFDictionary.getAnnotations()`` which appends
+        # ``FDFAnnotation.create(...)`` verbatim — including the ``null`` it
+        # returns for an unknown / absent ``/Subtype``. The list therefore
+        # preserves a ``None`` placeholder for every ``/Annots`` entry rather
+        # than silently dropping unrecognised ones (PDFBox keeps the count).
+        out: list[FDFAnnotation | None] = []
         for entry in v:
             resolved = entry.get_object() if isinstance(entry, COSObject) else entry
             if isinstance(resolved, COSDictionary):
-                annotation = FDFAnnotation.create(resolved)
-                if annotation is not None:
-                    out.append(annotation)
+                out.append(FDFAnnotation.create(resolved))
         return out
 
     def has_annotations(self) -> bool:

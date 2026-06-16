@@ -171,7 +171,16 @@ class Format3FDSelect(FDSelect):
         return self._sentinel
 
     def get_fd_index(self, gid: int) -> int:
-        if gid < 0 or self._sentinel <= 0 or not self._ranges:
+        # Upstream ``CFFParser$Format3FDSelect.getFDIndex`` (verified by
+        # disassembly) does NOT short-circuit on a zero/empty sentinel — it
+        # walks the ranges unconditionally and returns 0 only when no range
+        # matches (the for-loop falls through). A GID that lands in the *last*
+        # range but is at or past the sentinel returns -1, regardless of the
+        # sentinel's value. We therefore guard only the genuinely
+        # range-independent cases: a negative GID (upstream's loop returns 0
+        # for it because every ``range3[i].first`` is >= 0 and the loop falls
+        # through) and an empty range array (the loop never runs -> 0).
+        if gid < 0 or not self._ranges:
             return 0
         # Linear scan mirroring PDFBox's Format3FDSelect range walk.
         for i, (first, fd) in enumerate(self._ranges):
