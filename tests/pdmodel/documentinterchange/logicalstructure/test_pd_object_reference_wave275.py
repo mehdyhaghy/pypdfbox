@@ -132,16 +132,28 @@ def test_wave275_malformed_shapes_are_raw_visible_but_typed_safe() -> None:
     assert objr.is_referenced_image_xobject() is False
     assert objr.is_referenced_annotation() is False
 
-    unknown_stream = COSStream()
-    unknown_stream.set_name(_SUBTYPE, "PS")
-    objr.set_obj(unknown_stream)
-    assert objr.get_referenced_object() is None
+    # Retargeted wave 1557: a /PS stream dispatches to PDPostScriptXObject
+    # via PDXObject.createXObject (was pinned at None — the pre-fix bug).
+    from pypdfbox.pdmodel.graphics.pd_post_script_x_object import (
+        PDPostScriptXObject,
+    )
+    from pypdfbox.pdmodel.interactive.annotation.pd_annotation_unknown import (
+        PDAnnotationUnknown,
+    )
+
+    ps_stream = COSStream()
+    ps_stream.set_name(_SUBTYPE, "PS")
+    objr.set_obj(ps_stream)
+    assert isinstance(objr.get_referenced_object(), PDPostScriptXObject)
     assert objr.is_referenced_form_xobject() is False
     assert objr.is_referenced_image_xobject() is False
     assert objr.is_referenced_annotation() is False
 
+    # Retargeted wave 1557: a bare dict (no /Type, no /Subtype) dispatches to
+    # PDAnnotationUnknown — createAnnotation stamps /Type /Annot so the
+    # upstream filter passes (was pinned at None — the pre-fix bug).
     bare_dict = COSDictionary()
     objr.set_obj(bare_dict)
     assert objr.get_obj() is bare_dict
     assert objr.is_referenced_annotation() is False
-    assert objr.get_referenced_object() is None
+    assert isinstance(objr.get_referenced_object(), PDAnnotationUnknown)

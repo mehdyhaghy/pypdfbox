@@ -169,11 +169,29 @@ def test_get_referenced_object_image_xobject_stream() -> None:
     assert referenced.get_cos_object() is stream
 
 
-def test_get_referenced_object_unknown_xobject_subtype_returns_none() -> None:
+def test_get_referenced_object_ps_xobject_subtype_dispatched() -> None:
+    # Retargeted wave 1557 (was *_unknown_xobject_subtype_returns_none, which
+    # pinned the pre-fix bug). Upstream getReferencedObject calls
+    # PDXObject.createXObject for any stream /Obj; /Subtype /PS dispatches to a
+    # PDPostScriptXObject (oracle MarkedContentReferenceFuzzProbe
+    # obj_unknown_stream -> PDPostScriptXObject).
+    from pypdfbox.pdmodel.graphics.pd_post_script_x_object import (
+        PDPostScriptXObject,
+    )
+
     objr = PDObjectReference()
     stream = COSStream()
-    stream.set_name(_SUBTYPE, "PS")  # PostScript XObject — not Form/Image
+    stream.set_name(_SUBTYPE, "PS")  # PostScript XObject
     objr.set_obj(stream)
+    assert isinstance(objr.get_referenced_object(), PDPostScriptXObject)
+
+
+def test_get_referenced_object_stream_no_subtype_returns_none() -> None:
+    # A stream with no /Subtype makes createXObject raise; upstream's stream
+    # branch is wrapped in a try/catch that returns null directly (it does NOT
+    # fall through to annotation dispatch). Oracle obj_stream_nosub -> null.
+    objr = PDObjectReference()
+    objr.set_obj(COSStream())
     assert objr.get_referenced_object() is None
 
 
@@ -305,21 +323,39 @@ def test_get_referenced_object_unknown_subtype_with_type_annot_returned() -> Non
     assert referenced.get_cos_object() is annot_dict
 
 
-def test_get_referenced_object_unknown_subtype_without_type_returns_none() -> None:
-    """No /Type, unknown /Subtype → upstream returns null (cannot tell
-    whether the dict is even an annotation)."""
+def test_get_referenced_object_unknown_subtype_without_type_returns_unknown() -> None:
+    """Retargeted wave 1557 (was *_returns_none, pinning the pre-fix bug).
+
+    Upstream's createAnnotation STAMPS /Type /Annot onto a dict that has no
+    /Type, so the subsequent ``COSName.ANNOT.equals(getCOSName(TYPE))`` filter
+    passes and the PDAnnotationUnknown is returned. Oracle
+    obj_annot_nosubtype / unknown_subtype_no_type -> PDAnnotationUnknown.
+    """
+    from pypdfbox.pdmodel.interactive.annotation.pd_annotation_unknown import (
+        PDAnnotationUnknown,
+    )
+
     objr = PDObjectReference()
     annot_dict = COSDictionary()
     annot_dict.set_name(_SUBTYPE, "FutureSubtype42")
     objr.set_obj(annot_dict)
-    assert objr.get_referenced_object() is None
+    assert isinstance(objr.get_referenced_object(), PDAnnotationUnknown)
 
 
-def test_get_referenced_object_dict_no_type_no_subtype_returns_none() -> None:
-    """Bare dict with neither /Type nor /Subtype — nothing to dispatch on."""
+def test_get_referenced_object_dict_no_type_no_subtype_returns_unknown() -> None:
+    """Retargeted wave 1557 (was *_returns_none, pinning the pre-fix bug).
+
+    A bare dict (no /Type, no /Subtype) dispatches to PDAnnotationUnknown;
+    createAnnotation stamps /Type /Annot so the filter passes. Oracle
+    obj_empty_dict -> PDAnnotationUnknown.
+    """
+    from pypdfbox.pdmodel.interactive.annotation.pd_annotation_unknown import (
+        PDAnnotationUnknown,
+    )
+
     objr = PDObjectReference()
     objr.set_obj(COSDictionary())
-    assert objr.get_referenced_object() is None
+    assert isinstance(objr.get_referenced_object(), PDAnnotationUnknown)
 
 
 def test_get_referenced_object_form_xobject_dispatched_before_annotation() -> None:

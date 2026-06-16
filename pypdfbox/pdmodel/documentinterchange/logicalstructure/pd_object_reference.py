@@ -17,9 +17,6 @@ _SUBTYPE: COSName = COSName.SUBTYPE  # type: ignore[attr-defined]
 _PG: COSName = COSName.get_pdf_name("Pg")
 _OBJ: COSName = COSName.get_pdf_name("Obj")
 _ANNOT: str = "Annot"
-_XOBJECT: str = "XObject"
-_FORM: str = "Form"
-_IMAGE: str = "Image"
 
 
 class PDObjectReference:
@@ -126,81 +123,84 @@ class PDObjectReference:
 
         Mirrors upstream ``getReferencedObject`` (PDF 32000-1 §14.7.4.3):
 
-        1. If ``/Obj`` is a ``COSStream`` with ``/Subtype /Form`` or
-           ``/Image`` it is wrapped as :class:`PDFormXObject` /
-           :class:`PDImageXObject`.
-        2. Otherwise — including streams whose ``/Subtype`` is unknown —
-           the resolver falls through to annotation dispatch via
-           :meth:`PDAnnotation.create`. The annotation is returned only
-           when it dispatched to a *known* subclass, or when
-           ``/Type /Annot`` is present (matching upstream's
-           ``!instanceof PDAnnotationUnknown || /Type == /Annot``).
-        3. Returns ``None`` when ``/Obj`` is absent, points at
-           something that isn't a dictionary, or fails both dispatch
-           paths.
+        Upstream resolves ``/Obj`` via ``getCOSDictionary(OBJ)``, so a
+        ``/Obj`` that is not a dictionary (string, integer, array, absent)
+        yields ``None`` immediately. A ``COSStream`` is a ``COSDictionary``
+        subclass, so it satisfies that lookup too.
 
-        Streams that aren't Form/Image XObjects (e.g. ``/Subtype /PS``)
-        return ``None`` — upstream's ``PDXObject.createXObject`` raises
-        ``IOException`` for unknown subtypes which the upstream catch
-        block swallows and logs.
+        1. If ``/Obj`` is a ``COSStream`` the resolver calls
+           ``PDXObject.create_x_object``. ``/Form`` →
+           :class:`PDFormXObject`, ``/Image`` → :class:`PDImageXObject`,
+           ``/PS`` → :class:`PDPostScriptXObject`. Any returned XObject is
+           handed back. A genuinely invalid or absent ``/Subtype`` raises
+           ``OSError`` inside ``create_x_object``; upstream wraps the stream
+           branch in a try/catch whose catch block returns ``null``
+           *directly* (the ``IOException`` unwinds straight past the
+           annotation dispatch), so such a stream resolves to ``None`` — it
+           is never treated as an annotation.
+        2. When ``/Obj`` is a non-stream dictionary the resolver dispatches
+           to an annotation via
+           :meth:`PDAnnotation.create`. The annotation is returned when it
+           dispatched to a *known* subclass, or when ``/Type`` is ``/Annot``
+           **or absent**: upstream's ``createAnnotation`` stamps ``/Type
+           /Annot`` onto a dictionary that has no ``/Type``, so the
+           subsequent ``COSName.ANNOT.equals(getCOSName(TYPE))`` filter
+           passes and the unknown annotation is returned. A dictionary
+           carrying a *different* explicit ``/Type`` (e.g. ``/Page``) is
+           left untouched, fails the filter, and yields ``None``.
+        3. Returns ``None`` when ``/Obj`` is absent, is not a dictionary,
+           or fails both dispatch paths.
         """
         obj = self._dictionary.get_dictionary_object(_OBJ)
-        if obj is None:
+        if not isinstance(obj, COSDictionary):
+            # Upstream getCOSDictionary(OBJ) returns null for any non-dict
+            # /Obj (string / integer / array / absent). A COSStream is a
+            # COSDictionary subclass, so it is *not* excluded here.
             return None
 
-        # ---- Streams: try XObject dispatch first (matches upstream). ----
+        # ---- Streams: XObject dispatch only (matches upstream). ----
         if isinstance(obj, COSStream):
-            subtype = obj.get_name(_SUBTYPE)
-            if subtype == _FORM:
-                # Local import — cluster boundary, see module docstring.
-                from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (
-                    PDFormXObject,
-                )
+            # Local import — cluster boundary, see module docstring.
+            from pypdfbox.pdmodel.graphics.pd_x_object import PDXObject
 
-                return PDFormXObject(obj)
-            if subtype == _IMAGE:
-                from pypdfbox.pdmodel.graphics.image.pd_image_x_object import (
-                    PDImageXObject,
-                )
-
-                return PDImageXObject(obj)
-            # Unknown stream subtype (e.g. /PS PostScript XObject).
-            # Upstream catches the IOException and returns null after
-            # falling through to annotation dispatch — but a stream is
-            # never a valid annotation, so short-circuit here.
-            _LOG.debug(
-                "PDObjectReference /Obj stream has unrecognised /Subtype %r — "
-                "returning None",
-                subtype,
-            )
-            return None
-
-        # ---- Dicts: annotation dispatch with upstream's filter rule. ----
-        if isinstance(obj, COSDictionary):
-            from pypdfbox.pdmodel.interactive.annotation.pd_annotation import (
-                PDAnnotation,
-            )
-            from pypdfbox.pdmodel.interactive.annotation.pd_annotation_unknown import (
-                PDAnnotationUnknown,
-            )
-
-            type_name = obj.get_name(_TYPE)
             try:
-                annotation = PDAnnotation.create(obj)
-            except (TypeError, ValueError) as exc:
+                return PDXObject.create_x_object(obj, None)
+            except OSError as exc:
+                # Upstream wraps the stream branch in a try/catch whose catch
+                # block returns null directly — an invalid /Subtype does NOT
+                # fall through to annotation dispatch (the IOException unwinds
+                # straight past it). Mirror that: streams that fail XObject
+                # creation resolve to None.
                 _LOG.debug(
-                    "PDObjectReference /Obj annotation dispatch failed: %s", exc
+                    "PDObjectReference /Obj stream XObject dispatch failed: %s",
+                    exc,
                 )
                 return None
-            # Upstream returns the annotation when it's a *known* subclass,
-            # or when /Type is /Annot (allowing /Subtype-less typed dicts).
-            if not isinstance(annotation, PDAnnotationUnknown):
-                return annotation
-            if type_name == _ANNOT:
-                return annotation
-            return None
 
-        # COSBase that's neither a dict nor a stream — not resolvable.
+        # ---- Dicts: annotation dispatch with upstream's filter rule. ----
+        from pypdfbox.pdmodel.interactive.annotation.pd_annotation import (
+            PDAnnotation,
+        )
+        from pypdfbox.pdmodel.interactive.annotation.pd_annotation_unknown import (
+            PDAnnotationUnknown,
+        )
+
+        type_name = obj.get_name(_TYPE)
+        try:
+            annotation = PDAnnotation.create(obj)
+        except (TypeError, ValueError) as exc:
+            _LOG.debug(
+                "PDObjectReference /Obj annotation dispatch failed: %s", exc
+            )
+            return None
+        # Upstream returns the annotation when it's a *known* subclass, or
+        # when it is a PDAnnotationUnknown whose /Type is /Annot. Upstream's
+        # createAnnotation stamps /Type /Annot onto a dictionary with no
+        # /Type, so an unknown annotation with absent /Type also passes.
+        if not isinstance(annotation, PDAnnotationUnknown):
+            return annotation
+        if type_name == _ANNOT or type_name is None:
+            return annotation
         return None
 
     # ---------- /Obj presence + subtype predicates (pypdfbox additions) ----

@@ -149,9 +149,23 @@ class PDSoftMask:
             )
             from pypdfbox.pdmodel.pd_resources import PDResources  # noqa: PLC0415
 
-            if isinstance(group_base, COSStream) and group_base.get_name(
-                COSName.SUBTYPE  # type: ignore[attr-defined]
-            ) is None:
+            # Read /Subtype with ``get_name_as_string`` (not the name-only
+            # ``get_name``) to mirror how upstream's getGroup → createXObject
+            # path resolves the subtype (``COSStream.getNameAsString``). A
+            # ``/Subtype`` carried as a COSString (e.g. ``(Form)``) must be
+            # treated as *present* so it falls through to ``create_x_object``
+            # rather than being short-circuited into a plain PDFormXObject —
+            # otherwise a string-subtype transparency group, image, or bad
+            # subtype would all be mis-wrapped as a form. The truly-absent
+            # ``/Subtype`` case (returns None here too) keeps pypdfbox's
+            # documented bare-stream compatibility wrap.
+            if (
+                isinstance(group_base, COSStream)
+                and group_base.get_name_as_string(
+                    COSName.SUBTYPE  # type: ignore[attr-defined]
+                )
+                is None
+            ):
                 self._group = PDFormXObject(
                     group_base, cache=self._resource_cache
                 )
