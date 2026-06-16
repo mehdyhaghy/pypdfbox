@@ -280,7 +280,15 @@ class PDFunctionType3(PDFunction):
             partition = [domain_lo, *bounds, domain_hi]
             n_intervals = len(partition) - 1
             for i in range(n_intervals):
-                if x < partition[i]:
+                # Upstream uses ``x >= partition[i]`` as the entry test, which
+                # is NaN-correct: ``NaN >= anything`` is false, so a NaN input or
+                # a NaN partition bound makes every interval miss and the function
+                # raises "partition not found" (oracle-confirmed wave 1544:
+                # ``t3_nan_bound`` => eval ERR). The earlier ``if x < partition[i]:
+                # continue`` form inverted this incorrectly — ``NaN < bound`` is
+                # also false, so it fell through and evaluated against a NaN
+                # interval instead of skipping.
+                if not (x >= partition[i]):
                     continue
                 is_last = i == n_intervals - 1
                 if x < partition[i + 1] or (

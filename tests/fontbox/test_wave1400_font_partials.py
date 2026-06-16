@@ -202,16 +202,20 @@ def test_format13_glyph_id_lte_max_skips_update() -> None:
 
 
 def test_format13_all_groups_invalid_leaves_empty_map() -> None:
-    """Format 13: every group's glyph_id >= num_glyphs → empty dict; skip
-    build (line 320 → -293 = function exit without build call)."""
+    """Format 13: an out-of-bounds glyph_id breaks the group loop. Per upstream
+    processSubtype13 (PDFBox 3.0.7, retargeted in wave 1542), the reverse map is
+    initialised to ``newGlyphIdToCharacterCode(numGlyphs)`` (all -1) BEFORE the
+    loop, then the bad group breaks — so the sentinel is replaced by an all--1
+    array and no character code is ever recorded."""
     body = struct.pack(">I", 1)
-    # glyph_id=99 but num_glyphs=10 → rejected.
+    # glyph_id=99 but num_glyphs=10 → out of bounds (strict > break).
     body += struct.pack(">III", 100, 102, 99)
     sub = CmapSubtable()
     sub._glyph_id_to_character_code = [77]  # noqa: SLF001 — sentinel
     sub.process_subtype13(MemoryTTFDataStream(body), num_glyphs=10)
-    # Build skipped — sentinel survives.
-    assert sub._glyph_id_to_character_code == [77]  # noqa: SLF001
+    # Array reset to all -1 up front (upstream parity); no code recorded.
+    assert sub._glyph_id_to_character_code == [-1] * 10  # noqa: SLF001
+    assert sub._character_code_to_glyph_id == {}  # noqa: SLF001
 
 
 def test_format2_glyph_p_zero_falls_through_without_delta_math() -> None:

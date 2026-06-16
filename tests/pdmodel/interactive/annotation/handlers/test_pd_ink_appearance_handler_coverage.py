@@ -75,24 +75,40 @@ def test_handler_returns_when_border_width_is_zero() -> None:
     assert annotation.get_appearance_dictionary() is None
 
 
-def test_handler_returns_when_ink_list_missing() -> None:
+def test_handler_writes_empty_appearance_when_ink_list_missing() -> None:
+    """Retargeted (wave 1544): upstream ``PDInkAppearanceHandler`` calls
+    ``getInkList()`` unconditionally (returns an empty ``float[][]`` when
+    /InkList is absent) and does NOT early-return — it still opens the content
+    stream and emits the stroke colour + line width with no path, leaving the
+    /Rect unchanged. The earlier early-return was a divergence; this now
+    mirrors PDFBox (oracle-confirmed, wave 1544 AnnotAppearanceHandlerFuzz)."""
     annotation = PDAnnotationInk()
     annotation.set_rectangle(PDRectangle(*_RECT))
     annotation.set_color([0.0, 0.0, 1.0])
     # No set_ink_paths call → /InkList absent → get_ink_list returns None.
     handler = PDInkAppearanceHandler(annotation)
     handler.generate_normal_appearance()
-    assert annotation.get_appearance_dictionary() is None
+    ap = annotation.get_appearance_dictionary()
+    assert ap is not None
+    assert ap.get_normal_appearance() is not None
+    # /Rect is unchanged: with no points the inf-seeded extents collapse to it.
+    rect = annotation.get_rectangle()
+    assert rect.get_lower_left_x() == _RECT[0]
+    assert rect.get_upper_right_x() == _RECT[2]
 
 
-def test_handler_returns_when_paths_list_empty() -> None:
+def test_handler_writes_empty_appearance_when_paths_list_empty() -> None:
+    """Retargeted (wave 1544): an empty /InkList produces an /AP /N stream
+    (stroke colour + width, no path), not ``None`` — matches PDFBox."""
     annotation = PDAnnotationInk()
     annotation.set_rectangle(PDRectangle(*_RECT))
     annotation.set_color([0.0, 0.0, 1.0])
     annotation.set_ink_paths([])  # empty /InkList
     handler = PDInkAppearanceHandler(annotation)
     handler.generate_normal_appearance()
-    assert annotation.get_appearance_dictionary() is None
+    ap = annotation.get_appearance_dictionary()
+    assert ap is not None
+    assert ap.get_normal_appearance() is not None
 
 
 # ----------------------------------------------------------------------

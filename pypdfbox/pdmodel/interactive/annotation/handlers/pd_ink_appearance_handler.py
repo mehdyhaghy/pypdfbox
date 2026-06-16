@@ -38,12 +38,17 @@ class PDInkAppearanceHandler(PDAbstractAppearanceHandler):
         )
         if ab.width == 0:
             return
+        # Upstream calls getInkList() unconditionally (returns an empty
+        # float[][] when /InkList is absent or empty) and does NOT
+        # early-return on an empty list — it still opens the content stream
+        # and emits the stroke colour + line width with no path. Mirror that:
+        # an absent or empty /InkList leaves the loop body empty and the
+        # rect/bbox unchanged (the inf-seeded min/max collapse to the
+        # original /Rect), matching PDFBox byte-for-byte.
         ink_list_wrapper = annotation.get_ink_list()
-        if ink_list_wrapper is None:
-            return
-        path_infos = ink_list_wrapper.get_paths()
-        if not path_infos:
-            return
+        path_infos = (
+            ink_list_wrapper.get_paths() if ink_list_wrapper is not None else []
+        )
         paths: list[list[tuple[float, float]]] = [
             info.get_points() for info in path_infos
         ]

@@ -45,6 +45,24 @@ def _make_path_pen() -> Any:
     return _PathPen()
 
 
+class _Type2Private:
+    """Minimal private-dict shim for a standalone ``T2CharString``.
+
+    fontTools' Type 2 interpreter (``draw`` / ``T2WidthExtractor``) reads
+    ``private.nominalWidthX``, ``private.defaultWidthX`` and ``private.Subrs``.
+    A charstring decompiled from a parsed ``CFFFontSet`` already has a real
+    private dict; one built from raw bytes / a program list does not, so we
+    supply this shim carrying the glyph's widths and an empty local-subr index
+    (a pre-unrolled program list has its subrs already inlined; raw bytecode
+    fed standalone has no subr index to follow).
+    """
+
+    def __init__(self, nominal_width_x: float, default_width_x: float) -> None:
+        self.nominalWidthX = nominal_width_x  # noqa: N815 - fontTools attr name
+        self.defaultWidthX = default_width_x  # noqa: N815 - fontTools attr name
+        self.Subrs: list[Any] = []  # noqa: N815 - fontTools attr name
+
+
 class Type2CharString:
     """CFF Type 2 charstring wrapper.
 
@@ -134,6 +152,25 @@ class Type2CharString:
                 f"tokens, or None — got {type(sequence).__name__}"
             )
             raise TypeError(msg)
+
+        # fontTools' ``T2CharString.draw`` / ``T2WidthExtractor`` reach into
+        # ``.private`` (for ``nominalWidthX`` / ``defaultWidthX`` / ``Subrs``)
+        # and ``.globalSubrs`` to evaluate the width prologue, follow
+        # callsubr / callgsubr, and emit the outline. A ``T2CharString``
+        # sourced from a parsed ``CFFFontSet`` already carries those pointers;
+        # one built bare from raw ``bytes`` / a program list (the upstream
+        # ``Type2CharString(sequence)`` constructor path) does NOT — so
+        # ``draw()`` would raise ``AttributeError`` and ``get_path()`` would
+        # silently return ``[]`` for every standalone glyph. Wire a minimal
+        # private-dict shim carrying this glyph's widths whenever the
+        # underlying charstring has none, so a raw-bytecode glyph renders the
+        # same outline upstream's ``Type2CharString.getPath()`` produces.
+        if getattr(self._t2, "private", None) is None:
+            self._t2.private = _Type2Private(
+                self._nominal_width_x, self._default_width_x
+            )
+        if getattr(self._t2, "globalSubrs", None) is None:
+            self._t2.globalSubrs = []
 
     # ---------- accessors (PDFBox-shaped) -----------------------------------
 
@@ -662,10 +699,15 @@ def _coerce_program_token(tok: Any) -> Any:
     if isinstance(tok, (int, float)):
         return tok
     if isinstance(tok, str):
-        return tok
+        return tok.lower()
     name = getattr(tok, "name", None)
     if isinstance(name, str):
-        return name
+        # ``CharStringCommand.name`` is the upstream UPPERCASE mnemonic
+        # ("RMOVETO", "RLINETO", ...). fontTools' Type 2 program list keys
+        # operators by their lowercase spelling ("rmoveto", "rlineto"), so an
+        # un-lowered name is an UNRECOGNISED operator and the whole program
+        # renders as an empty path. Normalise to fontTools' casing.
+        return name.lower()
     # Last resort: stringify. fontTools' decompiler may reject this,
     # but we never silently drop tokens.
     return str(tok)

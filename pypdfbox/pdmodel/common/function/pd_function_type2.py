@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import math
 
-from pypdfbox.cos import COSArray, COSBase, COSFloat
+from pypdfbox.cos import COSArray, COSBase, COSFloat, COSNumber
 
 from .pd_function import PDFunction
 
 _C0 = "C0"
 _C1 = "C1"
 _N = "N"
+
+# Largest finite IEEE-754 single-precision (32-bit) ``float`` magnitude. A
+# ``double`` above this overflows to ``Infinity`` under Java's ``(float)`` cast.
+_FLOAT_MAX = 3.4028234663852886e38
 
 
 class PDFunctionType2(PDFunction):
@@ -183,6 +187,49 @@ class PDFunctionType2(PDFunction):
 
     # ---------- evaluation ----------
 
+    @staticmethod
+    def _strict_float_array(arr: COSArray) -> list[float]:
+        """Mirror upstream ``COSArray.toFloatArray()`` — cast every entry to a
+        ``COSNumber`` and read its float value, raising on a non-numeric entry.
+
+        PDFBox ``PDFunctionType2.eval`` reads coefficients via
+        ``getC0().toFloatArray()`` / ``getC1().toFloatArray()``; upstream's
+        ``COSArray.toFloatArray()`` does ``((COSNumber) get(i)).floatValue()``,
+        so a ``/C0`` or ``/C1`` carrying a name / string / dictionary throws
+        ``ClassCastException`` and the eval fails (oracle-confirmed wave 1544:
+        ``t2_c0_non_numeric`` / ``t2_c1_non_numeric`` => eval ERR). This port's
+        ``COSArray.to_float_array`` is *tolerant* (maps non-numeric to ``0.0``)
+        for callers that want a best-effort read, so eval cannot use it without
+        diverging — hence this strict local reader."""
+        out: list[float] = []
+        for i in range(arr.size()):
+            entry = arr.get_object(i)
+            if not isinstance(entry, COSNumber):
+                raise ValueError(
+                    "PDFunctionType2 coefficient array has non-numeric entry "
+                    f"at index {i}"
+                )
+            out.append(float(entry.float_value()))
+        return out
+
+    def _eval_c0(self) -> list[float]:
+        """Read ``/C0`` for eval, materialising the constructor default ``[0.0]``
+        for an absent / empty array but raising on a non-numeric entry (upstream
+        ``getC0().toFloatArray()`` parity — see :meth:`_strict_float_array`)."""
+        item = self.get_cos_object().get_dictionary_object(_C0)
+        if isinstance(item, COSArray) and item.size() > 0:
+            return self._strict_float_array(item)
+        return [0.0]
+
+    def _eval_c1(self) -> list[float]:
+        """Read ``/C1`` for eval, materialising the constructor default ``[1.0]``
+        for an absent / empty array but raising on a non-numeric entry (upstream
+        ``getC1().toFloatArray()`` parity — see :meth:`_strict_float_array`)."""
+        item = self.get_cos_object().get_dictionary_object(_C1)
+        if isinstance(item, COSArray) and item.size() > 0:
+            return self._strict_float_array(item)
+        return [1.0]
+
     def eval(self, input: list[float]) -> list[float]:  # noqa: A002 - upstream parameter name
         """Exponential interpolation per PDF 32000-1 §7.10.3.
 
@@ -202,8 +249,8 @@ class PDFunctionType2(PDFunction):
         c1.size())]``).
         """
         x = input[0] if input else 0.0
-        c0 = self.get_c0()
-        c1 = self.get_c1()
+        c0 = self._eval_c0()
+        c1 = self._eval_c1()
         n = self.get_n()
         x_pow = _pow_as_pdf_float(x, n)
         # Sized by min(c0, c1) — upstream parity.
@@ -257,15 +304,45 @@ def _pow_as_pdf_float(base: float, exponent: float) -> float:
       ``Infinity`` to match PDFBox (oracle-confirmed wave 1536), not ``NaN``.
     - ``Math.pow(negative, non-integer)`` returns ``NaN``. Python raises
       ``ValueError`` for the same input; we map that to ``NaN``.
+    - The ``(float)`` narrowing: ``Math.pow`` returns a Java ``double`` that
+      PDFBox immediately casts to ``float`` (``float ex = (float) Math.pow(...)``).
+      A magnitude above ``Float.MAX_VALUE`` (~3.4e38) — e.g. ``0.5 ** -1000``
+      which is finite as a double (~1.07e301) — overflows the float and becomes
+      ``Infinity``. Python floats are doubles, so we must replicate that narrowing
+      explicitly (oracle-confirmed wave 1544: ``t2_n_huge_neg_xhalf`` => Infinity).
     """
     if base == 0.0 and exponent < 0.0:
         # Java: +0 ** negative -> +Infinity. (Type 2 inputs are non-negative
         # zero in practice; mirror the spec's +0 branch.)
         return math.inf
     try:
-        return math.pow(base, exponent)
+        return _narrow_to_float(math.pow(base, exponent))
     except ValueError:
         return math.nan
+
+
+def _narrow_to_float(value: float) -> float:
+    """Replicate the *overflow* edge of a Java ``(float)`` narrowing cast.
+
+    Java's eval pipeline computes in ``double`` then casts to 32-bit ``float``;
+    a finite double whose magnitude exceeds ``Float.MAX_VALUE`` overflows to
+    ``±Infinity`` (e.g. ``0.5 ** -1000`` is finite as a double, ~1.07e301, but
+    ``Infinity`` as a float — oracle-confirmed wave 1544 ``t2_n_huge_neg_xhalf``).
+
+    Only the overflow boundary is mirrored: in-range finite values are returned
+    unchanged rather than round-tripped through single precision. PDFBox does
+    re-round every value to ``float``, but the parity probes compare at 6
+    decimals where that rounding is invisible, and re-rounding here would
+    needlessly degrade the double-precision values our hand-written matrix tests
+    assert against. The overflow-to-Infinity case is the only one that changes
+    the *formatted* output, so that is the only case we replicate."""
+    if not math.isfinite(value):
+        return value
+    if value > _FLOAT_MAX:
+        return math.inf
+    if value < -_FLOAT_MAX:
+        return -math.inf
+    return value
 
 
 __all__ = ["PDFunctionType2"]

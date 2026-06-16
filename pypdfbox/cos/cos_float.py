@@ -57,14 +57,45 @@ def _float32_or_inf(value: float) -> float:
 
 
 def _parse_float(text: str) -> float:
-    """Parse ``text`` like Java ``Float.parseFloat`` for the malformed-number
-    dispatch: reject the spellings Java would *not* accept (the ``inf`` /
-    ``nan`` / hex-float forms Python's bare ``float()`` tolerates) by raising
-    ``ValueError`` so the caller's repair path engages exactly when upstream's
-    ``catch (NumberFormatException)`` would."""
+    """Parse ``text`` exactly like Java ``Float.parseFloat`` so the
+    malformed-number dispatch (and the ``COSFloat(String)`` accept set) matches
+    upstream byte-for-byte.
+
+    Java's ``Float.parseFloat`` is *case-sensitive* about its special spellings
+    and *stricter* about hex floats than Python's bare ``float()``:
+
+    * ``NaN`` and ``Infinity`` (each with an optional leading ``+``/``-`` and
+      surrounding whitespace) are accepted — ``Float.parseFloat("NaN")`` →
+      ``NaN``, ``Float.parseFloat("Infinity")`` → ``+Inf``. The lowercase /
+      mixed-case spellings Python tolerates (``nan``, ``inf``, ``NAN``,
+      ``INFINITY``) are **rejected** by Java, so we reject them too.
+    * A hexadecimal float requires a binary exponent: ``0x1p4`` is accepted (=
+      16.0) but ``0x10`` is **not** (Python's ``float("0x10")`` already raises,
+      but ``float`` accepts neither form, so we route the ``p``-bearing case
+      through ``float.fromhex``).
+
+    Anything else falls through to Python ``float()`` which covers the decimal
+    grammar Java shares. A spelling Java would reject raises ``ValueError`` so
+    the caller's repair path engages exactly when upstream's
+    ``catch (NumberFormatException)`` would.
+    """
     stripped = text.strip()
-    lowered = stripped.lower().lstrip("+-")
-    if lowered.startswith(("0x", "inf", "nan")):
+    if not stripped:
+        raise ValueError(f"not a Java float: {text!r}")
+    signless = stripped.lstrip("+-")
+    # Special values are case-sensitive in Java (only "NaN" / "Infinity").
+    if signless == "NaN":
+        return math.nan
+    if signless == "Infinity":
+        return -math.inf if stripped[0] == "-" else math.inf
+    lowered = signless.lower()
+    if lowered.startswith("0x"):
+        # Java accepts hex floats only with a binary exponent ('p'/'P').
+        if "p" in lowered:
+            return float.fromhex(stripped)
+        raise ValueError(f"not a Java float: {text!r}")
+    # Reject the lenient inf/nan spellings Python's float() would otherwise eat.
+    if lowered.startswith(("inf", "nan")):
         raise ValueError(f"not a Java float: {text!r}")
     return float(stripped)
 
