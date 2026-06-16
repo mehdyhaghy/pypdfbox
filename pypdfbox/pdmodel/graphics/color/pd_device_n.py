@@ -657,6 +657,16 @@ class PDDeviceN(PDSpecialColorSpace):
         if function is None:
             return None
         alt_value = function.eval(list(value))
+        # Defensive arity guard (pypdfbox lazy-path equivalent of upstream's
+        # eager constructor validation): PDFBox's ``PDDeviceN(COSArray)``
+        # rejects a tint transform whose output-parameter count is fewer than
+        # the alternate's component count at CONSTRUCTION time. pypdfbox
+        # resolves the alternate + tint lazily, so a malformed pairing only
+        # surfaces here — without this guard a short ``alt_value`` vector
+        # would raise IndexError inside the alternate's ``to_rgb``. Return
+        # ``None`` (the lenient lite-path "cannot convert") instead.
+        if len(alt_value) < alternate.get_number_of_components():
+            return None
         return PDColor(alt_value, alternate).to_rgb()
 
     def to_rgb_with_attributes(

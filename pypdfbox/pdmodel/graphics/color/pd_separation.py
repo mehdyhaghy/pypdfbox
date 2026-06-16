@@ -210,6 +210,16 @@ class PDSeparation(PDSpecialColorSpace):
         if cached is not None:
             return cached
         alt_components = function.eval(list(components))
+        # Defensive arity guard (pypdfbox lazy-path equivalent of upstream's
+        # eager constructor validation): PDFBox's ``PDSeparation(COSArray)``
+        # rejects a tint transform whose output-parameter count is fewer than
+        # the alternate's component count at CONSTRUCTION time. pypdfbox
+        # resolves the alternate + tint lazily, so a malformed pairing only
+        # surfaces here — without this guard a short ``alt_components`` vector
+        # feeds e.g. a 1-element list into DeviceCMYK and raises IndexError.
+        # Return ``None`` (the lenient lite-path "cannot convert") instead.
+        if len(alt_components) < alternate.get_number_of_components():
+            return None
         result = PDColor(alt_components, alternate).to_rgb()
         if result is None:
             return None
