@@ -71,13 +71,15 @@ def test_y_within_tolerance_orders_by_x():
 
 
 def test_different_lines_orders_by_y_top_first():
-    # In the upper-left-origin frame after dir-adj, smaller Y is higher.
+    # pypdfbox keeps Y in the PDF user-space (y-up) frame the rest of the
+    # library emits — a *larger* Y is geometrically higher and reads
+    # first (the comparator's coordinate-frame carve-out).
     a = _make(x=50.0, y=10.0, font_size=10.0)
     b = _make(x=10.0, y=200.0, font_size=10.0)
     cmp = TextPositionComparator()
-    # No vertical overlap, y_diff > 0.1 → order by y. a.y < b.y → a first.
-    assert cmp.compare(a, b) == -1
-    assert cmp.compare(b, a) == 1
+    # No vertical overlap, y_diff > 0.1 → order by y. b.y > a.y → b first.
+    assert cmp.compare(a, b) == 1
+    assert cmp.compare(b, a) == -1
 
 
 # ---------------------------------------------------------------------------

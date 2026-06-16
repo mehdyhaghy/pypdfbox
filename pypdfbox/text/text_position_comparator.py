@@ -52,17 +52,28 @@ class TextPositionComparator:
     1. Compare by :meth:`TextPosition.get_dir`. Different directions are
        always grouped before any cross-direction sort happens.
     2. Within a direction, fetch the directional X and Y for both
-       positions (already in a "y points down, 0,0 is upper-left" frame
-       per the upstream contract).
+       positions.
     3. If the runs share a baseline within a small tolerance — either
-       Y-difference is below 0.1 or one run's bottom Y falls inside the
+       Y-difference is below 0.1 or one run's baseline falls inside the
        other's vertical extent — order by directional X.
-    4. Otherwise, order by directional Y (top-to-bottom).
+    4. Otherwise, order by directional Y (top-to-bottom in reading
+       order).
 
-    The Y-overlap check uses :meth:`TextPosition.get_height_dir` to
-    derive each run's top edge: ``top = bottom - height_dir`` (the
-    upstream subtraction uses the upper-left-origin convention
-    established by step 2).
+    Coordinate-frame note (lite carve-out)
+    --------------------------------------
+    Upstream's ``TextPositionComparator`` assumes ``getYDirAdj()`` is in
+    a "y points down, 0,0 is upper-left" frame, so its top edge is
+    ``bottom - height`` and "top first" means the *smaller* Y. pypdfbox's
+    :meth:`TextPosition.get_y_dir_adj` deliberately stays in the PDF
+    user-space (y-up) frame at ``dir == 0`` — the documented lite-port
+    carve-out (see ``CHANGES.md`` /
+    ``tests/text/upstream/test_text_position_directional.py``). Feeding
+    upstream's verbatim y-down formula y-up data inverts the vertical
+    ordering, so this comparator applies the y-up mirror to match the
+    data the rest of pypdfbox emits (and the internal extraction-path
+    comparator ``PDFTextStripper._compare_reading_order``): a run's top
+    edge is ``baseline + height_dir`` and a vertically-disjoint pair is
+    ordered with the *larger* Y (geometrically higher) first.
     """
 
     # Tolerance (in user-space units) below which two positions are
@@ -80,23 +91,29 @@ class TextPositionComparator:
         if d1 > d2:
             return 1
 
-        # Step 2: directional coordinates.
+        # Step 2: directional coordinates. In the lite y-up frame the
+        # directional Y is the run baseline; a larger Y is higher on the
+        # page.
         x1 = pos1.get_x_dir_adj()
         x2 = pos2.get_x_dir_adj()
-        pos1_y_bottom = pos1.get_y_dir_adj()
-        pos2_y_bottom = pos2.get_y_dir_adj()
+        y1 = pos1.get_y_dir_adj()
+        y2 = pos2.get_y_dir_adj()
 
-        # Top edges in the "0,0 is upper-left" frame.
-        pos1_y_top = pos1_y_bottom - pos1.get_height_dir()
-        pos2_y_top = pos2_y_bottom - pos2.get_height_dir()
+        # Top edges in the y-up frame: ``baseline + height`` (one line
+        # height above the baseline), the mirror of upstream's y-down
+        # ``baseline - height``.
+        y1_top = y1 + pos1.get_height_dir()
+        y2_top = y2 + pos2.get_height_dir()
 
-        y_difference = abs(pos1_y_bottom - pos2_y_bottom)
+        y_difference = abs(y1 - y2)
 
-        # Step 3: same-line tolerance — order by X.
+        # Step 3: same-line tolerance / vertical-extent overlap — order
+        # by X. The two overlap clauses are the y-up transform of
+        # upstream's ``overlap`` (substitute ``device_y = -user_y``).
         if (
             y_difference < self._Y_TOLERANCE
-            or (pos1_y_top <= pos2_y_bottom <= pos1_y_bottom)
-            or (pos2_y_top <= pos1_y_bottom <= pos2_y_bottom)
+            or (y1 <= y2 <= y1_top)
+            or (y2 <= y1 <= y2_top)
         ):
             if x1 < x2:
                 return -1
@@ -104,8 +121,8 @@ class TextPositionComparator:
                 return 1
             return 0
 
-        # Step 4: different lines — order by Y (top-to-bottom).
-        if pos1_y_bottom < pos2_y_bottom:
+        # Step 4: different lines — top-to-bottom means larger Y first.
+        if y1 > y2:
             return -1
         return 1
 

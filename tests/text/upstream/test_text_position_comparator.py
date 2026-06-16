@@ -81,12 +81,16 @@ def test_same_line_y_equal_orders_by_x() -> None:
 
 
 def test_different_lines_with_no_overlap_order_by_y_top_first() -> None:
-    """Step 3: Y-diff large, no vertical overlap → order by Y."""
+    """Step 3: Y-diff large, no vertical overlap → order by Y.
+
+    pypdfbox carries Y in the PDF user-space (y-up) frame, so the
+    *larger*-Y run is geometrically higher and reads first (the
+    comparator's coordinate-frame carve-out)."""
     cmp = TextPositionComparator()
-    a = _pos(x=5.0, y=50.0, font_size=10.0)  # height ~7 → spans 43..50
-    b = _pos(x=5.0, y=100.0, font_size=10.0)  # spans 93..100
-    assert cmp.compare(a, b) == -1
-    assert cmp.compare(b, a) == 1
+    a = _pos(x=5.0, y=50.0, font_size=10.0)  # y-up span 50..60
+    b = _pos(x=5.0, y=100.0, font_size=10.0)  # y-up span 100..110 (higher)
+    assert cmp.compare(a, b) == 1
+    assert cmp.compare(b, a) == -1
 
 
 def test_vertically_overlapping_positions_treated_as_same_line() -> None:
@@ -113,8 +117,9 @@ def test_cmp_to_key_sorts_list_in_reading_order() -> None:
     ]
     positions.sort(key=cmp_to_key(cmp))
     coords = [(p.x, p.y) for p in positions]
-    # Lower Y first (line at y=100); within each line, x ascends.
-    assert coords == [(5.0, 100.0), (20.0, 100.0), (5.0, 200.0), (20.0, 200.0)]
+    # y-up reading order: higher Y first (line at y=200); within each
+    # line, x ascends.
+    assert coords == [(5.0, 200.0), (20.0, 200.0), (5.0, 100.0), (20.0, 100.0)]
 
 
 def test_call_alias_matches_compare_for_every_branch() -> None:

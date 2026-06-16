@@ -619,6 +619,39 @@ class DomXmpParser:
             parsed_value = self._parse_property_value(child)
             self._validate_element_form_cardinality(child, ns, local, parsed_value)
             self._assign(schema, local, parsed_value)
+            # Record the parsed container kind so a Bag/Seq/Alt round-trips as
+            # the *same* container even for unknown-schema properties whose
+            # cardinality is not declared in ``_FIELD_CARDINALITIES``. Upstream
+            # ``DomXmpParser`` stores the ``ArrayProperty`` with its parsed
+            # ``Cardinality`` directly; the flat-dict storage here would
+            # otherwise lose the distinction and re-serialize every list as
+            # ``rdf:Bag`` (PDFBOX container-shape divergence).
+            self._record_parsed_cardinality(schema, child, local)
+
+    @staticmethod
+    def _record_parsed_cardinality(
+        schema: XMPSchema, child: ET.Element, local: str
+    ) -> None:
+        """Persist the container kind (Bag/Seq/Alt) a property was parsed with.
+
+        Looks at the ``rdf:Bag`` / ``rdf:Seq`` / ``rdf:Alt`` wrapper under
+        ``child`` and records the matching :class:`Cardinality` on the schema
+        so :class:`XmpSerializer` re-emits the identical container element on
+        round-trip. No-op for simple (non-array) properties and for schemas
+        that don't expose the recorder hook.
+        """
+        recorder = getattr(schema, "set_parsed_array_cardinality", None)
+        if recorder is None:
+            return
+        container = DomXmpParser._find_rdf_container(child)
+        if container is None:
+            return
+        _ns, container_local = _strip_qname(container.tag)
+        # ``_find_rdf_container`` only returns Bag/Seq/Alt children, so the
+        # ``getattr`` below always resolves to a Cardinality member.
+        cardinality = getattr(Cardinality, container_local, None)
+        if cardinality is not None:
+            recorder(local, cardinality)
 
     def _expected_cardinality(self, ns: str, local: str) -> Cardinality | None:
         """Return the declared cardinality for ``(ns, local)`` if known.

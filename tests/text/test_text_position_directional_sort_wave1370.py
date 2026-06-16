@@ -135,12 +135,15 @@ def test_comparator_sorts_same_line_by_x() -> None:
 
 def test_comparator_sorts_different_lines_by_y() -> None:
     """Different Y (outside the tolerance window) falls back to
-    top-to-bottom ordering by directional Y."""
-    top = _tp("T", x=100.0, y=100.0)
-    bot = _tp("B", x=100.0, y=500.0)
+    top-to-bottom ordering by directional Y.
+
+    pypdfbox carries Y in the PDF user-space (y-up) frame the rest of
+    the library emits — a *larger* Y is geometrically higher and sorts
+    first (see the comparator's coordinate-frame note)."""
+    top = _tp("T", x=100.0, y=500.0)
+    bot = _tp("B", x=100.0, y=100.0)
     cmp = TextPositionComparator()
-    # In the comparator's "upper-left origin" frame the smaller Y is
-    # geometrically higher, hence sorts first.
+    # y-up: the larger-Y run (top) is higher on the page, sorts first.
     assert cmp(top, bot) < 0
 
 
@@ -154,14 +157,16 @@ def test_comparator_returns_zero_for_equal_positions() -> None:
 def test_comparator_usable_as_cmp_to_key() -> None:
     """Comparator must be wrap-able with :func:`functools.cmp_to_key` —
     the canonical Java->Python idiom."""
+    # y-up frame: the larger-Y row is geometrically higher (the "top"
+    # row), so it reads first.
     positions = [
-        _tp("right-bottom", x=300.0, y=700.0),
-        _tp("left-top", x=100.0, y=100.0),
-        _tp("left-bottom", x=100.0, y=700.0),
-        _tp("right-top", x=300.0, y=100.0),
+        _tp("right-bottom", x=300.0, y=100.0),
+        _tp("left-top", x=100.0, y=700.0),
+        _tp("left-bottom", x=100.0, y=100.0),
+        _tp("right-top", x=300.0, y=700.0),
     ]
     s = sorted(positions, key=cmp_to_key(TextPositionComparator()))
-    # Top row first (smaller y -> "higher" in comparator frame), then bottom.
+    # Top row first (larger y -> higher in the y-up frame), then bottom.
     # Within row, ascending x.
     texts = [p.text for p in s]
     assert texts.index("left-top") < texts.index("right-top")

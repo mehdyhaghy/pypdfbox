@@ -72,6 +72,15 @@ class XMPSchema:
         # while ``_typed_properties`` lets typed-form getters return the same
         # ``AbstractSimpleProperty`` instance the caller installed.
         self._typed_properties: dict[str, AbstractSimpleProperty] = {}
+        # property local-name -> parsed container cardinality. Populated by
+        # ``DomXmpParser`` when an array property is read from a packet so the
+        # serializer can re-emit the *same* container kind (``rdf:Seq`` vs
+        # ``rdf:Bag``) on round-trip. Upstream ``DomXmpParser`` stores the array
+        # as an ``ArrayProperty`` carrying its parsed ``Cardinality``; the
+        # flat-dict storage here loses that distinction, so this side-table
+        # restores it for unknown-schema arrays whose cardinality isn't in
+        # ``_FIELD_CARDINALITIES``.
+        self._parsed_array_cardinalities: dict[str, object] = {}
         # rdf:about attribute on the surrounding rdf:Description
         self._about: str = ""
         # extra namespace declarations seen on the description element
@@ -207,6 +216,26 @@ class XMPSchema:
 
     def get_all_properties(self) -> dict[str, object]:
         return dict(self._properties)
+
+    def get_property_cardinality(self, local_name: str) -> object | None:
+        """Return the container cardinality recorded for an array property.
+
+        ``DomXmpParser`` records the parsed ``rdf:Bag`` / ``rdf:Seq`` /
+        ``rdf:Alt`` container kind here so :class:`XmpSerializer` can re-emit
+        the same container on round-trip. Returns ``None`` when the property
+        was never parsed as an array (callers then fall back to the schema's
+        ``_FIELD_CARDINALITIES`` declaration, matching the pre-existing path).
+        """
+        return self._parsed_array_cardinalities.get(local_name)
+
+    def set_parsed_array_cardinality(self, local_name: str, cardinality: object) -> None:
+        """Record the container cardinality a property was parsed with.
+
+        Used by :class:`DomXmpParser` to preserve the ``rdf:Seq`` vs
+        ``rdf:Bag`` distinction for unknown-schema arrays through a
+        parse → serialize round-trip.
+        """
+        self._parsed_array_cardinalities[local_name] = cardinality
 
     def get_property_as(self, local_name: str, type_cls: type) -> object | None:
         """
