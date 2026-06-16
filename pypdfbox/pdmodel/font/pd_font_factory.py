@@ -736,7 +736,7 @@ class PDFontFactory:
             )
         _LOG.warning(
             "Try to fix different descendant font types for font %r",
-            font_descriptor.get_name(COSName.get_pdf_name("FontName")),
+            font_descriptor.get_name_as_string(COSName.get_pdf_name("FontName")),
         )
         if (
             new_subtype_str == PDCIDFontType0.SUB_TYPE

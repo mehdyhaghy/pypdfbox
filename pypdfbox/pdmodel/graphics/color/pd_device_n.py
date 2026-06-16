@@ -134,13 +134,18 @@ class PDDeviceNAttributes:
         return self._dictionary
 
     def is_n_channel(self) -> bool:
-        """Return ``True`` if ``/Subtype`` is ``NChannel`` (PDF 1.6+)."""
-        return self._dictionary.get_name("Subtype") == "NChannel"
+        """Return ``True`` if ``/Subtype`` is ``NChannel`` (PDF 1.6+).
+
+        Upstream ``PDDeviceNAttributes.isNChannel`` reads ``/Subtype`` via
+        ``getNameAsString``, so a ``COSString`` value is honoured too.
+        """
+        return self._dictionary.get_name_as_string("Subtype") == "NChannel"
 
     def get_subtype(self) -> str | None:
         """Return the raw ``/Subtype`` name (``"DeviceN"`` or
-        ``"NChannel"``); ``None`` when the entry is absent."""
-        return self._dictionary.get_name("Subtype")
+        ``"NChannel"``); ``None`` when the entry is absent. Reads ``/Subtype``
+        via ``getNameAsString`` for parity with :meth:`is_n_channel`."""
+        return self._dictionary.get_name_as_string("Subtype")
 
     def set_subtype(self, subtype: str | None) -> None:
         if subtype is None:

@@ -169,9 +169,13 @@ def test_thread_bead_iter_terminates_on_nxt_none() -> None:
 # ----------------------------------------------------------------------
 
 
-def test_rectlinear_measure_array_to_number_formats_skips_non_dict_entry() -> None:
-    """Closes 59->57 — entry is a COSName, isinstance check is False so
-    the entry is skipped and the loop continues.
+def test_rectlinear_measure_array_to_number_formats_raises_on_non_dict_entry() -> None:
+    """A non-dictionary array member raises ``TypeError``.
+
+    Upstream ``PDRectlinearMeasureDictionary.arrayToNumberFormat`` casts each
+    member straight to ``COSDictionary`` with no guard, so a ``COSName`` member
+    yields a ``ClassCastException`` (``TypeError`` in pypdfbox) — verified
+    against the live oracle (``MeasureDictFuzzProbe`` ``d.mixed`` case).
     """
 
     from pypdfbox.pdmodel.interactive.measurement.pd_rectlinear_measure_dictionary import (
@@ -179,11 +183,10 @@ def test_rectlinear_measure_array_to_number_formats_skips_non_dict_entry() -> No
     )
 
     arr = COSArray()
-    # First entry: COSName (skipped); second: COSDictionary (included).
     arr.add(COSName.get_pdf_name("skip"))
     arr.add(COSDictionary())
-    result = PDRectlinearMeasureDictionary._array_to_number_formats(arr)  # noqa: SLF001
-    assert len(result) == 1
+    with pytest.raises(TypeError):
+        PDRectlinearMeasureDictionary._array_to_number_formats(arr)  # noqa: SLF001
 
 
 # ----------------------------------------------------------------------

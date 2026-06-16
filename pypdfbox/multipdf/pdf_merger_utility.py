@@ -1697,8 +1697,8 @@ class PDFMergerUtility:
                 _LOG.debug(
                     "clone potential orphan object in structure tree: "
                     "Type=%s Subtype=%s",
-                    obj_dict.get_name(_TYPE),
-                    obj_dict.get_name(COSName.get_pdf_name("Subtype")),
+                    obj_dict.get_name_as_string(_TYPE),
+                    obj_dict.get_name_as_string(COSName.get_pdf_name("Subtype")),
                 )
                 cloned = cloner.clone_for_new_document(obj_dict)
                 if cloned is not None:

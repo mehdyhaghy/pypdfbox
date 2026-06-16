@@ -247,7 +247,7 @@ class PDAnnotationLine(PDAnnotationMarkup):
         """Mirrors upstream ``getCaptionPositioning()`` — returns the
         ``/CP`` name (``"Inline"`` or ``"Top"``), or ``None`` when
         unset."""
-        return self._dict.get_name(_CP)
+        return self._dict.get_name_as_string(_CP)
 
     def set_caption_positioning(self, caption_positioning: str | None) -> None:
         """Mirrors upstream ``setCaptionPositioning(String)``. Allowed

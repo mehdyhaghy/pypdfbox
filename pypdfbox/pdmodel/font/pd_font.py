@@ -93,7 +93,7 @@ class PDFont:
 
     def get_name(self) -> str | None:
         """``/BaseFont`` — the PostScript / lookup name of the font."""
-        return self._dict.get_name(_BASE_FONT)
+        return self._dict.get_name_as_string(_BASE_FONT)
 
     def get_sub_type(self) -> str | None:
         """``/Subtype`` — e.g. ``Type1``, ``TrueType``, ``Type0``.
@@ -103,7 +103,7 @@ class PDFont:
         :meth:`get_subtype` is the older codebase-internal name and now
         delegates here.
         """
-        return self._dict.get_name(_SUBTYPE)
+        return self._dict.get_name_as_string(_SUBTYPE)
 
     def get_subtype(self) -> str | None:
         """Codebase-internal alias for :meth:`get_sub_type`. Kept for
@@ -119,7 +119,7 @@ class PDFont:
         on the underlying dictionary (``None`` if the entry is missing or
         not a name); the constructor writes ``"Font"`` on a fresh dict.
         """
-        return self._dict.get_name(_TYPE)
+        return self._dict.get_name_as_string(_TYPE)
 
     # ---------- font descriptor ----------
 

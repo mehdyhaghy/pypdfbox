@@ -155,7 +155,7 @@ class PDEncryption:
     # ---------- /Filter ----------
 
     def get_filter(self) -> str | None:
-        return self._dict.get_name(_FILTER)
+        return self._dict.get_name_as_string(_FILTER)
 
     def set_filter(self, name: str) -> None:
         self._dict.set_name(_FILTER, name)
@@ -163,7 +163,7 @@ class PDEncryption:
     # ---------- /SubFilter ----------
 
     def get_sub_filter(self) -> str | None:
-        return self._dict.get_name(_SUB_FILTER)
+        return self._dict.get_name_as_string(_SUB_FILTER)
 
     def set_sub_filter(self, name: str) -> None:
         self._dict.set_name(_SUB_FILTER, name)

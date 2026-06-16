@@ -66,9 +66,12 @@ class PDBorderEffectDictionary:
         self._dict.set_name(_S, s)
 
     def get_style(self) -> str:
-        """Return the border effect style; ``STYLE_SOLID`` if absent."""
-        value = self._dict.get_name(_S)
-        return value if value is not None else self.STYLE_SOLID
+        """Return the border effect style; ``STYLE_SOLID`` if absent.
+
+        Upstream ``getStyle`` reads ``/S`` via ``getNameAsString("S", "S")``,
+        so a ``COSString`` value is decoded too.
+        """
+        return self._dict.get_name_as_string(_S, self.STYLE_SOLID)
 
     def has_style(self) -> bool:
         """True when ``/S`` is explicitly present as a name.

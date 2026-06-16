@@ -123,7 +123,7 @@ class PDAnnotationFreeText(PDAnnotationMarkup):
     # ---------- /IT (intent) ----------
 
     def get_intent(self) -> str | None:
-        return self._dict.get_name(_IT)
+        return self._dict.get_name_as_string(_IT)
 
     def set_intent(self, intent: str | None) -> None:
         if intent is None:
@@ -198,9 +198,13 @@ class PDAnnotationFreeText(PDAnnotationMarkup):
     # ---------- /LE (line ending style) ----------
 
     def get_line_ending(self) -> str:
-        """Default per spec is ``None``."""
-        value = self._dict.get_name(_LE)
-        return value if value is not None else PDAnnotationLine.LE_NONE
+        """Default per spec is ``None``.
+
+        Upstream ``getLineEndingStyle`` reads ``/LE`` via
+        ``getNameAsString(COSName.LE, "None")``, so a ``COSString`` value is
+        decoded too.
+        """
+        return self._dict.get_name_as_string(_LE, PDAnnotationLine.LE_NONE)
 
     def set_line_ending(self, le: str | None) -> None:
         """Set ``/LE``; ``None`` clears the explicit entry."""

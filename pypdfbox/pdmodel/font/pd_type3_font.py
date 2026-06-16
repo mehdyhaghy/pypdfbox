@@ -451,9 +451,10 @@ class PDType3Font(PDSimpleFont):
         Mirrors upstream ``PDType3Font.getName()`` — Type 3 fonts use the
         legacy ``/Name`` entry (PDF 32000-1 §9.6.5 Table 113), *not*
         ``/BaseFont`` like the other simple subtypes. Returns ``None``
-        when ``/Name`` is missing or not a name.
+        when ``/Name`` is missing. Upstream reads the entry with
+        ``getNameAsString``, so a ``COSString`` value is decoded too.
         """
-        return self._dict.get_name(_NAME)
+        return self._dict.get_name_as_string(_NAME)
 
     # ---------- font-program escape hatches (Type 3 has no font program) ----------
 

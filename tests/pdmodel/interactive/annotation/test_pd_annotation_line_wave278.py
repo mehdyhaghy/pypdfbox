@@ -156,7 +156,8 @@ def test_caption_malformed_shapes_use_defaults_wave278() -> None:
     assert ann.get_caption() is False
     assert ann.get_caption_horizontal_offset() == 0.0
     assert ann.get_caption_vertical_offset() == 0.0
-    assert ann.get_caption_positioning() is None
+    # /CP is read via getNameAsString upstream, so a COSString is decoded.
+    assert ann.get_caption_positioning() == "bad"
 
     dictionary.set_item(_CO, COSArray([COSString("bad"), COSString("bad")]))
     assert ann.get_caption_horizontal_offset() == 0.0

@@ -138,8 +138,7 @@ class PDAnnotationMarkup(PDAnnotation):
         ``getNameAsString(COSName.RT, RT_REPLY)`` — a missing ``/RT`` is
         equivalent to a reply (the more common case), not a group.
         """
-        value = self._dict.get_name(_RT)
-        return value if value is not None else self.RT_REPLY
+        return self._dict.get_name_as_string(_RT, self.RT_REPLY)
 
     def set_reply_type(self, rt: str | None) -> None:
         if rt is None:
@@ -150,7 +149,7 @@ class PDAnnotationMarkup(PDAnnotation):
     # ---------- /IT (intent) ----------
 
     def get_intent(self) -> str | None:
-        return self._dict.get_name(_IT)
+        return self._dict.get_name_as_string(_IT)
 
     def set_intent(self, it: str | None) -> None:
         if it is None:

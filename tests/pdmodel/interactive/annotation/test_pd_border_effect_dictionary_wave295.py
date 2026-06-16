@@ -13,7 +13,9 @@ def test_malformed_border_effect_entries_do_not_report_present() -> None:
 
     effect = PDBorderEffectDictionary(dictionary)
 
-    assert effect.get_style() == PDBorderEffectDictionary.STYLE_SOLID
+    # /S is read via getNameAsString upstream, so a COSString value ("C") is
+    # decoded by get_style; has_style still checks for a genuine COSName.
+    assert effect.get_style() == "C"
     assert effect.get_intensity() == 0.0
     assert effect.has_style() is False
     assert effect.has_intensity() is False

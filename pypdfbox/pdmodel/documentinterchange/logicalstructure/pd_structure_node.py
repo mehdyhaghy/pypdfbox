@@ -56,7 +56,7 @@ class PDStructureNode:
             raise TypeError(
                 f"PDStructureNode.create expects COSDictionary, got {type(node).__name__}"
             )
-        type_name = node.get_name(_TYPE)
+        type_name = node.get_name_as_string(_TYPE)
         if type_name == _STRUCT_TREE_ROOT_NAME:
             from .pd_structure_tree_root import PDStructureTreeRoot
 
@@ -82,7 +82,7 @@ class PDStructureNode:
         if isinstance(kid, COSInteger):
             return kid.value
         if isinstance(kid, COSDictionary):
-            type_name = kid.get_name(_TYPE)
+            type_name = kid.get_name_as_string(_TYPE)
             if type_name == "MCR":
                 return PDMarkedContentReference(kid)
             if type_name == "OBJR":
@@ -97,7 +97,7 @@ class PDStructureNode:
         return self._dictionary
 
     def get_type(self) -> str | None:
-        return self._dictionary.get_name(_TYPE)
+        return self._dictionary.get_name_as_string(_TYPE)
 
     def is_struct_tree_root(self) -> bool:
         """Return ``True`` when ``/Type`` is ``StructTreeRoot``.
@@ -303,7 +303,7 @@ class PDStructureNode:
         from .pd_marked_content_reference import PDMarkedContentReference
         from .pd_object_reference import PDObjectReference
 
-        type_name = kid_dic.get_name(_TYPE)
+        type_name = kid_dic.get_name_as_string(_TYPE)
         if type_name is None or type_name == _STRUCT_ELEM_NAME:
             from .pd_structure_element import PDStructureElement
 

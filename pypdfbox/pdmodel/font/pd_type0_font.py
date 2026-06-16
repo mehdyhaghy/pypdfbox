@@ -818,7 +818,7 @@ class PDType0Font(PDFont):
         accessors are kept for callers that prefer the dictionary-key
         spelling.
         """
-        return self._dict.get_name(_BASE_FONT)
+        return self._dict.get_name_as_string(_BASE_FONT)
 
     def is_standard14(self) -> bool:
         """Type 0 (composite) fonts are never one of the 14 PDF standard

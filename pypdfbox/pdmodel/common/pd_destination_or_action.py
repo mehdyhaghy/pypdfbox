@@ -62,7 +62,7 @@ class PDDestinationOrAction:
             from pypdfbox.pdmodel.interactive.action.pd_action import PDAction
             from pypdfbox.pdmodel.interactive.action.pd_action_go_to import PDActionGoTo
 
-            sub_type = value.get_name(COSName.get_pdf_name("S"))
+            sub_type = value.get_name_as_string(COSName.get_pdf_name("S"))
             if sub_type is None and value.contains_key(COSName.get_pdf_name("D")):
                 # Action-shaped dictionary lacking /S but carrying /D —
                 # treat as an implicit GoTo action.

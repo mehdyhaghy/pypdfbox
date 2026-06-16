@@ -64,7 +64,7 @@ class PDCIDFont(PDFont):
         :class:`PDCIDFont`); we expose both so that ports of upstream
         callers find the API they expect.
         """
-        return self._dict.get_name(COSName.get_pdf_name("BaseFont"))
+        return self._dict.get_name_as_string(COSName.get_pdf_name("BaseFont"))
 
     # ---------- parent Type0 font ----------
 

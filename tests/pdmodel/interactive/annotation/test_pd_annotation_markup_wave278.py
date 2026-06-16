@@ -136,8 +136,10 @@ def test_rich_contents_decodes_indirect_cos_string() -> None:
     [
         ("CreationDate", COSInteger.get(1), "get_creation_date", None),
         ("Popup", COSName.get_pdf_name("NotADictionary"), "get_popup", None),
-        ("RT", COSString("Group"), "get_reply_type", PDAnnotationMarkup.RT_REPLY),
-        ("IT", COSString("FreeText"), "get_intent", None),
+        # /RT and /IT are read via getNameAsString upstream, so a COSString
+        # value is decoded (not dropped to the default).
+        ("RT", COSString("Group"), "get_reply_type", "Group"),
+        ("IT", COSString("FreeText"), "get_intent", "FreeText"),
         ("RC", COSName.get_pdf_name("NotAStringOrStream"), "get_rich_contents", None),
         ("ExData", COSString("not a dictionary"), "get_external_data", None),
     ],

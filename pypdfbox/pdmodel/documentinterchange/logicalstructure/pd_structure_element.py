@@ -379,7 +379,7 @@ class PDStructureElement(PDStructureNode):
             if node is None or id(node) in seen:
                 return {}
             seen.add(id(node))
-            if node.get_name(_TYPE) == _STRUCT_TREE_ROOT_NAME:
+            if node.get_name_as_string(_TYPE) == _STRUCT_TREE_ROOT_NAME:
                 return _read_role_map(node)
             parent = node.get_dictionary_object(_P)
             node = parent if isinstance(parent, COSDictionary) else None
@@ -423,7 +423,7 @@ class PDStructureElement(PDStructureNode):
             if node is None or id(node) in seen:
                 return None
             seen.add(id(node))
-            if node.get_name(_TYPE) == _STRUCT_TREE_ROOT_NAME:
+            if node.get_name_as_string(_TYPE) == _STRUCT_TREE_ROOT_NAME:
                 return PDStructureTreeRoot(node)
             parent = node.get_dictionary_object(_P)
             node = parent if isinstance(parent, COSDictionary) else None
