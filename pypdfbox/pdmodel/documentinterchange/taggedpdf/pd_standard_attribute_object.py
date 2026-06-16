@@ -51,7 +51,13 @@ class PDStandardAttributeObject(PDAttributeObject):
     # ---------- name ----------
 
     def _get_name(self, name: str, default: str | None = None) -> str | None:
-        return self._dictionary.get_name(name, default)
+        # Upstream PDStandardAttributeObject.getName(name, default) delegates
+        # to COSDictionary.getNameAsString — which resolves a value stored as
+        # either a COSName OR a COSString (a mistyped producer can emit the
+        # owner / placement / numbering / scope / role as a string). Using
+        # get_name (COSName-only) here dropped a string-valued entry to the
+        # default; mirror upstream by accepting both shapes.
+        return self._dictionary.get_name_as_string(name, default)
 
     def _set_name(self, name: str, value: str | None) -> None:
         if value is None:
@@ -233,7 +239,9 @@ class PDStandardAttributeObject(PDAttributeObject):
     # ---- name ----
 
     def get_name(self, name: str, default: str | None = None) -> str | None:
-        return self._dictionary.get_name(name, default)
+        # Mirror upstream getName -> COSDictionary.getNameAsString (resolves a
+        # COSName or a COSString). See the note on the private _get_name.
+        return self._dictionary.get_name_as_string(name, default)
 
     def set_name(
         self, name: str, value: str | None, default: str | None = None

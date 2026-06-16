@@ -95,12 +95,22 @@ class DictionaryEncoding(Encoding):
         return built_in
 
     def _apply_differences(self, diffs: COSArray) -> None:
+        # Mirror upstream ``DictionaryEncoding.applyDifferences`` exactly: the
+        # code cursor starts at -1 and a glyph name is applied at whatever the
+        # current cursor is — there is NO ``code >= 0`` guard. So a leading
+        # name with no preceding integer marker lands at code -1, and a name
+        # following a negative or >255 integer marker lands at that exact
+        # (out-of-range) code. Java keeps these entries in both ``codeToName``
+        # and the ``differences`` map (verified live, wave 1548); the old
+        # ``code >= 0`` guard here silently dropped them, so a leading name or
+        # a negative-/high-code overlay diverged (the glyph collapsed to
+        # ``.notdef`` and its reverse mapping went missing).
         code = -1
         for i in range(diffs.size()):
             entry = diffs.get_object(i)
             if isinstance(entry, COSNumber):
                 code = entry.int_value()
-            elif isinstance(entry, COSName) and code >= 0:
+            elif isinstance(entry, COSName):
                 self.overwrite(code, entry.name)
                 self._differences[code] = entry.name
                 code += 1

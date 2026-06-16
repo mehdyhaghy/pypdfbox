@@ -3,6 +3,7 @@ from __future__ import annotations
 from pypdfbox.cos import COSDictionary, COSName
 
 from .pd_action import PDAction
+from .pd_action_factory import PDActionFactory
 
 _WC: COSName = COSName.get_pdf_name("WC")
 _WS: COSName = COSName.get_pdf_name("WS")
@@ -48,7 +49,7 @@ class PDDocumentCatalogAdditionalActions:
 
     def get_wc(self) -> PDAction | None:
         value = self._actions.get_dictionary_object(_WC)
-        return PDAction.create(value) if isinstance(value, COSDictionary) else None
+        return PDActionFactory.create_action(value) if isinstance(value, COSDictionary) else None
 
     def set_wc(self, action: PDAction | None) -> None:
         if action is None:
@@ -58,7 +59,7 @@ class PDDocumentCatalogAdditionalActions:
 
     def get_ws(self) -> PDAction | None:
         value = self._actions.get_dictionary_object(_WS)
-        return PDAction.create(value) if isinstance(value, COSDictionary) else None
+        return PDActionFactory.create_action(value) if isinstance(value, COSDictionary) else None
 
     def set_ws(self, action: PDAction | None) -> None:
         if action is None:
@@ -68,7 +69,7 @@ class PDDocumentCatalogAdditionalActions:
 
     def get_ds(self) -> PDAction | None:
         value = self._actions.get_dictionary_object(_DS)
-        return PDAction.create(value) if isinstance(value, COSDictionary) else None
+        return PDActionFactory.create_action(value) if isinstance(value, COSDictionary) else None
 
     def set_ds(self, action: PDAction | None) -> None:
         if action is None:
@@ -78,7 +79,7 @@ class PDDocumentCatalogAdditionalActions:
 
     def get_wp(self) -> PDAction | None:
         value = self._actions.get_dictionary_object(_WP)
-        return PDAction.create(value) if isinstance(value, COSDictionary) else None
+        return PDActionFactory.create_action(value) if isinstance(value, COSDictionary) else None
 
     def set_wp(self, action: PDAction | None) -> None:
         if action is None:
@@ -88,7 +89,7 @@ class PDDocumentCatalogAdditionalActions:
 
     def get_dp(self) -> PDAction | None:
         value = self._actions.get_dictionary_object(_DP)
-        return PDAction.create(value) if isinstance(value, COSDictionary) else None
+        return PDActionFactory.create_action(value) if isinstance(value, COSDictionary) else None
 
     def set_dp(self, action: PDAction | None) -> None:
         if action is None:

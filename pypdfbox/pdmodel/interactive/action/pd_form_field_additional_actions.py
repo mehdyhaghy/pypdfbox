@@ -3,6 +3,7 @@ from __future__ import annotations
 from pypdfbox.cos import COSDictionary, COSName
 
 from .pd_action import PDAction
+from .pd_action_factory import PDActionFactory
 
 _K: COSName = COSName.get_pdf_name("K")
 _F: COSName = COSName.get_pdf_name("F")
@@ -44,7 +45,7 @@ class PDFormFieldAdditionalActions:
 
     def get_k(self) -> PDAction | None:
         value = self._actions.get_dictionary_object(_K)
-        return PDAction.create(value) if isinstance(value, COSDictionary) else None
+        return PDActionFactory.create_action(value) if isinstance(value, COSDictionary) else None
 
     def set_k(self, action: PDAction | None) -> None:
         if action is None:
@@ -54,7 +55,7 @@ class PDFormFieldAdditionalActions:
 
     def get_f(self) -> PDAction | None:
         value = self._actions.get_dictionary_object(_F)
-        return PDAction.create(value) if isinstance(value, COSDictionary) else None
+        return PDActionFactory.create_action(value) if isinstance(value, COSDictionary) else None
 
     def set_f(self, action: PDAction | None) -> None:
         if action is None:
@@ -64,7 +65,7 @@ class PDFormFieldAdditionalActions:
 
     def get_v(self) -> PDAction | None:
         value = self._actions.get_dictionary_object(_V)
-        return PDAction.create(value) if isinstance(value, COSDictionary) else None
+        return PDActionFactory.create_action(value) if isinstance(value, COSDictionary) else None
 
     def set_v(self, action: PDAction | None) -> None:
         if action is None:
@@ -74,7 +75,7 @@ class PDFormFieldAdditionalActions:
 
     def get_c(self) -> PDAction | None:
         value = self._actions.get_dictionary_object(_C)
-        return PDAction.create(value) if isinstance(value, COSDictionary) else None
+        return PDActionFactory.create_action(value) if isinstance(value, COSDictionary) else None
 
     def set_c(self, action: PDAction | None) -> None:
         if action is None:

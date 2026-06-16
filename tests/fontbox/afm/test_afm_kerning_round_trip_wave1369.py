@@ -34,7 +34,7 @@ def test_track_kern_round_trip_single_entry() -> None:
     fm = _parse(
         "StartKernData\n"
         "StartTrackKern 1\n"
-        "TrackKern 0 8 -1.5 32 -3.0\n"
+        "0 8 -1.5 32 -3.0\n"
         "EndTrackKern\n"
         "EndKernData\n"
     )
@@ -53,9 +53,9 @@ def test_track_kern_multiple_entries_preserve_order() -> None:
     fm = _parse(
         "StartKernData\n"
         "StartTrackKern 3\n"
-        "TrackKern 0 6 -0.5 24 -2.0\n"
-        "TrackKern 1 8 -1.0 32 -3.0\n"
-        "TrackKern 2 10 -1.5 40 -4.0\n"
+        "0 6 -0.5 24 -2.0\n"
+        "1 8 -1.0 32 -3.0\n"
+        "2 10 -1.5 40 -4.0\n"
         "EndTrackKern\n"
         "EndKernData\n"
     )
@@ -193,7 +193,7 @@ def test_kern_data_with_track_and_multi_direction_pairs() -> None:
     fm = _parse(
         "StartKernData\n"
         "StartTrackKern 1\n"
-        "TrackKern 0 8 -1.5 32 -3.0\n"
+        "0 8 -1.5 32 -3.0\n"
         "EndTrackKern\n"
         "StartKernPairs 1\n"
         "KP A V -90 -45\n"
@@ -244,7 +244,7 @@ def test_track_kern_get_returns_copy() -> None:
     fm = _parse(
         "StartKernData\n"
         "StartTrackKern 1\n"
-        "TrackKern 0 8 -1 32 -3\n"
+        "0 8 -1 32 -3\n"
         "EndTrackKern\n"
         "EndKernData\n"
     )

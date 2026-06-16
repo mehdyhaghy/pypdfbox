@@ -461,7 +461,7 @@ def test_kern_pairs0_and_1_routes_to_separate_lists() -> None:
 def test_track_kern_block() -> None:
     fm = _kern(
         "StartTrackKern 1\n"
-        "TrackKern 0 8 -1.5 32 -3.0\n"
+        "0 8 -1.5 32 -3.0\n"
         "EndTrackKern\n"
     )
     track = fm.get_track_kern()

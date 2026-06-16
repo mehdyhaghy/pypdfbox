@@ -172,20 +172,26 @@ def test_differences_with_multiple_runs():
     }
 
 
-def test_differences_glyph_before_integer_is_ignored():
-    # A name at the start with no preceding integer must be silently dropped
-    # (matches upstream parser behavior — code starts at -1).
+def test_differences_glyph_before_integer_lands_at_minus_one():
+    # A name at the start with no preceding integer is applied at the initial
+    # cursor value -1: upstream ``DictionaryEncoding.applyDifferences`` seeds the
+    # code cursor at -1 and applies every name at whatever the cursor is, with
+    # no ``code >= 0`` guard. Verified live against PDFBox 3.0.7 (wave 1548):
+    # ``getName(-1) == "orphan"`` and the reverse map carries ``orphan -> -1``.
+    # (The original pin here asserted the name was dropped — that pinned a
+    # pypdfbox-only bug; the guard was removed in wave 1548.)
     font_enc = COSDictionary()
     font_enc.set_item(COSName.TYPE, COSName.get_pdf_name("Encoding"))
     diffs = COSArray()
-    diffs.add(COSName.get_pdf_name("orphan"))  # ignored: no preceding int
+    diffs.add(COSName.get_pdf_name("orphan"))  # applied at code -1
     diffs.add(COSInteger.get(0x20))
     diffs.add(COSName.get_pdf_name("space"))
     font_enc.set_item(COSName.get_pdf_name("Differences"), diffs)
 
     enc = DictionaryEncoding(font_encoding=font_enc)
     assert enc.get_name(0x20) == "space"
-    assert "orphan" not in enc.get_name_to_code_map()
+    assert enc.get_name(-1) == "orphan"
+    assert enc.get_name_to_code_map()["orphan"] == -1
 
 
 def test_differences_overwrites_base_glyph():

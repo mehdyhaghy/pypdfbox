@@ -3,6 +3,7 @@ from __future__ import annotations
 from pypdfbox.cos import COSDictionary, COSName
 
 from .pd_action import PDAction
+from .pd_action_factory import PDActionFactory
 
 _E: COSName = COSName.get_pdf_name("E")
 _X: COSName = COSName.get_pdf_name("X")
@@ -64,7 +65,7 @@ class PDAnnotationAdditionalActions:
 
     def get_e(self) -> PDAction | None:
         value = self._actions.get_dictionary_object(_E)
-        return PDAction.create(value) if isinstance(value, COSDictionary) else None
+        return PDActionFactory.create_action(value) if isinstance(value, COSDictionary) else None
 
     def set_e(self, action: PDAction | None) -> None:
         if action is None:
@@ -74,7 +75,7 @@ class PDAnnotationAdditionalActions:
 
     def get_x(self) -> PDAction | None:
         value = self._actions.get_dictionary_object(_X)
-        return PDAction.create(value) if isinstance(value, COSDictionary) else None
+        return PDActionFactory.create_action(value) if isinstance(value, COSDictionary) else None
 
     def set_x(self, action: PDAction | None) -> None:
         if action is None:
@@ -84,7 +85,7 @@ class PDAnnotationAdditionalActions:
 
     def get_d(self) -> PDAction | None:
         value = self._actions.get_dictionary_object(_D)
-        return PDAction.create(value) if isinstance(value, COSDictionary) else None
+        return PDActionFactory.create_action(value) if isinstance(value, COSDictionary) else None
 
     def set_d(self, action: PDAction | None) -> None:
         if action is None:
@@ -94,7 +95,7 @@ class PDAnnotationAdditionalActions:
 
     def get_u(self) -> PDAction | None:
         value = self._actions.get_dictionary_object(_U)
-        return PDAction.create(value) if isinstance(value, COSDictionary) else None
+        return PDActionFactory.create_action(value) if isinstance(value, COSDictionary) else None
 
     def set_u(self, action: PDAction | None) -> None:
         if action is None:
@@ -104,7 +105,7 @@ class PDAnnotationAdditionalActions:
 
     def get_fo(self) -> PDAction | None:
         value = self._actions.get_dictionary_object(_FO)
-        return PDAction.create(value) if isinstance(value, COSDictionary) else None
+        return PDActionFactory.create_action(value) if isinstance(value, COSDictionary) else None
 
     def set_fo(self, action: PDAction | None) -> None:
         if action is None:
@@ -114,7 +115,7 @@ class PDAnnotationAdditionalActions:
 
     def get_bl(self) -> PDAction | None:
         value = self._actions.get_dictionary_object(_BL)
-        return PDAction.create(value) if isinstance(value, COSDictionary) else None
+        return PDActionFactory.create_action(value) if isinstance(value, COSDictionary) else None
 
     def set_bl(self, action: PDAction | None) -> None:
         if action is None:
@@ -124,7 +125,7 @@ class PDAnnotationAdditionalActions:
 
     def get_po(self) -> PDAction | None:
         value = self._actions.get_dictionary_object(_PO)
-        return PDAction.create(value) if isinstance(value, COSDictionary) else None
+        return PDActionFactory.create_action(value) if isinstance(value, COSDictionary) else None
 
     def set_po(self, action: PDAction | None) -> None:
         if action is None:
@@ -134,7 +135,7 @@ class PDAnnotationAdditionalActions:
 
     def get_pc(self) -> PDAction | None:
         value = self._actions.get_dictionary_object(_PC)
-        return PDAction.create(value) if isinstance(value, COSDictionary) else None
+        return PDActionFactory.create_action(value) if isinstance(value, COSDictionary) else None
 
     def set_pc(self, action: PDAction | None) -> None:
         if action is None:
@@ -144,7 +145,7 @@ class PDAnnotationAdditionalActions:
 
     def get_pv(self) -> PDAction | None:
         value = self._actions.get_dictionary_object(_PV)
-        return PDAction.create(value) if isinstance(value, COSDictionary) else None
+        return PDActionFactory.create_action(value) if isinstance(value, COSDictionary) else None
 
     def set_pv(self, action: PDAction | None) -> None:
         if action is None:
@@ -154,7 +155,7 @@ class PDAnnotationAdditionalActions:
 
     def get_pi(self) -> PDAction | None:
         value = self._actions.get_dictionary_object(_PI)
-        return PDAction.create(value) if isinstance(value, COSDictionary) else None
+        return PDActionFactory.create_action(value) if isinstance(value, COSDictionary) else None
 
     def set_pi(self, action: PDAction | None) -> None:
         if action is None:

@@ -370,9 +370,13 @@ class AFMParser:
             if next_command == self.START_TRACK_KERN:
                 count = self.read_int()
                 for _ in range(count):
-                    # Per AFM spec 5004 §9, each track-kern entry is
-                    # introduced by a literal ``TrackKern`` keyword.
-                    self.read_command("TrackKern")
+                    # Upstream reads each track-kern entry as five bare numeric
+                    # tokens (degree + four floats) directly after the count —
+                    # there is NO leading ``TrackKern`` keyword per entry. A
+                    # prior port added a spurious ``read_command("TrackKern")``
+                    # which both rejected valid (keyword-less) track-kern data
+                    # and accepted a malformed leading keyword; removed to match
+                    # ``AFMParser.parseKernData`` (CHANGES.md wave1548).
                     font_metrics.add_track_kern(
                         TrackKern(
                             self.read_int(),

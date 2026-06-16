@@ -3,6 +3,7 @@ from __future__ import annotations
 from pypdfbox.cos import COSDictionary, COSName
 
 from .pd_action import PDAction
+from .pd_action_factory import PDActionFactory
 
 _O: COSName = COSName.get_pdf_name("O")
 _C: COSName = COSName.C  # type: ignore[attr-defined]
@@ -37,7 +38,7 @@ class PDPageAdditionalActions:
 
     def get_o(self) -> PDAction | None:
         value = self._actions.get_dictionary_object(_O)
-        return PDAction.create(value) if isinstance(value, COSDictionary) else None
+        return PDActionFactory.create_action(value) if isinstance(value, COSDictionary) else None
 
     def set_o(self, action: PDAction | None) -> None:
         if action is None:
@@ -47,7 +48,7 @@ class PDPageAdditionalActions:
 
     def get_c(self) -> PDAction | None:
         value = self._actions.get_dictionary_object(_C)
-        return PDAction.create(value) if isinstance(value, COSDictionary) else None
+        return PDActionFactory.create_action(value) if isinstance(value, COSDictionary) else None
 
     def set_c(self, action: PDAction | None) -> None:
         if action is None:
