@@ -217,10 +217,14 @@ def test_splice_byte_range_arithmetic(tmp_path: Path) -> None:
         assert br is not None
         start1, len1, start2, len2 = br
         # Matching PDFBox's COSWriter, the surrounding `<`/`>` delimiters are
-        # EXCLUDED from the ranges, so the skipped region is `<` + 16384 hex
-        # chars + `>` = 16386 bytes.
+        # EXCLUDED from the ranges, so the skipped region is `<` + the default
+        # /Contents hex slot + `>`. The default reserves
+        # SignatureOptions.DEFAULT_SIGNATURE_SIZE (0x2500 = 9472) bytes =
+        # 18944 hex chars (wave 1558 fix; oracle-confirmed default gap), so
+        # the skipped region is 18944 + 2 = 18946 bytes.
         skipped = start2 - (start1 + len1)
-        assert skipped == 16386
+        assert skipped == 0x2500 * 2 + 2
+        assert skipped == 18946
 
         # Sum of bracketed bytes + skipped region must equal file length.
         assert len1 + len2 + skipped == len(data)
@@ -248,8 +252,10 @@ def test_splice_rejects_oversize_blob(tmp_path: Path) -> None:
     src = _build_tiny_pdf(tmp_path / "in.pdf")
     out = tmp_path / "should-fail.pdf"
 
-    # Blob larger than the placeholder (16384 hex chars = 8192 raw bytes).
-    huge = b"\xff" * 9000
+    # Blob larger than the default placeholder (0x2500*2 = 18944 hex chars =
+    # 9472 raw bytes). Wave 1558 raised the default to match upstream, so the
+    # oversize blob must exceed 9472 raw bytes to still overflow.
+    huge = b"\xff" * 10000
     signer = _DummySigner(huge)
 
     with PDDocument.load(src) as doc:

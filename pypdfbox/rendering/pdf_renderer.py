@@ -9264,6 +9264,21 @@ class PDFRenderer(PDFStreamEngine):
         # Faint placeholder — a 1x1 unit-square outline scaled by the
         # text-local matrix. Skip when no draw context (defensive) or when
         # the glyph sits inside a hidden optional-content frame.
+        #
+        # Wave 1558 bug fix: the placeholder must honour the text rendering
+        # mode (PDF 32000-1 §9.3.6 / Table 106) just like the real-outline
+        # paint path does. Modes 3 (invisible) and 7 (clip-only) paint NO
+        # visible marks; previously the placeholder box was drawn regardless,
+        # so a Standard-14 / no-embedded-outline font rendered identical
+        # (visible) boxes for fill, stroke, invisible and clip-only — i.e.
+        # invisible text leaked visible boxes. Suppress the placeholder for
+        # the no-paint modes (the clip accumulation for mode 7 has no glyph
+        # outline source here, so there is nothing to add to the clip path —
+        # matching the fact that the placeholder is a best-effort fallback,
+        # not a true outline).
+        mode = self._gs.text_rendering_mode
+        if mode in (3, 7):
+            return _advance(advance_units)
         if self._draw is not None and draw_enabled:
             with contextlib.suppress(Exception):
                 self._draw_placeholder_box(glyph_to_device, advance_units)
@@ -9806,7 +9821,16 @@ class PDFRenderer(PDFStreamEngine):
             # populate them if the glyph stream contains those operators.
             self._type3_d0_wx = None
             self._type3_d1_wx = None
-            if charproc is not None:
+            # Wave 1558 bug fix: honour the invisible text rendering mode for
+            # Type 3 glyphs. PDFBox's ``PageDrawer.showType3Glyph`` skips
+            # ``super.showType3Glyph`` (and thus the whole charproc paint pass)
+            # when the rendering mode is ``NEITHER`` (Tr 3, PDF 32000-1
+            # §9.3.6 / Table 106). Previously the charproc was always executed,
+            # so invisible Type 3 text leaked visible marks. The glyph still
+            # advances by its /Widths metric (the charproc — and any d0/d1
+            # override — is not run, matching upstream), so following glyphs
+            # land in the right place.
+            if charproc is not None and self._gs.text_rendering_mode != 3:
                 self._render_type3_charproc(font, charproc, font_matrix)
 
             # Advance — /Widths is indexed by (code - FirstChar). When the

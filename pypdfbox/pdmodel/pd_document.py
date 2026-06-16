@@ -634,25 +634,48 @@ class PDDocument:
 
     # ---------- signing internals ----------
 
-    # Hex-character width reserved for the ``/Contents <…>`` placeholder.
-    # 16384 hex chars = 8192 raw bytes, enough headroom for typical RSA-2048
-    # PKCS#7 detached SignedData blobs (≈ 2-3 KiB) plus full chains and
-    # OCSP / CRL evidence when present. Mirrors PDFBox's default reservation.
-    _CONTENTS_PLACEHOLDER_HEX_LEN: int = 16384
+    # Default hex-character width reserved for the ``/Contents <…>`` slot when
+    # the caller passes no ``SignatureOptions`` (or a non-positive preferred
+    # size). 18944 hex chars = 0x2500 = 9472 raw bytes, matching upstream
+    # ``SignatureOptions.DEFAULT_SIGNATURE_SIZE`` (the COSWriter reserves twice
+    # the byte count as hex chars between ``<`` and ``>``). Confirmed against
+    # the live oracle (SignByteRangeFuzzProbe): default gap == 0x2500*2+2.
+    # Kept as a class constant so existing tests can monkeypatch a narrow slot.
+    _CONTENTS_PLACEHOLDER_HEX_LEN: int = 0x2500 * 2
     # Width (decimal digits) reserved for each ByteRange placeholder slot.
     # Wide enough to cover any PDF up to ~10 GiB without re-flowing offsets.
     _BYTERANGE_SLOT_WIDTH: int = 10
+
+    def _contents_placeholder_hex_len(self) -> int:
+        """Hex-character width to reserve for the ``/Contents <…>`` slot.
+
+        Honours the pending ``SignatureOptions.get_preferred_signature_size``
+        (a *byte* count → twice as many hex chars), falling back to
+        ``_CONTENTS_PLACEHOLDER_HEX_LEN`` when no positive preference was set.
+        Mirrors upstream PDFBox's COSWriter, which sizes the placeholder from
+        ``SignatureOptions`` and otherwise from the default constant —
+        confirmed by the live oracle (SignByteRangeFuzzProbe): the gap
+        between the two /ByteRange segments equals ``preferred_size*2 + 2``."""
+        options = self._pending_signature_options
+        if options is not None:
+            getter = getattr(options, "get_preferred_signature_size", None)
+            if callable(getter):
+                preferred = getter()
+                if isinstance(preferred, int) and preferred > 0:
+                    return preferred * 2
+        return self._CONTENTS_PLACEHOLDER_HEX_LEN
 
     def _render_incremental_with_placeholder(
         self,
     ) -> tuple[bytearray, tuple[int, int], list[int]]:
         """Run the incremental writer with the pending signature carrying a
-        ``/Contents <0…0>`` placeholder of ``_CONTENTS_PLACEHOLDER_HEX_LEN``
-        hex chars and a ``/ByteRange [0 ☐ ☐ ☐]`` placeholder. After the
-        bytes are produced, locate the placeholders, compute the real
-        ``/ByteRange``, and patch it in place. The ``/Contents`` slot is
-        left as zeros for the caller (or :meth:`save_incremental`) to
-        splice into."""
+        ``/Contents <0…0>`` placeholder sized from the pending
+        ``SignatureOptions`` preferred size (see
+        :meth:`_contents_placeholder_hex_len`) and a ``/ByteRange [0 ☐ ☐ ☐]``
+        placeholder. After the bytes are produced, locate the placeholders,
+        compute the real ``/ByteRange``, and patch it in place. The
+        ``/Contents`` slot is left as zeros for the caller (or
+        :meth:`save_incremental`) to splice into."""
         from pypdfbox.cos import COSArray, COSInteger
         from pypdfbox.pdfwriter import COSWriter
 
@@ -660,9 +683,11 @@ class PDDocument:
         assert sig is not None
         sig_dict = sig.get_cos_object()
 
+        contents_hex_len = self._contents_placeholder_hex_len()
+
         # Install the /Contents placeholder: a COSString of all-zero bytes
-        # whose hex form occupies exactly _CONTENTS_PLACEHOLDER_HEX_LEN chars.
-        placeholder_bytes = b"\x00" * (self._CONTENTS_PLACEHOLDER_HEX_LEN // 2)
+        # whose hex form occupies exactly ``contents_hex_len`` chars.
+        placeholder_bytes = b"\x00" * (contents_hex_len // 2)
         sig.set_contents(placeholder_bytes)
 
         # Install a /ByteRange placeholder using a sentinel made of digits
@@ -701,7 +726,7 @@ class PDDocument:
         # source document that already contains a similar literal (e.g. an
         # XMP packet padding) doesn't mislead us — the dirty signature dict
         # is appended after the source bytes, so it's the last hit.
-        zero_run = b"<" + b"0" * self._CONTENTS_PLACEHOLDER_HEX_LEN + b">"
+        zero_run = b"<" + b"0" * contents_hex_len + b">"
         idx = rendered.rfind(zero_run)
         if idx < 0:
             raise RuntimeError(
@@ -711,7 +736,7 @@ class PDDocument:
         # contents_span is the slice [start, end) covering the hex zeros
         # BETWEEN the angle brackets — what we'll overwrite with PKCS#7 hex.
         contents_start = idx + 1  # skip the '<'
-        contents_end = contents_start + self._CONTENTS_PLACEHOLDER_HEX_LEN
+        contents_end = contents_start + contents_hex_len
 
         # ByteRange = [start1, len1, start2, len2] where the two slices
         # bracket the /Contents hex string. Mirror Apache PDFBox's COSWriter
