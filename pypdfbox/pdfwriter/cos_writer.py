@@ -1466,11 +1466,14 @@ class COSWriter(ICOSVisitor):
                 if entry is not None:
                     self._add_object_to_write(entry)
 
-        if not self._objects_to_write:
-            # Nothing to write — match upstream: no extra bytes appended,
-            # output is byte-for-byte identical to the source.
-            self._copy_source_to_output()
-            return
+        # Note: even when nothing is dirty (``_objects_to_write`` empty) PDFBox
+        # 3.0.7 still appends a fresh revision — a new (empty) cross-reference
+        # section listing only the free-list head plus a trailer chained via
+        # ``/Prev`` (oracle-confirmed: ``saveIncremental`` on an unmodified
+        # document grows the file and adds one ``startxref`` section). We
+        # therefore fall through to the normal xref+trailer emit below instead
+        # of short-circuiting to a byte-identical copy; the body pass simply
+        # writes zero objects. See CHANGES.md (wave 1565).
 
         # 2.5 Whitespace separator so the appended bytes are unambiguously
         # delimited from the source's trailing ``%%EOF``. Mirrors upstream's

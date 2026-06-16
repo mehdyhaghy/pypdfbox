@@ -313,19 +313,25 @@ def test_increment_trailer_prev_size_and_id() -> None:
         reloaded.close()
 
 
-def test_unmodified_xref_stream_increment_is_noop() -> None:
-    """A ``save_incremental`` with no dirty objects appends nothing — output
-    is byte-identical to the source. (pypdfbox emits an empty increment where
-    PDFBox appends a trailer-only xref-stream revision; both reload to the
-    same document. pypdfbox's documented no-op contract is preserved here —
-    see CHANGES.md.)"""
+def test_unmodified_xref_stream_increment_appends_empty_revision() -> None:
+    """A ``save_incremental`` with no dirty objects on an xref-stream source
+    appends a trailer-only xref-stream revision — matching PDFBox 3.0.7, which
+    always grows the file by one revision even when nothing is dirty
+    (oracle-confirmed wave 1565). The source survives as a verbatim prefix and
+    a new ``/Type /XRef`` stream chained via ``/Prev`` is appended."""
     src = _source_bytes()
     doc = PDDocument(Loader.load_pdf(src))
     try:
         out = _save_incremental(doc)
     finally:
         doc.close()
-    assert out == src
+    assert out.startswith(src), "source must survive as a verbatim prefix"
+    assert len(out) > len(src), "an empty increment is still appended"
+    tail = out[len(src) :]
+    assert b"/Prev" in tail, "appended trailer must chain /Prev"
+    assert b"/Type /XRef" in tail or b"/Type/XRef" in tail, (
+        "an xref-stream source appends an xref-stream revision"
+    )
 
 
 # --------------------------------------------------------------------------

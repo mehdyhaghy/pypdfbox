@@ -77,8 +77,12 @@ def test_wave279_font_file_predicates_report_presence_even_when_malformed() -> N
     font_file2 = _name("FontFile2")
     fd.get_cos_object().set_item(font_file2, COSString("not a stream"))
 
+    # ``has_font_file2`` reports raw key presence (a malformed slot still
+    # "exists"); ``is_embedded`` goes through the typed accessor and mirrors
+    # PDFBox's ``isEmbedded()`` — a non-stream-shaped /FontFile2 is NOT
+    # embedded (wave 1565 fix; previously this pinned the divergent ``True``).
     assert fd.has_font_file2() is True
-    assert fd.is_embedded() is True
+    assert fd.is_embedded() is False
     assert fd.get_font_file2() is None
 
     fd.set_font_file2(None)

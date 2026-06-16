@@ -99,15 +99,20 @@ def test_incremental_writer_position_tracks_final_output_length() -> None:
 # ---------- contracts (PRD §6.5 cluster #2) --------------------------------
 
 
-def test_incremental_unchanged_doc_emits_only_source_bytes() -> None:
-    """No dirty objects → output identical to source (no extra bytes)."""
+def test_incremental_unchanged_doc_appends_empty_revision() -> None:
+    """No dirty objects → PDFBox 3.0.7 still appends a fresh (empty) revision:
+    the source is preserved as a verbatim prefix and a new xref section +
+    ``/Prev`` trailer are appended (oracle-confirmed wave 1565)."""
     src = _make_seed_pdf()
     parsed = Loader.load_pdf(src)
     try:
         out = _incremental_save(parsed)
     finally:
         parsed.close()
-    assert out == src
+    assert out.startswith(src), "source must survive as a verbatim prefix"
+    assert len(out) > len(src), "an empty increment is still appended"
+    assert b"/Prev" in out[len(src) :], "appended trailer must chain /Prev"
+    assert out.rstrip().endswith(b"%%EOF")
 
 
 def test_incremental_marks_one_object_appends_only_that_object() -> None:

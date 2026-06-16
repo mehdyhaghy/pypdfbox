@@ -124,15 +124,20 @@ def test_save_incremental_to_path_round_trip(tmp_path: Path) -> None:
     assert out.rstrip().endswith(b"%%EOF")
 
 
-def test_save_incremental_no_dirty_objects_is_byte_identical() -> None:
-    """If nothing is marked dirty, the writer must emit zero increment
-    bytes — the output equals the source. Pins upstream's no-op path."""
+def test_save_incremental_no_dirty_objects_appends_empty_revision() -> None:
+    """If nothing is marked dirty, PDFBox 3.0.7 still appends a fresh (empty)
+    revision: the source survives as a verbatim prefix and a new xref section +
+    ``/Prev`` trailer are appended. Pins upstream's no-op path (oracle-confirmed
+    wave 1565 — ``saveIncremental`` on an unmodified document grows the file)."""
     src = _make_seed_pdf()
     with PDDocument.load(src) as loaded:
         sink = io.BytesIO()
         loaded.save_incremental(sink)
         out = sink.getvalue()
-    assert out == src
+    assert out.startswith(src), "source must survive as a verbatim prefix"
+    assert len(out) > len(src), "an empty increment is still appended"
+    assert b"/Prev" in out[len(src) :], "appended trailer must chain /Prev"
+    assert out.rstrip().endswith(b"%%EOF")
 
 
 def test_save_incremental_chained_twice() -> None:

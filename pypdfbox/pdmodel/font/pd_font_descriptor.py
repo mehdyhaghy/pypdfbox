@@ -472,17 +472,26 @@ class PDFontDescriptor:
         return self._dict.contains_key(_FONT_FILE3)
 
     def is_embedded(self) -> bool:
-        """True if *any* font program stream is present.
+        """True if *any* font program *stream* is present.
 
-        pypdfbox extension — collapses the three ``has_font_file*`` checks
-        into a single predicate. Useful for callers that only care whether
-        the font is embedded at all (e.g. for PDF/A conformance) and do
-        not need to distinguish Type 1 / TrueType / CFF.
+        Mirrors upstream ``PDFontDescriptor.isEmbedded()``, which is
+        ``getFontFile() != null || getFontFile2() != null ||
+        getFontFile3() != null`` — i.e. it goes through the typed
+        :meth:`get_font_file` / :meth:`get_font_file2` /
+        :meth:`get_font_file3` accessors, each of which returns ``None``
+        for a slot that exists but holds a *non-stream* COS value (a bare
+        ``COSDictionary``, a ``COSName``, an integer, …). A malformed
+        descriptor that carries ``/FontFile`` as a plain dictionary is
+        therefore *not* embedded, exactly as PDFBox reports.
+
+        (Earlier pypdfbox builds short-circuited on
+        ``contains_key(/FontFile*)`` raw key presence, which diverged from
+        PDFBox for the non-stream-shape case — wave 1565 fix.)
         """
         return (
-            self._dict.contains_key(_FONT_FILE)
-            or self._dict.contains_key(_FONT_FILE2)
-            or self._dict.contains_key(_FONT_FILE3)
+            self.get_font_file() is not None
+            or self.get_font_file2() is not None
+            or self.get_font_file3() is not None
         )
 
     # ---------- /CIDSet ----------

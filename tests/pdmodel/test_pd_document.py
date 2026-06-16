@@ -102,8 +102,11 @@ def test_save_incremental_requires_source() -> None:
 
 
 def test_save_incremental_round_trip(tmp_path: Path) -> None:
-    """A loaded document with no dirty objects should produce
-    byte-for-byte-identical output (matches upstream incremental contract)."""
+    """A loaded document with no dirty objects still appends a fresh (empty)
+    revision — the source bytes are preserved as a verbatim prefix and a new
+    xref section + ``/Prev`` trailer are appended. Mirrors PDFBox 3.0.7's
+    ``saveIncremental`` no-op behaviour (oracle-confirmed wave 1565: PDFBox
+    grows the file and adds one ``startxref`` even when nothing is dirty)."""
     # First make a fresh saveable document.
     src = PDDocument()
     src.add_page(PDPage())
@@ -114,7 +117,11 @@ def test_save_incremental_round_trip(tmp_path: Path) -> None:
     with PDDocument.load(src_bytes) as loaded:
         sink = io.BytesIO()
         loaded.save_incremental(sink)
-        assert sink.getvalue() == src_bytes
+        out = sink.getvalue()
+    assert out.startswith(src_bytes), "source must survive as a verbatim prefix"
+    assert len(out) > len(src_bytes), "an empty increment is still appended"
+    assert b"/Prev" in out[len(src_bytes) :], "appended trailer must chain /Prev"
+    assert out.rstrip().endswith(b"%%EOF")
 
 
 def test_context_manager_closes_underlying_document() -> None:
@@ -669,8 +676,12 @@ def test_save_incremental_objects_to_write_none_is_default() -> None:
     with PDDocument.load(src_bytes) as loaded:
         sink = io.BytesIO()
         loaded.save_incremental(sink, None)
-        # Same byte-for-byte round-trip as the no-arg form.
-        assert sink.getvalue() == src_bytes
+        out = sink.getvalue()
+    # Same behaviour as the no-arg form: an empty increment is still appended
+    # (PDFBox 3.0.7 no-op contract, oracle-confirmed wave 1565).
+    assert out.startswith(src_bytes)
+    assert len(out) > len(src_bytes)
+    assert b"/Prev" in out[len(src_bytes) :]
 
 
 # ---------- set_version no-op on equal ----------

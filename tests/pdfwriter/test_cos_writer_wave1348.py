@@ -202,10 +202,12 @@ def test_wave1348_fill_gaps_with_free_entries_facade_records_free_zero() -> None
     assert any(e.free and e.key == COSObjectKey(0, 65535) for e in entries)
 
 
-def test_wave1348_do_write_increment_facade_appends_only_increment_bytes() -> None:
+def test_wave1348_do_write_increment_facade_appends_empty_revision() -> None:
     """``do_write_increment`` runs the buffered append-only pipeline.
-    With a fresh COSDocument carrying no dirty objects, the writer is
-    expected to splice the source bytes through verbatim (no append)."""
+    With a fresh COSDocument carrying no dirty objects, the writer still
+    appends a fresh (empty) revision — the source survives as a verbatim
+    prefix and a new ``xref`` section + ``/Prev`` trailer are appended,
+    matching PDFBox 3.0.7's no-op contract (oracle-confirmed wave 1565)."""
     source_bytes = (
         b"%PDF-1.4\n"
         b"1 0 obj\n<< /Type /Catalog >>\nendobj\n"
@@ -222,8 +224,13 @@ def test_wave1348_do_write_increment_facade_appends_only_increment_bytes() -> No
     with COSWriter(sink, incremental=True, incremental_input=source) as writer:
         writer.do_write_increment(doc)
 
-    # No dirty objects → output is byte-identical to the source.
-    assert sink.getvalue() == source_bytes
+    out = sink.getvalue()
+    # No dirty objects → an empty revision is still appended.
+    assert out.startswith(source_bytes), "source must survive as a verbatim prefix"
+    assert len(out) > len(source_bytes), "an empty increment is still appended"
+    increment = out[len(source_bytes) :]
+    assert b"/Prev 45" in increment, "appended trailer must chain /Prev to 45"
+    assert out.rstrip().endswith(b"%%EOF")
 
 
 # ---------------------------------------------------------------------------
