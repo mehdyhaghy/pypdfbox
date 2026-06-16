@@ -273,8 +273,12 @@ class Type1Font:
                 msg = f"record size {size} would be larger than the input"
                 raise OSError(msg)
             if pos + size > len(raw):
+                # Upstream ``PfbParser`` raises ``EOFException`` (not a plain
+                # ``IOException``) when a record's declared payload runs past
+                # the end of the input; mirror the type so callers that
+                # distinguish EOF from other parse errors stay parity-correct.
                 msg = "EOF while reading PFB font"
-                raise OSError(msg)
+                raise EOFError(msg)
             payload = raw[pos : pos + size]
             pos += size
             if record_type == 0x02:

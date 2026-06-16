@@ -464,7 +464,13 @@ class Type1Lexer:
         while self._pos < len(self._buf) and self._buf[self._pos] != ">":
             ch = self._buf[self._pos]
             self._pos += 1
-            if not ch.isspace():
+            # Keep only hex digits. PostScript hex strings ignore whitespace;
+            # any other byte is invalid, but rather than let ``bytes.fromhex``
+            # raise ``ValueError`` (which would escape ``parse`` as a non-OSError
+            # crash) we drop it. This keeps the lexer tolerant when a stray
+            # ``<`` appears in non-hex / binary data — e.g. when binary eexec
+            # bytes are mis-fed to the cleartext lexer (swapped PFB segments).
+            if not ch.isspace() and ord(ch) in _HEX_CHARS:
                 chars.append(ch)
         if self._pos < len(self._buf):
             self._pos += 1  # consume closing ">"
@@ -482,6 +488,19 @@ class Type1Lexer:
                 break
             self._pos += 1
         word = self._buf[start : self._pos]
+        # Forward-progress guard: a lone delimiter that the dispatcher does
+        # not consume on its own (notably a stray ``)`` — an unbalanced close
+        # paren, which reaches here because only ``(`` is dispatched to the
+        # string reader) leaves ``word`` empty and ``_pos`` unchanged. Without
+        # this, ``next_token`` would spin forever on such a byte — easy to hit
+        # when binary eexec bytes are mis-fed to the cleartext lexer (e.g. a
+        # PFB with its ASCII/binary segments swapped). Consume the one byte and
+        # surface it as a name token so the scan always advances, mirroring the
+        # existing unbalanced-``>`` tolerance above.
+        if not word:
+            ch = self._buf[self._pos]
+            self._pos += 1
+            return (TOKEN_NAME, ch)
         # Classify the word.
         if _INT_RE.match(word):
             return (TOKEN_INTEGER, int(word))

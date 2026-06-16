@@ -89,14 +89,17 @@ class PfbParser:
             size_bytes = stream.read(4)
             if len(size_bytes) != 4:
                 raise OSError("EOF while reading PFB size")
-            size = (
-                size_bytes[0]
-                | (size_bytes[1] << 8)
-                | (size_bytes[2] << 16)
-                | (size_bytes[3] << 24)
-            )
+            # Upstream composes the little-endian size as a *signed* 32-bit
+            # Java int: ``read() + (read()<<8) + (read()<<16) + (read()<<24)``
+            # (PfbParser.java). Each ``read()`` yields an unsigned byte
+            # (0..255), but ``<<24`` of a byte with the high bit set produces
+            # a negative int, so a record whose top size byte is >= 0x80
+            # surfaces as a negative size and trips the "is negative" guard
+            # below — NOT the "larger than the input" guard. Mirror that with
+            # a signed decode so the exception message matches PDFBox exactly.
+            size = int.from_bytes(size_bytes, "little", signed=True)
             _LOG.debug("record type: %d, segment size: %d", record_type, size)
-            if size < 0:  # pragma: no cover - size is composed from 4 unsigned bytes, always >= 0
+            if size < 0:
                 raise OSError(f"record size {size} is negative")
             if size > len(pfb):
                 raise OSError(

@@ -116,22 +116,26 @@ def test_eof_in_size_field_raises() -> None:
 
 
 def test_record_size_larger_than_input_raises() -> None:
-    """A record claiming a payload larger than the entire blob is
-    rejected at line 102."""
-    # First record: minimal ASCII (6 bytes). Second record header:
-    # 0x80 0x01 + size = 0xFFFFFFFF (LE), no payload.
-    pad = _record(0x01, b"a" * 12)  # 18 bytes, satisfies >= header length
-    blob = pad + bytes(
-        [
-            0x80,
-            0x01,
-            0xFF,
-            0xFF,
-            0xFF,
-            0xFF,
-        ]
-    )
-    with pytest.raises(OSError, match="larger than the input"):
+    """A record claiming a positive payload larger than the entire blob is
+    rejected with "would be larger than the input"."""
+    # First record: minimal ASCII (18 bytes, satisfies >= header length).
+    # Second record header: 0x80 0x01 + a large *positive* size (top bit
+    # clear so it stays positive under the signed decode), no payload.
+    pad = _record(0x01, b"a" * 12)  # 18 bytes
+    blob = pad + bytes([0x80, 0x01]) + (0x7FFFFFFF).to_bytes(4, "little")
+    with pytest.raises(OSError, match="would be larger than the input"):
+        PfbParser(blob)
+
+
+def test_record_size_top_bit_set_is_negative() -> None:
+    """A 4-byte size with the high bit set decodes as a *negative* Java int
+    and is rejected with "is negative" — matching upstream PfbParser, which
+    composes the size as a signed 32-bit value (wave 1561 parity fix; the
+    decode was previously unsigned, mis-reporting "larger than the input").
+    Oracle (PDFBox 3.0.7): ``record size -1 is negative`` for 0xFFFFFFFF."""
+    pad = _record(0x01, b"a" * 12)  # 18 bytes
+    blob = pad + bytes([0x80, 0x01, 0xFF, 0xFF, 0xFF, 0xFF])
+    with pytest.raises(OSError, match="record size -1 is negative"):
         PfbParser(blob)
 
 

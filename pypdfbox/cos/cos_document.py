@@ -199,7 +199,17 @@ class COSDocument(COSBase):
         two-arg overloads of ``getObjectsByType`` (Java lines 242, 255).
         The two-arg form is used upstream where a /Type entry has both a
         long and an abbreviated spelling (e.g. ``/CIDFontType0`` vs
-        ``/Font``)."""
+        ``/Font``).
+
+        The candidate set is the **xref table key set** first, then any
+        object-pool keys not present in the xref table — exactly upstream's
+        two-pass scan (Java line 256: ``new ArrayList<>(xrefTable.keySet())``
+        followed by the ``removeAll`` pool-only top-up). This is *not* a plain
+        walk of the pool: a free/deleted xref entry whose body the parser still
+        happened to materialise into the pool is excluded, because the free key
+        never lands in the xref table. When the xref table is empty (a document
+        built in memory) the first pass is empty and every pool key is treated
+        as pool-only, so in-memory graphs still scan completely."""
         target = type_name if isinstance(type_name, COSName) else COSName.get_pdf_name(type_name)
         target_alt: COSName | None
         if type_alt is None:
@@ -208,8 +218,19 @@ class COSDocument(COSBase):
             target_alt = (
                 type_alt if isinstance(type_alt, COSName) else COSName.get_pdf_name(type_alt)
             )
+        # Pass 1: xref-table keys (the on-disk objects). Pass 2: pool keys the
+        # xref table does not cover. Iterating keys (not pool values directly)
+        # is what excludes free entries — mirrors upstream exactly.
+        candidate_keys: list[COSObjectKey] = list(self._xref_table.keys())
+        if len(candidate_keys) < len(self._objects):
+            for key in self._objects:
+                if key not in self._xref_table:
+                    candidate_keys.append(key)
         out: list[COSObject] = []
-        for cos_obj in self._objects.values():
+        for key in candidate_keys:
+            cos_obj = self.get_object_from_pool(key)
+            if cos_obj is None:
+                continue
             resolved = cos_obj.get_object()
             if isinstance(resolved, COSDictionary):
                 t = resolved.get_dictionary_object(COSName.TYPE)  # type: ignore[attr-defined]

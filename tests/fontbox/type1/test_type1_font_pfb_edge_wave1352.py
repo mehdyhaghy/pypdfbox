@@ -110,7 +110,10 @@ def test_create_with_pfb_rejects_truncated_payload() -> None:
     payload_provided = b"X" * 50  # len(raw) = 10 + 6 + 50 = 66
     declared_size = 60  # 60 <= 66 OK, but pos(16) + 60 = 76 > 66 trips next.
     bad = prefix + bytes((0x80, 0x01)) + struct.pack("<I", declared_size) + payload_provided
-    with pytest.raises(OSError, match="EOF while reading PFB font"):
+    # Upstream ``PfbParser`` raises ``EOFException`` for a payload that runs
+    # past the input; ``create_with_pfb`` now mirrors that with ``EOFError``
+    # (wave 1561 parity fix — was a plain ``OSError`` before).
+    with pytest.raises(EOFError, match="EOF while reading PFB font"):
         Type1Font.create_with_pfb(bad)
 
 
