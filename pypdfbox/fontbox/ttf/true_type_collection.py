@@ -300,22 +300,41 @@ class TrueTypeCollection:
     def _extract_font_bytes(self, idx: int) -> bytes:
         """Materialise the SFNT payload of the font at ``idx``.
 
-        Uses ``fontTools.ttLib.TTCollection`` to re-read the host TTC
-        and dump the single font as a standalone SFNT stream. Cached
-        per index so repeated lookups (e.g. ``get_font_by_name`` plus
+        Uses ``fontTools.ttLib.TTFont(..., fontNumber=idx)`` to re-read
+        only the requested font's table directory out of the host TTC
+        and dump it as a standalone SFNT stream. Cached per index so
+        repeated lookups (e.g. ``get_font_by_name`` plus
         ``process_all_fonts``) do not re-pay the cost.
+
+        Per-font isolation (wave 1552 differential fuzz): upstream
+        FontBox parses each font lazily and independently
+        (``TrueTypeCollection.getFontAtIndex`` seeks to a single font's
+        offset and walks only that directory), so a *later* font with a
+        corrupt offset never poisons access to an *earlier*, well-formed
+        font — ``processAllFonts`` visits font 0 successfully and only
+        throws when it reaches the bad slot. fontTools' ``TTCollection``
+        constructor, by contrast, eagerly reads *every* font's directory
+        up front, so one bad offset made even ``get_font_at_index(0)``
+        raise. Slicing through ``TTFont(fontNumber=idx)`` reads a single
+        directory and reproduces FontBox's per-font failure isolation.
         """
         if not hasattr(self, "_font_byte_cache"):
             self._font_byte_cache: dict[int, bytes] = {}
         if idx in self._font_byte_cache:
             return self._font_byte_cache[idx]
 
+        # Range guard up front so an out-of-range index raises the same
+        # ``IndexError`` regardless of how fontTools would report it.
+        if not 0 <= idx < self._num_fonts:
+            msg = f"font index out of range: {idx} (have {self._num_fonts})"
+            raise IndexError(msg)
+
         # Library-first: lean on fontTools to do the directory slicing.
         # We need the raw TTC bytes — re-materialise them from the
         # underlying data stream so we don't fight the abstract reader.
         import io as _io  # noqa: PLC0415
 
-        from fontTools.ttLib import TTCollection  # type: ignore[import-untyped]  # noqa: PLC0415
+        from fontTools.ttLib import TTFont  # type: ignore[import-untyped]  # noqa: PLC0415
 
         ttc_bytes = self._stream.get_original_data()
         # Upstream FontBox treats the 4-byte TTC version purely as a DSIG
@@ -324,7 +343,7 @@ class TrueTypeCollection:
         # tag/length/offset). FontBox never gates on the version being one of
         # the two canonical values, so a header carrying ``0x00000000`` /
         # ``0xFFFFFFFF`` / any other version still parses and yields its
-        # fonts. fontTools' ``TTCollection`` reader is stricter — it asserts
+        # fonts. fontTools' collection reader is stricter — it asserts
         # ``version in (0x00010000, 0x00020000)`` and crashes otherwise. We
         # already consumed/recorded the real version (``self._version``) and
         # the DSIG fields in the header parse, so before handing the bytes to
@@ -333,12 +352,9 @@ class TrueTypeCollection:
         # keeps per-font offset slicing intact while removing the spurious
         # version gate FontBox does not impose. (Wave 1530 differential fuzz.)
         ttc_bytes = self._normalise_ttc_version(ttc_bytes)
-        collection = TTCollection(_io.BytesIO(ttc_bytes))
-        if not 0 <= idx < len(collection.fonts):
-            msg = f"font index out of range: {idx} (have {len(collection.fonts)})"
-            raise IndexError(msg)
+        font = TTFont(_io.BytesIO(ttc_bytes), fontNumber=idx)
         sink = _io.BytesIO()
-        collection.fonts[idx].save(sink)
+        font.save(sink)
         payload = sink.getvalue()
         self._font_byte_cache[idx] = payload
         return payload
@@ -348,7 +364,7 @@ class TrueTypeCollection:
 
         FontBox does not validate the TTC version field (it only checks
         ``version >= 2`` to decide whether DSIG fields follow), but
-        fontTools' ``TTCollection`` asserts the version is one of the two
+        fontTools' collection reader asserts the version is one of the two
         canonical values. We already parsed the real version into
         :attr:`_version`; pick the canonical DWORD that preserves the same
         DSIG decision so fontTools' slicer accepts a header FontBox would
