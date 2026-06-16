@@ -1614,7 +1614,15 @@ class PDPageContentStream:
         x: float = 0.0,
         y: float = 0.0,
     ) -> None:
-        """Emit ``q 1 0 0 1 <x> <y> cm /<key> Do Q``.
+        """Emit ``/<key> Do`` — draw ``form_xobject`` on the current page.
+
+        At the origin (``x == 0`` and ``y == 0``) this matches upstream's
+        ``drawForm(PDFormXObject)`` exactly: a bare ``/<key> Do`` with **no**
+        surrounding ``q`` / ``cm`` / ``Q`` (the caller controls the graphics
+        state). Upstream's ``drawForm`` takes no position argument; the ``x`` /
+        ``y`` parameters here are a pypdfbox convenience extension — when either
+        is non-zero a ``q 1 0 0 1 <x> <y> cm`` … ``Q`` wrapper is emitted so
+        the placement translate is self-contained.
 
         Raises :class:`RuntimeError` when called inside a text block
         (between ``BT`` / ``ET``) — matches upstream's
@@ -1630,13 +1638,19 @@ class PDPageContentStream:
                 "draw_form is not allowed within a text block (BT/ET)."
             )
         key = self._resource_key_for_xobject(form_xobject)
-        self.save_graphics_state()
         if x != 0.0 or y != 0.0:
+            # pypdfbox convenience placement: self-contained translate.
+            self.save_graphics_state()
             self.transform(1, 0, 0, 1, x, y)
+            self._write_name(key)
+            self._buffer.append(0x20)
+            self._write_operator(b"Do")
+            self.restore_graphics_state()
+            return
+        # Upstream parity: bare ``/<key> Do`` at the origin, no q/cm/Q.
         self._write_name(key)
         self._buffer.append(0x20)
         self._write_operator(b"Do")
-        self.restore_graphics_state()
 
     # ------------------------------------------------------------------
     # marked content (tagged-PDF authoring)

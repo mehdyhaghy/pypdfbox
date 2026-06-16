@@ -29,6 +29,44 @@ DEFAULT_LINE_HEIGHT_FACTOR = 1.05
 DEFAULT_MARGIN = 40.0
 
 
+def _read_lines(content: str) -> list[str]:
+    """Split ``content`` into lines the way ``BufferedReader.readLine`` does.
+
+    Upstream ``TextToPDF`` iterates ``BufferedReader.readLine()``, which (a)
+    returns ``null`` at end-of-stream so an *empty* input yields **zero**
+    lines (and therefore an empty page with no content), and (b) treats
+    ``\\r``, ``\\n`` and ``\\r\\n`` as line terminators, **stripping** them
+    from the returned line.
+
+    ``str.split("\\n")`` got both wrong: it produced a single ``[""]`` line for
+    empty input (drawing an empty string on a Helvetica-bearing page instead of
+    leaving the page blank), and it left a lone ``\\r`` / the ``\\r`` of a
+    ``\\r\\n`` pair embedded in the line text (which then encoded to a bogus
+    glyph). ``str.splitlines`` is not usable either — it also breaks on ``\\f``
+    (form feed, handled specially downstream) and ``\\v``.
+    """
+    lines: list[str] = []
+    buf: list[str] = []
+    i = 0
+    n = len(content)
+    while i < n:
+        ch = content[i]
+        if ch == "\n":
+            lines.append("".join(buf))
+            buf = []
+        elif ch == "\r":
+            lines.append("".join(buf))
+            buf = []
+            if i + 1 < n and content[i + 1] == "\n":
+                i += 1
+        else:
+            buf.append(ch)
+        i += 1
+    if buf:
+        lines.append("".join(buf))
+    return lines
+
+
 def _font_bbox_height(font: PDFont) -> float:
     """Return the font's bounding-box height in font units (1/1000 em).
 
@@ -171,10 +209,10 @@ class TextToPDF:
         content_stream: PDPageContentStream | None = None
         y = -1.0
         max_string_length = page.get_media_box().get_width() - self.left_margin - self.right_margin
-        # Split on newline only, NOT ``str.splitlines`` — the latter also
-        # treats ``\f`` (form feed) as a line break and would swallow the
-        # token that the form-feed handling below relies on.
-        for next_line in content.split("\n") if content else [""]:
+        # Enumerate lines exactly as upstream's ``BufferedReader.readLine``:
+        # empty input yields no lines (blank page, no content stream), and
+        # ``\r`` / ``\r\n`` are stripped line terminators. See ``_read_lines``.
+        for next_line in _read_lines(content):
             text_is_empty = False
             line_words = next_line.split(" ")
             line_index = 0
@@ -245,12 +283,12 @@ class TextToPDF:
                     y = page.get_media_box().get_height() - self.top_margin
                     y += line_height - font_height * self.font_size
                     content_stream.new_line_at_offset(self.left_margin, y)
-        # pragma below: unreachable — ``[""]`` fallback iterates once and clears the flag.
-        if text_is_empty:  # pragma: no cover
+        # Empty input produces no lines (mirrors ``readLine`` returning null at
+        # once): add a single blank page with no content stream, matching
+        # upstream's ``addPage(page)`` in the ``textIsEmpty`` branch.
+        if text_is_empty:
             doc.add_page(page)
-        # pragma: the ``[""]`` fallback at line 177 guarantees at least one
-        # iteration that assigns content_stream, so the False arm is unreachable.
-        if content_stream is not None:  # pragma: no branch
+        if content_stream is not None:
             content_stream.end_text()
             content_stream.close()
 

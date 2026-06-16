@@ -1001,19 +1001,24 @@ def test_texttopdf_word_starting_with_form_feed_takes_false_arm() -> None:
 
 
 def test_text_to_pdf_create_pdf_from_empty_text_iterable_runs() -> None:
-    """Sanity coverage check for TextToPDF on empty input — the
-    ``[""]`` fallback at line 177 guarantees at least one iteration, so
-    content_stream is always assigned. The False arm at line 251 is
-    provably unreachable (see pragma in source).
+    """Coverage check for TextToPDF on empty input.
+
+    Wave 1554 fixed line enumeration to mirror ``BufferedReader.readLine``:
+    empty input now yields ZERO lines (no ``[""]`` fallback), so the loop never
+    assigns ``content_stream`` and the final ``content_stream is None`` arm is
+    genuinely taken — a blank page is added via the ``text_is_empty`` branch.
     """
 
     from io import StringIO
 
+    from pypdfbox.pdmodel.pd_document import PDDocument
     from pypdfbox.tools.text_to_pdf import TextToPDF
 
     t = TextToPDF()
-    with contextlib.suppress(Exception):
-        t.create_pdf_from_text(StringIO(""))
+    with PDDocument() as doc:
+        t.create_pdf_from_text(doc, StringIO(""))
+        # Empty input -> exactly one blank page (no content stream drawn).
+        assert doc.get_number_of_pages() == 1
 
 
 # ----------------------------------------------------------------------

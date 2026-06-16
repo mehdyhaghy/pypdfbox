@@ -126,8 +126,14 @@ class PDAnnotationFileAttachment(PDAnnotationMarkup):
     # ---------- /Name (icon) ----------
 
     def get_attachment_name(self) -> str:
-        """Default per spec is ``PushPin``."""
-        value = self._dict.get_name(_NAME)
+        """Default per spec is ``PushPin``.
+
+        Mirrors upstream ``getAttachmentName()`` (PDAnnotationFileAttachment
+        ``.java``) which reads ``getNameAsString(COSName.NAME, "PushPin")`` —
+        a ``/Name`` stored as a ``COSString`` (malformed but parseable) is
+        returned as text rather than falling through to the default.
+        """
+        value = self._dict.get_name_as_string(_NAME)
         return value if value is not None else self.ATTACHMENT_NAME_PUSH_PIN
 
     def set_attachment_name(self, name: str | None) -> None:
@@ -148,8 +154,11 @@ class PDAnnotationFileAttachment(PDAnnotationMarkup):
     def has_attachment_name(self) -> bool:
         """``True`` when ``/Name`` is explicitly set (vs. relying on the
         ``"PushPin"`` spec default).
+
+        Matches :meth:`get_attachment_name`'s ``getNameAsString`` leniency: a
+        ``/Name`` stored as a name or a string both count as present.
         """
-        return self._dict.get_name(_NAME) is not None
+        return self._dict.get_name_as_string(_NAME) is not None
 
     def clear_attachment_name(self) -> None:
         """Remove the explicit ``/Name`` entry, reverting to the spec

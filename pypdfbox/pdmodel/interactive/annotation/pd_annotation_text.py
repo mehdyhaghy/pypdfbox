@@ -89,8 +89,14 @@ class PDAnnotationText(PDAnnotationMarkup):
     # ---------- /Name (icon) ----------
 
     def get_name(self) -> str:
-        """Default per spec is ``Note``."""
-        value = self._dict.get_name(_NAME)
+        """Default per spec is ``Note``.
+
+        Mirrors upstream ``getName()`` (PDAnnotationText.java) which reads
+        ``getNameAsString(COSName.NAME, "Note")`` — a ``/Name`` stored as a
+        ``COSString`` (malformed but parseable) is returned as text rather
+        than falling through to the default.
+        """
+        value = self._dict.get_name_as_string(_NAME)
         return value if value is not None else self.NAME_NOTE
 
     def set_name(self, name: str | None) -> None:

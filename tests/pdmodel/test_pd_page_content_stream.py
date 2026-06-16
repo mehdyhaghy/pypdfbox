@@ -458,14 +458,17 @@ def test_draw_form_emits_do_with_form_key() -> None:
     assert body == b"q\n1 0 0 1 5 6 cm\n/Form1 Do\nQ\n"
 
 
-def test_draw_form_at_origin_skips_redundant_cm() -> None:
+def test_draw_form_at_origin_emits_bare_do() -> None:
+    # Upstream parity: drawForm(PDFormXObject) emits a bare ``/<key> Do`` with
+    # no surrounding q/cm/Q (the caller owns the graphics state). pypdfbox's
+    # x/y placement params are a convenience extension that DOES wrap.
     doc = PDDocument()
     page = _make_page(doc)
     form = PDFormXObject(COSStream())
     with PDPageContentStream(doc, page) as cs:
         cs.draw_form(form)
     body = _stream_bytes(page)
-    assert body == b"q\n/Form1 Do\nQ\n"
+    assert body == b"/Form1 Do\n"
 
 
 # ------------------------------------------------------------------

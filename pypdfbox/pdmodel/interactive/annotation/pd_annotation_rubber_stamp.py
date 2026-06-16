@@ -65,8 +65,14 @@ class PDAnnotationRubberStamp(PDAnnotation):
     # ---------- /Name (icon) ----------
 
     def get_name(self) -> str:
-        """Default per spec is ``Draft``."""
-        value = self._dict.get_name(_NAME)
+        """Default per spec is ``Draft``.
+
+        Mirrors upstream ``getName()`` (PDAnnotationRubberStamp.java) which
+        reads ``getNameAsString(COSName.NAME, "Draft")`` — a ``/Name`` stored
+        as a ``COSString`` (malformed but parseable) is returned as text
+        rather than falling through to the default.
+        """
+        value = self._dict.get_name_as_string(_NAME)
         return value if value is not None else self.NAME_DRAFT
 
     def set_name(self, name: str | None) -> None:

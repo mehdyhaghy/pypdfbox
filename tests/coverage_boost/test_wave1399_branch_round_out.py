@@ -887,7 +887,7 @@ def test_texttopdf_font_height_descriptor_without_bbox() -> None:
 # -----------------------------------------------------------------------------
 # pypdfbox/tools/text_to_pdf.py
 # 49->51: descriptor's get_font_bounding_box is None — fallback 1000.0
-# 251->exit: text_is_empty path (defensive — unreachable in normal flow)
+# (text_is_empty path is exercised by test_wave1402 after the wave-1554 fix)
 # -----------------------------------------------------------------------------
 
 

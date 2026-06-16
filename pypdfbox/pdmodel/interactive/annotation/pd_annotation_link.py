@@ -149,8 +149,14 @@ class PDAnnotationLink(PDAnnotation):
     # ---------- /H (highlight mode) ----------
 
     def get_highlight_mode(self) -> str:
-        """Default per spec is INVERT (``I``)."""
-        value = self._dict.get_name(_H)
+        """Default per spec is INVERT (``I``).
+
+        Mirrors upstream ``getHighlightMode()`` (PDAnnotationLink.java) which
+        reads ``getNameAsString(COSName.H, "I")`` — a ``/H`` stored as a
+        ``COSString`` (malformed but parseable) is returned as text rather
+        than falling through to the default.
+        """
+        value = self._dict.get_name_as_string(_H)
         return value if value is not None else self.HIGHLIGHT_MODE_INVERT
 
     def set_highlight_mode(self, mode: str | None) -> None:
@@ -165,8 +171,11 @@ class PDAnnotationLink(PDAnnotation):
         Lets callers distinguish "explicit ``/H /I``" (the spec default
         written out) from "no ``/H`` entry" — both return
         ``HIGHLIGHT_MODE_INVERT`` via :meth:`get_highlight_mode`.
+
+        Mirrors :meth:`get_highlight_mode`'s ``getNameAsString`` leniency: a
+        ``/H`` stored as a name or a string both count as present.
         """
-        return self._dict.get_name(_H) is not None
+        return self._dict.get_name_as_string(_H) is not None
 
     def is_standard_highlight_mode(self) -> bool:
         """Return ``True`` if the resolved ``/H`` value is one of the four
