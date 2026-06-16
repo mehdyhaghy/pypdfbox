@@ -164,16 +164,30 @@ class PDField:
 
     # ---------- fully qualified name ----------
 
-    def get_fully_qualified_name(self) -> str:
-        partial = self.get_partial_name() or ""
-        if self._parent is None:
-            return partial
-        parent_fqn = self._parent.get_fully_qualified_name()
-        if not parent_fqn:
-            return partial
-        if not partial:
+    def get_fully_qualified_name(self) -> str | None:
+        """Return the dotted fully-qualified name, or ``None`` when no ``/T``
+        partial name exists anywhere in the self -> parent chain.
+
+        Mirrors upstream ``PDField.getFullyQualifiedName`` exactly: the result
+        is built from the parent's fully-qualified name and this field's partial
+        name (``get_partial_name`` — ``None`` when ``/T`` is absent). When both
+        are ``None`` the result is ``None``; when only the parent name exists it
+        is returned alone; when only the partial exists it is returned alone;
+        when both exist they join with a ``.``. A *present-but-empty* ``/T``
+        (``/T ()``) yields ``""`` (not ``None``), matching upstream's
+        ``getPartialName() != null`` distinction. Pypdfbox previously coerced a
+        missing ``/T`` to ``""`` here, diverging from upstream's ``null`` — fixed
+        in wave 1542 and pinned by the live oracle.
+        """
+        parent_fqn = (
+            None if self._parent is None else self._parent.get_fully_qualified_name()
+        )
+        final_name = self.get_partial_name()
+        if final_name is not None and parent_fqn is not None:
+            return f"{parent_fqn}.{final_name}"
+        if parent_fqn is not None:
             return parent_fqn
-        return f"{parent_fqn}.{partial}"
+        return final_name
 
     # ---------- flag bit accessors ----------
 

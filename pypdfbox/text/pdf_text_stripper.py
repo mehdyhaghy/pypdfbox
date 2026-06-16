@@ -731,7 +731,12 @@ class PDFTextStripper:
         """
         body = page.get_contents()
         if not body:
-            return ""
+            # A page with no content stream is still an empty article in
+            # upstream's ``writePage`` loop — emit the same empty-article
+            # wrap a glyph-free (but non-empty) content stream would (see
+            # :meth:`_empty_article_wrap`).
+            self._characters_by_article = [[]]
+            return self._empty_article_wrap()
         # Bind the page so ``Tf`` handlers can reach ``/Resources`` for
         # ``/ToUnicode`` and typed-font lookup, and clear the per-page
         # caches.
@@ -2479,6 +2484,28 @@ class PDFTextStripper:
 
     # ---------- formatting ----------
 
+    def _empty_article_wrap(self) -> str:
+        """Text emitted for a page that yields no glyphs.
+
+        Upstream ``PDFTextStripper.writePage`` still iterates
+        ``charactersByArticle`` for a glyph-free page (a page with no beads
+        contributes a single empty article slot) and brackets each slot in
+        ``startArticle()`` / ``endArticle()`` regardless of whether it holds
+        any text (PDFTextStripper.java:497-560). The page-body
+        ``writeParagraphStart`` / ``writeParagraphEnd`` are gated on at least
+        one written character (the ``startOfArticle`` / first-glyph path), so
+        an empty article emits *only* the article markers, never paragraph
+        ones. With the default empty markers this is invisible; under
+        ``add_more_formatting`` (article markers promoted to the line
+        separator) it supplies the per-page newlines the Java oracle emits for
+        a whitespace-only page. Returning ``""`` here — as the lite stripper
+        did before wave 1542 — dropped those markers, so a glyph-free page
+        diverged from Java whenever any article marker was non-empty.
+        """
+        if not self._article_start and not self._article_end:
+            return ""
+        return self._article_start + self._article_end
+
     def _format_positions(self, positions: list[TextPosition]) -> str:
         """Walk ``positions`` in emission order and stitch them into a
         single string using the configured line and word separators.
@@ -2511,14 +2538,14 @@ class PDFTextStripper:
         the way ``writePage`` declares it outside the article loop.
         """
         if not positions:
-            return ""
+            return self._empty_article_wrap()
         # Drop glyphs the subclass declines via ``should_skip_glyph``
         # before any sorting/grouping — keeps the position lists handed
         # to ``write_string`` in sync with what subclasses would have
         # seen via ``processTextPosition`` upstream.
         positions = [p for p in positions if not self.should_skip_glyph(p)]
         if not positions:
-            return ""
+            return self._empty_article_wrap()
         if self._suppress_duplicate_overlapping_text:
             positions = self._drop_overlapping_duplicates(positions)
         # Upstream applies the comparator only when ``sortByPosition`` is

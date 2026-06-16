@@ -100,7 +100,11 @@ def test_wave488_process_page_without_contents_resets_walk_state() -> None:
     try:
         assert stripper.get_text(doc) == "\n"
         assert stripper.process_page(page) == ""
-        assert stripper.get_characters_by_article() == []
+        # A contentless page is still a single (empty) article slot in
+        # upstream's ``writePage`` loop, so ``charactersByArticle`` holds one
+        # empty list rather than nothing (wave 1542: ``process_page`` now
+        # mirrors upstream's empty-article bracketing for glyph-free pages).
+        assert stripper.get_characters_by_article() == [[]]
     finally:
         doc.close()
 

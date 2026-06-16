@@ -85,12 +85,22 @@ def test_wave526_closed_parser_returns_none_without_reading() -> None:
     assert parser.parse_next_token() is None
 
 
-def test_wave526_malformed_dictionary_closes_parser() -> None:
+def test_wave526_malformed_dictionary_recovers_partial() -> None:
+    # Retargeted in wave 1542: a content-stream dictionary whose final key has
+    # no value (``<< /A``) is NOT a hard error. Upstream
+    # ``BaseParser.parseCOSDictionary`` (which Java's ``PDFStreamParser`` uses
+    # directly) logs ``Bad dictionary declaration`` and returns the name/value
+    # pairs gathered so far — here the empty dictionary — without closing the
+    # parser. Verified byte-exact against PDFBox 3.0.7 (``dict{}``) by the
+    # ContentStreamParseFuzzProbe live oracle. The previous assertion (returns
+    # ``None`` + closes the parser) was pinned to pypdfbox's old over-strict
+    # container override, which wave 1542 replaced by delegating to BaseParser.
     parser = _parser(b"<< /A")
 
-    assert parser.parse_next_token() is None
-    assert parser.is_closed() is True
-    assert parser.parse_next_token() is None
+    token = parser.parse_next_token()
+    assert isinstance(token, COSDictionary)
+    assert token.size() == 0
+    assert parser.is_closed() is False
 
 
 def test_wave526_trailing_number_at_eof_parses() -> None:

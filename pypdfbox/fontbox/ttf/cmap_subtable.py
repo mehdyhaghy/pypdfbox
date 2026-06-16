@@ -289,15 +289,27 @@ class CmapSubtable(CmapLookup):
 
     def process_subtype13(self, data: TTFDataStream, num_glyphs: int) -> None:
         nb_groups = data.read_unsigned_int()
+        # Upstream processSubtype13 (PDFBox 3.0.7) writes the reverse map
+        # DIRECTLY into glyph_id_to_character_code inside the per-code loop and
+        # never calls build_glyph_id_to_character_code_lookup. For a many-to-one
+        # group the same gid slot is overwritten on every code, so the reverse
+        # lookup keeps only the LAST char code of the range (no multi-mapping).
+        # Mirror that exactly so get_char_codes(gid) returns the same singleton.
+        self._glyph_id_to_character_code = self.new_glyph_id_to_character_code(num_glyphs)
         self._character_code_to_glyph_id = {}
         if num_glyphs == 0:
             _LOG.warning("subtable has no glyphs")
             return
-        max_glyph_id = 0
         for _ in range(nb_groups):
             first_code = data.read_unsigned_int()
             end_code = data.read_unsigned_int()
             glyph_id = data.read_unsigned_int()
+            # Upstream checks the glyph bound (strict ``>`` against numGlyphs)
+            # FIRST and BREAKS out of the whole loop, before validating the
+            # character codes.
+            if glyph_id > num_glyphs:
+                _LOG.warning("Format 13 cmap contains an invalid glyph index")
+                break
             if first_code > 0x0010FFFF or 0xD800 <= first_code <= 0xDFFF:
                 raise OSError(f"Invalid character code 0x{first_code:X}")
             if (
@@ -306,16 +318,13 @@ class CmapSubtable(CmapLookup):
                 or 0xD800 <= end_code <= 0xDFFF
             ):
                 raise OSError(f"Invalid character code 0x{end_code:X}")
-            if glyph_id >= num_glyphs:
-                _LOG.warning("Format 13 cmap contains an invalid glyph index")
-                continue
-            if glyph_id > max_glyph_id:
-                max_glyph_id = glyph_id
-            # ALL codes in [first_code, end_code] map to the same glyph_id
+            # ALL codes in [first_code, end_code] map to the same glyph_id; the
+            # reverse slot is overwritten each iteration (last code wins).
             for code in range(first_code, end_code + 1):
+                if code > 0x10FFFF:
+                    _LOG.warning("Format 13 cmap contains character beyond UCS-4")
+                self._glyph_id_to_character_code[glyph_id] = code
                 self._character_code_to_glyph_id[code] = glyph_id
-        if self._character_code_to_glyph_id:
-            self.build_glyph_id_to_character_code_lookup(max_glyph_id)
 
     def _process_subtype_13(self, data: TTFDataStream, num_glyphs: int) -> None:
         self.process_subtype13(data, num_glyphs)

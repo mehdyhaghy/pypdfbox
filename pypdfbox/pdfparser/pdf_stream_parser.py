@@ -16,6 +16,7 @@ from pypdfbox.cos import (
 )
 from pypdfbox.io import RandomAccessRead, RandomAccessReadBuffer
 
+from .base_parser import BaseParser
 from .cos_parser import COSParser
 from .parse_error import PDFParseError
 
@@ -203,6 +204,12 @@ class PDFStreamParser(COSParser):
     # ``MAX_BIN_CHAR_TEST_LENGTH = 10``.
     MAX_BIN_CHAR_TEST_LENGTH: ClassVar[int] = 10
 
+    # Mirrors upstream's ``this instanceof PDFStreamParser`` discriminator:
+    # makes ``BaseParser.parse_dir_object`` return ``None`` (not
+    # ``COSNull.NULL``) for a skipped unexpected dir-object so the
+    # content-stream ``parse_cos_array`` corrupt-element recovery fires.
+    _is_pdf_stream_parser: ClassVar[bool] = True
+
     # Whitespace bytes recognised as a separator immediately following a
     # candidate ``EI`` — matches PDFBox's ``isSpaceOrReturn`` (LF, CR, SP).
     _EI_SEP: ClassVar[frozenset[int]] = frozenset({0x0A, 0x0D, 0x20})
@@ -251,81 +258,41 @@ class PDFStreamParser(COSParser):
         round-trip preservation in ``COSParser`` untouched."""
         return COSString(self.read_hex_string())
 
-    # ---------- container operands (lenient EOF recovery) ----------
+    # ---------- container operands (content-stream recovery) ----------
 
     def parse_cos_array(self) -> COSArray:
-        """Parse a ``[ ... ]`` array operand, recovering the partial array
-        at EOF instead of raising.
+        """Parse a ``[ ... ]`` array operand with the *content-stream*
+        recovery semantics, not the strict document-loader ones.
 
         ``COSParser.parse_cos_array`` (the document-loader variant) raises
-        ``unterminated array`` when the closing ``]`` is missing before EOF
-        — correct for the strict document body, where a truncated array
-        means a corrupt object. Upstream's *content-stream* path
-        (``BaseParser.parseCOSArray``, which ``PDFStreamParser`` inherits in
-        Java) is lenient instead: at EOF it simply returns the elements
-        accumulated so far. A content stream that ends mid-array (``[1 2 3``)
-        therefore yields the array ``[1 2 3]`` and a clean EOF, matching
-        Apache PDFBox. Overriding here keeps the document-loader strictness
-        in ``COSParser`` untouched while restoring upstream content-stream
-        leniency."""
-        start = self.position
-        b = self.read_byte()
-        if b != 0x5B:
-            raise PDFParseError("expected array '['", position=start)
-        self._enter_recursion("array", start)
-        try:
-            items: list[COSBase] = []
-            while True:
-                self.skip_whitespace()
-                nxt = self.peek_byte()
-                if nxt == RandomAccessRead.EOF:
-                    # Lenient: return the partial array (upstream BaseParser).
-                    return COSArray(items)
-                if nxt == 0x5D:  # ']'
-                    self.read_byte()
-                    return COSArray(items)
-                items.append(self.parse_direct_object())
-        finally:
-            self._leave_recursion()
+        ``unterminated array`` on a missing ``]`` and emits ``COSObject``
+        indirect references — correct for the strict document body. Upstream's
+        *content-stream* path is ``BaseParser.parseCOSArray`` (which Java's
+        ``PDFStreamParser`` uses directly): it is lenient on a missing ``]``
+        (returns the elements gathered so far), it **skips** corrupt elements
+        (logging ``Corrupt array element`` and continuing — e.g. ``[1 2 3 q``
+        → ``[1 2 3]`` with ``q`` skipped, not appended as a null), and it folds
+        a ``num gen R`` triple back into an indirect reference via
+        ``get_object_from_pool`` — which, with no bound document, raises so the
+        enclosing ``parse_next_token`` discards the whole array token (matching
+        Apache PDFBox's *"Stop reading invalid array from content stream"*).
+
+        Delegating to ``BaseParser`` rather than re-implementing keeps the
+        document-loader strictness in ``COSParser`` untouched while making the
+        content-stream tokenizer byte-exact with upstream (verified live by
+        ``oracle/probes/ContentStreamParseFuzzProbe.java``)."""
+        return BaseParser.parse_cos_array(self)
 
     def parse_cos_dictionary(self, is_direct: bool = False) -> COSDictionary:
-        """Parse a ``<< ... >>`` dictionary operand, recovering the partial
-        dictionary at EOF instead of raising.
-
-        Same divergence rationale as :meth:`parse_cos_array`: the
-        document-loader ``COSParser.parse_cos_dictionary`` raises
-        ``unterminated dictionary`` at EOF, but upstream's content-stream
-        parser inherits ``BaseParser.parseCOSDictionary``, which returns the
-        name/value pairs gathered so far. A content stream that ends
-        mid-dictionary (``<< /A 1 /B 2``) therefore yields the dictionary
-        ``{/A 1 /B 2}`` and a clean EOF, matching Apache PDFBox."""
-        start = self.position
-        self.read_expected(b"<<")
-        self._enter_recursion("dictionary", start)
-        try:
-            d = COSDictionary()
-            d.set_direct(is_direct)
-            while True:
-                self.skip_whitespace()
-                nxt = self.peek_byte()
-                if nxt == RandomAccessRead.EOF:
-                    # Lenient: return the partial dictionary (upstream BaseParser).
-                    return d
-                if nxt == 0x3E:  # '>'
-                    self.read_expected(b">>")
-                    return d
-                if nxt != 0x2F:  # '/'
-                    raise PDFParseError(
-                        f"expected name in dictionary at byte {self.position}",
-                        position=self.position,
-                    )
-                key = COSName.get_pdf_name(self.read_name_bytes())
-                value = self.parse_direct_object()
-                if isinstance(value, (COSArray, COSDictionary)):
-                    value.set_direct(True)
-                d.set_item(key, value)
-        finally:
-            self._leave_recursion()
+        """Parse a ``<< ... >>`` dictionary operand with content-stream
+        recovery semantics. Same divergence rationale as
+        :meth:`parse_cos_array`: delegate to ``BaseParser.parseCOSDictionary``,
+        which recovers from a stray non-``/`` byte (via
+        ``read_until_end_of_cos_dictionary``) and returns the name/value pairs
+        gathered so far when the stream ends mid-dictionary — e.g.
+        ``<< /A 1 /B 2`` → ``{/A 1 /B 2}`` — instead of raising the
+        document-loader's ``unterminated dictionary``."""
+        return BaseParser.parse_cos_dictionary(self, is_direct)
 
     # ---------- public API ----------
 

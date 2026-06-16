@@ -72,7 +72,10 @@ class PDPageLabelRange:
     # ---------- style ----------
 
     def get_style(self) -> str | None:
-        return self._root.get_name(_KEY_STYLE)
+        # Upstream ``PDPageLabelRange.getStyle`` uses ``getNameAsString``, not
+        # ``getName`` — so a /S stored as a COSString (wrong type, but seen in
+        # the wild) is still honoured: its decoded text becomes the style code.
+        return self._root.get_name_as_string(_KEY_STYLE)
 
     def set_style(self, style: str | None) -> None:
         # Mirror upstream ``PDPageLabelRange.setStyle`` exactly: a non-null

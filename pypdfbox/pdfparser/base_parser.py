@@ -70,6 +70,15 @@ class BaseParser:
     # this in practice — exposed for API parity.
     MAX_LENGTH_LONG: ClassVar[int] = 19
 
+    # Mirrors upstream's ``this instanceof PDFStreamParser`` discriminator in
+    # ``BaseParser.parseDirObject``: a content-stream parser returns ``None``
+    # (not ``COSNull.NULL``) for a skipped unexpected dir-object so the
+    # enclosing ``parseCOSArray`` corrupt-element recovery fires instead of
+    # silently inserting a null element. Overridden to ``True`` on
+    # ``PDFStreamParser`` only. Implemented as a class attribute rather than
+    # an ``isinstance`` check to avoid a circular import of the subclass.
+    _is_pdf_stream_parser: ClassVar[bool] = False
+
     def __init__(self, source: RandomAccessRead) -> None:
         self._src = source
         # Mirrors upstream ``BaseParser.document`` (protected COSDocument).
@@ -1025,7 +1034,11 @@ class BaseParser:
             self.position,
             start_offset,
         )
-        return COSNull.NULL
+        # Upstream: ``return this instanceof PDFStreamParser ? null :
+        # COSNull.NULL;`` — a content-stream parser returns ``None`` so the
+        # enclosing ``parse_cos_array`` treats the skipped token as a corrupt
+        # element (recover + continue) rather than appending a null element.
+        return None if self._is_pdf_stream_parser else COSNull.NULL
 
     def parse_cos_array(self) -> COSArray:
         """Parse a PDF ``[ ... ]`` array per upstream

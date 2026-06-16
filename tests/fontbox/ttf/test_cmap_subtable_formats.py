@@ -169,8 +169,11 @@ def test_format_13_many_to_one() -> None:
     sub.init_subtable(_CmapStub(), num_glyphs=10, data=data)
     for code in range(0xE000, 0xE005):
         assert sub.get_glyph_id(code) == 1
-    # Reverse lookup must include all codes, sorted.
-    assert sub.get_char_codes(1) == list(range(0xE000, 0xE005))
+    # Reverse lookup: upstream processSubtype13 (PDFBox 3.0.7) writes the gid
+    # slot directly inside the per-code loop and overwrites it on every code, so
+    # the reverse map keeps ONLY the last code of the range — there is no
+    # multi-mapping for format 13 (pinned against the live oracle, wave 1542).
+    assert sub.get_char_codes(1) == [0xE004]
 
 
 def test_format_13_multiple_groups() -> None:
@@ -196,14 +199,18 @@ def test_format_13_invalid_first_code_raises() -> None:
         sub.init_subtable(_CmapStub(), num_glyphs=10, data=data)
 
 
-def test_format_13_invalid_glyph_id_skipped() -> None:
-    # glyph_id 99 >= num_glyphs 10 → group ignored.
+def test_format_13_invalid_glyph_id_breaks() -> None:
+    # Upstream processSubtype13 (PDFBox 3.0.7) checks ``glyphId > numGlyphs``
+    # FIRST and BREAKS out of the whole group loop (it does not ``continue``),
+    # so a bad gid in an early group abandons every later group too. Here gid 99
+    # > numGlyphs 10 aborts before the (0x50, 0x51, 3) group is ever read, so
+    # NEITHER group contributes (pinned against the live oracle, wave 1542).
     blob = _build_format13([(0x41, 0x42, 99), (0x50, 0x51, 3)])
     data = MemoryTTFDataStream(blob)
     sub = CmapSubtable()
     sub.init_subtable(_CmapStub(), num_glyphs=10, data=data)
     assert sub.get_glyph_id(0x41) == 0
-    assert sub.get_glyph_id(0x50) == 3
+    assert sub.get_glyph_id(0x50) == 0
 
 
 def test_format_13_zero_num_glyphs_returns() -> None:
