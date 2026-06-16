@@ -70,8 +70,17 @@ class CCITTFaxDecoderStream(io.RawIOBase):
         # expects. ``K`` maps TIFF compression: 0 → G3 1D, -1 → G4.
         params = COSDictionary()
         sub = COSDictionary()
+        # Map (compression type, T4/T6 options) -> the /K decode mode upstream
+        # CCITTFaxDecoderStream selects per row:
+        #   * T.6 (type 4)                         -> K < 0  (pure Group 4 2D)
+        #   * T.4 (type 3) with GROUP3OPT_2DENCODING -> K > 0 (mixed Group 3 2D)
+        #   * T.4 (type 3) without that bit          -> K == 0 (Group 3 1D)
+        # The 2-D option bit is mandatory here: a Group 3 *2-D*-coded strip
+        # decoded as 1-D (the previous behaviour) produces garbage rows.
         if self._type == TIFFExtension.COMPRESSION_CCITT_T6:
             sub.set_int("K", -1)
+        elif self._options & TIFFExtension.GROUP3OPT_2DENCODING:
+            sub.set_int("K", 1)
         else:
             sub.set_int("K", 0)
         sub.set_int("Columns", self._columns)
@@ -88,8 +97,16 @@ class CCITTFaxDecoderStream(io.RawIOBase):
             encoded_bytes, self._columns
         )
         sub.set_int("Rows", rows)
-        # T4Options bit 2 = encoded byte align.
-        if self._options & 0x4:
+        # Encoded-byte-align lives in a *different* option bit for G3 vs G4
+        # (the two TIFF tags don't share a layout): GROUP3OPT_BYTEALIGNED (8)
+        # for T.4, GROUP4OPT_BYTEALIGNED (4) for T.6. The previous fixed
+        # ``options & 0x4`` mask matched only the T.6 bit (and, for a T.4
+        # stream, accidentally tested GROUP3OPT_FILLBITS instead of byte-align).
+        if self._type == TIFFExtension.COMPRESSION_CCITT_T6:
+            byte_align_bit = TIFFExtension.GROUP4OPT_BYTEALIGNED
+        else:
+            byte_align_bit = TIFFExtension.GROUP3OPT_BYTEALIGNED
+        if self._options & byte_align_bit:
             sub.set_boolean("EncodedByteAlign", True)
         params.set_item("DecodeParms", sub)
 
