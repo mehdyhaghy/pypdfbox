@@ -783,7 +783,19 @@ def test_protect_no_warning_when_flag_not_set(
     policy = StandardProtectionPolicy("owner-pwd", "user-pwd", None)
     with caplog.at_level("WARNING", logger="pypdfbox.pdmodel.pd_document"):
         doc.protect(policy)
-    assert not caplog.records
+    # Scope to records from pd_document's own logger: the contract is that
+    # ``protect()`` itself does not warn. caplog's handler sits on the root
+    # logger and captures everything that propagates, so an unrelated WARNING
+    # leaked from another tree under full-suite ordering (e.g. a finalizer-
+    # emitted "COSDocument not closed" from a prior test's GC) must not fail
+    # this assertion. (Fixes the recurring cross-test pollution noted in
+    # DEFERRED.md — passed in isolation, failed only in the full run.)
+    relevant = [
+        record
+        for record in caplog.records
+        if record.name == "pypdfbox.pdmodel.pd_document"
+    ]
+    assert not relevant
     doc.close()
 
 
