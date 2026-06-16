@@ -129,10 +129,20 @@ class PDField:
     # ---------- inheritable attribute walk ----------
 
     def get_inheritable_attribute(self, key: COSName) -> COSBase | None:
-        """Walks self -> parent chain -> acroForm dictionary."""
-        item = self._field.get_dictionary_object(key)
-        if item is not None:
-            return item
+        """Walks self -> parent chain -> acroForm dictionary.
+
+        Mirrors upstream ``PDField.getInheritableAttribute`` exactly: the
+        decision to stop walking is keyed on ``containsKey`` (presence),
+        **not** on the resolved value being non-null. A field that carries
+        ``key`` explicitly — even when it resolves to ``COSNull`` — shadows
+        any ancestor value and stops the walk, returning the locally
+        resolved object (``None`` for an explicit null). Pypdfbox previously
+        gated on ``get_dictionary_object(key) is not None``, which let a
+        present-but-null entry fall through to the parent and inherit a
+        value upstream would have suppressed.
+        """
+        if self._field.contains_key(key):
+            return self._field.get_dictionary_object(key)
         if self._parent is not None:
             return self._parent.get_inheritable_attribute(key)
         return self._acro_form.get_cos_object().get_dictionary_object(key)
