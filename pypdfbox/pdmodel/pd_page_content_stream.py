@@ -97,11 +97,18 @@ class PDPageContentStream:
         # :class:`PDAppearanceContentStream`) override this to match their
         # upstream parent's digit count.
         self._max_fraction_digits: int = _MAX_FRACTION_DIGITS
-        # Whether we've started a text block (BT) — used purely as a
-        # convenience for users; we don't enforce strict state machines
-        # here (upstream tracks ``inTextMode`` for sanity-check exceptions
-        # but the lite surface keeps it advisory).
+        # Whether we've started a text block (BT). Upstream's
+        # ``PDAbstractContentStream`` tracks ``inTextMode`` and raises
+        # ``IllegalStateException`` from the text/path operators; the port
+        # mirrors that guard (see ``_require_inside_text_block`` /
+        # ``_require_outside_text_block`` and ``_show_text_internal``).
         self._in_text_mode: bool = False
+        # Whether ``set_font`` has been called. Upstream tracks a
+        # ``fontStack`` and ``showTextInternal`` raises
+        # ``IllegalStateException("Must call setFont() before showText()")``
+        # when it is empty. The lite surface has no glyph encoder so it does
+        # not need the full font object, only the "a font was selected" bit.
+        self._font_set: bool = False
 
         # Resolve the destination COSStream + the resource dictionary
         # we'll attach fonts/XObjects/etc. to.
@@ -873,6 +880,7 @@ class PDPageContentStream:
         self._buffer.append(0x20)
         self._write_operands(size)
         self._write_operator(b"Tf")
+        self._font_set = True
 
     def show_text(self, text: str | bytes) -> None:
         """Emit ``(text) Tj``.
@@ -895,7 +903,22 @@ class PDPageContentStream:
 
     def _show_text_internal(self, text: str | bytes) -> None:
         """Encode ``text`` and append the PDF string literal (no operator,
-        no trailing space). Mirrors upstream's ``showTextInternal``."""
+        no trailing space). Mirrors upstream's ``showTextInternal``.
+
+        Upstream raises ``IllegalStateException`` when not inside a text
+        block (``Must call beginText() before showText()``) and when no
+        font has been selected (``Must call setFont() before showText()``).
+        Both guards are reproduced here as :class:`RuntimeError` so the
+        show-text family (``Tj``/``TJ``/``'``/``"``) refuses to emit a
+        string outside ``BT``/``ET`` or before ``Tf``."""
+        if not self._in_text_mode:
+            raise RuntimeError(
+                "Must call begin_text() before show_text()."
+            )
+        if not self._font_set:
+            raise RuntimeError(
+                "Must call set_font() before show_text()."
+            )
         if isinstance(text, (bytes, bytearray)):
             data = bytes(text)
             ascii_safe = all(0x20 <= b < 0x80 or b == 0x09 for b in data)

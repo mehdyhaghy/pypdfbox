@@ -152,11 +152,16 @@ def test_d0_and_d1_type3_operators() -> None:
     assert any(isinstance(t, Operator) and t.name == "d1" for t in toks)
 
 
-def test_uppercase_i_operator_is_not_inline_image_data() -> None:
-    toks = tokens(b"I Q")
-    assert len(toks) == 2
-    assert isinstance(toks[0], Operator) and toks[0].name == "I"
-    assert isinstance(toks[1], Operator) and toks[1].name == "Q"
+def test_uppercase_i_operator_throws_and_closes() -> None:
+    # Upstream PDFStreamParser ``case 'I'`` reads EXACTLY two raw bytes and
+    # compares the pair to ``ID``. ``"I "`` (I + space) != ``ID`` so the parser
+    # closes itself and raises IOException — it does NOT degrade ``I`` into a
+    # standalone operator. Verified against the PDFBox 3.0.7 source
+    # (PDFStreamParser.java ``case 'I'``). Wave 1574 convergence fix.
+    parser = PDFStreamParser.from_bytes(b"I Q")
+    with pytest.raises(PDFParseError):
+        parser.parse_next_token()
+    assert parser.is_closed()
 
 
 def test_id_followed_by_nonspace_starts_inline_image_data() -> None:

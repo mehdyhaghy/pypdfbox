@@ -329,9 +329,14 @@ def test_draw_shape_thin_line_suppresses_stroke() -> None:
 
 
 def test_text_block_in_appearance() -> None:
+    from pypdfbox.pdmodel.font import PDType1Font
+
+    font = PDType1Font()
+    font.get_cos_object().set_name(COSName.get_pdf_name("BaseFont"), "Helvetica")
     appearance = _new_appearance()
     with PDAppearanceContentStream(appearance) as cs:
         cs.begin_text()
+        cs.set_font(font, 12)
         cs.new_line_at_offset(5, 10)
         cs.show_text("Hi")
         cs.end_text()

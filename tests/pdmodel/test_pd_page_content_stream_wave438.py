@@ -4,6 +4,7 @@ import pytest
 
 from pypdfbox.cos import COSArray, COSDictionary, COSName, COSStream
 from pypdfbox.pdmodel import PDDocument, PDPage, PDRectangle
+from pypdfbox.pdmodel.font import PDType1Font
 from pypdfbox.pdmodel.graphics.form import PDFormXObject
 from pypdfbox.pdmodel.graphics.image import PDImageXObject
 from pypdfbox.pdmodel.graphics.pd_property_list import PDPropertyList
@@ -20,6 +21,12 @@ def _make_page(doc: PDDocument) -> PDPage:
 
 def _stream_bytes(page: PDPage) -> bytes:
     return page.get_contents()
+
+
+def _make_font() -> PDType1Font:
+    font = PDType1Font()
+    font.get_cos_object().set_name(COSName.get_pdf_name("BaseFont"), "Helvetica")
+    return font
 
 
 def _image(width: int = 7, height: int = 11) -> PDImageXObject:
@@ -74,6 +81,7 @@ def test_wave438_text_overloads_escape_hex_and_positioning() -> None:
 
     with PDPageContentStream(doc, page) as cs:
         cs.begin_text()
+        cs.set_font(_make_font(), 12)
         cs.show_text(r"a(b)\c")
         cs.move_to_next_line_show_text("next")
         cs.set_spacings_show_text(1, 2, b"\xff")
@@ -82,6 +90,7 @@ def test_wave438_text_overloads_escape_hex_and_positioning() -> None:
 
     assert _stream_bytes(page) == (
         b"BT\n"
+        b"/F1 12 Tf\n"
         b"(a\\(b\\)\\\\c) Tj\n"
         b"(next) '\n"
         b"1 2 <FF> \"\n"
@@ -95,6 +104,8 @@ def test_wave438_show_text_with_positioning_rejects_bool_item() -> None:
     doc = PDDocument()
     page = _make_page(doc)
     cs = PDPageContentStream(doc, page)
+    cs.begin_text()
+    cs.set_font(_make_font(), 12)
 
     with pytest.raises(TypeError, match="bool"):
         cs.show_text_with_positioning(["A", True])

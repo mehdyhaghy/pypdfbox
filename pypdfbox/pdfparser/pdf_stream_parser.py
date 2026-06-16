@@ -527,12 +527,28 @@ class PDFStreamParser(COSParser):
     def _parse_id_operator(self) -> Operator:
         """Handle ``ID`` exactly as the inline-image data operator.
 
-        Other uppercase-I operators are legal content-stream operator names,
-        so they must flow through the regular operator path.
+        Upstream's ``case 'I'`` reads *exactly two raw bytes* and compares the
+        pair to ``ID``; any other ``I``-starting token (``Ix``, ``IZ``, a lone
+        ``I`` at EOF) is rejected — the parser closes itself and raises
+        ``IOException``. We mirror that byte-for-byte rather than running the
+        token through the generic operator reader (which would mis-accept
+        ``Ifoo`` as a bogus operator and keep parsing).
         """
-        kw = self._read_operator_string()
-        if kw != _OP_BEGIN_INLINE_IMAGE_DATA:
-            return Operator.get_operator(kw)
+        first = self.read_byte()
+        second = self.read_byte()
+        # Build the two-character id the same way upstream does — a -1 (EOF)
+        # becomes Java's ``(char) -1`` == U+FFFF, which never equals ``ID``.
+        id_chars = (
+            chr(first) if first != RandomAccessRead.EOF else "￿"
+        ) + (chr(second) if second != RandomAccessRead.EOF else "￿")
+        if id_chars != _OP_BEGIN_INLINE_IMAGE_DATA:
+            position = self.position
+            self.close()
+            raise PDFParseError(
+                f"Error: Expected operator 'ID' actual='{id_chars}' "
+                f"at stream offset {position}",
+                position=position,
+            )
         # Consume one line break (CR / LF / CRLF) or any single whitespace
         # byte, mirroring upstream's ``skipLinebreak() || isWhitespace()``.
         if not self._skip_linebreak():

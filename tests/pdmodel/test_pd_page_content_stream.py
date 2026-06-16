@@ -28,6 +28,12 @@ def _stream_bytes(page: PDPage) -> bytes:
     return page.get_contents()
 
 
+def _make_font() -> PDType1Font:
+    font = PDType1Font()
+    font.get_cos_object().set_name(COSName.get_pdf_name("BaseFont"), "Helvetica")
+    return font
+
+
 # ------------------------------------------------------------------
 # path drawing
 # ------------------------------------------------------------------
@@ -666,24 +672,33 @@ def test_show_text_accepts_bytes_ascii_safe() -> None:
     doc = PDDocument()
     page = _make_page(doc)
     with PDPageContentStream(doc, page) as cs:
+        cs.begin_text()
+        cs.set_font(_make_font(), 12)
         cs.show_text(b"hi")
-    assert _stream_bytes(page) == b"(hi) Tj\n"
+        cs.end_text()
+    assert _stream_bytes(page) == b"BT\n/F1 12 Tf\n(hi) Tj\nET\n"
 
 
 def test_show_text_bytes_with_high_bytes_uses_hex_form() -> None:
     doc = PDDocument()
     page = _make_page(doc)
     with PDPageContentStream(doc, page) as cs:
+        cs.begin_text()
+        cs.set_font(_make_font(), 12)
         cs.show_text(b"\x00H\x00i")
-    assert _stream_bytes(page) == b"<00480069> Tj\n"
+        cs.end_text()
+    assert _stream_bytes(page) == b"BT\n/F1 12 Tf\n<00480069> Tj\nET\n"
 
 
 def test_show_text_bytes_escapes_special_characters() -> None:
     doc = PDDocument()
     page = _make_page(doc)
     with PDPageContentStream(doc, page) as cs:
+        cs.begin_text()
+        cs.set_font(_make_font(), 12)
         cs.show_text(b"a(b)c\\d")
-    assert _stream_bytes(page) == b"(a\\(b\\)c\\\\d) Tj\n"
+        cs.end_text()
+    assert b"(a\\(b\\)c\\\\d) Tj\n" in _stream_bytes(page)
 
 
 # ------------------------------------------------------------------
@@ -696,9 +711,15 @@ def test_begin_marked_content_emits_bmc() -> None:
     page = _make_page(doc)
     with PDPageContentStream(doc, page) as cs:
         cs.begin_marked_content("P")
+        cs.begin_text()
+        cs.set_font(_make_font(), 12)
         cs.show_text("hi")
+        cs.end_text()
         cs.end_marked_content()
-    assert _stream_bytes(page) == b"/P BMC\n(hi) Tj\nEMC\n"
+    assert (
+        _stream_bytes(page)
+        == b"/P BMC\nBT\n/F1 12 Tf\n(hi) Tj\nET\nEMC\n"
+    )
 
 
 def test_marked_content_accepts_cos_name() -> None:
@@ -825,16 +846,22 @@ def test_move_to_next_line_show_text_escapes_specials() -> None:
     doc = PDDocument()
     page = _make_page(doc)
     with PDPageContentStream(doc, page) as cs:
+        cs.begin_text()
+        cs.set_font(_make_font(), 12)
         cs.move_to_next_line_show_text("a(b)c\\d")
-    assert _stream_bytes(page) == b"(a\\(b\\)c\\\\d) '\n"
+        cs.end_text()
+    assert b"(a\\(b\\)c\\\\d) '\n" in _stream_bytes(page)
 
 
 def test_move_to_next_line_show_text_non_ascii_uses_hex() -> None:
     doc = PDDocument()
     page = _make_page(doc)
     with PDPageContentStream(doc, page) as cs:
+        cs.begin_text()
+        cs.set_font(_make_font(), 12)
         cs.move_to_next_line_show_text("中")
-    assert _stream_bytes(page) == b"<4E2D> '\n"
+        cs.end_text()
+    assert b"<4E2D> '\n" in _stream_bytes(page)
 
 
 def test_set_spacings_show_text_emits_double_quote() -> None:
@@ -855,34 +882,46 @@ def test_set_spacings_show_text_with_bytes_payload() -> None:
     doc = PDDocument()
     page = _make_page(doc)
     with PDPageContentStream(doc, page) as cs:
+        cs.begin_text()
+        cs.set_font(_make_font(), 12)
         cs.set_spacings_show_text(1, 2, b"ok")
-    assert _stream_bytes(page) == b'1 2 (ok) "\n'
+        cs.end_text()
+    assert b'1 2 (ok) "\n' in _stream_bytes(page)
 
 
 def test_show_text_with_positioning_string_only() -> None:
     doc = PDDocument()
     page = _make_page(doc)
     with PDPageContentStream(doc, page) as cs:
+        cs.begin_text()
+        cs.set_font(_make_font(), 12)
         cs.show_text_with_positioning(["Hello"])
-    assert _stream_bytes(page) == b"[(Hello)] TJ\n"
+        cs.end_text()
+    assert b"[(Hello)] TJ\n" in _stream_bytes(page)
 
 
 def test_show_text_with_positioning_mixed_strings_and_offsets() -> None:
     doc = PDDocument()
     page = _make_page(doc)
     with PDPageContentStream(doc, page) as cs:
+        cs.begin_text()
+        cs.set_font(_make_font(), 12)
         cs.show_text_with_positioning(["Hel", -120, "lo", 250.5, "!"])
+        cs.end_text()
     # Numeric items emit number + space; strings emit a parenthesized
     # literal directly. Outer bracket pair plus trailing " TJ".
-    assert _stream_bytes(page) == b"[(Hel)-120 (lo)250.5 (!)] TJ\n"
+    assert b"[(Hel)-120 (lo)250.5 (!)] TJ\n" in _stream_bytes(page)
 
 
 def test_show_text_with_positioning_accepts_tuple() -> None:
     doc = PDDocument()
     page = _make_page(doc)
     with PDPageContentStream(doc, page) as cs:
+        cs.begin_text()
+        cs.set_font(_make_font(), 12)
         cs.show_text_with_positioning(("a", -10, "b"))
-    assert _stream_bytes(page) == b"[(a)-10 (b)] TJ\n"
+        cs.end_text()
+    assert b"[(a)-10 (b)] TJ\n" in _stream_bytes(page)
 
 
 def test_show_text_with_positioning_rejects_non_sequence() -> None:
@@ -896,6 +935,8 @@ def test_show_text_with_positioning_rejects_invalid_item_type() -> None:
     doc = PDDocument()
     page = _make_page(doc)
     with PDPageContentStream(doc, page) as cs, pytest.raises(TypeError):
+        cs.begin_text()
+        cs.set_font(_make_font(), 12)
         cs.show_text_with_positioning(["ok", object()])  # type: ignore[list-item]
 
 
@@ -903,6 +944,8 @@ def test_show_text_with_positioning_rejects_bool_item() -> None:
     doc = PDDocument()
     page = _make_page(doc)
     with PDPageContentStream(doc, page) as cs, pytest.raises(TypeError):
+        cs.begin_text()
+        cs.set_font(_make_font(), 12)
         cs.show_text_with_positioning(["ok", True])  # type: ignore[list-item]
 
 
@@ -910,8 +953,11 @@ def test_show_text_with_positioning_non_ascii_uses_hex_form() -> None:
     doc = PDDocument()
     page = _make_page(doc)
     with PDPageContentStream(doc, page) as cs:
+        cs.begin_text()
+        cs.set_font(_make_font(), 12)
         cs.show_text_with_positioning(["中", -100, "国"])
-    assert _stream_bytes(page) == b"[<4E2D>-100 <56FD>] TJ\n"
+        cs.end_text()
+    assert b"[<4E2D>-100 <56FD>] TJ\n" in _stream_bytes(page)
 
 
 def test_show_text_with_positioning_empty_list() -> None:
