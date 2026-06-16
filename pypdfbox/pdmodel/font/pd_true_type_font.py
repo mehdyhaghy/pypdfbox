@@ -697,7 +697,14 @@ class PDTrueTypeFont(PDSimpleFont):
                 WinAnsiEncoding,
             )
 
-            encoding = self._encoding_typed if self._encoding_resolved else None
+            # Upstream's ``encoding`` field is always resolved by the time
+            # ``codeToGID`` runs (the constructor populates it). Our resolution
+            # is lazy, so force it here rather than reading the possibly-unset
+            # cached slot — otherwise a symbolic font carrying a WinAnsi /
+            # MacRoman ``/Encoding`` whose first encoding-consuming call is
+            # ``code_to_gid`` would skip the encoding-name (3,1) path and fall
+            # to the raw-code ``else`` branch, diverging from PDFBox.
+            encoding = self.get_encoding_typed()
             if self._cmap_win_unicode is not None:
                 if isinstance(encoding, (WinAnsiEncoding, MacRomanEncoding)):
                     name = encoding.get_name(code)
@@ -752,6 +759,18 @@ class PDTrueTypeFont(PDSimpleFont):
                     gid = cmap.get_glyph_id(ord(unicode[0]))
                     if gid != 0:
                         return gid
+        if cmap is None and not self.is_symbolic() and encoding is not None:
+            # No usable unicode cmap subtable at all. Upstream
+            # ``codeToGID`` still applies the ``post``-table last resort
+            # for non-symbolic fonts (``if (gid == 0) gid = nameToGID(name)``)
+            # — a font carrying a cmap directory with no (3,1)/(3,0)/(1,0)
+            # /Unicode subtable resolves every code through its glyph name.
+            name = encoding.get_name(code)
+            if name and name != ".notdef":
+                try:
+                    return int(ttf.name_to_gid(name))
+                except Exception:  # noqa: BLE001
+                    return 0
         if cmap is not None:
             gid = cmap.get_glyph_id(code)
             if gid != 0:

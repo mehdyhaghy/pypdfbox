@@ -356,8 +356,14 @@ def test_via_unicode_subtable_non_symbolic_returns_zero(
 def test_via_unicode_subtable_no_cmap_returns_zero(
     liberation_bytes: bytes, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """``_get_unicode_cmap`` returns None — both inner ``if cmap is not None``
-    arms (720, 730) are False; the function returns 0 (730->743 False arm)."""
+    """``_get_unicode_cmap`` returns None — the unicode-cmap arms are False.
+
+    Wave 1576: the legacy fallback now mirrors upstream's non-symbolic
+    ``post``-table last resort (``if (gid == 0) gid = nameToGID(name)``),
+    so a code whose glyph name *is* in the font's ``post`` table resolves
+    (``A`` -> the Liberation 'A' GID). To still exercise the
+    return-zero exit we map code 0x01 -> ``.notdef`` (no glyph anywhere).
+    """
     font = _embedded_font(liberation_bytes)
     font._cmap_initialized = True  # noqa: SLF001
     font._cmap_win_unicode = None  # noqa: SLF001
@@ -368,7 +374,10 @@ def test_via_unicode_subtable_no_cmap_returns_zero(
     monkeypatch.setattr(font, "get_encoding_typed", lambda: WinAnsiEncoding.INSTANCE)
     ttf = font.get_true_type_font()
     assert ttf is not None
-    assert font._code_to_gid_via_unicode_subtable(0x41, ttf) == 0  # noqa: SLF001
+    # 0x01 -> WinAnsi name is ".notdef"/None -> no post-table glyph -> 0.
+    assert font._code_to_gid_via_unicode_subtable(0x01, ttf) == 0  # noqa: SLF001
+    # 0x41 -> "A" -> post-table name_to_gid resolves (upstream last resort).
+    assert font._code_to_gid_via_unicode_subtable(0x41, ttf) > 0  # noqa: SLF001
 
 
 def test_via_unicode_subtable_symbolic_all_retries_miss(
