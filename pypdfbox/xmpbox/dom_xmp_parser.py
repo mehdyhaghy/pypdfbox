@@ -307,6 +307,20 @@ class DomXmpParser:
         )
         namespace_prefixes = self._collect_namespace_prefixes(body)
 
+        # Trailing <?xpacket end="r|w"?> validation. Upstream's
+        # ``parseEndPacket`` (DomXmpParser line 921) only honours the marker
+        # values "r" (read-only) and "w" (writable); any other value raises
+        # ``XpacketBadEnd``. This is a structural check, not gated by strict /
+        # lenient mode, so a malformed end marker fails in both arms (mirrors
+        # the live xmpbox oracle). A wholly absent end PI is tolerated here
+        # (``xpacket_end`` is None) — see CHANGES.md (wave 1545) for the
+        # missing-end-PI leniency divergence pinned both-sides.
+        if xpacket_end is not None and xpacket_end not in ("r", "w"):
+            raise XmpParsingException(
+                XmpParsingException.ErrorType.XPACKET_BAD_END,
+                "Expected xpacket 'end' attribute with value 'r' or 'w' ",
+            )
+
         # An XMP packet must not carry a DTD (ISO 16684-1 §7.3.2). Reject any
         # DOCTYPE before handing the bytes to ElementTree's expat parser, which
         # would otherwise expand internal entities ("billion laughs" DoS) /

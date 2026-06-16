@@ -3,7 +3,16 @@ from __future__ import annotations
 from collections.abc import Iterator
 from typing import Any, cast
 
-from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName, COSString
+from pypdfbox.cos import (
+    COSArray,
+    COSBase,
+    COSBoolean,
+    COSDictionary,
+    COSFloat,
+    COSInteger,
+    COSName,
+    COSString,
+)
 from pypdfbox.pdmodel.common.pd_name_tree_node import PDNameTreeNode
 from pypdfbox.pdmodel.common.pd_number_tree_node import PDNumberTreeNode
 
@@ -133,22 +142,46 @@ class PDStructureTreeRoot(PDStructureNode):
 
     # ---------- /RoleMap ----------
 
-    def get_role_map(self) -> dict[str, str]:
+    def get_role_map(self) -> dict[str, Any]:
         """
         Returns a Python dict mapping non-standard structure-type names to
-        standard structure types. Entries that are not ``/Name`` values
-        are skipped (upstream returns the underlying mixed map; we narrow
-        to string-to-string for the lite scaffold).
+        their role-map targets.
+
+        Mirrors upstream ``PDStructureTreeRoot.getRoleMap()``, which delegates
+        to ``COSDictionaryMap.convertBasicTypesToMap``: ``/Name`` and
+        ``/String`` values become ``str``, ``COSInteger`` becomes ``int``,
+        ``COSFloat`` becomes ``float`` and ``COSBoolean`` becomes ``bool``.
+        Any other COS type (array / dictionary / null) makes upstream raise
+        ``IOException`` inside ``convertBasicTypesToMap``; ``getRoleMap``
+        catches it and returns an EMPTY map. We reproduce that all-or-nothing
+        behaviour: a single unconvertible entry collapses the whole result to
+        ``{}`` rather than silently dropping just that key. A non-dictionary
+        ``/RoleMap`` (resolved via ``getCOSDictionary`` upstream) also yields
+        an empty map.
         """
         rm = self._dictionary.get_dictionary_object(_ROLE_MAP)
-        out: dict[str, str] = {}
+        out: dict[str, Any] = {}
         if not isinstance(rm, COSDictionary):
             return out
-        for key, value in rm.entry_set():
-            if isinstance(value, COSName):
-                out[key.get_name()] = value.get_name()
-            elif isinstance(value, COSString):
+        for key in rm.key_set():
+            value = rm.get_dictionary_object(key)
+            if isinstance(value, COSString):
                 out[key.get_name()] = value.get_string()
+            elif isinstance(value, COSName):
+                out[key.get_name()] = value.get_name()
+            elif isinstance(value, COSBoolean):
+                # COSBoolean must precede COSInteger: COSBoolean is not a
+                # COSInteger subclass here, but order mirrors upstream's
+                # instanceof chain and documents intent.
+                out[key.get_name()] = value.get_value()
+            elif isinstance(value, COSInteger):
+                out[key.get_name()] = int(value.value)
+            elif isinstance(value, COSFloat):
+                out[key.get_name()] = float(value.value)
+            else:
+                # Unknown type -> upstream throws IOException, swallowed by
+                # getRoleMap(), which returns a fresh empty HashMap.
+                return {}
         return out
 
     def set_role_map(self, role_map: dict[str, str] | None) -> None:
@@ -472,6 +505,12 @@ class PDStructureTreeRoot(PDStructureNode):
             seen.add(current)
             mapped = role_map.get(current)
             if mapped is None:
+                return current
+            if not isinstance(mapped, str):
+                # A role-map target that converted to a non-string scalar
+                # (int / float / bool — see get_role_map) is not a structure
+                # type name, so the chain cannot continue. Stop at the name
+                # we were about to resolve, mirroring "no usable mapping".
                 return current
             current = mapped
         return current

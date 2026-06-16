@@ -368,27 +368,63 @@ def test_unknown_operator_falls_to_unsupported_via_super() -> None:
 
 
 def test_save_graphics_state_q_routes_through_engine_hook() -> None:
-    """``q`` triggers the engine's ``save_graphics_state`` hook (the
-    graphics engine forwards from its dispatch override). The base
-    engine's hook is a no-op; we verify by overriding it."""
+    """``q`` triggers the engine's ``save_graphics_state`` hook and ``Q`` the
+    ``restore_graphics_state`` hook — but ``Q`` only pops when the graphics
+    stack has more than one frame (the registered ``Restore`` operator's
+    ``get_graphics_stack_size() > 1`` guard; PDFBOX-161). The graphics engine
+    dispatches ``q`` / ``Q`` through the inherited ``Save`` / ``Restore``
+    processors (NOT inline), so the guard applies. We model a depth counter
+    seeded at 1 so the matched ``Q`` has a frame to pop."""
 
     class _Capture(_RecordingEngine):
         def __init__(self) -> None:
             super().__init__()
             self.saves = 0
             self.restores = 0
+            self._depth = 1
 
         def save_graphics_state(self) -> None:
             self.saves += 1
+            self._depth += 1
 
         def restore_graphics_state(self) -> None:
             self.restores += 1
+            self._depth -= 1
+
+        def get_graphics_stack_size(self) -> int:
+            return self._depth
 
     engine = _Capture()
     engine.process_operator("q", [])
     engine.process_operator("Q", [])
     assert engine.saves == 1
     assert engine.restores == 1
+
+
+def test_unbalanced_Q_does_not_underflow_via_graphics_engine() -> None:
+    """An extra ``Q`` (empty stack) routed through the graphics engine raises
+    the registered ``Restore`` operator's EmptyGraphicsStackException, which
+    ``operator_exception`` swallows — the ``restore_graphics_state`` hook is
+    NOT called, so the depth never under-flows below the seed frame. Regression
+    guard for the wave-1545 fix (inline ``Q`` used to bypass the guard)."""
+
+    class _Capture(_RecordingEngine):
+        def __init__(self) -> None:
+            super().__init__()
+            self.restores = 0
+            self._depth = 1
+
+        def restore_graphics_state(self) -> None:
+            self.restores += 1
+            self._depth -= 1
+
+        def get_graphics_stack_size(self) -> int:
+            return self._depth
+
+    engine = _Capture()
+    engine.process_operator("Q", [])  # empty stack -> swallowed, no pop
+    assert engine.restores == 0
+    assert engine.get_graphics_stack_size() == 1
 
 
 def test_str_form_of_process_operator_works_for_path_ops() -> None:

@@ -91,8 +91,16 @@ WIND_EVEN_ODD: int = 0
 WIND_NON_ZERO: int = 1
 
 # The operators whose semantics ``PDFGraphicsStreamEngine.process_operator``
-# handles inline (driving the abstract path / painting / clipping / shading /
-# save-restore hooks) rather than deferring to the registered lite stubs.
+# handles inline (driving the abstract path / painting / clipping / shading
+# hooks) rather than deferring to the registered processors.
+#
+# ``q`` / ``Q`` are deliberately NOT inline: upstream PDFBox routes them through
+# the registered ``Save`` / ``Restore`` operators, and ``Restore`` only pops
+# when ``getGraphicsStackSize() > 1`` (raising the swallowed
+# ``EmptyGraphicsStackException`` otherwise — PDFBOX-161). Handling ``Q`` inline
+# bypassed that guard and let an unbalanced extra ``Q`` under-flow the graphics
+# stack below the seed frame; deferring to the registered processor restores the
+# guard and the lenient-recovery contract.
 _INLINE_PATH_OPERATORS: frozenset[str] = frozenset(
     {
         OperatorName.MOVE_TO,
@@ -114,8 +122,6 @@ _INLINE_PATH_OPERATORS: frozenset[str] = frozenset(
         OperatorName.ENDPATH,
         OperatorName.CLIP_NON_ZERO,
         OperatorName.CLIP_EVEN_ODD,
-        OperatorName.SAVE,
-        OperatorName.RESTORE,
         OperatorName.SHADING_FILL,
     }
 )
@@ -490,17 +496,6 @@ class PDFGraphicsStreamEngine(PDFStreamEngine):
             return
         if name == OperatorName.CLIP_EVEN_ODD:
             self.clip(WIND_EVEN_ODD)
-            return
-
-        # Graphics-state save / restore — drive the engine hooks the
-        # parent already exposes (save_graphics_state / restore_graphics_state).
-        # The lite ``q`` / ``Q`` stubs registered above only log;
-        # forwarding here gives subclasses a single hook to override.
-        if name == OperatorName.SAVE:
-            self.save_graphics_state()
-            return
-        if name == OperatorName.RESTORE:
-            self.restore_graphics_state()
             return
 
         # Shading fill

@@ -441,15 +441,29 @@ def test_non_numeric_operands_silently_dropped() -> None:
 def test_super_dispatch_for_unhandled_operators() -> None:
     """Operators NOT in the graphics-hook set (e.g. ``q`` / ``Q`` /
     ``cm``) should fall through to the parent ``process_operator`` and
-    drive the existing engine hooks (or the lite no-op stubs)."""
+    drive the existing engine hooks (or the lite no-op stubs).
+
+    ``q`` / ``Q`` dispatch through the inherited ``Save`` / ``Restore``
+    processors, and ``Restore`` only pops when ``get_graphics_stack_size() > 1``
+    (PDFBOX-161). We seed a depth counter at 1 so the matched ``Q`` of a
+    balanced ``q Q`` has a frame to pop."""
     captured: list[str] = []
 
     class _Tracker(_RecordingGraphicsEngine):
+        def __init__(self) -> None:
+            super().__init__()
+            self._depth = 1
+
         def save_graphics_state(self) -> None:
             captured.append("save")
+            self._depth += 1
 
         def restore_graphics_state(self) -> None:
             captured.append("restore")
+            self._depth -= 1
+
+        def get_graphics_stack_size(self) -> int:
+            return self._depth
 
     engine = _Tracker()
     stream = _BytesContentStream(b"q Q")
