@@ -690,9 +690,15 @@ def test_collect_field_locations_swallows_catalog_attribute_error(
     doc = _make_one_page_doc(content=None)
     try:
         page_dict = doc.get_page(0).get_cos_object()
-        monkeypatch.setattr(_PDDoc, "get_document_catalog", _boom)
         pane = PagePane(tk_root, doc, page_dict, statuslabel=None)
         pane.init()
+        # Render with a real catalog first, then make the catalog inaccessible
+        # and rebuild the rect map. ``get_number_of_pages`` routes through
+        # ``get_document_catalog`` (wave 1537), so patching it before ``init()``
+        # would crash rendering rather than exercise the field collector — patch
+        # it after the UI is up and re-run ``init_rect_map`` directly.
+        monkeypatch.setattr(_PDDoc, "get_document_catalog", _boom)
+        pane.init_rect_map()
         assert pane._rect_map == {}  # noqa: SLF001
     finally:
         doc.close()
