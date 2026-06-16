@@ -37,20 +37,29 @@ class AccessPermission:
     # (every bit set except the reserved bits 1 and 2).
     _DEFAULT_PERMISSIONS: int = ~3
 
-    def __init__(self, permissions: int = -1) -> None:
+    # Sentinel distinguishing the no-arg constructor from an explicit ``/P``
+    # value. Upstream PDFBox has two *separate* constructors: the no-arg one
+    # stores ``DEFAULT_PERMISSIONS`` (``~3 == -4``) and the ``int`` one stores
+    # the argument VERBATIM. Python's single ``__init__`` re-creates that split
+    # via this sentinel — a plain default of ``-1`` would be indistinguishable
+    # from an explicit ``AccessPermission(-1)``, which upstream stores as ``-1``,
+    # not ``-4`` (the wave-1537 fix).
+    _UNSET = object()
+
+    def __init__(self, permissions: object = _UNSET) -> None:
         """Construct an ``AccessPermission``.
 
-        With no argument (or ``permissions == -1``), all permissions are
-        granted (mirrors upstream no-arg constructor). Otherwise the bits
-        are decoded from ``permissions`` (typically the value of ``/P``).
+        With no argument this mirrors upstream's **no-arg** constructor and
+        stores ``DEFAULT_PERMISSIONS`` (``~3``); every defined permission bit
+        is set, the reserved bits 1–2 are clear. With an explicit integer this
+        mirrors upstream's ``AccessPermission(int)`` and stores the value
+        **verbatim** (typically the raw ``/P`` integer) — including an explicit
+        ``-1`` (all bits set), which upstream keeps as ``-1``, NOT ``-4``.
         """
-        # ``-1`` is the convention used by the upstream no-arg constructor:
-        # all bits set, including the reserved low ones, which then get
-        # masked off implicitly by the bit accessors.
-        if permissions == -1:
+        if permissions is self._UNSET:
             self._bytes: int = self._DEFAULT_PERMISSIONS
         else:
-            self._bytes = permissions
+            self._bytes = int(permissions)  # type: ignore[arg-type]
         self._read_only: bool = False
 
     # ---------- raw access ----------

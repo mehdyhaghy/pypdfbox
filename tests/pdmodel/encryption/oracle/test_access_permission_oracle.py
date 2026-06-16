@@ -15,11 +15,12 @@ Two probe modes drive the oracle (``oracle/probes/PermProbe.java``):
 * ``readback <file> <password>`` — open the encrypted PDF and emit
   ``doc.getCurrentAccessPermission()`` predicates.
 
-Documented divergence: pypdfbox's ``AccessPermission(-1)`` stores ``~3`` (the
-no-arg DEFAULT bits) rather than the literal ``-1`` PDFBox keeps for the
-``int`` constructor. Every predicate is identical (both have all defined bits
-set), only ``get_permission_bytes()`` differs; the predicate-set comparison
-below is therefore exact for ``-1`` too. See CHANGES.md.
+No divergence remains for the ``int`` constructor: as of wave 1537 an explicit
+``AccessPermission(-1)`` stores the literal ``-1`` verbatim (matching PDFBox's
+``AccessPermission(int)``), distinct from the no-arg constructor's
+``DEFAULT_PERMISSIONS`` (``~3``). Both the predicate set AND
+``get_permission_bytes()`` now match PDFBox exactly for ``-1``. See CHANGES.md
+and ``test_access_permission_fuzz_wave1537.py`` for the deep bit-layout fuzz.
 """
 
 from __future__ import annotations

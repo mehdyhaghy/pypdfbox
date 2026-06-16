@@ -14,8 +14,9 @@ Round-out tests for paths not yet covered:
   offsets back.
 * ``get_objects_by_type`` matches single-type and dual-type overloads,
   ignores non-dictionary values, and ignores entries lacking a ``/Type``.
-* ``set_version`` rejects non-positive values; ``set_start_xref`` and
-  ``set_highest_xref_object_number`` reject negatives.
+* ``set_version`` / ``set_start_xref`` / ``set_highest_xref_object_number``
+  store their argument verbatim with no validation (upstream is a bare field
+  assignment — oracle-confirmed, wave 1537).
 * ``close`` is idempotent.
 * ``is_encrypted`` returns ``False`` without a trailer.
 * ``__enter__`` / ``__exit__`` close the document.
@@ -274,12 +275,15 @@ def test_get_objects_by_type_skips_dict_without_type_key() -> None:
 # ---------- version / xref-stream / hybrid flags ----------
 
 
-def test_set_version_rejects_non_positive() -> None:
+def test_set_version_accepts_non_positive() -> None:
+    # Upstream PDFBox 3.0.7 ``setVersion`` is a bare field assignment with no
+    # validation — zero / negative / downgrade values are stored verbatim
+    # (oracle-confirmed, wave 1537). Match that lenient contract.
     doc = COSDocument()
-    with pytest.raises(ValueError):
-        doc.set_version(0)
-    with pytest.raises(ValueError):
-        doc.set_version(-1.7)
+    doc.set_version(0)
+    assert doc.get_version() == pytest.approx(0.0)
+    doc.set_version(-1.7)
+    assert doc.get_version() == pytest.approx(-1.7)
     doc.close()
 
 
@@ -290,17 +294,21 @@ def test_set_version_round_trip() -> None:
     doc.close()
 
 
-def test_set_start_xref_rejects_negative() -> None:
+def test_set_start_xref_accepts_negative() -> None:
+    # Upstream ``setStartXref`` stores the argument verbatim with no sign
+    # check (oracle-confirmed, wave 1537).
     doc = COSDocument()
-    with pytest.raises(ValueError):
-        doc.set_start_xref(-1)
+    doc.set_start_xref(-1)
+    assert doc.get_start_xref() == -1
     doc.close()
 
 
-def test_set_highest_xref_object_number_rejects_negative() -> None:
+def test_set_highest_xref_object_number_accepts_negative() -> None:
+    # Upstream ``setHighestXRefObjectNumber`` stores the argument verbatim
+    # with no sign check (oracle-confirmed, wave 1537).
     doc = COSDocument()
-    with pytest.raises(ValueError):
-        doc.set_highest_xref_object_number(-1)
+    doc.set_highest_xref_object_number(-1)
+    assert doc.get_highest_xref_object_number() == -1
     doc.close()
 
 

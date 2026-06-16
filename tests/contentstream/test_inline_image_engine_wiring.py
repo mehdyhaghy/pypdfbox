@@ -173,9 +173,11 @@ def test_inline_image_dispatch_passes_engine_resources() -> None:
 
 
 def test_bi_with_missing_data_does_not_raise() -> None:
-    """Defensive: a malformed BI without an ID payload (or with an
-    empty payload) should not abort the dispatch loop. We synthesise
-    such an operator directly via :meth:`process_operator`."""
+    """A malformed BI with an empty payload must not abort the dispatch
+    loop *and* must not invoke the draw hook — mirroring upstream's
+    graphics ``BeginInlineImage.process`` short-circuit
+    ``if (data == null || data.length == 0) return`` (wave 1537, pinned
+    against the live PDFBox 3.0.7 oracle: ``draws=0``)."""
     from pypdfbox.contentstream.operator import Operator
 
     engine = _RecordingEngine()
@@ -183,8 +185,19 @@ def test_bi_with_missing_data_does_not_raise() -> None:
     op.set_image_parameters(COSDictionary())  # empty dict
     op.set_image_data(b"")
     operands: list[COSBase] = []
-    # Should not raise, even with a width/height of -1 (unset).
+    # Should not raise, and should build no image (empty data short-circuit).
     engine.process_operator(op, operands)
-    # The image still gets built (PDInlineImage tolerates -1 dimensions
-    # and the renderer's draw_image short-circuits later).
-    assert len(engine.inline_images) == 1
+    assert len(engine.inline_images) == 0
+
+
+def test_bi_with_none_data_does_not_raise() -> None:
+    """``BI`` whose data slot was never populated (``None``) behaves like
+    the empty-payload case: no image, no draw, no raise."""
+    from pypdfbox.contentstream.operator import Operator
+
+    engine = _RecordingEngine()
+    op = Operator.get_operator("BI")
+    op.set_image_parameters(COSDictionary())
+    operands: list[COSBase] = []
+    engine.process_operator(op, operands)
+    assert len(engine.inline_images) == 0

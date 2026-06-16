@@ -240,10 +240,13 @@ def test_bi_dispatch_constructs_pd_inline_image_and_invokes_hook() -> None:
     assert img.get_height() == 2
 
 
-def test_bi_dispatch_with_missing_parameters_synthesises_empty_dict() -> None:
-    """When the parser didn't attach parameters (truly malformed stream),
-    the engine synthesises an empty ``COSDictionary`` so the
-    :class:`PDInlineImage` constructor gets a valid argument shape."""
+def test_bi_dispatch_with_missing_data_short_circuits() -> None:
+    """A truly malformed stream where the parser attached neither
+    parameters nor data: upstream's graphics ``BeginInlineImage.process``
+    returns before building the image (``data == null`` guard), so no
+    image is constructed and the draw hook never fires (wave 1537, pinned
+    against the live PDFBox 3.0.7 oracle: ``draws=0``). The parameter dict
+    is only synthesised once data is present."""
     from pypdfbox.pdmodel.graphics.image.pd_inline_image import PDInlineImage
 
     class _Engine(PDFStreamEngine):
@@ -260,6 +263,14 @@ def test_bi_dispatch_with_missing_parameters_synthesises_empty_dict() -> None:
     assert op.get_image_parameters() is None
     assert op.get_image_data() is None
     engine.process_operator(op, [])
+    # data is None → upstream short-circuit, no image built.
+    assert len(engine.inline_images) == 0
+
+    # With data present but no parameters, the engine synthesises an empty
+    # dict so the PDInlineImage constructor gets a valid argument shape.
+    op2 = Operator.get_operator("BI")
+    op2.set_image_data(b"\x00")
+    engine.process_operator(op2, [])
     assert len(engine.inline_images) == 1
     img = engine.inline_images[0]
     # No /Width set, no /Height set → defaults from PDInlineImage.

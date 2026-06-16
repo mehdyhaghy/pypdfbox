@@ -114,7 +114,13 @@ class COSDocument(COSBase):
         """Return the existing ``COSObject`` for ``key``, creating an
         unresolved placeholder if none exists yet. Used by the parser
         when forward references are encountered. Mirrors upstream
-        ``getObjectFromPool(COSObjectKey)`` (Java line 511)."""
+        ``getObjectFromPool(COSObjectKey)`` (Java line 511).
+
+        A ``None`` key returns ``None`` rather than raising — upstream's
+        ``pool.computeIfAbsent(null, ...)`` yields ``null`` for a null key
+        (oracle-confirmed, wave 1537)."""
+        if key is None:
+            return None  # type: ignore[return-value]
         existing = self._objects.get(key)
         if existing is None:
             existing = COSObject(key.object_number, key.generation_number)
@@ -341,9 +347,13 @@ class COSDocument(COSBase):
         return self._version
 
     def set_version(self, version: float) -> None:
-        """Mirrors upstream ``setVersion(float)`` (Java line 297)."""
-        if version <= 0:
-            raise ValueError("version must be positive")
+        """Mirrors upstream ``setVersion(float)`` (Java line 297).
+
+        Upstream is a bare field assignment — it does NOT validate the
+        argument (a downgrade, zero, or a negative value is stored verbatim)
+        and it does NOT reject a downgrade below the current version. We match
+        that lenient contract so a corrupt ``/Version`` recovered by the
+        parser round-trips identically (oracle-confirmed, wave 1537)."""
         self._version = version
 
     # ---------- xref-stream marker ----------
@@ -439,9 +449,11 @@ class COSDocument(COSBase):
 
     def set_highest_xref_object_number(self, number: int) -> None:
         """Mirrors upstream ``setHighestXRefObjectNumber(long)`` (Java
-        line 424)."""
-        if number < 0:
-            raise ValueError("highest xref object number must be non-negative")
+        line 424).
+
+        Upstream is a bare field assignment with no sign check — a negative
+        value is stored verbatim. We match that lenient contract
+        (oracle-confirmed, wave 1537)."""
         self._highest_xref_object_number = number
 
     def get_highest_x_ref_object_number(self) -> int:
@@ -472,9 +484,11 @@ class COSDocument(COSBase):
     def set_start_xref(self, offset: int) -> None:
         """Record the trailing ``startxref`` value seen by the parser. The
         incremental writer reads this back as the ``/Prev`` chain pointer.
-        Mirrors upstream ``setStartXref(long)`` (Java line 548)."""
-        if offset < 0:
-            raise ValueError("startxref offset must be non-negative")
+        Mirrors upstream ``setStartXref(long)`` (Java line 548).
+
+        Upstream is a bare field assignment with no sign check — a negative
+        value is stored verbatim. We match that lenient contract
+        (oracle-confirmed, wave 1537)."""
         self._start_xref = offset
 
     # ---------- document state ----------

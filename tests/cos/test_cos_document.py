@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pytest
-
 from pypdfbox.cos import (
     COSArray,
     COSDictionary,
@@ -102,14 +100,16 @@ def test_encryption_flags() -> None:
         assert doc.get_encryption_dictionary() is enc
 
 
-def test_set_version_validates() -> None:
+def test_set_version_stores_verbatim() -> None:
+    # Upstream ``setVersion`` is a bare field assignment with no validation —
+    # zero / negative values are stored verbatim (oracle-confirmed, wave 1537).
     with COSDocument() as doc:
         doc.set_version(2.0)
         assert doc.get_version() == 2.0
-        with pytest.raises(ValueError):
-            doc.set_version(0)
-        with pytest.raises(ValueError):
-            doc.set_version(-1)
+        doc.set_version(0)
+        assert doc.get_version() == 0
+        doc.set_version(-1)
+        assert doc.get_version() == -1
 
 
 def test_xref_stream_marker() -> None:
@@ -273,8 +273,9 @@ def test_highest_xref_object_number() -> None:
         assert doc.get_highest_xref_object_number() == 0
         doc.set_highest_xref_object_number(42)
         assert doc.get_highest_xref_object_number() == 42
-        with pytest.raises(ValueError):
-            doc.set_highest_xref_object_number(-1)
+        # Upstream stores a negative value verbatim (oracle-confirmed, wave 1537).
+        doc.set_highest_xref_object_number(-1)
+        assert doc.get_highest_xref_object_number() == -1
 
 
 def test_set_warn_missing_close_does_not_raise() -> None:
@@ -289,8 +290,9 @@ def test_start_xref_round_trip() -> None:
         assert doc.get_start_xref() == 0
         doc.set_start_xref(12345)
         assert doc.get_start_xref() == 12345
-        with pytest.raises(ValueError):
-            doc.set_start_xref(-1)
+        # Upstream stores a negative value verbatim (oracle-confirmed, wave 1537).
+        doc.set_start_xref(-1)
+        assert doc.get_start_xref() == -1
 
 
 def test_version_set_int_promoted_to_float() -> None:

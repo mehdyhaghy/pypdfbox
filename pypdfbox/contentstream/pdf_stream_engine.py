@@ -404,40 +404,70 @@ class PDFStreamEngine:
         """Build a :class:`PDInlineImage` from the parser-collated ``BI``
         operator and forward to :meth:`show_inline_image`.
 
-        Falls through to the lite ``BI`` stub afterwards so
-        registry-level observers (e.g. parity test fixtures hooked via
-        :meth:`add_operator`) still see the operator. If the parser did
-        not attach a parameter dict (malformed stream) we synthesise an
-        empty :class:`COSDictionary` so the PDInlineImage constructor
-        receives a valid argument shape — :class:`PDInlineImage`
+        Mirrors upstream's graphics-level ``BeginInlineImage.process``
+        (``operator.graphics.BeginInlineImage``) draw-dispatch guards:
+
+        1. ``data is None`` or empty → no image is built and no draw hook
+           fires (upstream ``if (data == null || data.length == 0) return``).
+        2. ``image.is_empty()`` after the filter chain decodes → no draw
+           (upstream ``if (image.isEmpty()) return``).
+        3. a non-stencil image while colour operators are suppressed →
+           no draw (upstream
+           ``if (!image.isStencil() && !isShouldProcessColorOperators()) return``).
+
+        If the parser did not attach a parameter dict (malformed stream) we
+        synthesise an empty :class:`COSDictionary` so the PDInlineImage
+        constructor receives a valid argument shape — :class:`PDInlineImage`
         validates the contents (zero-dimension images surface as
-        ``get_width() == -1`` and the renderer's ``draw_image`` skips
-        them).
+        ``get_width() == -1``).
+
+        The lite ``BI`` stub is fired afterwards regardless of the guards so
+        registry-level observers (e.g. parity test fixtures hooked via
+        :meth:`add_operator`) still see the operator — a pypdfbox-only
+        registry-parity surface upstream does not model (upstream's ``BI``
+        operator *is* the registered processor).
         """
         from pypdfbox.pdmodel.graphics.image.pd_inline_image import (  # noqa: PLC0415
             PDInlineImage,
         )
 
+        data = operator.get_image_data()
+        # Upstream short-circuits a null / zero-length data payload before
+        # building the image: no PDInlineImage, no draw.
+        if not data:
+            self._invoke_inline_image_stub(operator, operands)
+            return
         params = operator.get_image_parameters()
         if params is None:
             params = COSDictionary()
-        data = operator.get_image_data()
-        if data is None:
-            data = b""
         try:
             image = PDInlineImage(params, data, self.get_resources())
         except OSError as exc:
             # Malformed inline image — log via the standard operator
-            # exception triage and stop.
+            # exception triage and stop (the stub does not fire on the
+            # error path).
             self.operator_exception(operator, operands, exc)
             return
-        try:
-            self.show_inline_image(image)
-        except OSError as exc:
-            self.operator_exception(operator, operands, exc)
-            return
-        # Keep the lite-stub log path live for parity with upstream's
-        # ``addOperator(BeginInlineImage)`` registration surface.
+        # Upstream skips the draw for an empty raster, and for a non-stencil
+        # image while colour operators are suppressed (uncoloured tiling
+        # pattern / Type3 d1 glyph).
+        skip_draw = image.is_empty() or (
+            not image.is_stencil() and not self._should_process_color_operators
+        )
+        if not skip_draw:
+            try:
+                self.show_inline_image(image)
+            except OSError as exc:
+                self.operator_exception(operator, operands, exc)
+                return
+        self._invoke_inline_image_stub(operator, operands)
+
+    def _invoke_inline_image_stub(
+        self, operator: Operator, operands: list[COSBase]
+    ) -> None:
+        """Fire the registered lite ``BI`` stub so registry observers see
+        the operator — kept live for parity with upstream's
+        ``addOperator(BeginInlineImage)`` registration surface."""
         processor = self._operators.get("BI")
         if processor is not None:
             try:

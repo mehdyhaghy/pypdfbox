@@ -39,6 +39,13 @@ class _ExceptionRecordingEngine(PDFStreamEngine):
 def test_inline_image_without_parser_payload_uses_empty_defaults(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """With data present but no parameter dict, the engine synthesises an
+    empty ``COSDictionary`` and forwards the engine resources unchanged.
+
+    A ``BI`` whose data slot is ``None`` (truly malformed stream) is
+    short-circuited before the constructor — upstream's graphics
+    ``BeginInlineImage.process`` guard ``if (data == null ...) return``
+    (wave 1537, pinned against the live PDFBox 3.0.7 oracle: ``draws=0``)."""
     captured: list[tuple[COSDictionary, bytes, PDResources | None]] = []
     resources = PDResources()
 
@@ -50,6 +57,12 @@ def test_inline_image_without_parser_payload_uses_empty_defaults(
             resources_arg: PDResources | None,
         ) -> None:
             captured.append((params, data, resources_arg))
+
+        def is_empty(self) -> bool:
+            return False
+
+        def is_stencil(self) -> bool:
+            return False
 
     class _Engine(PDFStreamEngine):
         def __init__(self) -> None:
@@ -68,15 +81,25 @@ def test_inline_image_without_parser_payload_uses_empty_defaults(
     processor = _Recorder("BI")
     engine.add_operator(processor)
 
+    # data is None → short-circuit: no constructor call, no draw, but the
+    # registry stub still fires.
     engine.process_operator("BI", None)
+    assert captured == []
+    assert engine.images == []
+    assert [call[0].get_name() for call in processor.calls] == ["BI"]
 
+    # With data present and no parameter dict, the empty-dict synthesis path
+    # runs: one constructor call with an empty dict + the engine resources.
+    op = Operator.get_operator("BI")
+    op.set_image_data(b"\x00")
+    engine.process_operator(op, [])
     assert len(captured) == 1
     params, data, seen_resources = captured[0]
     assert isinstance(params, COSDictionary)
-    assert data == b""
+    assert data == b"\x00"
     assert seen_resources is resources
     assert len(engine.images) == 1
-    assert [call[0].get_name() for call in processor.calls] == ["BI"]
+    assert [call[0].get_name() for call in processor.calls] == ["BI", "BI"]
 
 
 def test_inline_image_constructor_error_is_triaged_without_stub_dispatch(
@@ -99,7 +122,9 @@ def test_inline_image_constructor_error_is_triaged_without_stub_dispatch(
     processor = _Recorder("BI")
     engine.add_operator(processor)
 
-    engine.process_operator("BI", [])
+    op = Operator.get_operator("BI")
+    op.set_image_data(b"\x00")  # non-empty so the constructor is reached
+    engine.process_operator(op, [])
 
     assert [(name, str(exc)) for name, _, exc in engine.exceptions] == [
         ("BI", "bad inline image")
@@ -119,6 +144,12 @@ def test_inline_image_show_error_is_triaged_without_stub_dispatch(
         ) -> None:
             pass
 
+        def is_empty(self) -> bool:
+            return False
+
+        def is_stencil(self) -> bool:
+            return False
+
     class _Engine(_ExceptionRecordingEngine):
         def show_inline_image(self, inline_image: Any) -> None:
             raise OSError("draw failed")
@@ -131,7 +162,9 @@ def test_inline_image_show_error_is_triaged_without_stub_dispatch(
     processor = _Recorder("BI")
     engine.add_operator(processor)
 
-    engine.process_operator("BI", [])
+    op = Operator.get_operator("BI")
+    op.set_image_data(b"\x00")  # non-empty so the draw path is reached
+    engine.process_operator(op, [])
 
     assert [(name, str(exc)) for name, _, exc in engine.exceptions] == [
         ("BI", "draw failed")

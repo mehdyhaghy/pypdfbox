@@ -431,13 +431,32 @@ class PDDocument:
         ``PDDocument.getNumberOfPages()`` literally — delegates to
         :meth:`PDPageTree.get_count` (the cached ``/Pages /Count`` field)
         so the result is O(1) regardless of tree shape, matching the
-        upstream's ``getDocumentCatalog().getPages().getCount()`` chain."""
-        return self.get_pages().get_count()
+        upstream's ``getDocumentCatalog().getPages().getCount()`` chain.
+
+        Mirrors upstream by building the page tree *fresh* through the
+        catalog rather than reusing the cached :attr:`_pages` wrapper — see
+        :meth:`get_page` for why the fresh tree matters."""
+        return self.get_document_catalog().get_pages().get_count()
 
     def get_page(self, index: int) -> PDPage:
         """Return the page at the given 0-based index. Mirrors upstream
-        ``PDDocument.getPage(int)``."""
-        return self.get_pages()[index]
+        ``PDDocument.getPage(int)`` literally:
+        ``getDocumentCatalog().getPages().get(index)``.
+
+        Upstream's ``getPages()`` constructs a NEW ``PDPageTree`` (with a
+        fresh recursion-guard ``pageSet``) on every call, so each
+        ``getPage`` lookup starts from an empty set. pypdfbox caches the
+        page-tree wrapper in :attr:`_pages` for iteration / mutation reuse,
+        but that cache also persists the tree's ``_page_set``, which
+        ``PDPageTree.__getitem__`` never clears on the out-of-bounds path.
+        Reusing the cached tree here therefore leaked node identities
+        between successive ``get_page`` calls — a second out-of-range lookup
+        spuriously tripped the recursion guard (``RuntimeError``) where
+        upstream raises ``IndexError``. Routing through the catalog's fresh
+        tree restores upstream-faithful per-lookup isolation while leaving
+        the cached wrapper (and its within-a-single-lookup recursion
+        semantics) untouched for every other caller."""
+        return self.get_document_catalog().get_pages()[index]
 
     def add_page(self, page: PDPage) -> None:
         self.get_pages().add(page)

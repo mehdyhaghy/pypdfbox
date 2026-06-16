@@ -22,8 +22,32 @@ def test_default_constructor_grants_full_access() -> None:
     assert p.can_print_degraded()  # alias
 
 
-def test_constructor_minus_one_equivalent_to_no_arg() -> None:
-    assert AP(-1).get_permission_bytes() == AP().get_permission_bytes()
+def test_constructor_explicit_int_stored_verbatim() -> None:
+    """Upstream has two separate constructors: the no-arg one stores
+    ``DEFAULT_PERMISSIONS`` (``~3 == -4``); ``AccessPermission(int)`` stores the
+    argument VERBATIM. So an explicit ``-1`` keeps ``-1`` (NOT the no-arg
+    ``-4``), matching ``new AccessPermission(-1)`` in PDFBox (oracle-proven,
+    wave 1537). The decoded permission SET is identical for both — every
+    defined bit is on — only the raw stored int differs."""
+    assert AP(-1).get_permission_bytes() == -1
+    assert AP().get_permission_bytes() == -4
+    # Identical predicate view despite the different stored int.
+    for explicit, default in zip(
+        (
+            AP(-1).can_print(),
+            AP(-1).can_modify(),
+            AP(-1).can_extract_content(),
+            AP(-1).is_owner_permission(),
+        ),
+        (
+            AP().can_print(),
+            AP().can_modify(),
+            AP().can_extract_content(),
+            AP().is_owner_permission(),
+        ),
+        strict=True,
+    ):
+        assert explicit == default is True
 
 
 def test_constructor_zero_revokes_all_defined_bits() -> None:
