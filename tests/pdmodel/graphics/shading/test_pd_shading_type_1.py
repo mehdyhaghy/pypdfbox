@@ -65,13 +65,12 @@ def test_constructor_with_existing_dictionary_preserves_entries():
 # ---------- /Domain ----------
 
 
-def test_domain_default_when_absent():
-    # Per Table 79 the spec default is [0 1 0 1].
+def test_domain_none_when_absent():
+    # Upstream PDShadingType1.getDomain() delegates to getCOSArray(DOMAIN),
+    # which returns null when /Domain is absent — it does NOT materialize the
+    # spec default [0 1 0 1] (proven by the wave-1538 oracle).
     s = PDShadingType1()
-    got = s.get_domain()
-    assert isinstance(got, COSArray)
-    assert got.to_float_array() == [0.0, 1.0, 0.0, 1.0]
-    # And the default is not written back to the underlying dict.
+    assert s.get_domain() is None
     assert s.get_cos_object().get_dictionary_object("Domain") is None
 
 
@@ -99,8 +98,9 @@ def test_domain_set_none_removes_entry():
     assert s.get_cos_object().get_dictionary_object("Domain") is not None
     s.set_domain(None)
     assert s.get_cos_object().get_dictionary_object("Domain") is None
-    # Typed getter falls back to spec default.
-    assert s.get_domain().to_float_array() == [0.0, 1.0, 0.0, 1.0]
+    # Typed getter returns None when absent (no default materialization),
+    # matching upstream getCOSArray(DOMAIN).
+    assert s.get_domain() is None
 
 
 # ---------- /Matrix ----------

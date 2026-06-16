@@ -8,7 +8,6 @@ from pypdfbox.cos import (
     COSBase,
     COSBoolean,
     COSDictionary,
-    COSFloat,
     COSName,
 )
 
@@ -57,16 +56,15 @@ class PDShadingType2(PDShading):
     # ---------- /Domain ----------
 
     def get_domain(self) -> COSArray | None:
-        """Returns ``/Domain`` (a 2-element parametric range). When absent,
-        materializes the spec default ``[0 1]`` as a fresh ``COSArray`` —
-        the entry is *not* written back to the underlying dictionary."""
+        """Returns ``/Domain`` (a 2-element parametric range), or ``None`` when
+        the entry is absent or is not a ``COSArray``.
+
+        Mirrors upstream ``PDShadingType2.getDomain()`` which delegates to
+        ``getCOSArray(DOMAIN)`` — returns the stored array or ``null``; it does
+        **not** materialize the spec default ``[0 1]``. Callers that need the
+        default (the axial shading context) apply it themselves."""
         v = self._dict.get_dictionary_object(_DOMAIN)
-        if isinstance(v, COSArray):
-            return v
-        default = COSArray()
-        default.add(COSFloat(0.0))
-        default.add(COSFloat(1.0))
-        return default
+        return v if isinstance(v, COSArray) else None
 
     def set_domain(self, domain: COSArray | Iterable[float] | None) -> None:
         """Set ``/Domain``. Accepts a ``COSArray`` (stored as-is, preserving
@@ -159,19 +157,18 @@ class PDShadingType2(PDShading):
 
     # ---------- /Extend ----------
 
-    def get_extend(self) -> tuple[bool, bool]:
-        """Returns ``/Extend`` as a 2-tuple ``(extend_start, extend_end)``.
-        Per Table 85, the spec default when the entry is absent is
-        ``[false false]``. Non-boolean entries are coerced to ``False``."""
+    def get_extend(self) -> COSArray | None:
+        """Returns ``/Extend`` (a 2-element boolean array), or ``None`` when
+        the entry is absent or is not a ``COSArray``.
+
+        Mirrors upstream ``PDShadingType2.getExtend()`` which delegates to
+        ``getCOSArray(EXTEND)`` — returns the stored ``COSArray`` or ``null``;
+        it does **not** materialize the spec default ``[false false]`` nor
+        coerce the result to booleans. Callers that need the
+        ``(start, end)`` boolean pair (the axial/radial shading contexts)
+        read the two ``COSBoolean`` entries off the array themselves."""
         v = self._dict.get_dictionary_object(_EXTEND)
-        if not isinstance(v, COSArray) or v.size() < 2:
-            return (False, False)
-        a = v.get_object(0)
-        b = v.get_object(1)
-        return (
-            isinstance(a, COSBoolean) and a.get_value(),
-            isinstance(b, COSBoolean) and b.get_value(),
-        )
+        return v if isinstance(v, COSArray) else None
 
     def set_extend(self, start: bool | COSArray | None, end: bool | None = None) -> None:
         """Set ``/Extend``. Accepts either ``(start, end)`` as a pair of

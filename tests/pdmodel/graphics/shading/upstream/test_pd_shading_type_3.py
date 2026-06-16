@@ -37,12 +37,16 @@ def test_shading_type_constant():
     assert PDShadingType3().get_shading_type() == PDShading.SHADING_TYPE3
 
 
-def test_default_domain_is_zero_one():
-    assert PDShadingType3().get_domain().to_float_array() == [0.0, 1.0]
+def test_domain_none_when_absent():
+    # Upstream getDomain() (inherited) → getCOSArray(DOMAIN) → null when absent;
+    # no spec-default [0 1] materialization (wave-1538 oracle).
+    assert PDShadingType3().get_domain() is None
 
 
-def test_default_extend_is_false_false():
-    assert PDShadingType3().get_extend() == (False, False)
+def test_extend_none_when_absent():
+    # Upstream getExtend() (inherited) → getCOSArray(EXTEND) → null when absent;
+    # no spec-default [false false] materialization (wave-1538 oracle).
+    assert PDShadingType3().get_extend() is None
 
 
 def test_coords_round_trip_radial():

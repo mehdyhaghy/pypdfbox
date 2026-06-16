@@ -87,13 +87,12 @@ def test_coords_set_none_removes_entry():
 # ---------- /Domain ----------
 
 
-def test_domain_default_when_absent():
-    # Per Table 86 the spec default is [0 1].
+def test_domain_none_when_absent():
+    # Upstream PDShadingType3.getDomain() (inherited from PDShadingType2)
+    # delegates to getCOSArray(DOMAIN), returning null when /Domain is absent —
+    # no spec-default [0 1] materialization (proven by the wave-1538 oracle).
     s = PDShadingType3()
-    got = s.get_domain()
-    assert isinstance(got, COSArray)
-    assert got.to_float_array() == [0.0, 1.0]
-    # And the default is not written back to the underlying dict.
+    assert s.get_domain() is None
     assert s.get_cos_object().get_dictionary_object("Domain") is None
 
 
@@ -121,8 +120,8 @@ def test_domain_set_none_removes_entry():
     assert s.get_cos_object().get_dictionary_object("Domain") is not None
     s.set_domain(None)
     assert s.get_cos_object().get_dictionary_object("Domain") is None
-    # And the typed getter falls back to the spec default.
-    assert s.get_domain().to_float_array() == [0.0, 1.0]
+    # And the typed getter returns None when absent (no default).
+    assert s.get_domain() is None
 
 
 # ---------- /Function ----------
@@ -173,9 +172,18 @@ def test_function_rejects_unsupported_type():
 # ---------- /Extend ----------
 
 
-def test_extend_default_when_absent():
-    # Per Table 86 the spec default is [false false].
-    assert PDShadingType3().get_extend() == (False, False)
+def _extend_pair(arr):
+    return (
+        bool(arr.get_object(0).get_value()),
+        bool(arr.get_object(1).get_value()),
+    )
+
+
+def test_extend_none_when_absent():
+    # Upstream PDShadingType3.getExtend() (inherited from PDShadingType2)
+    # delegates to getCOSArray(EXTEND), returning null when /Extend is absent —
+    # no spec-default [false false] materialization (wave-1538 oracle).
+    assert PDShadingType3().get_extend() is None
 
 
 @pytest.mark.parametrize(
@@ -185,14 +193,13 @@ def test_extend_default_when_absent():
 def test_extend_round_trip(start, end):
     s = PDShadingType3()
     s.set_extend(start, end)
-    assert s.get_extend() == (start, end)
-    arr = s.get_cos_object().get_dictionary_object("Extend")
+    arr = s.get_extend()
     assert isinstance(arr, COSArray)
+    assert arr is s.get_cos_object().get_dictionary_object("Extend")
     assert arr.size() == 2
     assert isinstance(arr.get_object(0), COSBoolean)
     assert isinstance(arr.get_object(1), COSBoolean)
-    assert arr.get_object(0).get_value() is start
-    assert arr.get_object(1).get_value() is end
+    assert _extend_pair(arr) == (start, end)
 
 
 def test_extend_truthy_inputs_are_coerced_to_bool():
@@ -201,8 +208,7 @@ def test_extend_truthy_inputs_are_coerced_to_bool():
     # into the dictionary.
     s = PDShadingType3()
     s.set_extend(1, 0)  # type: ignore[arg-type]
-    assert s.get_extend() == (True, False)
-    arr = s.get_cos_object().get_dictionary_object("Extend")
+    arr = s.get_extend()
     assert arr.get_object(0) is COSBoolean.TRUE
     assert arr.get_object(1) is COSBoolean.FALSE
 
@@ -216,7 +222,7 @@ def test_extend_accepts_upstream_cos_array_form():
     s.set_extend(arr)
 
     assert s.get_cos_object().get_dictionary_object("Extend") is arr
-    assert s.get_extend() == (True, False)
+    assert s.get_extend() is arr
 
 
 def test_extend_single_none_removes_entry():
@@ -226,4 +232,4 @@ def test_extend_single_none_removes_entry():
     s.set_extend(None)
 
     assert s.get_cos_object().get_dictionary_object("Extend") is None
-    assert s.get_extend() == (False, False)
+    assert s.get_extend() is None

@@ -83,13 +83,12 @@ def test_coords_set_none_removes_entry():
 # ---------- /Domain ----------
 
 
-def test_domain_default_when_absent():
-    # Per Table 85 the spec default is [0 1].
+def test_domain_none_when_absent():
+    # Upstream PDShadingType2.getDomain() delegates to getCOSArray(DOMAIN),
+    # returning null when /Domain is absent — no spec-default [0 1]
+    # materialization (proven by the wave-1538 oracle).
     s = PDShadingType2()
-    got = s.get_domain()
-    assert isinstance(got, COSArray)
-    assert got.to_float_array() == [0.0, 1.0]
-    # Default is not written back.
+    assert s.get_domain() is None
     assert s.get_cos_object().get_dictionary_object("Domain") is None
 
 
@@ -117,7 +116,7 @@ def test_domain_set_none_removes_entry():
     assert s.get_cos_object().get_dictionary_object("Domain") is not None
     s.set_domain(None)
     assert s.get_cos_object().get_dictionary_object("Domain") is None
-    assert s.get_domain().to_float_array() == [0.0, 1.0]
+    assert s.get_domain() is None
 
 
 # ---------- /Function ----------
@@ -183,9 +182,20 @@ def test_function_rejects_unsupported_type():
 # ---------- /Extend ----------
 
 
-def test_extend_default_when_absent():
-    # Per Table 85 the spec default is [false false].
-    assert PDShadingType2().get_extend() == (False, False)
+def _extend_pair(arr):
+    # Read a /Extend COSArray as a (start, end) bool pair the way the shading
+    # context does (upstream getExtend returns the raw COSArray, not a tuple).
+    return (
+        bool(arr.get_object(0).get_value()),
+        bool(arr.get_object(1).get_value()),
+    )
+
+
+def test_extend_none_when_absent():
+    # Upstream PDShadingType2.getExtend() delegates to getCOSArray(EXTEND),
+    # returning null when /Extend is absent — no spec-default [false false]
+    # materialization, no boolean coercion (proven by the wave-1538 oracle).
+    assert PDShadingType2().get_extend() is None
 
 
 @pytest.mark.parametrize(
@@ -195,21 +205,19 @@ def test_extend_default_when_absent():
 def test_extend_round_trip(start, end):
     s = PDShadingType2()
     s.set_extend(start, end)
-    assert s.get_extend() == (start, end)
-    arr = s.get_cos_object().get_dictionary_object("Extend")
+    arr = s.get_extend()
     assert isinstance(arr, COSArray)
+    assert arr is s.get_cos_object().get_dictionary_object("Extend")
     assert arr.size() == 2
     assert isinstance(arr.get_object(0), COSBoolean)
     assert isinstance(arr.get_object(1), COSBoolean)
-    assert arr.get_object(0).get_value() is start
-    assert arr.get_object(1).get_value() is end
+    assert _extend_pair(arr) == (start, end)
 
 
 def test_extend_truthy_inputs_are_coerced_to_bool():
     s = PDShadingType2()
     s.set_extend(1, 0)  # type: ignore[arg-type]
-    assert s.get_extend() == (True, False)
-    arr = s.get_cos_object().get_dictionary_object("Extend")
+    arr = s.get_extend()
     assert arr.get_object(0) is COSBoolean.TRUE
     assert arr.get_object(1) is COSBoolean.FALSE
 
@@ -222,7 +230,7 @@ def test_extend_legacy_cos_array_form_still_accepted():
     legacy.add(COSBoolean.TRUE)
     s.set_extend(legacy)
     assert s.get_cos_object().get_dictionary_object("Extend") is legacy
-    assert s.get_extend() == (True, True)
+    assert s.get_extend() is legacy
 
 
 def test_extend_single_none_removes_entry():
@@ -231,4 +239,4 @@ def test_extend_single_none_removes_entry():
     assert s.get_cos_object().get_dictionary_object("Extend") is not None
     s.set_extend(None)
     assert s.get_cos_object().get_dictionary_object("Extend") is None
-    assert s.get_extend() == (False, False)
+    assert s.get_extend() is None

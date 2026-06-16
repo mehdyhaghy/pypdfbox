@@ -884,9 +884,11 @@ def test_shading_type2_set_extend_with_non_array_single_arg_falls_through() -> N
     shading = PDShadingType2()
     # Non-None non-COSArray start, end omitted (= None). Falls through.
     shading.set_extend(True)
-    # The two-argument form fired; both bools stored.
+    # The two-argument form fired; both bools stored. get_extend returns the
+    # raw COSArray (wave-1538 alignment with upstream getCOSArray(EXTEND)).
     extend = shading.get_extend()
-    assert extend == (True, False)
+    assert extend.get_object(0).get_value() is True
+    assert extend.get_object(1).get_value() is False
 
 
 def test_shading_type3_set_extend_with_non_array_single_arg_falls_through() -> None:
@@ -895,7 +897,9 @@ def test_shading_type3_set_extend_with_non_array_single_arg_falls_through() -> N
 
     shading = PDShadingType3()
     shading.set_extend(False)
-    assert shading.get_extend() == (False, False)
+    extend = shading.get_extend()
+    assert extend.get_object(0).get_value() is False
+    assert extend.get_object(1).get_value() is False
 
 
 def _function_dict() -> COSDictionary:

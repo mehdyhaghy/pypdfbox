@@ -36,8 +36,13 @@ class PDPropBuildDataDict:
     # ---------- /Name ----------
 
     def get_name(self) -> str | None:
-        """Name of the software module that was used to create the signature."""
-        return self._dict.get_name(_NAME)
+        """Name of the software module that was used to create the signature.
+
+        Mirrors PDFBox ``getNameAsString`` semantics: a ``/Name`` stored as a
+        ``COSName`` returns its PDF name, a ``COSString`` returns its decoded
+        text, any other shape (or absent) returns ``None``.
+        """
+        return self._dict.get_name_as_string(_NAME)
 
     def set_name(self, name: str | None) -> None:
         if name is None:

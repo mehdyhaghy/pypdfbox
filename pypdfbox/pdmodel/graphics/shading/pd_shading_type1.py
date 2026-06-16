@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
-from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSFloat, COSName
+from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName
 
 from .pd_shading import PDShading
 
@@ -35,18 +35,16 @@ class PDShadingType1(PDShading):
     # ---------- /Domain ----------
 
     def get_domain(self) -> COSArray | None:
-        """Returns ``/Domain`` (a 4-element ``[xmin xmax ymin ymax]`` array).
-        When absent, materializes the spec default ``[0 1 0 1]`` as a fresh
-        ``COSArray`` — the entry is *not* written back to the underlying
-        dictionary, so callers can detect "explicit vs defaulted" via
-        ``get_cos_object().get_dictionary_object('Domain')``."""
+        """Returns ``/Domain`` (a 4-element ``[xmin xmax ymin ymax]`` array),
+        or ``None`` when the entry is absent or is not a ``COSArray``.
+
+        Mirrors upstream ``PDShadingType1.getDomain()``, which delegates to
+        ``getCOSArray(DOMAIN)`` — that returns the stored array when it is a
+        ``COSArray`` and ``null`` otherwise. Upstream does **not** materialize
+        the spec default ``[0 1 0 1]`` here; callers that need the default
+        (the renderer's ``_shading_domain_2d``) apply it themselves."""
         v = self._dict.get_dictionary_object(_DOMAIN)
-        if isinstance(v, COSArray):
-            return v
-        default = COSArray()
-        for f in (0.0, 1.0, 0.0, 1.0):
-            default.add(COSFloat(f))
-        return default
+        return v if isinstance(v, COSArray) else None
 
     def set_domain(self, domain: COSArray | Iterable[float] | None) -> None:
         """Set ``/Domain``. Accepts a ``COSArray`` (stored as-is, preserving

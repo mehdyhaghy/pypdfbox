@@ -38,8 +38,10 @@ def test_shading_type_constant():
     assert PDShadingType1().get_shading_type() == PDShading.SHADING_TYPE1
 
 
-def test_default_domain_is_unit_square():
-    assert PDShadingType1().get_domain().to_float_array() == [0.0, 1.0, 0.0, 1.0]
+def test_domain_none_when_absent():
+    # Upstream getDomain() delegates to getCOSArray(DOMAIN) → null when absent;
+    # it does NOT materialize the spec default [0 1 0 1] (wave-1538 oracle).
+    assert PDShadingType1().get_domain() is None
 
 
 def test_set_get_function_dispatches_to_subclass():
