@@ -33,7 +33,12 @@ class CharMetric:
     )
 
     def __init__(self) -> None:
-        self._character_code: int = -1
+        # Upstream ``org.apache.fontbox.afm.CharMetric`` declares
+        # ``private int characterCode;`` with no initializer, so the Java
+        # field defaults to ``0``. A CharMetrics line that omits the ``C`` /
+        # ``CH`` entry therefore leaves the code at ``0`` upstream — match
+        # that here (a prior port used ``-1``; see CHANGES.md wave1570).
+        self._character_code: int = 0
         self._wx: float = 0.0
         self._w0x: float = 0.0
         self._w1x: float = 0.0
