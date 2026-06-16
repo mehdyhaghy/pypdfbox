@@ -148,7 +148,11 @@ def test_tiling_pattern_invalid_metadata_and_render_failure_are_debug_logged(
         renderer._paint_tiling_pattern(  # noqa: SLF001
             _Pattern(None, 4.0, 4.0), region_mask=mask
         )
-        assert "tiling pattern missing /BBox or /XStep/YStep" in caplog.text
+        # Wave 1563 split the old combined "/BBox or /XStep/YStep" skip message:
+        # a zero /XStep / /YStep now falls back to the /BBox dimensions (matching
+        # PDFBox's TilingPaint.getAnchorRect) instead of skipping; only a missing
+        # /BBox skips with this message.
+        assert "tiling pattern missing /BBox" in caplog.text
 
         renderer._paint_tiling_pattern(  # noqa: SLF001
             _Pattern(PDRectangle(0.0, 0.0, 4.0, 4.0), 4.0, 4.0),

@@ -44,15 +44,18 @@ def test_get_filtered_stream_length_returns_recorded_length_wave272() -> None:
     assert stream.get_filtered_stream_length() == 42
 
 
-def test_get_filtered_stream_length_falls_back_to_buffer_wave272() -> None:
-    """Without ``/Length`` recorded, the live raw-buffer length is
-    returned (encoded form, so post-filter byte count)."""
-    # Embed unfiltered bytes via set_raw_data (no encoding writer, so no
-    # /Length is recorded) — get_filtered_stream_length() must then fall
-    # back to the live raw-buffer length.
+def test_get_filtered_stream_length_records_length_wave272() -> None:
+    """Embedding unfiltered bytes records ``/Length`` (wave 1563: ``set_raw_data``
+    now syncs ``/Length`` to mirror upstream ``createOutputStream(null)``), so
+    ``get_filtered_stream_length()`` reads the recorded entry — the encoded
+    byte count."""
+    # Embed unfiltered bytes via set_raw_data: /Length is synced to the body so
+    # COSStream.get_length() (which reads the dict entry, per upstream) and
+    # get_filtered_stream_length() both report the real encoded length.
     stream = PDStream(input_data=b"hello")
     cos = stream.get_cos_object()
-    assert not cos.contains_key(COSName.LENGTH)  # type: ignore[attr-defined]
+    assert cos.contains_key(COSName.LENGTH)  # type: ignore[attr-defined]
+    assert cos.get_int(COSName.LENGTH) == len(b"hello")  # type: ignore[attr-defined]
     assert stream.get_filtered_stream_length() == len(b"hello")
 
 

@@ -4272,12 +4272,26 @@ class PDFRenderer(PDFStreamEngine):
         if self._image is None or self._draw is None or region_mask is None:
             return
         bbox = pattern.get_b_box()
+        if bbox is None:
+            _log.debug("rendering: tiling pattern missing /BBox")
+            return
         x_step = pattern.get_x_step()
         y_step = pattern.get_y_step()
-        if bbox is None or x_step <= 0.0 or y_step <= 0.0:
-            _log.debug(
-                "rendering: tiling pattern missing /BBox or /XStep/YStep"
-            )
+        # A zero /XStep or /YStep is degenerate; PDFBox's TilingPaint.getAnchorRect
+        # (PDFBOX-1094) does not bail — it logs a warning and falls back to the
+        # /BBox width / height so the lattice is the cell itself (cells abut with
+        # no gap). Mirror that here: previously this method returned early on a
+        # zero step, leaving the fill region unpainted while PDFBox renders it.
+        if x_step == 0.0:
+            _log.warning("/XStep is 0, using pattern /BBox width")
+            x_step = bbox.get_width()
+        if y_step == 0.0:
+            _log.warning("/YStep is 0, using pattern /BBox height")
+            y_step = bbox.get_height()
+        if x_step <= 0.0 or y_step <= 0.0:
+            # Still non-positive (negative step, or a zero-width /BBox fallback)
+            # — nothing sensible to tile.
+            _log.debug("rendering: tiling pattern /XStep/YStep non-positive")
             return
         # Render one cell. The pattern's ``/Matrix`` maps pattern space to
         # the page's *default* (initial) user space — NOT the CTM in force

@@ -43,7 +43,10 @@ def test_wave673_cos_stream_closed_output_and_idempotent_close() -> None:
     stream.close()
 
     assert stream.is_closed() is True
-    assert repr(stream) == "COSStream(dict_size=0, body_len=0)"
+    # wave 1563: set_raw_data() now syncs the /Length dict entry (=4) and
+    # get_length() reads that entry (upstream parity), so the dict carries one
+    # key and repr reports the recorded length even after the body is freed.
+    assert repr(stream) == "COSStream(dict_size=1, body_len=4)"
     with pytest.raises(OSError, match="COSStream has been closed"):
         stream.create_output_stream()
 

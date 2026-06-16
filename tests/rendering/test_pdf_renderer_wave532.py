@@ -160,7 +160,12 @@ def test_tiling_pattern_missing_bbox_or_step_logs_and_skips(
         )
         _finish(renderer)
 
-        assert "tiling pattern missing /BBox or /XStep/YStep" in caplog.text
+        # The _Pattern stub returns get_b_box()->None, so the missing-/BBox
+        # skip path fires. (Wave 1563 split the old combined "/BBox or
+        # /XStep/YStep" message: a zero /XStep / /YStep no longer skips — it
+        # now falls back to the /BBox dimensions, matching PDFBox's
+        # TilingPaint.getAnchorRect; only a missing /BBox skips here.)
+        assert "tiling pattern missing /BBox" in caplog.text
         assert calls == []
         assert renderer._image.getpixel((1, 1)) == (255, 255, 255)  # noqa: SLF001
     finally:

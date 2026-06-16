@@ -181,12 +181,24 @@ class COSStream(COSDictionary):
         return self._buffer is not None
 
     def get_length(self) -> int:
+        """Return the value of the ``/Length`` dictionary entry (0 when absent).
+
+        Mirrors upstream ``COSStream.getLength()`` (PDFBox 3.0.7), which returns
+        ``getInt(COSName.LENGTH, 0)`` — the **dictionary** entry, NOT the live
+        body-buffer length. On the normal write path the two agree because the
+        output-stream ``close()`` callbacks sync ``/Length`` to the encoded body
+        (:meth:`_sync_length_entry`). They diverge only when a producer plants a
+        ``/Length`` that disagrees with the body (e.g. a corrupt PDF, or a manual
+        ``set_item(/Length, ...)``): upstream trusts the declared entry, so we do
+        too. Use ``get_raw_data()`` / ``create_raw_input_stream()`` for the true
+        body length.
+        """
         if self._is_writing:
             raise RuntimeError(
                 "There is an open OutputStream associated with this COSStream. "
                 "It must be closed before querying the length of this COSStream."
             )
-        return self._buffer.length() if self._buffer is not None else 0
+        return self.get_int(_LENGTH, 0)
 
     def _sync_length_entry(self) -> None:
         """Write the current body length into the ``/Length`` dict entry.
@@ -211,8 +223,14 @@ class COSStream(COSDictionary):
         return bytes(out[:n] if n > 0 else b"")
 
     def set_raw_data(self, data: bytes | bytearray | memoryview) -> None:
-        """Replace the raw body with ``data``."""
+        """Replace the raw body with ``data`` and sync the ``/Length`` entry.
+
+        ``/Length`` is updated to ``len(data)`` so :meth:`get_length` (which
+        mirrors upstream by reading the dictionary entry) stays consistent with
+        the body — exactly as the output-stream ``close()`` callbacks do for the
+        ``create_*output_stream`` path."""
         self._set_raw_data_internal(bytes(data))
+        self._sync_length_entry()
 
     def _set_raw_data_internal(self, data: bytes) -> None:
         self.check_closed()
