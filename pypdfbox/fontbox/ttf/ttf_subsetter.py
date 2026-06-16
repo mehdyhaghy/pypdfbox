@@ -143,6 +143,54 @@ class TTFSubsetter:
 
     # ---------- introspection --------------------------------------------
 
+    def _resolve_old_gids(self) -> set[int]:
+        """Compose the full set of *source* glyph IDs the subset retains.
+
+        Single source of truth shared by :meth:`get_gid_map`,
+        :meth:`get_new_glyph_id`, :meth:`add_compound_references` and the
+        flush path: explicitly-registered GIDs plus GIDs reachable from
+        the registered Unicode codepoints via the font's Unicode cmap,
+        closed over composite-glyph component dependencies.
+
+        Out-of-range GIDs (``gid < 0`` or ``gid >= numGlyphs``) are
+        dropped here. They can never reference a real ``glyf`` entry, so
+        retaining them would yield a subset that names a glyph the
+        rebuilt ``loca``/``glyf`` cannot back. Upstream PDFBox 3.0.7
+        instead throws ``ArrayIndexOutOfBoundsException`` from
+        ``getGIDMap()``/``writeToStream`` when handed such a GID (its
+        ``glyf``-indexed walk runs off the end of the array); pypdfbox
+        diverges deliberately by being defensive and ignoring the bogus
+        GID so the remaining valid selection still produces a structurally
+        valid subset. This mirrors the same "ignore unmapped input"
+        doctrine already applied to unmapped codepoints in :meth:`add`.
+        """
+        num_glyphs = self._ttf.get_number_of_glyphs()
+        old_gids: set[int] = {g for g in self._glyph_ids if 0 <= g < num_glyphs}
+        # GID 0 (.notdef) is always retained even for a degenerate
+        # zero-glyph font, matching upstream's invariant.
+        old_gids.add(0)
+        cmap = self._ttf.get_unicode_cmap_subtable()
+        if cmap is not None:
+            for cp in self._unicodes:
+                gid = cmap.get_glyph_id(int(cp))
+                if gid != 0 and 0 <= gid < num_glyphs:
+                    old_gids.add(gid)
+        self._add_composite_components(old_gids)
+        return old_gids
+
+    def _in_range_gids(self) -> list[int]:
+        """Registered raw GIDs filtered to the source's valid range.
+
+        fontTools' ``Subsetter.populate(gids=...)`` raises
+        ``MissingGlyphsSubsettingError`` when handed a GID with no
+        backing glyph, so the flush path passes it only GIDs that
+        actually exist in the source font. Out-of-range GIDs are dropped
+        here for the same reason :meth:`_resolve_old_gids` drops them
+        (see that method for the upstream-divergence note).
+        """
+        num_glyphs = self._ttf.get_number_of_glyphs()
+        return sorted(g for g in self._glyph_ids if 0 <= g < num_glyphs)
+
     def get_gid_map(self) -> dict[int, int]:
         """Return the ``new_gid -> old_gid`` mapping for the subset.
 
@@ -154,21 +202,9 @@ class TTFSubsetter:
         The map always includes new GID ``0`` -> old GID ``0`` (the
         ``.notdef`` glyph upstream always preserves at index 0).
         """
-        # Compose the same set fontTools.subset would compose at flush
-        # time: explicitly registered GIDs plus GIDs reachable from the
-        # registered Unicode codepoints via the font's Unicode cmap.
-        # Composite glyphs pull in their component glyphs too, so close
-        # over those dependencies before assigning new GIDs.
-        old_gids: set[int] = set(self._glyph_ids)
-        cmap = self._ttf.get_unicode_cmap_subtable()
-        if cmap is not None:
-            for cp in self._unicodes:
-                gid = cmap.get_glyph_id(int(cp))
-                if gid != 0:
-                    old_gids.add(gid)
-        self._add_composite_components(old_gids)
         # New GIDs are assigned in ascending order of the old GID set
         # (matches the sorted iteration order upstream's TreeSet uses).
+        old_gids = self._resolve_old_gids()
         return {new_gid: old_gid for new_gid, old_gid in enumerate(sorted(old_gids))}
 
     # ---------- options ---------------------------------------------------
@@ -286,7 +322,7 @@ class TTFSubsetter:
         subsetter.populate(
             unicodes=sorted(self._unicodes),
             glyphs=[],
-            gids=sorted(self._glyph_ids),
+            gids=self._in_range_gids(),
         )
         subsetter.subset(tt)
 
@@ -628,14 +664,7 @@ class TTFSubsetter:
         against the same ``glyph_ids`` set we hand to fontTools.
         """
         old = int(old_gid)
-        kept: set[int] = set(self._glyph_ids)
-        cmap = self._ttf.get_unicode_cmap_subtable()
-        if cmap is not None:
-            for cp in self._unicodes:
-                gid = cmap.get_glyph_id(int(cp))
-                if gid != 0:
-                    kept.add(gid)
-        self._add_composite_components(kept)
+        kept = self._resolve_old_gids()
         return sum(1 for g in kept if g < old)
 
     def add_compound_references(self) -> None:
@@ -646,15 +675,7 @@ class TTFSubsetter:
         GIDs; we delegate to the existing :meth:`_add_composite_components`
         helper which uses fontTools' parsed glyph table.
         """
-        old_gids: set[int] = set(self._glyph_ids)
-        cmap = self._ttf.get_unicode_cmap_subtable()
-        if cmap is not None:
-            for cp in self._unicodes:
-                gid = cmap.get_glyph_id(int(cp))
-                if gid != 0:
-                    old_gids.add(gid)
-        self._add_composite_components(old_gids)
-        self._glyph_ids.update(old_gids)
+        self._glyph_ids.update(self._resolve_old_gids())
 
     # ---------- encoded-table accessors (build_*_table parity) -----------
     #
@@ -707,7 +728,7 @@ class TTFSubsetter:
         subsetter.populate(
             unicodes=sorted(self._unicodes),
             glyphs=[],
-            gids=sorted(self._glyph_ids),
+            gids=self._in_range_gids(),
         )
         subsetter.subset(tt)
         if self._invisible_unicodes:

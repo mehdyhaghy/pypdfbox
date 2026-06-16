@@ -173,6 +173,35 @@ class PDFText2Markdown(PDFTextStripper):
             super().end_article()
         self._emit_md(self.get_line_separator())
 
+    def write_article_end(self, sink: Any) -> None:
+        """Mirror upstream ``endArticle()``.
+
+        pypdfbox's lite stripper drives the per-article close through
+        ``write_article_end`` (never through the ``end_article`` override
+        above, which exists only for the wave 1316 coverage tests). We do NOT
+        override ``write_article_start`` on purpose: the base
+        ``write_article_start`` emits exactly the ``articleStart`` separator
+        that upstream's ``startArticle`` writes, and leaving it un-overridden
+        keeps ``manages_own_paragraph`` False so the base ``_emit_group``
+        continues to bracket the page body with the ``paragraphStart`` /
+        ``paragraphEnd`` separators (markdown does NOT take over paragraph
+        bracketing the way ``PDFText2HTML`` does).
+
+        Upstream ``PDFText2Markdown.endArticle`` runs ``super.endArticle()``
+        (which emits the configured ``articleEnd`` separator) followed by
+        ``super.writeString(LINE_SEPARATOR)`` — i.e. TWO line separators close
+        every article. The base ``write_article_end`` emits only the single
+        ``articleEnd`` separator, which dropped one trailing newline per
+        article (caught wave 1562 against the live oracle). Reproduce both:
+        flush any open ``**`` / ``*`` font-state tags first (balanced close),
+        then ``articleEnd`` (via ``super``) plus the extra literal separator.
+        """
+        flush_text = self._font_state.clear()
+        if flush_text:
+            sink(flush_text)
+        super().write_article_end(sink)
+        sink(self.get_line_separator())
+
     def write_string(
         self,
         text: str,
