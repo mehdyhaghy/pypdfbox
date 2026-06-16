@@ -490,14 +490,31 @@ class MultipleInputStream(io.RawIOBase):
 
 
 def _get_decode_array(pd_image: PDImage) -> list[float]:
-    """Return the image's Decode array, defaulting to ``[0, 1]``."""
+    """Return the image's Decode array, defaulting to ``[0, 1]`` per component.
+
+    ``PDImage.get_decode`` returns different shapes across the image
+    hierarchy: :class:`PDImageXObject` already decodes it to a
+    ``list[float]``, while :class:`PDInlineImage` returns the raw
+    ``COSArray``. Normalise both so the /Decode array is honoured for
+    *either* image shape (mirrors upstream ``SampledImageReader.getDecodeArray``
+    which always reads ``COSArray decode = pdImage.getDecode()``)."""
     decode = pd_image.get_decode()
-    if decode is None or (hasattr(decode, "size") and decode.size() == 0):
+    # Empty COSArray and missing entry both fall back to the per-component
+    # default decode (``[0 1]`` repeated). ``decode.size() == 0`` covers the
+    # COSArray shape; ``len(decode) == 0`` covers the list shape.
+    is_empty = (
+        decode is None
+        or (hasattr(decode, "size") and decode.size() == 0)
+        or (isinstance(decode, list) and len(decode) == 0)
+    )
+    if is_empty:
         try:
             num = pd_image.get_color_space().get_number_of_components()
         except (AttributeError, OSError):
             num = 1
         return [0.0, 1.0] * num
+    if isinstance(decode, list):
+        return [float(v) for v in decode]
     try:
         return list(decode.to_float_array())
     except (AttributeError, TypeError):

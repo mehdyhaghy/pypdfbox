@@ -327,33 +327,26 @@ class PDOptionalContentProperties:
             off = COSArray()
             d.set_item(_OFF, off)
 
+        # Mirror upstream PDOptionalContentProperties.setGroupEnabled exactly:
+        # when *enabling*, only the /OFF array is scanned (move first match to
+        # /ON); when *disabling*, only the /ON array is scanned. ``found`` is
+        # true iff the group was present in the *opposite* (source) array — a
+        # group already sitting in the target array is NOT detected, so it is
+        # appended again (duplicate) and ``found`` stays false, matching Java.
         target = group.get_cos_object()
-        was_on, on_entry = self._drain_group_state_entries(on, target)
-        was_off, off_entry = self._drain_group_state_entries(off, target)
-        found = was_on or was_off
-        if enabled:
-            target_entry = on_entry if on_entry is not None else off_entry
-            on.add(target_entry if target_entry is not None else target)
-        else:
-            target_entry = off_entry if off_entry is not None else on_entry
-            off.add(target_entry if target_entry is not None else target)
+        source, destination = (off, on) if enabled else (on, off)
+        found = False
+        for entry in source:
+            if self._to_dictionary(entry) is target:
+                source.remove(entry)
+                destination.add(entry)
+                found = True
+                break
+        if not found:
+            destination.add(target)
         if enabled:
             self._enforce_radio_button(group, on, off)
         return found
-
-    def _drain_group_state_entries(
-        self, state_array: COSArray, target: COSDictionary
-    ) -> tuple[bool, COSBase | None]:
-        """Remove all entries resolving to ``target`` and return the first."""
-        first: COSBase | None = None
-        found = False
-        for entry in list(state_array):
-            if self._to_dictionary(entry) is target:
-                if first is None:
-                    first = entry
-                state_array.remove(entry)
-                found = True
-        return found, first
 
     def _enforce_radio_button(
         self,

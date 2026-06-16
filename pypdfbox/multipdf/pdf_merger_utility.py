@@ -1133,8 +1133,24 @@ class PDFMergerUtility:
                     )
 
         dest_dict = dest_form.get_cos_object()
-        base = dest_dict.get_item(_FIELDS)
-        dest_fields_array = base if isinstance(base, COSArray) else COSArray()
+        # Resolve the destination /Fields array (following an indirect
+        # reference if present). When the destination form has no /Fields
+        # array yet, create one and install it on the dest dict
+        # *immediately* — upstream PDFBox does the same (it stamps the
+        # fresh COSArray before the field loop). The early install is
+        # load-bearing for collision detection: ``dest_form.get_field(fqn)``
+        # re-walks the live /Fields array, so an array that is only
+        # attached to the dest dict after the loop would hide every
+        # in-progress addition. That made two duplicate-named source
+        # fields land verbatim (both keeping their /T) instead of the
+        # second being renamed to ``dummyFieldNameN`` whenever the dest
+        # form started with no /Fields key.
+        base = dest_dict.get_dictionary_object(_FIELDS)
+        if isinstance(base, COSArray):
+            dest_fields_array = base
+        else:
+            dest_fields_array = COSArray()
+            dest_dict.set_item(_FIELDS, dest_fields_array)
 
         for src_field in src_fields:
             cloned = cloner.clone_for_new_document(src_field.get_cos_object())
@@ -1147,8 +1163,6 @@ class PDFMergerUtility:
                 cloned.set_string(_T, f"{prefix}{self._next_field_num}")
                 self._next_field_num += 1
             dest_fields_array.add(cloned)
-
-        dest_dict.set_item(_FIELDS, dest_fields_array)
 
     def _acro_form_join_fields_mode(
         self,

@@ -47,7 +47,10 @@ def test_wave660_radio_button_enforcement_skips_junk_and_moves_sibling_off() -> 
     rbgroups = COSArray([COSName.get_pdf_name("not-an-array"), rbgroup])
     _default_dict(props).set_item(COSName.get_pdf_name("RBGroups"), rbgroups)
 
-    assert props.set_group_enabled(blue, True) is True
+    # blue is already in /ON, so upstream setGroupEnabled(blue, True) scans only
+    # /OFF, finds nothing, and returns False (no pre-existing OFF setting). The
+    # radio-button enrichment still fires on the enable path, moving red to OFF.
+    assert props.set_group_enabled(blue, True) is False
 
     assert props.is_group_enabled(blue) is True
     assert props.is_group_enabled(red) is False

@@ -1349,68 +1349,58 @@ class COSParser(BaseParser):
                 members[member_key] = (container, inner_index, parsed)
         return members
 
-    def bf_search_for_xref(self, start_xref_offset: int) -> int:
-        """Brute-force scan the source for an ``xref`` keyword (or an
-        xref-stream object header) near ``start_xref_offset`` and return
-        the byte offset of the recovered xref. Mirrors upstream
-        ``COSParser.bfSearchForXRef``.
+    def bf_search_for_xref_tables(self) -> list[int]:
+        """Return the byte offsets of every literal ``xref`` keyword in the
+        source (a traditional cross-reference table marker). Mirrors upstream
+        ``BruteForceParser.bfSearchForXRefTables``.
 
-        The scan first looks for a literal ``xref`` keyword (traditional
-        cross-reference table); if none is found it falls back to the
-        nearest ``n g obj`` header containing an ``/XRef`` typed stream
-        dictionary. Returns ``-1`` if neither candidate can be located."""
+        Each candidate must be preceded by whitespace (guarding against the
+        trailing ``xref`` of ``startxref``) and followed by whitespace / EOF;
+        the ``/XRef`` name (xref-stream ``/Type`` value) is excluded by the
+        ``/`` guard so only real table markers are returned."""
         data = self._read_all_bytes()
         ws = self.WHITESPACE
-        # 1) Traditional xref tables: scan for the literal ``xref`` token
-        # (must be preceded and followed by whitespace / EOF — guards
-        # against ``startxref`` and ``/XRef`` substrings).
         candidates: list[int] = []
-        i = 0
         n = len(data)
+        i = self.MINIMUM_SEARCH_OFFSET
         while i <= n - 4:
             j = data.find(b"xref", i)
             if j < 0:
                 break
             before_ok = j == 0 or data[j - 1] in ws
             after_ok = j + 4 == n or data[j + 4] in ws
-            # Reject the trailing ``xref`` of ``startxref`` — preceded
-            # by ``start`` not whitespace.
             if before_ok and after_ok and not (j > 0 and data[j - 1] == 0x2F):
                 candidates.append(j)
-            i = j + 1
-        if candidates:
-            # Pick the candidate nearest to ``start_xref_offset``; ties
-            # break to the earlier offset (matches upstream).
-            target = max(0, int(start_xref_offset))
-            return min(candidates, key=lambda c: (abs(c - target), c))
-        # 2) Fall back to xref-stream objects: scan for ``n g obj`` and
-        # check the dictionary for ``/Type /XRef``.
+            i = j + 4
+        return candidates
+
+    def bf_search_for_xref_streams(self) -> list[int]:
+        """Return the ``n g obj`` header offsets of every recovered xref
+        STREAM (``/Type /XRef``) object. Mirrors upstream
+        ``BruteForceParser.bfSearchForXRefStreams``.
+
+        Each recovered plain object is inspected for a ``/XRef`` + ``/Type``
+        marker between its header and the next ``stream`` / ``endobj``; the
+        returned offset is the start of the object's leading number — the same
+        offset format an xref entry carries."""
+        data = self._read_all_bytes()
+        n = len(data)
         objects = self.bf_search_for_objects()
-        if not objects:
-            return -1
-        target = max(0, int(start_xref_offset))
-        best_offset = -1
-        best_distance = -1
+        offsets: list[int] = []
         for offset in objects.values():
             self.seek(offset)
             try:
-                # Parse just enough to get the dictionary.
                 self.read_int()
                 self.skip_whitespace()
                 self.read_int()
                 self.skip_whitespace()
-                kw = self.read_keyword()
-                if kw != b"obj":
+                if self.read_keyword() != b"obj":
                     continue
                 self.skip_whitespace()
                 if self.peek_byte() != 0x3C:
                     continue
-                # Don't fully parse — just look for "/Type/XRef" /
-                # "/Type /XRef" textual marker between ``<<`` and ``>>``.
             except (PDFParseError, ValueError):
                 continue
-            # Substring check on the raw bytes between the object header
-            # and the next ``endobj``/``stream`` keyword.
             end = data.find(b"endobj", offset)
             stream_pos = data.find(b"stream", offset)
             if 0 <= stream_pos < end or end < 0:
@@ -1418,11 +1408,51 @@ class COSParser(BaseParser):
             window = data[offset:end]
             if b"/XRef" not in window or b"/Type" not in window:
                 continue
-            distance = abs(offset - target)
-            if best_offset < 0 or distance < best_distance:
-                best_offset = offset
-                best_distance = distance
-        return best_offset
+            offsets.append(offset)
+        return offsets
+
+    @staticmethod
+    def _search_nearest_value(values: list[int], target: int) -> int:
+        """Return the element of ``values`` closest to ``target`` (``-1`` if
+        empty). Mirrors upstream ``BruteForceParser.searchNearestValue`` —
+        first-seen wins on a distance tie (the loop only replaces the current
+        best on a strictly smaller absolute difference)."""
+        best = -1
+        best_diff: int | None = None
+        for value in values:
+            diff = target - value
+            if best_diff is None or abs(best_diff) > abs(diff):
+                best_diff = diff
+                best = value
+        return best
+
+    def bf_search_for_xref(self, start_xref_offset: int) -> int:
+        """Brute-force scan the source for an ``xref`` keyword (or an
+        xref-stream object header) near ``start_xref_offset`` and return
+        the byte offset of the recovered xref. Mirrors upstream
+        ``COSParser.bfSearchForXRef`` / ``BruteForceParser.bfSearchForXRef``.
+
+        Both candidate kinds are gathered (traditional ``xref`` tables AND
+        ``/Type /XRef`` stream objects); the nearest table and nearest stream
+        are computed independently, then the closer of the two is returned.
+        On an equal distance the TABLE wins — matching upstream's
+        ``Math.abs(differenceTable) > Math.abs(differenceStream)`` branch,
+        which only switches to the stream when it is *strictly* nearer.
+        Returns ``-1`` if neither candidate can be located."""
+        target = max(0, int(start_xref_offset))
+        table_candidates = self.bf_search_for_xref_tables()
+        stream_candidates = self.bf_search_for_xref_streams()
+        nearest_table = self._search_nearest_value(table_candidates, target)
+        nearest_stream = self._search_nearest_value(stream_candidates, target)
+        if nearest_table > -1 and nearest_stream > -1:
+            difference_table = target - nearest_table
+            difference_stream = target - nearest_stream
+            if abs(difference_table) > abs(difference_stream):
+                return nearest_stream
+            return nearest_table
+        if nearest_table > -1:
+            return nearest_table
+        return nearest_stream
 
     def rebuild_trailer(self) -> COSDictionary:
         """Reconstruct a trailer dictionary by scanning every recovered

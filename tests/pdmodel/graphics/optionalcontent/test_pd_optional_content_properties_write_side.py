@@ -69,20 +69,25 @@ def test_set_visibility_round_trip_by_name() -> None:
     assert props.is_group_enabled(b) is True
 
 
-def test_set_visible_is_idempotent_and_does_not_duplicate_on_entry() -> None:
+def test_set_visible_appends_duplicate_when_already_on_matching_upstream() -> None:
     props, (a,) = _build("A")
 
+    # First enable: not in /OFF, so found=False, group appended to /ON.
     assert props.set_visible(a) is False
-    assert props.set_visible(a) is True
+    # Second enable: upstream setGroupEnabled(group, True) scans only /OFF,
+    # never /ON, so it still returns False and appends the group to /ON a
+    # second time (a duplicate). pypdfbox mirrors that exactly.
+    assert props.set_visible(a) is False
 
     on = _state_array(props, "ON")
     off = _state_array(props, "OFF")
-    assert on.size() == 1
+    assert on.size() == 2
     assert on.get_object(0) is a.get_cos_object()
+    assert on.get_object(1) is a.get_cos_object()
     assert off.size() == 0
 
 
-def test_set_group_enabled_repairs_contradictory_state_arrays() -> None:
+def test_set_group_enabled_moves_only_first_match_matching_upstream() -> None:
     props, (a,) = _build("A")
     d = _default_config(props)
     on = COSArray([a.get_cos_object(), a.get_cos_object()])
@@ -90,19 +95,14 @@ def test_set_group_enabled_repairs_contradictory_state_arrays() -> None:
     d.set_item(COSName.get_pdf_name("ON"), on)
     d.set_item(COSName.get_pdf_name("OFF"), off)
 
+    # Upstream setGroupEnabled(a, False) scans /ON, moves the FIRST match to
+    # /OFF, and stops (break). It does not de-duplicate the arrays: /ON keeps
+    # its second copy, /OFF grows to three.
     assert props.set_group_enabled(a, False) is True
-    assert props.is_group_enabled(a) is False
-    assert _state_array(props, "ON").size() == 0
-    off = _state_array(props, "OFF")
-    assert off.size() == 1
-    assert off.get_object(0) is a.get_cos_object()
-
-    assert props.set_group_enabled(a, True) is True
+    # is_group_enabled checks /ON first, so the surviving /ON entry wins.
     assert props.is_group_enabled(a) is True
-    on = _state_array(props, "ON")
-    assert on.size() == 1
-    assert on.get_object(0) is a.get_cos_object()
-    assert _state_array(props, "OFF").size() == 0
+    assert _state_array(props, "ON").size() == 1
+    assert _state_array(props, "OFF").size() == 3
 
 
 def test_set_visibility_drives_compute_visible_ocgs() -> None:

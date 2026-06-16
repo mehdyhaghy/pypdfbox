@@ -854,7 +854,10 @@ def test_calculate_x_ref_fixed_offset_negative_returns_zero() -> None:
 
 
 def test_calculate_x_ref_fixed_offset_returns_recovered_offset() -> None:
-    pdf = b"\n\n\nxref\n0 1\n0000000000 65535 f \n"
+    # The ``xref`` keyword must sit past MINIMUM_SEARCH_OFFSET (= 6) —
+    # upstream ``bfSearchForXRefTables`` seeks to that offset before scanning,
+    # so an ``xref`` buried inside the first six bytes is never recovered.
+    pdf = b"\n\n\n\n\n\n\nxref\n0 1\n0000000000 65535 f \n"
     p = parser(pdf)
     fixed = p.calculate_x_ref_fixed_offset(2)
     # Should recover the 'xref' keyword offset.

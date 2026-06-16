@@ -419,13 +419,16 @@ def test_bf_search_for_xref_no_candidates_falls_to_xref_stream_scan() -> None:
 
 
 def test_bf_search_for_xref_exits_natural_loop_when_xref_found_at_eof() -> None:
-    """A payload that is *exactly* an ``xref`` keyword runs the loop
-    once, advances ``i`` past ``n-4``, and exits the while via the
-    False arm (branch 1165->1176)."""
-    parser = _parser(b"xref", COSDocument())
+    """A payload ending in a whitespace-prefixed ``xref`` keyword runs the
+    scan once, advances past ``n-4``, and exits the loop via the False arm.
+    The keyword must sit past ``MINIMUM_SEARCH_OFFSET`` (= 6) — upstream
+    ``bfSearchForXRefTables`` seeks to that offset before scanning, so an
+    ``xref`` buried inside the first 6 bytes is deliberately never found."""
+    payload = b"%PDF-1\n xref"
+    parser = _parser(payload, COSDocument())
     parser._lenient = True  # type: ignore[attr-defined]
-    # Returns offset 0 (the only candidate).
-    assert parser.bf_search_for_xref(0) == 0
+    # Returns the only candidate (the trailing ``xref``).
+    assert parser.bf_search_for_xref(0) == payload.rfind(b"xref")
 
 
 def test_bf_search_for_xref_prefers_nearest_xref_candidate() -> None:
