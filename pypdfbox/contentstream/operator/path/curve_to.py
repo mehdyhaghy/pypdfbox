@@ -14,10 +14,11 @@ class CurveTo(OperatorProcessor):
     Operand validation matches upstream:
 
     * Fewer than six operands raises :class:`MissingOperandException`.
-    * If any of the first six operands is not a :class:`COSNumber`, the
-      operator is silently skipped (upstream calls
-      ``checkArrayTypesClass`` on the consumed operand window). Trailing
-      operands are ignored.
+    * If any operand is not a :class:`COSNumber`, the operator is
+      silently skipped (upstream calls ``checkArrayTypesClass`` over the
+      WHOLE operand list, so a trailing non-number — e.g.
+      ``x1 y1 x2 y2 x3 y3 /Name c`` — is a silent no-op too, not
+      accepted-with-trailing-ignored).
 
     Upstream additionally warn-logs and falls back to ``moveTo(x3, y3)``
     when invoked without a prior ``MoveTo``; that behavioural fallback
@@ -30,6 +31,6 @@ class CurveTo(OperatorProcessor):
     def process(self, operator: Operator, operands: list[COSBase]) -> None:
         if len(operands) < 6:
             raise MissingOperandException(operator, operands)
-        if not self.check_array_types_class(operands[:6], COSNumber):
+        if not self.check_array_types_class(operands, COSNumber):
             return
         self._log_invocation(operator, operands)
