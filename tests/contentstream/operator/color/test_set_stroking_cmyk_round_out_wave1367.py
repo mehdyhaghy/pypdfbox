@@ -102,8 +102,10 @@ def test_stroking_cmyk_short_operand_list_silently_skips() -> None:
     assert engine.stroking_calls == []
 
 
-def test_stroking_cmyk_non_numeric_operand_silently_skips() -> None:
-    """A non-:class:`COSNumber` operand within the first 4 aborts."""
+def test_stroking_cmyk_non_numeric_operand_sets_invalid_color() -> None:
+    """A non-:class:`COSNumber` operand within the first 4 yields an
+    invalid PDColor([], null), matching upstream SetColor.process
+    (PDFBOX-5851). wave 1571 fixed set_device_color to match."""
     engine = _Engine()
     processor = SetStrokingCMYK(engine)
 
@@ -117,7 +119,9 @@ def test_stroking_cmyk_non_numeric_operand_silently_skips() -> None:
         ],
     )
 
-    assert engine.stroking_calls == []
+    [color] = engine.stroking_calls
+    assert color.get_components() == []
+    assert color.get_color_space() is None
 
 
 def test_stroking_cmyk_gate_short_circuits() -> None:

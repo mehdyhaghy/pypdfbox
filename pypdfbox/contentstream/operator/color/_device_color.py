@@ -8,7 +8,7 @@ from pypdfbox.pdmodel.graphics.color import (
     PDDeviceCMYK,
     PDDeviceGray,
     PDDeviceRGB,
-)
+)  # PDColor used both for valid colours and the PDFBOX-5851 invalid colour
 
 if TYPE_CHECKING:
     from pypdfbox.contentstream.pdf_stream_engine import PDFStreamEngine
@@ -92,17 +92,50 @@ def set_device_color(
             )
         if setter is not None:
             setter(resolved_cs)
-    # Too few operands / a non-numeric operand: upstream's SetColor.process
-    # throws / bails before setColor, so the colour stays at its previous
-    # value (the colour space switch above is still in effect).
+    # Too few operands: upstream's inherited SetColor.process raises
+    # MissingOperandException *before* setColor, which PDFStreamEngine
+    # catches and logs, so the colour stays at its previous value (the
+    # colour-space switch above is still in effect).
     if len(operands) < component_count:
         return
-    components: list[float] = []
+    # A non-numeric operand in a device (non-Pattern) colour space:
+    # upstream SetColor.process fails the ``checkArrayTypesClass`` guard and
+    # calls ``setColor(new PDColor(new float[0], null))`` — an invalid
+    # (empty-component, no colour-space) colour, PDFBOX-5851 — rather than
+    # leaving the previous colour untouched. Match that instead of bailing.
     for operand in operands[:component_count]:
         if not isinstance(operand, COSNumber):
+            _apply_color(engine, graphics_state, PDColor([], None), stroking)  # type: ignore[arg-type]
             return
-        components.append(operand.float_value())
-    color = PDColor(components, resolved_cs)
+    components: list[float] = [
+        operand.float_value() for operand in operands[:component_count]
+    ]
+    _apply_color(engine, graphics_state, PDColor(components, resolved_cs), stroking)
+
+
+def _apply_color(
+    engine: PDFStreamEngine,
+    graphics_state: object | None,
+    color: PDColor,
+    stroking: bool,
+) -> None:
+    """Store ``color`` on the graphics state and notify the engine.
+
+    Mirrors upstream ``SetColor.setColor`` which does
+    ``getGraphicsState().setStrokingColor(color)`` (resp. non-stroking) —
+    the colour must land on the graphics-state slot even when the engine's
+    ``set_*_stroking_color`` notification is a no-op (the base
+    ``PDFStreamEngine`` notification is). The engine notification is still
+    issued afterwards so colour-aware renderers can react.
+    """
+    if graphics_state is not None:
+        gs_setter = getattr(
+            graphics_state,
+            "set_stroking_color" if stroking else "set_non_stroking_color",
+            None,
+        )
+        if gs_setter is not None:
+            gs_setter(color)
     if stroking:
         engine.set_stroking_color(color)
     else:

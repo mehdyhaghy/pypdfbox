@@ -83,7 +83,10 @@ def test_stroking_gray_empty_operands_silently_skips() -> None:
     assert engine.stroking_calls == []
 
 
-def test_stroking_gray_non_numeric_operand_silently_skips() -> None:
+def test_stroking_gray_non_numeric_operand_sets_invalid_color() -> None:
+    # Upstream SetColor.process sets an invalid PDColor([], null) for a
+    # non-numeric operand (PDFBOX-5851); wave 1571 aligned
+    # set_device_color with that rather than silently skipping.
     engine = _Engine()
     processor = SetStrokingGray(engine)
 
@@ -91,7 +94,9 @@ def test_stroking_gray_non_numeric_operand_silently_skips() -> None:
         Operator.get_operator("G"), [COSName.get_pdf_name("Bogus")]
     )
 
-    assert engine.stroking_calls == []
+    [color] = engine.stroking_calls
+    assert color.get_components() == []
+    assert color.get_color_space() is None
 
 
 def test_stroking_gray_gate_short_circuits() -> None:

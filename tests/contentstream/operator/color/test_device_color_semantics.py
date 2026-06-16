@@ -111,15 +111,33 @@ def test_device_color_operator_without_context_is_no_op() -> None:
     SetStrokingRGB().process(Operator.get_operator("RG"), _floats(1.0, 0.0, 0.0))
 
 
-def test_device_color_operator_skips_malformed_operands() -> None:
+def test_device_color_operator_skips_too_few_operands() -> None:
+    # Upstream's inherited SetColor.process raises MissingOperandException
+    # (caught + logged by the engine) for a too-short operand list, so the
+    # colour is left unchanged — no setColor call.
     engine = _ColorSpy()
     processor = SetStrokingRGB()
     engine.add_operator(processor)
 
     processor.process(Operator.get_operator("RG"), _floats(1.0, 0.0))
+
+    assert engine.colors == []
+
+
+def test_device_color_operator_non_numeric_sets_invalid_color() -> None:
+    # A non-numeric operand in a device colour space yields an invalid
+    # PDColor([], null) (PDFBOX-5851), matching upstream SetColor.process.
+    # wave 1571 fixed set_device_color to set this rather than skip.
+    engine = _ColorSpy()
+    processor = SetStrokingRGB()
+    engine.add_operator(processor)
+
     processor.process(
         Operator.get_operator("RG"),
         [COSFloat(1.0), COSString("bad"), COSFloat(0.0)],
     )
 
-    assert engine.colors == []
+    [(kind, color)] = engine.colors
+    assert kind == "stroking"
+    assert color.get_components() == []
+    assert color.get_color_space() is None

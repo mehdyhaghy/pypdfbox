@@ -89,7 +89,11 @@ def test_stroking_rgb_short_operand_list_silently_skips() -> None:
     assert engine.stroking_calls == []
 
 
-def test_stroking_rgb_non_numeric_first_operand_silently_skips() -> None:
+def test_stroking_rgb_non_numeric_first_operand_sets_invalid_color() -> None:
+    # Upstream SetColor.process (via SetStrokingDeviceRGBColor) fails the
+    # checkArrayTypesClass guard for a non-numeric operand and sets an
+    # invalid PDColor([], null) (PDFBOX-5851) rather than leaving the
+    # colour untouched. wave 1571 fixed set_device_color to match.
     engine = _Engine()
     processor = SetStrokingRGB(engine)
 
@@ -98,10 +102,12 @@ def test_stroking_rgb_non_numeric_first_operand_silently_skips() -> None:
         [COSName.get_pdf_name("Bad"), COSFloat(0.2), COSFloat(0.3)],
     )
 
-    assert engine.stroking_calls == []
+    [color] = engine.stroking_calls
+    assert color.get_components() == []
+    assert color.get_color_space() is None
 
 
-def test_stroking_rgb_non_numeric_in_middle_silently_skips() -> None:
+def test_stroking_rgb_non_numeric_in_middle_sets_invalid_color() -> None:
     engine = _Engine()
     processor = SetStrokingRGB(engine)
 
@@ -110,7 +116,9 @@ def test_stroking_rgb_non_numeric_in_middle_silently_skips() -> None:
         [COSFloat(0.1), COSString("bad"), COSFloat(0.3)],
     )
 
-    assert engine.stroking_calls == []
+    [color] = engine.stroking_calls
+    assert color.get_components() == []
+    assert color.get_color_space() is None
 
 
 def test_stroking_rgb_gate_short_circuits() -> None:
