@@ -221,8 +221,22 @@ class CCITTFaxDecode(Filter):
         _ = decode_params.get_boolean(_END_OF_BLOCK, True)
         _ = decode_params.get_int(_DAMAGED_ROWS_BEFORE_ERROR, 0)
 
-        if columns <= 0:
+        # Mirror ``CCITTFaxFilter.decode`` allocation EXACTLY for the
+        # degenerate-geometry cases. Upstream computes
+        # ``rowBytes = (columns + 7) / 8`` and ``arraySize = rowBytes * rows``
+        # with no bounds check on ``columns``, so:
+        #   * /Columns == 0  -> rowBytes == 0 -> arraySize == 0 -> empty output
+        #     (NOT an error — verified against the live oracle).
+        #   * /Columns < 0   -> Java throws ``NegativeArraySizeException``; we
+        #     surface the same "cannot decode" outcome as an ``OSError``.
+        # Only a negative /Columns is a hard error; a zero /Columns yields the
+        # same empty buffer PDFBox produces.
+        if columns < 0:
             raise OSError(f"CCITTFaxDecode: invalid /Columns {columns}")
+        if columns == 0:
+            return self._zero_fill_result(
+                decoded, parameters, columns=0, rows=rows, black_is_1=black_is_1
+            )
 
         encoded_bytes = encoded.read()
         if not encoded_bytes or rows <= 0:

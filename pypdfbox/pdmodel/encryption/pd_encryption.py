@@ -367,9 +367,15 @@ class PDEncryption:
     def get_recipients_length(self) -> int:
         """Number of entries in ``/Recipients``.
 
-        Mirrors upstream ``getRecipientsLength`` — raises ``AttributeError``
-        if ``/Recipients`` is absent (matches upstream's NPE on a missing
-        array; callers must check ``get_recipients()`` first).
+        Mirrors upstream ``getRecipientsLength``. **Honest divergence:**
+        upstream throws — a ``NullPointerException`` when ``/Recipients`` is
+        absent and a ``ClassCastException`` when it is present but not an array
+        (it does an unchecked ``(COSArray) cast``). This lite port instead
+        returns ``0`` for both cases (a missing array and a wrong-typed value),
+        matching the tolerant null-safe contract pypdfbox uses elsewhere and
+        pinned by ``test_get_recipients_length_returns_zero_when_absent``;
+        callers that need to distinguish "absent" from "empty" must probe
+        ``get_recipients()`` first.
         """
         array = self._dict.get_dictionary_object(_RECIPIENTS)
         if not isinstance(array, COSArray):

@@ -231,8 +231,20 @@ def test_g3_encoded_byte_align_flag_passes_through() -> None:
 # ---------- error handling --------------------------------------------
 
 
-def test_invalid_columns_raises() -> None:
+def test_zero_columns_returns_empty() -> None:
+    # Upstream CCITTFaxFilter.decode computes ``rowBytes = (columns + 7) / 8``
+    # with no bounds check, so /Columns == 0 gives rowBytes == 0 and an
+    # ``arraySize == 0`` buffer — i.e. an EMPTY decode, NOT an error. (Pinned
+    # against the live oracle in test_ccitt_fax_fuzz_wave1550.py.)
     params = _decode_params(K=-1, Columns=0, Rows=4)
+    assert _decode(b"\x00\x01", params) == b""
+
+
+def test_negative_columns_raises() -> None:
+    # /Columns < 0 cannot allocate a buffer; upstream throws
+    # NegativeArraySizeException, we surface the same "cannot decode" outcome
+    # as an OSError.
+    params = _decode_params(K=-1, Columns=-4, Rows=4)
     with pytest.raises(OSError):
         _decode(b"\x00\x01", params)
 
