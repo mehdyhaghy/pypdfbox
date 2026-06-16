@@ -80,6 +80,32 @@ class NullWriter:
         pass
 
 
+class _ConsoleWriter:
+    """Mirror of upstream's anonymous ``PrintWriter`` (``ExtractText$1``).
+
+    Upstream's ``createOutputWriter`` wraps ``System.out`` in a ``PrintWriter``
+    whose ``close()`` is overridden to a no-op, so the shared console stream is
+    never closed by ``call``'s ``finally`` block. Returning bare ``sys.stdout``
+    here (as the class previously did) made the ``finally`` ``output.close()``
+    actually close ``sys.stdout`` — fatal for any in-process caller that writes
+    to stdout afterwards. This thin proxy restores the upstream no-op-close
+    semantics while delegating ``write``/``flush`` to the live stream.
+    """
+
+    def __init__(self) -> None:
+        self._stream = sys.stdout
+
+    def write(self, data: str) -> int:
+        return self._stream.write(data)
+
+    def flush(self) -> None:
+        self._stream.flush()
+
+    def close(self) -> None:
+        # No-op: never close the shared console stream (mirrors ExtractText$1).
+        return None
+
+
 class AngleCollector(PDFTextStripper):
     """Mirror of trailing class ``AngleCollector`` (ExtractText.java:412)."""
 
@@ -219,7 +245,7 @@ class ExtractText:
     def create_output_writer(self) -> IO[str]:
         """Mirror of upstream private ``createOutputWriter``."""
         if self.to_console:
-            return sys.stdout
+            return _ConsoleWriter()
         mode = "a" if self.append else "w"
         if self.outfile is None:
             raise OSError("outfile is required")

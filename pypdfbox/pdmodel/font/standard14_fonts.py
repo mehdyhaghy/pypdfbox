@@ -829,19 +829,23 @@ class Standard14Fonts:
     # ---- AFM access ---------------------------------------------------
 
     @classmethod
-    def get_afm(cls, name: str) -> AfmMetrics:
+    def get_afm(cls, name: str | None) -> AfmMetrics | None:
         """Return the parsed :class:`AfmMetrics` for ``name``.
 
-        Mirrors upstream ``Standard14Fonts.getAFM``. The same instance is
-        returned on every call (per-name cache lives in ``afm_loader``).
-        Aliases are resolved transparently.
+        Mirrors upstream ``Standard14Fonts.getAFM`` exactly — including its
+        ``null`` return for an unmapped name. Upstream is
+        ``FontName fn = getMappedFontName(baseName); return fn != null ?
+        loadMetrics(fn) : null;`` — it never throws for an unknown base font.
+        The same instance is returned on every call (per-name cache lives in
+        ``afm_loader``). Aliases are resolved transparently.
 
-        Raises ``ValueError`` if ``name`` is not a Standard 14 font or a
-        known alias.
+        Returns ``None`` when ``name`` is not a Standard 14 font or a known
+        alias (matches upstream's null-return contract; the wave-1431-era
+        ``ValueError`` raise was a divergence — see CHANGES.md wave 1559).
         """
         canonical = cls.get_mapped_font_name(name)
         if canonical is None:
-            raise ValueError(f"{name!r} is not one of the 14 Standard fonts")
+            return None
         return load_standard14(canonical)
 
     # ---- Metrics ------------------------------------------------------

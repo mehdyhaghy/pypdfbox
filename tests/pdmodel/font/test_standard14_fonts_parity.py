@@ -133,9 +133,12 @@ def test_get_afm_resolves_alias() -> None:
     assert via_alias is via_canonical
 
 
-def test_get_afm_rejects_unknown_name() -> None:
-    with pytest.raises(ValueError):
-        Standard14Fonts.get_afm("NotAFont")
+def test_get_afm_returns_none_for_unknown_name() -> None:
+    # Upstream ``Standard14Fonts.getAFM`` returns null (not throws) for an
+    # unmapped base font — verified against the live PDFBox 3.0.7 oracle in
+    # wave 1559 (``getAFM("NoSuchFont") == null``). The earlier ValueError
+    # raise was a pypdfbox divergence; retargeted to match upstream.
+    assert Standard14Fonts.get_afm("NotAFont") is None
 
 
 # ---------- get_glyph_width ----------

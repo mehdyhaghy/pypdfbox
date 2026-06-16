@@ -143,19 +143,71 @@ class PDFText2Markdown(PDFTextStripper):
         self.set_article_start(ls)
         self.set_article_end(ls)
 
+    def _emit_md(self, text: str) -> None:
+        """Write ``text`` to the active per-walk sink installed by
+        :meth:`PDFTextStripper.get_text`.
+
+        Upstream PDFBox's ``PDFText2Markdown`` routes its writes through the
+        protected ``output`` Writer via ``super.writeString(String)``;
+        pypdfbox's parent ``write_string`` instead takes the production
+        ``(text, text_positions, sink)`` signature and streams through a
+        per-walk callable exposed as :attr:`PDFTextStripper._active_sink`.
+        Calling ``super().write_string(text)`` with a single argument (as the
+        class previously did) raised ``TypeError`` and crashed every
+        ``-md`` extraction. Mirror the HTML subclass: emit through the active
+        sink, falling back to the parent's stubbed 1-arg ``write_string`` only
+        when no walk is active (coverage tests that monkeypatch the parent).
+        """
+        sink = getattr(self, "_active_sink", None)
+        if sink is not None:
+            sink(text)
+            return
+        with contextlib.suppress(TypeError):
+            super().write_string(text)
+
     def start_article(self, is_ltr: bool = True) -> None:
-        super().write_string(self.get_line_separator())
+        self._emit_md(self.get_line_separator())
 
     def end_article(self) -> None:
-        super().end_article() if hasattr(super(), "end_article") else None
-        super().write_string(self.get_line_separator())
+        with contextlib.suppress(AttributeError, TypeError):
+            super().end_article()
+        self._emit_md(self.get_line_separator())
 
-    def write_string(self, text: str, text_positions: list[Any] | None = None) -> None:
+    def write_string(
+        self,
+        text: str,
+        text_positions: list[Any] | None = None,
+        sink: Any = None,
+    ) -> None:
+        """Three-overload mirror of upstream ``writeString``.
+
+        - ``write_string(text)`` — coverage path: emit ``_escape(text)``.
+        - ``write_string(text, text_positions)`` — emit the font-state-
+          decorated run.
+        - ``write_string(text, text_positions, sink)`` — production path
+          used by :meth:`PDFTextStripper.write_string_with_positions` during
+          a real ``get_text`` / ``write_text`` walk; write straight to the
+          supplied sink. Mirrors the HTML subclass so the markdown font-state
+          decoration stays live during a streamed extraction.
+        """
         if text_positions is None:
-            super().write_string(_escape(text))
+            decorated = _escape(text)
         else:
-            super().write_string(self._font_state.push(text, text_positions))
+            decorated = self._font_state.push(text, text_positions)
+        if sink is not None:
+            sink(decorated)
+        else:
+            self._emit_md(decorated)
 
-    def write_paragraph_end(self) -> None:
-        super().write_string(self._font_state.clear())
-        super().write_paragraph_end() if hasattr(super(), "write_paragraph_end") else None
+    def write_paragraph_end(self, sink: Any = None) -> None:
+        flush_text = self._font_state.clear()
+        if flush_text:
+            if sink is not None:
+                sink(flush_text)
+            else:
+                self._emit_md(flush_text)
+        if sink is not None:
+            super().write_paragraph_end(sink)
+        else:
+            with contextlib.suppress(TypeError):
+                super().write_paragraph_end()

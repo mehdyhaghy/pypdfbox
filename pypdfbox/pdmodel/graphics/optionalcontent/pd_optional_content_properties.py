@@ -447,17 +447,28 @@ class PDOptionalContentProperties:
 
     # ---------- group names (upstream parity) ----------
 
-    def get_group_names(self) -> list[str]:
-        """Mirrors upstream ``getGroupNames()`` — returns each /OCGs entry's
-        /Name in array order, substituting the empty string for entries
-        that do not resolve to a dictionary."""
-        names: list[str] = []
+    def get_group_names(self) -> list[str | None]:
+        """Mirrors upstream ``getGroupNames()`` (PDOptionalContentProperties.java
+        line 178) — returns each /OCGs entry's /Name in array order.
+
+        Two distinct fallbacks, matching upstream bytecode exactly:
+
+        - An entry that does *not* resolve to a dictionary becomes the empty
+          string ``""``.
+        - An entry that resolves to a dictionary becomes
+          ``dict.getString(/Name)`` *uncoalesced* — i.e. ``None`` when /Name
+          is absent or not a ``COSString``. Upstream stores the raw
+          ``getString`` result without a null check, so a named-less OCG dict
+          yields a genuine ``null`` slot (rendered ``"null"`` by Java
+          ``String.join``); pypdfbox must preserve that rather than collapse
+          it to ``""``."""
+        names: list[str | None] = []
         for entry in self._get_ocgs():
             ocg = self._to_dictionary(entry)
             if ocg is None:
                 names.append("")
             else:
-                names.append(ocg.get_string(_NAME) or "")
+                names.append(ocg.get_string(_NAME))
         return names
 
     # ---------- base state ----------

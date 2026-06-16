@@ -459,7 +459,16 @@ def test_call_permission_denied_returns_1(
 def test_create_output_writer_returns_stdout_in_console_mode() -> None:
     et = ExtractText()
     et.to_console = True
-    assert et.create_output_writer() is sys.stdout
+    writer = et.create_output_writer()
+    # Wave 1559: console mode no longer returns bare sys.stdout (call()'s
+    # ``finally: output.close()`` would have closed the real stream). It now
+    # returns a thin proxy that delegates writes to the live stdout but makes
+    # ``close()`` a no-op, mirroring upstream's anonymous PrintWriter
+    # (``ExtractText$1``) whose close() is overridden to do nothing.
+    assert writer is not sys.stdout
+    assert writer._stream is sys.stdout
+    writer.close()
+    assert not sys.stdout.closed
 
 
 def test_create_output_writer_opens_file_in_write_mode(tmp_path: Path) -> None:

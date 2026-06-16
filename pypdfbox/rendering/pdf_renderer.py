@@ -7900,7 +7900,18 @@ class PDFRenderer(PDFStreamEngine):
         r, g, b = self._gs.fill_rgb
         rgba = Image.new("RGBA", (width, height), (r, g, b, 0))
         rgba.putalpha(alpha)
-        self._paste_image(rgba)
+        # PDF 32000-1 §8.9.5.3: a stencil mask honours the image XObject's
+        # /Interpolate flag exactly like a colour image (PDFBox routes both
+        # through the same ``drawBufferedImage`` interpolation hint). When
+        # /Interpolate is false (the default) the matte is resampled with
+        # nearest-neighbour so the painted edge stays hard; passing the
+        # default ``interpolate=True`` here would bicubic-blur the 1-bit
+        # matte's edge — visible on any upscaled stencil.
+        try:
+            interpolate = bool(image.get_interpolate())
+        except Exception:  # noqa: BLE001
+            interpolate = False
+        self._paste_image(rgba, interpolate=interpolate)
 
     def _paste_image(
         self, pil_image: Image.Image, interpolate: bool = True

@@ -129,7 +129,13 @@ def test_wave549_group_count_and_names_skip_or_mark_malformed_ocg_slots() -> Non
     assert props.get_group_count() == 2
     assert len(props) == 2
     assert props.has_groups() is True
-    assert props.get_group_names() == ["First", "", ""]
+    # Upstream getGroupNames() stores an *uncoalesced* getString(/Name) for
+    # dictionary entries (PDOptionalContentProperties.java line 178): the third
+    # slot is an empty COSDictionary with no /Name, so it yields a genuine
+    # ``None`` (Java null), whereas the non-dictionary COSName slot yields "".
+    # (Retargeted in wave 1559 after the live oracle proved upstream does not
+    # collapse the dict-with-no-/Name case to "".)
+    assert props.get_group_names() == ["First", "", None]
 
 
 def test_wave549_base_state_rejects_non_state_inputs() -> None:
