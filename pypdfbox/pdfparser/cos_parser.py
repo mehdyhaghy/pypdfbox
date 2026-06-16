@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+from collections.abc import Callable
 from typing import ClassVar
 
 from pypdfbox.cos import (
@@ -124,6 +125,23 @@ class COSParser(BaseParser):
         self._initial_parse_done: bool = False
         self._trailer_was_rebuild: bool = False
         self._recursion_depth: int = 0
+        # Optional lenient fallback for a referenced key the consolidated xref
+        # does not carry as a usable in-use entry (a free slot, or a key
+        # beyond the table) whose ``n g obj`` body is nonetheless present in
+        # the file. ``PDFParser`` installs a brute-force resolver here in
+        # lenient mode (mirrors upstream COSParser.parseObjectDynamically's
+        # bfSearchForObjects fallback). ``None`` means no recovery (strict).
+        self._missing_object_resolver: (
+            Callable[[COSObjectKey], COSBase | None] | None
+        ) = None
+
+    def set_missing_object_resolver(
+        self, resolver: Callable[[COSObjectKey], COSBase | None] | None
+    ) -> None:
+        """Install (or clear) the lenient free/missing-key resolution
+        fallback. ``None`` disables recovery. See
+        :meth:`parse_object_dynamically`."""
+        self._missing_object_resolver = resolver
 
     @property
     def document(self) -> COSDocument | None:
@@ -340,9 +358,23 @@ class COSParser(BaseParser):
         is fresh — the caller is responsible for resolving it later."""
         if self._document is None:
             return COSObject(object_number, generation_number)
-        return self._document.get_object_from_pool(
-            COSObjectKey(object_number, generation_number)
-        )
+        key = COSObjectKey(object_number, generation_number)
+        cos_obj = self._document.get_object_from_pool(key)
+        # In lenient mode a reference whose key carries no usable in-use xref
+        # entry (a free slot, or a key beyond the table) gets no loader from
+        # ``populate_document``. Attach the brute-force fallback loader so a
+        # later ``get_object()`` resolves the body if it still exists in the
+        # file (mirrors COSParser.parseObjectDynamically's bfSearchForObjects
+        # fallback). In-use keys already have their offset loader, so this is
+        # a no-op for them.
+        if (
+            self._missing_object_resolver is not None
+            and not cos_obj.is_dereferenced()
+            and not cos_obj.has_loader()
+        ):
+            resolver = self._missing_object_resolver
+            cos_obj.set_loader(lambda _obj, _k=key: resolver(_k))
+        return cos_obj
 
     # ---------- keyword-valued primitives ----------
 
@@ -647,6 +679,16 @@ class COSParser(BaseParser):
                 "object not present in document pool"
             )
         cos_obj = self._document.get_object_from_pool(key)
+        # A free/missing key fetched here (not via ``_make_indirect_reference``)
+        # still needs the lenient brute-force fallback wired up before its
+        # ``get_object()`` runs — attach it the same way.
+        if (
+            self._missing_object_resolver is not None
+            and not cos_obj.is_dereferenced()
+            and not cos_obj.has_loader()
+        ):
+            resolver = self._missing_object_resolver
+            cos_obj.set_loader(lambda _obj, _k=key: resolver(_k))
         # Trigger lazy resolution if a loader is attached; otherwise return
         # whatever the placeholder currently wraps (may be ``None``).
         return cos_obj.get_object()

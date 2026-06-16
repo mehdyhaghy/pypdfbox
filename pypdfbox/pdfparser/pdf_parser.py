@@ -142,6 +142,11 @@ class PDFParser:
         # a brute-force object merge so the incomplete table is repaired,
         # mirroring upstream COSParser's post-break recovery.
         self._xref_table_recovery_needed: bool = False
+        # Cache for the lazy brute-force object scan used by the lenient
+        # free/missing-key resolution fallback (mirrors upstream
+        # ``COSParser.bfCOSObjectKeyOffsets``). ``None`` until the first
+        # dangling reference forces a ``bf_search_for_objects`` scan.
+        self._bf_offsets_cache: dict[COSObjectKey, int] | None = None
         # Lazy ``PDDocument`` wrapper around the parsed ``COSDocument``.
         # Built on first call to :meth:`get_pd_document`; mirrors upstream
         # ``PDFParser.getPDDocument()``.
@@ -1646,7 +1651,11 @@ class PDFParser:
         for key, entry in xref.items():
             if entry.compressed_index == -1:
                 # Free entry — skip; PDFBox does not register a placeholder
-                # for free slots in the regular object pool.
+                # for free slots in the regular object pool. A LENIENT-mode
+                # reference to a free slot whose ``n g obj`` body still exists
+                # in the file is resolved on demand via the brute-force
+                # fallback installed below (mirrors COSParser's lazy
+                # bfSearchForObjects path), not via a pre-attached loader.
                 continue
             cos_obj = self._document.get_object_from_pool(key)
             cos_obj.set_loader(self._make_loader(entry))
@@ -1659,6 +1668,55 @@ class PDFParser:
                 offset_table[key] = entry.offset
         if offset_table:
             self._document.add_xref_table(offset_table)
+        # Install the lenient free/missing-key resolution fallback so a
+        # reference to a free (or absent) xref slot whose ``n g obj`` body
+        # still exists in the file resolves on demand. Mirrors upstream
+        # ``COSParser.parseObjectDynamically``'s ``bfSearchForObjects``
+        # fallback (only in lenient mode).
+        if self._lenient and self._cos_parser is not None:
+            self._cos_parser.set_missing_object_resolver(
+                self._resolve_missing_object
+            )
+
+    def _resolve_missing_object(self, key: COSObjectKey) -> COSBase | None:
+        """Brute-force-resolve a referenced object that the consolidated xref
+        does not carry as a usable in-use entry (a free slot, or a key beyond
+        the table) but whose ``n g obj`` body is present in the file.
+
+        Mirrors the lenient branch of upstream
+        ``COSParser.parseObjectDynamically``: when the xref yields no offset
+        for a referenced key, PDFBox runs ``bfSearchForObjects`` (cached) and
+        resolves from the recovered offset, returning null when the scan never
+        found the object. Generation must match — the brute-force scan keys on
+        ``(object_number, generation)`` exactly, so a wrong-generation
+        reference still resolves to null."""
+        offsets = self._brute_force_offsets()
+        offset = offsets.get(key)
+        if offset is None or offset <= 0:
+            return None
+        cos_obj = self._document.get_object_from_pool(key)
+        try:
+            return self._load_indirect_object_at(offset, cos_obj)
+        except PDFParseError:
+            return None
+
+    def _brute_force_offsets(self) -> dict[COSObjectKey, int]:
+        """Cached brute-force object scan for the lenient free/missing
+        resolution fallback. Mirrors upstream ``COSParser`` caching the scan
+        in ``bfCOSObjectKeyOffsets`` so a document with several dangling
+        references scans the body only once.
+
+        Uses :meth:`_brute_force_recovered_offsets` (the EOF-aware variant
+        with upstream's deferred-final-object drop) rather than the raw
+        ``bf_search_for_objects`` — upstream ``bfSearchForObjects`` applies the
+        same ``bfSearchForLastEOFMarker`` rule, so a trailing object header
+        that runs to EOF with no ``endobj`` / ``%%EOF`` must NOT be recovered."""
+        if self._bf_offsets_cache is None:
+            try:
+                self._bf_offsets_cache = self._brute_force_recovered_offsets()
+            except PDFParseError:
+                self._bf_offsets_cache = {}
+        return self._bf_offsets_cache
 
     def _brute_force_recovered_offsets(self) -> dict[COSObjectKey, int]:
         """``bf_search_for_objects`` with upstream's final-object EOF rule.

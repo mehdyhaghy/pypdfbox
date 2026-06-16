@@ -97,6 +97,13 @@ class COSObject(COSBase):
     def is_object_loaded(self) -> bool:
         return self._object is not None
 
+    def has_loader(self) -> bool:
+        """Return ``True`` when a lazy loader is attached (not yet consumed).
+
+        Used by the parser to avoid double-attaching a loader to a pool entry
+        that already carries one (an in-use xref entry's offset loader)."""
+        return self._loader is not None
+
     def is_dereferenced(self) -> bool:
         """Return ``True`` once a load attempt has been made (whether it
         produced a value or not). Mirrors upstream ``isDereferenced``."""

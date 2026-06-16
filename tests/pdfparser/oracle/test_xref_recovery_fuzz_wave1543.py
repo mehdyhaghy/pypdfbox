@@ -376,16 +376,18 @@ _PINNED_DIVERGENCES: dict[str, str] = {
     "body_truncated": "loaded=ERR:OSError pages=? root=? nobj=? enc=?",
     "body_one_byte": "loaded=ERR:OSError pages=? root=? nobj=? enc=?",
     # --- family (B): both open, projection / size-clip nuance ---
-    # /Size 2 (Index defaults to [0 2]) declares only objs 0,1. pypdfbox honours
-    # the declared range verbatim: objs 2,3 are simply not in the xref, so the
-    # page tree is unreachable (pages=0, nobj=1 — the lone in-use obj1). PDFBox's
-    # post-decode consistency check notices the truncated set and brute-force
-    # recovers objs 2,3 (pages=1, nobj=2). pypdfbox does not fabricate a wrong
-    # page count — it reports the page tree it can actually reach from the
-    # /Size-clipped xref. Documented loader-strictness divergence (family A in
-    # value form).
+    # /Size 2 (Index defaults to [0 2]) declares only objs 0,1. The page tree
+    # (objs 2,3) is not in the located xref. Wave 1549 wired up the lenient
+    # free/missing-key brute-force fallback (COSParser.parseObjectDynamically),
+    # so a reference to obj2/obj3 now resolves its body from the file body —
+    # the page tree is reachable (pages=1), matching PDFBox. The residual nuance
+    # is nobj: PDFBox's post-decode consistency check MERGES objs 2,3 into the
+    # public xref table (nobj=2), whereas pypdfbox resolves them on demand
+    # without adding them to the public table (nobj=1). A recovery-completeness
+    # nuance in WHICH keys land in the public table — the page tree resolves
+    # identically. Same class as the size_zero / w_type_col_absent nobj pins.
     #   java: loaded=1 pages=1 root=present nobj=2 enc=0
-    "size_too_small": "loaded=1 pages=0 root=present nobj=1 enc=0",
+    "size_too_small": "loaded=1 pages=1 root=present nobj=1 enc=0",
     # /Size 0 (Index defaults to [0 0]) declares ZERO entries, so the located
     # xref stream registers no objects. Both sides then recover the body: PDFBox
     # brute-force-recovers the narrower consistency-walk set (nobj=2) while

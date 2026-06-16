@@ -249,7 +249,9 @@ class PDNumberTreeNode[T](ABC):
                         return value
                     continue
                 if lower <= index <= upper:
-                    return child.get_value(index)
+                    value = child.get_value(index)
+                    if value is not None:
+                        return value
         else:
             _LOG.warning('NumberTreeNode does not have "nums" nor "kids" objects.')
         return None
