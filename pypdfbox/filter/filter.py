@@ -105,21 +105,27 @@ class Filter(ABC):
         empty ``COSDictionary``.
 
         Mirrors ``org.apache.pdfbox.filter.Filter#getDecodeParams``.
+
+        Upstream resolves the parameter value with a single dual-key lookup
+        ``getDictionaryObject(DP, DECODE_PARMS)`` — the abbreviated ``/DP``
+        takes precedence over ``/DecodeParms`` when both are present, and
+        only that one resolved value is inspected. We mirror that: a malformed
+        stream carrying both keys must route through ``/DP`` (not silently
+        fall back to ``/DecodeParms``) so the per-filter parameters match
+        what every concrete PDFBox codec sees.
         """
         if parameters is None:
             return COSDictionary()
-        for key in ("DecodeParms", "DP"):
-            params = parameters.get_dictionary_object(key)
-            if isinstance(params, COSDictionary):
-                return params
-            if isinstance(params, COSArray):
-                try:
-                    entry = params.get_object(index)
-                except Exception:
-                    entry = None
-                if isinstance(entry, COSDictionary):
-                    return entry
-                return COSDictionary()
+        params = parameters.get_dictionary_object(_DP, _DECODE_PARMS)
+        if isinstance(params, COSDictionary):
+            return params
+        if isinstance(params, COSArray):
+            try:
+                entry = params.get_object(index)
+            except Exception:
+                entry = None
+            if isinstance(entry, COSDictionary):
+                return entry
         return COSDictionary()
 
     @staticmethod

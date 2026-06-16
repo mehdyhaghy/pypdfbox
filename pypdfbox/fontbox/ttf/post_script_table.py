@@ -74,8 +74,15 @@ class PostScriptTable(TTFTable):
             length = max_index - wgl4_names.NUMBER_OF_MAC_GLYPHS + 1
             name_array = [""] * length
             for i in range(length):
+                # Upstream wraps ONLY ``readString`` in the PDFBOX-4851 try/catch;
+                # the preceding ``readUnsignedByte`` (the Pascal-string length) is
+                # OUTSIDE the guard, so an EOF reading the length byte propagates
+                # as IOException/EOFException rather than padding with .notdef.
+                # Verified against FontBox 3.0.7 bytecode (the try table covers
+                # only the ``readString`` call). Keeping the length read outside
+                # the try preserves that throw-vs-pad split exactly.
+                number_of_chars = data.read_unsigned_byte()
                 try:
-                    number_of_chars = data.read_unsigned_byte()
                     name_array[i] = data.read_string(number_of_chars)
                 except (OSError, EOFError) as exc:
                     # PDFBOX-4851: EOF while reading post names; pad with .notdef

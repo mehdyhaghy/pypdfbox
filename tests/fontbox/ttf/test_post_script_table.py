@@ -3,6 +3,8 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass
 
+import pytest
+
 from pypdfbox.fontbox.ttf import wgl4_names
 from pypdfbox.fontbox.ttf.post_script_table import PostScriptTable
 from pypdfbox.fontbox.ttf.ttf_data_stream import MemoryTTFDataStream
@@ -119,8 +121,16 @@ def test_format_2_reserved_index_yields_undefined() -> None:
     assert names == [".notdef", ".undefined"]
 
 
-def test_format_2_truncated_custom_names_pad_with_notdef() -> None:
-    # Claim two custom names but only write one — second should pad to .notdef.
+def test_format_2_eof_reading_length_byte_raises() -> None:
+    # Claim two custom names but write only the first ("abc") with NO trailing
+    # bytes for the second entry's Pascal length byte. Upstream FontBox 3.0.7
+    # wraps ONLY ``readString`` in the PDFBOX-4851 try/catch; the preceding
+    # ``readUnsignedByte`` (the length) is OUTSIDE the guard, so an EOF reading
+    # the length byte propagates as IOException/EOFException rather than padding
+    # with .notdef. Verified BOTH-SIDES against the FontBox 3.0.7 oracle in
+    # tests/fontbox/ttf/oracle/test_ttf_metric_table_fuzz_wave1553.py
+    # (``post_eof_len_byte``). Retargeted in wave 1553 alongside the
+    # post_script_table.py fix.
     num_glyphs = 2
     indices = [
         wgl4_names.NUMBER_OF_MAC_GLYPHS,        # custom slot 0
@@ -128,7 +138,26 @@ def test_format_2_truncated_custom_names_pad_with_notdef() -> None:
     ]
     body = struct.pack(">H", num_glyphs)
     body += b"".join(struct.pack(">H", i) for i in indices)
-    body += bytes([3]) + b"abc"  # only first name supplied
+    body += bytes([3]) + b"abc"  # only first name supplied; no length byte after
+    blob = _pack_header(2) + body
+    with pytest.raises((OSError, EOFError)):
+        _read(blob)
+
+
+def test_format_2_truncated_string_bytes_pad_with_notdef() -> None:
+    # When the Pascal LENGTH byte IS readable but the string BYTES run out, the
+    # PDFBOX-4851 try/catch around ``readString`` fires and pads the remaining
+    # entries with .notdef (verified against the FontBox 3.0.7 oracle: a length
+    # byte of 5 with only 2 string bytes yields ["abc", ".notdef"]).
+    num_glyphs = 2
+    indices = [
+        wgl4_names.NUMBER_OF_MAC_GLYPHS,        # custom slot 0
+        wgl4_names.NUMBER_OF_MAC_GLYPHS + 1,    # custom slot 1
+    ]
+    body = struct.pack(">H", num_glyphs)
+    body += b"".join(struct.pack(">H", i) for i in indices)
+    body += bytes([3]) + b"abc"  # first name
+    body += bytes([5]) + b"xy"   # second name claims 5 chars but supplies 2
     blob = _pack_header(2) + body
     t = _read(blob)
     names = t.get_glyph_names()
