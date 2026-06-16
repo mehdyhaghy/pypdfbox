@@ -3235,9 +3235,16 @@ class PDFRenderer(PDFStreamEngine):
     def _op_line_to(self, _op: Any, operands: list[COSBase]) -> None:
         if len(operands) < 2:
             return
-        if self._current_subpath is None:
-            return
         x, y = _to_float(operands[0]), _to_float(operands[1])
+        # ``l`` without an initial ``m``: Apache PDFBox's LineTo operator
+        # (contentstream/operator/graphics/LineTo) logs a warning and falls
+        # back to an implicit ``moveTo(x, y)`` rather than dropping the path,
+        # so a malformed stream like ``50 50 l 90 90 l S`` still strokes the
+        # (50,50)→(90,90) segment. Previously we discarded the whole subpath,
+        # rendering nothing where PDFBox renders the line.
+        if self._current_subpath is None:
+            self._start_subpath(x, y)
+            return
         self._current_subpath.append(("L", x, y))
         self._current_point = (x, y)
 
@@ -3274,30 +3281,46 @@ class PDFRenderer(PDFStreamEngine):
 
     def _op_curve_to(self, _op: Any, operands: list[COSBase]) -> None:
         # c x1 y1 x2 y2 x3 y3
-        if len(operands) < 6 or self._current_subpath is None:
+        if len(operands) < 6:
             return
         vals = [_to_float(operands[i]) for i in range(6)]
         x1, y1, x2, y2, x3, y3 = vals
+        # ``c`` without an initial ``m``: PDFBox's CurveTo operator does an
+        # implicit ``moveTo(x3, y3)`` (the curve's endpoint) and skips the
+        # Bezier itself — start the subpath at the endpoint and append nothing.
+        if self._current_subpath is None:
+            self._start_subpath(x3, y3)
+            return
         x0, y0 = self._current_point
         self._append_curve(x0, y0, x1, y1, x2, y2, x3, y3)
         self._current_point = (x3, y3)
 
     def _op_curve_to_v(self, _op: Any, operands: list[COSBase]) -> None:
         # v x2 y2 x3 y3 — first control point = current point
-        if len(operands) < 4 or self._current_subpath is None:
+        if len(operands) < 4:
             return
-        x0, y0 = self._current_point
         x2, y2 = _to_float(operands[0]), _to_float(operands[1])
         x3, y3 = _to_float(operands[2]), _to_float(operands[3])
+        # No initial ``m``: PDFBox's CurveToReplicateInitialPoint does an
+        # implicit ``moveTo(x3, y3)`` and skips the curve.
+        if self._current_subpath is None:
+            self._start_subpath(x3, y3)
+            return
+        x0, y0 = self._current_point
         self._append_curve(x0, y0, x0, y0, x2, y2, x3, y3)
         self._current_point = (x3, y3)
 
     def _op_curve_to_y(self, _op: Any, operands: list[COSBase]) -> None:
         # y x1 y1 x3 y3 — second control point = end point
-        if len(operands) < 4 or self._current_subpath is None:
+        if len(operands) < 4:
             return
         x1, y1 = _to_float(operands[0]), _to_float(operands[1])
         x3, y3 = _to_float(operands[2]), _to_float(operands[3])
+        # No initial ``m``: PDFBox's CurveToReplicateFinalPoint does an
+        # implicit ``moveTo(x3, y3)`` and skips the curve.
+        if self._current_subpath is None:
+            self._start_subpath(x3, y3)
+            return
         x0, y0 = self._current_point
         self._append_curve(x0, y0, x1, y1, x3, y3, x3, y3)
         self._current_point = (x3, y3)

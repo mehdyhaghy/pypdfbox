@@ -96,11 +96,15 @@ def test_cmap_stream_read_code_breaks_when_extension_byte_is_missing(
     assert "Invalid character code sequence" in caplog.text
 
 
-def test_cmap_random_access_short_initial_read_returns_partial_code() -> None:
+def test_cmap_random_access_short_initial_read_zero_pads_code() -> None:
+    # Wave 1547: a read shorter than minCodeLength is no longer short-circuited
+    # to the partial value. Mirroring upstream CMap.readCode, the codespace match
+    # runs over the zero-padded buffer — a lone <12> under a <0000> <FFFF>
+    # codespace reads as 0x1200 (consuming the 1 available byte).
     cmap = CMap()
     cmap.add_codespace_range(b"\x00\x00", b"\xff\xff")
 
-    assert cmap.read_code(RandomAccessReadBuffer(b"\x12")) == 0x12
+    assert cmap.read_code(RandomAccessReadBuffer(b"\x12")) == 0x1200
 
 
 def test_cmap_binary_initial_read_eof_returns_zero() -> None:

@@ -41,8 +41,11 @@ def _nums(*values: float) -> list[COSFloat]:
 def test_curve_shorthand_operators_use_current_point_controls() -> None:
     doc, renderer = _prepared_renderer()
     try:
+        # ``v`` with no current point is an implicit ``moveTo`` to the curve
+        # endpoint (PDFBox CurveToReplicateInitialPoint) — retargeted wave 1547
+        # from the old "drop the segment" behaviour the oracle disproved.
         renderer.process_operator("v", _nums(2.0, 3.0, 4.0, 5.0))
-        assert renderer._subpaths == []  # noqa: SLF001
+        assert renderer._subpaths == [[("M", 4.0, 5.0)]]  # noqa: SLF001
 
         renderer.process_operator("m", _nums(1.0, 1.0))
         renderer.process_operator("v", _nums(2.0, 3.0, 4.0, 5.0))
@@ -50,11 +53,12 @@ def test_curve_shorthand_operators_use_current_point_controls() -> None:
 
         assert renderer._current_point == (8.0, 9.0)  # noqa: SLF001
         assert renderer._subpaths == [  # noqa: SLF001
+            [("M", 4.0, 5.0)],
             [
                 ("M", 1.0, 1.0),
                 ("C", 1.0, 1.0, 2.0, 3.0, 4.0, 5.0),
                 ("C", 6.0, 7.0, 8.0, 9.0, 8.0, 9.0),
-            ]
+            ],
         ]
     finally:
         _finish(renderer)

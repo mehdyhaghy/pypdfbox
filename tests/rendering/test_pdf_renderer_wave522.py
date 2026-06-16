@@ -138,10 +138,19 @@ def test_show_text_line_with_spacing_ignores_short_operands(
         doc.close()
 
 
-def test_path_construction_ignores_segments_without_current_subpath() -> None:
+def test_line_to_without_current_point_does_implicit_move_to() -> None:
+    """``l`` with no preceding ``m`` is an implicit ``moveTo`` in Apache
+    PDFBox (contentstream/operator/graphics/LineTo: ``getCurrentPoint() ==
+    null`` → ``moveTo(x, y)``), NOT a dropped segment. Retargeted in wave 1547
+    after the differential oracle showed PDFBox strokes ``50 50 l 90 90 l S``
+    while pypdfbox rendered nothing."""
     doc, renderer = _prepared_renderer()
     try:
+        # First ``l`` (no current point) starts a subpath at its endpoint.
         renderer.process_operator("l", [COSFloat(1.0), COSFloat(1.0)])
+        assert renderer._subpaths == [[("M", 1.0, 1.0)]]  # noqa: SLF001
+        assert renderer._current_point == (1.0, 1.0)  # noqa: SLF001
+        # The curve operators now have a current point and append segments.
         renderer.process_operator(
             "c",
             [
@@ -163,9 +172,28 @@ def test_path_construction_ignores_segments_without_current_subpath() -> None:
         )
         renderer.process_operator("h", [])
 
-        assert renderer._subpaths == []  # noqa: SLF001
-        assert renderer._current_subpath is None  # noqa: SLF001
-        assert renderer._current_point == (0.0, 0.0)  # noqa: SLF001
+        assert renderer._current_subpath is not None  # noqa: SLF001
+        assert renderer._current_subpath[0] == ("M", 1.0, 1.0)  # noqa: SLF001
+        assert renderer._current_subpath[-1] == ("Z",)  # noqa: SLF001
+        assert renderer._current_point == (1.0, 1.0)  # noqa: SLF001
+    finally:
+        _finish(renderer)
+        doc.close()
+
+
+def test_curve_to_without_current_point_does_implicit_move_to() -> None:
+    """``c`` / ``v`` / ``y`` with no preceding ``m`` each do an implicit
+    ``moveTo`` to the curve endpoint and skip the Bezier itself, matching
+    PDFBox's CurveTo / CurveToReplicate* operators (retargeted wave 1547)."""
+    doc, renderer = _prepared_renderer()
+    try:
+        renderer.process_operator(
+            "c",
+            [COSFloat(v) for v in (1.0, 2.0, 3.0, 4.0, 5.0, 6.0)],
+        )
+        # moveTo(x3, y3) = (5, 6); the curve segment is skipped.
+        assert renderer._subpaths == [[("M", 5.0, 6.0)]]  # noqa: SLF001
+        assert renderer._current_point == (5.0, 6.0)  # noqa: SLF001
     finally:
         _finish(renderer)
         doc.close()

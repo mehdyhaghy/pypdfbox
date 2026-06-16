@@ -239,11 +239,25 @@ class CMap:
             return b if b >= 0 else 0
         bytes_buf = bytearray(max_len)
 
-        # Read the initial minCodeLength bytes.
-        read = self._read_some(input_stream, bytes_buf, 0, min_len)
-        if read < min_len:
-            return _to_int(bytes_buf, max(read, 1)) if read > 0 else 0
+        # Read the initial minCodeLength bytes. Upstream ignores the actual
+        # count returned by ``in.read(bytes, 0, minCodeLength)`` and runs the
+        # codespace-matching loop over the (zero-padded) buffer regardless — so
+        # a truncated tail shorter than ``minCodeLength`` still resolves to the
+        # zero-extended code (e.g. a lone ``<41>`` under a ``<0000> <FFFF>``
+        # codespace reads as ``0x4100``, consuming 1 byte). We mirror that
+        # instead of short-circuiting (CMap.java readCode, verified against the
+        # 3.0.7 bytecode where the read return value is discarded).
+        self._read_some(input_stream, bytes_buf, 0, min_len)
 
+        # Upstream marks the stream right after the initial minCodeLength bytes
+        # (``in.mark(maxCodeLength)``) and, when no codespace range matches, calls
+        # ``in.reset()`` before returning ``toInt(bytes, minCodeLength)`` — so the
+        # speculatively-read extension bytes are pushed back and the *next* code
+        # starts at offset ``minCodeLength``. We replicate that by counting the
+        # extension bytes consumed past ``minCodeLength`` and rewinding them on a
+        # total miss (CMap.java readCode mark/reset, verified against 3.0.7
+        # bytecode).
+        extra_read = 0
         for i in range(min_len - 1, max_len):
             byte_count = i + 1
             for r in self._codespace_ranges:
@@ -254,6 +268,10 @@ class CMap:
                 if b < 0:
                     break
                 bytes_buf[byte_count] = b
+                extra_read += 1
+
+        if extra_read:
+            self._unread(input_stream, extra_read)
 
         if _log.isEnabledFor(logging.WARNING):
             sb = " ".join(f"0x{bytes_buf[i] & 0xFF:02X}" for i in range(max_len))
@@ -335,6 +353,26 @@ class CMap:
                 if best is None or cl < best:
                     best = cl
         return best
+
+    @staticmethod
+    def _unread(stream: RandomAccessRead | BinaryIO, n: int) -> None:
+        """Push back ``n`` previously-read bytes, mirroring upstream's
+        ``in.reset()`` after ``in.mark(maxCodeLength)`` in ``readCode``.
+
+        For a ``RandomAccessRead`` we use ``rewind``; for a seekable
+        ``BinaryIO`` we ``seek`` backwards relative to the current position.
+        A non-seekable stream silently keeps the bytes consumed — matching
+        upstream's behaviour when ``markSupported()`` is ``False`` (it logs
+        "mark() and reset() not supported" and the bytes stay skipped).
+        """
+        if n <= 0:
+            return
+        if isinstance(stream, RandomAccessRead):
+            stream.rewind(n)
+            return
+        seekable = getattr(stream, "seekable", None)
+        if seekable is not None and seekable():
+            stream.seek(-n, 1)
 
     @staticmethod
     def _read_one(stream: RandomAccessRead | BinaryIO) -> int:

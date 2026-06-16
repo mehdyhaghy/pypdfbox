@@ -22,7 +22,13 @@ def test_wave431_read_code_stream_truncated_after_partial_prefix() -> None:
     cmap = CMap("truncated")
     cmap.add_codespace_range(b"\x00\x00", b"\xff\xff")
 
-    assert cmap.read_code(io.BytesIO(b"\xab")) == 0xAB
+    # A 1-byte stream under a 2-byte codespace: upstream readCode reads into a
+    # zero-initialised ``byte[maxCodeLength]`` and discards the short-read
+    # count, so the codespace match runs over the zero-padded buffer and yields
+    # the zero-extended code ``0xAB00`` (consuming the single available byte).
+    # Verified against the live PDFBox 3.0.7 oracle in wave 1547; the prior
+    # ``0xAB`` expectation pinned a pre-fix pypdfbox divergence.
+    assert cmap.read_code(io.BytesIO(b"\xab")) == 0xAB00
 
 
 def test_wave431_read_code_stream_extends_with_random_access_read() -> None:
