@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from pypdfbox.cos import COSArray, COSFloat
+from pypdfbox.cos.cos_float import _to_float32
 
 
 class PDRectangle:
@@ -49,10 +50,15 @@ class PDRectangle:
         upper_right_x: float = 0.0,
         upper_right_y: float = 0.0,
     ) -> None:
-        self._lower_left_x = float(lower_left_x)
-        self._lower_left_y = float(lower_left_y)
-        self._upper_right_x = float(upper_right_x)
-        self._upper_right_y = float(upper_right_y)
+        # Upstream stores each coordinate in a COSArray of COSFloat, so every
+        # value is narrowed to IEEE-754 single precision on construction (and
+        # read back via COSNumber.floatValue() which returns that float32).
+        # Mirror that here — otherwise getWidth()/getLowerLeftX() etc. diverge
+        # for coordinates not exactly representable in float32.
+        self._lower_left_x = _to_float32(float(lower_left_x))
+        self._lower_left_y = _to_float32(float(lower_left_y))
+        self._upper_right_x = _to_float32(float(upper_right_x))
+        self._upper_right_y = _to_float32(float(upper_right_y))
 
     # ---------- factory constructors ----------
 
@@ -63,8 +69,18 @@ class PDRectangle:
 
     @classmethod
     def from_xywh(cls, x: float, y: float, width: float, height: float) -> PDRectangle:
-        """Match upstream's ``PDRectangle(float x, float y, float w, float h)``."""
-        return cls(float(x), float(y), float(x) + float(width), float(y) + float(height))
+        """Match upstream's ``PDRectangle(float x, float y, float w, float h)``.
+
+        Upstream stores ``x`` and ``x + width`` as separate ``COSFloat`` cells,
+        so the corner sums are computed in single precision: the operands are
+        already float32 (Java ``float`` params) and the ``+`` is float
+        arithmetic. Narrow each operand and the sum to mirror that.
+        """
+        fx = _to_float32(float(x))
+        fy = _to_float32(float(y))
+        urx = _to_float32(fx + _to_float32(float(width)))
+        ury = _to_float32(fy + _to_float32(float(height)))
+        return cls(fx, fy, urx, ury)
 
     #: Clamp threshold for malformed COS values — matches upstream's
     #: ``(float) Integer.MAX_VALUE``. Java's ``int`` ceiling ``2**31 - 1``
@@ -143,24 +159,25 @@ class PDRectangle:
         return self._upper_right_y
 
     def set_lower_left_x(self, value: float) -> None:
-        self._lower_left_x = float(value)
+        self._lower_left_x = _to_float32(float(value))
 
     def set_lower_left_y(self, value: float) -> None:
-        self._lower_left_y = float(value)
+        self._lower_left_y = _to_float32(float(value))
 
     def set_upper_right_x(self, value: float) -> None:
-        self._upper_right_x = float(value)
+        self._upper_right_x = _to_float32(float(value))
 
     def set_upper_right_y(self, value: float) -> None:
-        self._upper_right_y = float(value)
+        self._upper_right_y = _to_float32(float(value))
 
     @property
     def width(self) -> float:
-        return self._upper_right_x - self._lower_left_x
+        # Java: getUpperRightX() - getLowerLeftX(), both float, result float.
+        return _to_float32(self._upper_right_x - self._lower_left_x)
 
     @property
     def height(self) -> float:
-        return self._upper_right_y - self._lower_left_y
+        return _to_float32(self._upper_right_y - self._lower_left_y)
 
     def get_width(self) -> float:
         return self.width

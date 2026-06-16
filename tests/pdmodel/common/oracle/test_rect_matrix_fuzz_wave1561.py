@@ -26,15 +26,16 @@ Every scalar PDFBox emits here is a Java ``float`` (``Matrix`` is a
 (the raw ``Float.toString`` port the probe's ``println(float)`` uses) so the
 match is float32-exact.
 
-**Honest divergence — width/height precision.** Upstream ``getWidth`` /
-``getHeight`` subtract two ``float`` cells and return a ``float`` (float32),
-whereas pypdfbox stores the corners as Python ``float`` (float64) and subtracts
-in float64. For every case fuzzed here the difference is exactly representable
-(integer corners), so the rendered ``Float.toString`` agrees; a case with
-non-float-representable corners would expose the float-vs-double width cliff
-(the same caveat ``RectangleFuzzProbe`` notes for its ``huge_*`` cases). Pinned
-values below pass WITHOUT the oracle; the ``@requires_oracle`` differential at
-the bottom re-derives every line live against the PDFBox 3.0.7 jar.
+**width/height precision (CLOSED wave 1569).** Upstream ``getWidth`` /
+``getHeight`` subtract two ``float`` cells and return a ``float`` (float32);
+``PDRectangle`` now narrows every stored corner to float32 on construction (it
+mirrors upstream's ``COSArray``-of-``COSFloat`` backing) and narrows the
+subtraction result, so non-float-representable corners no longer expose a
+float-vs-double width cliff. For every case fuzzed here the corners are integer
+so the rendered ``Float.toString`` already agreed; the non-representable case is
+now pinned by ``test_pd_rectangle_matrix_fuzz_wave1569``. Pinned values below
+pass WITHOUT the oracle; the ``@requires_oracle`` differential at the bottom
+re-derives every line live against the PDFBox 3.0.7 jar.
 """
 
 from __future__ import annotations
