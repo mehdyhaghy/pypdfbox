@@ -2500,7 +2500,16 @@ class PDFParser:
                 f"stream body truncated: expected {length} bytes, got {n}",
                 position=self._src.get_position(),
             )
-        stream.set_raw_data(bytes(body))
+        # Install the body WITHOUT rewriting the ``/Length`` entry. Upstream
+        # ``parseCOSStream`` only calls ``dic.setLong(/Length, …)`` in the
+        # recovery branch (when ``validateStreamLength`` fails); on the
+        # trusted-length path it leaves the dictionary's ``/Length`` untouched,
+        # so an indirect ``/Length N G R`` survives as a ``COSObject``
+        # reference into the in-memory graph (and thus into the writer, which
+        # then numbers those length objects, giving a contiguous compressed
+        # xref ``/Index``). ``set_raw_data`` would sync ``/Length`` to a direct
+        # ``COSInteger`` and orphan the indirect length object.
+        stream.set_raw_data_keep_length(bytes(body))
         # Trailing EOL is conventional but optional; skip it then verify
         # 'endstream' is next.
         self._base.skip_whitespace()

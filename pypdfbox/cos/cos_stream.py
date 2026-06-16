@@ -232,6 +232,21 @@ class COSStream(COSDictionary):
         self._set_raw_data_internal(bytes(data))
         self._sync_length_entry()
 
+    def set_raw_data_keep_length(
+        self, data: bytes | bytearray | memoryview
+    ) -> None:
+        """Replace the raw body WITHOUT touching the ``/Length`` dict entry.
+
+        Used by the parser's trusted-length path: upstream
+        ``COSParser.parseCOSStream`` leaves the stream dictionary's ``/Length``
+        as parsed (so an indirect ``/Length N G R`` stays a ``COSObject``
+        reference), only rewriting it via ``setLong`` in the recovery branch.
+        :meth:`set_raw_data` syncs ``/Length`` to a direct ``COSInteger``; this
+        variant preserves whatever ``/Length`` (direct or indirect) the
+        dictionary already holds.
+        """
+        self._set_raw_data_internal(bytes(data))
+
     def _set_raw_data_internal(self, data: bytes) -> None:
         self.check_closed()
         if self._buffer is None:
