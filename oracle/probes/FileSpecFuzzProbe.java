@@ -51,8 +51,15 @@ import org.apache.pdfbox.pdmodel.common.filespecification.PDFileSpecification;
  *
  * <p>Line grammar (one per case, manifest order):
  * <pre>
- *   CASE &lt;name&gt; class=&lt;simpleName|null|ERR:Exc&gt; file=&lt;F|null&gt; filename=&lt;preferred|null&gt; ef=&lt;slots|none&gt; desc=&lt;Desc|null&gt; embedded=&lt;params-projection|none&gt;
+ *   CASE &lt;name&gt; class=&lt;simpleName|null|ERR:Exc&gt; file=&lt;F|null&gt; filename=&lt;preferred|null&gt; ef=&lt;slots|none&gt; desc=&lt;Desc|null&gt; embedded=&lt;params-projection|none&gt; dos=&lt;DOS|null&gt; mac=&lt;Mac|null&gt; unix=&lt;Unix|null&gt; vol=&lt;true|false&gt;
  * </pre>
+ *
+ * <p>{@code dos} / {@code mac} / {@code unix} = the direct
+ * {@code getFileDos()} / {@code getFileMac()} / {@code getFileUnix()}
+ * accessors (a name / number where a string is expected reads back as
+ * "null"). {@code vol} = {@code isVolatile()} (spec default {@code false}
+ * when {@code /V} is absent or non-boolean). Wave 1540 (agent E) extended
+ * the original wave-1514 grammar with these four trailing fields.
  *
  * <p>{@code class} = the concrete file-spec class simple name returned by
  * {@code createFS} (or "null" when it returned null, or "ERR:&lt;Exc&gt;" when
@@ -81,6 +88,14 @@ public final class FileSpecFuzzProbe {
                 return nz(((PDComplexFileSpecification) fs).getFilename());
             }
             return nz(fs.getFile());
+        } catch (Exception e) {
+            return "ERR:" + e.getClass().getSimpleName();
+        }
+    }
+
+    static String safe(java.util.concurrent.Callable<String> c) {
+        try {
+            return nz(c.call());
         } catch (Exception e) {
             return "ERR:" + e.getClass().getSimpleName();
         }
@@ -168,13 +183,15 @@ public final class FileSpecFuzzProbe {
                 fs = PDFileSpecification.createFS(base);
             } catch (Exception e) {
                 sb.append("class=ERR:").append(e.getClass().getSimpleName());
-                sb.append(" file=ERR filename=ERR ef=ERR desc=ERR embedded=ERR");
+                sb.append(" file=ERR filename=ERR ef=ERR desc=ERR embedded=ERR "
+                        + "dos=ERR mac=ERR unix=ERR vol=ERR");
                 out.println(sb.toString());
                 return;
             }
             if (fs == null) {
                 sb.append("class=null file=null filename=null "
-                        + "ef=none desc=null embedded=none");
+                        + "ef=none desc=null embedded=none "
+                        + "dos=null mac=null unix=null vol=false");
                 out.println(sb.toString());
                 return;
             }
@@ -198,12 +215,24 @@ public final class FileSpecFuzzProbe {
                 }
                 sb.append(" desc=").append(desc);
                 sb.append(" embedded=").append(embeddedProjection(cfs));
+                sb.append(" dos=").append(safe(cfs::getFileDos));
+                sb.append(" mac=").append(safe(cfs::getFileMac));
+                sb.append(" unix=").append(safe(cfs::getFileUnix));
+                String vol;
+                try {
+                    vol = Boolean.toString(cfs.isVolatile());
+                } catch (Exception e) {
+                    vol = "ERR:" + e.getClass().getSimpleName();
+                }
+                sb.append(" vol=").append(vol);
             } else {
-                sb.append(" ef=none desc=null embedded=none");
+                sb.append(" ef=none desc=null embedded=none "
+                        + "dos=null mac=null unix=null vol=false");
             }
         } catch (Exception e) {
             sb.append("class=ERR:").append(e.getClass().getSimpleName());
-            sb.append(" file=ERR filename=ERR ef=ERR desc=ERR embedded=ERR");
+            sb.append(" file=ERR filename=ERR ef=ERR desc=ERR embedded=ERR "
+                    + "dos=ERR mac=ERR unix=ERR vol=ERR");
         } finally {
             if (doc != null) {
                 try {

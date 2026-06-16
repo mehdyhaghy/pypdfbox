@@ -222,5 +222,9 @@ def test_eval_function_for_type0_is_implemented_not_deferred() -> None:
 def test_type0_eval_reports_validation_errors_not_notimplemented() -> None:
     fn = PDFunctionType0(COSStream())
 
-    with pytest.raises(ValueError, match="/Domain and /Range"):
+    # Empty stream has no /Domain (num_in == 0) — eval raises a ValueError, not
+    # NotImplementedError. Message retargeted in wave 1540: eval no longer
+    # requires a non-empty /Range (PDFBox returns [] for an empty /Range), so the
+    # guard now mentions only /Domain.
+    with pytest.raises(ValueError, match="/Domain"):
         fn.eval([0.0])

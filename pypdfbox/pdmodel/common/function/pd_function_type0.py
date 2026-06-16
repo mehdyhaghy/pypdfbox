@@ -287,6 +287,42 @@ class PDFunctionType0(PDFunction):
 
     # ---------- evaluation ----------
 
+    @staticmethod
+    def _clip_to_range_scalar(x: float, range_min: float, range_max: float) -> float:
+        """Non-normalising scalar clamp — direct port of upstream
+        ``PDFunction.clipToRange(float, float, float)`` (PDFunction.java).
+
+        Unlike :meth:`PDFunction.clip_input` / :meth:`PDFunction.clip_output`,
+        this does **not** swap a reversed ``(min, max)`` pair:
+        ``if x < range_min -> range_min``; ``if x > range_max -> range_max``;
+        else ``x``. PDFunctionType0.eval (jar 3.0.7) clips both its inputs (to
+        ``/Domain``) and its outputs (to ``/Range``) with this scalar
+        ``clipToRange(F,F,F)``, NOT the array clip helpers — so a reversed
+        ``/Domain`` or ``/Range`` pair must collapse to the (lower) ``max`` value
+        the way Java does, rather than be silently normalised to a sane interval.
+        Wave 1540 fix (mirrors the Type 3 / Type 4 non-normalising overrides)."""
+        if x < range_min:
+            return range_min
+        if x > range_max:
+            return range_max
+        return x
+
+    def _clip_input_unnormalised(
+        self, values: list[float], domain: list[tuple[float, float]]
+    ) -> list[float]:
+        """Clamp each input to its ``/Domain`` pair via the non-normalising
+        scalar :meth:`_clip_to_range_scalar`. Inputs beyond the declared
+        dimension count pass through unchanged (matches upstream eval which
+        only iterates ``input.length`` against the per-dim ``PDRange``)."""
+        out: list[float] = []
+        for i, v in enumerate(values):
+            if i < len(domain):
+                lo, hi = domain[i]
+                out.append(self._clip_to_range_scalar(v, lo, hi))
+            else:
+                out.append(v)
+        return out
+
     def _get_sample_bytes(self) -> bytes:
         """Decoded body bytes — cached after first read."""
         if self._sample_bytes is None:
@@ -542,8 +578,12 @@ class PDFunctionType0(PDFunction):
         num_in = self.get_number_of_input_parameters()
         num_out = self.get_number_of_output_parameters()
         bits = self.get_bits_per_sample()
-        if num_in == 0 or num_out == 0:
-            raise ValueError("PDFunctionType0 requires /Domain and /Range")
+        # Upstream eval requires only /Domain: with num_in == 0 the sample-grid
+        # path is degenerate and PDFBox throws (matched here). num_out == 0
+        # (empty /Range) is NOT an error in PDFBox — its output loop runs zero
+        # times and eval returns an empty array; mirror that (wave 1540).
+        if num_in == 0:
+            raise ValueError("PDFunctionType0 requires /Domain")
         if not _bits_supported(bits):
             raise ValueError(
                 f"/BitsPerSample={bits} out of supported range "
@@ -570,8 +610,11 @@ class PDFunctionType0(PDFunction):
             )
         order = 1
 
-        clipped = self.clip_input(input)
         domain = self.get_ranges_for_inputs()
+        # Upstream eval clips inputs with the scalar clipToRange(F,F,F) (per-dim
+        # PDRange getMin/getMax), NOT the normalising array clip — so a reversed
+        # /Domain pair is honoured as-is (collapses to the lower max), not swapped.
+        clipped = self._clip_input_unnormalised(input, domain)
         encode_pairs = self._get_encode_pairs(num_in, sizes)
         decode_pairs = self._get_decode_pairs(num_out)
 
@@ -653,8 +696,19 @@ class PDFunctionType0(PDFunction):
             )
             output.append(decoded)
 
-        # Step 6: clip to /Range.
-        return self.clip_output(output)
+        # Step 6: clip to /Range. Upstream eval clips each output with the scalar
+        # clipToRange(F,F,F) against the per-dim getRangeForOutput PDRange, NOT
+        # the normalising array clip — so a reversed /Range pair is honoured
+        # exactly as Java does (collapses to the lower max) rather than swapped.
+        range_pairs = self.get_ranges_for_outputs()
+        out_clipped: list[float] = []
+        for j, v in enumerate(output):
+            if j < len(range_pairs):
+                lo, hi = range_pairs[j]
+                out_clipped.append(self._clip_to_range_scalar(v, lo, hi))
+            else:
+                out_clipped.append(v)
+        return out_clipped
 
 
 __all__ = ["PDFunctionType0"]

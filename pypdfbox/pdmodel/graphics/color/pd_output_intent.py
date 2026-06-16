@@ -308,8 +308,19 @@ class PDOutputIntent:
         """Upstream-named alias mirroring
         ``PDOutputIntent#getDestOutputIntent()``. Returns the raw
         ``COSStream`` for ``/DestOutputProfile`` (or ``None`` when absent).
-        Equivalent to :meth:`get_dest_output_profile_cos`."""
-        return self.get_dest_output_profile_cos()
+
+        Mirrors upstream exactly: ``getDestOutputIntent()`` resolves
+        ``/DestOutputProfile`` via ``COSDictionary.getCOSStream``, which
+        returns ``null`` for *any* non-stream value (a dict, name, int,
+        ``COSNull``, …) rather than raising. So this accessor tolerates a
+        malformed ``/DestOutputProfile`` and returns ``None`` for it —
+        unlike the stricter pypdfbox-enrichment accessors
+        :meth:`get_dest_output_profile_cos` / :meth:`get_dest_output_profile`,
+        which raise ``TypeError`` on a non-stream value."""
+        cos = self._dictionary.get_dictionary_object(_DEST_OUTPUT_PROFILE)
+        if isinstance(cos, COSStream):
+            return cos
+        return None
 
     def set_dest_output_profile(
         self, profile: PDStream | COSStream | object | None

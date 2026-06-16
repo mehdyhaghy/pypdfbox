@@ -32,7 +32,12 @@ Line grammar (one per case, manifest order)::
 
     CASE <name> class=<simpleName|null|ERR:Exc> file=<F|null>
         filename=<preferred|null> ef=<slots|none> desc=<Desc|null>
-        embedded=<params-projection|none>
+        embedded=<params-projection|none> dos=<DOS|null> mac=<Mac|null>
+        unix=<Unix|null> vol=<true|false>
+
+(The ``dos``/``mac``/``unix``/``vol`` trailing fields were added to the shared
+probe by wave 1540; this driver was retargeted to project them too so the
+whole-line comparison stays exact.)
 
 Java is ground truth: a real divergence is a production fix in
 ``pypdfbox/pdmodel/common/filespecification/``; a defensible divergence is
@@ -439,48 +444,56 @@ def _java_exc(exc: Exception) -> str:
     return type(exc).__name__
 
 
+def _safe(fn) -> str:
+    try:
+        return _nz(fn())
+    except Exception as e:
+        return f"ERR:{_java_exc(e)}"
+
+
 def _python_line(case_dir: Path, name: str) -> str:
     pdf = case_dir / f"{name}.pdf"
     prefix = f"CASE {name} "
+    err_suffix = (
+        "file=ERR filename=ERR ef=ERR desc=ERR embedded=ERR "
+        "dos=ERR mac=ERR unix=ERR vol=ERR"
+    )
     try:
         doc = PDDocument.load(str(pdf))
     except Exception as e:
-        return prefix + (
-            f"class=ERR:{_java_exc(e)} file=ERR filename=ERR "
-            "ef=ERR desc=ERR embedded=ERR"
-        )
+        return prefix + f"class=ERR:{_java_exc(e)} " + err_suffix
     try:
         cat = doc.get_document_catalog()
         base = cat.get_cos_object().get_dictionary_object(_FS_PROBE)
         try:
             fs = PDFileSpecification.create_fs(base)
         except Exception as e:
-            return prefix + (
-                f"class=ERR:{_java_exc(e)} file=ERR filename=ERR "
-                "ef=ERR desc=ERR embedded=ERR"
-            )
+            return prefix + f"class=ERR:{_java_exc(e)} " + err_suffix
         if fs is None:
             return prefix + (
                 "class=null file=null filename=null ef=none desc=null "
-                "embedded=none"
+                "embedded=none dos=null mac=null unix=null vol=false"
             )
         out = prefix + f"class={type(fs).__name__}"
-        try:
-            file = _nz(fs.get_file())
-        except Exception as e:
-            file = f"ERR:{_java_exc(e)}"
-        out += f" file={file}"
+        out += f" file={_safe(fs.get_file)}"
         out += f" filename={_filename_of(fs)}"
         if isinstance(fs, PDComplexFileSpecification):
             out += f" ef={_ef_slots(fs)}"
-            try:
-                desc = _nz(fs.get_file_description())
-            except Exception as e:
-                desc = f"ERR:{_java_exc(e)}"
-            out += f" desc={desc}"
+            out += f" desc={_safe(fs.get_file_description)}"
             out += f" embedded={_embedded_projection(fs)}"
+            out += f" dos={_safe(fs.get_file_dos)}"
+            out += f" mac={_safe(fs.get_file_mac)}"
+            out += f" unix={_safe(fs.get_file_unix)}"
+            try:
+                vol = "true" if fs.is_volatile() else "false"
+            except Exception as e:
+                vol = f"ERR:{_java_exc(e)}"
+            out += f" vol={vol}"
         else:
-            out += " ef=none desc=null embedded=none"
+            out += (
+                " ef=none desc=null embedded=none "
+                "dos=null mac=null unix=null vol=false"
+            )
         return out
     finally:
         doc.close()
