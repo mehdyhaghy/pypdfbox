@@ -137,6 +137,22 @@ def _make_extended_extractor(pen: Any, subrs: Any) -> Any:
             self.push(top)
             self.push(second)
 
+        def op_sbw(self, index: int) -> None:
+            # ``sbw`` (sbx sby wx wy sbw): the full side-bearing + width
+            # prologue used by vertical writing-mode glyphs (Adobe Type 1
+            # spec §6.4). fontTools' stock ``op_sbw`` is a no-op stub
+            # (``self.popall()  # XXX``) that DISCARDS the operands and
+            # never records the advance, so an ``sbw``-prologued glyph drew
+            # with width 0. Apache FontBox's ``Type1CharString`` handles
+            # ``sbw`` by setting the left side bearing to (sbx, sby), the
+            # advance to wx, and the current point to (sbx, sby) — mirror
+            # that so ``get_width`` returns the real horizontal advance.
+            sbx, sby, wx, _wy = self.popall()
+            self.width = wx
+            self.sbx = sbx
+            self.sby = sby
+            self.currentPoint = sbx, sby
+
     return _Type1ExtendedExtractor(pen, subrs)
 
 
