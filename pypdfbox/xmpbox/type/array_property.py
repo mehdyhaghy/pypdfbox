@@ -95,9 +95,22 @@ class ArrayProperty(AbstractField):
         self, prop1: AbstractField, prop2: AbstractField
     ) -> bool:
         """
-        Return ``True`` when two properties have identical concrete class,
-        identical local name, and (for simple properties) identical string
-        value. Mirrors ``ComplexPropertyContainer.isSameProperty`` upstream.
+        Mirror ``ComplexPropertyContainer.isSameProperty`` upstream exactly.
+
+        Upstream returns ``true`` when both properties share the same concrete
+        class and:
+
+        * both local names are ``null`` (``pn1 == null && pn2 == null``); or
+        * the local names are equal and non-null AND ``prop1.equals(prop2)``.
+
+        Crucially, no class in the ``AbstractField`` hierarchy overrides
+        ``equals``, so ``prop1.equals(prop2)`` is Java ``Object`` identity. Two
+        distinct simple-property objects with the same name and value are NOT
+        the same property upstream — only object identity counts (wave 1564
+        oracle confirmed ``isSameProperty(t1, t2) == false`` for equal-value
+        siblings, ``isSameProperty(t1, t1) == true``). The earlier port compared
+        ``get_string_value()`` for simple properties, which wrongly reported
+        equal-value siblings as duplicates.
         """
         if type(prop1) is not type(prop2):
             return False
@@ -107,10 +120,7 @@ class ArrayProperty(AbstractField):
             return True
         if pn1 is None or pn2 is None or pn1 != pn2:
             return False
-        if isinstance(prop1, AbstractSimpleProperty) and isinstance(
-            prop2, AbstractSimpleProperty
-        ):
-            return prop1.get_string_value() == prop2.get_string_value()
+        # Names equal + non-null -> Java falls back to Object identity.
         return prop1 is prop2
 
     def contains_property(self, prop: AbstractField) -> bool:

@@ -152,20 +152,29 @@ def test_remove_properties_by_name_empty_is_noop(metadata: XMPMetadata) -> None:
     assert arr.get_all_properties() == []
 
 
-def test_is_same_property_class_and_value(metadata: XMPMetadata) -> None:
+def test_is_same_property_class_and_identity(metadata: XMPMetadata) -> None:
+    # Upstream ``isSameProperty`` falls back to Object identity when the local
+    # names match (no ``equals`` override anywhere in the AbstractField
+    # hierarchy). Two distinct same-value siblings are therefore NOT the same
+    # property; only object identity counts (wave 1564 oracle parity).
     arr = ArrayProperty(metadata, "ns", "p", "items", Cardinality.Bag)
     a = TextType(metadata, "ns", "p", "name", "x")
     b = TextType(metadata, "ns", "p", "name", "x")
     diff_class = IntegerType(metadata, "ns", "p", "name", 0)
-    assert arr.is_same_property(a, b) is True
+    assert arr.is_same_property(a, a) is True
+    assert arr.is_same_property(a, b) is False
     assert arr.is_same_property(a, diff_class) is False
 
 
 def test_contains_property_round_trip(metadata: XMPMetadata) -> None:
+    # ``containsProperty`` is identity-based via ``isSameProperty``: a freshly
+    # built TextType with the same name+value is not "contained" — only the
+    # exact stored instance is (wave 1564 oracle parity).
     arr = ArrayProperty(metadata, "ns", "p", "items", Cardinality.Bag)
     a = TextType(metadata, "ns", "p", "tag", "x")
     arr.add_property(a)
-    assert arr.contains_property(TextType(metadata, "ns", "p", "tag", "x")) is True
+    assert arr.contains_property(a) is True
+    assert arr.contains_property(TextType(metadata, "ns", "p", "tag", "x")) is False
     assert arr.contains_property(TextType(metadata, "ns", "p", "tag", "y")) is False
 
 

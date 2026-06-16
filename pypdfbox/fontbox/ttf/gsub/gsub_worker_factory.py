@@ -74,6 +74,25 @@ def _normalize_language(language: object) -> str:
     return str(language).strip().upper()
 
 
+def _get_script_tags(gsub_data: GsubData) -> set[str]:
+    """Return the font's ScriptList tags, or an empty set when unavailable.
+
+    Not every ``GsubData`` implementation carries a ScriptList. Upstream's
+    ``MapBackedGsubData`` has no ``getScriptList`` method at all (its factory
+    dispatches purely on ``getLanguage()``); the pypdfbox dict-shaped
+    :class:`GsubData` does. Returning ``set()`` for the former lets the
+    script-tag-confirmation logic degrade gracefully to the bare language
+    hint instead of crashing with ``AttributeError``.
+    """
+    get_script_list = getattr(gsub_data, "get_script_list", None)
+    if get_script_list is None:
+        return set()
+    try:
+        return set(get_script_list().keys())
+    except (AttributeError, TypeError):
+        return set()
+
+
 def _resolve_language_from_scripts(gsub_data: GsubData) -> str:
     """Walk the font's ScriptList and return the best language tag.
 
@@ -91,10 +110,7 @@ def _resolve_language_from_scripts(gsub_data: GsubData) -> str:
     explicit hint asks for it (``"DEVANAGARI"``), and falls back to
     Latin only when nothing more specific is present.
     """
-    try:
-        script_tags = set(gsub_data.get_script_list().keys())
-    except (AttributeError, TypeError):
-        return ""
+    script_tags = _get_script_tags(gsub_data)
     if not script_tags:
         return ""
     # Pass 1: preferred script tag (index 0) per language.
@@ -129,6 +145,16 @@ class GsubWorkerFactory:
         resolved = _resolve_language_from_scripts(gsub_data)
         _LOG.debug("Language hint=%s resolved=%s", hint, resolved)
 
+        # Resolve the font's script tags through the same defensive guard
+        # :func:`_resolve_language_from_scripts` uses. Not every ``GsubData``
+        # implementation carries a ScriptList: upstream's
+        # ``MapBackedGsubData`` (a first-class ``GsubData``) has no
+        # ``getScriptList`` at all, and its factory dispatches purely on
+        # ``getLanguage()``. Calling ``get_script_list()`` unconditionally
+        # here raised ``AttributeError`` on those objects, so guard it and
+        # treat "no ScriptList" as "no script-tag confirmation".
+        script_tags = _get_script_tags(gsub_data)
+
         # If the explicit hint matches a language whose script tags are
         # also present in the font, prefer it (matches upstream's
         # exact-match contract). Otherwise prefer the script-derived
@@ -136,9 +162,7 @@ class GsubWorkerFactory:
         # rule fired.
         candidates: list[str] = []
         for name, tags in _LANGUAGE_SCRIPT_TAGS:
-            if hint == name and gsub_data.get_script_list() and any(
-                t in gsub_data.get_script_list() for t in tags
-            ):
+            if hint == name and any(t in script_tags for t in tags):
                 candidates.append(name)
                 break
         if resolved:

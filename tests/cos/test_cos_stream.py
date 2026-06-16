@@ -94,10 +94,13 @@ def test_get_filter_list_array() -> None:
 
 
 def test_get_filter_list_invalid_entry_raises() -> None:
+    # A non-name element inside a /Filter array is rejected — upstream
+    # COSStream.getFilterList throws IOException ("Forbidden type in filter
+    # array: ..."), mirrored as OSError (wave 1564).
     with COSStream() as s:
         bad = COSArray([COSInteger(1)])
         s.set_item(COSName.FILTER, bad)  # type: ignore[attr-defined]
-        with pytest.raises(TypeError):
+        with pytest.raises(OSError, match="Forbidden type in filter array"):
             s.get_filter_list()
 
 

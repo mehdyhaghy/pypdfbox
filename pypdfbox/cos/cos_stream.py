@@ -421,7 +421,7 @@ class COSStream(COSDictionary):
             self._set_raw_data_internal(plain)
             self._decrypted = True
 
-        chain = self.get_filter_list()
+        chain = _dedupe_filter_chain(self.get_filter_list())
         if not chain:
             return self.create_raw_input_stream()
 
@@ -603,10 +603,20 @@ class COSStream(COSDictionary):
         """Return the ``/Filter`` chain as a list of ``COSName``.
 
         Per PDF spec, ``/Filter`` may be absent, a single name, or an
-        array of names. Returns ``[]`` when absent."""
+        array of names. Returns ``[]`` when absent.
+
+        Mirrors upstream ``COSStream.getFilterList()`` exactly:
+
+        * a single ``COSName`` → a one-element list;
+        * a ``COSArray`` → each element must be a ``COSName``; a non-name
+          element raises ``OSError`` ("Forbidden type in filter array: ...",
+          upstream ``IOException``);
+        * any other value (a non-name scalar such as ``COSString`` /
+          ``COSInteger`` / ``COSBoolean``) is treated leniently as "no
+          filters" and yields an empty list — upstream falls through to the
+          ``new ArrayList<>()`` branch, so the body is passed through
+          verbatim (decoded == raw)."""
         f = self.get_filters()
-        if f is None:
-            return []
         if isinstance(f, COSName):
             return [f]
         if isinstance(f, COSArray):
@@ -615,9 +625,12 @@ class COSStream(COSDictionary):
                 if isinstance(entry, COSName):
                     out.append(entry)
                 else:
-                    raise TypeError(f"non-name entry in /Filter array: {entry!r}")
+                    type_name = "null" if entry is None else type(entry).__name__
+                    raise OSError(f"Forbidden type in filter array: {type_name}")
             return out
-        raise TypeError(f"unexpected /Filter type: {type(f).__name__}")
+        # Absent or a non-name scalar (COSString / COSInteger / COSBoolean):
+        # upstream returns an empty list, so no filtering is applied.
+        return []
 
     # ---------- text-string convenience ----------
 
@@ -754,3 +767,29 @@ def _coerce_stop_filter_names(
 
 def _canonical_filter_name(name: str) -> str:
     return _FILTER_NAME_ALIASES.get(name, name)
+
+
+def _dedupe_filter_chain(chain: list[COSName]) -> list[COSName]:
+    """Remove duplicate filter entries, keeping the first occurrence.
+
+    Mirrors upstream ``Filter.decode``: when a ``/Filter`` chain of length
+    > 1 resolves to fewer distinct filters than entries (a ``HashSet`` of
+    the resolved ``Filter`` instances is smaller than the list), it rebuilds
+    the list keeping only the first occurrence of each and logs "Removed
+    duplicated filter entries". Because abbreviated names (``Fl``) resolve to
+    the *same* ``Filter`` instance as their long form (``FlateDecode``),
+    dedup is keyed on the canonical filter name, not the raw entry — so
+    ``[Fl, FlateDecode]`` collapses to a single decode just as it does
+    upstream."""
+    if len(chain) <= 1:
+        return chain
+    seen: set[str] = set()
+    deduped: list[COSName] = []
+    for name in chain:
+        key = _canonical_filter_name(name.name)
+        if key not in seen:
+            seen.add(key)
+            deduped.append(name)
+    if len(deduped) != len(chain):
+        _LOG.warning("Removed duplicated filter entries")
+    return deduped

@@ -47,23 +47,14 @@ a true line-for-line comparison while documenting the gap:
    The Java ``ERR:IOException`` and pypdfbox ``ERR:OSError`` are the same
    contract; normalised to the Java spelling.
 
-4. **Wrong-typed ``/Filter`` (``COSString`` / ``COSInteger``)** — upstream
-   ``COSStream.getFilters()`` returns the raw value and the decode path
-   treats a non-name / non-array as "no filters", passing the raw bytes
-   through verbatim (``dec == raw``). pypdfbox's
-   ``COSStream.get_filter_list`` raises ``TypeError`` on a non-name /
-   non-array ``/Filter``, so ``PDStream.create_input_stream`` propagates it.
-   This is a genuine production divergence that lives in
-   ``pypdfbox/cos/cos_stream.py`` (out of this wave's file scope —
-   ``pd_stream.py`` only). Pinned here as a both-sides divergence; see
-   ``CHANGES.md`` Wave 1563 and flagged for a follow-up filter-list fix.
-
-5. **Consecutive duplicate filters (``[FlateDecode, FlateDecode]``)** —
-   upstream logs "Removed duplicated filter entries" and decodes the chain
-   *once*, so a doubly-flate body decodes to the once-flate form (``dec`` =
-   the inner-encoded bytes). pypdfbox applies each filter, fully decoding
-   to the original (``dec`` smaller). The dedup lives in the filter decode
-   internals, out of this wave's scope; pinned as a both-sides divergence.
+Two further divergences this module originally pinned — a non-name ``/Filter``
+raising ``TypeError`` and consecutive duplicate filters not being
+deduplicated — were genuine ``pypdfbox/cos/cos_stream.py`` bugs and were
+**fixed in wave 1564**. The corresponding cases (``filter_string_wrongtype``,
+``filter_int_wrongtype``, ``double_flate_chain``) now match the live Java
+oracle line-for-line with no override; see
+``tests/cos/oracle/test_cos_stream_filter_fuzz_wave1564.py`` for the dedicated
+COSStream-level pin of the corrected behaviour.
 """
 
 from __future__ import annotations
@@ -293,35 +284,18 @@ _CASES = [
 # of the live oracle output. Each entry rewrites the Java line so the
 # assertion documents the gap explicitly rather than silently masking it.
 #
-# - filter_string_wrongtype / filter_int_wrongtype: DIVERGENCE 4 — upstream
-#   treats a non-name /Filter as "no filters" (dec == raw, filters="-");
-#   pypdfbox raises TypeError in COSStream.get_filter_list. The /Filter value
-#   is a non-name so get_filters() also returns [] ("-") on pypdfbox, matching
-#   Java's "-"; only the decode token differs (Java dec==raw vs Py
-#   ERR:TypeError).
-# - double_flate_chain: DIVERGENCE 5 — upstream dedups consecutive identical
-#   filters (decodes once, dec=22); pypdfbox decodes each (dec=14).
-_DIVERGENCE_PINS = {
-    "filter_string_wrongtype": (
-        "CASE filter_string_wrongtype dec=ERR:TypeError raw=22/39ad8646 "
-        "filters=- length=22"
-    ),
-    "filter_int_wrongtype": (
-        "CASE filter_int_wrongtype dec=ERR:TypeError raw=22/39ad8646 "
-        "filters=- length=22"
-    ),
-    "double_flate_chain": (
-        "CASE double_flate_chain dec=14/05810675 raw=31/aff35e34 "
-        "filters=FlateDecode,FlateDecode length=31"
-    ),
-}
+# Only the body-less-stream cases (DIVERGENCE 1-3) remain; the former
+# non-name-/Filter and duplicate-filter divergences were fixed in wave 1564,
+# so those cases now match the live Java oracle directly.
+_DIVERGENCE_PINS: dict[str, str] = {}
 
 
 @requires_oracle
 def test_pd_stream_decode_raw_matches_pdfbox() -> None:
     java_lines = run_probe_text("PdStreamFuzzProbe", *_CASES).splitlines()
-    # Apply the documented both-sides divergence pins to the Java ground
-    # truth so the comparison reflects pypdfbox's actual (intentional) shape.
+    # The decode-time divergences are normalised inside the per-projection
+    # helpers (empty-body remap, OSError↔IOException). No Java-line overrides
+    # remain after the wave-1564 cos_stream.py fixes.
     expected = []
     for case_id, java_line in zip(_CASES, java_lines, strict=True):
         expected.append(_DIVERGENCE_PINS.get(case_id, java_line))

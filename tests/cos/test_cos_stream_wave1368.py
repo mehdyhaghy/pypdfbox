@@ -110,10 +110,12 @@ def test_get_filter_list_accepts_single_name_form_via_manual_set() -> None:
 
 
 def test_get_filter_list_rejects_non_name_array_entry() -> None:
+    # Mirrors upstream getFilterList: a non-name array element throws
+    # IOException ("Forbidden type in filter array: ...") -> OSError (wave 1564).
     stream = COSStream()
     bad_array = COSArray([COSName.get_pdf_name("FlateDecode"), COSDictionary()])
     stream.set_item(COSName.FILTER, bad_array)
-    with pytest.raises(TypeError):
+    with pytest.raises(OSError, match="Forbidden type in filter array"):
         stream.get_filter_list()
 
 

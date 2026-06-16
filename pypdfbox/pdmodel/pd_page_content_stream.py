@@ -860,7 +860,9 @@ class PDPageContentStream:
 
     def set_font(self, font: PDFont, size: float) -> None:
         """Emit ``/<key> <size> Tf``. Auto-registers ``font`` under the
-        page's /Resources /Font dict (key "F0", "F1", ...) if absent."""
+        page's /Resources /Font dict (key ``F1``, ``F2``, ... — 1-based, per
+        upstream ``PDResources.createKey``) if absent, reusing the existing
+        key when the same font COS object is already registered."""
         if not isinstance(font, PDFont):
             raise TypeError(
                 f"PDPageContentStream.set_font expects PDFont; got "
@@ -1183,7 +1185,7 @@ class PDPageContentStream:
         """Emit ``/<key> gs`` — apply a :class:`PDExtendedGraphicsState`.
 
         Auto-registers ``ext_g_state`` under ``/Resources/ExtGState`` (key
-        ``GS<n>``) when not already present. Mirrors upstream's
+        ``gs<n>``, 1-based) when not already present. Mirrors upstream's
         ``setGraphicsStateParameters`` (Java) /
         ``set_graphics_state_parameters`` (port).
         """
@@ -1828,7 +1830,7 @@ class PDPageContentStream:
         Device color spaces are referenced by their well-known names
         (``DeviceGray``/``DeviceRGB``/``DeviceCMYK``) without a resource
         entry; named/array color spaces are registered under
-        ``/Resources/ColorSpace`` (key ``Cs<n>``) when not already
+        ``/Resources/ColorSpace`` (key ``cs<n>``, 1-based) when not already
         present. Mirrors upstream's ``getName(PDColorSpace)`` helper
         inside ``PDPageContentStream``.
         """
@@ -1864,7 +1866,9 @@ class PDPageContentStream:
         self, property_list: PDPropertyList
     ) -> COSName:
         """Return the /Resources/Properties key for ``property_list``,
-        allocating a new ``MC<n>`` slot when necessary."""
+        allocating a new ``Prop<n>`` slot (1-based, per upstream
+        ``PDResources.add(PDPropertyList)``) when necessary. Reuses the
+        existing key when the same COS dictionary is already registered."""
         prop_cos = property_list.get_cos_object()
         res_dict = self._resources.get_cos_object()
         sub = res_dict.get_dictionary_object(_PROPERTIES)

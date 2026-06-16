@@ -379,12 +379,14 @@ def test_get_filter_list_handles_in_memory_bare_name() -> None:
 
 def test_get_filter_list_rejects_non_name_array_entry() -> None:
     """A malformed ``/Filter`` array carrying a non-name entry raises
-    ``TypeError`` — the spec only permits names."""
+    ``OSError`` — upstream ``getFilterList`` throws ``IOException``
+    ("Forbidden type in filter array: ...") for a non-name array element
+    (wave 1564)."""
     from pypdfbox.cos.cos_integer import COSInteger
 
     s = COSStream()
     s.set_item(COSName.FILTER, COSArray([COSInteger.get(0)]))
-    with pytest.raises(TypeError):
+    with pytest.raises(OSError, match="Forbidden type in filter array"):
         s.get_filter_list()
 
 

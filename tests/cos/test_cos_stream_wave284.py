@@ -81,17 +81,21 @@ def test_create_output_stream_rejects_malformed_cos_filter_object() -> None:
         stream.create_output_stream(COSDictionary())
 
 
-def test_get_filter_list_rejects_malformed_filter_object() -> None:
+def test_get_filter_list_lenient_on_non_name_scalar() -> None:
+    # A non-name, non-array /Filter scalar (here a COSDictionary) is treated
+    # leniently as "no filters" — upstream getFilterList falls through to an
+    # empty list and passes the body through verbatim (wave 1564).
     with COSStream() as stream:
         stream.set_item("Filter", COSDictionary())
 
-        with pytest.raises(TypeError, match="unexpected /Filter type: COSDictionary"):
-            stream.get_filter_list()
+        assert stream.get_filter_list() == []
 
 
 def test_get_filter_list_rejects_non_name_array_entry() -> None:
+    # A non-name element *inside* a /Filter array is rejected — upstream
+    # throws IOException ("Forbidden type in filter array: ...") -> OSError.
     with COSStream() as stream:
         stream.set_item("Filter", COSArray([COSInteger.get(1)]))
 
-        with pytest.raises(TypeError, match="non-name entry in /Filter array"):
+        with pytest.raises(OSError, match="Forbidden type in filter array"):
             stream.get_filter_list()
