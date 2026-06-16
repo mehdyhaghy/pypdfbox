@@ -5,6 +5,7 @@ from typing import BinaryIO, Final
 
 from pypdfbox.cos import COSDictionary
 
+from ._decode_params import resolve_decode_params
 from ._predictor import predict
 from .decode_result import DecodeResult
 from .filter import Filter
@@ -126,27 +127,11 @@ def _get_decode_params(parameters: COSDictionary | None, index: int) -> COSDicti
     PDF allows ``/DecodeParms`` to be either a single dictionary (when
     there is one filter) or an array parallel to ``/Filter``. Both long
     ``/DecodeParms`` and abbreviated ``/DP`` keys are accepted; missing
-    array entries return an empty dict.
+    array entries return an empty dict. Delegates to the shared resolver
+    that mirrors upstream ``Filter#getDecodeParams`` — consulting
+    ``/Filter`` so a single dict is never applied to a multi-filter chain.
     """
-    if parameters is None:
-        return COSDictionary()
-    from pypdfbox.cos import COSArray
-
-    for key in ("DecodeParms", "DP"):
-        params = parameters.get_dictionary_object(key)
-        if isinstance(params, COSDictionary):
-            return params
-        if isinstance(params, COSArray):
-            try:
-                entry = params.get_object(index)
-            except Exception:
-                entry = None
-            if isinstance(entry, COSDictionary):
-                return entry
-            return COSDictionary()
-    # Fall back: treat top-level dict as the params dict (some callers
-    # pass the decode-params dictionary directly).
-    return parameters
+    return resolve_decode_params(parameters, index)
 
 
 class LZWDecode(Filter):

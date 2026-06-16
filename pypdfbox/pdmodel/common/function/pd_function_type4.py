@@ -751,38 +751,51 @@ def _op_roll(s: Stack) -> None:
     # (Float counts accepted, truncated).
     j = _pop_int_value(s)
     n = _pop_int_value(s)
-    # Mirror upstream PDFBox StackOperators$Roll EXACTLY (parity over the
-    # cleaner PostScript-Reference semantics): it does NOT reduce ``j`` modulo
-    # ``n``. ``j == 0`` is a no-op; ``n < 0`` is a range error. For any other
-    # ``j`` it pops ``j`` (or ``n + j`` when ``j < 0``) elements followed by the
-    # remaining group and re-pushes them rotated. When ``|j| > n`` upstream pops
-    # more entries than the stack holds and throws ``EmptyStackException`` — we
-    # surface the same condition as ``OSError`` (our IOException analogue)
-    # rather than silently rotating like a mod-reduced implementation would.
+    # Mirror upstream PDFBox StackOperators$Roll EXACTLY (parity over the cleaner
+    # PostScript-Reference semantics): it does NOT reduce ``j`` modulo ``n`` and
+    # it does NOT pre-validate ``|j| <= n``. ``j == 0`` is a no-op; ``n < 0`` is
+    # a range error. For any other ``j`` upstream pops a hand-counted number of
+    # entries with two ``LinkedList`` helpers and re-pushes them rotated, where
+    # the pop counts depend on ``j``'s sign:
+    #   positive: pop ``j`` into ``rolled`` then ``n - j`` into ``moved``
+    #   negative: pop ``n + j`` into ``moved`` then ``-j`` into ``rolled``
+    # When a loop's count goes negative it simply runs zero times; the only way
+    # ``roll`` faults is a genuine ``stack.pop()`` underflow on an empty stack
+    # (Java ``EmptyStackException`` -> ``OSError`` here). Crucially that means
+    # ``|j| > n`` is NOT itself an error: ``{ a b c d e f 3 5 roll }`` over a
+    # depth-6 stack pops 5 entries (j=5) and re-pushes them in order, leaving the
+    # stack unchanged rather than raising (verified against the 3.0.7 jar). A
+    # previous shortcut here raised on every ``|j| > n``, diverging from upstream
+    # whenever the real stack was deep enough to satisfy the pops.
     if j == 0:
         return
     if n < 0:
         raise OSError(f"roll rangecheck: n={n}")
-    if abs(j) > n:
-        # Upstream tries to pop |j| (or n - |j| more) past the top n entries.
-        raise OSError("roll: rotation count out of range (stack underflow)")
-    if n == 0:
-        return
-    if n > len(s):
-        # Upstream StackOperators$Roll pops ``n`` entries off the stack before
-        # rotating; when the stack holds fewer than ``n`` the pop loop drains it
-        # and the next pop throws EmptyStackException. Surface that as OSError
-        # (our IOException analogue) instead of silently rolling the short slice
-        # a Python ``s[-n:]`` would otherwise produce (jar: ``{ 1 2 9 1 roll }``
-        # over a 2-deep stack raises EmptyStackException).
-        raise OSError("roll: n exceeds stack depth (stack underflow)")
-    top = s[-n:]
-    # Split point in the top-``n`` window matching upstream StackOperators$Roll:
-    #   j > 0: the top ``j`` entries wrap to the bottom; cut at ``n - j``.
-    #   j < 0: the top ``-j`` entries wrap to the bottom; cut at ``-j``.
-    cut = -j if j < 0 else n - j
-    rolled = top[cut:] + top[:cut]
-    s[-n:] = rolled
+
+    def pop_one() -> object:
+        if not s:
+            # Upstream LinkedList-backed Stack.pop on empty -> EmptyStackException.
+            raise OSError("roll: stack underflow")
+        return s.pop()
+
+    rolled: list[object] = []
+    moved: list[object] = []
+    if j < 0:
+        n1 = n + j
+        for _ in range(n1):
+            moved.insert(0, pop_one())
+        for _ in range(j, 0):
+            rolled.insert(0, pop_one())
+        s.extend(moved)
+        s.extend(rolled)
+    else:
+        n1 = n - j
+        for _ in range(j, 0, -1):
+            rolled.insert(0, pop_one())
+        for _ in range(n1):
+            moved.insert(0, pop_one())
+        s.extend(rolled)
+        s.extend(moved)
 
 
 # ---------- boolean ----------

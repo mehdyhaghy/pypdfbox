@@ -4,8 +4,9 @@ import io
 import zlib
 from typing import BinaryIO
 
-from pypdfbox.cos import COSArray, COSDictionary
+from pypdfbox.cos import COSDictionary
 
+from ._decode_params import resolve_decode_params
 from ._predictor import predict
 from .decode_result import DecodeResult
 from .filter import Filter
@@ -16,21 +17,7 @@ from .predictor import Predictor
 
 def _get_decode_params(parameters: COSDictionary | None, index: int) -> COSDictionary:
     """Resolve Flate predictor params from stream-level or direct dictionaries."""
-    if parameters is None:
-        return COSDictionary()
-    for key in ("DecodeParms", "DP"):
-        params = parameters.get_dictionary_object(key)
-        if isinstance(params, COSDictionary):
-            return params
-        if isinstance(params, COSArray):
-            try:
-                entry = params.get_object(index)
-            except Exception:
-                entry = None
-            if isinstance(entry, COSDictionary):
-                return entry
-            return COSDictionary()
-    return parameters
+    return resolve_decode_params(parameters, index)
 
 
 class FlateDecode(Filter):

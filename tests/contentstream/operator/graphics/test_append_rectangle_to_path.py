@@ -78,9 +78,10 @@ def test_process_happy_path_with_integers() -> None:
     )
 
 
-def test_process_extra_trailing_operands_ignored() -> None:
-    # Upstream slices the first four; trailing operands neither error nor
-    # affect dispatch.
+def test_process_trailing_non_number_is_silent_skip() -> None:
+    # Upstream calls checkArrayTypesClass(operands, COSNumber.class) over the
+    # WHOLE operand list, so a trailing non-number (x y w h /Name re) makes
+    # the operator a silent no-op — it is NOT ignored. Returns without raising.
     op = AppendRectangleToPath()
     op.process(
         Operator.get_operator("re"),
@@ -90,6 +91,22 @@ def test_process_extra_trailing_operands_ignored() -> None:
             COSFloat(3.0),
             COSFloat(4.0),
             COSName.get_pdf_name("trailing"),
+        ],
+    )
+
+
+def test_process_extra_trailing_numbers_accepted() -> None:
+    # All-number stack longer than four: checkArrayTypesClass passes, the
+    # operator dispatches normally and consumes the first four values.
+    op = AppendRectangleToPath()
+    op.process(
+        Operator.get_operator("re"),
+        [
+            COSFloat(1.0),
+            COSFloat(2.0),
+            COSFloat(3.0),
+            COSFloat(4.0),
+            COSFloat(5.0),
         ],
     )
 
