@@ -85,7 +85,7 @@ class PDFunctionType4(PDFunction):
         raises ``OSError`` — mirrors upstream PDFBox which raises
         ``IllegalStateException`` for under-supply.
         """
-        clipped = self.clip_input(input)
+        clipped = self._clip_input_unnormalised(input)
 
         sequence = self.get_instructions()
 
@@ -122,7 +122,60 @@ class PDFunctionType4(PDFunction):
             # whole-stack behaviour is a long-standing pypdfbox convenience.
             result = [_to_output_float(v) for v in stack]
 
-        return self.clip_output(result)
+        return self._clip_output_unnormalised(result)
+
+    # ---------- clipping (non-normalising, upstream-faithful) ----------
+
+    @staticmethod
+    def _clip_scalar(x: float, range_min: float, range_max: float) -> float:
+        """Non-normalising scalar clamp — direct port of upstream
+        ``PDFunction.clipToRange(float, float, float)``.
+
+        ``if x < range_min -> range_min``; ``if x > range_max -> range_max``;
+        else ``x``. Crucially this does **not** swap a reversed ``(min, max)``
+        pair the way the base :meth:`PDFunction.clip_input` /
+        :meth:`PDFunction.clip_output` do. Java's Type 4 ``eval`` clips both
+        the input and the output through this exact non-normalising helper
+        (``PDFunctionType4.eval`` calls the base ``clipToRange(float[])`` which
+        loops over the declared parameter pairs calling the scalar clamp), so a
+        reversed ``/Domain`` or ``/Range`` produces the same clamped value as
+        upstream rather than a silently-normalised interval. Mirrors the same
+        override already present on :class:`PDFunctionType3`."""
+        if x < range_min:
+            return range_min
+        if x > range_max:
+            return range_max
+        return x
+
+    def _clip_input_unnormalised(self, values: list[float]) -> list[float]:
+        """Clip each input to its ``/Domain`` pair with the non-normalising
+        scalar clamp. Excess inputs (beyond the declared dimension count) pass
+        through unchanged, matching the base ``clip_input`` arity handling."""
+        ranges = self.get_ranges_for_inputs()
+        out: list[float] = []
+        for i, v in enumerate(values):
+            if i < len(ranges):
+                lo, hi = ranges[i]
+                out.append(self._clip_scalar(v, lo, hi))
+            else:
+                out.append(v)
+        return out
+
+    def _clip_output_unnormalised(self, values: list[float]) -> list[float]:
+        """Clip each output to its ``/Range`` pair with the non-normalising
+        scalar clamp. Returns the values unchanged when ``/Range`` is absent
+        (the lenient whole-stack mode)."""
+        ranges = self.get_ranges_for_outputs()
+        if not ranges:
+            return list(values)
+        out: list[float] = []
+        for i, v in enumerate(values):
+            if i < len(ranges):
+                lo, hi = ranges[i]
+                out.append(self._clip_scalar(v, lo, hi))
+            else:
+                out.append(v)
+        return out
 
     def get_instructions(self) -> Instruction:
         """Return the cached parsed instruction sequence, parsing the

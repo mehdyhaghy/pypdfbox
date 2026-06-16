@@ -60,7 +60,12 @@ class PDTransition:
     # ---------- style ----------
 
     def get_style(self) -> str:
-        return self._dictionary.get_name(_S, PDTransitionStyle.R) or PDTransitionStyle.R
+        # Upstream PDTransition.getStyle() uses COSDictionary.getNameAsString,
+        # so a string-valued /S returns its decoded text, not just a /Name.
+        return (
+            self._dictionary.get_name_as_string(_S, PDTransitionStyle.R)
+            or PDTransitionStyle.R
+        )
 
     def set_style(self, style: str) -> None:
         self._dictionary.set_name(_S, style)
@@ -93,7 +98,12 @@ class PDTransition:
     # ---------- motion (/M) ----------
 
     def get_motion(self) -> str:
-        return self._dictionary.get_name(_M, PDTransitionMotion.I) or PDTransitionMotion.I
+        # Upstream PDTransition.getMotion() uses getNameAsString (string-valued
+        # /M returns its decoded text).
+        return (
+            self._dictionary.get_name_as_string(_M, PDTransitionMotion.I)
+            or PDTransitionMotion.I
+        )
 
     def set_motion(self, motion: str) -> None:
         self._dictionary.set_name(_M, motion)
@@ -109,7 +119,12 @@ class PDTransition:
     # ---------- dimension (/Dm) ----------
 
     def get_dimension(self) -> str:
-        return self._dictionary.get_name(_DM, PDTransitionDimension.H) or PDTransitionDimension.H
+        # Upstream PDTransition.getDimension() uses getNameAsString
+        # (string-valued /Dm returns its decoded text).
+        return (
+            self._dictionary.get_name_as_string(_DM, PDTransitionDimension.H)
+            or PDTransitionDimension.H
+        )
 
     def set_dimension(self, dim: str) -> None:
         self._dictionary.set_name(_DM, dim)

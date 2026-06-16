@@ -77,6 +77,8 @@ def test_transition_has_helpers_ignore_malformed_cos_values() -> None:
 
     transition = PDTransition(raw)
 
+    # The has_* helpers detect a parsable /Name; a string-valued /S, /M, /Dm is
+    # therefore "absent" to them.
     assert transition.has_style() is False
     assert transition.has_duration() is False
     assert transition.has_motion() is False
@@ -84,10 +86,12 @@ def test_transition_has_helpers_ignore_malformed_cos_values() -> None:
     assert transition.has_direction() is False
     assert transition.has_scale() is False
     assert transition.has_fly_area_to_show() is False
-    assert transition.get_style() == PDTransitionStyle.R
+    # The getters mirror upstream getNameAsString: a string-valued /S, /M, /Dm
+    # returns its decoded text (only non-name/non-string shapes fall back).
+    assert transition.get_style() == "Fly"
     assert transition.get_duration() == 1
-    assert transition.get_motion() == PDTransitionMotion.I
-    assert transition.get_dimension() == PDTransitionDimension.H
+    assert transition.get_motion() == "O"
+    assert transition.get_dimension() == "V"
     assert transition.get_direction() == PDTransitionDirection.LEFT_TO_RIGHT
     assert transition.get_scale() == 1
     assert transition.get_fly_area_to_show() is False

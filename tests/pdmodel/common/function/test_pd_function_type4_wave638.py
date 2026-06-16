@@ -42,6 +42,17 @@ def test_wave638_dictionary_backed_type4_reads_empty_body() -> None:
 
 
 def test_wave638_input_and_output_clipping_honor_reversed_bounds() -> None:
+    # Wave 1539: upstream PDFBox clips with the NON-normalising
+    # ``clipToRange(x, min, max)`` (``if x < min -> min; if x > max -> max``),
+    # which does NOT swap a reversed ``(min, max)`` pair. pypdfbox previously
+    # normalised reversed bounds in the base ``clip_input``/``clip_output``,
+    # diverging from the jar; ``PDFunctionType4`` now overrides with the
+    # non-normalising clamp (verified against FunctionType4FuzzProbe).
+    #
+    # Domain [5, -5], Range [12, 4]:
+    #   input  9 -> domain: 9 > -5 -> clamp to -5; 2*-5+10=0; range: 0 < 12 -> 12
+    #   input -9 -> domain: -9 < 5 -> clamp to 5;  2*5+10=20; range: 20 > 4 -> 4
+    #   input  1 -> domain: 1 < 5 -> clamp to 5;   2*5+10=20; range: 20 > 4 -> 4
     fn = _make(
         "{ 2 mul 10 add }",
         domain=[5.0, -5.0],
@@ -50,7 +61,7 @@ def test_wave638_input_and_output_clipping_honor_reversed_bounds() -> None:
 
     assert fn.eval([9.0]) == pytest.approx([12.0])
     assert fn.eval([-9.0]) == pytest.approx([4.0])
-    assert fn.eval([1.0]) == pytest.approx([12.0])
+    assert fn.eval([1.0]) == pytest.approx([4.0])
 
 
 def test_wave638_parser_accepts_bare_program_without_outer_braces() -> None:
