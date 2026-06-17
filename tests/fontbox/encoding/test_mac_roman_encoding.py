@@ -33,5 +33,6 @@ def test_unmapped_returns_notdef() -> None:
 
 
 def test_table_size() -> None:
-    # 207 entries from the upstream MacRomanEncoding fontbox table
-    assert len(MacRomanEncoding.INSTANCE.get_codes()) == 207
+    # 208 entries from the upstream MacRomanEncoding table: 207 spec rows
+    # plus the PDFBox-specific 0o312 ("nbspace") entry.
+    assert len(MacRomanEncoding.INSTANCE.get_codes()) == 208
