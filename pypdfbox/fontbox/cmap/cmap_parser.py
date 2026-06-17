@@ -10,6 +10,26 @@ from .codespace_range import CodespaceRange
 
 _RESOURCES_DIR = Path(__file__).parent / "resources"
 
+# Exact-case set of bundled predefined CMap filenames. Computed once on
+# import so resource resolution is deterministic regardless of whether the
+# host filesystem folds case (macOS / Windows) — matching upstream's
+# case-sensitive classpath lookup. Empty when the directory is absent.
+_BUNDLED_CMAP_NAMES: frozenset[str] | None = None
+
+
+def _bundled_cmap_names() -> frozenset[str]:
+    """Return the exact-case names of the bundled CMap resource files."""
+    global _BUNDLED_CMAP_NAMES
+    if _BUNDLED_CMAP_NAMES is None:
+        try:
+            _BUNDLED_CMAP_NAMES = frozenset(
+                p.name for p in _RESOURCES_DIR.iterdir() if p.is_file()
+            )
+        except OSError:
+            _BUNDLED_CMAP_NAMES = frozenset()
+    return _BUNDLED_CMAP_NAMES
+
+
 _MARK_END_OF_DICTIONARY = ">>"
 _MARK_END_OF_ARRAY = "]"
 
@@ -144,6 +164,18 @@ class CMapParser:
         _PREDEFINED_CACHE[name] = cmap
         return cmap
 
+    @classmethod
+    def clear_predefined_cache(cls) -> None:
+        """Drop the :meth:`get_cmap_for_name` cache.
+
+        Not present upstream — pypdfbox enrichment so the predefined-CMap
+        cache populated by :meth:`get_cmap_for_name` can be reset between
+        test cases. :meth:`CMapManager.clear_cache` chains to this so a
+        single ``clear_cache()`` call resets *both* predefined caches and
+        its "drop all cached predefined CMaps" contract holds.
+        """
+        _PREDEFINED_CACHE.clear()
+
     @staticmethod
     def add_codespace_range(
         cmap: CMap, low: bytes | bytearray, high: bytes | bytearray
@@ -203,9 +235,27 @@ class CMapParser:
         ``parse_predefined`` and the ``usecmap`` directive to resolve
         bundled Adobe CMap files. Raises :class:`OSError` (upstream
         throws ``IOException``) when the resource is not bundled.
+
+        Resolution is **exact-case** and confined to the resources
+        directory. Upstream loads predefined CMaps from a case-sensitive
+        classpath, so ``identity-h`` must not resolve to ``Identity-H``;
+        a bare ``Path.is_file()`` check would (wrongly) succeed on the
+        case-insensitive filesystems pypdfbox runs on (macOS / Windows).
+        A ``name`` carrying a path separator or ``..`` component is also
+        rejected so a stray ``usecmap`` directive cannot read outside the
+        bundled resource set.
         """
         resource = _RESOURCES_DIR / name
-        if not resource.is_file():
+        # Reject names that are not a plain filename living directly in the
+        # resources directory (path traversal / nested paths).
+        if resource.parent != _RESOURCES_DIR or resource.name != name:
+            raise OSError(
+                f"Error: Could not find referenced cmap stream {name}"
+            )
+        # Exact-case match: enumerate the directory rather than trust the
+        # filesystem's case-folding ``is_file`` so behaviour is identical
+        # on case-sensitive and case-insensitive filesystems.
+        if not (resource.is_file() and name in _bundled_cmap_names()):
             raise OSError(
                 f"Error: Could not find referenced cmap stream {name}"
             )

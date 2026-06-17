@@ -115,6 +115,15 @@ class CMapManager:
         Not present upstream — pypdfbox enrichment to make tests
         deterministic. The upstream cache is process-lifetime; ours can
         be reset between test cases.
+
+        Clears *both* predefined-CMap caches: this manager's
+        name-keyed ``_CMAP_CACHE`` and the parser-level
+        ``CMapParser.get_cmap_for_name`` cache. They are independent dicts
+        populated by separate accessors; leaving the parser cache
+        untouched here would let a stale instance survive a
+        ``clear_cache()`` and break the "drop all cached predefined
+        CMaps" contract this method advertises.
         """
         with cls._CACHE_LOCK:
             cls._CMAP_CACHE.clear()
+        CMapParser.clear_predefined_cache()
