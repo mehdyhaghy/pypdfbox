@@ -82,5 +82,10 @@ def test_wave506_parse_xref_stream_non_integer_width_counts_as_absent() -> None:
 
 
 def test_wave506_parse_fdf_header_rejects_malformed_version() -> None:
-    with pytest.raises(PDFParseError, match="malformed %FDF- version"):
-        _parser(b"%FDF-not-a-version\n").parse_fdf_header()
+    # Upstream raises only in STRICT mode; lenient defaults the version to 1.7
+    # (NOT the FDF default 1.0, which applies only to the no-digits branch).
+    p = _parser(b"%FDF-not-a-version\n")
+    p.set_lenient(False)
+    with pytest.raises(PDFParseError, match="Error getting header version"):
+        p.parse_fdf_header()
+    assert _parser(b"%FDF-not-a-version\n").parse_fdf_header() == 1.7

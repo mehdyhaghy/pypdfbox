@@ -1026,10 +1026,15 @@ class PDFParser:
             head.append(b)
         idx = bytes(head).find(b"%PDF-")
         marker_len = len(b"%PDF-")
+        # Upstream's per-marker default version (used only when the marker is
+        # present but carries no version digits at all): 1.4 for ``%PDF-``,
+        # 1.0 for ``%FDF-``.
+        default_version = 1.4
         if idx < 0:
             # FDF files carry an %FDF- header; the rest of the structure is
             # identical, so fall through to the same version parse.
             idx = bytes(head).find(b"%FDF-")
+            default_version = 1.0
             if idx < 0:
                 # Mirrors upstream COSParser.parseHeader (PDFBox 3.0.7,
                 # COSParser.java ~L1619) returning ``false`` — NOT throwing —
@@ -1039,9 +1044,10 @@ class PDFParser:
                 # brute-force recovery (so leading binary garbage that pushes
                 # the header past the window still recovers), and in strict
                 # mode raises. ``_HeaderNotFoundError`` is the in-band signal
-                # for that distinction; a *malformed version* (marker present)
-                # still raises ``PDFParseError`` below, matching upstream's
-                # IOException("Error getting header version:").
+                # for that distinction; a *malformed version* (marker present
+                # but digits unparseable) recovers at 1.7 in lenient mode and
+                # raises ``PDFParseError`` only in strict mode below, matching
+                # upstream's IOException("Error getting header version:").
                 raise _HeaderNotFoundError(
                     "missing %PDF- header (not a PDF file)"
                 )
@@ -1053,10 +1059,32 @@ class PDFParser:
             if b == RandomAccessRead.EOF or b in (0x0A, 0x0D, 0x20):
                 break
             version_bytes.append(b)
+        # No version digits at all (``%PDF-\n``) → upstream substitutes the
+        # marker's default version (``headerMarker + defaultVersion``) rather
+        # than failing the float parse. 1.4 for PDF, 1.0 for FDF.
+        if not version_bytes:
+            return default_version
+        # Upstream COSParser.parseHeader tolerates garbage *after* the version
+        # on the same line (e.g. ``%PDF-1.4FOO``): it keeps only ``marker``
+        # plus 3 chars (the ``x.y`` triple) and rewinds the rest. Mirror by
+        # truncating the digits we read to the first 3 characters before the
+        # numeric parse so a trailing-garbage header still yields ``1.4``.
+        if len(version_bytes) > 3:
+            version_bytes = version_bytes[:3]
         try:
             return float(version_bytes.decode("ascii"))
-        except ValueError as exc:
-            raise PDFParseError(f"malformed %PDF version {version_bytes!r}") from exc
+        except ValueError:
+            # A *malformed* version (marker present, digits unparseable) does
+            # NOT throw in upstream's lenient mode — parseHeader catches the
+            # NumberFormatException, leaves headerVersion < 0, and then sets it
+            # to 1.7 when lenient (only strict mode raises "Error getting
+            # header version:"). Mirror that branch so a lenient parse of a
+            # bogus ``%PDF-X.Y`` recovers at 1.7 instead of aborting.
+            if self._lenient:
+                return 1.7
+            raise PDFParseError(
+                f"Error getting header version: {version_bytes!r}"
+            ) from None
 
     def parse_pdf_header(self) -> bool:
         """Validate the ``%PDF-x.y`` magic and record the version on the
@@ -1066,9 +1094,11 @@ class PDFParser:
         Java-style boolean alias for :meth:`parse_header` — mirrors
         upstream ``COSParser.parsePDFHeader()`` whose contract is "did we
         find a PDF header?". A *malformed version* (marker present, digits
-        unparseable) still propagates as ``PDFParseError`` — matching upstream
-        ``parseHeader`` throwing ``IOException("Error getting header
-        version:")`` rather than returning ``false`` for that case."""
+        unparseable) recovers at 1.7 in lenient mode and propagates as
+        ``PDFParseError`` only in strict mode — matching upstream
+        ``parseHeader``, which catches the ``NumberFormatException`` and then
+        either defaults to 1.7 (lenient) or throws ``IOException("Error getting
+        header version:")`` (strict) rather than returning ``false``."""
         try:
             version = self.parse_header()
         except _HeaderNotFoundError:
@@ -1093,15 +1123,32 @@ class PDFParser:
         (default :data:`_TAIL_SCAN_BYTES`), matching upstream's
         ``readTrailBytes`` knob. ``validate_bounds=False`` is used by the
         lenient parse path so an invalid declared offset can still be
-        corrected by the brute-force xref search."""
+        corrected by the brute-force xref search.
+
+        Mirrors upstream ``COSParser.getStartxrefOffset`` exactly: it locates
+        the **last ``%%EOF``** in the tail first, then the **last
+        ``startxref`` preceding that EOF marker**. In strict mode a missing
+        ``%%EOF`` raises; in lenient mode it is not required (the whole tail is
+        searched). Anchoring the ``startxref`` lookup *before* ``%%EOF`` is
+        load-bearing: trailing junk after the final ``%%EOF`` that happens to
+        contain the word ``startxref`` must NOT be mistaken for the directive."""
         length = self._src.length()
         scan_from = max(0, length - self._eof_lookup_range)
         self._src.seek(scan_from)
         tail = bytearray(length - scan_from)
         n = self._src.read_into(tail)
         tail_bytes = bytes(tail[: n if n > 0 else 0])
+        # Upstream: ``int bufOff = lastIndexOf(EOF_MARKER, buf, buf.length)``.
+        eof_off = tail_bytes.rfind(b"%%EOF")
+        if eof_off < 0:
+            if not self._lenient:
+                raise PDFParseError("Missing end of file marker '%%EOF'")
+            # Lenient: ``%%EOF`` not needed; search the whole tail (upstream
+            # sets ``bufOff = buf.length`` so the startxref lookup spans all).
+            eof_off = len(tail_bytes)
         marker = b"startxref"
-        idx = tail_bytes.rfind(marker)
+        # ``lastIndexOf(STARTXREF, buf, bufOff)`` — last startxref before EOF.
+        idx = tail_bytes.rfind(marker, 0, eof_off)
         if idx < 0:
             raise PDFParseError("missing 'startxref' directive near EOF")
         # Re-position absolute and skip past the keyword.

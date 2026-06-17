@@ -386,8 +386,14 @@ def test_parse_pdf_header_missing_magic_raises() -> None:
 
 
 def test_parse_pdf_header_malformed_version_raises() -> None:
+    # Upstream COSParser.parseHeader catches the NumberFormatException on a
+    # bogus version and raises only in STRICT mode (lenient defaults to 1.7).
+    p = parser(b"%PDF-bad\n")
+    p.set_lenient(False)
     with pytest.raises(PDFParseError):
-        parser(b"%PDF-bad\n").parse_pdf_header()
+        p.parse_pdf_header()
+    # Lenient mode (the default) recovers at 1.7 instead of aborting.
+    assert parser(b"%PDF-bad\n").parse_pdf_header() == 1.7
 
 
 # ---------- parse_xref_table ----------

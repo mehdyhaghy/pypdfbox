@@ -64,8 +64,12 @@ def test_wave486_parse_xref_object_stream_nonstandalone_allows_missing_xref_type
 
 
 def test_wave486_parse_pdf_header_rejects_malformed_version() -> None:
-    with pytest.raises(PDFParseError, match="malformed %PDF- version"):
-        _parser(b"%PDF-not-a-version\n").parse_pdf_header()
+    # Upstream raises only in STRICT mode; lenient defaults the version to 1.7.
+    p = _parser(b"%PDF-not-a-version\n")
+    p.set_lenient(False)
+    with pytest.raises(PDFParseError, match="Error getting header version"):
+        p.parse_pdf_header()
+    assert _parser(b"%PDF-not-a-version\n").parse_pdf_header() == 1.7
 
 
 def test_wave486_parse_object_stream_registers_contained_objects() -> None:

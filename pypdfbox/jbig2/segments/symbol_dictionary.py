@@ -511,7 +511,11 @@ class SymbolDictionary(Dictionary):
 
                 self.agg_inst_table = self._get_user_table(aggregation_instance_number)
             return self.agg_inst_table.decode(self.sub_input_stream)
-        return 0
+        # Unreachable: SDHUFFAGGINST is a single flag bit (bit 7 of the flags
+        # word), so it is only ever 0 or 1. Mirrors the structurally-dead
+        # `default: return 0` after the switch in upstream
+        # SymbolDictionary.huffDecodeRefAggNInst.
+        return 0  # pragma: no cover
 
     def _decode_through_text_region(
         self,

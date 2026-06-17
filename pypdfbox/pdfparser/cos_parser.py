@@ -1123,14 +1123,28 @@ class COSParser(BaseParser):
             if b == RandomAccessRead.EOF or b in (0x0A, 0x0D, 0x20):
                 break
             version_bytes.append(b)
+        # No version digits at all → upstream uses the marker's *default*
+        # version (1.4 for ``%PDF-``, 1.0 for ``%FDF-``).
         if not version_bytes:
             return float(default_version)
+        # Garbage after the version on the same line (``%PDF-1.4FOO``) → upstream
+        # keeps only ``marker`` + 3 chars (the ``x.y`` triple) and rewinds the
+        # rest; mirror by truncating the digits to the first 3 characters.
+        if len(version_bytes) > 3:
+            version_bytes = version_bytes[:3]
         try:
             return float(version_bytes.decode("ascii"))
-        except ValueError as exc:
+        except ValueError:
+            # A *malformed* version (digits unparseable) is caught by upstream's
+            # ``parseHeader`` (NumberFormatException) and resolved to 1.7 in
+            # lenient mode; only strict mode throws "Error getting header
+            # version:". Note this is 1.7, NOT the marker's default version —
+            # the default applies only to the "no digits" branch above.
+            if self._lenient:
+                return 1.7
             raise PDFParseError(
-                f"malformed {marker.decode('ascii')} version {version_bytes!r}"
-            ) from exc
+                f"Error getting header version: {version_bytes!r}"
+            ) from None
 
     def has_pdf_header(self) -> bool:
         """``True`` when :meth:`parse_pdf_header` would succeed. Useful

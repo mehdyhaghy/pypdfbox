@@ -61,9 +61,11 @@ class GlyphPositioningTable(TTFTable):
     * Type 6 — Mark-to-mark attachment
     * Type 7 — Contextual positioning (rule-based, three sub-formats)
     * Type 8 — Chained contextual positioning (three sub-formats)
-    * Type 9 — Extension positioning (transparent — fontTools inlines
-      the wrapped subtable, so type-9 lookups surface as their wrapped
-      type at this layer)
+    * Type 9 — Extension positioning. fontTools keeps the lookup typed
+      as 9 with an ``ExtensionPos`` subtable wrapping the real one; the
+      kerning convenience (:meth:`get_kerning`) unwraps a type-9 lookup
+      whose ``ExtensionLookupType`` is 2 so offset-overflow-wrapped
+      ``kern`` features still yield pairs.
 
     The lookup-type taxonomy is exposed as a numeric ``LOOKUP_TYPE_*``
     constant set on this class; consumers walking the raw structure
@@ -518,9 +520,14 @@ class GlyphPositioningTable(TTFTable):
           ValueRecord. Class-0 in ``ClassDef2`` is the "everything not
           assigned" bucket per the OT spec.
 
-        Lookup type 9 (extension) is transparent at this layer because
-        fontTools resolves the wrapped subtable into the regular shape
-        before we see it.
+        Lookup type 9 (extension) is **not** transparent at this layer:
+        after a real byte round-trip fontTools keeps the lookup typed as
+        9 with an ``ExtensionPos`` subtable whose ``ExtSubTable`` holds
+        the wrapped pair-adjustment table. Large fonts whose ``kern``
+        feature exceeds the 16-bit subtable offset range routinely wrap
+        their PairPos in an extension lookup, so we unwrap a type-9
+        lookup whose ``ExtensionLookupType`` is 2 and absorb the wrapped
+        PairPos exactly as a direct one.
 
         Type 7 / 8 (contextual / chained) pair-adjustment effects are
         intentionally not unpacked — they require running the full
@@ -540,19 +547,42 @@ class GlyphPositioningTable(TTFTable):
             if ll is None:
                 return pairs
             for lk in getattr(ll, "Lookup", None) or []:
-                if int(lk.LookupType) != self.LOOKUP_TYPE_PAIR_ADJUSTMENT:
-                    continue
-                for sub in getattr(lk, "SubTable", None) or []:
-                    fmt = int(getattr(sub, "Format", 0))
-                    if fmt == 1:
-                        self._absorb_pair_format1(sub, pairs)
-                    elif fmt == 2:
-                        self._absorb_pair_format2(sub, pairs)
-                    # Other formats are non-spec and silently ignored —
-                    # matches upstream's "skip unknown subtable" pattern.
+                lk_type = int(lk.LookupType)
+                if lk_type == self.LOOKUP_TYPE_PAIR_ADJUSTMENT:
+                    for sub in getattr(lk, "SubTable", None) or []:
+                        self._absorb_pair_subtable(sub, pairs)
+                elif lk_type == self.LOOKUP_TYPE_EXTENSION:
+                    # Type 9 wraps another lookup type via ``ExtensionPos``;
+                    # unwrap any extension whose target is pair-adjustment so
+                    # offset-overflow-wrapped kern features are not dropped.
+                    for ext in getattr(lk, "SubTable", None) or []:
+                        if (
+                            int(getattr(ext, "ExtensionLookupType", 0))
+                            != self.LOOKUP_TYPE_PAIR_ADJUSTMENT
+                        ):
+                            continue
+                        inner = getattr(ext, "ExtSubTable", None)
+                        if inner is not None:
+                            self._absorb_pair_subtable(inner, pairs)
         except _FONTTOOLS_DECODE_ERRORS:
             return pairs
         return pairs
+
+    def _absorb_pair_subtable(
+        self,
+        sub: Any,
+        pairs: dict[tuple[int, int], int],
+    ) -> None:
+        """Dispatch a PairPos subtable to the format-1 / format-2 absorber.
+
+        Other (non-spec) formats are silently ignored — matches upstream's
+        "skip unknown subtable" pattern.
+        """
+        fmt = int(getattr(sub, "Format", 0))
+        if fmt == 1:
+            self._absorb_pair_format1(sub, pairs)
+        elif fmt == 2:
+            self._absorb_pair_format2(sub, pairs)
 
     def _absorb_pair_format1(
         self,

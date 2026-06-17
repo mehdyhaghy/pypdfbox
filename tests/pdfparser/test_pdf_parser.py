@@ -62,8 +62,13 @@ def test_parse_header_missing_raises() -> None:
 
 
 def test_parse_header_malformed_version_raises() -> None:
+    # Upstream parseHeader catches the NumberFormatException; only STRICT mode
+    # raises ("Error getting header version:"), lenient defaults to 1.7.
+    p = _parser(b"%PDF-bad\nrest")
+    p.set_lenient(False)
     with pytest.raises(PDFParseError):
-        _parser(b"%PDF-bad\nrest").parse_header()
+        p.parse_header()
+    assert _parser(b"%PDF-bad\nrest").parse_header() == 1.7
 
 
 # ---------- startxref ----------

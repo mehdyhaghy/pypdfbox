@@ -54,9 +54,11 @@ def _xref_stream_pdf(
     return bytes(out)
 
 
-def test_wave380_parse_header_rejects_empty_version() -> None:
-    with pytest.raises(PDFParseError, match="malformed %PDF version"):
-        _parser(b"%PDF-\nrest").parse_header()
+def test_wave380_parse_header_empty_version_defaults() -> None:
+    # Wave 1581: a marker with NO version digits (``%PDF-\n``) is not an error —
+    # upstream parseHeader substitutes ``headerMarker + defaultVersion`` (1.4
+    # for PDF). It is the no-digits branch, distinct from a malformed version.
+    assert _parser(b"%PDF-\nrest").parse_header() == 1.4
 
 
 def test_wave380_find_startxref_honors_small_lookup_window() -> None:

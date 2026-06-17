@@ -61,11 +61,15 @@ class FDFParser(COSParser):
             try:
                 version = self.parse_fdf_header()
             except PDFParseError as exc:
-                if "malformed %FDF- version" not in exc.message:
-                    raise PDFParseError(
-                        "Error: Header doesn't contain versioninfo"
-                    ) from exc
-                version = 1.7
+                # As of wave 1581 ``parse_fdf_header`` resolves a *malformed*
+                # version to 1.7 in lenient mode itself (mirroring upstream
+                # parseHeader), so the only PDFParseError that reaches here is
+                # a missing/unparseable header — upstream's
+                # ``FDFParser.parse`` treats that as the "no version info"
+                # failure.
+                raise PDFParseError(
+                    "Error: Header doesn't contain versioninfo"
+                ) from exc
             if not version:
                 raise PDFParseError("Error: Header doesn't contain versioninfo")
             if self._document is None:
