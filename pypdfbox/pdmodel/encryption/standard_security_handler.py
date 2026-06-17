@@ -971,6 +971,15 @@ class StandardSecurityHandler(SecurityHandler):
         self.set_key_length(key_length_bits)
         self._permissions = int(encryption.get_p())
         self._encrypt_metadata = bool(encryption.is_encrypt_meta_data())
+        # Propagate /EncryptMetadata to the base handler's decrypt-metadata
+        # flag so the ``SecurityHandler.decrypt`` dict-walk path skips a
+        # ``/Type /Metadata`` stream when the document declares
+        # ``/EncryptMetadata false``. Mirrors upstream
+        # ``StandardSecurityHandler.prepareForDecryption`` which calls
+        # ``setDecryptMetadata(encryption.isEncryptMetaData())``. Without this
+        # the metadata stream is RC4/AES-deciphered as if it were ciphertext,
+        # corrupting the cleartext XMP that landed on disk.
+        self.set_decrypt_metadata(self._encrypt_metadata)
         # AES is signalled by V=4 with the default stream filter's /CFM set
         # to AESV2, or V=5/6 with AESV3. We resolve through /CF when present
         # and only fall back to a name-based heuristic for legacy writers

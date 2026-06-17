@@ -3124,9 +3124,12 @@ class COSWriter(ICOSVisitor):
                 COSNull.NULL.accept(self)
             else:
                 current.accept(self)
+            # Match upstream ``COSWriter.visitFromArray``: the separator is
+            # guarded by ``if (i.hasNext())`` so there is NO trailing space
+            # before the closing ``]``. Every 10th element gets an EOL
+            # instead of a space (helps pretty-printing without breaking
+            # parsers).
             if i < len(items) - 1:
-                # Match upstream: every 10th item gets an EOL instead of a
-                # space (helps pretty-printing without breaking parsers).
                 if (i + 1) % 10 == 0:
                     out.write_eol()
                 else:

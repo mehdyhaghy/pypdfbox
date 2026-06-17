@@ -241,6 +241,13 @@ class PublicKeySecurityHandler(SecurityHandler):
         self.set_key_length(key_length_bits)
         self.set_version(version)
         self.set_revision(revision)
+        # Propagate the resolved /EncryptMetadata to the base handler's
+        # decrypt-metadata flag so the ``SecurityHandler.decrypt`` dict-walk
+        # path skips a ``/Type /Metadata`` stream when the document declares
+        # ``/EncryptMetadata false`` (the same suffix that gates the 0xFF*4 in
+        # the key derivation above). Without this the metadata stream is
+        # AES-deciphered as if it were ciphertext.
+        self.set_decrypt_metadata(encrypt_metadata)
         # AES detection mirrors upstream: read the crypt filter method
         # (/CFM AESV2 or AESV3) when a default crypt filter is present, rather
         # than inferring solely from V>=4 (a V4 file could in principle use
