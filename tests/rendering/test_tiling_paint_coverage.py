@@ -327,6 +327,9 @@ def test_get_image_scales_dimensions_by_xform_tuple() -> None:
 
 
 def test_ceiling_is_strict_round_up() -> None:
+    # Upstream ``ceiling`` is BigDecimal.setScale(5, CEILING).intValue(): it
+    # rounds up only at the 5th decimal then truncates toward zero, so 1.01 and
+    # 1.001 truncate back to 1 (NOT Math.ceil's 2).
     assert TilingPaint.ceiling(1.0) == 1
-    assert TilingPaint.ceiling(1.01) == 2
+    assert TilingPaint.ceiling(1.01) == 1
     assert TilingPaint.ceiling(-1.5) == -1

@@ -133,8 +133,10 @@ def test_get_anchor_rect_clamps_huge_dimensions_to_maxedge() -> None:
 
 
 def test_ceiling_static() -> None:
+    # Mirrors upstream BigDecimal.setScale(5, CEILING).intValue(): 1.001 rounds
+    # to 1.00100 at 5dp, then intValue truncates toward zero back to 1.
     assert TilingPaint.ceiling(1.0) == 1
-    assert TilingPaint.ceiling(1.001) == 2
+    assert TilingPaint.ceiling(1.001) == 1
     assert TilingPaint.ceiling(-0.5) == 0
 
 

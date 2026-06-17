@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+from decimal import ROUND_CEILING, Decimal
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -42,6 +43,10 @@ def _resolve_maxedge() -> int:
 
 
 MAXEDGE = _resolve_maxedge()
+
+# Upstream ``ceiling`` rounds to 5 decimal places (RoundingMode.CEILING) to
+# absorb floating-point error before truncating; see ``TilingPaint.ceiling``.
+_CEILING_SCALE = Decimal("1.00000")
 
 
 def _abs_scale_factors(xform: Any) -> tuple[float, float]:
@@ -251,8 +256,23 @@ class TilingPaint:
 
     @staticmethod
     def ceiling(num: float) -> int:
-        """Mirror upstream ``ceiling(double)`` (rounded toward +Inf)."""
-        return int(math.ceil(num))
+        """Mirror upstream ``ceiling(double)``.
+
+        Upstream is **not** ``Math.ceil``: it does
+        ``BigDecimal.valueOf(num).setScale(5, RoundingMode.CEILING).intValue()``.
+        That rounds up only at the 5th decimal place (to absorb floating-point
+        error that would otherwise create gaps in the tiling), then
+        ``intValue()`` *truncates toward zero*. So ``ceiling(12.3) == 12`` and
+        ``ceiling(40.0000001) == 40`` — a naive ``math.ceil`` would return 13 / 41
+        and inflate the raster by a pixel, mis-tiling the pattern.
+
+        ``Decimal(repr(float(num)))`` reproduces ``BigDecimal.valueOf`` because
+        Python's ``repr`` yields the same shortest round-trip string as Java's
+        ``Double.toString``; ``int(Decimal)`` truncates toward zero like
+        ``intValue()``.
+        """
+        decimal = Decimal(repr(float(num))).quantize(_CEILING_SCALE, rounding=ROUND_CEILING)
+        return int(decimal)
 
     def get_transparency(self) -> int:
         """Mirror upstream ``Paint.getTransparency()`` -> ``TRANSLUCENT``."""

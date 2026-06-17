@@ -11,6 +11,50 @@ from typing import Any
 from .axial_shading_context import _read_extend
 from .shading_context import ShadingContext
 
+_JAVA_INT_MAX = 2147483647
+_JAVA_INT_MIN = -2147483648
+
+
+def _java_max(a: float, b: float) -> float:
+    """``Math.max`` with Java's NaN propagation (Python ``max`` does not).
+
+    Java's ``Math.max`` returns NaN if either argument is NaN, whereas
+    Python's built-in ``max`` is comparison-order dependent. Match Java so the
+    degenerate (Infinity / NaN root) path picks the same value as upstream."""
+    if math.isnan(a) or math.isnan(b):
+        return float("nan")
+    return a if a >= b else b
+
+
+def _java_int_cast(value: float) -> int:
+    """Truncate toward zero with Java ``(int)`` cast semantics.
+
+    Java's narrowing ``(int)`` cast maps NaN to 0, ``+Infinity`` (and values
+    above the range) to ``Integer.MAX_VALUE`` and ``-Infinity`` to
+    ``Integer.MIN_VALUE`` rather than raising. Python's ``int()`` raises on
+    NaN / Infinity, so emulate the cast for the degenerate root case."""
+    if math.isnan(value):
+        return 0
+    if value >= _JAVA_INT_MAX:
+        return _JAVA_INT_MAX
+    if value <= _JAVA_INT_MIN:
+        return _JAVA_INT_MIN
+    return int(value)
+
+
+def _java_divide(numerator: float, denominator: float) -> float:
+    """Divide with Java/IEEE-754 float-division-by-zero semantics.
+
+    Python raises ``ZeroDivisionError`` on ``x / 0.0``; Java (and the C double
+    arithmetic underlying ``Math``) instead yields ``NaN`` for ``0.0 / 0.0`` and
+    a signed ``Infinity`` for a non-zero numerator. ``RadialShadingContext``'s
+    quadratic solver relies on that behaviour for a degenerate ``denom``."""
+    if denominator == 0:
+        if numerator == 0 or math.isnan(numerator):
+            return float("nan")
+        return math.copysign(float("inf"), numerator)
+    return numerator / denominator
+
 
 class RadialShadingContext(ShadingContext):
     """Generates the colour table along a radial-gradient axis."""
@@ -94,13 +138,20 @@ class RadialShadingContext(ShadingContext):
         )
         q = (x - coords[0]) ** 2 + (y - coords[1]) ** 2 - self._r0pow2
         discriminant = p * p - self._denom * q
+        # Upstream uses ``Math.sqrt`` which returns NaN for a negative
+        # argument rather than raising; both roots then propagate NaN.
         if discriminant < 0:
             return (float("nan"), float("nan"))
         root = math.sqrt(discriminant)
-        if self._denom == 0:
-            return (float("nan"), float("nan"))
-        root1 = (-p + root) / self._denom
-        root2 = (-p - root) / self._denom
+        # Upstream does NOT guard ``denom == 0``; it divides through with
+        # IEEE-754 float semantics. For a degenerate ``denom`` (i.e.
+        # ``x1x0^2 + y1y0^2 == r1r0^2``) Java yields one NaN (0/0) and one
+        # signed Infinity (±n/0), which fall through to the extend / root
+        # selection logic in ``get_raster`` — NOT the "both NaN -> background"
+        # branch. Replicate that with the same float-division-by-zero rules
+        # so the degenerate axis behaves identically to PDFBox.
+        root1 = _java_divide(-p + root, self._denom)
+        root2 = _java_divide(-p - root, self._denom)
         if self._denom < 0:
             return (root1, root2)
         return (root2, root1)
@@ -138,11 +189,11 @@ class RadialShadingContext(ShadingContext):
                     use_background = True
                 else:
                     if 0 <= r0 <= 1:
-                        input_value = max(r0, r1) if 0 <= r1 <= 1 else r0
+                        input_value = _java_max(r0, r1) if 0 <= r1 <= 1 else r0
                     elif 0 <= r1 <= 1:
                         input_value = r1
                     elif extend[0] and extend[1]:
-                        input_value = max(r0, r1)
+                        input_value = _java_max(r0, r1)
                     elif extend[0]:
                         input_value = r0
                     elif extend[1]:
@@ -169,7 +220,7 @@ class RadialShadingContext(ShadingContext):
                 if use_background:
                     value = rgb_bg
                 else:
-                    key = int(input_value * factor)
+                    key = _java_int_cast(input_value * factor)
                     if key < 0:
                         key = 0
                     elif key > factor:

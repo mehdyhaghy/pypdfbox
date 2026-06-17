@@ -535,9 +535,16 @@ def test_radial_calculate_input_values_negative_discriminant_returns_nan() -> No
     assert math.isnan(r0) and math.isnan(r1)
 
 
-def test_radial_calculate_input_values_zero_denominator_returns_nan() -> None:
+def test_radial_calculate_input_values_zero_denominator_matches_java() -> None:
     # Choose coords where x1x0^2 + y1y0^2 - r1r0^2 == 0.
     # e.g. dx=3, dy=4 -> 9+16=25 ; r1-r0=5 -> 25 -> denom = 0.
+    #
+    # Wave 1590 parity fix: upstream RadialShadingContext.calculateInputValues
+    # does NOT guard denom==0; it divides through with IEEE-754 float
+    # semantics, yielding one NaN (0/0) and one signed Infinity (n/0) — NOT
+    # both NaN. That feeds the extend/root-selection logic in getRaster rather
+    # than the "both NaN -> background" branch. pypdfbox previously short-
+    # circuited to (nan, nan); it now replicates Java exactly.
     ctx = RadialShadingContext(
         _FakeRadialShading(coords=[0.0, 0.0, 0.0, 3.0, 4.0, 5.0]),
         color_model=None,
@@ -547,7 +554,8 @@ def test_radial_calculate_input_values_zero_denominator_returns_nan() -> None:
     )
     import math
     r0, r1 = ctx.calculate_input_values(1.0, 1.0)
-    assert math.isnan(r0) and math.isnan(r1)
+    assert sum(1 for v in (r0, r1) if math.isnan(v)) == 1
+    assert sum(1 for v in (r0, r1) if math.isinf(v)) == 1
 
 
 def test_radial_calculate_input_values_positive_denominator_orders_roots() -> None:
