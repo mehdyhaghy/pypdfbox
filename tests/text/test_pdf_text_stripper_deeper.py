@@ -409,13 +409,16 @@ def test_write_string_with_positions_delegates_to_write_string() -> None:
 
 
 def test_write_string_with_positions_skips_empty_text() -> None:
-    """Empty text or empty positions list ⇒ no-op (invariant)."""
+    """Empty text ⇒ no-op (``writeString("")`` writes nothing). A non-empty
+    text with an empty position list is still written, matching upstream's
+    ``writeString(String, List<TextPosition>)``, which ignores the position
+    list and always delegates to ``writeString(String)``."""
     seen: list[str] = []
     s = PDFTextStripper()
     s.write_string_with_positions("", [TextPosition(text="", x=0, y=0, font_size=10)], seen.append)
     assert seen == []
     s.write_string_with_positions("hi", [], seen.append)
-    assert seen == []
+    assert seen == ["hi"]
 
 
 # ---------------------------------------------------------------------------

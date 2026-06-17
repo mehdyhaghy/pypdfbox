@@ -3540,18 +3540,29 @@ class PDFTextStripper:
 
         Invariants enforced here for subclasses:
 
-        - ``text`` is non-empty when called from the format path.
-        - ``text_positions`` is non-empty and every entry's ``.text``
-          contributes to ``text`` (concatenation; the lite stripper emits
-          one position per run so the list is length 1).
+        - From the format path ``text`` is non-empty and ``text_positions``
+          carries one entry per emitted run (the lite stripper emits one
+          position per run, so the list is length 1).
         - Each position is dispatched through :meth:`process_text_position`
           *before* anything is written to ``sink``, so collectors can
           inspect the run's geometry before its text materialises.
 
+        Upstream's ``writeString(String, List<TextPosition>)`` unconditionally
+        delegates to ``writeString(String)`` — it writes ``text`` regardless
+        of how many positions accompany it (the default overload ignores the
+        position list entirely). The lite stripper mirrors that: a word's
+        ``text`` is written whenever it is non-empty, even when its position
+        list is empty (e.g. a caller-built :class:`WordWithTextPositions`
+        with no backing glyphs, as ``write_line`` may receive). Dropping the
+        run on an empty position list — the pre-wave-1588 behaviour — silently
+        swallowed such words while still emitting the word separators around
+        them, diverging from Java's ``writeLine``. Writing an *empty* ``text``
+        stays a no-op (``writeString("")`` writes nothing), so it is skipped.
+
         The default delegates to :meth:`write_string` (the upstream-
         compatible single-arg name); subclasses can override either.
         """
-        if not text or not text_positions:
+        if not text:
             return
         self.write_string(text, text_positions, sink)
 

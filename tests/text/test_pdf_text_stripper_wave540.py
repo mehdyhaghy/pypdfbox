@@ -55,6 +55,10 @@ def test_wave540_should_skip_glyph_filters_before_processing_or_output() -> None
 
 
 def test_wave540_write_string_with_empty_payload_is_not_dispatched() -> None:
+    # Empty text is a no-op (upstream ``writeString("")`` writes nothing), so
+    # it never reaches ``write_string``. But a non-empty text with an empty
+    # position list IS dispatched and written — upstream's two-arg
+    # ``writeString`` ignores the position list and always emits the text.
     stripper = RecordingStripper()
     sinked: list[str] = []
     pos = TextPosition(text="x", x=0.0, y=0.0, font_size=10.0)
@@ -62,8 +66,8 @@ def test_wave540_write_string_with_empty_payload_is_not_dispatched() -> None:
     stripper.write_string_with_positions("", [pos], sinked.append)
     stripper.write_string_with_positions("x", [], sinked.append)
 
-    assert stripper.calls == []
-    assert sinked == []
+    assert stripper.calls == ["x"]
+    assert sinked == ["x"]
 
 
 def test_wave540_ignore_space_glyphs_all_spaces_advances_without_positions() -> None:

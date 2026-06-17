@@ -217,10 +217,18 @@ class SoftPaintContext:
                     g_mask = mask_pixels[mx, my]
                     if isinstance(g_mask, tuple):
                         g_mask = g_mask[0]
-                    factor = _transfer(int(g_mask))
-                    new_alpha = int(round(a * factor))
+                    g_val = int(g_mask)
                 else:
-                    new_alpha = int(round(a * (bc / 255.0)))
+                    # Outside the mask bounds the backdrop luminance ``bc``
+                    # is the sample (upstream sets ``g = bc``). It still
+                    # goes through the same transfer-function ``map`` as an
+                    # in-bounds sample — upstream builds one 256-entry
+                    # ``map`` table and indexes it with ``bc`` here too — so
+                    # a non-identity ``/TR`` remaps the out-of-bounds region
+                    # exactly like the covered region.
+                    g_val = bc
+                factor = _transfer(g_val)
+                new_alpha = int(round(a * factor))
                 out_pixels[x, y] = (r, g_c, b_c, max(0, min(255, new_alpha)))
 
         return out_image

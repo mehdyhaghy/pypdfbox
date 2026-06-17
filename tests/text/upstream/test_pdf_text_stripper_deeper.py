@@ -144,10 +144,13 @@ def test_write_string_with_positions_invariant_empty_text_is_noop() -> None:
     assert out == []
 
 
-def test_write_string_with_positions_invariant_empty_positions_is_noop() -> None:
+def test_write_string_with_positions_empty_positions_still_writes_text() -> None:
+    # Upstream ``writeString(String, List<TextPosition>)`` ignores the
+    # position list and unconditionally delegates to ``writeString(String)``,
+    # so a non-empty text is written even when no positions accompany it.
     out: list[str] = []
     PDFTextStripper().write_string_with_positions("hi", [], out.append)
-    assert out == []
+    assert out == ["hi"]
 
 
 def test_write_string_with_positions_routes_to_write_string() -> None:

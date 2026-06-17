@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import logging
+import math
 import os
 from collections.abc import Iterable, Sequence
 from pathlib import Path
@@ -1683,7 +1684,16 @@ def _apply_decode_to_indexed_samples(
     out = bytearray(pixel_count)
     for i in range(pixel_count):
         value = dmin + (data[i] / max_sample) * (dmax - dmin)
-        out[i] = int(round(_clamp(value, 0.0, 255.0)))
+        # The decoded value is a *palette index*. Upstream resolves it with
+        # ``Math.round`` (round-half-UP), the same rule
+        # ``PDIndexed.toRGB``/``to_rgb`` uses (``math.floor(v + 0.5)``). Python's
+        # built-in ``round`` is banker's rounding (round-half-to-even), so a
+        # half-integer index from a fractional ``/Decode`` (e.g. ``[0 7.5]`` on a
+        # 4-bit image: sample 1 -> index 0.5) would dereference a *different*
+        # palette slot than PDFBox (Python ``round(0.5)==0`` vs Java
+        # ``Math.round(0.5)==1``). Mirror Java exactly so the image-raster index
+        # path agrees with the scalar ``PDIndexed.to_rgb`` path.
+        out[i] = int(math.floor(_clamp(value, 0.0, 255.0) + 0.5))
     return bytes(out)
 
 

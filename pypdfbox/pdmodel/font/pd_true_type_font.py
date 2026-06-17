@@ -1251,9 +1251,21 @@ def _draw_glyph_by_name(ttf: TrueTypeFont, name: str) -> list[tuple[Any, ...]]:
     if glyph_set is None or name not in glyph_set:
         return []
     try:
-        from fontTools.pens.recordingPen import RecordingPen  # type: ignore[import-untyped]
+        # Use a *decomposing* recording pen so a composite TrueType glyph
+        # (e.g. an accented ``eacute`` = ``e`` + ``acute``) is flattened
+        # into real moveTo/lineTo/qCurveTo segments — matching upstream
+        # ``GlyphData.getPath()``, which returns a single ``GeneralPath``
+        # with the component outlines transformed and merged in. A plain
+        # ``RecordingPen`` instead records raw ``addComponent`` tuples,
+        # which downstream consumers (the 1000/upem scaler in
+        # ``get_normalized_path``, text extraction, structure tagging) can
+        # neither scale nor draw — the component reference would be silently
+        # dropped, so the glyph rendered blank.
+        from fontTools.pens.recordingPen import (  # type: ignore[import-untyped]  # noqa: PLC0415
+            DecomposingRecordingPen,
+        )
 
-        pen = RecordingPen()
+        pen = DecomposingRecordingPen(glyph_set)
         glyph_set[name].draw(pen)
     except Exception:  # noqa: BLE001 — unparsable charstrings should not crash callers
         _LOG.exception("recordingPen draw failed for glyph %s", name)
