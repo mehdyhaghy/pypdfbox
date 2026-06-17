@@ -33,6 +33,33 @@ htmlcov/
 .vscode/
 .DS_Store
 .claude/
+.codex/
+
+# Caches (tooling + general)
+.cache/
+*.cache
+.uv-cache/
+.uv/
+.cache_ggshield
+.dmypy.json
+node_modules/
+
+# Secrets / credentials — never commit these (defense-in-depth)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+*.pkcs12
+*.keystore
+*.jks
+.pypirc
+.netrc
+secrets.*
+credentials.*
+*.token
 
 # Project artifacts
 corpus/
