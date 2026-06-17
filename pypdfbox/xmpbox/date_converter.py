@@ -480,21 +480,34 @@ def _build_lenient(
 
     java.util.Calendar is lenient by default, so out-of-range fields roll over
     (e.g. month 12 → next January, day 0 → last day of the previous month).
-    Reproduce that by anchoring at the year/January/day-1 base and adding the
-    field deltas, the same way Calendar resolves the fields.
+
+    Field-resolution ORDER matters and must match java.util.Calendar exactly:
+    Calendar first resolves ``year`` + ``month`` to a base date (the 1st of the
+    resolved month, allowing ``month < 0`` or ``month > 11`` to roll the year),
+    and only THEN adds the ``day - 1`` day-of-month delta, followed by the
+    hour/minute/second deltas. Reproduce that order here — anchor at the
+    resolved-month first-of-month, then add the day/time deltas. (Wave 1582:
+    the previous implementation anchored at January and added ``day - 1`` before
+    applying the month offset, which inverted Calendar's order and produced an
+    off-by-one day for cross-month day overflow, e.g. ``"2024-06-99"`` →
+    2024-09-08 instead of Java's 2024-09-07, and could not represent a
+    zero/negative month+day rollover, e.g. ``"2024-00-00"`` →
+    Java's 2023-11-30.)
     """
-    base = datetime(year, 1, 1, tzinfo=tz)
-    resolved = base + timedelta(
+    # Resolve year + month first, allowing month0 to roll the year in either
+    # direction (month0 may be < 0 or > 11). divmod floors, so a negative
+    # month0 borrows from the year exactly as Calendar does.
+    add_year, norm_month0 = divmod(month0, 12)
+    base = datetime(year + add_year, norm_month0 + 1, 1, tzinfo=tz)
+    # Then add the day-of-month delta (relative to the resolved month's 1st)
+    # plus the time-of-day deltas, the same way Calendar resolves the remaining
+    # fields.
+    return base + timedelta(
         days=(day - 1),
         hours=hour,
         minutes=minute,
         seconds=second,
     )
-    # Apply the month offset by walking whole months (variable length) so the
-    # rollover matches Calendar's month arithmetic.
-    total_month = resolved.month - 1 + month0
-    add_year, norm_month = divmod(total_month, 12)
-    return resolved.replace(year=resolved.year + add_year, month=norm_month + 1)
 
 
 def to_iso8601(value: datetime, print_millis: bool = False) -> str:

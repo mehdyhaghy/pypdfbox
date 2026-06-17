@@ -302,6 +302,20 @@ class PDFontFactory:
                 "PDFontFactory.create_descendant_font expects "
                 f"COSDictionary, got {type(font_dict).__name__}"
             )
+        # Upstream ``createDescendantFont`` opens with a hard /Type guard:
+        # ``getCOSName(TYPE, FONT)`` defaults to /Font when /Type is absent,
+        # then raises IOException when the resolved /Type is not /Font. An
+        # absent /Type therefore passes (defaults to Font); an *explicit*
+        # non-Font /Type raises. We mirror that with OSError (the
+        # parser-context analogue of IOException per the porting
+        # conventions). This is stricter than ``create_font``, which only
+        # logs a /Type mismatch — upstream's two methods genuinely differ
+        # here (createFont logs, createDescendantFont throws).
+        explicit_type = font_dict.get_name(_TYPE)
+        if explicit_type is not None and explicit_type != _FONT.name:
+            raise OSError(
+                f"Expected 'Font' dictionary but found '{explicit_type}'"
+            )
         sub_type = font_dict.get_name(_SUBTYPE)
         if sub_type == PDCIDFontType0.SUB_TYPE:
             return PDCIDFontType0(font_dict, parent)
