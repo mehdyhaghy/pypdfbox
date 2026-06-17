@@ -402,16 +402,74 @@ class PageDrawer(PDFGraphicsStreamEngine):
         self._transparency_group_stack.append(
             TransparencyGroup(form=form, ctm=None)
         )
+        # The group's overall constant alpha / blend mode / soft mask are
+        # the ExtGState values in force at the ``Do`` operator (PDF
+        # 32000-1 §11.6.4.3 / §11.4.7): they apply to the group as a
+        # whole, not per-element. Snapshot them, reset the live alpha to
+        # 1.0 so the group's interior paints render fully opaque, and
+        # apply the saved constant alpha once at composite-back.
+        gs = rdr._gs  # noqa: SLF001 — sibling class
+        group_alpha = gs.fill_alpha
+        group_blend_mode = gs.blend_mode
+        group_soft_mask = gs.soft_mask
+        saved_fill_alpha = gs.fill_alpha
+        saved_stroke_alpha = gs.stroke_alpha
+        gs.fill_alpha = 1.0
+        gs.stroke_alpha = 1.0
+        # Redirect the renderer's active draw target to the off-screen
+        # group canvas so the form's content stream paints into the group
+        # buffer (not the parent), mirroring upstream's group BufferedImage
+        # capture. Restored before the composite-back below.
+        from pypdfbox.rendering import _aggdraw_compat as aggdraw  # noqa: PLC0415
+
+        prev_image = rdr._image  # noqa: SLF001
+        prev_draw = rdr._draw  # noqa: SLF001
+        rdr._image = group_canvas  # noqa: SLF001
+        rdr._draw = aggdraw.Draw(group_canvas)  # noqa: SLF001
+        rdr._draw.setantialias(True)  # noqa: SLF001
         try:
             helper = getattr(rdr, "_render_form_xobject", None)
             if callable(helper):
                 helper(form)
             else:
                 self.show_form(form)
-            # Composite the group onto the active canvas through its
-            # own alpha — this is the §11.4 transparency-group blend.
-            group_graphics.composite_onto(image)
+            current_draw = rdr._draw  # noqa: SLF001
+            if current_draw is not None:
+                current_draw.flush()
+            # Pick up whatever buffer the form render left active (the
+            # even-odd PIL path may swap ``rdr._image`` mid-paint).
+            group_canvas = rdr._image  # noqa: SLF001
+            group_graphics = GroupGraphics(image=group_canvas)
+            # Restore the parent target before compositing back onto it.
+            rdr._image = prev_image  # noqa: SLF001
+            rdr._draw = prev_draw  # noqa: SLF001
+            # Composite the group onto the active canvas at the group's
+            # overall opacity, blend mode and soft mask — this is the
+            # §11.4.7 transparency-group composite-back.
+            soft_mask_alpha = None
+            if group_soft_mask is not None:
+                renderer_helper = getattr(rdr, "_render_soft_mask_alpha", None)
+                if callable(renderer_helper):
+                    try:
+                        soft_mask_alpha = renderer_helper(
+                            group_soft_mask, group_canvas.size
+                        )
+                    except Exception:  # noqa: BLE001
+                        soft_mask_alpha = None
+            group_graphics.composite_onto(
+                image,
+                constant_alpha=group_alpha,
+                blend_mode=group_blend_mode,
+                soft_mask_alpha=soft_mask_alpha,
+            )
         finally:
+            # Always restore the parent draw target (the try body restores
+            # it on the happy path before compositing; this catches the
+            # error path where the form render raised mid-stream).
+            rdr._image = prev_image  # noqa: SLF001
+            rdr._draw = prev_draw  # noqa: SLF001
+            gs.fill_alpha = saved_fill_alpha
+            gs.stroke_alpha = saved_stroke_alpha
             self._transparency_group_stack.pop()
 
     def show_font_glyph(

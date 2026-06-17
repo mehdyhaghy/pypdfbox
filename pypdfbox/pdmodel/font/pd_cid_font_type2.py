@@ -260,7 +260,17 @@ class PDCIDFontType2(PDCIDFont):
             return None
         try:
             raw = program_stream.to_byte_array()
-            self._ttf = TrueTypeFont.from_bytes(raw)
+            # Route through the OTTO-sniffing parser (mirrors upstream's
+            # ``getParser(...)`` in the constructor) so an embedded OpenType
+            # ``/FontFile3`` (``OTTO`` magic, CFF outlines) is parsed into an
+            # :class:`OpenTypeFont` and populates the ``otf`` slot. A plain
+            # ``TrueTypeFont.from_bytes`` would always yield the base
+            # :class:`TrueTypeFont`, leaving ``is_open_type_post_script`` /
+            # the CFF outline path permanently unreachable (the glyf outline
+            # extraction returns an empty path for a CFF-only program).
+            self._ttf = self.get_parser(raw, is_embedded=True).parse_embedded(
+                raw
+            )
         except Exception:  # noqa: BLE001
             _LOG.exception("failed to parse font program for %s", self.get_name())
             self._ttf = False
@@ -606,31 +616,49 @@ class PDCIDFontType2(PDCIDFont):
         """Glyph outline for ``cid`` normalized to 1/1000 em.
 
         Mirrors upstream ``PDCIDFontType2.getNormalizedPath`` which
-        scales the embedded TTF's outline by ``1000 / unitsPerEm`` so
+        scales the embedded program's outline by ``1000 / unitsPerEm`` so
         downstream consumers (text extraction, structure tagging) get a
         single unit system regardless of the font program's native upem.
         Returns ``[]`` when no embedded program is available, the glyph
         cannot be drawn, or the path is empty (matches upstream's
         ``new GeneralPath()`` empty fallback).
 
-        Honours the upstream Acrobat-quirk: when the font is *not*
-        embedded and the resolved GID is 0 (notdef), no path is drawn
-        — Acrobat suppresses notdef boxes for substitute fonts (see
-        upstream comment referencing PDFBOX-2372).
+        Two outline sources, exactly as upstream:
+
+        * **OpenType-PostScript** (``/FontFile3`` ``OTTO`` with CFF
+          outlines) → the CFF Type 2 charstring path via
+          :meth:`get_path_from_outlines`. Upstream does *not* apply the
+          notdef-suppression quirk on this branch.
+        * **TrueType ``glyf``** → :meth:`get_path` (which for a non-OTF
+          program is :meth:`get_glyph_path`); on this branch Acrobat
+          draws no notdef for substitute (non-embedded) fonts
+          (PDFBOX-2372).
+
+        The previous port called :meth:`get_glyph_path` unconditionally,
+        which returns the empty ``glyf`` outline for an OTF-with-CFF
+        descendant — so the normalized path for a CIDFontType0C-flavoured
+        CIDFontType2 came back empty. Routing through ``getPath`` (the
+        upstream call) fixes that.
         """
         ttf = self.get_true_type_font()
         if ttf is None:
             return []
-        try:
-            gid = self.cid_to_gid(cid)
-        except Exception:  # noqa: BLE001
-            return []
-        # Acrobat draws no notdef for substitute (non-embedded) fonts.
-        if gid == 0 and not self.is_embedded():
-            return []
-        path = self.get_glyph_path(cid)
-        if not path:
-            return []
+        if self.is_open_type_post_script():
+            # CFF outline branch — no notdef suppression upstream.
+            path = self.get_path_from_outlines(cid)
+            if not path:
+                return []
+        else:
+            try:
+                gid = self.cid_to_gid(cid)
+            except Exception:  # noqa: BLE001
+                return []
+            # Acrobat draws no notdef for substitute (non-embedded) fonts.
+            if gid == 0 and not self.is_embedded():
+                return []
+            path = self.get_path(cid)
+            if not path:
+                return []
         units_per_em = ttf.get_units_per_em()
         if units_per_em <= 0 or units_per_em == 1000:
             return path

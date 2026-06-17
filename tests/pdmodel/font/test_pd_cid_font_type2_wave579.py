@@ -37,13 +37,20 @@ def test_wave579_get_true_type_font_caches_parse_failure(
 ) -> None:
     calls: list[bytes] = []
 
-    def fail_parse(data: bytes) -> Any:
-        calls.append(data)
-        raise OSError("not a ttf")
+    class _FailParser:
+        def parse_embedded(self, data: bytes) -> Any:
+            calls.append(bytes(data))
+            raise OSError("not a ttf")
 
+    # ``get_true_type_font`` routes the embedded program through the
+    # OTTO-sniffing ``get_parser(...).parse_embedded(...)`` (so an
+    # OpenType /FontFile3 becomes an OpenTypeFont). Stub the parser to
+    # prove the parse is attempted exactly once and the failure is
+    # negatively cached.
     monkeypatch.setattr(
-        "pypdfbox.pdmodel.font.pd_cid_font_type2.TrueTypeFont.from_bytes",
-        fail_parse,
+        PDCIDFontType2,
+        "get_parser",
+        staticmethod(lambda _data, is_embedded=True: _FailParser()),
     )
     font = _font_with_font_file2(b"broken-font")
 

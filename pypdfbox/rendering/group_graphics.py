@@ -508,31 +508,97 @@ class GroupGraphics:
     # Compositing
     # ------------------------------------------------------------------
 
-    def composite_onto(self, target: Image.Image) -> None:
-        """Composite this group's colour buffer onto ``target`` through
-        its own alpha channel (PDF §11.4.5 normal-mode blend). Used by
-        ``PageDrawer.show_transparency_group`` to flush the group's
-        result back to the parent canvas at end-of-group.
+    @staticmethod
+    def _scale_alpha(source: Image.Image, constant_alpha: float) -> Image.Image:
+        """Return ``source`` (RGBA) with its alpha channel scaled by the
+        group's constant alpha ``ca`` (PDF 32000-1 §11.6.4.3). The group
+        composites onto the backdrop as a single object at this opacity;
+        the per-channel colour is left untouched (straight alpha)."""
+        bands = source.split()
+        scaled = bands[3].point(lambda v, _a=constant_alpha: round(v * _a))
+        return Image.merge("RGBA", (bands[0], bands[1], bands[2], scaled))
+
+    def composite_onto(
+        self,
+        target: Image.Image,
+        constant_alpha: float = 1.0,
+        blend_mode: Any | None = None,
+        soft_mask_alpha: Image.Image | None = None,
+    ) -> None:
+        """Composite this group's colour buffer onto ``target`` at the
+        group's overall opacity, blend mode, and soft mask.
+
+        Mirrors upstream ``PageDrawer.showTransparencyGroup``'s composite-
+        back step (PDF 32000-1 §11.4.7): the rendered group bitmap is
+        treated as a single object whose alpha is modulated by the
+        non-stroking constant alpha ``ca`` (``constant_alpha``) and the
+        active ExtGState ``/SMask`` (``soft_mask_alpha``), then blended
+        onto the backdrop through the current ``/BM`` ``blend_mode``
+        (§11.3.5). A ``Normal`` / ``None`` blend mode uses a plain
+        source-over composite.
+
+        - ``constant_alpha`` of ``1.0`` leaves the group fully opaque.
+        - ``constant_alpha`` of ``0.0`` makes the group contribute
+          nothing (it scales every group pixel's alpha to 0).
         """
         if self._image is None or target is None:
             return
         source = self._image
         if source.mode != "RGBA":
             source = source.convert("RGBA")
+
+        # §11.6.4.3 — scale the group's alpha by the constant alpha so the
+        # whole group composites as one object at ``ca`` opacity. Clamp to
+        # [0, 1] defensively (the graphics state already clamps, but a
+        # direct caller may not).
+        ca = max(0.0, min(1.0, float(constant_alpha)))
+        if ca != 1.0:
+            source = self._scale_alpha(source, ca)
+
+        # §11.6.5.2 — multiply the soft-mask alpha plane into the group's
+        # alpha before compositing.
+        if soft_mask_alpha is not None:
+            bands = source.split()
+            mask = soft_mask_alpha
+            if mask.size != source.size:
+                mask = mask.resize(source.size)
+            if mask.mode != "L":
+                mask = mask.convert("L")
+            new_alpha = ImageChops.multiply(bands[3], mask)
+            source = Image.merge("RGBA", (bands[0], bands[1], bands[2], new_alpha))
+
+        # §11.4.7.4 + §11.3.5 — when a non-Normal blend mode is active the
+        # group is the source and the backdrop is the parent in the chosen
+        # blend formula; otherwise plain alpha-over.
+        composed_rgba = self._blend_or_over(source, target, blend_mode)
+
         if target.mode == "RGB":
-            # ``Image.alpha_composite`` requires both operands to be
-            # RGBA — composite into a temporary buffer and paste back.
-            tmp = target.convert("RGBA")
-            composed = Image.alpha_composite(tmp, source)
-            target.paste(composed.convert("RGB"), (0, 0))
+            target.paste(composed_rgba.convert("RGB"), (0, 0))
         elif target.mode == "RGBA":
-            composed = Image.alpha_composite(target, source)
-            target.paste(composed, (0, 0))
+            target.paste(composed_rgba, (0, 0))
         else:
-            # Generic fallback — paste through alpha so the group's
-            # transparent pixels don't overwrite the target.
-            alpha = source.split()[-1]
-            target.paste(source.convert(target.mode), (0, 0), alpha)
+            target.paste(composed_rgba.convert(target.mode), (0, 0))
+
+    @staticmethod
+    def _blend_or_over(
+        source: Image.Image, target: Image.Image, blend_mode: Any | None
+    ) -> Image.Image:
+        """Blend ``source`` over an RGBA copy of ``target`` honouring
+        ``blend_mode``. Returns an RGBA image. A ``Normal`` / ``None``
+        blend mode degrades to ``Image.alpha_composite``; any other mode
+        delegates to the renderer's separable/non-separable ``_blend``."""
+        backdrop = target if target.mode == "RGBA" else target.convert("RGBA")
+        is_normal = blend_mode is None
+        if not is_normal:
+            name = getattr(blend_mode, "name", None)
+            is_normal = name in (None, "Normal")
+        if is_normal:
+            return Image.alpha_composite(backdrop, source)
+        # Defer to the renderer's full blend implementation so the group
+        # composite-back uses the same §11.3.5 formulas as per-paint blends.
+        from pypdfbox.rendering.pdf_renderer import PDFRenderer  # noqa: PLC0415
+
+        return PDFRenderer._blend(source, backdrop, blend_mode)
 
     def backdrop_removal(self) -> None:
         """Run the transparency-group backdrop-removal step.

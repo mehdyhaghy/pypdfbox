@@ -2618,6 +2618,16 @@ class PDFTextStripper:
             groups = self._partition_by_beads(positions)
         if not groups:
             groups = [positions]
+        # Mirror upstream ``processPage``: ``charactersByArticle`` *is* the
+        # per-article (bead-bucket) structure that ``writePage`` iterates, not
+        # the flat pre-partition position list. ``process_page`` seeds it with
+        # a provisional single group before calling here; overwrite it with the
+        # post-filter, post-sort, partitioned buckets so
+        # ``get_characters_by_article`` and the upstream-signature
+        # ``write_page`` both see the same article slots upstream exposes. (When
+        # bead separation is off or the page has no usable beads this is a
+        # single all-positions group, matching the prior behaviour.)
+        self._characters_by_article = groups
 
         chunks: list[str] = []
 
