@@ -173,7 +173,7 @@ class SegmentHeader:
             # short format
             for _i in range(5):
                 sub_input_stream.read_bit()
-        else:
+        elif count_of_rts == 7:
             # long format
             count_of_rts = int(sub_input_stream.read_bits(29) & 0xFFFFFFFF)
 
@@ -182,6 +182,18 @@ class SegmentHeader:
 
             for _i in range(array_length):
                 sub_input_stream.read_bit()
+        else:
+            # 7.2.4: the 3-bit count field may only hold 0-4 (short form, the
+            # value is the count) or 7 (long form). Values 5 and 6 are reserved
+            # and illegal — upstream throws IntegerMaxValueException here.
+            from pypdfbox.jbig2.err.integer_max_value_exception import (
+                IntegerMaxValueException,
+            )
+
+            raise IntegerMaxValueException(
+                "Count of referred-to segments had bad value "
+                f"({count_of_rts}) in this segment"
+            )
 
         return count_of_rts
 

@@ -105,8 +105,10 @@ def test_fonttools_pairs_without_ttf_and_empty_sequence_return_zeroes() -> None:
     sub = KerningSubtable(_FakeFTSub(coverage=0x01, pairs={("A", "V"): -80}))
     assert sub.get_kerning(1, 2) == 0
 
+    # Upstream getKerning(int[]) returns null (not a zero-filled array) when
+    # the subtable carries no pair data ("unsupported subtable" case).
     empty = KerningSubtable()
-    assert empty.get_kerning([1, -1, 2]) == [0, 0, 0]
+    assert empty.get_kerning([1, -1, 2]) is None
 
 
 def test_get_kerning_sequence_accepts_tuple_input() -> None:

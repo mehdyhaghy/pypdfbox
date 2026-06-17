@@ -506,14 +506,19 @@ class KerningSubtable:
             return int(sorted_pairs[idx][1])
         return 0
 
-    def _get_kerning_seq(self, glyphs: list[int] | tuple[int, ...]) -> list[int]:
+    def _get_kerning_seq(
+        self, glyphs: list[int] | tuple[int, ...]
+    ) -> list[int] | None:
         result: list[int] = []
         if (
             self._pairs is None
             and self._gid_pairs is None
             and self._class_kerning is None
         ):
-            return [0] * len(glyphs)
+            # Upstream ``getKerning(int[])`` returns ``null`` (not a zero-filled
+            # array) when ``pairs == null`` — the "unsupported kerning subtable"
+            # case. Mirror that by returning None rather than [0] * len(glyphs).
+            return None
         ng = len(glyphs)
         for i in range(ng):
             left = int(glyphs[i])
