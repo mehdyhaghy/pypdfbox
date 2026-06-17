@@ -52,7 +52,7 @@ def test_format_2_5_none_glyph_name_leaves_slot_blank(
 ) -> None:
     """A valid in-range index whose WGL4 name resolves to ``None`` takes
     the ``name is not None`` False arc ([117,113]); the name slot stays
-    the empty-string default."""
+    the ``None`` default — matching upstream's ``String[]`` null slot."""
     # gid 0 -> 0 + 1 + 0 = 1 (a valid Mac-glyph index).
     body = struct.pack(">b", 0)
     blob = _pack_header(2, fmt_frac=0x8000) + body
@@ -64,4 +64,4 @@ def test_format_2_5_none_glyph_name_leaves_slot_blank(
     table.read(_StubTTF(num_glyphs=1), MemoryTTFDataStream(blob))
 
     names = table.get_glyph_names()
-    assert names == [""]
+    assert names == [None]

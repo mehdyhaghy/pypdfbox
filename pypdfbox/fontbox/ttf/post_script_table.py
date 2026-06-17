@@ -29,7 +29,9 @@ class PostScriptTable(TTFTable):
         self._max_mem_type42: int = 0
         self._mim_mem_type1: int = 0
         self._max_mem_type1: int = 0
-        self._glyph_names: list[str] | None = None
+        # Element type is ``str | None`` because upstream's ``String[]`` may
+        # carry ``null`` slots (notably format 2.5 with out-of-range indices).
+        self._glyph_names: list[str | None] | None = None
 
     def read(self, ttf: TrueTypeFont, data: TTFDataStream) -> None:
         self._format_type = data.read_32_fixed()
@@ -116,7 +118,12 @@ class PostScriptTable(TTFTable):
         for i in range(num_glyphs):
             offset = data.read_signed_byte()
             glyph_name_index[i] = i + 1 + offset
-        names = [""] * num_glyphs
+        # Upstream allocates ``new String[...]`` whose elements default to
+        # ``null`` — an out-of-range index (or a WGL4 lookup returning null)
+        # leaves that slot ``null``, NOT an empty string. Initialise with
+        # ``None`` so ``get_name`` reports ``None`` for those slots, matching
+        # FontBox 3.0.7 exactly.
+        names: list[str | None] = [None] * num_glyphs
         for i in range(num_glyphs):
             index = glyph_name_index[i]
             if 0 <= index < wgl4_names.NUMBER_OF_MAC_GLYPHS:
@@ -212,10 +219,10 @@ class PostScriptTable(TTFTable):
     def set_max_mem_type1(self, value: int) -> None:
         self._max_mem_type1 = value
 
-    def get_glyph_names(self) -> list[str] | None:
+    def get_glyph_names(self) -> list[str | None] | None:
         return self._glyph_names
 
-    def set_glyph_names(self, value: list[str] | None) -> None:
+    def set_glyph_names(self, value: list[str | None] | None) -> None:
         self._glyph_names = value
 
     def get_name(self, gid: int) -> str | None:

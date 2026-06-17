@@ -198,7 +198,10 @@ def test_format_2_5_invalid_index_remains_blank() -> None:
     blob = _pack_header(2, fmt_frac=0x8000) + body
     t = _read(blob, _StubTTF(num_glyphs=1))
     names = t.get_glyph_names()
-    assert names == [""]
+    # Upstream FontBox leaves the String[] slot null (not ""), so the
+    # parity-correct result is [None]. get_name(0) likewise returns None.
+    assert names == [None]
+    assert t.get_name(0) is None
 
 
 def test_italic_angle_fractional() -> None:
