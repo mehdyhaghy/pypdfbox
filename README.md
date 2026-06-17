@@ -102,7 +102,7 @@ PRs are welcome. See [`docs/contributing.md`](docs/contributing.md) for
 the wave-driven contribution workflow, the parity test layering
 (hand-written + ported upstream tests), and the bookkeeping rules
 around [`PROVENANCE.md`](PROVENANCE.md), [`CHANGES.md`](CHANGES.md),
-and [`DEFERRED.md`](DEFERRED.md).
+and [`DEFERRED.md`](archive/migration-docs/DEFERRED.md).
 
 In short, every change should:
 
@@ -197,7 +197,7 @@ full list. The most common stable-state divergences and gaps are:
 The full active-divergences list lives in
 [`CHANGES.md` → Active divergences](CHANGES.md#active-divergences-vs-upstream).
 Open in-flight gaps that are *fixable but not yet done* live in
-[`DEFERRED.md`](DEFERRED.md).
+[`DEFERRED.md`](archive/migration-docs/DEFERRED.md).
 
 ## License
 

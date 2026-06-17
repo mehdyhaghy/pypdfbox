@@ -94,6 +94,26 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["pypdfbox"]
+# Apache 2.0 §4: hatchling already ships LICENSE + NOTICE in the wheel's
+# .dist-info/licenses/. PROVENANCE.md (the §4b "you changed these files"
+# notice for the ported source) isn't auto-detected, so carry it in the
+# package so a binary redistribution still includes it.
+[tool.hatch.build.targets.wheel.force-include]
+"PROVENANCE.md" = "pypdfbox/PROVENANCE.md"
+
+# Lean source distribution: only the library + the legal/user-facing docs.
+# The migration apparatus (archive/), the test suite, docs/, and scripts/ are
+# deliberately NOT shipped — see archive/README.md. Patterns are root-anchored
+# (leading "/") so e.g. "README.md" doesn't also sweep in archive/README.md.
+[tool.hatch.build.targets.sdist]
+include = [
+    "/pypdfbox",
+    "/README.md",
+    "/CHANGES.md",
+    "/LICENSE",
+    "/NOTICE",
+    "/PROVENANCE.md",
+]
 
 [tool.uv]
 package = true
@@ -105,6 +125,10 @@ addopts = "-ra --strict-markers"
 [tool.ruff]
 line-length = 100
 target-version = "py314"
+# archive/ is frozen migration apparatus (oracle harness probes + the archived
+# differential test suite). It is not subject to the ongoing lint gate; if any
+# of it is restored under tests/ it gets re-linted there.
+extend-exclude = ["archive"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM"]

@@ -33,7 +33,15 @@ from pathlib import Path
 import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_ORACLE = _REPO_ROOT / "oracle"
+# The Java oracle apparatus (probes + downloaded jars + build dir) was moved
+# under ``archive/`` during the wave-1597 restructure. The harness module
+# itself stays at ``tests/oracle/harness.py`` because hand-written parity
+# tests across the kept suite import it for their embedded live differentials;
+# it points here at the archived apparatus. (Legacy ``oracle/`` is honoured as
+# a fallback so a restored-to-root layout still works.)
+_ORACLE = _REPO_ROOT / "archive" / "oracle"
+if not _ORACLE.exists() and (_REPO_ROOT / "oracle").exists():
+    _ORACLE = _REPO_ROOT / "oracle"
 _JARS_DIR = _ORACLE / "jars"
 _JAR = _JARS_DIR / "pdfbox-app-3.0.7.jar"
 _PROBES = _ORACLE / "probes"

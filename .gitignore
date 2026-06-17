@@ -36,9 +36,9 @@ htmlcov/
 
 # Project artifacts
 corpus/
-oracle/cache/
-oracle/jars/
-oracle/build/
+archive/oracle/cache/
+archive/oracle/jars/
+archive/oracle/build/
 *.pdf.diff
 
 # Upstream Java source — local clone for parity tooling (see scripts/parity.py)
@@ -46,3 +46,4 @@ pdfbox/
 
 # Shared parity / wave checkpoint (project-local, untracked by design — see .parity/README.md)
 .parity/
+coverage.json

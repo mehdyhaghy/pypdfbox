@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import struct
 
+import pytest
+
 from pypdfbox.cos import COSDictionary, COSName, COSStream
 from pypdfbox.fontbox.ttf import (
     HorizontalHeaderTable,
@@ -308,10 +310,19 @@ def test_widths_overrides_only_inside_first_last_range() -> None:
     assert font.get_glyph_width(2) == 500.0          # outside range -> GID 0
 
 
-def test_pd_true_type_font_no_fontfile2_returns_zero_without_widths() -> None:
-    """Bare font with no /FontFile2 and no /Widths → 0.0 (caller's
-    job to supply a fallback)."""
+def test_pd_true_type_font_no_fontfile2_returns_zero_without_widths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Bare font with no /FontFile2, no /Widths, **and no substitute** → 0.0.
+
+    Since wave 1596 a non-embedded simple TrueType font resolves a host/bundled
+    substitute program (matching upstream ``PDTrueTypeFont``), so the genuine
+    "no glyph source at all" degraded path is exercised by disabling the
+    substitute resolver — mirroring the convention used for the other
+    wave-1596 degraded-branch tests.
+    """
     font = PDTrueTypeFont()
+    monkeypatch.setattr(font, "_get_substitute_font", lambda: None)
     assert font.get_glyph_width(65) == 0.0
 
 

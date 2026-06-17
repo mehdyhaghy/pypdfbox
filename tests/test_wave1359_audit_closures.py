@@ -209,7 +209,12 @@ def test_changes_md_records_smask_audit_closure() -> None:
     from pathlib import Path
 
     root = Path(__file__).resolve().parent.parent
-    history_md = root / "HISTORY.md"
+    # HISTORY.md (the chronological migration log) was relocated under
+    # archive/migration-docs/ in the wave-1597 restructure; fall back to the
+    # legacy root location if the archive is absent.
+    history_md = root / "archive" / "migration-docs" / "HISTORY.md"
+    if not history_md.exists():
+        history_md = root / "HISTORY.md"
     body = history_md.read_text(encoding="utf-8")
     # Wave 31 onward documents the SMask wiring that closed the
     # original deferral.
