@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import logging
+
 from pypdfbox.cos import COSBase, COSName
 from pypdfbox.pdmodel.missing_resource_exception import MissingResourceException
 
 from .. import MissingOperandException, Operator
 from ..operator_processor import OperatorProcessor
+
+_log = logging.getLogger(__name__)
 
 
 class InvokeNamedXObject(OperatorProcessor):
@@ -37,8 +41,9 @@ class InvokeNamedXObject(OperatorProcessor):
     short-circuit image XObjects — the whole point of
     :class:`~pypdfbox.contentstream.pdf_graphics_stream_engine.PDFGraphicsStreamEngine`
     is the ``draw_image`` hook, which tools such as ``ExtractImages`` and the
-    renderer rely on. Recursion depth for nested forms is bounded inside
-    ``show_form`` / the engine level counter, matching upstream.
+    renderer rely on. Recursion depth for nested forms is bounded by the
+    engine level counter (``increase_level`` / ``get_level() > 50`` /
+    ``decrease_level``), matching upstream's graphics ``DrawObject``.
     """
 
     OPERATOR_NAME = "Do"
@@ -75,10 +80,23 @@ class InvokeNamedXObject(OperatorProcessor):
             if not stencil and not process_colors:
                 return
             context.draw_image(xobject)
-        elif _is_transparency_group(xobject):
-            context.show_transparency_group(xobject)
         elif _is_form_xobject(xobject):
-            context.show_form(xobject)
+            # Upstream guards the form/group dispatch with the recursion
+            # level counter (graphics ``DrawObject.process``): bump the
+            # level, bail (logging) when it exceeds 50 so a self-referencing
+            # or mutually-recursive form is capped instead of overflowing
+            # the Python stack, and always restore the level in ``finally``.
+            try:
+                context.increase_level()
+                if context.get_level() > 50:
+                    _log.error("recursion is too deep, skipping form XObject")
+                    return
+                if _is_transparency_group(xobject):
+                    context.show_transparency_group(xobject)
+                else:
+                    context.show_form(xobject)
+            finally:
+                context.decrease_level()
 
 
 def _is_image_xobject(obj: object) -> bool:
@@ -90,6 +108,12 @@ def _is_transparency_group(obj: object) -> bool:
 
 
 def _is_form_xobject(obj: object) -> bool:
-    return type(obj).__name__ == "PDFormXObject" or getattr(
-        obj, "is_form_xobject", False
+    # Upstream nests the transparency-group branch *inside* the
+    # ``instanceof PDFormXObject`` arm because Java's ``PDTransparencyGroup``
+    # extends ``PDFormXObject`` (so a group IS a form). Mirror that: a
+    # transparency group must satisfy the form predicate too, otherwise the
+    # nested ``_is_transparency_group`` dispatch is never reached.
+    return (
+        type(obj).__name__ in {"PDFormXObject", "PDTransparencyGroup"}
+        or getattr(obj, "is_form_xobject", False)
     )

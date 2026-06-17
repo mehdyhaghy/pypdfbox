@@ -504,10 +504,33 @@ class TextPosition:
         return unicodedata.combining(self.text[0]) != 0
 
     def is_diacritic(self) -> bool:
-        """True when the text consists exclusively of combining marks."""
-        if not self.text:
+        """True when the text is a single diacritic character.
+
+        Mirrors upstream's public ``isDiacritic`` (``TextPosition.java``
+        line 808). Upstream requires the decoded text to be exactly one
+        character, excludes U+30FC (the Katakana-Hiragana prolonged sound
+        mark — PDFBOX-3833, which is not a real combining diacritic), and
+        then classifies by Java's ``Character.getType``: a diacritic is a
+        ``NON_SPACING_MARK`` (Unicode ``Mn``), ``MODIFIER_SYMBOL``
+        (``Sk``), or ``MODIFIER_LETTER`` (``Lm``).
+
+        The previous lite implementation used
+        ``unicodedata.combining(c) != 0`` over every character, which
+        diverged from upstream both ways: it missed the modifier
+        symbols/letters (``Sk``/``Lm``, e.g. U+02C6 ``ˆ``, U+0060 ``\```,
+        U+00B0 ``°``) that drive the ``DIACRITICS`` remap table because
+        their combining class is 0, and it accepted multi-character runs
+        and combining *spacing* marks (``Mc``) that upstream rejects.
+        """
+        text = self.text
+        if len(text) != 1:
             return False
-        return all(unicodedata.combining(c) != 0 for c in self.text)
+        if text == "ー":
+            # PDFBOX-3833: U+30FC (ー) is a prolonged sound mark, not a
+            # real combining diacritic; treating it as one mis-merges it
+            # onto an overlapping neighbour.
+            return False
+        return unicodedata.category(text) in ("Mn", "Sk", "Lm")
 
     def merge_diacritic(
         self,

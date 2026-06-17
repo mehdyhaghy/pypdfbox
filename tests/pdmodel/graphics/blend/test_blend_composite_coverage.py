@@ -220,13 +220,14 @@ def test_compose_both_alphas_zero_yields_zero_result_alpha() -> None:
 # ---- compose: non-separable branch --------------------------------------
 #
 # The non-separable branch of ``compose`` calls ``mode.get_blend_function()``
-# and invokes the returned callable with ``(src, dest, result)`` (the
-# ``BlendFunction`` functional-interface shape). ``BlendMode.HUE`` etc.
-# currently expose the raw 6-arg HSL helpers via ``get_blend_function``,
-# which is a known shape mismatch — exercising the branch directly with
-# real HSL modes raises ``TypeError``. To cover the branch behaviour we
-# use a stub mode that advertises ``is_separable_blend_mode == False`` and
-# returns a properly-shaped 3-arg blend function.
+# and invokes the returned callable with the 6-float HSL signature
+# ``(sr, sg, sb, br, bg, bb) -> (r, g, b)`` (the shape the real
+# ``BlendMode.HUE`` etc. helpers expose). Prior to wave 1587 compose
+# wrongly called the callable with the ``(src, dest, result)`` in-place
+# shape, so the real HSL modes raised ``TypeError``; that path is now fixed
+# and exercised directly with ``BlendMode.HUE`` below. A plain object
+# exposing ``.blend(src, dest, result)`` is still supported for callers that
+# wrap the legacy ``BlendFunction`` functional interface.
 
 
 class _NonSeparableStubMode:
@@ -246,22 +247,41 @@ class _NonSeparableStubMode:
 
 
 def test_compose_non_separable_callable_fn_branch() -> None:
-    """3-arg callable returned by get_blend_function — invoked in place."""
+    """6-float callable returning a triple — the real HSL helper shape."""
 
-    def _writer(src, dest, result) -> None:
-        # Trivial: just copy src into result.
-        for i in range(3):
-            result[i] = src[i]
+    def _hsl(sr, sg, sb, br, bg, bb):
+        # Trivial: just return the source triple.
+        return (sr, sg, sb)
 
-    mode = _NonSeparableStubMode(_writer)
+    mode = _NonSeparableStubMode(_hsl)
     comp = BlendComposite(mode, 1.0)
     ctx = comp.create_context(None, None)
     src = [[[0.4, 0.5, 0.6]]]
     dst_in = [[[0.1, 0.2, 0.3]]]
     dst_out = [[[0.0, 0.0, 0.0]]]
     ctx.compose(src, dst_in, dst_out)
-    # With src_alpha=1, dst_alpha=1, formula collapses to writer output.
+    # With src_alpha=1, dst_alpha=1, formula collapses to fn output.
     assert dst_out[0][0] == pytest.approx([0.4, 0.5, 0.6])
+
+
+def test_compose_non_separable_real_hue_mode() -> None:
+    """Real ``BlendMode.HUE`` flows through compose without TypeError.
+
+    Regression for the wave-1587 fix: the non-separable branch previously
+    called the 6-float HSL helper with the wrong (3-arg in-place) shape.
+    """
+    from pypdfbox.pdmodel.graphics.blend_mode import BlendMode
+
+    comp = BlendComposite(BlendMode.HUE, 1.0)
+    ctx = comp.create_context(None, None)
+    src = [[[0.2, 0.5, 0.8, 1.0]]]
+    dst_in = [[[0.6, 0.3, 0.1, 1.0]]]
+    dst_out = [[[0.0, 0.0, 0.0, 0.0]]]
+    ctx.compose(src, dst_in, dst_out)
+    out = dst_out[0][0]
+    assert len(out) == 4
+    for v in out[:3]:
+        assert 0.0 <= v <= 1.0
 
 
 def test_compose_non_separable_blend_function_object_branch() -> None:

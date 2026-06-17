@@ -45,9 +45,21 @@ class _RecordingContext:
         self.drawn: list[object] = []
         self.forms: list[object] = []
         self.groups: list[object] = []
+        self.level = 0
 
     def get_resources(self) -> object | None:
         return self._resources
+
+    # The graphics ``Do`` handler guards form/group dispatch with the
+    # engine recursion-level counter (matches the real PDFStreamEngine).
+    def increase_level(self) -> None:
+        self.level += 1
+
+    def decrease_level(self) -> None:
+        self.level -= 1
+
+    def get_level(self) -> int:
+        return self.level
 
     def draw_image(self, image: object) -> None:
         self.drawn.append(image)

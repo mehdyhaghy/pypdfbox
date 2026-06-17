@@ -48,7 +48,12 @@ class Concatenate(OperatorProcessor):
             ctm_obj = ctm() if ctm is not None else None
             concat = getattr(ctm_obj, "concatenate", None) if ctm_obj else None
             if concat is not None:
-                concat(matrix)
+                # Upstream calls ``CTM.concatenate(matrix)`` with a Matrix,
+                # not the raw six floats; ``Matrix.concatenate`` reads
+                # ``matrix._single`` and would crash on a plain tuple.
+                from pypdfbox.util.matrix import Matrix  # noqa: PLC0415
+
+                concat(Matrix(*matrix))
 
     def get_name(self) -> str:
         return OperatorName.CONCAT

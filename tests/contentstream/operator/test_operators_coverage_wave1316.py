@@ -520,7 +520,12 @@ class TestConcatenateCoverage:
     def test_fallback_to_graphics_state_when_no_transform(self) -> None:
         # When the engine lacks a ``transform`` method the operator
         # falls through to ``graphics_state.get_current_transformation_matrix()``
-        # and calls ``.concatenate(matrix)`` directly.
+        # and calls ``.concatenate(matrix)`` directly. Upstream concatenates a
+        # ``Matrix`` (not the raw six floats); ``Matrix.concatenate`` reads
+        # ``matrix._single`` and would crash on a plain tuple, so the operator
+        # builds a Matrix from the operands.
+        from pypdfbox.util.matrix import Matrix
+
         engine = _NoTransformEngine()
         handler = Concatenate(engine)
         ops = [COSFloat(1.0), COSFloat(0.0), COSFloat(0.0),
@@ -528,7 +533,7 @@ class TestConcatenateCoverage:
         handler.process(_op("cm"), ops)
         graphics_state = engine.get_graphics_state()
         assert graphics_state.ctm.concatenations == [
-            (1.0, 0.0, 0.0, 1.0, 3.0, 4.0),
+            Matrix(1.0, 0.0, 0.0, 1.0, 3.0, 4.0),
         ]
 
     def test_no_context_silently_returns(self) -> None:

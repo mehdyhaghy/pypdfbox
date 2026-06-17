@@ -131,8 +131,20 @@ class BlendCompositeContext:
                     fn = getattr(mode, "get_blend_function", lambda: None)()
                     rgb_result = [0.0, 0.0, 0.0]
                     if fn is not None:
+                        # ``get_blend_function()`` returns the non-separable
+                        # RGB-triple callable whose signature is
+                        # ``(sr, sg, sb, br, bg, bb) -> (r, g, b)`` (flat
+                        # 6-float input, tuple return) rather than upstream's
+                        # in-place ``blend(src, dest, result)`` shape. Adapt
+                        # both forms: a bound ``BlendFunction.blend`` writes in
+                        # place, while the plain callable returns a triple.
                         if callable(fn):
-                            fn(s[:3], d[:3], rgb_result)
+                            rr, gg, bb = fn(
+                                s[0], s[1], s[2], d[0], d[1], d[2]
+                            )
+                            rgb_result[0] = rr
+                            rgb_result[1] = gg
+                            rgb_result[2] = bb
                         else:
                             fn.blend(s[:3], d[:3], rgb_result)
                     out = []
