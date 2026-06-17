@@ -1134,11 +1134,21 @@ class PDFTextStripper:
                 state.ctm = Matrix(a, b, c, d, e, f).multiply(state.ctm)
         elif op == "BMC":
             # Begin marked content with a bare tag (no property list).
-            tag = operands[0] if operands and isinstance(operands[0], COSName) else None
+            # Upstream ``BeginMarkedContentSequence.process`` iterates the
+            # whole operand list and keeps the *last* ``COSName`` (any
+            # leading non-name junk is skipped), so ``1 (x) /Span BMC``
+            # opens the ``/Span`` sequence. Mirror the registered operator
+            # / ``_props.extract_tag`` here rather than taking ``operands[0]``.
+            tag = self._last_cos_name(operands)
             self.begin_marked_content_sequence(tag, None)
         elif op == "BDC":
             # Begin marked content with a property list — the source of
-            # an ``/ActualText`` replacement (PDF §14.9.4).
+            # an ``/ActualText`` replacement (PDF §14.9.4). Unlike BMC, the
+            # tag is the *first* operand (``operands[0]``): the property
+            # operand of the ``/Name`` form is itself a ``COSName`` and must
+            # not be mistaken for the tag (matches upstream
+            # ``BeginMarkedContentSequenceWithProperties`` / the registered
+            # ``BeginMarkedContentWithProps`` operator).
             tag = operands[0] if operands and isinstance(operands[0], COSName) else None
             self.begin_marked_content_sequence(tag, self._resolve_bdc_properties(operands))
         elif op == "EMC":
@@ -1271,6 +1281,24 @@ class PDFTextStripper:
             return Matrix()
         a, b, c, d, e, f = (float(v) for v in values)
         return Matrix(a, b, c, d, e, f)
+
+    @staticmethod
+    def _last_cos_name(operands: list[COSBase]) -> COSName | None:
+        """Return the **last** ``COSName`` among the operands, or ``None``.
+
+        Mirrors upstream ``BeginMarkedContentSequence.process`` /
+        ``MarkedContentPoint.process`` (and the shared
+        ``_props.extract_tag`` helper used by the registered operators):
+        the whole operand list is scanned and the most recent ``COSName``
+        wins, so any leading non-name junk (numbers, strings) is skipped
+        rather than aborting tag selection. Used for the inline ``BMC``
+        dispatch; ``BDC`` deliberately uses ``operands[0]`` instead.
+        """
+        tag: COSName | None = None
+        for argument in operands:
+            if isinstance(argument, COSName):
+                tag = argument
+        return tag
 
     def _resolve_bdc_properties(
         self,

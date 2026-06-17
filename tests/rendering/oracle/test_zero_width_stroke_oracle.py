@@ -2,11 +2,14 @@
 a path stroked with ``0 w`` (PDF 32000-1 §8.4.3.2).
 
 The spec says a 0-width line is rendered as the thinnest line the output device
-can render — one device pixel — NOT invisible, and NOT scaled away when the CTM
-shrinks (or grows) it below a pixel. Apache PDFBox honours this in
-``PageDrawer.getStroke``: it floors the device-space pen width to 1 px when
-``lineWidth * transformWidth(CTM)`` is sub-pixel. pypdfbox mirrors this in
-``PdfRenderer._stroke_path_device_space`` (``if width_px < 1.0: width_px = 1.0``).
+can render — NOT invisible, and NOT scaled away when the CTM shrinks (or grows)
+it below the floor. Apache PDFBox honours this in ``PageDrawer.getStroke``: it
+floors the device-space pen width to **0.25 px** ("minimum line width as used by
+Adobe Reader") when ``lineWidth * transformWidth(CTM)`` is sub-pixel. pypdfbox
+mirrors this in ``PdfRenderer._stroke_path_device_space``
+(``if width_px < 0.25: width_px = 0.25``). At 72 DPI the 0.25-px hairline is
+genuinely faint (anti-aliased grey, not solid black), which the differential
+test against Java PDFBox confirms is correct parity.
 
 Distinct from the sibling stroke surfaces:
 
@@ -16,16 +19,16 @@ Distinct from the sibling stroke surfaces:
   under a non-identity CTM.
 
 This surface pins the boundary case those two do not touch: ``w == 0``, where
-the spec mandates the 1-device-pixel floor rather than a width proportional to
-the operand.
+the spec mandates the 0.25-device-pixel floor rather than a width proportional
+to the operand.
 
 Fixtures (one-page PDFs synthesised in-memory, black hairline strokes on white):
 
 * **identity** — ``0 w`` at identity CTM; the cross-shaped path renders as a
-  visible 1-px hairline.
+  faint 0.25-px hairline.
 * **scaled** — the same ``0 w`` path under ``cm 4 0 0 4`` (a CTM that would
   shrink an honest sub-pixel width even further); ``0 w`` is still floored to
-  1 device pixel, so the hairline stays exactly as visible as the identity
+  0.25 device pixel, so the hairline stays exactly as visible as the identity
   case. A renderer that computed ``0 * scale`` and let the pen vanish would
   render a blank page here.
 
@@ -137,13 +140,21 @@ def _mad_maxdiff(a: list[int], b: list[int]) -> tuple[float, int]:
 
 
 def _dark_pixel_count(fixture: Path) -> int:
-    """Count rendered pixels darker than mid-grey — the painted hairline."""
+    """Count rendered pixels darker than near-white — the painted hairline.
+
+    PDFBox ``getStroke`` floors a sub-pixel device width to 0.25 px (NOT 1 px),
+    so a ``0 w`` hairline at 72 DPI anti-aliases to *faint* grey — no pixel
+    crosses a mid-grey cutoff, but ~200 pixels are clearly darker than the
+    white background (min luminance ~195). We count anything below near-white
+    so the guard still catches a genuinely *blank* (all-255) render while
+    matching PDFBox's faint 0.25-px hairline (confirmed by the differential
+    ``test_zero_width_stroke_matches_pdfbox`` above)."""
     with PDDocument.load(fixture) as doc:
         img = PDFRenderer(doc).render_image_with_dpi(0, 72.0).convert("L")
     px = img.load()
     width, height = img.size
     return sum(
-        1 for y in range(height) for x in range(width) if px[x, y] < 128
+        1 for y in range(height) for x in range(width) if px[x, y] < 250
     )
 
 
@@ -157,7 +168,7 @@ def _dark_pixel_count(fixture: Path) -> int:
 def test_zero_width_stroke_matches_pdfbox(label: str, tmp_path: Path) -> None:
     """Each zero-width-stroke variant must match Java PDFBox's render of the
     same fixture within the 16x16 fingerprint gate — the ``0 w`` hairline is a
-    visible 1-device-pixel line in both the identity and scaled cases."""
+    faint 0.25-device-pixel line in both the identity and scaled cases."""
     fixture = _build(label, tmp_path / f"{label}.pdf")
 
     (java_w, java_h), java_grid = _oracle_signature(fixture)
@@ -195,9 +206,10 @@ def test_zero_width_stroke_is_not_blank(label: str, tmp_path: Path) -> None:
     further below a pixel."""
     fixture = _build(label, tmp_path / f"{label}.pdf")
     dark = _dark_pixel_count(fixture)
-    # The cross has two ~50-pt-long device segments; a 1-px hairline paints on
-    # the order of a hundred dark pixels. Anything near zero means it vanished.
+    # The cross has two ~50-pt-long device segments; a 0.25-px hairline paints
+    # on the order of ~200 sub-white pixels. Anything near zero means it
+    # vanished.
     assert dark > 50, (
-        f"{label}: only {dark} dark pixels — the 0-width stroke appears to "
-        "have vanished instead of rendering as a 1-device-pixel hairline"
+        f"{label}: only {dark} sub-white pixels — the 0-width stroke appears "
+        "to have vanished instead of rendering as a faint 0.25-px hairline"
     )

@@ -142,18 +142,25 @@ def test_tr_operator_sets_text_rendering_mode_on_gs() -> None:
     assert renderer._gs.text_rendering_mode == 3
 
 
-def test_tr_operator_clamps_out_of_range_modes() -> None:
-    """Modes outside 0..7 clamp to the boundary."""
+def test_tr_operator_ignores_out_of_range_modes() -> None:
+    """Modes outside 0..7 are ignored, leaving the previous mode intact.
+
+    Wave 1589 fix: upstream ``SetTextRenderingMode.process`` guards
+    ``val < 0 || val >= RenderingMode.values().length`` with a plain
+    return, so an out-of-range ``Tr`` operand never changes the mode (it
+    is NOT clamped to 0/7).
+    """
     renderer = PDFRenderer.__new__(PDFRenderer)
     from pypdfbox.rendering.pdf_renderer import _GState
 
     renderer._gs_stack = [_GState()]
     from pypdfbox.cos import COSInteger
 
+    renderer._gs.text_rendering_mode = 2
     renderer._op_set_text_rendering_mode(None, [COSInteger.get(99)])
-    assert renderer._gs.text_rendering_mode == 7
+    assert renderer._gs.text_rendering_mode == 2
     renderer._op_set_text_rendering_mode(None, [COSInteger.get(-5)])
-    assert renderer._gs.text_rendering_mode == 0
+    assert renderer._gs.text_rendering_mode == 2
 
 
 def test_tr_operator_is_registered_in_dispatch() -> None:

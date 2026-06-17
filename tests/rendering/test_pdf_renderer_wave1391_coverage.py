@@ -549,16 +549,23 @@ def test_set_text_rendering_mode_no_operands_is_noop() -> None:
     assert r._gs.text_rendering_mode == 3  # noqa: SLF001
 
 
-def test_set_text_rendering_mode_clamps_negative() -> None:
+def test_set_text_rendering_mode_negative_leaves_previous_unchanged() -> None:
+    # Wave 1589 fix: upstream SetTextRenderingMode returns (ignores) on
+    # val < 0, leaving the previously-set mode in place rather than
+    # clamping to 0.
     r = _bare_renderer()
+    r._gs.text_rendering_mode = 2  # noqa: SLF001
     r._op_set_text_rendering_mode(None, [COSInteger(-5)])  # noqa: SLF001
-    assert r._gs.text_rendering_mode == 0  # noqa: SLF001
+    assert r._gs.text_rendering_mode == 2  # noqa: SLF001
 
 
-def test_set_text_rendering_mode_clamps_above_seven() -> None:
+def test_set_text_rendering_mode_above_seven_leaves_previous_unchanged() -> None:
+    # Wave 1589 fix: upstream returns (ignores) on val >= 8, leaving the
+    # previously-set mode in place rather than clamping to 7.
     r = _bare_renderer()
+    r._gs.text_rendering_mode = 1  # noqa: SLF001
     r._op_set_text_rendering_mode(None, [COSInteger(99)])  # noqa: SLF001
-    assert r._gs.text_rendering_mode == 7  # noqa: SLF001
+    assert r._gs.text_rendering_mode == 1  # noqa: SLF001
 
 
 # ---------- annotation skip + render ----------

@@ -3763,11 +3763,14 @@ class PDFRenderer(PDFStreamEngine):
         if not any_segments:
             return
         scale = self._transform_width_scale(full_ctm)
-        # Device-space pen width. PDFBox floors a zero/sub-pixel width to a
-        # 1-device-pixel hairline so thin strokes stay visible.
+        # Device-space pen width. PDFBox (``PageDrawer.getStroke``) floors a
+        # zero/sub-pixel device width to 0.25 — "minimum line width as used by
+        # Adobe Reader" — so thin strokes stay visible. Mirror that exact
+        # constant (NOT a 1-pixel floor, which would double the width of every
+        # hairline relative to PDFBox).
         width_px = self._gs.line_width * scale
-        if width_px < 1.0:
-            width_px = 1.0
+        if width_px < 0.25:
+            width_px = 0.25
         # Wave 1386 — /CA (stroke alpha) multiplies into the pen opacity.
         stroke_opacity = int(
             round(255.0 * max(0.0, min(1.0, self._gs.stroke_alpha)))
@@ -3783,6 +3786,12 @@ class PDFRenderer(PDFStreamEngine):
             if not any(v > 0.0 for v in intervals):
                 return
             dash = ([float(v) * scale for v in intervals], float(phase) * scale)
+        # PDFBox ``getStroke``: a miter limit < 1 is illegal (BasicStroke would
+        # throw) and is reset to the spec default of 10. We clamp at stroke-
+        # build time to match (the ``M`` operator stores the raw value).
+        miter_limit = self._gs.miter_limit
+        if miter_limit < 1.0:
+            miter_limit = 10.0
         self._draw.settransform()
         try:
             pen = aggdraw.Pen(
@@ -3791,7 +3800,7 @@ class PDFRenderer(PDFStreamEngine):
                 opacity=stroke_opacity,
                 line_cap=self._gs.line_cap,
                 line_join=self._gs.line_join,
-                miter_limit=self._gs.miter_limit,
+                miter_limit=miter_limit,
                 dash=dash,
             )
             self._draw.path(device_path, pen, None)
@@ -4046,10 +4055,12 @@ class PDFRenderer(PDFStreamEngine):
         )
         # User-space line width (>= a hairline) — the CTM on the canvas
         # scales it into device pixels, mirroring ``_draw_via_aggdraw``.
+        # PDFBox floors the *device* width to 0.25 ("minimum line width as
+        # used by Adobe Reader"), so back-convert that floor into user space.
         scale = self._approx_scale(self._full_ctm())
         line_width = self._gs.line_width
-        if line_width * scale < 1.0:
-            line_width = 1.0 / scale if scale > 0 else 1.0
+        if line_width * scale < 0.25:
+            line_width = 0.25 / scale if scale > 0 else 0.25
         paint = skia.Paint(
             Color=skia.ColorSetARGB(255, 255, 255, 255),
             Style=skia.Paint.kStroke_Style,
@@ -8703,19 +8714,24 @@ class PDFRenderer(PDFStreamEngine):
         self, _op: Any, operands: list[COSBase]
     ) -> None:
         """``Tr`` — set the text rendering mode (PDF 32000-1 §9.3.6 /
-        Table 106). Operand is an integer in 0..7; values outside that
-        range are clamped (mirrors upstream
-        ``SetTextRenderingMode.process`` which calls
-        ``RenderingMode.fromInt`` with a try/catch and falls back to
-        ``FILL`` on out-of-range, but PDFBox swallows the
-        IndexOutOfBoundsException with a debug log)."""
+        Table 106). Operand is an integer in 0..7.
+
+        Mirrors upstream ``SetTextRenderingMode.process`` exactly: a
+        missing operand is ignored, a non-``COSNumber`` operand is
+        dropped, and an out-of-range value (``< 0`` or ``>= 8``) is
+        *ignored* — leaving the previously-set rendering mode unchanged.
+        Upstream guards ``val < 0 || val >= RenderingMode.values().length``
+        with a plain ``return`` before calling ``RenderingMode.fromInt``,
+        so it never clamps and never resets to ``FILL`` (wave 1589 fix:
+        the renderer previously clamped to 0/7 and set it, diverging)."""
         if not operands:
             return
-        mode = int(_to_float(operands[0]))
-        if mode < 0:
-            mode = 0
-        elif mode > 7:
-            mode = 7
+        operand = operands[0]
+        if not isinstance(operand, COSNumber):
+            return
+        mode = operand.int_value()
+        if mode < 0 or mode > 7:
+            return
         self._gs.text_rendering_mode = mode
 
     def _op_text_move(self, _op: Any, operands: list[COSBase]) -> None:
