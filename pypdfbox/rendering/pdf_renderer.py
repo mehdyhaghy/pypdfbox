@@ -7973,6 +7973,40 @@ class PDFRenderer(PDFStreamEngine):
             interpolate = False
         self._paste_image(rgba, interpolate=interpolate)
 
+    @staticmethod
+    def _apply_image_constant_alpha(
+        alpha: Image.Image | None,
+        constant_alpha: float,
+        size: tuple[int, int],
+    ) -> Image.Image | None:
+        """Fold the non-stroking constant alpha ``ca`` into an image's
+        paste alpha plane (PDF 32000-1 §11.6.4.4).
+
+        Mirrors upstream ``PageDrawer.drawImage`` setting a composite at
+        the graphics state's non-stroking alpha constant before drawing
+        the image:
+
+        * ``ca == 1.0`` is a no-op — the existing ``alpha`` (the SMask /
+          native alpha, possibly ``None``) is returned unchanged so the
+          opaque fast path is preserved.
+        * ``ca < 1.0`` with an existing alpha plane scales every alpha
+          sample by ``ca`` (``a' = round(a * ca)``) — so ``ca`` *multiplies*
+          into the SMask alpha rather than replacing it.
+        * ``ca < 1.0`` with no native alpha synthesises a flat alpha plane
+          of ``round(255 * ca)`` at ``size`` so the (otherwise opaque)
+          image paints at ``ca`` opacity; ``ca == 0`` yields a fully
+          transparent plane (the image is invisible).
+
+        ``ca`` is clamped to ``[0, 1]`` defensively (the graphics state
+        already clamps, but direct callers may not).
+        """
+        ca = max(0.0, min(1.0, float(constant_alpha)))
+        if ca >= 1.0:
+            return alpha
+        if alpha is None:
+            return Image.new("L", size, round(255.0 * ca))
+        return alpha.point(lambda v, _a=ca: round(v * _a))
+
     def _paste_image(
         self, pil_image: Image.Image, interpolate: bool = True
     ) -> None:
@@ -8053,6 +8087,17 @@ class PDFRenderer(PDFStreamEngine):
             flipped_rgb = flipped.convert("RGB")
         else:
             flipped_rgb = flipped
+
+        # PDF 32000-1 §11.6.4.4 — the non-stroking constant alpha ``ca``
+        # modulates image opacity (upstream ``PageDrawer.drawImage`` sets a
+        # ``setComposite(getNonStrokingAlphaConstant())`` before the
+        # ``graphics.drawImage`` call). Multiply ``ca`` into the source
+        # alpha so ``ca=0.5`` halves the image opacity and ``ca=0`` makes
+        # the image invisible. When the image has no native alpha and
+        # ``ca`` is fully opaque, leave ``alpha`` as ``None`` (fast path).
+        alpha = self._apply_image_constant_alpha(
+            alpha, self._gs.fill_alpha, (target_w, target_h)
+        )
 
         clip_mask = self._gs.clip_mask
         blend_mode = self._gs.blend_mode

@@ -253,7 +253,15 @@ class PDType1CFont(PDType1Font):
             return self.get_path("space")
         program = self._get_cff_font()
         if program is None:
-            return []
+            # No embedded CFF program. Upstream falls through to the generic
+            # substitute font (``genericFont.getPath(name)``); mirror that
+            # for the Standard 14 cores via the bundled Liberation / DejaVu
+            # substitute, matching the inherited :class:`PDType1Font`
+            # behaviour. A ``PDType1CFont`` without a /FontFile3 is rare
+            # (the factory only selects this subclass when one is present),
+            # but a directly-constructed Standard 14 dict otherwise rendered
+            # nothing through ``get_normalized_path``.
+            return self._substitute_path_for_name(name)
         return program.get_path(name)
 
     def has_glyph(self, name: str) -> bool:

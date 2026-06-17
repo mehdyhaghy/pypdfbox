@@ -432,15 +432,21 @@ class PDType1Font(PDSimpleFont):
         base_font = self.get_name()
         if base_font is None or not Standard14Fonts.contains_name(base_font):
             return []
-        # Resolve code -> glyph name. Mirror the family default
-        # PostScript encoding (PDF 32000-1 §9.6.2.4) when (a) the font
-        # ships no /Encoding at all OR (b) /Encoding is a base-less
-        # :class:`DictionaryEncoding` (the upstream Type 3 mode that
-        # PDSimpleFont.get_encoding_typed historically built for every
-        # dictionary encoding — wave 1391) whose /Differences overlay
-        # didn't cover ``code``. Without (b) the AcroForm widget
-        # appearance text on an unembedded Helvetica with a
-        # /Differences encoding painted nothing.
+        glyph_name = self._code_to_substitute_glyph_name(code)
+        return self._substitute_path_for_name(glyph_name)
+
+    def _code_to_substitute_glyph_name(self, code: int) -> str:
+        """Resolve ``code`` to a glyph name for the *non-embedded* Standard
+        14 substitute path. Mirrors the family default PostScript encoding
+        (PDF 32000-1 §9.6.2.4) when (a) the font ships no /Encoding at all
+        OR (b) /Encoding is a base-less :class:`DictionaryEncoding` (the
+        upstream Type 3 mode that PDSimpleFont.get_encoding_typed
+        historically built for every dictionary encoding — wave 1391) whose
+        /Differences overlay didn't cover ``code``. Without (b) the AcroForm
+        widget appearance text on an unembedded Helvetica with a
+        /Differences encoding painted nothing. Returns ``".notdef"`` when no
+        name resolves.
+        """
         from .encoding.dictionary_encoding import (  # noqa: PLC0415
             DictionaryEncoding,
         )
@@ -452,7 +458,7 @@ class PDType1Font(PDSimpleFont):
             ZapfDingbatsEncoding,
         )
 
-        canonical = Standard14Fonts.get_mapped_font_name(base_font)
+        canonical = Standard14Fonts.get_mapped_font_name(self.get_name())
         if canonical == "Symbol":
             default_encoding = SymbolEncoding.INSTANCE
         elif canonical == "ZapfDingbats":
@@ -461,14 +467,26 @@ class PDType1Font(PDSimpleFont):
             default_encoding = StandardEncoding.INSTANCE
         encoding = self.get_encoding_typed()
         if encoding is None:
+            return default_encoding.get_name(code)
+        glyph_name = encoding.get_name(code)
+        if glyph_name == ".notdef" and isinstance(
+            encoding, DictionaryEncoding
+        ) and not encoding.has_base_encoding():
             glyph_name = default_encoding.get_name(code)
-        else:
-            glyph_name = encoding.get_name(code)
-            if glyph_name == ".notdef" and isinstance(
-                encoding, DictionaryEncoding
-            ) and not encoding.has_base_encoding():
-                glyph_name = default_encoding.get_name(code)
+        return glyph_name
+
+    def _substitute_path_for_name(self, glyph_name: str) -> list[tuple]:
+        """Draw a glyph *name* from the bundled Standard 14 substitute
+        (Liberation for the Latin cores, DejaVu Sans for Symbol /
+        ZapfDingbats). Returns ``[]`` for ``.notdef`` or when the font is
+        not one of the Standard 14. Mirrors the ``genericFont`` substitute
+        branch upstream ``PDType1Font.getPath`` reaches when the font has
+        no embedded program.
+        """
         if glyph_name == ".notdef":
+            return []
+        base_font = self.get_name()
+        if base_font is None or not Standard14Fonts.contains_name(base_font):
             return []
         return Standard14Fonts.get_glyph_path(base_font, glyph_name)
 
@@ -558,7 +576,14 @@ class PDType1Font(PDSimpleFont):
             return []
         program = self._get_type1_font()
         if program is None:
-            return []
+            # No embedded /FontFile program. Upstream falls through to the
+            # generic substitute font here (``genericFont.getPath(name)``);
+            # we mirror that for the Standard 14 cores via the bundled
+            # Liberation / DejaVu substitute. Without this a non-embedded
+            # Helvetica rendered nothing through ``get_normalized_path`` —
+            # the interface the glyph cache / renderer reaches for (the
+            # ``get_glyph_path(code)`` path already had the fall-through).
+            return self._substitute_path_for_name(name)
         resolved = self.get_name_in_font(name)
         return program.get_path(resolved)
 
