@@ -12,6 +12,11 @@ from .decode_result import DecodeResult
 from .filter import Filter
 from .filter_factory import FilterFactory
 
+# Byte-inversion lookup (``x -> 255 - x``) for re-inverting Pillow's
+# auto-un-inverted CMYK fallback samples back to the JPEG-stored
+# (Adobe-inverted) convention the imagecodecs primary path returns.
+_INVERT_TABLE = bytes(255 - i for i in range(256))
+
 
 class DCTDecode(Filter):
     """``/DCTDecode`` filter (ISO 32000-1 §7.4.8).
@@ -95,6 +100,18 @@ class DCTDecode(Filter):
                 num_components, bpc = 1, 8
             elif mode == "CMYK":
                 num_components, bpc = 4, 8
+                # Polarity parity with the imagecodecs (libjpeg) primary path.
+                # imagecodecs returns CMYK as the JPEG stores it: for an Adobe
+                # APP14-marked codestream that is the *inverted* convention
+                # (255 = ink-off). Pillow silently re-inverts CMYK on load
+                # (``tobytes()`` hands back 0 = ink-off samples), so the two
+                # decode paths would otherwise disagree by ``255 - x`` on every
+                # channel for the same JPEG. Upstream ``DCTFilter.decode`` does
+                # NOT re-invert — it preserves the stored raster and leaves the
+                # Adobe correction to the ``/Decode [1 0 1 0 1 0 1 0]`` array
+                # that JPEGFactory attaches. Re-invert here so the fallback
+                # matches both imagecodecs and upstream byte-for-byte.
+                samples = samples.translate(_INVERT_TABLE)
             elif mode == "RGB":
                 num_components, bpc = 3, 8
             else:
