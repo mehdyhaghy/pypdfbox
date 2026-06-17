@@ -30,7 +30,7 @@ The byte vectors below were captured from Apache PDFBox 3.0.7's
 ``@requires_oracle`` differential variants), so the non-oracle assertions are a
 true cross-implementation parity pin, not a self-consistency check.
 
-Cross-platform note (CLAUDE.md): we only assert on the declared
+Cross-platform note: we only assert on the declared
 ``rows * rowBytes`` footprint — never on libtiff's post-EOD padding tail, which
 differs between POSIX and Windows wheels.
 
@@ -163,7 +163,7 @@ def test_group3_leading_eol_k0_no_endofline_byte_exact_oracle() -> None:
 # upstream allocates a fixed rows*rowBytes buffer and decodes only that many
 # scanlines. pypdfbox trims to the same footprint -> byte-exact prefix.
 # (Over-declared /Rows lands in libtiff's post-EOD padding tail, which differs
-# per-OS — deliberately NOT asserted here, per the CLAUDE.md cross-platform
+# per-OS — deliberately NOT asserted here, per the project's cross-platform
 # rule.)
 # ---------------------------------------------------------------------------
 

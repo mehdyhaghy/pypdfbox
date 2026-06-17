@@ -6,7 +6,7 @@ numeric date fields roll over instead of raising. The pypdfbox port routes the
 ``D:YYYYMMDD…`` numeric form (and the partial / full numeric forms) through
 :func:`pypdfbox.xmpbox.date_converter._build_lenient`.
 
-The wave-1581 audit (DEFERRED.md) found two divergences, both rooted in the
+An earlier audit (a deferred follow-up) found two divergences, both rooted in the
 **field-resolution ORDER**: the old code anchored at the year/January/day-1
 base and added ``day - 1`` BEFORE applying the month offset — the inverse of
 ``Calendar``, which resolves ``year`` + ``month`` to the 1st of the resolved
@@ -18,7 +18,7 @@ month FIRST, then adds the day-of-month delta. That produced:
 Wave 1582 reorders ``_build_lenient`` to match ``Calendar`` exactly. These
 cases pin the Java-documented values (``java.util.GregorianCalendar`` lenient
 field resolution, verified against the live ``xmpbox-3.0.7.jar`` in the
-DEFERRED.md analysis).
+deferred-follow-up analysis).
 
 The values here are zone-independent (date/time fields only), so they hold
 regardless of the host's default zone — the strict xmpbox parser attaches the
@@ -43,7 +43,7 @@ def _fields(dt) -> tuple[int, int, int, int, int, int]:
 # calls ``_build_lenient`` (the ``D:`` form has no ``T`` so it never hits the
 # ISO fast path).
 _ROLLOVER_CASES: list[tuple[str, tuple[int, int, int, int, int, int]]] = [
-    # ---- the two regression cases from DEFERRED.md (wave 1581) -------------
+    # ---- the two regression cases from a deferred follow-up ----------------
     # Day overflow across months: June 1 + (99-1) days = Sep 7 (NOT Sep 8).
     ("D:20240699", (2024, 9, 7, 0, 0, 0)),
     # Zero month + zero day: month 0 → previous Dec, day 0 → last day of prev

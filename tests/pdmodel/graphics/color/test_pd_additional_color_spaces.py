@@ -342,7 +342,7 @@ def test_pd_pattern_with_underlying_is_array() -> None:
 
 @pytest.mark.skipif(
     not hasattr(PDColorSpace, "create"),
-    reason="PDColorSpace.create factory not yet wired (see CLAUDE wiring instructions)",
+    reason="PDColorSpace.create factory not yet wired (see the project wiring notes)",
 )
 def test_pd_color_space_create_dispatches_indexed() -> None:
     arr = COSArray()
@@ -357,7 +357,7 @@ def test_pd_color_space_create_dispatches_indexed() -> None:
 
 @pytest.mark.skipif(
     not hasattr(PDColorSpace, "create"),
-    reason="PDColorSpace.create factory not yet wired (see CLAUDE wiring instructions)",
+    reason="PDColorSpace.create factory not yet wired (see the project wiring notes)",
 )
 def test_pd_color_space_create_dispatches_device_rgb_name() -> None:
     cs = PDColorSpace.create(COSName.get_pdf_name("DeviceRGB"))

@@ -17,7 +17,7 @@ entries:
 ``/FL`` (flatness) and ``/SM`` (smoothness) remain best-effort no-ops
 in the lite renderer (Skia handles curve flattening + shading sampling
 adaptively); they are still carried on the GS for parity bookkeeping.
-``/TK`` (text knockout) wiring is deferred — see DEFERRED.md.
+``/TK`` (text knockout) wiring is a deferred follow-up.
 """
 
 from __future__ import annotations

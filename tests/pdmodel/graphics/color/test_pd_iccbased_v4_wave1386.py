@@ -21,7 +21,7 @@ under the hood). Coverage:
 - ICC v4 CMYK conversion: skipped with a documented reason because
   Pillow ``ImageCms.createProfile`` cannot synthesise a CMYK output
   profile and the repo cannot bundle a copyrighted CMYK profile (per
-  CLAUDE.md permissive-license-only rule). A synthetic CMYK *input*
+  the project's permissive-license-only rule). A synthetic CMYK *input*
   profile case is covered by exercising the v4 sRGB → CMYK transform
   in reverse (build a v4 sRGB profile, feed it as CMYK shouldn't
   match) — and we verify the failure surfaces as ``None``/fallback,
@@ -285,7 +285,7 @@ def test_to_rgb_image_pads_short_raster() -> None:
 
 def test_v4_cmyk_input_profile_synthesised_from_pillow_skips_cleanly() -> None:
     """Pillow's ``ImageCms.createProfile`` doesn't ship a CMYK output
-    profile, and the project's permissive-license-only rule (CLAUDE.md)
+    profile, and the project's permissive-license-only rule
     forbids bundling a third-party CMYK profile. This test pins the
     behaviour: a CMYK ICCBased with /N=4 over an unparseable-as-CMYK
     profile cleanly falls back to ``/Alternate`` rather than crashing."""

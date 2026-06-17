@@ -18,8 +18,8 @@ class PageExtractor:
     Upstream delegates to :class:`Splitter` configured with a single split
     boundary covering ``[startPage..endPage]``, and so does this port now
     that :class:`Splitter` is fully ported (the earlier bespoke page-walk
-    was a stop-gap while the ported ``Splitter`` did not yet exist — see
-    the closed wave-708 deferral in ``HISTORY.md``). The extracted
+    was a stop-gap while the ported ``Splitter`` did not yet exist — an
+    earlier closed deferral). The extracted
     document therefore inherits all of Splitter's per-page behaviour:
     annotation cloning, ``/B`` bead removal, structure-tree clone,
     cross-chunk destination fix-up, and inherited page-geometry
@@ -89,9 +89,9 @@ class PageExtractor:
             splitter.setSplitAtPage(getEndPage() - getStartPage() + 1);
             return splitter.split(sourceDocument).get(0);
 
-        Earlier waves re-implemented the page walk directly (the ported
-        :class:`Splitter` did not exist yet — see the now-closed
-        ``HISTORY.md`` wave-708 deferral). Now that :class:`Splitter` is a
+        Earlier on, the page walk was re-implemented directly (the ported
+        :class:`Splitter` did not exist yet — a previously-closed
+        deferral). Now that :class:`Splitter` is a
         full port, delegating restores byte-for-byte parity: the extracted
         document inherits Splitter's annotation cloning, ``/B`` bead
         removal, structure-tree clone, destination fix-up, and

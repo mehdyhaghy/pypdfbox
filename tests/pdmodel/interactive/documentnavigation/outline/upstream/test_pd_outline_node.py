@@ -2,7 +2,7 @@
 ``pdfbox/src/test/java/org/apache/pdfbox/pdmodel/interactive/documentnavigation/outline/PDOutlineNodeTest.java``
 (upstream PDFBox 3.0.x).
 
-JUnit 5 → pytest mapping per ``CLAUDE.md`` §"Test Porting Conventions":
+JUnit 5 → pytest mapping per the project's "Test Porting Conventions":
 
 * ``@BeforeEach setUp`` → ``setup_method`` instance hook on a class.
 * ``assertEquals(expected, actual)`` → ``assert actual == expected``.
@@ -13,7 +13,7 @@ JUnit 5 → pytest mapping per ``CLAUDE.md`` §"Test Porting Conventions":
   ``IllegalArgumentException`` — flagged in ``CHANGES.md``).
 
 The empty upstream ``openNodeAndAppend`` test (``// TODO``) is skipped
-with a one-line comment, in line with ``CLAUDE.md`` skip guidance.
+with a one-line comment, in line with the project's skip guidance.
 """
 from __future__ import annotations
 

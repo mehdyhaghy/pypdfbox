@@ -17,7 +17,7 @@ embedded one is missing. The PDF-aware wrappers in
 | `GlyphList` | Adobe glyph-name → Unicode mapping. `additional()` returns the supplemental list (PDFBox `additional.txt`). |
 | `FontProvider` | Protocol — `get_font_names()`, `get_font_info(name) -> FontInfo`. |
 | `FontMapper` | Protocol — `get_font_box_font(name, descriptor)`, `get_true_type_font(name, descriptor)`, `get_cid_font(name, descriptor, cid_system_info)`. |
-| `DefaultFontMapper` | The shipping `FontMapper`. Owns the system-font scanner and the Liberation fallback (wave 1376). |
+| `DefaultFontMapper` | The shipping `FontMapper`. Owns the system-font scanner and the Liberation fallback. |
 | `Standard14FontWrapper` | Adapter that exposes a Standard 14 AFM as a `FontBoxFont`. |
 | `FontMappers` | Singleton accessor: `FontMappers.instance()`. |
 | `FontMapping[T]` | The result of a `FontMapper` lookup — the chosen font plus a `is_fallback` flag. |
@@ -42,7 +42,7 @@ embedded one is missing. The PDF-aware wrappers in
 
 The OpenType GSUB (Glyph Substitution) table is decoded by `GSUBTable` plus
 script-specific workers under `pypdfbox.fontbox.ttf.gsub`. Lookup types
-1-8 are implemented (wave 1379/1380); supported scripts:
+1-8 are implemented; supported scripts:
 
 - `Latin` (latn, default + AALT alternates + SMCP small caps)
 - `DFLT`

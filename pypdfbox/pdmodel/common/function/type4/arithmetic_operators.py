@@ -259,7 +259,7 @@ class Sqrt(Operator):
     surfaces as ``OSError`` rather than ``IllegalArgumentException`` —
     upstream behaviour rejects the negative input, the wrapper exception
     type matches the rest of the Type 4 stack machine which uses
-    ``OSError`` (CLAUDE.md mapping table).
+    ``OSError`` (the project's mapping convention).
     """
 
     def execute(self, context: ExecutionContext) -> None:

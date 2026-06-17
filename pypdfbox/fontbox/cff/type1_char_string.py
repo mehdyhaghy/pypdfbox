@@ -332,7 +332,7 @@ class Type1CharString:
         sequence: Any,
         gid: int = -1,
     ) -> None:
-        # Upstream signature (camelCase → snake_case per CLAUDE.md):
+        # Upstream signature (camelCase → snake_case per the project's conventions):
         #   Type1CharString(Type1CharStringReader font, String fontName,
         #                   String glyphName, List<Object> sequence)
         # plus the optional ``gid`` so Type2CharString-shaped callers

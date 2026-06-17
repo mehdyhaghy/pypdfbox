@@ -1,7 +1,7 @@
 """Port of pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/image/PNGConverterTest.java
 
 Upstream baseline: PDFBox 3.0.x. Skipped translations (Java-only plumbing
-or fixture-dependent paths per CLAUDE.md test porting conventions):
+or fixture-dependent paths per the project's test porting conventions):
 
 * ``dumpChunkTypes`` — diagnostic helper, ``@Test`` is commented out.
 * ``testImageConversionRGB`` / ``...RGBGamma`` / ``...RGB16BitICC`` /

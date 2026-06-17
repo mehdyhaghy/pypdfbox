@@ -31,8 +31,8 @@ PDF can satisfy first-page-fast access patterns.
 
 ### Linearization hint tables
 
-Decoding linearized PDFs uses three small parsers (page-offset shipped in
-wave 1373; shared-object + thumbnail wave 1377):
+Decoding linearized PDFs uses three small parsers (page-offset,
+shared-object, and thumbnail):
 
 | Symbol | Purpose |
 | --- | --- |

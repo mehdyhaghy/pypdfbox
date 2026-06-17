@@ -186,7 +186,7 @@ def test_bead_modes_differ_in_pdfbox(tmp_path: Path) -> None:
 # the exact newline count between/around lines depends on upstream's
 # per-paragraph ``writeParagraphStart`` / ``writeParagraphEnd`` cadence, which
 # the lite stripper approximates (the documented average-advance / per-run
-# layout carve-out, DEFERRED.md). We pin only the article-marker promotion
+# layout carve-out, a deferred follow-up). We pin only the article-marker promotion
 # property, which is the load-bearing add_more_formatting effect.
 
 

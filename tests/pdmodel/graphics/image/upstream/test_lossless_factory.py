@@ -1,7 +1,7 @@
 """Ported upstream tests from
 ``pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/image/LosslessFactoryTest.java``.
 
-Translated from JUnit 5 to pytest per CLAUDE.md §"Test Porting
+Translated from JUnit 5 to pytest per the project's "Test Porting
 Conventions". The upstream test class is keyed on
 ``java.awt.image.BufferedImage`` types (``TYPE_BYTE_GRAY``,
 ``TYPE_INT_ARGB`` …) and validates the PDImageXObject metadata after

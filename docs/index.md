@@ -50,12 +50,11 @@ break down by audience:
 
 - [Build guide](build.md) — clone, `uv sync`, the pytest /
   ruff / license-allow-list pre-push hook, coverage refresh
-  workflow, wave-and-provenance protocol.
+  workflow, provenance protocol.
 
-- [Contributing](contributing.md) — wave structure, class-cluster
-  scoping, the two-layer test rule (hand-written +
-  ported-upstream), `PROVENANCE.md` row format, `CHANGES.md`
-  vs `DEFERRED.md` distinction.
+- [Contributing](../CONTRIBUTING.md) — class-cluster scoping, the
+  two-layer test rule (hand-written + ported-upstream),
+  `PROVENANCE.md` row format, and the `CHANGES.md` bookkeeping.
 
 - [API reference](api/index.md) — module-by-module surface,
   generated from in-source docstrings. Useful when you want to
@@ -78,11 +77,10 @@ break down by audience:
 - [Release notes for the current release](../RELEASE_NOTES_v0.9.0rc1.md)
   — what shipped, known issues at release.
 - [`CHANGES.md`](../CHANGES.md) — substantive deviations from
-  upstream, organised under "Project-wide deviations",
-  "Active divergences", and wave entries from 1238 onward.
-- [`HISTORY.md`](../HISTORY.md) — full wave history.
-- [`DEFERRED.md`](../DEFERRED.md) — open in-flight gaps that
-  are fixable but not yet closed.
+  upstream, organised under "Project-wide deviations" and
+  "Active divergences".
+- [Issue tracker](https://github.com/mehdyhaghy/pypdfbox/issues) —
+  open in-flight gaps that are fixable but not yet closed.
 - [`PROVENANCE.md`](../PROVENANCE.md) — one row per ported source
   / test / fixture file, recording the upstream PDFBox version
   and Java path.
@@ -100,8 +98,7 @@ library: [`install.md`](install.md) →
 the user guide for your task.
 
 If you intend to contribute: [`build.md`](build.md) →
-[`contributing.md`](contributing.md) →
-[`../CLAUDE.md`](../CLAUDE.md) (the latter is the AI-assistant
-brief that doubles as the authoritative project rules: package
-layout, hard rules, dependency-ordered implementation, test
-porting conventions).
+[`contributing.md`](../CONTRIBUTING.md) (the contribution guide
+covers the package layout, the parity rules, the
+dependency-ordered implementation, and the test porting
+conventions).

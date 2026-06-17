@@ -1,7 +1,7 @@
 """Hand-written pins for the Huffman + refinement/aggregation JBIG2 paths.
 
 These cover the long-fixture-starved Huffman symbol-dictionary, Huffman
-text-region and refinement decode bodies (DEFERRED.md). The streams are built
+text-region and refinement decode bodies (a deferred follow-up). The streams are built
 by :mod:`tests.jbig2.helpers.jb2_encoder` (a test-only minimal JBIG2 encoder)
 and were verified bit-exact against the bundled PDFBox 3.0.7 jar — see
 ``tests/jbig2/segments/oracle/test_huffman_refinement_oracle_wave1503.py`` for

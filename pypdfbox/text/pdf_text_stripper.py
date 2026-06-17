@@ -2855,7 +2855,7 @@ class PDFTextStripper:
         # normalise. (Page ``/Rotate`` parity is a separate surface handled
         # by the page-rotation CTM fold in ``LegacyPDFStreamEngine``; see
         # ``tests/text/oracle/test_rotated_page_extraction_oracle.py`` and
-        # DEFERRED.md.)
+        # a deferred follow-up.)
         last_line_start: PositionWrapper | None = None
         last_wrapper: PositionWrapper | None = None
         if carry is not None and carry:
@@ -2911,7 +2911,7 @@ class PDFTextStripper:
                 # fields: flip-axes carries no rotation in the matrix
                 # (``dir == 0``), so those fields are identity (verified
                 # wave 1493). Page ``/Rotate`` is a separate surface (the
-                # missing page-rotation CTM fold — DEFERRED.md).
+                # missing page-rotation CTM fold — a deferred follow-up).
                 if self._flip_axes:
                     line_broke = self._is_line_break(pos, prev)
                 else:
@@ -3192,9 +3192,10 @@ class PDFTextStripper:
         with the default ``spacingTolerance = 0.5`` and
         ``averageCharTolerance = 0.3``. This replaces the legacy coarse
         ``font_size × 1.5`` heuristic, which fired ~36pt later than Java for a
-        24pt font and missed mid-size positioning gaps (DEFERRED.md
-        "word-break gap-threshold calibration"). The space width and average
-        char width are now real per-glyph metrics threaded through ``_emit``
+        24pt font and missed mid-size positioning gaps (a deferred
+        follow-up on word-break gap-threshold calibration). The space width
+        and average char width are now real per-glyph metrics threaded
+        through ``_emit``
         from the font's ``/Widths`` (wave 1408 per-code lookups), so the
         threshold tracks the active font's metrics the way upstream does.
 

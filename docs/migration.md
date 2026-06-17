@@ -448,9 +448,9 @@ release the list contains five items:
 - **Skia anti-aliasing vs Java2D AA** — edge pixels may differ at
   low rasterisation resolutions.
 
-Items deferred but not yet active divergences live in
-`DEFERRED.md`. Each `DEFERRED.md` entry carries a one-line summary,
-estimated effort, and the wave that flagged it.
+Items deferred but not yet active divergences are tracked on the
+[issue tracker](https://github.com/mehdyhaghy/pypdfbox/issues),
+each with a one-line summary and estimated effort.
 
 ## Performance characteristics
 
@@ -582,7 +582,8 @@ divergences vs upstream, see `CHANGES.md` "Per-file deviations".
   troubleshooting native-build issues.
 - `CHANGES.md` — full changelog and the canonical "Active
   divergences" list.
-- `DEFERRED.md` — gaps vs upstream still on the work-queue.
+- The [issue tracker](https://github.com/mehdyhaghy/pypdfbox/issues)
+  — gaps vs upstream still on the work-queue.
 - `PROVENANCE.md` — full per-file port-tracking table.
 - `pypdfbox/examples/` — runnable scripts mirroring upstream's
   `org.apache.pdfbox.examples.*`.

@@ -17,9 +17,9 @@ This product is derived from / inspired by:
   Apache PDFBox is licensed under the Apache License, Version 2.0.
   https://pdfbox.apache.org/
 
-  Pinned upstream reference baseline: Apache PDFBox 3.0.x
-  (Specific point release will be recorded per-port in source-file
-  headers; see CLAUDE.md for the per-file header template.)
+  Pinned upstream reference baseline: Apache PDFBox 3.0.x.
+  Per-file porting provenance (the upstream version and Java source path
+  for each ported file) is recorded centrally in PROVENANCE.md.
 
   Modifications:
     - Reimplemented in Python (target: Python 3.10+).

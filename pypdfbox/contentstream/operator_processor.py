@@ -16,8 +16,8 @@ class MissingOperandException(OSError):
     operands.
 
     Mirrors ``org.apache.pdfbox.contentstream.operator.MissingOperandException``.
-    Upstream extends ``IOException``; per CLAUDE.md test-porting table we
-    map ``IOException`` to ``OSError`` in pypdfbox.
+    Upstream extends ``IOException``; per the project's test-porting
+    conventions we map ``IOException`` to ``OSError`` in pypdfbox.
 
     The message format mirrors upstream verbatim:
     ``Operator <name> has too few operands: <operands>``.

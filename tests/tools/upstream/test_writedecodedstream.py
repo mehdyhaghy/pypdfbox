@@ -9,7 +9,7 @@ upstream-test directory layout still reflects "we looked, there was
 nothing to port".
 
 When a Java-side ``WriteDecodedDocTest`` does land upstream, port it
-here following the conventions in ``CLAUDE.md`` §"Test Porting
+here following the project's "Test Porting
 Conventions".
 """
 from __future__ import annotations

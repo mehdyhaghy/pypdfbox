@@ -1,5 +1,5 @@
 """Hand-written tests for :class:`PDSeparation` covering the four
-required accessors per CLAUDE.md task scope:
+required accessors per the project's task scope:
 ``get_name`` / ``get_alternate_color_space`` / ``get_tint_transform`` /
 ``to_rgb(tint)``.
 

@@ -125,7 +125,7 @@ def test_close_idempotent() -> None:
 
 def test_operations_after_close_raise() -> None:
     # Upstream raises IOException on every method when the buffer is closed.
-    # We map IOException → OSError (per CLAUDE.md test-porting conventions).
+    # We map IOException → OSError (per the project's test-porting conventions).
     with ScratchFile() as sf:
         buf = sf.create_buffer()
         buf.close()

@@ -25,9 +25,9 @@ Before filing, a quick check that often saves time:
   [`CHANGES.md` → Active divergences](../CHANGES.md#active-divergences-vs-upstream).
   The handful of intentional behavioural divergences from upstream
   PDFBox live there; they are not bugs.
-- Read [`DEFERRED.md`](../DEFERRED.md). Open gaps that are
-  fixable-but-not-yet-done are tracked there with one-line summaries
-  and the wave that flagged them.
+- Check the open
+  [issues](https://github.com/mehdyhaghy/pypdfbox/issues). Gaps
+  that are fixable-but-not-yet-done are tracked there.
 
 A good bug report includes:
 
@@ -67,7 +67,7 @@ rules.
 Do not file security-relevant bugs as public GitHub issues. Please
 contact the maintainer privately via the email on the GitHub
 profile. We will acknowledge within a week, and aim to ship a fix
-in the next wave once the impact is understood.
+in the next release once the impact is understood.
 
 The same applies to issues that could let a malicious PDF cause
 denial-of-service, memory exhaustion, or out-of-bounds reads
@@ -79,11 +79,10 @@ follows on the issue tracker once a patched release is out.
 If you ended up here because you have a fix and want to send it
 upstream:
 
-- [`docs/contributing.md`](contributing.md) — how PRs are
+- [`docs/contributing.md`](../CONTRIBUTING.md) — how PRs are
   structured, the parity-test requirement, the bookkeeping rules.
 - [`docs/build.md`](build.md) — how to run the test suite + lint
   + pre-push hook locally before pushing.
-- [`../CLAUDE.md`](../CLAUDE.md) — the authoritative project rules.
 
 Thank you in advance for keeping pypdfbox tracking upstream.
 

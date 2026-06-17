@@ -22,7 +22,7 @@ class PDFTemplateBuilder(ABC):
     """Builder protocol for assembling the visible-signature template.
 
     Method names mirror the upstream camelCase → snake_case mapping
-    documented in CLAUDE.md. Each method is a step in the build
+    documented in the project's conventions. Each method is a step in the build
     pipeline driven by :class:`PDFTemplateCreator.build_pdf`.
     """
 

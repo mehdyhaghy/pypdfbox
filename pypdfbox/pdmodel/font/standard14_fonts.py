@@ -176,8 +176,8 @@ _GENERIC_FONTS_CACHE: dict[str, Standard14FontWrapper] = {}
 # table (:data:`_SYMBOL_PUA_FALLBACKS`) that routes the 31 Adobe-specific
 # PUA glyph names (bracket-extension pieces, serif/sans register marks,
 # horizontal/vertical extension bars) to their nearest base glyph in the
-# bundled DejaVu Sans — see the wave-1387 audit in ``DEFERRED.md`` for
-# the candidate-font verification matrix that confirmed no OFL math font
+# bundled DejaVu Sans — a deferred follow-up captured the
+# candidate-font verification matrix that confirmed no OFL math font
 # targets the Adobe PUA codepoints directly.
 #
 # Files live in :mod:`pypdfbox.resources.ttf` (see ``NOTICE`` /
@@ -548,7 +548,7 @@ def _uni_name_of_code_point(code_point: int) -> str:
 # **Adobe-specific** — neither the SIL OFL math fonts (STIX Two Math,
 # DejaVu Math TeX Gyre, Noto Sans Math, Asana Math) nor any other
 # permissively-licensed font targets them by codepoint *or* by Adobe's
-# PostScript glyph name. See ``DEFERRED.md`` for the wave-1387
+# PostScript glyph name. A deferred follow-up captured the
 # investigation that confirmed this for each candidate font.
 #
 # Instead of bundling a second math font (which wouldn't help — every

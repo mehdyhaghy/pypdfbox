@@ -1,7 +1,7 @@
 """Upstream port of ``PDFieldTest.java``.
 
 Source: ``pdfbox/src/test/java/org/apache/pdfbox/pdmodel/interactive/form/PDFieldTest.java``
-(PDFBox 3.0.x). Translated method-by-method per CLAUDE.md §"Test Porting
+(PDFBox 3.0.x). Translated method-by-method per the project's "Test Porting
 Conventions". JUnit 5 idioms collapsed to pytest. Java
 ``IllegalArgumentException`` maps to Python ``ValueError`` (see
 ``PDField.set_partial_name`` for the divergence note).

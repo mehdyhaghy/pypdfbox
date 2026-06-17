@@ -589,8 +589,9 @@ class PublicKeySecurityHandler(SecurityHandler):
         Upstream hand-builds a CMS ``EnvelopedData`` with RC2-CBC content
         encryption + per-recipient RSA key wrap; this lite port delegates the
         ASN.1/CMS plumbing to ``cryptography.hazmat.primitives.serialization
-        .pkcs7.PKCS7EnvelopeBuilder`` (library-first per CLAUDE.md). AES-128
-        is used as the content algorithm since RC2 is not exposed by the
+        .pkcs7.PKCS7EnvelopeBuilder`` (library-first per the project's
+        dependency policy). AES-128 is used as the content algorithm since
+        RC2 is not exposed by the
         ``cryptography`` PKCS#7 builder; the resulting envelope still decrypts
         on the read path because the file-key derivation is content-algo
         agnostic — it hashes the envelope bytes verbatim.

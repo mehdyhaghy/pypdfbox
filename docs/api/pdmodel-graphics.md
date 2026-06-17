@@ -40,9 +40,8 @@ Class names match upstream PDFBox 1:1 and the inheritance hierarchy under
 
 ## Shadings (`pypdfbox.pdmodel.graphics.shading`)
 
-Shading types 1-7 are fully decoded (geometry wave 1374) and rendered
-(wave 1375). The Coons/tensor patch `calcLevel` algorithm shipped in
-wave 1377.
+Shading types 1-7 are fully decoded and rendered, including the
+Coons/tensor patch `calcLevel` algorithm.
 
 | Class | Shading type |
 | --- | --- |
@@ -69,7 +68,7 @@ wave 1377.
 | `BlendChannelFunction` | Per-channel adapter used by the soft-mask pipeline. |
 | `BlendComposite` | Skia `Composite` adapter — wraps `BlendFunction` for the rendering backend. |
 
-## Transparency + groups (wave 1379)
+## Transparency + groups
 
 `pypdfbox.rendering.group_graphics.GroupGraphics` and
 `pypdfbox.rendering.page_drawer.TransparencyGroup` together implement

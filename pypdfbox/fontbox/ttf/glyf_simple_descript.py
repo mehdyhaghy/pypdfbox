@@ -19,7 +19,7 @@ The class can be constructed two ways:
 A third "from fontTools" classmethod, :meth:`from_glyph`, wraps an
 already-decoded fontTools glyph so callers can obtain the same
 accessor surface without re-parsing the bytes themselves. This keeps
-us aligned with the "library-first" policy in CLAUDE.md while still
+us aligned with the project's "library-first" policy while still
 exposing the upstream-named API.
 """
 
@@ -158,7 +158,7 @@ class GlyfSimpleDescript(GlyfDescript):
                 for i in range(1, repeats + 1):
                     if index + i >= len(self._flags):
                         # Upstream throws IOException; we mirror that with
-                        # OSError per CLAUDE.md conventions.
+                        # OSError per the project's conventions.
                         raise OSError(
                             f"repeat count ({repeats}) higher than remaining space"
                         )

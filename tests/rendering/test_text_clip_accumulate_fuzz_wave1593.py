@@ -405,8 +405,8 @@ def test_commit_without_image_is_noop() -> None:
 def test_degenerate_zero_area_glyph_does_not_crash() -> None:
     # A collapsed (zero-width) glyph outline: union bounds are degenerate;
     # the commit returns without raising and leaves the clip untouched.
-    # (Divergence from upstream graphics.clip(emptyArea) is documented in
-    # DEFERRED.md; here we only assert no crash.)
+    # (Divergence from upstream graphics.clip(emptyArea) is a documented
+    # deferred follow-up; here we only assert no crash.)
     r = _commit_renderer((40, 40))
     r._text_clip_paths = [_rect_path(10, 10, 10, 30)]  # noqa: SLF001 — zero width
     r._commit_text_clip()  # noqa: SLF001

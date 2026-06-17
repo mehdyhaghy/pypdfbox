@@ -2,7 +2,7 @@
 ``/K`` (knockout) + ``/I`` (isolation) compositing in
 :class:`pypdfbox.rendering.PDFRenderer`.
 
-These tests close the DEFERRED.md "rendering" entry that called out
+These tests close the deferred "rendering" follow-up that called out
 "falls back to isolated non-knockout" — verified against current
 source, all four combinations are implemented (since wave 31, with
 ExtGState soft-mask + blend-mode integration through wave 40 and

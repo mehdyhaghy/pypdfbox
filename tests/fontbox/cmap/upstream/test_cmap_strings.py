@@ -4,7 +4,7 @@
 Exercises the interning helpers ``get_mapping`` / ``get_byte_value`` /
 ``get_index_value`` for one- and two-byte sequences plus the
 non-cached >2-byte path that returns ``None``. The port follows the
-JUnit table in CLAUDE.md (``assertSame`` -> ``is``,
+project's JUnit translation table (``assertSame`` -> ``is``,
 ``assertNotSame`` -> ``is not``, ``assertNull`` -> ``is None``).
 """
 

@@ -16,7 +16,7 @@ def test_args_preserves_message() -> None:
 
 
 def test_is_oserror_subclass() -> None:
-    # Upstream extends IOException; per CLAUDE.md we map IOException to OSError.
+    # Upstream extends IOException; per project convention IOException maps to OSError.
     assert issubclass(MissingImageReaderException, OSError)
 
 

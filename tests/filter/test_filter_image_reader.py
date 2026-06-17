@@ -42,7 +42,7 @@ class TestFindImageReader:
 
     def test_missing_image_reader_is_oserror(self):
         # The exception remains an OSError subclass (PDFBox extends
-        # IOException; we map IOException → OSError per CLAUDE.md).
+        # IOException; we map IOException → OSError per project convention).
         with pytest.raises(OSError):
             Filter.find_image_reader("ZZZ_NOPE", "x")
 

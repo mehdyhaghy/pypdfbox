@@ -124,7 +124,7 @@ it when the source PDF was filled with `/V` but never built an `/AP`.
 
 ## Rich-text values in text fields
 
-Wave 1375/1377 added a supported XHTML subset for the `/RV`
+A supported XHTML subset is recognised for the `/RV`
 rich-text-value entry on text fields with the rich-text flag. The
 supported tag set is: `<p>`, `<span>`, `<br>`, `<b>`, `<strong>`,
 `<i>`, `<em>`, `<u>`, `<sub>`, `<sup>`, and `<font color=... face=...
@@ -146,8 +146,7 @@ the unformatted text.
 
 `/DA` strings reference a font by resource name (e.g.
 `/Helv 12 Tf 0 g`). Pypdfbox follows upstream's three-tier
-resolution order added in wave 1375 when generating field
-appearances:
+resolution order when generating field appearances:
 
 1. The form's default resources (`/AcroForm /DR /Font`).
 2. The widget's existing normal appearance resources (`/AP /N /Resources /Font`).
@@ -160,8 +159,8 @@ falling back to a standard-14 default.
 ## Push-button appearance variants
 
 Push-button widgets carry up to three appearance dictionaries: `/N`
-(normal), `/R` (rollover), and `/D` (down/pressed). Wave 1374/1377
-serialises all three when generating push-button appearances:
+(normal), `/R` (rollover), and `/D` (down/pressed). All three are
+serialised when generating push-button appearances:
 
 ```python
 from pypdfbox.pdmodel.interactive.form import PDPushButton

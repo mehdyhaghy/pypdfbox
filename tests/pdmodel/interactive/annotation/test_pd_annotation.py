@@ -647,7 +647,7 @@ def test_create_annotation_unknown_for_missing_subtype() -> None:
 def test_create_annotation_raises_oserror_for_non_dict() -> None:
     """Upstream throws ``IOException("Error: Unknown annotation type …")``
     when the input is not a COSDictionary; we surface that as
-    :class:`OSError` per the CLAUDE.md mapping."""
+    :class:`OSError` per the project's mapping."""
     with pytest.raises(OSError):
         PDAnnotation.create_annotation(COSName.get_pdf_name("Annot"))
 

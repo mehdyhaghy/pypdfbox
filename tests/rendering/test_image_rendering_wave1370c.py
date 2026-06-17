@@ -2,7 +2,7 @@
 ``/SMask`` integration, ``/Mask`` stencil contracts, JPX color-space
 inference, and the raw raster decode paths.
 
-Cross-platform note (per CLAUDE.md): libtiff / Pillow byte-padding at
+Cross-platform note: libtiff / Pillow byte-padding at
 EOD differs across wheels; do **not** assert on post-EOD tail bytes.
 Use structural / mean-intensity / channel-count checks instead of
 pixel-exact equality.

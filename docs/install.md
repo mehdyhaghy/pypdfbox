@@ -133,8 +133,7 @@ hook), see [`build.md`](build.md).
 | Windows       | ARM64            | untested | Wheels may not exist for all deps.     |
 
 Cross-platform behaviours that the test suite actively guards
-against (a non-exhaustive list, drawn from waves 1324–1325 and the
-ongoing cross-platform checklist):
+against (a non-exhaustive list):
 
 - `mmap` constants: pypdfbox feature-detects `mmap.PROT_READ` and
   falls back to `mmap.ACCESS_READ` on Windows.

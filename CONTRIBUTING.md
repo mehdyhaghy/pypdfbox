@@ -33,9 +33,9 @@ semantics — is preserved verbatim.
 - **`camelCase` → `snake_case` and nothing else.**
   `saveIncremental()` becomes `save_incremental()`, not
   `save_inc()` or `save()` with a flag.
-- **No camelCase aliases.** Earlier waves shipped `saveIncremental`
-  alongside `save_incremental` for source-port convenience; those
-  have been stripped. Don't add new `# noqa: N802` aliases.
+- **No camelCase aliases.** Don't ship `saveIncremental` alongside
+  `save_incremental` for source-port convenience, and don't add
+  `# noqa: N802` aliases. snake_case only.
 - **Behaviour over style.** Lazy COS loading, incremental save
   with byte-range preservation, xref reconstruction, object stream
   generation, marked-content extraction — these must match upstream
@@ -128,31 +128,26 @@ add a row. Binary fixtures copied from
 `pdfbox/src/test/resources/` get rows too — keep filenames
 upstream-identical so future re-syncs are diffable.
 
-## CHANGES.md / HISTORY.md / DEFERRED.md
+## CHANGES.md
 
-Three changelog files, three jobs:
+**`CHANGES.md`** records *active behavioural divergences from
+upstream PDFBox*. Add an entry whenever the port deliberately
+deviates from upstream behaviour (not just translates). Format:
 
-- **`CHANGES.md`** — *active behavioural divergences from upstream
-  PDFBox*. Add an entry whenever the port deliberately deviates
-  from upstream behaviour (not just translates). Format:
+```
+- pypdfbox/<path>: <one-line description of deviation>
+  upstream: PDFBox <version> <java path>
+  reason: <why we deviate>
+```
 
-  ```
-  - pypdfbox/<path>: <one-line description of deviation>
-    upstream: PDFBox <version> <java path>
-    reason: <why we deviate>
-  ```
+Read the "Active divergences vs upstream" section before making
+cross-cutting changes — that's the live list of things you must
+not silently re-resolve.
 
-  Each wave's substantive deltas also get a `## Wave N` heading in
-  this file. Read the "Active divergences vs upstream" section
-  before making cross-cutting changes — that's the live list of
-  things you must not silently re-resolve.
-
-- **`HISTORY.md`** — chronological wave-by-wave log. Append-only.
-  Don't rewrite old entries.
-
-- **`DEFERRED.md`** — open items that are *fixable but not yet
-  done*. Add a row when a port lands partial functionality with a
-  follow-up. Remove the row when the follow-up lands.
+Open items that are *fixable but not yet done* are tracked on the
+[GitHub issue tracker](https://github.com/mehdyhaghy/pypdfbox/issues).
+Open an issue when a port lands partial functionality with a
+follow-up, and close it when the follow-up lands.
 
 Routine `camelCase → snake_case` translations are not changelog
 material. Only record substantive behavioural deltas.
@@ -189,8 +184,7 @@ upstream has a JUnit equivalent:
    `tests/<module>/upstream/test_<class>.py`, translated from
    `pdfbox/src/test/java/org/apache/pdfbox/<module>/<Class>Test.java`.
 
-Translation conventions (full table in `CLAUDE.md` §"Test Porting
-Conventions"):
+Translation conventions:
 
 | Java / JUnit | Python / pytest |
 |---|---|
@@ -219,9 +213,9 @@ silent skips.
 
 ## Cross-platform expectations
 
-CI matrix is Ubuntu + macOS + Windows. Most of the developer
-machines are macOS or Linux. Before pushing, scan your diff for
-the patterns listed under "Cross-platform CI" in `CLAUDE.md`:
+The supported platforms are Ubuntu, macOS, and Windows. Most of
+the developer machines are macOS or Linux. Before pushing, scan
+your diff for the following platform-specific patterns:
 
 - `mmap.PROT_*` constants are POSIX-only — feature-detect.
 - `os.unlink` on an open file raises on Windows — close handles
@@ -237,9 +231,9 @@ the patterns listed under "Cross-platform CI" in `CLAUDE.md`:
 - `pytest.parametrize` with long `bytes` values needs explicit
   `ids=[...]` (Windows test-ID env var caps at 32,767 chars).
 
-Wave history shows three CI cycles burned to fix
-Windows-specific test failures one at a time; a five-minute diff
-review heads off the round-trip.
+A five-minute diff review for these patterns heads off
+Windows-specific test failures that are otherwise only caught
+after pushing.
 
 ## Submitting a pull request
 
@@ -247,9 +241,9 @@ review heads off the round-trip.
 2. Make the change.
 3. Run `uv run ruff check --fix && uv run ruff check`.
 4. Run `.venv/bin/pytest -q --no-cov`.
-5. Update `PROVENANCE.md` (per ported file), `CHANGES.md` (if
-   you introduce a divergence or land a wave), and `DEFERRED.md`
-   (if you close an open item).
+5. Update `PROVENANCE.md` (per ported file) and `CHANGES.md` (if
+   you introduce a behavioural divergence). If your change closes
+   an open item on the issue tracker, reference it in the PR.
 6. Push and open a PR against `main` on GitHub:
    <https://github.com/mehdyhaghy/pypdfbox>.
 

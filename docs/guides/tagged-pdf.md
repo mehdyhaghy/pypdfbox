@@ -77,9 +77,9 @@ type matches; `find_first_by_role` returns the first match or `None`.
 
 ## Attribute objects
 
-Structure attributes attach typed metadata to an element. Wave 1379
-ported the upstream subclasses for the five standard attribute
-owners: `Layout`, `List`, `PrintField`, `Table`, and `ExportFormat`.
+Structure attributes attach typed metadata to an element. The
+upstream subclasses for the five standard attribute owners are
+ported: `Layout`, `List`, `PrintField`, `Table`, and `ExportFormat`.
 
 ```python
 from pypdfbox.pdmodel.documentinterchange.taggedpdf.pd_layout_attribute_object import (

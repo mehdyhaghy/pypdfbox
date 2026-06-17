@@ -2,7 +2,7 @@
 
 Upstream baseline: PDFBox 3.0.x. Java's ``System.out.println(dash)`` at the
 end of ``testGetCOSObject`` is dropped — Java-only plumbing per
-CLAUDE.md test porting conventions — but the ``toString`` form is asserted
+the project's test porting conventions — but the ``toString`` form is asserted
 explicitly to keep the diagnostic surface pinned.
 """
 

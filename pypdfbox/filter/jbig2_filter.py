@@ -20,7 +20,7 @@ no GPL/AGPL code and no native extension involved (the GPL-licensed
 ``jbig2-parser`` → ``jbig2dec`` route was removed in wave 1420, and the
 permissive Apache-2.0 plugin was ported in its place), so the decoder
 sits comfortably inside the project's permissive-only license policy
-(CLAUDE.md "Licensing & attribution").
+(see the project's licensing & attribution policy).
 
 :meth:`JBIG2Decode.decode` (inherited here) decodes the embedded JBIG2
 codestream — handling the ``/JBIG2Globals`` shared-dictionary stream —

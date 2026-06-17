@@ -1,5 +1,5 @@
 """Hand-written tests for :class:`PDDeviceN` covering the seven
-required accessors per CLAUDE.md task scope:
+required accessors per the project's task scope:
 ``get_colorant_names`` / ``get_alternate_color_space`` /
 ``get_tint_transform`` / ``get_attributes`` / ``get_subtype`` /
 ``get_process_color_space`` / ``to_rgb(tints)``.

@@ -46,8 +46,8 @@ def test_oserror_branch_renders_error_panel(
     """OSError from ``PDColorSpace.create`` is caught and surfaced.
 
     Upstream's ``initUI`` matches an ``IOException`` from the same call;
-    pypdfbox's port catches :class:`OSError` (mirrors the CLAUDE.md
-    exception-mapping table). When the create call raises, the
+    pypdfbox's port catches :class:`OSError` (mirrors the project's
+    exception-mapping convention). When the create call raises, the
     constructor stashes the message on ``_errmsg`` and packs a single
     error label.
     """

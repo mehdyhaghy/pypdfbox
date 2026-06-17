@@ -147,8 +147,9 @@ class TTFParser:
 
     Mirrors ``org.apache.fontbox.ttf.TTFParser``. The actual SFNT
     directory + table parsing is delegated to fontTools' ``TTFont``
-    (library-first per CLAUDE.md): re-implementing TTF/OTF parsing in
-    pure Python is exactly what fontTools (MIT) is for. The ``TTFParser``
+    (library-first per the project's dependency policy): re-implementing
+    TTF/OTF parsing in pure Python is exactly what fontTools (MIT) is for.
+    The ``TTFParser``
     class is preserved as the public entry point so PDFBox-shaped code
     that does ``new TTFParser().parse(...)`` ports across without
     rewiring.

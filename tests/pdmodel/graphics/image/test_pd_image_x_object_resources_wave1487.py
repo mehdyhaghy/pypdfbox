@@ -6,7 +6,7 @@ reference so ``getColorSpace()`` can (a) resolve a *named* ``/ColorSpace``
 against the page's ``/Resources/ColorSpace`` subdictionary (PDF 32000-1
 §8.9.5.2) and (b) consult/populate the document-level ResourceCache for an
 indirect colour-space reference. pypdfbox's constructor dropped the parameter
-(DEFERRED.md, wave 1485 agent G); these tests pin the restored behaviour.
+(a deferred follow-up); these tests pin the restored behaviour.
 
 Also pins the per-instance decoded-image cache (upstream
 ``SoftReference<BufferedImage> cachedImage`` + ``cachedImageSubsampling``):

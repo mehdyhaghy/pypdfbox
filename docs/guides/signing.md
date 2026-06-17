@@ -77,7 +77,7 @@ and patches the result into the placeholder.
 `TimestampedPkcs7Signature` wraps a `Pkcs7Signature` and asks an
 RFC 3161 TSA to sign the produced SignerInfo. The token is spliced
 into the SignedData as an `id-aa-timeStampToken` unsigned attribute
-by default (wave 1382). The base SignedData and the timestamp are
+by default. The base SignedData and the timestamp are
 hence inseparable on the wire — `verify` callers see a single blob
 that carries both proofs.
 
@@ -159,7 +159,7 @@ flags it can validate at sign time — others surface as warnings.
 
 `PublicKeyRecipient` groups a certificate with an `AccessPermission`
 mask. Multiple recipients with the same permissions share an
-envelope (wave 1374).
+envelope.
 
 ```python
 from pypdfbox.pdmodel.encryption import (

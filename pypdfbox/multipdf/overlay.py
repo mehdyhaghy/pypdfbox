@@ -110,7 +110,7 @@ class Overlay:
       paints the overlay underneath the existing page content;
       :class:`Position.FOREGROUND` paints it on top.
 
-    Per the PDFBOX-6048 alignment note in ``CLAUDE.md``, this port uses
+    Per the project's PDFBOX-6048 alignment policy, this port uses
     the real lower-left corner of the overlay's MediaBox when computing
     the centering transform — upstream 3.0.x assumed (0, 0). PDFBox 4.0
     plans the same correction.

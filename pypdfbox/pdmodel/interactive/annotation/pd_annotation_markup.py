@@ -354,7 +354,7 @@ class PDAnnotationMarkup(PDAnnotation):
         return isinstance(self._dict.get_dictionary_object(_MEASURE), COSDictionary)
 
     # ---------- remove helpers for previously get/set-only entries ----------
-    # pypdfbox extension — DEFERRED.md (wave 1379) called out ``get/set +
+    # pypdfbox extension — a deferred follow-up called out ``get/set +
     # remove`` for /Popup. The explicit ``remove_*`` predicates make the
     # intent obvious at call sites that strip review-workflow fields
     # before export (sanitization pipelines, anonymisation, etc.).

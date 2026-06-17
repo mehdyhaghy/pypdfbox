@@ -59,7 +59,7 @@ With coverage (drop `--no-cov`):
 Coverage is collected via `pytest-cov` and written to
 `coverage.json` (and `htmlcov/` if you ask for HTML). This run is
 considerably slower than the fast pass — reserve it for when you
-need fresh numbers, e.g. at the end of a wave.
+need fresh numbers.
 
 ## Run the linter
 
@@ -101,12 +101,9 @@ There is no GitHub Actions CI gating pushes for ruff or license
 policy — those gates run locally, on the developer machine, via
 `.git/hooks/pre-push`. The hook is **not** versioned (it's in
 `.git/`, which git itself does not track), so a fresh clone needs
-to install it. The recipe is in [`../CLAUDE.md`](../CLAUDE.md) — the
-relevant section is "Local gating — no GitHub Actions for CI / lint
-/ license-check".
+to install it.
 
-The short version: drop this into `.git/hooks/pre-push` and `chmod
-+x` it:
+Drop this into `.git/hooks/pre-push` and `chmod +x` it:
 
 ```bash
 #!/usr/bin/env bash
@@ -145,20 +142,15 @@ Coverage numbers live in `coverage.json` and are refreshed via:
 (without `--no-cov`). The lines you care about for parity reporting
 are line coverage global, line coverage for the
 parser-writer-pdmodel-contentstream-text-fontbox-rendering-xmpbox-tools
-core, and the wave-over-wave delta.
+core.
 
 Read `coverage.json` directly, or import it in your tool of
-choice, to see the per-module breakdown and the wave-over-wave
-delta.
+choice, to see the per-module breakdown.
 
-## Wave / provenance protocol
+## Provenance protocol
 
-pypdfbox development is organised into "waves" — small, scoped
-units of work that close a class cluster or a test gap. The
-bookkeeping is:
+The per-change bookkeeping is:
 
-- [`HISTORY.md`](../HISTORY.md) — wave-by-wave log of what shipped.
-  Append a new entry per wave.
 - [`PROVENANCE.md`](../PROVENANCE.md) — one row per ported file.
   Format: pypdfbox path → upstream PDFBox version → upstream Java
   path. Required for both production source files and ported test
@@ -168,16 +160,12 @@ bookkeeping is:
   deviations from upstream. Not for trivial naming
   (`camelCase` → `snake_case`); only for cases where pypdfbox
   observably behaves differently from PDFBox.
-- [`DEFERRED.md`](../DEFERRED.md) — open in-flight gaps that are
-  fixable but not yet closed. Each entry carries an estimated
-  effort and the wave that flagged it; closing an entry means
-  ticking it through, not deleting it.
+- The [issue tracker](https://github.com/mehdyhaghy/pypdfbox/issues)
+  — open in-flight gaps that are fixable but not yet closed.
 
 For the parity-test layering rule (hand-written tests +
 ported-upstream tests, both required), see
-[`contributing.md`](contributing.md) and the
-"Test Porting Conventions" section in
-[`../CLAUDE.md`](../CLAUDE.md).
+[`contributing.md`](../CONTRIBUTING.md).
 
 ## Recompute upstream parity (optional)
 
@@ -194,7 +182,7 @@ Numbers shipped in `CHANGES.md` come from this script.
 
 ## Next steps
 
-- [Contributing](contributing.md) — how to actually structure a PR.
+- [Contributing](../CONTRIBUTING.md) — how to actually structure a PR.
 - [Install guide](install.md) — re-read if you hit a native-dep
   build failure during `uv sync`.
 - [API reference](api/index.md) — module map for navigation.

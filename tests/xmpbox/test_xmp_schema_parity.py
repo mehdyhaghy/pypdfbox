@@ -2,8 +2,8 @@
 Hand-written parity tests for the upstream-named entry points added to
 :class:`pypdfbox.xmpbox.XMPSchema` (cluster #1 surface fill-out). These cover
 the aliases that mirror ``org.apache.xmpbox.schema.XMPSchema`` so that callers
-porting Java code recognize the API verbatim — see CLAUDE.md (Hard Rules /
-Compatibility preservation).
+porting Java code recognize the API verbatim — see the project's
+compatibility-preservation rules.
 """
 
 from __future__ import annotations

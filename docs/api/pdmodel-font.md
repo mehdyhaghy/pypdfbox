@@ -50,14 +50,14 @@ width = font.get_string_width("Hello") / 1000.0  # em -> page units at 1pt
 `Standard14Fonts.FontName` is a sealed enum — all 14 names are valid and
 guaranteed to resolve without embedding.
 
-## Liberation fallback (wave 1376)
+## Liberation fallback
 
 When a referenced font is neither standard-14 nor embedded, the renderer
 falls back to the Liberation family bundled at
 `pypdfbox/resources/fonts/liberation/`. This is the last-resort path —
 embed your own font when fidelity matters.
 
-## CJK opt-in (wave 1362)
+## CJK opt-in
 
 `pypdfbox.fontbox.cjk_loader` is a separate, opt-in entry point that loads
 the bundled CJK fonts (Source Han Sans subset) on first use. Importing the

@@ -102,8 +102,8 @@ authoritative surface.
 
 When a link target straddles a chunk boundary the default behaviour
 is to null out the link (the target page no longer exists in the
-chunk being written). Wave 1379 added a `set_cross_chunk_destination_resolver`
-hook that lets you rewrite such links as `GoToR` actions pointing at
+chunk being written). A `set_cross_chunk_destination_resolver`
+hook lets you rewrite such links as `GoToR` actions pointing at
 the sibling chunk file.
 
 ```python

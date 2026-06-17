@@ -14,8 +14,8 @@ TeX Gyre**, **Noto Sans Math**, **Asana Math**, **Pagella Math** —
 and confirmed *none* target the Adobe-Symbol PUA codepoints by
 codepoint *or* by Adobe's PostScript glyph name. The PUA scheme is
 Adobe-specific; modern OpenType math fonts use ``.s1``/``.s12`` size
-variants instead. See ``DEFERRED.md`` "Symbol PUA coverage" for the
-candidate-font verification matrix.
+variants instead. A deferred follow-up on Symbol PUA coverage captured
+the candidate-font verification matrix.
 
 The chosen wave-1387 fix is a **synthesis fallback table**
 (``_SYMBOL_PUA_FALLBACKS`` in :mod:`pypdfbox.pdmodel.font.standard14_fonts`)

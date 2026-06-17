@@ -79,9 +79,9 @@ to R4 (AES-128).
 By default the standard handler encrypts every stream — including
 the catalog's `/Metadata` XMP packet. PDF 32000-1 §7.6.3.2 allows
 producers to leave metadata cleartext so search engines and library
-catalogs can index it without the password. Wave 1367 closed a bug
-where this flag was advertised in the encryption dictionary but the
-metadata stream itself stayed encrypted; both ends now agree.
+catalogs can index it without the password. When this flag is set,
+the metadata stream is left cleartext to match the encryption
+dictionary; both ends agree.
 
 ```python
 policy.set_encrypt_metadata(False)
@@ -94,9 +94,9 @@ dictionary so reader-side key derivation stays consistent.
 ## Public-key encryption with cert recipients
 
 For non-password protection (recipients identified by X.509
-certificate), use `PublicKeyProtectionPolicy`. Wave 1374 added
-recipient grouping: when two recipients share the same permission
-mask they share an envelope, matching upstream PDFBox.
+certificate), use `PublicKeyProtectionPolicy`. Recipient grouping
+is supported: when two recipients share the same permission mask
+they share an envelope, matching upstream PDFBox.
 
 ```python
 from pathlib import Path

@@ -23,7 +23,7 @@ mode dispatch and polarity match upstream's behaviour.
 
 NOTE: libtiff post-EOD byte-padding differs between POSIX and Windows
 wheels — we never assert on bytes past the declared ``row_bytes * rows``
-footprint (CLAUDE.md libtiff EOD carve-out).
+footprint (the project's libtiff EOD carve-out).
 """
 
 from __future__ import annotations

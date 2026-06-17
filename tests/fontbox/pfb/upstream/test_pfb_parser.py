@@ -7,7 +7,7 @@ fonts (``OpenSans-Regular.pfb``, ``DejaVuSerifCondensed.pfb``) that
 upstream downloads into ``target/fonts/`` at build time and that the
 repo does not bundle. The two pure-logic methods — the empty-input and
 negative-record-size guards — are portable and ported here. ``IOException``
-maps to ``OSError`` per the CLAUDE.md test-porting conventions.
+maps to ``OSError`` per the project's test-porting conventions.
 """
 
 from __future__ import annotations

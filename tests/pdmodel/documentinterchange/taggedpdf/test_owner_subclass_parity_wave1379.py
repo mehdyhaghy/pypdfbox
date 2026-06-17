@@ -1,7 +1,7 @@
 """Wave 1379 — verification of the typed PDAttributeObject owner subclass
-cluster flagged in DEFERRED.md.
+cluster flagged as a deferred follow-up.
 
-The DEFERRED entry (under ``pdmodel/font`` per wave-1377 audit) said
+The deferred entry (under ``pdmodel/font``) said
 "Typed PDAttributeObject owner subclasses … Needs verification". This
 module closes that audit by:
 

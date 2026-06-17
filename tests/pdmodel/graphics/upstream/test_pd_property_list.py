@@ -7,7 +7,7 @@ Apache PDFBox 3.0 does not ship a dedicated ``PDPropertyListTest.java`` for
 Because there is no upstream JUnit test to translate, this file pins the
 behavioural contract of the upstream ``create(COSDictionary)`` factory
 exactly as it appears in upstream's source. If/when upstream adds a test,
-those translations should be added here verbatim per CLAUDE.md test-porting
+those translations should be added here verbatim per the project's test-porting
 conventions and PROVENANCE.md updated.
 
 Upstream contract (from

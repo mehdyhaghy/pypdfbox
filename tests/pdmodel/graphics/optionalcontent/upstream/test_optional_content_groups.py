@@ -1,7 +1,7 @@
 """Ported (API-only subset) from upstream Apache PDFBox 3.0.x:
 ``pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/optionalcontent/TestOptionalContentGroups.java``.
 
-Translation rules per CLAUDE.md "Test Porting Conventions". The upstream
+Translation rules per the project's "Test Porting Conventions". The upstream
 tests also exercise PDPageContentStream marked-content writing and
 PDFRenderer image-diffing, which require modules outside this wave's
 scope; those phases are skipped with a single per-test comment and only

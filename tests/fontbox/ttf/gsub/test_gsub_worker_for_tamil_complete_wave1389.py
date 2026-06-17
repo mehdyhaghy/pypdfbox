@@ -2,7 +2,7 @@
 
 Wave 1375 added the worker; wave 1388 audit deferred it; wave 1389
 verifies the port is feature-complete vs upstream and pins the
-contracts that DEFERRED.md called out as the gate to strike the entry:
+contracts that a deferred follow-up called out as the gate to strike the entry:
 
   * Factory registers Tamil under script tags ``tml2`` (preferred) and
     ``taml`` (secondary), in that order.

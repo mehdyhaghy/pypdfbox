@@ -100,7 +100,7 @@ class Type2CharString:
         default_width_x: int = 0,
         nominal_width_x: int = 0,
     ) -> None:
-        # Upstream signature (camelCase → snake_case per CLAUDE.md):
+        # Upstream signature (camelCase → snake_case per the project's conventions):
         #   Type2CharString(Type1CharStringReader font, String fontName,
         #                   String glyphName, int gid, List<Object> sequence,
         #                   int defaultWidthX, int nomWidthX)

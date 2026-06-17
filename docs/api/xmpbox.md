@@ -4,9 +4,8 @@
 packets (typically the `/Metadata` stream on the document catalog) into a
 typed schema hierarchy, and serialises modified schemas back to bytes for
 re-embedding. The DOM is built on `xml.etree.ElementTree` (stdlib only).
-The package was added in cluster #1 with the parser + common schemas, and
-later waves added the typed property hierarchy, structured types, and the
-serialiser.
+The package covers the parser, the common schemas, the typed property
+hierarchy, structured types, and the serialiser.
 
 ## Public surface
 

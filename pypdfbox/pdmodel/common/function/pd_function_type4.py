@@ -912,7 +912,7 @@ def _op_not(s: Stack) -> None:
         # Upstream ``Not`` on an Integer is arithmetic negation (``-int1``),
         # NOT a bitwise complement, and the result keeps the Integer tag. A
         # Float raises ClassCastException (the strict int discipline). See
-        # CLAUDE.md "Behavior over style".
+        # behavior over style.
         s.append(-a)
     else:
         raise OSError("type mismatch: not operand must be bool or int")

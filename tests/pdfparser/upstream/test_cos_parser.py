@@ -6,7 +6,7 @@ of ``COSParser`` (rebuildTrailer, bfSearchForObjects, bfSearchForXRef,
 parseXrefStream, parsePDFHeader). We translate the cases that have a
 direct counterpart on our ``COSParser``.
 
-JUnit5 → pytest mapping per CLAUDE.md §"Test Porting Conventions".
+JUnit5 → pytest mapping per the project's "Test Porting Conventions".
 
 Skipped upstream cases:
 - ``checkXRefStream`` exercises a Java ``RandomAccessFile`` against a

@@ -11,7 +11,7 @@ Java-specific plumbing (``getResourceAsStream``, ``Loader.loadPDF``) is
 swapped for direct ``COSDictionary`` construction; the lite port has no
 PDF-loading round-trip that mirrors upstream's fixture-based setup. Tests
 that only exercise that plumbing are skipped with a one-line comment per
-the porting conventions in CLAUDE.md.
+the project's porting conventions.
 """
 
 from __future__ import annotations

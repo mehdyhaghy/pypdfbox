@@ -136,8 +136,8 @@ Useful `TextPosition` accessors:
 
 ## Tuning the line-break heuristic
 
-Wave 1370 ported upstream's full setter surface for the formatting
-layer. Defaults match upstream PDFBox 3.0; tune them when your
+Upstream's full setter surface for the formatting layer is
+ported. Defaults match upstream PDFBox 3.0; tune them when your
 document has tight leading, deep indentation, or unusual spacing.
 
 | Setter | Purpose | Upstream default |

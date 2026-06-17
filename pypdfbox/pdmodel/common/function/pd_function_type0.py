@@ -19,7 +19,7 @@ _DECODE = "Decode"
 # eval reads each sample with ``MemoryCacheImageInputStream.readBits(bits)``,
 # whose contract accepts any width in [0, 64]. So an off-spec width like 3, 5, 7
 # (or 0) is read bit-for-bit rather than rejected — PDFBox parity over the
-# stricter spec set (CLAUDE.md "Behavior over style"). For widths 0..32 the
+# stricter spec set (behavior over style). For widths 0..32 the
 # read is fully determinate and pypdfbox reproduces PDFBox's output to the bit
 # (verified by the wave-1535 sampled-fuzz oracle). Widths 33..64 are accepted by
 # PDFBox too, but its output there depends on a Java ``(int)`` long-truncation
@@ -47,8 +47,8 @@ class PDFunctionType0(PDFunction):
     and combines them with n-linear interpolation per PDF 32000-1 §7.10.2.
     ``/Order`` is read for diagnostics only: upstream PDFBox's eval() ignores
     it and always interpolates linearly, so a ``/Order = 3`` table is
-    interpolated linearly here too (parity over spec-cubic — CLAUDE.md
-    "Behavior over style").
+    interpolated linearly here too (parity over spec-cubic — behavior
+    over style).
     """
 
     def __init__(self, function: COSBase | None = None) -> None:
@@ -596,7 +596,7 @@ class PDFunctionType0(PDFunction):
 
         # Upstream PDFBox (PDFunctionType0.eval, 3.0.7) ignores /Order entirely
         # and ALWAYS performs n-linear interpolation — there is no cubic branch
-        # in its eval(). Parity is the metric (CLAUDE.md "Behavior over style"),
+        # in its eval(). Parity is the metric (behavior over style),
         # so we mirror that: /Order is read for diagnostics only and any value
         # (including 3) is interpolated linearly. A /Order=3 sample table that a
         # cubic spline would round differently must still match Java's linear

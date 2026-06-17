@@ -1,6 +1,6 @@
 """Ported from upstream ``PDDefaultAppearanceStringTest.java``.
 
-Translation conventions follow ``CLAUDE.md``:
+Translation conventions follow the project's guidelines:
 
 - ``@BeforeEach setUp()`` → module-scoped pytest fixture.
 - ``assertEquals(expected, actual, delta)`` → ``actual == pytest.approx(expected, abs=delta)``.

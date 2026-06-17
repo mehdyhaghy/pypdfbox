@@ -2,7 +2,7 @@
 ``pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/image/PDImageXObjectTest.java``
 and the related mask-flow tests in ``TestImageXObject*.java``.
 
-Translated from JUnit 5 to pytest per CLAUDE.md §"Test Porting Conventions".
+Translated from JUnit 5 to pytest per the project's "Test Porting Conventions".
 
 Scope: typed accessors for ``/SMask``, ``/Mask`` (both stream and color-key
 forms), ``/ImageMask`` / stencil aliases, and ``/SMaskInData``. Upstream

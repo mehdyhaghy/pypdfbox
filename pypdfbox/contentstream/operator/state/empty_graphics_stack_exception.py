@@ -7,8 +7,8 @@ class EmptyGraphicsStackException(OSError):
 
     Mirrors
     ``org.apache.pdfbox.contentstream.operator.state.EmptyGraphicsStackException``.
-    Upstream extends ``IOException``; per CLAUDE.md test-porting table we
-    map ``IOException`` to ``OSError`` in pypdfbox.
+    Upstream extends ``IOException``; per the project's test-porting
+    conventions we map ``IOException`` to ``OSError`` in pypdfbox.
 
     The message text mirrors upstream verbatim:
     ``Cannot execute restore, the graphics stack is empty``.

@@ -5,7 +5,7 @@ Originally (wave 1369) this file pinned a Catmull-Rom cubic spline for
 PDFBox 3.0.7 jar that upstream ``PDFunctionType0.eval`` has **no cubic
 branch**: it reads neither honours ``/Order`` — every input is interpolated
 n-linearly regardless. pypdfbox was reverted to match (parity is the metric,
-CLAUDE.md "Behavior over style"), so this file now pins the corrected
+the project's "Behavior over style" rule), so this file now pins the corrected
 contract: ``/Order = 1`` and ``/Order = 3`` (and every other value) produce
 byte-identical linear output.
 """

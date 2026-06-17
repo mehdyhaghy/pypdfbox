@@ -10,8 +10,8 @@ upstream's ``main`` test would exercise lives in
 ``tests/tools/test_texttopdf.py``.
 
 If upstream ever adds a dedicated ``TextToPDFTest.java``, port the
-JUnit cases here using the matrix in ``CLAUDE.md`` §"Test Porting
-Conventions".
+JUnit cases here using the project's "Test Porting
+Conventions" matrix.
 """
 from __future__ import annotations
 

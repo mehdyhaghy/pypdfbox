@@ -98,8 +98,8 @@ def test_inline_images_one_op(stream: str, image: str) -> None:
 
 
 def test_nested_bi() -> None:
-    # Upstream throws IOException — we raise PDFParseError (matches CLAUDE.md
-    # mapping IOException → PDFParseError in parser context).
+    # Upstream throws IOException — we raise PDFParseError (matches the
+    # project's mapping IOException → PDFParseError in parser context).
     with pytest.raises(PDFParseError) as excinfo:
         _parse("BI/IB/IB BI/ BI")
     msg = str(excinfo.value)

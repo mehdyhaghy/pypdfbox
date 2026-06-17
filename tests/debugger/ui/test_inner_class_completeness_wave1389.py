@@ -9,7 +9,7 @@ adding Tk-equivalent public methods on the corresponding Python
 classes. This test asserts each method now exists on the expected
 class and — where headless-safe — exercises the lightweight logic.
 
-The matrix below mirrors the ``DEFERRED.md`` audit verbatim.
+The matrix below mirrors the deferred-items audit verbatim.
 """
 
 from __future__ import annotations

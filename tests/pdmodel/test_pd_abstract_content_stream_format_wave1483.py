@@ -1,7 +1,7 @@
 """Wave 1483 — byte-level parity for the shared ``PDAbstractContentStream``
 numeric-operand formatter (``writeOperand(float)`` / ``formatDecimal``).
 
-Closes the DEFERRED.md (wave 1480) item flagging that
+Closes a deferred follow-up flagging that
 ``pd_abstract_content_stream._format_decimal`` still used a float64
 ``f"{f:.{n}f}"`` path while ``pd_page_content_stream._format_number`` had been
 narrowed to Java's 32-bit ``float`` + ``NumberFormatUtil.formatFloatFast``

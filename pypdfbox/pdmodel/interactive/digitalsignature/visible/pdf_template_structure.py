@@ -16,7 +16,7 @@ class PDFTemplateStructure:
     """Mutable state shared across the visible-signature build pipeline.
 
     Each attribute corresponds to one of the upstream private fields.
-    Per CLAUDE.md, getter/setter pairs use snake_case (``get_page`` /
+    Per the project's conventions, getter/setter pairs use snake_case (``get_page`` /
     ``set_page``); the underlying attribute is stored on a ``_``-prefixed
     private name so accidental attribute access doesn't bypass the
     accessor surface.

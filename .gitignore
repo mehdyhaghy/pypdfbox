@@ -74,3 +74,7 @@ pdfbox/
 # Shared parity / wave checkpoint (project-local, untracked by design — see .parity/README.md)
 .parity/
 coverage.json
+
+# AI assistant config + migration apparatus — kept LOCAL only (not for the public repo)
+CLAUDE.md
+archive/

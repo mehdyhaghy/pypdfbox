@@ -311,7 +311,7 @@ class CCITTFaxDecode(Filter):
             # entirely pypdfbox-constructed and deterministic, so it is byte-
             # exact with PDFBox here — unlike the partial-decode path, where the
             # head bytes are libtiff/Pillow codec output and only "decode
-            # succeeds vs throws" can be pinned (CLAUDE.md libtiff EOD carve-out).
+            # succeeds vs throws" can be pinned (the project's libtiff EOD carve-out).
             return self._zero_fill_result(
                 decoded, parameters, columns=columns, rows=rows, black_is_1=black_is_1
             )

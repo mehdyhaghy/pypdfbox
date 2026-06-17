@@ -10,7 +10,7 @@ extends ``PDPageContentStream`` for cohesion, so its ``__init__`` resets the
 instance ``_max_fraction_digits`` back to the base default (4) to preserve
 upstream byte parity.
 
-This was a divergent 5-digit pin (DEFERRED.md, wave 1483 agent B). The
+This was a divergent 5-digit pin (a deferred follow-up). The
 oracle-confirmed values below were captured from a REAL upstream
 ``PDAppearanceContentStream`` (mode ``abstract`` of
 ``AbstractContentStreamFormatProbe`` drives ``new

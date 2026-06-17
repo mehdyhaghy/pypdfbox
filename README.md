@@ -98,11 +98,10 @@ the dependency tree before every push — full recipe in
 
 ## Contribute
 
-PRs are welcome. See [`docs/contributing.md`](docs/contributing.md) for
-the wave-driven contribution workflow, the parity test layering
-(hand-written + ported upstream tests), and the bookkeeping rules
-around [`PROVENANCE.md`](PROVENANCE.md), [`CHANGES.md`](CHANGES.md),
-and [`DEFERRED.md`](archive/migration-docs/DEFERRED.md).
+PRs are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the
+contribution workflow, the parity test layering (hand-written +
+ported upstream tests), and the bookkeeping rules around
+[`PROVENANCE.md`](PROVENANCE.md) and [`CHANGES.md`](CHANGES.md).
 
 In short, every change should:
 
@@ -196,8 +195,8 @@ full list. The most common stable-state divergences and gaps are:
 
 The full active-divergences list lives in
 [`CHANGES.md` → Active divergences](CHANGES.md#active-divergences-vs-upstream).
-Open in-flight gaps that are *fixable but not yet done* live in
-[`DEFERRED.md`](archive/migration-docs/DEFERRED.md).
+Open in-flight gaps that are *fixable but not yet done* are tracked on
+the [issue tracker](https://github.com/mehdyhaghy/pypdfbox/issues).
 
 ## License
 

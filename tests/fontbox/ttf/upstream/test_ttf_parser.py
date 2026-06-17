@@ -1,7 +1,7 @@
 """Tests ported from upstream PDFBox 3.0
 ``fontbox/src/test/java/org/apache/fontbox/ttf/TestTTFParser.java``.
 
-Translated to pytest per the conventions in ``CLAUDE.md``.
+Translated to pytest per the project's conventions.
 """
 
 from __future__ import annotations

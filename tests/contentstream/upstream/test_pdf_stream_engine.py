@@ -22,7 +22,7 @@ def test_init_page_rejects_null_page_like_upstream() -> None:
     """Mirrors upstream ``initPage(PDPage)`` which throws
     ``IllegalArgumentException("Page cannot be null")``. Our snake_case
     port surfaces ``ValueError`` (the closest Pythonic mapping per the
-    porting conventions in CLAUDE.md)."""
+    project's porting conventions)."""
     engine = PDFStreamEngine()
     with pytest.raises(ValueError, match="cannot be null"):
         engine.init_page(None)  # type: ignore[arg-type]
@@ -30,8 +30,8 @@ def test_init_page_rejects_null_page_like_upstream() -> None:
 
 def test_show_form_requires_current_page_like_upstream() -> None:
     """Upstream ``showForm`` raises ``IllegalStateException`` when no
-    current page is set. We surface ``RuntimeError`` (mapping in
-    CLAUDE.md)."""
+    current page is set. We surface ``RuntimeError`` (the project's
+    exception mapping)."""
     from pypdfbox.cos import COSStream  # noqa: PLC0415
     from pypdfbox.pdmodel.graphics.form.pd_form_x_object import (  # noqa: PLC0415
         PDFormXObject,

@@ -19,7 +19,7 @@ def test_message_mirrors_upstream_verbatim() -> None:
 
 
 def test_is_oserror_subclass() -> None:
-    # Per CLAUDE.md test-porting table: IOException -> OSError.
+    # Per the project's test-porting convention: IOException -> OSError.
     assert issubclass(EmptyGraphicsStackException, OSError)
 
 

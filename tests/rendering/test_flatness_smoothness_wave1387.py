@@ -11,8 +11,8 @@ screens typically 0.0 (no banding tolerance).
 
 skia handles curve flattening + shading colour interpolation at
 sub-pixel precision internally, so the file-declared tolerances
-cannot directly tune skia. Wave 1387 turns the documented "best-effort
-no-op" entry on DEFERRED.md into a real behavioural application:
+cannot directly tune skia. These tests turn the documented "best-effort
+no-op" deferred entry into a real behavioural application:
 
 * ``/FL`` > 1.0 triggers a pre-flatten pass on ``c`` / ``v`` / ``y``
   before the cubic Bezier reaches skia — the curve is replaced by a

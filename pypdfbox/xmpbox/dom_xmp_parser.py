@@ -268,7 +268,7 @@ class DomXmpParser:
 
     Ported (subset) from ``org.apache.xmpbox.xml.DomXmpParser`` (PDFBox 3.0).
     Backed by the Python stdlib ``xml.etree.ElementTree``; no external XML
-    dependency is added (see CLAUDE.md library policy / PRD §3.7).
+    dependency is added (see the project's library policy / PRD §3.7).
 
     Behavior:
 

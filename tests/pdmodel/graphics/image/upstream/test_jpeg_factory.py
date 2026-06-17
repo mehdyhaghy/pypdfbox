@@ -26,7 +26,7 @@ Notes on the port:
   ``BufferedImage`` types. Their PIL equivalents are RGBA flattening
   (covered) and 16-bit RGB (covered via mode conversion); the
   per-AWT-type assertions are skipped with a one-line comment per the
-  CLAUDE.md test-porting conventions.
+  project's test-porting conventions.
 
 - ``testPDFBox5137`` uses a tiny synthetic JPEG whose SOF frame declares
   RGB data while the first SOS scan lists one component. The bytes are

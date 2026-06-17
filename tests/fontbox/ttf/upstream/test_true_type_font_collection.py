@@ -23,7 +23,7 @@ def test_number_of_fonts() -> None:
     The payload is a valid TTC magic + zero-version + a clearly-too-
     large ``numFonts`` (``0x7FFFFFFF``); upstream asserts ``IOException``
     via ``assertThrows``. Our parity exception is ``OSError`` (Python's
-    generic I/O class, per CLAUDE.md's translation table).
+    generic I/O class, per the project's translation table).
     """
     payload = bytes(
         [

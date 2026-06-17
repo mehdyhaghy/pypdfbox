@@ -856,7 +856,7 @@ def test_split_with_broken_destination() -> None:
             assert link.get_destination() is None
         # The original (unmodified) link still has the broken /Dest and
         # raises (upstream raises IOException; we map to OSError per
-        # CLAUDE.md exception mapping).
+        # the project's exception mapping).
         annotations = doc.get_page(1).get_annotations()
         assert len(annotations) == 1
         link = annotations[0]

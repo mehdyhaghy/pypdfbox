@@ -1,7 +1,7 @@
 """Ported upstream tests from
 ``pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/image/PDImageXObjectTest.java``.
 
-Translated from JUnit 5 to pytest per CLAUDE.md §"Test Porting Conventions".
+Translated from JUnit 5 to pytest per the project's "Test Porting Conventions".
 
 Scope: convenience-method parity for ``createFromFile`` /
 ``createFromFileByExtension`` / ``createFromFileByContent`` /

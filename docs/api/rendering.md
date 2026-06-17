@@ -18,7 +18,7 @@ the project's permissive-license rule.
 | `ImageType` | `enum.Enum` — `BINARY`, `GRAY`, `RGB`, `ARGB`. Map to PIL modes `1`/`L`/`RGB`/`RGBA`. |
 | `GlyphCache` | Per-font path cache. Lazily computes outlines via `FontBoxFont.get_path(name)`. Threadsafe via per-font lock. |
 | `GroupGraphics` | Implements an off-screen transparency-group buffer. Used by both soft masks and `q ... /Form Do ... Q` when the form X-object carries a `/Group` dictionary. |
-| `TransparencyGroup` | One off-screen group + its bounds. Composited back into the parent on `Q`. Implements isolated/knockout/non-isolated semantics (wave 1379). |
+| `TransparencyGroup` | One off-screen group + its bounds. Composited back into the parent on `Q`. Implements isolated/knockout/non-isolated semantics. |
 | `SoftMask` | Wraps a `/SMask` dictionary and produces a per-pixel alpha mask. Type "Alpha" and "Luminosity" are both supported. |
 | `SoftPaintContext` | Skia paint adapter that consumes a `SoftMask`. |
 | `TilingPaint` | Skia `Shader` for tiling patterns (`/PatternType 1`). |
@@ -54,7 +54,7 @@ The off-screen flow for a transparency group is:
    surface.
 4. On `Q`, the group is composited back. Group `/I` (isolated) and `/K`
    (knockout) flags select non-isolated/isolated and additive/replace
-   composition respectively (wave 1379).
+   composition respectively.
 
 Soft masks intercept the group's alpha and replace it with the rendered
 mask's alpha (or luminosity), then the result is composited.

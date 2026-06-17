@@ -3,7 +3,7 @@ Passive PDF/A flavour detector.
 
 This module is a pypdfbox addition with **no upstream PDFBox equivalent**.
 PDFBox 3.0 ships no PDF/A flavour-detection helper (and 4.0 has dropped the
-``preflight`` module entirely — see CLAUDE.md). This module surfaces the
+``preflight`` module entirely — see the project's scope policy). This module surfaces the
 flavour data shape (part + conformance) without taking on any validation
 responsibility.
 

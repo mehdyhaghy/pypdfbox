@@ -1994,7 +1994,7 @@ class COSParser(BaseParser):
         try:
             self.set_eof_lookup_range(int(override))
         except ValueError:
-            # Upstream LOG.warn — silent here (CLAUDE.md: stdlib logging
+            # Upstream LOG.warn — silent here (stdlib logging
             # is acceptable; we don't want chatty parser output).
             return
 

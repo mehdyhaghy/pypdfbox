@@ -7,8 +7,8 @@ class MissingImageReaderException(OSError):
     is unavailable for an image-bearing filter.
 
     Mirrors ``org.apache.pdfbox.filter.MissingImageReaderException``.
-    Upstream extends ``IOException``; per CLAUDE.md test-porting table we
-    map ``IOException`` to ``OSError`` in pypdfbox.
+    Upstream extends ``IOException``; per the project's test-porting
+    conventions we map ``IOException`` to ``OSError`` in pypdfbox.
 
     The single-argument constructor mirrors upstream verbatim. The
     :class:`PDFStreamEngine` operator-exception triage demotes both

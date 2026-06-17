@@ -11,7 +11,7 @@ exercised indirectly. This file ports the resource interactions found in:
   optionalcontent/TestOptionalContentGroups.java``
   (property-list registration via ``add(PDPropertyList)``)
 
-Translation conventions follow CLAUDE.md "Test Porting Conventions".
+Translation conventions follow the project's "Test Porting Conventions".
 """
 
 from __future__ import annotations

@@ -8,7 +8,7 @@ fixtures; we don't ship that font, so the parsed-content assertions
 ``test_void_encoding``, ``test_char_string_bytess``,
 ``test_global_subr_index``, ``test_delta_lists``,
 ``test_multi_thread_parse``) are skipped with a one-line comment per
-the porting conventions in CLAUDE.md (sample PDFs / binary fixtures
+the project's porting conventions (sample PDFs / binary fixtures
 section).
 
 What we DO port deterministically: the round-trip ``read_font`` helper

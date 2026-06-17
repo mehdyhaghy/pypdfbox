@@ -167,7 +167,7 @@ class PDFAExtensionSchema(XMPSchema):
     # :class:`PDFASchemaType` / :class:`PDFAPropertyType` /
     # :class:`PDFATypeType` / :class:`PDFAFieldType` hierarchy so that the
     # nested ``pdfaSchema:property`` Seq and ``pdfaSchema:valueType`` Seq are
-    # introspectable — closing the wave-1379 DEFERRED.md entry for nested
+    # introspectable — closing a deferred follow-up for nested
     # struct typing.
 
     def add_schema_description(self, schema_description: PDFASchemaType) -> str:

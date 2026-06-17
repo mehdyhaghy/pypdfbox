@@ -318,7 +318,7 @@ class PDImageXObject(PDXObject):
         §8.9.5.2) and lets an indirect colour-space reference hit the
         document-level ResourceCache instead of re-parsing on every call —
         the behaviour that was dropped when the constructor lost its
-        ``resources`` parameter (DEFERRED.md, wave 1485). The typed wrapper
+        ``resources`` parameter (a deferred follow-up). The typed wrapper
         is cached per instance (upstream's ``private PDColorSpace
         colorSpace`` field) — repeated calls return the same object until
         :meth:`set_color_space` resets it."""

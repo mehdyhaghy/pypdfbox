@@ -6,7 +6,7 @@ a standalone ``OTFParserTest.java``; these tests target the public
 API surface those tests exercise on ``OTFParser`` itself
 (constructors, ``parse``, ``newFont``, ``readTable``, ``allowCFF``).
 
-Translated to pytest per the conventions in ``CLAUDE.md``.
+Translated to pytest per the project's conventions.
 """
 
 from __future__ import annotations
@@ -93,7 +93,7 @@ def test_constructor_takes_is_embedded() -> None:
 
 
 def test_extends_ttf_parser() -> None:
-    """Hierarchy preservation per CLAUDE.md (PDFBox §3 — preserve
+    """Hierarchy preservation per project rule (PDFBox §3 — preserve
     inheritance hierarchies)."""
     assert issubclass(OTFParser, TTFParser)
 

@@ -22,7 +22,7 @@ Two :class:`SignatureInterface` implementations sit on top of the existing
   :meth:`PDDocument.add_signature` + :meth:`PDDocument.save_incremental`
   pipeline that drives normal signatures.
 
-Library-first per :file:`CLAUDE.md`: we do not reimplement PKCS#7 or
+Library-first per the project's dependency policy: we do not reimplement PKCS#7 or
 RFC 3161; we wrap :class:`Pkcs7Signature` (PyCA ``cryptography``) and
 :class:`TSAClient` (built on ``urllib`` with a pluggable transport).
 PyCA does not expose CMS ``unsignedAttrs`` insertion, so the embedding

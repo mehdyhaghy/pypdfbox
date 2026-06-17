@@ -42,7 +42,7 @@ class PDFUAIdentificationSchema(XMPSchema):
         formal corrigenda alongside amendments).
 
     This is a passive schema: it stores the metadata claim only. PDF/UA
-    *validation* is explicitly out of scope (see CLAUDE.md — conformance
+    *validation* is explicitly out of scope (see the project's scope policy — conformance
     checking is left to whichever external validator the downstream user
     chooses).
     """

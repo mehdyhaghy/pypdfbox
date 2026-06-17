@@ -1,7 +1,7 @@
 """Wave 1392 — close the ``GsubData`` projection + ``OpenTypeScript``
-constants gap previously tracked in DEFERRED.md.
+constants gap previously tracked as a deferred follow-up.
 
-The DEFERRED.md entry called out two latent gaps in
+The deferred entry called out two latent gaps in
 ``pypdfbox/fontbox/ttf/glyph_substitution_table.py``:
 
 1. ``get_gsub_data`` / ``get_gsub_data(scriptTag)`` returned ``None``

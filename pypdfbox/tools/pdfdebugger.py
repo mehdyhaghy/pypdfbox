@@ -9,7 +9,7 @@
 Upstream ``org.apache.pdfbox.tools.PDFDebugger`` is a heavy Swing GUI for
 interactively browsing the COS object pool. We deliberately do **not**
 replicate that — pypdfbox does not pull in any GUI subsystem (per the
-project-wide divergence noted in ``CHANGES.md`` and ``CLAUDE.md``).
+project-wide divergence noted in ``CHANGES.md``).
 
 This is the *lite* CLI alternative — analogous in spirit to
 ``qpdf --json`` / ``mutool show`` (non-interactive) or ``pdb`` (interactive).

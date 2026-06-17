@@ -38,7 +38,7 @@ class Pkcs7Signature(SignatureInterface):
     of a PDF signature dictionary. Mirrors the
     ``adbe.pkcs7.detached`` SubFilter (ISO 32000-1 §12.8.3.3).
 
-    Library-first per :file:`CLAUDE.md`: we wrap PyCA's
+    Library-first per the project's dependency policy: we wrap PyCA's
     ``PKCS7SignatureBuilder`` instead of reimplementing CMS / ASN.1.
     """
 

@@ -9,7 +9,7 @@ contract that ``PDFunction.create()`` documents:
   - dispatching dictionary-backed and stream-backed functions to the
     correct concrete subtype,
   - rejecting non-dictionary / unsupported ``/FunctionType`` values
-    with the ``IOException``-equivalent (``OSError`` per CLAUDE.md
+    with the ``IOException``-equivalent (``OSError`` per the project's
     Java-to-Python mapping; we surface ``ValueError``/``TypeError``
     today — see ``test_pd_function.py``),
   - the static ``interpolate`` helper (PDF 32000-1 §7.10.2),

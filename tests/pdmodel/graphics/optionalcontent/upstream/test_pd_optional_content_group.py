@@ -1,7 +1,7 @@
 """Ported from upstream Apache PDFBox 3.0.x:
 ``pdfbox/src/test/java/org/apache/pdfbox/pdmodel/graphics/optionalcontent/PDOptionalContentGroupTest.java``.
 
-Translation rules per CLAUDE.md §"Test Porting Conventions": JUnit
+Translation rules per the project's "Test Porting Conventions": JUnit
 ``@Test`` → ``def test_...``; ``assertEquals(expected, actual)`` →
 ``assert actual == expected``; ``assertNull(x)`` → ``assert x is None``.
 """

@@ -6,7 +6,7 @@ PDAcroFormFlattenTest.java``.
 Upstream fetches sample PDFs from Apache JIRA over HTTPS, flattens them,
 and pixel-compares the rendered output against a generated reference
 PNG. That mode is **deliberately not portable to this repo** — the
-CLAUDE.md hard rule forbids tests from making network calls, and the
+project's hard rule forbids tests from making network calls, and the
 `PDFRenderer` pixel-parity contract is recorded as a documented
 divergence (see ``CHANGES.md`` "Active divergences").
 
@@ -175,7 +175,7 @@ def test_flatten_single_field() -> None:
 # Each named case carries a structural invariant — that invariant is
 # what we assert here, against a synthetic AcroForm whose shape reflects
 # the failure mode the upstream case was guarding against. The pixel
-# rendering parity layer is intentionally **not** ported (CLAUDE.md
+# rendering parity layer is intentionally **not** ported (the project's
 # hard rule + ``CHANGES.md`` "PDFRenderer pixel-exact parity not
 # portable" divergence).
 

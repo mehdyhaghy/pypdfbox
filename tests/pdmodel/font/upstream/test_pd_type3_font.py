@@ -12,7 +12,7 @@ pipeline that are scoped to later clusters. We translate the remaining
 shape/contract tests that exercise the dictionary surface directly,
 matching upstream call ordering and assertions one-for-one. Tests
 that demand a parser or rendering harness are skipped with a
-single-line comment per the porting conventions in CLAUDE.md.
+single-line comment per the project's porting conventions.
 """
 
 from __future__ import annotations

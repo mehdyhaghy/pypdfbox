@@ -75,7 +75,7 @@ class CSArrayBased:
         except OSError as ex:
             # Upstream catches IOException from PDColorSpace.create — in
             # pypdfbox the analogue is OSError (or its parser-specific
-            # subclasses) per CLAUDE.md's exception mapping table.
+            # subclasses) per the project's exception mapping convention.
             self._errmsg = str(ex)
 
         self.init_ui(master)

@@ -33,7 +33,7 @@ def _make_ref(
 def test_inherits_from_abstract_x_reference() -> None:
     """Confirms the inheritance hierarchy matches upstream
     ``AbstractXReference → ObjectStreamXReference`` (PDFBox 3.x).
-    Mirrors CLAUDE.md's "preserve inheritance hierarchies" rule."""
+    Mirrors the project's "preserve inheritance hierarchies" rule."""
     ref = _make_ref()
     assert isinstance(ref, AbstractXReference)
 

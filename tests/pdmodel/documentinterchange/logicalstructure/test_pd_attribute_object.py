@@ -3,7 +3,7 @@
 Sibling files (``test_pd_attribute_object_wave275.py``,
 ``..._wave1241.py``, ``..._wave1252.py``, ``..._parity.py``) carry the
 historical wave-by-wave round-out tests; this module is the
-canonically-named suite per CLAUDE.md §11 and consolidates the
+canonically-named suite per the project's task-granularity rule and consolidates the
 upstream-faithful surface coverage that's grown across waves.
 
 It explicitly captures the wave 1256 parity-script false positives so

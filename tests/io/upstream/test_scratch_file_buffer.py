@@ -8,7 +8,7 @@ pypdfbox's ``ScratchFileBuffer`` mirrors upstream's page-backed semantics
 ``ScratchFile``, and ``seek`` raises ``EOFError`` (mapped from upstream
 ``EOFException``) when the target is past ``length()``.
 
-IOException → OSError per CLAUDE.md test-porting conventions.
+IOException → OSError per the project's test-porting conventions.
 """
 
 from __future__ import annotations

@@ -282,7 +282,7 @@ class PDVisibleSignDesigner:
         return self
 
     def get_x_axis(self) -> float:
-        """Mirrors ``getxAxis`` (Java line 311) — snake_case'd per CLAUDE.md."""
+        """Mirrors ``getxAxis`` (Java line 311) — snake_case'd per project convention."""
         return self._x_axis
 
     # Parity alias: upstream's ``getxAxis`` snake-cases to ``getx_axis``

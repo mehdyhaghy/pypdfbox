@@ -150,7 +150,7 @@ doc.get_document_catalog().get_cos_object().set_item("AF", af_array)
 ```
 
 Pypdfbox does not validate PDF/A conformance itself (see the
-[support](../support.md) page and `CLAUDE.md` for why). The
+[support](../support.md) page for why). The
 `/AFRelationship` setter is just the data plumbing — verifying that
 your output is actually PDF/A-3-compliant is left to a
 permissively-licensed external validator of your choice.

@@ -108,7 +108,7 @@ def test_set_context_late_binding_engages_restore_logic() -> None:
 
 def test_empty_graphics_stack_exception_is_oserror_subclass() -> None:
     """Upstream extends ``IOException`` → we extend ``OSError`` per the
-    CLAUDE.md test-porting table."""
+    project's test-porting convention."""
 
     exc: Any = EmptyGraphicsStackException()
     assert isinstance(exc, OSError)
