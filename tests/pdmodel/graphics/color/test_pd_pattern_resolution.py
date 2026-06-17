@@ -36,13 +36,14 @@ def test_initial_color_is_empty_for_uncolored_pattern() -> None:
     assert initial.get_components() == []
 
 
-def test_initial_color_color_space_round_trips_to_pattern() -> None:
-    """Empty-pattern initial color still reports Pattern as its CS so
-    ``PDColor.is_pattern()`` and renderers branch correctly."""
+def test_initial_color_color_space_is_null() -> None:
+    """Upstream ``EMPTY_PATTERN`` has a ``null`` colour space and no
+    pattern name, so ``getColorSpace()`` is ``None`` and ``isPattern()``
+    is ``False`` (closed in wave 1595; was previously ``cs=self``)."""
     cs = PDPattern()
     initial = cs.get_initial_color()
-    assert initial.get_color_space() is cs
-    assert initial.is_pattern()
+    assert initial.get_color_space() is None
+    assert not initial.is_pattern()
 
 
 # ---------- to_rgb (component-form) ----------

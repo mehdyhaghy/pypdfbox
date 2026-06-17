@@ -19,7 +19,7 @@ from typing import Any
 import pytest
 
 from pypdfbox.contentstream import PDFStreamEngine
-from pypdfbox.contentstream.operator import Operator
+from pypdfbox.contentstream.operator import MissingOperandException, Operator
 from pypdfbox.contentstream.operator.color.set_non_stroking_gray import (
     SetNonStrokingGray,
 )
@@ -74,11 +74,14 @@ def test_stroking_gray_accepts_integer_operand() -> None:
     assert color.get_components() == pytest.approx([1.0])
 
 
-def test_stroking_gray_empty_operands_silently_skips() -> None:
+def test_stroking_gray_empty_operands_raises_missing_operand() -> None:
+    # Closed in wave 1595: empty operands raise MissingOperandException
+    # (after installing DeviceGray), matching upstream SetColor.process.
     engine = _Engine()
     processor = SetStrokingGray(engine)
 
-    processor.process(Operator.get_operator("G"), [])
+    with pytest.raises(MissingOperandException):
+        processor.process(Operator.get_operator("G"), [])
 
     assert engine.stroking_calls == []
 
@@ -144,11 +147,12 @@ def test_non_stroking_gray_engine_receives_resolved_color() -> None:
     assert engine.stroking_calls == []
 
 
-def test_non_stroking_gray_short_operand_list_silently_skips() -> None:
+def test_non_stroking_gray_short_operand_list_raises_missing_operand() -> None:
     engine = _Engine()
     processor = SetNonStrokingGray(engine)
 
-    processor.process(Operator.get_operator("g"), [])
+    with pytest.raises(MissingOperandException):
+        processor.process(Operator.get_operator("g"), [])
 
     assert engine.non_stroking_calls == []
 

@@ -430,8 +430,17 @@ class PDOutlineItem(PDOutlineNode):
         page_number = destination.get_page_number()
         if page_number < 0:
             return None
-        pages = document.get_pages()
-        return pages[page_number].get_cos_object()
+        # Mirror upstream ``findDestinationPage`` → ``doc.getPage(pageNumber)``,
+        # which resolves through ``getDocumentCatalog().getPages().get(...)`` —
+        # a FRESH ``PDPageTree`` (empty recursion-guard ``pageSet``) per call.
+        # Going through the cached :meth:`PDDocument.get_pages` tree instead
+        # leaked the tree's ``_page_set`` between lookups: a preceding
+        # out-of-bounds sibling lookup (e.g. ``page_oob``) leaves the cached
+        # tree's guard set non-empty, so the next lookup (``page_float``)
+        # spuriously trips the recursion guard with ``RuntimeError`` where
+        # upstream returns the page. :meth:`PDDocument.get_page` already routes
+        # through the catalog's fresh tree, so delegating restores parity.
+        return document.get_page(page_number).get_cos_object()
 
     @staticmethod
     def _resolve_named_destination(

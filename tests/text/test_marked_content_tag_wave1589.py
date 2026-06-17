@@ -157,23 +157,27 @@ def test_bdc_tag_is_first_operand_with_inline_dict():
 
 def test_bdc_tag_first_even_when_props_operand_is_name():
     # /Span /PL BDC — the second COSName is the property-list *name*, not
-    # the tag. BDC must keep operands[0] (the FIRST name) as the tag even
-    # though extract_tag (the BMC rule) would wrongly pick the PL name.
+    # the tag. Wave 1595: with no resolvable /Properties entry the named
+    # list cannot resolve, so upstream
+    # ``BeginMarkedContentSequenceWithProperties`` returns WITHOUT opening
+    # a sequence (propDict == null). No node is pushed.
     s = _stripper()
     ops = [_name("Span"), _name("PL")]
     _dispatch(s, "BDC", ops)
-    assert _top_tag(s) == _name("Span")
-    # the BMC last-name rule would have picked the property-list name —
-    # confirm BDC does NOT do that.
-    assert _top_tag(s) != extract_tag(ops)
+    assert s._marked_content_stack == []
+    # The BMC last-name rule would have picked the property-list name; BDC
+    # never uses it — confirm the would-be tags still differ.
     assert extract_tag(ops) == _name("PL")
 
 
-def test_bdc_does_not_use_last_name_as_tag():
-    # Two distinct names: tag must be operands[0] (/Figure), never the
-    # trailing /PropList that the BMC last-name rule would select.
+def test_bdc_tag_is_first_operand_with_resolvable_inline_dict():
+    # Two distinct names but a RESOLVABLE inline dict as the property
+    # operand: the tag must be operands[0] (/Figure), never a trailing
+    # name that the BMC last-name rule would select.
     s = _stripper()
-    ops = [_name("Figure"), _name("PropList")]
+    props = COSDictionary()
+    props.set_string("ActualText", "x")
+    ops = [_name("Figure"), props]
     _dispatch(s, "BDC", ops)
     assert _top_tag(s) == _name("Figure")
     assert _top_tag(s) != _name("PropList")
@@ -200,10 +204,11 @@ def test_bdc_first_operand_not_name_no_sequence():
     before = len(s._marked_content_stack)
     props = COSDictionary()
     _dispatch(s, "BDC", [COSInteger.get(1), props])
-    # operands[0] is not a COSName -> inline tag is None, but a properties
-    # dict still resolves, so a sequence opens with a None tag.
-    assert len(s._marked_content_stack) == before + 1
-    assert _top_tag(s) is None
+    # operands[0] is not a COSName -> upstream
+    # ``BeginMarkedContentSequenceWithProperties.process`` returns WITHOUT
+    # opening a sequence (the ``!(operands.get(0) instanceof COSName)``
+    # branch). Wave 1595 aligned the inline dispatch: no node is pushed.
+    assert len(s._marked_content_stack) == before
 
 
 def test_bdc_inline_dict_resolves_via_resolve_property_dict():

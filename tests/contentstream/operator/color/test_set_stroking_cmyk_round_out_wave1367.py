@@ -20,7 +20,7 @@ from typing import Any
 import pytest
 
 from pypdfbox.contentstream import PDFStreamEngine
-from pypdfbox.contentstream.operator import Operator
+from pypdfbox.contentstream.operator import MissingOperandException, Operator
 from pypdfbox.contentstream.operator.color.set_non_stroking_cmyk import (
     SetNonStrokingCMYK,
 )
@@ -89,15 +89,19 @@ def test_stroking_cmyk_accepts_integer_operands() -> None:
     assert color.get_components() == pytest.approx([0.0, 1.0, 0.0, 1.0])
 
 
-def test_stroking_cmyk_short_operand_list_silently_skips() -> None:
-    """Fewer than four operands → no call, no raise."""
+def test_stroking_cmyk_short_operand_list_raises_missing_operand() -> None:
+    """Fewer than four operands → upstream's inherited SetColor.process
+    raises MissingOperandException *after* installing the colour space, so
+    no colour is set. Closed in wave 1595 (was previously a silent skip);
+    the engine's process_operator catches + logs this exception."""
     engine = _Engine()
     processor = SetStrokingCMYK(engine)
 
-    processor.process(
-        Operator.get_operator("K"),
-        [COSFloat(0.1), COSFloat(0.2), COSFloat(0.3)],
-    )
+    with pytest.raises(MissingOperandException):
+        processor.process(
+            Operator.get_operator("K"),
+            [COSFloat(0.1), COSFloat(0.2), COSFloat(0.3)],
+        )
 
     assert engine.stroking_calls == []
 
@@ -198,13 +202,14 @@ def test_non_stroking_cmyk_engine_receives_resolved_color() -> None:
     assert engine.stroking_calls == []
 
 
-def test_non_stroking_cmyk_short_operand_list_silently_skips() -> None:
+def test_non_stroking_cmyk_short_operand_list_raises_missing_operand() -> None:
     engine = _Engine()
     processor = SetNonStrokingCMYK(engine)
 
-    processor.process(
-        Operator.get_operator("k"), [COSFloat(0.1), COSFloat(0.2)]
-    )
+    with pytest.raises(MissingOperandException):
+        processor.process(
+            Operator.get_operator("k"), [COSFloat(0.1), COSFloat(0.2)]
+        )
 
     assert engine.non_stroking_calls == []
 

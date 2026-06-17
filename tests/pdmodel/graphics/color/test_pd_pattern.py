@@ -182,11 +182,11 @@ def test_to_rgb_colored_returns_none_for_any_components() -> None:
 # ---------- initial color singleton-ish ----------
 
 
-def test_initial_color_color_space_is_self() -> None:
-    """Upstream uses ``EMPTY_PATTERN`` with a ``null`` CS; we attach
-    the Pattern itself so callers reading ``.get_color_space()`` still
-    see a Pattern (Python ``PDColor`` does not accept ``None``)."""
+def test_initial_color_is_empty_pattern_with_null_color_space() -> None:
+    """Upstream ``EMPTY_PATTERN = new PDColor(new float[]{}, null)`` — a
+    null colour space and no components. Closed in wave 1595 (was
+    previously ``cs=self``)."""
     cs = PDPattern()
     initial = cs.get_initial_color()
-    assert initial.get_color_space() is cs
+    assert initial.get_color_space() is None
     assert initial.get_components() == []

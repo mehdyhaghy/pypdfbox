@@ -88,24 +88,33 @@ def test_glyph_brush_zero_alpha_is_fully_transparent() -> None:
 
 
 # ---------------------------------------------------------------------------
-# /SA stroke adjustment — sub-pixel widths snap to 1.0
+# Sub-pixel glyph-stroke width — floored to 0.25 device px (wave 1595)
+#
+# Upstream ``PageDrawer.getStroke`` floors the device pen width to 0.25
+# ("minimum line width as used by Adobe Reader") for *both* path strokes
+# and glyph-outline strokes; there is no separate glyph minimum and ``/SA``
+# does NOT snap the width to a full pixel (it only toggles Java2D's
+# STROKE_PURE vs STROKE_NORMALIZE hint). Wave 1595 dropped the wave-1442
+# 0.5 floor and the wave-1386 ``/SA``-snap-to-1.0 so the glyph-outline pen
+# converges to the same 0.25 floor as ``_stroke_path_device_space``.
 # ---------------------------------------------------------------------------
 
 
-def test_sa_snaps_sub_pixel_stroke_to_full_pixel() -> None:
-    """With ``/SA true`` and a tiny line width that would otherwise come
-    out at 0.5 device pixels, the pen's width should be pinned at 1.0."""
-    r = _bare_renderer(_GState(line_width=0.1, stroke_adjustment=True))
-    pen = r._build_stroke_pen((1.0, 0.0, 0.0, 1.0, 0.0, 0.0))  # noqa: SLF001
-    assert pen.width == 1.0
-
-
-def test_sa_off_leaves_sub_pixel_stroke_intact() -> None:
-    """Without ``/SA`` the pen retains the renderer's default 0.5px floor
-    (skia's own AA still renders it as a partial-coverage line)."""
+def test_sub_pixel_stroke_floored_to_quarter_pixel() -> None:
+    """A line width that lands below 0.25 device px is floored to 0.25
+    (identity CTM → ctm_scale 1.0 → glyph-local width == device width)."""
     r = _bare_renderer(_GState(line_width=0.1, stroke_adjustment=False))
     pen = r._build_stroke_pen((1.0, 0.0, 0.0, 1.0, 0.0, 0.0))  # noqa: SLF001
-    assert pen.width == 0.5
+    assert pen.width == 0.25
+
+
+def test_sa_does_not_snap_glyph_stroke_width() -> None:
+    """``/SA true`` must NOT snap the glyph-stroke width to a full pixel —
+    upstream ``getStroke`` floors to 0.25 regardless of ``/SA`` (the hint
+    only affects Java2D's stroke-pure/normalize mode, not the pen width)."""
+    r = _bare_renderer(_GState(line_width=0.1, stroke_adjustment=True))
+    pen = r._build_stroke_pen((1.0, 0.0, 0.0, 1.0, 0.0, 0.0))  # noqa: SLF001
+    assert pen.width == 0.25
 
 
 # ---------------------------------------------------------------------------
@@ -193,7 +202,9 @@ def test_gs_operator_sa_stroke_adjustment_round_trip() -> None:
     assert r._gs.stroke_adjustment is True  # noqa: SLF001
     r._gs.line_width = 0.2  # noqa: SLF001
     pen = r._build_stroke_pen((1.0, 0.0, 0.0, 1.0, 0.0, 0.0))  # noqa: SLF001
-    assert pen.width == 1.0
+    # /SA round-trips onto the GS but no longer snaps the pen width — the
+    # 0.2 user-space width floors to the 0.25 device minimum (wave 1595).
+    assert pen.width == 0.25
 
 
 # ---------------------------------------------------------------------------

@@ -172,6 +172,8 @@ class _CaptureEngine(PDFStreamEngine):
         super().__init__()
         self.captured_stroke: PDColor | None = None
         self.captured_nonstroke: PDColor | None = None
+        self.captured_stroke_cs: object | None = None
+        self.captured_nonstroke_cs: object | None = None
         for op in (
             SetStrokingColor(),
             SetNonStrokingColor(),
@@ -201,6 +203,8 @@ class _CaptureEngine(PDFStreamEngine):
         gs = self.get_graphics_state()
         self.captured_stroke = gs.get_stroking_color()
         self.captured_nonstroke = gs.get_non_stroking_color()
+        self.captured_stroke_cs = gs.get_stroking_color_space()
+        self.captured_nonstroke_cs = gs.get_non_stroking_color_space()
 
 
 def _run(content: bytes) -> tuple[PDColor, PDColor]:
@@ -219,6 +223,29 @@ def _run(content: bytes) -> tuple[PDColor, PDColor]:
         assert engine.captured_stroke is not None
         assert engine.captured_nonstroke is not None
         return engine.captured_stroke, engine.captured_nonstroke
+    finally:
+        doc.close()
+
+
+def _run_state_cs(content: bytes) -> tuple[object | None, object | None]:
+    """Like :func:`_run` but returns the graphics-state stroking /
+    non-stroking *colour spaces* captured after the last operator. Used to
+    pin the gap-(1) behaviour: a too-short device operator still switches
+    the current colour space before MissingOperandException is raised +
+    swallowed by the engine."""
+    doc = PDDocument()
+    try:
+        page = PDPage()
+        doc.add_page(page)
+        res = _build_resources(doc)
+        stream = PDStream(doc)
+        with stream.create_output_stream() as out:
+            out.write(content)
+        page.set_contents(stream)
+        page.set_resources(res)
+        engine = _CaptureEngine()
+        engine.process_page(page)
+        return engine.captured_stroke_cs, engine.captured_nonstroke_cs
     finally:
         doc.close()
 
@@ -338,6 +365,69 @@ def test_g_empty_operands_leaves_colour_unchanged() -> None:
     _, ns = _run(b"g\n")
     _approx(ns.get_components(), [0.0])
     assert _cs_name(ns) == "DeviceGray"
+
+
+# ---------------------------------------------------------------------------
+# Gap (1) — wave 1595: a too-short device operator still installs the device
+# colour space onto the graphics state *before* MissingOperandException is
+# raised (and swallowed by the engine). Upstream
+# SetStrokingDeviceRGBColor.process sets the colour space, then calls
+# super().process which raises for the short operand list. The colour value
+# stays put, but the current colour space is switched.
+# ---------------------------------------------------------------------------
+
+
+def test_rg_too_few_operands_still_switches_colour_space() -> None:
+    _, ns_cs = _run_state_cs(b"0.1 0.2 rg\n")
+    assert ns_cs is not None
+    assert ns_cs.get_name() == "DeviceRGB"
+
+
+def test_uppercase_rg_too_few_operands_switches_stroking_colour_space() -> None:
+    stroke_cs, _ = _run_state_cs(b"0.1 0.2 RG\n")
+    assert stroke_cs is not None
+    assert stroke_cs.get_name() == "DeviceRGB"
+
+
+def test_k_too_few_operands_still_switches_colour_space() -> None:
+    _, ns_cs = _run_state_cs(b"0.1 0.2 0.3 k\n")
+    assert ns_cs is not None
+    assert ns_cs.get_name() == "DeviceCMYK"
+
+
+def test_g_empty_operands_still_switches_colour_space() -> None:
+    # Gray has 1 component; an empty operand list is still too short.
+    _, ns_cs = _run_state_cs(b"g\n")
+    assert ns_cs is not None
+    assert ns_cs.get_name() == "DeviceGray"
+
+
+# ---------------------------------------------------------------------------
+# Gap (2) — wave 1595: a too-short device operator raises
+# MissingOperandException when invoked directly (the engine's
+# process_operator catches + logs it; here we call process() directly so it
+# propagates). Matches upstream's inherited SetColor.process.
+# ---------------------------------------------------------------------------
+
+
+def test_rg_too_few_operands_raises_missing_operand_directly() -> None:
+    from pypdfbox.contentstream.operator import MissingOperandException
+
+    engine = _CaptureEngine()
+    doc = PDDocument()
+    try:
+        page = PDPage()
+        doc.add_page(page)
+        page.set_resources(_build_resources(doc))
+        engine.init_page(page)
+        processor = SetNonStrokingRGB()
+        processor.set_context(engine)
+        with pytest.raises(MissingOperandException):
+            processor.process(
+                Operator.get_operator("rg"), [COSFloat(0.1), COSFloat(0.2)]
+            )
+    finally:
+        doc.close()
 
 
 def test_rg_extra_operands_uses_first_three() -> None:

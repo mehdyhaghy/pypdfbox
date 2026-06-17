@@ -20,11 +20,11 @@ class SetNonStrokingRGB(OperatorProcessor):
     OPERATOR_NAME = "rg"
 
     def process(self, operator: Operator, operands: list[COSBase]) -> None:
-        del operator
         set_device_color(
             self._context,
             operands,
             color_space=PDDeviceRGB.INSTANCE,
             component_count=3,
             stroking=False,
+            operator=operator,
         )

@@ -183,24 +183,50 @@ class PDFMarkedContentExtractor(PDFTextStripper):
         state: _TextState,
     ) -> None:
         if op == "BMC":
-            tag = operands[0] if operands and isinstance(operands[0], COSName) else None
+            # Upstream ``BeginMarkedContentSequence.process`` scans the whole
+            # operand list and keeps the *last* ``COSName`` (any leading
+            # non-name junk is skipped), so ``1 (x) /Artifact BMC`` opens the
+            # ``/Artifact`` sequence. Mirror ``_props.extract_tag`` here
+            # rather than taking ``operands[0]``.
+            tag = self._last_cos_name(operands)
             self.begin_marked_content_sequence(tag, None)
             return
         if op == "BDC":
+            # Unlike BMC, the tag is the *first* operand: the property
+            # operand of the ``/Name`` form is itself a ``COSName`` and must
+            # not be mistaken for the tag. When the property list cannot be
+            # resolved to a dictionary (unknown ``/Name``, wrong type, no
+            # resources) upstream ``BeginMarkedContentSequenceWithProperties``
+            # returns *without* opening a sequence (``propDict == null``) — so
+            # no marked-content node is pushed (and EMC balance is preserved
+            # because the unwritten content stream's EMC will still pop the
+            # parent, matching upstream which simply skips the open here).
             tag = operands[0] if operands and isinstance(operands[0], COSName) else None
+            if tag is None:
+                return
             properties = self._resolve_bdc_properties(operands)
+            if properties is None:
+                return
             self.begin_marked_content_sequence(tag, properties)
             return
         if op == "EMC":
             self.end_marked_content_sequence()
             return
         if op == "MP":
-            tag = operands[0] if operands and isinstance(operands[0], COSName) else None
+            tag = self._last_cos_name(operands)
             self.marked_content_point(tag, None)
             return
         if op == "DP":
+            # Same tag/property semantics as BDC: tag is ``operands[0]``;
+            # an unresolved property list means upstream
+            # ``MarkedContentPointWithProperties`` returns without notifying
+            # the engine.
             tag = operands[0] if operands and isinstance(operands[0], COSName) else None
+            if tag is None:
+                return
             properties = self._resolve_bdc_properties(operands)
+            if properties is None:
+                return
             self.marked_content_point(tag, properties)
             return
 

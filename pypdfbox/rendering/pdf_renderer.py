@@ -9717,26 +9717,38 @@ class PDFRenderer(PDFStreamEngine):
         Wave 1428: the skia shim's pen now honours line-cap / line-join /
         miter-limit / dash, so stroked glyphs (Tr modes 1/2/5/6) pick up
         the active GS stroke style too.
+
+        Wave 1595: the device-pixel floor and the page→device scalar are now
+        identical to the vector path stroke (``_stroke_path_device_space``).
+        Upstream ``PageDrawer`` strokes glyph outlines through the *same*
+        ``getStroke()`` as path strokes — there is no separate glyph-stroke
+        minimum. The page→device scalar is ``transformWidth``
+        (``sqrt((x²+y²)/2)``, isotropic) and the device floor is 0.25
+        ("minimum line width as used by Adobe Reader"), not the wave-1442
+        0.5 / wave-1386 ``/SA``-snap-to-1.0 over-correction.
         """
         ctm_scale = self._approx_scale(ctm)
-        page_scale = self._approx_scale(self._full_ctm())
+        # Page→device stroke-width scalar — the same ``transformWidth``
+        # isotropic factor the vector path stroke uses, not a det-based
+        # ``_approx_scale`` (they coincide under a uniform scale but diverge
+        # under anisotropy, e.g. ``cm 3 0 0 1``).
+        page_scale = self._transform_width_scale(self._full_ctm())
         # The pen width passed to skia is in the path's *glyph-local* em
         # coordinate space (the path is unit-em scaled), and skia applies
         # the stroke width before the per-glyph ``ctm`` transform — so the
         # effective stroke in device pixels is ``pen.width * ctm_scale``.
-        # Wave 1442 bug fix: the floor (``max(0.5, ...)``) and the /SA snap
-        # to 1.0 must be applied to the *device-pixel* width, then converted
-        # back to glyph-local units by dividing by ``ctm_scale``. Previously
-        # the 0.5 / 1.0 minima were clamped against the glyph-local pen
-        # width directly — at a 60-pt font that turned a 1-user-unit hairline
-        # into a 0.5-em (≈30 device-px) slab, painting Tr modes 1/2/5/6 as
-        # near-solid blocks instead of thin glyph outlines.
+        # Compute the floor against the *device-pixel* width, then convert
+        # back to glyph-local units by dividing by ``ctm_scale`` (wave 1442
+        # established the device-space floor; clamping in glyph-local units
+        # turned a 1-user-unit hairline into a ≈30 device-px slab at 60 pt).
         device_width = self._gs.line_width * page_scale
-        device_width = max(0.5, device_width)
-        # Wave 1386 — /SA: hairline strokes snap to integer-pixel width
-        # to avoid sub-pixel anti-aliasing fade-out (parity with §10.6.5).
-        if self._gs.stroke_adjustment and device_width < 1.0:
-            device_width = 1.0
+        # PDFBox ``PageDrawer.getStroke`` floors a zero/sub-pixel device width
+        # to 0.25 — the same floor as the vector path stroke; no separate
+        # glyph minimum and no ``/SA`` integer snap (upstream ``/SA`` only
+        # toggles Java2D STROKE_PURE vs STROKE_NORMALIZE, it never resets the
+        # pen width to a full pixel).
+        if device_width < 0.25:
+            device_width = 0.25
         # ``ctm_scale <= 0.0`` is a pathological / degenerate text matrix —
         # fall back to the device width directly (stroke ends up at the
         # user-space width interpreted in glyph-local units, which is still

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import pytest
+
 from pypdfbox.contentstream import Operator, PDFStreamEngine
+from pypdfbox.contentstream.operator import MissingOperandException
 from pypdfbox.contentstream.operator.color.set_non_stroking_cmyk import (
     SetNonStrokingCMYK,
 )
@@ -111,15 +114,17 @@ def test_device_color_operator_without_context_is_no_op() -> None:
     SetStrokingRGB().process(Operator.get_operator("RG"), _floats(1.0, 0.0, 0.0))
 
 
-def test_device_color_operator_skips_too_few_operands() -> None:
+def test_device_color_operator_too_few_operands_raises_missing_operand() -> None:
     # Upstream's inherited SetColor.process raises MissingOperandException
-    # (caught + logged by the engine) for a too-short operand list, so the
-    # colour is left unchanged — no setColor call.
+    # (caught + logged by the engine via process_operator) for a too-short
+    # operand list — the colour-space switch already happened, but no
+    # setColor call is made. Closed in wave 1595 (was a silent skip).
     engine = _ColorSpy()
     processor = SetStrokingRGB()
     engine.add_operator(processor)
 
-    processor.process(Operator.get_operator("RG"), _floats(1.0, 0.0))
+    with pytest.raises(MissingOperandException):
+        processor.process(Operator.get_operator("RG"), _floats(1.0, 0.0))
 
     assert engine.colors == []
 

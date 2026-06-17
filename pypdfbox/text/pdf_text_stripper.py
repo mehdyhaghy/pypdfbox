@@ -1148,9 +1148,20 @@ class PDFTextStripper:
             # operand of the ``/Name`` form is itself a ``COSName`` and must
             # not be mistaken for the tag (matches upstream
             # ``BeginMarkedContentSequenceWithProperties`` / the registered
-            # ``BeginMarkedContentWithProps`` operator).
+            # ``BeginMarkedContentWithProps`` operator). When the tag is not a
+            # name, or the property list cannot be resolved to a dictionary
+            # (unknown ``/Name``, wrong type, missing resources), upstream
+            # ``BeginMarkedContentSequenceWithProperties.process`` returns
+            # *without* opening a sequence (``propDict == null``) — so we do
+            # not open one either; the matching EMC still pops the parent,
+            # matching upstream's no-underflow ``endMarkedContentSequence``.
             tag = operands[0] if operands and isinstance(operands[0], COSName) else None
-            self.begin_marked_content_sequence(tag, self._resolve_bdc_properties(operands))
+            if tag is None:
+                return
+            properties = self._resolve_bdc_properties(operands)
+            if properties is None:
+                return
+            self.begin_marked_content_sequence(tag, properties)
         elif op == "EMC":
             self.end_marked_content_sequence()
         elif op == "Do":

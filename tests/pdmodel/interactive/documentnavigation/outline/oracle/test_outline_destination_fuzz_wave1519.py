@@ -1,8 +1,10 @@
 """Live PDFBox differential fuzz for outline destination resolution.
 
-All cases match Apache PDFBox 3.0.7 line-for-line except the documented
-``page_float`` recursion-guard divergence (pinned both-sides — see the comment
-above :func:`test_outline_destination_fuzz_matches_pdfbox`)."""
+All cases match Apache PDFBox 3.0.7 line-for-line. The former ``page_float``
+recursion-guard divergence was CLOSED in wave 1595: ``find_destination_page``
+now mirrors upstream ``doc.getPage(pageNumber)`` (a fresh per-lookup
+``PDPageTree``), so a float ``/D[0]`` resolved after an out-of-bounds sibling
+lookup on the shared document returns the page exactly as upstream does."""
 
 from __future__ import annotations
 
@@ -126,49 +128,26 @@ def _py_dump() -> str:
     return "".join(lines)
 
 
-# Documented robustness divergence, pinned both-sides.
-#
-# ``page_float`` resolves a ``/D[0]`` that is a real number (1.9) → both engines
-# truncate to page index 1. Under shared-tree reuse (the preceding ``page_oob``
-# case requests an out-of-bounds index on the same document), pypdfbox raises a
-# "Possible recursion found" ``RuntimeError`` for ``page_float`` while upstream
-# returns the page.
-#
-# NOTE (wave 1527 investigation — corrects the earlier wave-1526 explanation,
-# which was WRONG): this is NOT a guard-set scoping difference. Decompiling
-# PDFBox 3.0.7 ``PDPageTree.get(int,COSDictionary,int)`` shows upstream uses a
-# *per-instance* ``pageSet`` field (not a fresh set per call) and clears it only
-# on the recursion path and on leaf-success — exactly what pypdfbox's
-# ``PDPageTree`` already does (verified faithful port). Changing pypdfbox to a
-# fresh-set-per-call DIVERGES from upstream (it flips the malformed-``/Count``
-# count-gate cases P04/P05/P16/P23 in test_page_tree_cycle_fuzz_wave1520 from the
-# upstream ``IllegalStateException`` to ``IndexError``). The real cause of the
-# ``page_float`` divergence lives in the destination page-resolution path
-# (``PDOutlineItem.find_destination_page`` / ``retrieve_page_number``), not the
-# page-tree guard set, and is tracked in DEFERRED.md (pdmodel/page) for a
-# dedicated investigation. Pinned both-sides until then.
-_DIVERGENT_LINE_PREFIX = "CASE page_float "
-_PYPDFBOX_DIVERGENT_LINE = (
-    "CASE page_float dest=PDPageFitDestination page=ERR:RuntimeError"
-)
-_UPSTREAM_DIVERGENT_LINE = "CASE page_float dest=PDPageFitDestination page=1"
+# Wave 1595: the ``page_float`` recursion-guard divergence is CLOSED. Both
+# engines now resolve a float ``/D[0]`` (1.9) to page index 1 even after the
+# preceding ``page_oob`` out-of-bounds lookup on the shared document, because
+# ``find_destination_page`` routes through ``doc.get_page(n)`` → a fresh
+# per-lookup ``PDPageTree`` exactly as upstream ``doc.getPage(n)`` does. Every
+# case — including ``page_float`` — now matches PDFBox 3.0.7 line-for-line.
+_EXPECTED_PAGE_FLOAT_LINE = "CASE page_float dest=PDPageFitDestination page=1"
 
 
 @requires_oracle
 def test_outline_destination_fuzz_matches_pdfbox() -> None:
-    """Every non-divergent case matches Apache PDFBox 3.0.7 line-for-line; the
-    documented ``page_float`` recursion-guard divergence is pinned both-sides."""
+    """Every case matches Apache PDFBox 3.0.7 line-for-line, including the
+    formerly-divergent ``page_float`` case (closed in wave 1595)."""
     python_lines = _py_dump().splitlines()
     java_lines = run_probe_text("OutlineDestinationFuzzProbe").splitlines()
 
     assert len(python_lines) == len(java_lines)
     for py, jv in zip(python_lines, java_lines, strict=True):
-        if py.startswith(_DIVERGENT_LINE_PREFIX):
-            assert py == _PYPDFBOX_DIVERGENT_LINE, (
-                f"pypdfbox page_float token drifted to {py!r}"
-            )
-            assert jv == _UPSTREAM_DIVERGENT_LINE, (
-                f"upstream page_float token drifted to {jv!r}"
-            )
-            continue
         assert py == jv
+        if py.startswith("CASE page_float "):
+            assert py == _EXPECTED_PAGE_FLOAT_LINE, (
+                f"page_float token drifted to {py!r}"
+            )

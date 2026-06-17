@@ -58,11 +58,13 @@ class PDPattern(PDSpecialColorSpace):
         self._resources = resources
         # Upstream returns ``EMPTY_PATTERN`` — a PDColor with empty
         # components and a ``null`` color space — as the initial color of
-        # the Pattern color space (a pattern that leaves no marks). We
-        # mirror that with ``color_space=self`` (Python doesn't accept
-        # ``None`` here) so that round-trips through ``get_color_space``
-        # still see a Pattern; ``get_components()`` is empty either way.
-        self._initial_color = PDColor([], self)
+        # the Pattern color space (a pattern that leaves no marks):
+        # ``private static final PDColor EMPTY_PATTERN =
+        # new PDColor(new float[] { }, null);``. Mirror that exactly with
+        # ``color_space=None`` (``PDColor`` accepts a null colour space —
+        # the same invalid-colour form SetColor.process produces for
+        # PDFBOX-5851); ``get_components()`` is empty either way.
+        self._initial_color = PDColor([], None)
 
     # ---------- COS surface ----------
 

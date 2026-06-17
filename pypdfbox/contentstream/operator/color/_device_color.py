@@ -10,7 +10,10 @@ from pypdfbox.pdmodel.graphics.color import (
     PDDeviceRGB,
 )  # PDColor used both for valid colours and the PDFBOX-5851 invalid colour
 
+from .. import MissingOperandException
+
 if TYPE_CHECKING:
+    from pypdfbox.contentstream.operator import Operator
     from pypdfbox.contentstream.pdf_stream_engine import PDFStreamEngine
     from pypdfbox.pdmodel.graphics.color import PDColorSpace
 
@@ -57,6 +60,7 @@ def set_device_color(
     color_space: PDColorSpace,
     component_count: int,
     stroking: bool,
+    operator: Operator | None = None,
 ) -> None:
     """Set the device colour space on the graphics state, then the colour.
 
@@ -93,10 +97,18 @@ def set_device_color(
         if setter is not None:
             setter(resolved_cs)
     # Too few operands: upstream's inherited SetColor.process raises
-    # MissingOperandException *before* setColor, which PDFStreamEngine
-    # catches and logs, so the colour stays at its previous value (the
-    # colour-space switch above is still in effect).
+    # MissingOperandException *before* setColor — the colour-space switch
+    # above is still in effect, and the exception propagates up to
+    # PDFStreamEngine.process_operator, which routes it through
+    # operatorException (logs at error, swallows), so the colour stays at
+    # its previous value. Mirror that exactly: raise rather than silently
+    # return, so the engine emits the same error log upstream does. When
+    # there is no operator to attribute the exception to (direct helper
+    # call), fall back to the silent return — there is nothing the engine
+    # could catch.
     if len(operands) < component_count:
+        if operator is not None:
+            raise MissingOperandException(operator, operands)
         return
     # A non-numeric operand in a device (non-Pattern) colour space:
     # upstream SetColor.process fails the ``checkArrayTypesClass`` guard and

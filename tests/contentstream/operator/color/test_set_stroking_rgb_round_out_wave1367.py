@@ -19,7 +19,7 @@ from typing import Any
 import pytest
 
 from pypdfbox.contentstream import PDFStreamEngine
-from pypdfbox.contentstream.operator import Operator
+from pypdfbox.contentstream.operator import MissingOperandException, Operator
 from pypdfbox.contentstream.operator.color.set_non_stroking_rgb import (
     SetNonStrokingRGB,
 )
@@ -78,13 +78,16 @@ def test_stroking_rgb_mixed_int_and_float_operands() -> None:
     assert color.get_components() == pytest.approx([0.0, 0.5, 1.0])
 
 
-def test_stroking_rgb_short_operand_list_silently_skips() -> None:
+def test_stroking_rgb_short_operand_list_raises_missing_operand() -> None:
+    # Closed in wave 1595: too-few operands raise MissingOperandException
+    # (after installing DeviceRGB), matching upstream SetColor.process.
     engine = _Engine()
     processor = SetStrokingRGB(engine)
 
-    processor.process(
-        Operator.get_operator("RG"), [COSFloat(0.1), COSFloat(0.2)]
-    )
+    with pytest.raises(MissingOperandException):
+        processor.process(
+            Operator.get_operator("RG"), [COSFloat(0.1), COSFloat(0.2)]
+        )
 
     assert engine.stroking_calls == []
 
@@ -178,11 +181,12 @@ def test_non_stroking_rgb_engine_receives_resolved_color() -> None:
     assert engine.stroking_calls == []
 
 
-def test_non_stroking_rgb_short_list_silently_skips() -> None:
+def test_non_stroking_rgb_short_list_raises_missing_operand() -> None:
     engine = _Engine()
     processor = SetNonStrokingRGB(engine)
 
-    processor.process(Operator.get_operator("rg"), [])
+    with pytest.raises(MissingOperandException):
+        processor.process(Operator.get_operator("rg"), [])
 
     assert engine.non_stroking_calls == []
 

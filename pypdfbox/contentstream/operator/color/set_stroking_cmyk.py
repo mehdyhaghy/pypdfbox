@@ -20,11 +20,11 @@ class SetStrokingCMYK(OperatorProcessor):
     OPERATOR_NAME = "K"
 
     def process(self, operator: Operator, operands: list[COSBase]) -> None:
-        del operator
         set_device_color(
             self._context,
             operands,
             color_space=PDDeviceCMYK.INSTANCE,
             component_count=4,
             stroking=True,
+            operator=operator,
         )
