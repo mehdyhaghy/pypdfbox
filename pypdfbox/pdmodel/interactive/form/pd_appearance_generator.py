@@ -1083,7 +1083,11 @@ class PDAppearanceGenerator:
         is_comb = field.is_comb()
         is_password = field.is_password()
         max_len = field.get_max_len()
-        quadding = field.get_q()
+        # Field-level (inheritable) ``/Q`` — used as the fallback when a
+        # widget carries no ``/Q`` of its own. Per-widget resolution
+        # happens inside the loop via :meth:`_resolve_text_align`,
+        # matching upstream ``AppearanceGeneratorHelper.getTextAlign``.
+        field_quadding = field.get_q()
 
         # Wave 1375 — rich-text (``/RV``) rendering. When the field carries
         # ``/RV`` we parse the XHTML payload into styled runs and render
@@ -1121,6 +1125,10 @@ class PDAppearanceGenerator:
             # consulted in addition to the AcroForm /DR /Font (closes the
             # "custom-embedded /DA fonts not honoured" deviation).
             font = self._resolve_font_for_field(field, font_name, widget)
+            # Resolve quadding per widget: a widget's own ``/Q`` wins,
+            # else fall back to the field's (inheritable) ``/Q``. Mirrors
+            # upstream ``AppearanceGeneratorHelper.getTextAlign(widget)``.
+            quadding = self._resolve_text_align(widget, field_quadding)
             if rich_runs is not None:
                 self._regenerate_rich_text_widget(
                     widget, rich_runs, font, font_name, font_size, color,
@@ -1152,6 +1160,19 @@ class PDAppearanceGenerator:
             return getter()
         except Exception:  # noqa: BLE001 — defensive: any failure → /V fallback
             return None
+
+    @staticmethod
+    def _resolve_text_align(widget: PDAnnotationWidget, field_quadding: int) -> int:
+        """Return the quadding (``/Q``) to apply to ``widget``.
+
+        Mirrors upstream ``AppearanceGeneratorHelper.getTextAlign(widget)``
+        which reads ``widget.getCOSObject().getInt(COSName.Q, field.getQ())``
+        — a widget's own ``/Q`` wins, otherwise the field's (inheritable)
+        ``/Q`` is used as the fallback. ``/Q`` values: ``0`` = left,
+        ``1`` = centered, ``2`` = right.
+        """
+        widget_cos = widget.get_cos_object()
+        return widget_cos.get_int(COSName.Q, field_quadding)
 
     # ------------------------------------------------------------------
     # button (check / radio)
