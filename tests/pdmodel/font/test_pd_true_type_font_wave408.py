@@ -165,6 +165,11 @@ def test_glyph_width_prefers_width_array_and_handles_zero_units(
 
 
 def test_path_and_glyph_path_empty_branches(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Disable the wave-1596 non-embedded substitute so the genuine
+    # "no program at all" branch is exercised (no host / bundled fallback).
+    monkeypatch.setattr(
+        PDTrueTypeFont, "_get_substitute_font", lambda self: None
+    )
     assert PDTrueTypeFont().get_path("A") == []
 
     font = PDTrueTypeFont()

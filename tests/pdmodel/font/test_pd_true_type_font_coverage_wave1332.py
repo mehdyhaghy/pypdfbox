@@ -99,7 +99,14 @@ def test_is_embedded_returns_false_when_ttf_marked_failed() -> None:
 # ---------- get_normalized_path branches -----------------------------------
 
 
-def test_get_normalized_path_returns_empty_when_no_ttf() -> None:
+def test_get_normalized_path_returns_empty_when_no_ttf(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Disable the wave-1596 non-embedded substitute so the genuine
+    # "no program at all" branch (empty path) is exercised.
+    monkeypatch.setattr(
+        PDTrueTypeFont, "_get_substitute_font", lambda self: None
+    )
     font = PDTrueTypeFont()
     # Line 437-438.
     assert font.get_normalized_path(0x41) == []

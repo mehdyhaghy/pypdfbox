@@ -54,6 +54,15 @@ class PDTrueTypeFont(PDSimpleFont):
         # rendering / construction; consumed by :meth:`subset` on save.
         # ``.notdef`` (GID 0) is implicitly preserved by the subsetter.
         self._subset_codepoints: set[int] = set()
+        # Lazily-loaded *substitute* TTF — a host/bundled font program
+        # resolved via :class:`FontMappers` when this font carries no
+        # embedded ``/FontFile2``. ``None`` means "not yet attempted",
+        # ``False`` means "tried, no substitute reachable". Mirrors the
+        # role of the ``ttf`` field upstream's ``PDTrueTypeFont``
+        # constructor fills from ``findFontOrSubstitute()`` — the
+        # substitute backs ``getWidthFromFont`` / ``codeToGID`` /
+        # ``getPath`` resolution but is *never* reported as embedded.
+        self._substitute_ttf: TrueTypeFont | None | bool = None
         # Memoised inverted ``code → gid`` map used by the embedding /
         # encoding path. Built lazily by :meth:`get_gid_to_code`.
         self._gid_to_code: dict[int, int] | None = None
@@ -130,11 +139,124 @@ class PDTrueTypeFont(PDSimpleFont):
         :meth:`get_true_type_font` accessor."""
         return self.get_true_type_font()
 
+    def _get_substitute_font(self) -> TrueTypeFont | None:
+        """Return a host / bundled substitute :class:`TrueTypeFont` for a
+        font that carries **no** embedded ``/FontFile2``, or ``None`` when
+        none can be found. Result is cached.
+
+        Mirrors the substitute leg of upstream's ``PDTrueTypeFont``
+        constructor: when ``/FontFile2`` is absent it calls
+        ``FontMappers.instance().getTrueTypeFont(getBaseFont(),
+        getFontDescriptor())`` and keeps the resulting program in the
+        ``ttf`` field so ``getWidthFromFont`` / ``codeToGID`` /
+        ``getPath`` resolve through it.
+
+        pypdfbox's :class:`FontMapper` returns the substitute as a
+        fontTools ``TTFont`` (not a pypdfbox :class:`TrueTypeFont`), so we
+        adapt it back into a pypdfbox :class:`TrueTypeFont` — re-parsing
+        the backing file when one is recoverable (deterministic, and the
+        path the bundled ``LiberationSans-Regular.ttf`` last-resort takes)
+        and falling back to a fontTools ``save()`` round-trip otherwise.
+
+        Headless / CI safe: any failure to map or adapt degrades to
+        ``None`` (callers then return ``0`` / GID ``0``); this method
+        never raises.
+        """
+        if self._substitute_ttf is not None:
+            return (
+                self._substitute_ttf
+                if isinstance(self._substitute_ttf, TrueTypeFont)
+                else None
+            )
+        # Only non-embedded fonts get a substitute — an embedded (or
+        # damaged-but-present) /FontFile2 owns the program.
+        if self.get_true_type_font() is not None:
+            self._substitute_ttf = False
+            return self.get_true_type_font()
+        adapted = self._map_substitute_program()
+        self._substitute_ttf = adapted if adapted is not None else False
+        return adapted
+
+    def _map_substitute_program(self) -> TrueTypeFont | None:
+        """Resolve and adapt a substitute program. Split out so
+        :meth:`_get_substitute_font` stays a thin cache front.
+
+        Primary source is the active :class:`FontMappers` singleton's
+        ``get_true_type_font`` (mirrors upstream exactly). The default
+        singleton (:class:`DefaultFontMapper`) is AFM-only and returns
+        ``None`` there — and a headless host may have no usable system
+        font either — so when the mapper yields nothing we fall back to
+        the bundled ``LiberationSans-*`` last resort via
+        :class:`FontMapperImpl`. That keeps the substitute deterministic
+        on any machine / CI runner (the brief's CI-safe contract) while
+        still preferring a host substitute when a system-scanning mapper
+        is installed.
+        """
+        base_font = self.get_base_font() or ""
+        descriptor = self.get_font_descriptor()
+        try:
+            from pypdfbox.fontbox.font_mappers import FontMappers  # noqa: PLC0415
+
+            mapper = FontMappers.instance()
+            mapping = mapper.get_true_type_font(base_font, descriptor)
+            if mapping is not None:
+                fonttools_font = mapping.get_font()
+                if fonttools_font is not None:
+                    adapted = _adapt_substitute_to_true_type_font(fonttools_font)
+                    if adapted is not None:
+                        return adapted
+        except Exception:  # noqa: BLE001 — mapping failures must not crash callers
+            _LOG.exception("substitute lookup failed for %s", self.get_name())
+        # Deterministic bundled-Liberation last resort.
+        return self._bundled_last_resort_substitute(descriptor)
+
+    @staticmethod
+    def _bundled_last_resort_substitute(
+        descriptor: Any,
+    ) -> TrueTypeFont | None:
+        """Load the bundled ``LiberationSans-*`` last-resort substitute via
+        :class:`FontMapperImpl` and adapt it to a pypdfbox
+        :class:`TrueTypeFont`. Deterministic and host-independent; returns
+        ``None`` only if the bundled asset cannot be loaded (never raises).
+        """
+        try:
+            from .font_mapper_impl import FontMapperImpl  # noqa: PLC0415
+
+            last_resort = FontMapperImpl()._get_last_resort_font(descriptor)  # noqa: SLF001
+        except Exception:  # noqa: BLE001
+            _LOG.exception("bundled last-resort substitute load failed")
+            return None
+        if last_resort is None:
+            return None
+        return _adapt_substitute_to_true_type_font(last_resort)
+
+    def _resolve_program(self) -> TrueTypeFont | None:
+        """Return the program that backs glyph / metric resolution: the
+        embedded ``/FontFile2`` when present, otherwise the host / bundled
+        substitute (:meth:`_get_substitute_font`).
+
+        Mirrors upstream's single ``ttf`` field, which the constructor
+        fills with the embedded program *or* the substitute. Used by
+        :meth:`get_width_from_font`, :meth:`code_to_gid`, :meth:`get_path`,
+        :meth:`get_glyph_path`, :meth:`get_height` and
+        :meth:`get_normalized_path` so all of them resolve through the
+        substitute when the font is not embedded — matching PDFBox.
+
+        Does **not** influence :meth:`is_embedded` / :meth:`is_damaged` /
+        :meth:`get_true_type_font` / :meth:`subset`, which stay strictly
+        embedded-only (a substitute is never "embedded").
+        """
+        embedded = self.get_true_type_font()
+        if embedded is not None:
+            return embedded
+        return self._get_substitute_font()
+
     def set_true_type_font(self, ttf: TrueTypeFont | None) -> None:
         """Inject a pre-parsed :class:`TrueTypeFont`. Used by callers
         that already have the font program in hand (avoids a redundant
         re-parse) and by tests that bypass ``/FontFile2``."""
         self._ttf = ttf if ttf is not None else False
+        self._substitute_ttf = None
         self._cmap_subtable = None
         self._cmap_resolved = False
         self._gid_to_code = None
@@ -361,9 +483,12 @@ class PDTrueTypeFont(PDSimpleFont):
         PDF text-space convention of 1/1000 em via ``1000 / unitsPerEm``.
 
         Returns ``0.0`` when no TTF program is available or the font's
-        ``unitsPerEm`` is invalid.
+        ``unitsPerEm`` is invalid. When the font carries no embedded
+        ``/FontFile2`` the advance is resolved through the host / bundled
+        substitute program (mirrors upstream, whose ``ttf`` field holds
+        the substitute in that case).
         """
-        ttf = self.get_true_type_font()
+        ttf = self._resolve_program()
         if ttf is None:
             return 0.0
         units_per_em = ttf.get_units_per_em()
@@ -394,7 +519,7 @@ class PDTrueTypeFont(PDSimpleFont):
         available, the code does not resolve to a glyph, or the
         font has no ``glyf`` table (e.g. CFF-based OpenType).
         """
-        ttf = self.get_true_type_font()
+        ttf = self._resolve_program()
         if ttf is None:
             return 0.0
         gid = self._code_to_gid(code, ttf)
@@ -414,7 +539,7 @@ class PDTrueTypeFont(PDSimpleFont):
         coordinates. Returns an empty list when the font is not embedded
         or the glyph is unknown.
         """
-        ttf = self.get_true_type_font()
+        ttf = self._resolve_program()
         if ttf is None:
             return []
         return _draw_glyph_by_name(ttf, name)
@@ -427,7 +552,7 @@ class PDTrueTypeFont(PDSimpleFont):
         a direct ``code -> gid`` cmap lookup for symbolic / no-encoding
         fonts. Returns an empty list when no glyph can be drawn.
         """
-        ttf = self.get_true_type_font()
+        ttf = self._resolve_program()
         if ttf is None:
             return []
         name = self.get_glyph_name_for_code(code)
@@ -457,7 +582,7 @@ class PDTrueTypeFont(PDSimpleFont):
         unknown code, or the GID-0 / non-embedded / non-Standard14 guard
         above kicks in).
         """
-        ttf = self.get_true_type_font()
+        ttf = self._resolve_program()
         if ttf is None:
             return []
         gid = self._code_to_gid(code, ttf)
@@ -533,12 +658,14 @@ class PDTrueTypeFont(PDSimpleFont):
         the ``/Encoding`` to a glyph name, then to the cmap. Returns
         ``0`` (the ``.notdef`` glyph) when no mapping is found.
 
-        Mirrors upstream ``PDTrueTypeFont.codeToGID``.
+        Mirrors upstream ``PDTrueTypeFont.codeToGID``. When the font is
+        not embedded the lookup runs against the host / bundled substitute
+        program (mirrors upstream, whose ``ttf`` field carries it).
         """
-        ttf = self.get_true_type_font()
+        ttf = self._resolve_program()
         if ttf is None:
-            # No embedded program — for symbolic fonts the convention is
-            # still "code is GID"; otherwise we have no answer.
+            # No embedded program and no substitute — for symbolic fonts
+            # the convention is still "code is GID"; otherwise no answer.
             return code if self.is_symbolic() else 0
         return self._code_to_gid(code, ttf)
 
@@ -645,7 +772,13 @@ class PDTrueTypeFont(PDSimpleFont):
         Mac-Roman cmap (PDFBOX-3110 poems-beads) resolved every code
         to ``.notdef`` and rendered as placeholder boxes.
         """
-        self.extract_cmap_table()
+        # Extract the platform cmaps from the *same* program this lookup
+        # runs against — embedded, substitute, or a caller-supplied stub.
+        # (Production always passes the resolved ``ttf`` field, so embedded
+        # and substitute behaviour is unchanged; this only matters when a
+        # caller hands ``_code_to_gid`` a program other than the one
+        # :meth:`extract_cmap_table` would resolve on its own.)
+        self.extract_cmap_table(ttf)
         no_platform_cmaps = (
             self._cmap_win_unicode is None
             and self._cmap_win_symbol is None
@@ -798,9 +931,9 @@ class PDTrueTypeFont(PDSimpleFont):
 
     # ---------- cmap-platform extraction ----------
 
-    def extract_cmap_table(self) -> None:
+    def extract_cmap_table(self, ttf: TrueTypeFont | None = None) -> None:
         """Pull the (3,1) Win-Unicode, (3,0) Win-Symbol and (1,0) Mac-Roman
-        ``cmap`` subtables off the embedded TTF, plus the (0,0) and (0,3)
+        ``cmap`` subtables off the resolved TTF, plus the (0,0) and (0,3)
         Unicode-platform aliases that count as Win-Unicode for our purposes.
 
         Mirrors upstream ``private void extractCmapTable()`` — runs once,
@@ -808,10 +941,17 @@ class PDTrueTypeFont(PDSimpleFont):
         symbolic-encoding path. Idempotent. Safe to call before any
         ``cmap``-driven lookup; :meth:`code_to_gid_via_platforms` calls it
         on demand.
+
+        ``ttf`` selects the program to read cmaps from: by default the
+        resolved program (embedded ``/FontFile2`` when present, otherwise
+        the host / bundled substitute). :meth:`_code_to_gid` passes the
+        program it was handed so the extracted cmaps stay consistent with
+        the program the GID lookup runs against.
         """
         if self._cmap_initialized:
             return
-        ttf = self.get_true_type_font()
+        if ttf is None:
+            ttf = self._resolve_program()
         if ttf is None:
             self._cmap_initialized = True
             return
@@ -1217,6 +1357,76 @@ def _uni_name_of_code_point(code_point: int) -> str:
 
 
 # ---------- module-level helpers (fontTools shim) ----------
+
+
+def _adapt_substitute_to_true_type_font(
+    fonttools_font: Any,
+) -> TrueTypeFont | None:
+    """Adapt a :class:`FontMapper`-returned substitute (a fontTools
+    ``TTFont``) into a pypdfbox :class:`TrueTypeFont` so the
+    resolution methods (which speak the pypdfbox font API:
+    ``get_units_per_em`` / ``get_advance_width`` / ``name_to_gid`` /
+    ``_tt``) can use it.
+
+    Strategy, in order of preference:
+
+    1. If the mapper already handed us a pypdfbox :class:`TrueTypeFont`
+       (a future-proofing case), use it directly.
+    2. Re-parse the backing file when one is recoverable from the
+       fontTools reader. This is deterministic and is the path the
+       bundled ``LiberationSans-Regular.ttf`` last-resort takes, so the
+       substitute is reproducible across machines / CI for that font.
+    3. Otherwise serialise the in-memory fontTools font and re-parse it
+       (covers TTC members and synthesised fonts with no on-disk file).
+
+    Returns ``None`` on any failure — the caller degrades to ``0`` /
+    GID ``0`` rather than raising.
+    """
+    if isinstance(fonttools_font, TrueTypeFont):
+        return fonttools_font
+    # 2. Re-parse the backing file when the reader exposes a real path.
+    path = _substitute_font_path(fonttools_font)
+    if path is not None:
+        try:
+            from pathlib import Path  # noqa: PLC0415
+
+            return TrueTypeFont.from_bytes(Path(path).read_bytes())
+        except Exception:  # noqa: BLE001 — fall through to the save() round-trip
+            _LOG.debug("substitute re-parse from path %s failed", path)
+    # 3. Serialise the in-memory fontTools font and re-parse.
+    save = getattr(fonttools_font, "save", None)
+    if not callable(save):
+        return None
+    try:
+        import io  # noqa: PLC0415
+
+        buf = io.BytesIO()
+        save(buf)
+        return TrueTypeFont.from_bytes(buf.getvalue())
+    except Exception:  # noqa: BLE001 — unparsable substitute must not crash callers
+        _LOG.exception("substitute fontTools save() round-trip failed")
+        return None
+
+
+def _substitute_font_path(fonttools_font: Any) -> str | None:
+    """Best-effort on-disk path for a fontTools ``TTFont`` substitute.
+
+    fontTools stores the originating file on ``reader.file``; for a font
+    opened from a real path that is a buffered file handle whose ``name``
+    is the path. For a ``BytesIO``-backed reader (TTC members, in-memory
+    fonts) there is no usable path, so this returns ``None`` and the
+    caller falls back to the ``save()`` round-trip.
+    """
+    reader = getattr(fonttools_font, "reader", None)
+    if reader is None:
+        return None
+    handle = getattr(reader, "file", None)
+    if handle is None:
+        return None
+    name = getattr(handle, "name", None)
+    if not isinstance(name, str) or not name:
+        return None
+    return name
 
 
 def _fonttools_glyph_set(ttf: TrueTypeFont) -> Any | None:

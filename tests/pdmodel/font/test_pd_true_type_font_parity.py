@@ -21,6 +21,18 @@ _TTF_FIXTURE = (
 )
 
 
+@pytest.fixture
+def no_substitute(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Disable the wave-1596 non-embedded substitute path so the genuine
+    "no embedded program *and* no substitute" degraded branch is exercised
+    deterministically (independent of host fonts / the bundled last
+    resort). Used by the parity tests that pin the empty / zero / GID-0
+    behaviour of a font with no program at all."""
+    monkeypatch.setattr(
+        PDTrueTypeFont, "_get_substitute_font", lambda self: None
+    )
+
+
 def _ttf_bytes() -> bytes:
     return _TTF_FIXTURE.read_bytes()
 
@@ -153,8 +165,8 @@ def test_get_displacement_horizontal_only() -> None:
     assert tx == width / 1000.0
 
 
-def test_get_displacement_unknown_code_zero() -> None:
-    """No /Widths and no embedded TTF → displacement is (0, 0)."""
+def test_get_displacement_unknown_code_zero(no_substitute: None) -> None:
+    """No /Widths and no embedded TTF (and no substitute) → (0, 0)."""
     tx, ty = PDTrueTypeFont().get_displacement(ord("A"))
     assert (tx, ty) == (0.0, 0.0)
 
@@ -162,8 +174,10 @@ def test_get_displacement_unknown_code_zero() -> None:
 # ---------- code_to_gid ----------
 
 
-def test_code_to_gid_symbolic_returns_code_when_no_ttf() -> None:
-    """Symbolic font + no embedded TTF: the code IS the GID."""
+def test_code_to_gid_symbolic_returns_code_when_no_ttf(
+    no_substitute: None,
+) -> None:
+    """Symbolic font + no embedded TTF + no substitute: the code IS the GID."""
     font = PDTrueTypeFont()
     fd = PDFontDescriptor()
     fd.set_flags(FLAG_SYMBOLIC)
@@ -171,8 +185,8 @@ def test_code_to_gid_symbolic_returns_code_when_no_ttf() -> None:
     assert font.code_to_gid(42) == 42
 
 
-def test_code_to_gid_nonsymbolic_zero_when_no_ttf() -> None:
-    """Nonsymbolic font + no embedded TTF: nothing to consult → 0."""
+def test_code_to_gid_nonsymbolic_zero_when_no_ttf(no_substitute: None) -> None:
+    """Nonsymbolic font + no embedded TTF + no substitute → 0."""
     font = PDTrueTypeFont()
     font.set_font_descriptor(PDFontDescriptor())
     assert font.code_to_gid(42) == 0
@@ -268,7 +282,7 @@ def test_get_glyph_path_via_winansi_encoding() -> None:
     assert path, "expected a glyph path for ASCII 'A' under WinAnsi"
 
 
-def test_get_glyph_path_no_program_empty() -> None:
+def test_get_glyph_path_no_program_empty(no_substitute: None) -> None:
     assert PDTrueTypeFont().get_glyph_path(65) == []
 
 
@@ -282,7 +296,7 @@ def test_get_height_from_glyf_table() -> None:
     assert height > 0.0
 
 
-def test_get_height_zero_when_no_program() -> None:
+def test_get_height_zero_when_no_program(no_substitute: None) -> None:
     assert PDTrueTypeFont().get_height(65) == 0.0
 
 
@@ -400,9 +414,11 @@ def test_code_to_gid_nonsymbolic_does_not_probe_private_use_ranges() -> None:
 # ---------- get_gid_to_code ----------
 
 
-def test_get_gid_to_code_symbolic_no_ttf_is_identity() -> None:
-    """Symbolic font + no embedded TTF: ``code_to_gid`` is the identity
-    over 0..255, so the inverted map is just ``{i: i}``."""
+def test_get_gid_to_code_symbolic_no_ttf_is_identity(
+    no_substitute: None,
+) -> None:
+    """Symbolic font + no embedded TTF + no substitute: ``code_to_gid`` is
+    the identity over 0..255, so the inverted map is just ``{i: i}``."""
     font = PDTrueTypeFont()
     fd = PDFontDescriptor()
     fd.set_flags(FLAG_SYMBOLIC)
@@ -411,9 +427,12 @@ def test_get_gid_to_code_symbolic_no_ttf_is_identity() -> None:
     assert mapping == {i: i for i in range(256)}
 
 
-def test_get_gid_to_code_nonsymbolic_no_ttf_collapses_to_zero() -> None:
-    """Nonsymbolic font + no embedded TTF: every code maps to GID 0, so
-    only the *first* code (0) survives the ``putIfAbsent``-style merge."""
+def test_get_gid_to_code_nonsymbolic_no_ttf_collapses_to_zero(
+    no_substitute: None,
+) -> None:
+    """Nonsymbolic font + no embedded TTF + no substitute: every code maps
+    to GID 0, so only the *first* code (0) survives the
+    ``putIfAbsent``-style merge."""
     font = PDTrueTypeFont()
     font.set_font_descriptor(PDFontDescriptor())
     mapping = font.get_gid_to_code()
@@ -506,8 +525,8 @@ def test_get_width_from_font_returns_advance_in_thousands() -> None:
     assert width < 2048.0
 
 
-def test_get_width_from_font_zero_without_program() -> None:
-    """No embedded TTF → width-from-font is zero (no source to consult)."""
+def test_get_width_from_font_zero_without_program(no_substitute: None) -> None:
+    """No embedded TTF and no substitute → width-from-font is zero."""
     assert PDTrueTypeFont().get_width_from_font(65) == 0.0
 
 
@@ -529,7 +548,7 @@ def test_get_normalized_path_returns_scaled_outline() -> None:
     assert [v for v, _ in raw] == [v for v, _ in norm]
 
 
-def test_get_normalized_path_empty_without_program() -> None:
+def test_get_normalized_path_empty_without_program(no_substitute: None) -> None:
     assert PDTrueTypeFont().get_normalized_path(65) == []
 
 
@@ -566,8 +585,9 @@ def test_extract_cmap_table_idempotent() -> None:
     ) == snapshot
 
 
-def test_extract_cmap_table_no_program_safe() -> None:
-    """No embedded program → extractor still completes and marks done."""
+def test_extract_cmap_table_no_program_safe(no_substitute: None) -> None:
+    """No embedded program and no substitute → extractor still completes
+    and marks done."""
     font = PDTrueTypeFont()
     font.extract_cmap_table()
     assert font._cmap_initialized is True
