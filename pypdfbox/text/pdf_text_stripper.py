@@ -1560,7 +1560,9 @@ class PDFTextStripper:
         # text-rendering matrix, independent of the per-glyph translation).
         trm = self._text_rendering_matrix(state)
         y_scale = trm.get_scaling_factor_y()
+        x_scale = trm.get_scaling_factor_x()
         effective_font_size = font_size * y_scale
+        font_size_in_pt = font_size * x_scale
         font_height_fraction = self._active_font_height
         run_height = (
             0.0 if font_height_fraction is None
@@ -1637,6 +1639,7 @@ class PDFTextStripper:
                         x=origin.get_translate_x(),
                         y=origin.get_translate_y(),
                         font_size=effective_font_size,
+                        font_size_in_pt=font_size_in_pt,
                         font_name=state.font_name,
                         font=font,
                         resolved_font_name=resolved_font_name,
@@ -1676,6 +1679,7 @@ class PDFTextStripper:
                         x=origin.get_translate_x(),
                         y=origin.get_translate_y(),
                         font_size=effective_font_size,
+                        font_size_in_pt=font_size_in_pt,
                         font_name=state.font_name,
                         font=font,
                         resolved_font_name=resolved_font_name,
@@ -1866,6 +1870,7 @@ class PDFTextStripper:
                         x=sub_trm.get_translate_x(),
                         y=sub_trm.get_translate_y(),
                         font_size=effective_font_size,
+                        font_size_in_pt=state.font_size * x_scale,
                         font_name=state.font_name,
                         font=font,
                         resolved_font_name=resolved_font_name,
@@ -1949,6 +1954,7 @@ class PDFTextStripper:
                         x=origin.get_translate_x(),
                         y=origin.get_translate_y(),
                         font_size=effective_font_size,
+                        font_size_in_pt=state.font_size * x_scale,
                         font_name=state.font_name,
                         font=font,
                         resolved_font_name=resolved_font_name,
@@ -2139,6 +2145,7 @@ class PDFTextStripper:
                     x=device_x,
                     y=device_y,
                     font_size=effective_font_size,
+                    font_size_in_pt=state.font_size * x_scale,
                     font_name=state.font_name,
                     font=font,
                     resolved_font_name=resolved_font_name,

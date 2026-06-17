@@ -550,6 +550,35 @@ def _resolve_builtin_color_spaces() -> dict[str, Any]:
 _BUILTIN_DEVICE_COLOR_SPACES: dict[str, Any] = _resolve_builtin_color_spaces()
 
 
+def _decode_first_pair(decode: Any) -> tuple[float, float] | None:
+    """Return the first ``(min, max)`` float pair of a ``/Decode`` array,
+    or ``None`` when fewer than two numeric entries are present.
+
+    Accepts both shapes ``get_decode`` returns across the image hierarchy:
+    ``PDImageXObject.get_decode`` yields a ``list[float]`` while
+    ``PDInlineImage.get_decode`` yields a raw ``COSArray`` of ``COSNumber``
+    (which have no Python ordering). Both are normalised to ``float`` so a
+    caller can compare the pair without tripping on ``COSBase`` ordering.
+    """
+    if decode is None:
+        return None
+    try:
+        if len(decode) < 2:
+            return None
+    except TypeError:
+        return None
+    first = decode[0]
+    second = decode[1]
+    if isinstance(first, COSNumber):
+        first = first.value
+    if isinstance(second, COSNumber):
+        second = second.value
+    try:
+        return float(first), float(second)
+    except (TypeError, ValueError):
+        return None
+
+
 def _decode_inline_image_static(
     params: Any, data: Any
 ) -> Any:
@@ -7908,11 +7937,17 @@ class PDFRenderer(PDFStreamEngine):
             return
         # Apply /Decode. Spec default for a stencil is [0 1] → 0 paints,
         # 1 is transparent. [1 0] reverses (0 transparent, 1 paints).
+        #
+        # ``get_decode`` returns ``list[float]`` for a ``PDImageXObject`` but a
+        # raw ``COSArray`` for a ``PDInlineImage`` — whose ``COSNumber`` items
+        # have no Python ordering, so a direct ``decode[0] > decode[1]`` raises
+        # ``TypeError`` and (caught at the call site) silently drops every
+        # inline stencil with an inverting ``/D [1 0]``. Normalise both shapes
+        # to floats first.
         decode = image.get_decode()
-        if decode is not None and len(decode) >= 2 and decode[0] > decode[1]:
-            opaque_sample = 1
-        else:
-            opaque_sample = 0
+        decode_pair = _decode_first_pair(decode)
+        inverted = decode_pair is not None and decode_pair[0] > decode_pair[1]
+        opaque_sample = 1 if inverted else 0
         # Build the per-pixel alpha plane (255 where the stencil is
         # opaque, 0 elsewhere).
         alpha_bytes = bytearray(width * height)
@@ -9898,6 +9933,32 @@ class PDFRenderer(PDFStreamEngine):
             trans: _Matrix = (1.0, 0.0, 0.0, 1.0, tx, 0.0)
             self._gs.text_matrix = _matmul(trans, self._gs.text_matrix)
 
+    def _type3_charproc_resources(
+        self, font: Any, charproc: COSStream
+    ) -> Any:
+        """Resolve the ``/Resources`` for a Type 3 charproc, mirroring
+        upstream ``PDType3CharProc.getResources()``.
+
+        The charproc stream's *own* ``/Resources`` takes precedence
+        (PDFBOX-5294: a malformed PDF may stash ``/Resources`` on the
+        charproc stream even though the spec places it on the parent
+        font). When the stream carries no local entry, fall back to the
+        parent font's ``/Resources``. Returns ``None`` when neither
+        exists, so the caller leaves the page-level resources in scope.
+        """
+        local = None
+        with contextlib.suppress(Exception):
+            local = charproc.get_dictionary_object(COSName.RESOURCES)
+        if isinstance(local, COSDictionary):
+            from pypdfbox.pdmodel.pd_resources import (  # noqa: PLC0415
+                PDResources,
+            )
+
+            return PDResources(local)
+        with contextlib.suppress(Exception):
+            return font.get_resources()
+        return None
+
     def _render_type3_charproc(
         self,
         font: Any,
@@ -9953,14 +10014,24 @@ class PDFRenderer(PDFStreamEngine):
         self._current_subpath = None
         self._current_point = (0.0, 0.0)
         self._pending_clip = None
-        # Switch resources to the font's own /Resources for the duration
-        # of the charproc — required because charprocs may reference
-        # XObjects / patterns / nested fonts via the font's own dict.
+        # Switch resources to the charproc's own /Resources for the
+        # duration of the charproc — required because charprocs may
+        # reference XObjects / patterns / nested fonts via the resource
+        # dict. Per upstream ``PDFStreamEngine.processType3Stream`` ->
+        # ``pushResources(charProc)``, the resolution order is the
+        # charproc stream's *own* ``/Resources`` first (PDFBOX-5294: a
+        # malformed PDF may misplace ``/Resources`` onto the charproc
+        # stream), falling back to the parent font's ``/Resources``.
+        # Mirrors ``PDType3CharProc.getResources()``. When neither is
+        # present the page-level resources stay in scope (charproc
+        # inherits the parent resources).
         prev_resources = self._resources
         try:
-            font_resources = font.get_resources()
-            if font_resources is not None:
-                self._resources = font_resources
+            charproc_resources = self._type3_charproc_resources(
+                font, charproc
+            )
+            if charproc_resources is not None:
+                self._resources = charproc_resources
 
             # Fold the glyph -> user transform onto the CTM and run the
             # charproc bytes through the same dispatch loop a Form
