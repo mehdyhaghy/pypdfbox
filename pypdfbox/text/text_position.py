@@ -517,8 +517,8 @@ class TextPosition:
         The previous lite implementation used
         ``unicodedata.combining(c) != 0`` over every character, which
         diverged from upstream both ways: it missed the modifier
-        symbols/letters (``Sk``/``Lm``, e.g. U+02C6 ``ˆ``, U+0060 ``\```,
-        U+00B0 ``°``) that drive the ``DIACRITICS`` remap table because
+        symbols/letters (``Sk``/``Lm``, e.g. U+02C6 ``ˆ``, U+0060 grave
+        accent, U+00B0 ``°``) that drive the ``DIACRITICS`` remap table because
         their combining class is 0, and it accepted multi-character runs
         and combining *spacing* marks (``Mc``) that upstream rejects.
         """
