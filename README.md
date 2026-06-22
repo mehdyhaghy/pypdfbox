@@ -53,8 +53,8 @@ Extras:
   also export `PYPDFBOX_CJK_AUTODOWNLOAD=1`. See
   [`docs/install.md`](docs/install.md) for the full matrix.
 
-Native wheels are published for CPython 3.14 on macOS (x86_64 +
-arm64), Linux (x86_64 + aarch64), and Windows (x86_64). Source
+Native wheels are published for CPython 3.12–3.14 on macOS (x86_64 +
+arm64), Linux/glibc (x86_64 + aarch64), and Windows (x86_64). Source
 installs require a working C / Rust toolchain for the transitive deps
 (`cryptography`, `Pillow`, `skia-python`, `imagecodecs`, `numpy`).
 JBIG2 decoding (`/JBIG2Decode`) is supported by a first-party

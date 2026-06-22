@@ -6,11 +6,11 @@ the [project README](../README.md). This page is the full version.
 
 ## Python version support
 
-pypdfbox requires **CPython 3.14 or newer**. Older releases are not
-supported. The 3.14 minimum was chosen so we can rely on the
-free-threaded ("nogil") build for parallel parsing and rendering
-work where the user opts in; the regular GIL build is also
-supported and is the default.
+pypdfbox requires **CPython 3.12 or newer** (tested on 3.12, 3.13,
+and 3.14). Older releases are not supported. On 3.14 the free-threaded
+("nogil") build is additionally available for parallel parsing and
+rendering work where the user opts in; the regular GIL build is the
+default on every supported version.
 
 Other interpreters (PyPy, GraalPy, MicroPython, …) are not tested.
 You are welcome to try them, but please flag bugs as
@@ -123,14 +123,24 @@ hook), see [`build.md`](build.md).
 
 ## Platform support matrix
 
-| OS            | Architecture     | Status   | Notes                                  |
-|---------------|------------------|----------|----------------------------------------|
-| Linux         | x86_64           | tested   | Wheels published for all native deps.  |
-| Linux         | aarch64 / arm64  | tested   | Wheels available; `skia-python` ARM wheels are newer, see troubleshooting. |
-| macOS         | x86_64           | tested   | Intel Macs.                            |
-| macOS         | arm64            | tested   | M-series Macs. Primary dev platform.   |
-| Windows       | x86_64           | tested   | Cross-platform issues called out below. |
-| Windows       | ARM64            | untested | Wheels may not exist for all deps.     |
+| OS                  | Architecture    | Status        | Notes                                  |
+|---------------------|-----------------|---------------|----------------------------------------|
+| Linux (glibc)       | x86_64          | supported     | Wheels published for all native deps.  |
+| Linux (glibc)       | aarch64 / arm64 | supported     | Wheels published for all native deps.  |
+| Linux (musl/Alpine) | x86_64 / arm64  | core only     | Core (parse/write/text/encryption) installs and runs. **Rendering (`skia-python`) and JPEG/JPEG2000 decoding (`imagecodecs`) have no musllinux wheels** — see the Alpine note below. |
+| macOS               | arm64           | supported     | M-series Macs. Primary dev platform.   |
+| macOS               | x86_64          | supported     | Intel Macs.                            |
+| Windows             | x86_64          | supported     | Cross-platform issues called out below. |
+| Windows             | ARM64           | not supported | `cryptography` does not publish `win_arm64` wheels (dropped upstream in 46.0.4); out of scope. |
+| Windows             | x86 (32-bit)    | not supported | `cryptography` removed 32-bit Windows support in 49.0; out of scope. |
+
+**Alpine / musl note.** pypdfbox's core installs cleanly on Alpine, but
+two rendering-path dependencies — `skia-python` and `imagecodecs` — ship
+no musllinux wheels, so a full install (with PDF→image rendering) fails
+there. If you are containerising and want the full feature set, use a
+**glibc base image** such as `python:3.12-slim` instead of
+`python:3.12-alpine`. This is also the wider Python-ecosystem
+recommendation for native-heavy dependency stacks.
 
 Cross-platform behaviours that the test suite actively guards
 against (a non-exhaustive list):
@@ -173,11 +183,15 @@ LittleCMS, and FreeType headers.
 Pre-built wheels exist for x86_64 macOS / Linux / Windows and arm64
 macOS / Linux. The Linux ARM wheel landed relatively recently — if
 you are on a very old `pip` (<23), upgrade `pip` first or you may
-see "no matching distribution found" for the ARM wheel.
+see "no matching distribution found" for the ARM wheel. **No
+musllinux wheels** are published, so rendering is unavailable on
+Alpine — use a glibc base image (see the platform matrix above).
 
 ### `imagecodecs`
 
-Pre-built wheels exist for the standard platforms. Source installs
+Pre-built wheels exist for the standard platforms (macOS, glibc
+Linux, Windows). **No musllinux wheels** are published, so the
+JPEG/JPEG2000 filter path is unavailable on Alpine. Source installs
 are involved — they bundle a long list of native codec libraries
 (libjpeg, libpng, libtiff, libwebp, OpenJPEG, …). Prefer the wheel.
 

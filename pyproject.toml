@@ -7,7 +7,7 @@ name = "pypdfbox"
 version = "0.9.0"
 description = "Python-native port of Apache PDFBox-compatible APIs (Apache 2.0)"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.12"
 license = { file = "LICENSE" }
 authors = [
     { name = "Mehdy Haghy", email = "mehdy@haghy.com" },
@@ -32,6 +32,8 @@ classifiers = [
     "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Programming Language :: Python :: Implementation :: CPython",
     "Topic :: Multimedia :: Graphics",
@@ -138,7 +140,7 @@ select = ["E", "F", "I", "B", "UP", "SIM"]
 ignore = ["UP012"]
 
 [tool.mypy]
-python_version = "3.14"
+python_version = "3.12"
 strict = true
 warn_unused_ignores = true
 warn_redundant_casts = true
