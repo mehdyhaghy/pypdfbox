@@ -157,8 +157,14 @@ apt-get update && apt-get install -y libegl1 libgl1 libgles2 libfontconfig1
 ```
 
 The non-rendering core (parsing, writing, text extraction, encryption)
-needs none of these and runs on a bare `slim` image. The full
-`python:3.12` image (non-slim) already bundles the GL/font libraries.
+needs none of these and runs on a bare `slim` image. Note the GL/font
+libraries are **not** present in any stock `python:3.12` image —
+neither `-slim` *nor* the full Debian image — so the `apt-get` step
+above is required for rendering regardless of which you start from.
+This is the same `libGL`/`libEGL` system requirement that
+`opencv-python`, PyQt, and other native graphics wheels have; per
+manylinux policy these driver-coupled libraries are deliberately not
+vendored into wheels.
 
 Cross-platform behaviours that the test suite actively guards
 against (a non-exhaustive list):
