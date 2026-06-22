@@ -43,8 +43,9 @@ from __future__ import annotations
 
 from typing import Any
 
-import skia
 from PIL import Image as _PILImage
+
+from pypdfbox.rendering._skia import skia
 
 # ---------------------------------------------------------------------------
 # Colour helpers
