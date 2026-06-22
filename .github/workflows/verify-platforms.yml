@@ -1,0 +1,47 @@
+name: Verify platforms
+
+# Manual, on-demand only — NOT a CI gate. Installs the published TestPyPI
+# build on every GitHub-hosted runner OS/arch and runs a core+render smoke
+# test to validate the wheel set. Safe to delete after use.
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.expect_fail == true }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,    label: "Linux x64 (glibc)" }
+          - { os: ubuntu-24.04-arm, label: "Linux arm64 (glibc)" }
+          - { os: windows-latest,   label: "Windows x64" }
+          - { os: windows-11-arm,   label: "Windows ARM64 (expect fail)", expect_fail: true }
+          - { os: macos-13,         label: "macOS x64 (Intel)" }
+          - { os: macos-latest,     label: "macOS arm64" }
+    steps:
+      - name: Set up Python 3.12 (native arch)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install rendering system libs (Linux only)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libgles2 libfontconfig1
+
+      - name: Show interpreter
+        run: python -c "import platform,sys;print('machine',platform.machine(),platform.architecture(),sys.version)"
+
+      - name: Install pypdfbox from TestPyPI
+        run: python -m pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ pypdfbox
+
+      - name: Installed wheels
+        run: python -m pip list
+
+      - name: Smoke test (create / save / load / extract / render)
+        run: python -c "from pypdfbox.pdmodel import PDDocument,PDPage; from pypdfbox.pdmodel.pd_page_content_stream import PDPageContentStream; from pypdfbox.examples.pdmodel._font_helpers import make_standard14_type1_font as mk; from pypdfbox.pdmodel.font.standard14_fonts import FontName as F; from pypdfbox.text import PDFTextStripper; from pypdfbox.rendering import PDFRenderer; d=PDDocument(); p=PDPage(); d.add_page(p); cs=PDPageContentStream(d,p); cs.begin_text(); cs.set_font(mk(F.HELVETICA),24); cs.new_line_at_offset(72,700); cs.show_text('ok'); cs.end_text(); cs.close(); d.save('t.pdf'); d.close(); doc=PDDocument.load('t.pdf'); t=PDFTextStripper().get_text(doc).strip(); print('TEXT',repr(t)); sz=PDFRenderer(doc).render_image_with_dpi(0,96).size; print('RENDER',sz); doc.close(); assert t=='ok' and sz==(816,1056); print('ALL OK')"
