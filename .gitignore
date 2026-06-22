@@ -78,3 +78,12 @@ coverage.json
 # AI assistant config + migration apparatus — kept LOCAL only (not for the public repo)
 CLAUDE.md
 archive/
+
+# Docker — local deployment-testing only, never committed
+Dockerfile
+Dockerfile.*
+*.dockerfile
+docker-compose*.y*ml
+.dockerignore
+docker/
+.docker/

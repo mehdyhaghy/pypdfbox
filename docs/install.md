@@ -127,20 +127,38 @@ hook), see [`build.md`](build.md).
 |---------------------|-----------------|---------------|----------------------------------------|
 | Linux (glibc)       | x86_64          | supported     | Wheels published for all native deps.  |
 | Linux (glibc)       | aarch64 / arm64 | supported     | Wheels published for all native deps.  |
-| Linux (musl/Alpine) | x86_64 / arm64  | core only     | Core (parse/write/text/encryption) installs and runs. **Rendering (`skia-python`) and JPEG/JPEG2000 decoding (`imagecodecs`) have no musllinux wheels** — see the Alpine note below. |
+| Linux (musl/Alpine) | x86_64 / arm64  | not supported | `pip install pypdfbox` **fails** — `skia-python` and `imagecodecs` (hard deps) publish no musllinux wheels. Use a glibc image; see the Alpine note below. |
 | macOS               | arm64           | supported     | M-series Macs. Primary dev platform.   |
 | macOS               | x86_64          | supported     | Intel Macs.                            |
 | Windows             | x86_64          | supported     | Cross-platform issues called out below. |
 | Windows             | ARM64           | not supported | `cryptography` does not publish `win_arm64` wheels (dropped upstream in 46.0.4); out of scope. |
 | Windows             | x86 (32-bit)    | not supported | `cryptography` removed 32-bit Windows support in 49.0; out of scope. |
 
-**Alpine / musl note.** pypdfbox's core installs cleanly on Alpine, but
-two rendering-path dependencies — `skia-python` and `imagecodecs` — ship
-no musllinux wheels, so a full install (with PDF→image rendering) fails
-there. If you are containerising and want the full feature set, use a
+**Alpine / musl note.** Installing pypdfbox on Alpine currently
+**fails**: `skia-python` and `imagecodecs` are required dependencies and
+neither ships a musllinux wheel, so pip cannot resolve the dependency
+set (it errors with *"No matching distribution found for imagecodecs"*).
+The core's other native deps (`cryptography`, `Pillow`, `numpy`,
+`fontTools`) *do* publish musllinux wheels, so a future optional-extras
+split could enable a rendering-free core install — but as shipped, use a
 **glibc base image** such as `python:3.12-slim` instead of
 `python:3.12-alpine`. This is also the wider Python-ecosystem
 recommendation for native-heavy dependency stacks.
+
+**Minimal images and rendering — required system libraries.** The
+renderer (`skia-python`) loads system OpenGL/EGL and fontconfig
+libraries at import time. Minimal base images (`-slim`, distroless)
+omit them, so `import pypdfbox.rendering` fails with
+`ImportError: libEGL.so.1: cannot open shared object file` until they
+are installed. On Debian / `python:3.12-slim`:
+
+```sh
+apt-get update && apt-get install -y libegl1 libgl1 libgles2 libfontconfig1
+```
+
+The non-rendering core (parsing, writing, text extraction, encryption)
+needs none of these and runs on a bare `slim` image. The full
+`python:3.12` image (non-slim) already bundles the GL/font libraries.
 
 Cross-platform behaviours that the test suite actively guards
 against (a non-exhaustive list):
