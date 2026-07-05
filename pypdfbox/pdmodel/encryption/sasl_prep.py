@@ -40,10 +40,20 @@ class SaslPrep:
 
     @staticmethod
     def prohibited(codepoint: int) -> bool:
-        """Mirror of ``SaslPrep.prohibited`` (Java line 146)."""
+        """Mirror of ``SaslPrep.prohibited`` (Java line 146).
+
+        Upstream calls ``nonAsciiSpace((char) character)`` and
+        ``asciiControl((char) character)`` — a narrowing ``int`` → ``char``
+        cast that keeps only the low 16 bits. Astral codepoints are therefore
+        prohibited whenever their low 16 bits alias a non-ASCII space or an
+        ASCII control (e.g. U+12000 CUNEIFORM SIGN A aliases U+2000, and
+        U+10000 LINEAR B SYLLABLE B008 A aliases U+0000). Mirror the
+        truncation exactly; the remaining predicates take the full codepoint
+        upstream (``int`` parameters) and do so here as well.
+        """
         return (
-            _non_ascii_space(codepoint)
-            or _ascii_control(codepoint)
+            _non_ascii_space(codepoint & 0xFFFF)
+            or _ascii_control(codepoint & 0xFFFF)
             or _non_ascii_control(codepoint)
             or _private_use(codepoint)
             or _non_character_codepoint(codepoint)

@@ -59,7 +59,9 @@ def test_review_workflow_accessors_round_trip_from_existing_cos_dictionary() -> 
     assert ann.get_reply_type() == PDAnnotationMarkup.RT_GROUP
     assert ann.get_intent() == "PolygonDimension"
     assert ann.get_rich_contents() == "<body><p>round trip</p></body>"
-    assert ann.get_external_data() is external_data
+    fetched_ex_data = ann.get_external_data()
+    assert fetched_ex_data is not None
+    assert fetched_ex_data.get_cos_object() is external_data
 
 
 def test_review_workflow_setters_clear_entries_and_restore_reply_default() -> None:
@@ -118,7 +120,9 @@ def test_dictionary_accessors_resolve_indirect_cos_objects() -> None:
     assert ann.has_popup() is True
     assert ann.get_popup() is not None
     assert ann.get_popup().get_cos_object() is popup_dict
-    assert ann.get_external_data() is external_data
+    indirect_ex_data = ann.get_external_data()
+    assert indirect_ex_data is not None
+    assert indirect_ex_data.get_cos_object() is external_data
     assert ann.get_in_reply_to() is parent
 
 

@@ -8,7 +8,8 @@ These tests exercise the upstream-style API additions:
 * ``get_unique_id()``, ``get_full_name()``, ``get_version()``,
   ``get_copyright()``, ``get_trademark()``.
 * Decoding the four supported Macintosh script codes (Roman, best-effort
-  Japanese) plus the ``ENCODING_WINDOWS_UNICODE_UCS4`` Windows surrogate path.
+  Japanese) plus the ``ENCODING_WINDOWS_UNICODE_UCS4`` Windows fallthrough
+  (Latin-1, matching upstream — only Windows encodings 0/1 are UTF-16).
 """
 
 from __future__ import annotations
@@ -207,7 +208,11 @@ def test_unknown_macintosh_encoding_falls_back_to_latin1() -> None:
     assert decoded == raw.decode("latin-1")
 
 
-def test_windows_unicode_ucs4_treated_as_utf16be() -> None:
+def test_windows_unicode_ucs4_falls_back_to_latin1() -> None:
+    # Upstream NamingTable#getCharset (3.0.7, line 115) only special-cases
+    # Windows encodings 0 (Symbol) and 1 (Unicode BMP); encoding 10 (UCS-4)
+    # falls through to the ISO-8859-1 default. Oracle-verified (wave 1598,
+    # NamingTableFuzzProbe).
     raw = "Roboto".encode("utf-16-be")
     blob = _build_name_table([
         (NameRecord.PLATFORM_WINDOWS, NameRecord.ENCODING_WINDOWS_UNICODE_UCS4,
@@ -219,7 +224,7 @@ def test_windows_unicode_ucs4_treated_as_utf16be() -> None:
                          NameRecord.PLATFORM_WINDOWS,
                          NameRecord.ENCODING_WINDOWS_UNICODE_UCS4,
                          NameRecord.LANGUAGE_WINDOWS_EN_US)
-    assert decoded == "Roboto"
+    assert decoded == raw.decode("latin-1")
 
 
 # ---- get_name_records returns the underlying list -------------------------

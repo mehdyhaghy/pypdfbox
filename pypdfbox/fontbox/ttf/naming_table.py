@@ -63,7 +63,7 @@ class NamingTable(TTFTable):
     ) -> None:
         data.read_unsigned_short()  # format selector
         number_of_name_records = data.read_unsigned_short()
-        offset_to_start_of_string_storage = data.read_unsigned_short()
+        data.read_unsigned_short()  # declared string-storage offset — unused upstream
 
         self._name_records = []
         for _i in range(number_of_name_records):
@@ -73,27 +73,34 @@ class NamingTable(TTFTable):
                 self._name_records.append(nr)
 
         for nr in self._name_records:
-            string_start = offset_to_start_of_string_storage + nr.get_string_offset()
-            string_end = string_start + nr.get_string_length()
-            # Don't try to read invalid offsets — see PDFBOX-2608. The
-            # string offset is relative to the declared storage area, and both
-            # start and end must stay inside this table.
-            if string_start > self.get_length() or string_end > self.get_length():
+            # Don't try to read invalid offsets — see PDFBOX-2608. Upstream
+            # guards ONLY the record's raw string offset against the table
+            # length (NamingTable.java line 93); it does not clamp
+            # offset+length, so a string that starts inside the table but
+            # runs past its end is read from whatever file bytes follow,
+            # and a read past EOF propagates (``OSError``, mirroring the
+            # Java ``IOException`` that fails the whole parse).
+            if nr.get_string_offset() > self.get_length():
                 nr.set_string(None)
                 continue
 
-            absolute_string_start = self.get_offset() + string_start
-            if absolute_string_start + nr.get_string_length() > data.get_original_data_size():
-                nr.set_string(None)
-                continue
-
-            data.seek(absolute_string_start)
+            # The string storage base is COMPUTED as the end of the record
+            # array — 6 header bytes + 12 bytes per declared record — from
+            # the table start (NamingTable.java line 99). The header's
+            # declared storage offset is ignored, even when it differs
+            # (oracle-verified against PDFBox 3.0.7, wave 1598).
+            data.seek(
+                self.get_offset()
+                + 2 * 3
+                + number_of_name_records * 2 * 6
+                + nr.get_string_offset()
+            )
             charset = self._charset_for(nr)
             raw = data.read_bytes(nr.get_string_length())
             try:
                 string = self._decode_string(raw, charset)
             except LookupError:
-                # best-effort fallback for unknown Macintosh script codes
+                # best-effort fallback for monkeypatched unknown codec names
                 string = raw.decode("latin-1")
             nr.set_string(string)
 
@@ -109,11 +116,21 @@ class NamingTable(TTFTable):
         line 110), expressed in Python codec strings rather than
         ``java.nio.charset.Charset`` instances.
 
-        Behaviour intentionally matches upstream PDFBox 3.0.7 exactly:
+        Behaviour matches upstream PDFBox 3.0.7 exactly (oracle-verified
+        against the 3.0.7 bytecode + live probe, wave 1598):
 
-        * platform=3 (Windows) encoding 0/1/10 → UTF-16BE.
-        * platform=0 (Unicode) → UTF-16BE (any encoding).
-        * platform=2 (ISO) encoding 0 → US-ASCII, encoding 1 → UTF-16BE.
+        * platform=3 (Windows) encoding 0 (Symbol) / 1 (Unicode BMP) →
+          ``"utf-16"``, meaning Java's ``StandardCharsets.UTF_16``: a
+          leading BOM is consumed and selects the byte order; without a
+          BOM the decode is BIG-endian (``_decode_string`` implements
+          this — Python's bare ``utf-16`` codec would default to
+          little-endian). Encoding 10 (UCS-4) is **not** special-cased
+          upstream and falls through to Latin-1.
+        * platform=0 (Unicode) → ``"utf-16"`` (any encoding).
+        * platform=2 (ISO) encoding 0 → US-ASCII; encoding 1 →
+          ``"utf-16-be"`` — the *strict* big-endian charset: a BOM is NOT
+          consumed and surfaces as U+FEFF/U+FFFE in the decoded string,
+          exactly like Java's ``StandardCharsets.UTF_16BE``.
         * **everything else, including platform=1 (Macintosh)** →
           ISO-8859-1 (Latin-1). Upstream does NOT decode Macintosh records
           as ``MacRoman``; this surfaces as a parity-visible byte at e.g.
@@ -127,18 +144,18 @@ class NamingTable(TTFTable):
         if platform == NameRecord.PLATFORM_WINDOWS and encoding in (
             NameRecord.ENCODING_WINDOWS_SYMBOL,
             NameRecord.ENCODING_WINDOWS_UNICODE_BMP,
-            NameRecord.ENCODING_WINDOWS_UNICODE_UCS4,
         ):
-            return "utf-16-be"
+            return "utf-16"
         if platform == NameRecord.PLATFORM_UNICODE:
-            return "utf-16-be"
+            return "utf-16"
         if platform == NameRecord.PLATFORM_ISO:
             if encoding == 0:
                 return "us-ascii"
             if encoding == 1:
                 return "utf-16-be"
-        # platform=1 (Macintosh) and every other unrecognised combination
-        # falls through to the upstream default — Latin-1 / ISO-8859-1.
+        # platform=1 (Macintosh), Windows encoding 10 (UCS-4) and every
+        # other unrecognised combination falls through to the upstream
+        # default — Latin-1 / ISO-8859-1.
         return "iso-8859-1"
 
     @classmethod
@@ -149,11 +166,89 @@ class NamingTable(TTFTable):
 
     @staticmethod
     def _decode_string(raw: bytes, charset: str) -> str:
-        if charset == "utf-16-be" and (
-            raw.startswith(b"\xfe\xff") or raw.startswith(b"\xff\xfe")
-        ):
-            return raw.decode("utf-16", errors="replace")
+        """Decode ``raw`` with Java charset semantics.
+
+        ``"utf-16"`` reproduces ``java.nio.charset.StandardCharsets.UTF_16``:
+        a leading BOM is consumed and selects the byte order; without a BOM
+        the input decodes as big-endian (Python's bare ``utf-16`` codec
+        defaults to little-endian, so the no-BOM case is routed through
+        ``utf-16-be`` explicitly). Every other codec — including strict
+        ``"utf-16-be"``, which retains a BOM as U+FEFF/U+FFFE — decodes
+        directly. Malformed input is replaced (U+FFFD), matching Java's
+        ``new String(bytes, charset)``.
+        """
+        if charset == "utf-16":
+            if raw.startswith(b"\xfe\xff"):
+                return NamingTable._decode_utf16_units(raw[2:], big_endian=True)
+            if raw.startswith(b"\xff\xfe"):
+                return NamingTable._decode_utf16_units(raw[2:], big_endian=False)
+            return NamingTable._decode_utf16_units(raw, big_endian=True)
+        if charset == "utf-16-be":
+            return NamingTable._decode_utf16_units(raw, big_endian=True)
         return raw.decode(charset, errors="replace")
+
+    @staticmethod
+    def _decode_utf16_units(raw: bytes, *, big_endian: bool) -> str:
+        """UTF-16 code-unit decode with Java ``CharsetDecoder`` malformed
+        handling.
+
+        Java's decoder replaces a high surrogate AND the following
+        (non-low-surrogate) code unit with ONE U+FFFD — a 4-byte malformed
+        sequence — where Python's built-in codec replaces only the high
+        surrogate's two bytes and resumes at the next unit. E.g.
+        ``D8 00 00 41`` decodes to ``\\ufffd`` in Java but ``\\ufffdA``
+        via the Python codec (oracle-verified, wave 1598). A high
+        surrogate with fewer than two bytes left swallows the remainder
+        into one U+FFFD; a lone LOW surrogate replaces only itself; a
+        trailing odd byte becomes one U+FFFD.
+        """
+        out: list[str] = []
+        i = 0
+        n = len(raw)
+        while i + 1 < n:
+            unit = (raw[i] << 8) | raw[i + 1] if big_endian else (raw[i + 1] << 8) | raw[i]
+            if 0xD800 <= unit <= 0xDBFF:
+                if i + 3 < n:
+                    if big_endian:
+                        unit2 = (raw[i + 2] << 8) | raw[i + 3]
+                    else:
+                        unit2 = (raw[i + 3] << 8) | raw[i + 2]
+                    if 0xDC00 <= unit2 <= 0xDFFF:
+                        out.append(
+                            chr(0x10000 + ((unit - 0xD800) << 10) + (unit2 - 0xDC00))
+                        )
+                    else:
+                        # Java consumes BOTH units as one malformed sequence.
+                        out.append("�")
+                    i += 4
+                else:
+                    # high surrogate with <2 bytes left: the remainder
+                    # collapses into a single replacement char.
+                    out.append("�")
+                    i = n
+            elif 0xDC00 <= unit <= 0xDFFF:
+                out.append("�")
+                i += 2
+            else:
+                out.append(chr(unit))
+                i += 2
+        if i < n:
+            out.append("�")
+        return "".join(out)
+
+    @staticmethod
+    def _java_trim(value: str) -> str:
+        """Mirror ``java.lang.String.trim()``: strip leading/trailing chars
+        with code point <= U+0020 (which includes NUL and other C0
+        controls but — unlike Python ``str.strip()`` — NOT Unicode
+        whitespace such as U+00A0)."""
+        start = 0
+        end = len(value)
+        while start < end and value[start] <= " ":
+            start += 1
+        while end > start and value[end - 1] <= " ":
+            end -= 1
+        return value[start:end]
 
     def fill_lookup_table(self) -> None:
         """Build the ``(name, platform, encoding, language) → string`` lookup.
@@ -193,7 +288,8 @@ class NamingTable(TTFTable):
                 NameRecord.ENCODING_WINDOWS_UNICODE_BMP,
                 NameRecord.LANGUAGE_WINDOWS_EN_US,
             )
-        self._ps_name = ps_name.strip() if ps_name is not None else None
+        # Upstream trims with String.trim() — Java-trim, not Python strip.
+        self._ps_name = self._java_trim(ps_name) if ps_name is not None else None
 
         self._unique_id = self._get_english_name(NameRecord.NAME_UNIQUE_FONT_ID)
         self._full_name = self._get_english_name(NameRecord.NAME_FULL_FONT_NAME)
@@ -381,7 +477,7 @@ class NamingTable(TTFTable):
         if language_id is None:
             return self._ps_name
         v = self._lookup_by_language(NameRecord.NAME_POSTSCRIPT_NAME, language_id)
-        return v.strip() if v is not None else None
+        return self._java_trim(v) if v is not None else None
 
     def get_unique_id(self, language_id: int | None = None) -> str | None:
         if language_id is None:

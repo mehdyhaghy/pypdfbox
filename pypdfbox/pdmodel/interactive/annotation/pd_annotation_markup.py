@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 
     from .pd_annotation_popup import PDAnnotationPopup
     from .pd_border_style_dictionary import PDBorderStyleDictionary
+    from .pd_external_data_dictionary import PDExternalDataDictionary
 
 _CREATION_DATE: COSName = COSName.get_pdf_name("CreationDate")
 _IRT: COSName = COSName.get_pdf_name("IRT")
@@ -233,22 +234,38 @@ class PDAnnotationMarkup(PDAnnotation):
 
     # ---------- /ExData (external data) ----------
 
-    def get_external_data(self) -> COSDictionary | None:
-        """Return the raw external data dictionary associated with this markup.
+    def get_external_data(self) -> PDExternalDataDictionary | None:
+        """Return the typed ``/ExData`` external-data dictionary.
 
-        Upstream exposes ``PDExternalDataDictionary``. The typed wrapper is
-        deferred here, so callers get the resolved raw ``COSDictionary``.
+        Mirrors upstream ``PDAnnotationMarkup.getExternalData`` which wraps
+        the resolved dictionary in a ``PDExternalDataDictionary``; any
+        non-dictionary shape yields ``None``.
         """
+        from .pd_external_data_dictionary import (  # noqa: PLC0415
+            PDExternalDataDictionary,
+        )
+
         value = self._dict.get_dictionary_object(_EX_DATA)
         if isinstance(value, COSDictionary):
-            return value
+            return PDExternalDataDictionary(value)
         return None
 
-    def set_external_data(self, ex_data: COSDictionary | None) -> None:
+    def set_external_data(
+        self, ex_data: PDExternalDataDictionary | COSDictionary | None
+    ) -> None:
+        """Set or clear the ``/ExData`` entry.
+
+        Mirrors upstream ``PDAnnotationMarkup.setExternalData
+        (PDExternalDataDictionary)`` while also accepting a raw
+        ``COSDictionary`` for callers already operating at the COS layer.
+        """
         if ex_data is None:
             self._dict.remove_item(_EX_DATA)
             return
-        self._dict.set_item(_EX_DATA, ex_data)
+        self._dict.set_item(
+            _EX_DATA,
+            ex_data.get_cos_object() if hasattr(ex_data, "get_cos_object") else ex_data,
+        )
 
     # ---------- /IC (interior color) ----------
 

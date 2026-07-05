@@ -174,7 +174,11 @@ def test_function_shading_cos_array_uses_zero_for_bad_subfunctions(
         renderer._paint_function_shading(_Shading(), region_mask=Image.new("L", (1, 1), 255))
         _finish(renderer)
 
-        assert renderer._image.getpixel((0, 0)) == (255, 0, 0)
+        # Wave 1598: a failing sub-function aborts the whole per-pixel
+        # evaluation (upstream PDShading.evalFunction lets the IOException
+        # propagate and Type1ShadingContext skips the pixel), so the white
+        # canvas shows through instead of zero-filled channels.
+        assert renderer._image.getpixel((0, 0)) == (255, 255, 255)
     finally:
         doc.close()
 

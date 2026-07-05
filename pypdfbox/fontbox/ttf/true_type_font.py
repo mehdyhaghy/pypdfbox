@@ -1233,11 +1233,16 @@ class TrueTypeFont:
     def get_naming(self) -> NamingTable | None:
         """Return the populated ``name`` table, or ``None`` if absent.
 
-        fontTools holds the parsed name records on ``TTFont["name"].names``;
-        we project each onto a :class:`NameRecord` and rebuild the
-        upstream lookup map so ``naming.get_name(name_id)`` and the
-        ``get_font_family`` / ``get_post_script_name`` shortcuts work
-        without re-reading bytes.
+        The primary path re-reads the raw table bytes from the underlying
+        stream through :meth:`NamingTable.read` — byte-for-byte the same
+        walk upstream ``NamingTable#read`` performs (computed string-storage
+        base at 6 + 12*numRecords, the PDFBOX-2608 offset guard keeping
+        invalid records with a ``None`` string, reads crossing the table end
+        into following file bytes, ``OSError`` past EOF). fontTools' own
+        ``name`` decompile diverges from PDFBox on all of those (it honours
+        the declared storage offset and silently DROPS malformed records),
+        so projecting ``TTFont["name"].names`` is only kept as a fallback
+        for reader-less in-memory ``TTFont`` objects (synthesised fonts).
         """
         if self._naming_resolved:
             return self._naming
@@ -1245,6 +1250,48 @@ class TrueTypeFont:
         if "name" not in self._tt:
             self._naming = None
             return None
+        nt = self._read_naming_from_stream()
+        if nt is None:
+            nt = self._project_naming_from_fonttools()
+        self._naming = nt
+        return nt
+
+    def _read_naming_from_stream(self) -> NamingTable | None:
+        """Byte-faithful ``name`` decode straight from the font stream.
+
+        Returns ``None`` when the raw bytes are unreachable (no SFNT
+        reader — e.g. a fontTools ``TTFont`` synthesised in memory), in
+        which case the caller falls back to the fontTools projection.
+        Decode errors (reads past EOF) propagate, mirroring the upstream
+        ``IOException`` out of ``NamingTable#read``.
+        """
+        reader = getattr(self._tt, "reader", None)
+        tables = getattr(reader, "tables", None) if reader is not None else None
+        entry = tables.get("name") if tables is not None else None
+        if entry is None or self._data is None:
+            return None
+        nt = NamingTable()
+        nt.set_tag(NamingTable.TAG)
+        nt.set_check_sum(int(entry.checkSum))
+        nt.set_offset(int(entry.offset))
+        nt.set_length(int(entry.length))
+        self._data.seek(nt.get_offset())
+        nt.read(self, self._data)
+        return nt
+
+    def _project_naming_from_fonttools(self) -> NamingTable:
+        """Legacy fallback: rebuild the naming table from fontTools records.
+
+        fontTools holds the parsed name records on ``TTFont["name"].names``;
+        we project each onto a :class:`NameRecord` and rebuild the
+        upstream lookup map so ``naming.get_name(name_id)`` and the
+        ``get_font_family`` / ``get_post_script_name`` shortcuts work
+        without re-reading bytes. Note fontTools has already applied its
+        own record validation by this point (malformed records are dropped
+        and strings are sliced from the *declared* storage offset), so this
+        path is NOT parity-exact against PDFBox for adversarial tables —
+        the raw-stream path above is.
+        """
         ft_name = self._tt["name"]
         nt = NamingTable()
         records: list[NameRecord] = []
@@ -1290,7 +1337,6 @@ class TrueTypeFont:
         nt._fill_lookup_table()  # noqa: SLF001
         nt._read_interesting_strings()  # noqa: SLF001
         nt.initialized = True
-        self._naming = nt
         return nt
 
     def get_post_script(self) -> PostScriptTable | None:

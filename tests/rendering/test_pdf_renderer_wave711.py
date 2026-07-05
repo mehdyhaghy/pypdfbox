@@ -119,7 +119,7 @@ def test_radial_shading_skips_negative_radius_candidate_then_uses_next_root() ->
         doc.close()
 
 
-def test_function_shading_cosarray_functions_fill_missing_and_failed_channels(
+def test_function_shading_cosarray_failed_channel_skips_pixel(
     monkeypatch: Any,
 ) -> None:
     class _ScalarFunction:
@@ -167,6 +167,10 @@ def test_function_shading_cosarray_functions_fill_missing_and_failed_channels(
         _finish(renderer)
 
         assert renderer._image is not None  # noqa: SLF001
-        assert renderer._image.getpixel((0, 0)) == (255, 0, 0)  # noqa: SLF001
+        # Wave 1598: a failing channel function aborts the whole pixel's
+        # evaluation (upstream PDShading.evalFunction propagates the
+        # IOException; Type1ShadingContext.getRaster skips the pixel), so
+        # the white canvas is preserved instead of a partial channel fill.
+        assert renderer._image.getpixel((0, 0)) == (255, 255, 255)  # noqa: SLF001
     finally:
         doc.close()

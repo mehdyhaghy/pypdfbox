@@ -1717,6 +1717,29 @@ class PDFTextStripper:
         state: _TextState,
         positions: list[TextPosition],
     ) -> None:
+        """Emit the positions for one show-text string.
+
+        Thin wrapper over :meth:`_emit_run` that tags every position the
+        run produced while an ``/ActualText`` span was open. Upstream's
+        ``PDFTextStripper.processTextPosition`` bypasses the
+        duplicate-overlapping-text filter whenever ``actualText != null``
+        (the glyph is always shown and never recorded in
+        ``characterListMapping``); the lite pipeline dedups after the
+        page walk, so the span membership must travel with the position.
+        """
+        mark = len(positions)
+        in_actual_text = self._actual_text is not None
+        self._emit_run(s, state, positions)
+        if in_actual_text:
+            for pos in positions[mark:]:
+                pos.from_actual_text = True
+
+    def _emit_run(
+        self,
+        s: COSString,
+        state: _TextState,
+        positions: list[TextPosition],
+    ) -> None:
         raw_bytes = s.get_bytes()
         text = self._decode_show_text(raw_bytes)
         if not text:
@@ -2570,10 +2593,13 @@ class PDFTextStripper:
         order. This mirrors upstream's ``setSortByPosition(true)``.
 
         When ``suppress_duplicate_overlapping_text`` is enabled (the
-        upstream default), two positions that share the same text and
-        whose origins differ by less than a quarter of the font size
-        are considered the same glyph painted twice (a common trick
-        for fake bold) and the duplicate is dropped before formatting.
+        upstream default), a position whose text was already painted on
+        the page at (nearly) the same origin — within a half-open window
+        of ``width / len(text) / 3`` on both axes, upstream
+        ``processTextPosition``'s tolerance — is considered the same
+        glyph painted twice (a common trick for fake bold) and the
+        duplicate is dropped before formatting (see
+        :meth:`_drop_overlapping_duplicates`).
 
         When ``should_separate_by_beads`` is enabled and the active page
         carries thread beads, positions are bucketed into upstream's
@@ -3497,44 +3523,81 @@ class PDFTextStripper:
     def _drop_overlapping_duplicates(
         positions: list[TextPosition],
     ) -> list[TextPosition]:
-        """Drop ``TextPosition`` entries that overlap an earlier entry
-        with the same text — the duplicate-glyph fake-bold case.
+        """Drop runs that re-paint an earlier same-text run at (nearly)
+        the same origin — the fake-bold / drop-shadow double strike.
 
-        A fake-bold duplicate is the *same* glyph painted a second time at
-        (essentially) the *same* origin — the stroke offset is a tiny
-        fraction of a point. A genuine adjacent glyph, by contrast,
-        advances by roughly its own width. The tolerance is therefore a
-        small fraction of the run's own width (with a tiny absolute floor
-        so the exact-overlap fake-bold case at width 0 still matches),
-        not a quarter of the font size: at proportional sizes a flat
-        ``0.25 × font_size`` window is wider than a narrow glyph's advance
-        and would drop legitimate consecutive characters once positions
-        are packed in true device space (CTM-aware emission)."""
+        Faithful port of the ``suppressDuplicateOverlappingText`` filter in
+        upstream ``PDFTextStripper.processTextPosition`` (PDFBox 3.0.7),
+        adapted to the lite stripper's run-level positions:
+
+        - The dedup map is PAGE-global and keyed on the decoded text
+          (upstream ``characterListMapping``, cleared per page), so a
+          re-paint of a run *anywhere* later in the page's content stream
+          is still recognised — not just one painted immediately after its
+          original.
+        - ``tolerance = width / len(text) / 3`` — upstream divides the
+          position's width by its unicode length; for the lite run-level
+          position that is the run's average glyph advance over three. The
+          SAME tolerance applies on both axes (upstream reuses ``tolerance``
+          for the ``subMap`` x-window and the ``subSet`` y-window).
+        - The match window is half-open — ``[v - tol, v + tol)`` — because
+          Java's two-argument ``TreeMap.subMap`` / ``TreeSet.subSet`` are
+          from-inclusive, to-exclusive: a recorded origin exactly at
+          ``v - tol`` matches, one exactly at ``v + tol`` does not.
+        - Only a SHOWN run records its origin; a suppressed run never
+          extends the map (upstream adds to ``sameTextCharacters`` only
+          when ``!suppressCharacter``).
+        - Runs emitted inside an ``/ActualText`` span bypass the filter
+          entirely (upstream guards the whole block with
+          ``this.actualText == null``): they are always shown and are never
+          recorded in the map.
+        - An empty decoded text mirrors Java float arithmetic: with a
+          positive width, ``width / 0`` is ``+Infinity`` — any earlier
+          empty-text run on the page suppresses; with width 0 the tolerance
+          is ``NaN`` and nothing ever matches (the run is always shown).
+
+        Lite-only fallback: a non-empty run with no width metric
+        (``width <= 0`` — synthetic positions, metric-less fonts, and the
+        vertical-mode emitter, which carries no run width) uses a
+        quarter-of-font-size window on both axes. Upstream never produces
+        such glyphs (its ``TextPosition`` always carries the real glyph
+        advance, so the true formula applies); with a literal ``0``
+        tolerance the half-open window would be empty and double-painted
+        vertical text that Java collapses would survive here.
+        """
         result: list[TextPosition] = []
+        seen: dict[str, dict[float, list[float]]] = {}
         for pos in positions:
-            duplicate = False
-            # x tolerance: a fake-bold offset is a small fraction of the
-            # glyph width, so cap well below a full glyph advance. When
-            # the run carries no width metric (synthetic positions / fonts
-            # without ``/Widths``) fall back to a font-size fraction so
-            # near-coincident same-text runs are still recognised.
+            if pos.from_actual_text:
+                result.append(pos)
+                continue
+            text = pos.text
+            char_count = len(text)
             if pos.width > 0.0:
-                x_tol = max(pos.width * 0.3, 0.05)
-                y_tol = max(pos.font_size, 0.1) * 0.05
+                # Java: text.getWidth() / textCharacter.length() / 3.0f —
+                # float division, so length 0 yields +Infinity, not an error.
+                tol = math.inf if char_count == 0 else pos.width / char_count / 3.0
+            elif char_count == 0:
+                # Java: 0f / 0 == NaN — every comparison below is False, so
+                # the run is never suppressed (and its origin is recorded).
+                tol = math.nan
             else:
-                x_tol = max(pos.font_size, 0.1) * 0.25
-                y_tol = max(pos.font_size, 0.1) * 0.25
-            # Only check the trailing window — duplicates from fake
-            # bold are always emitted right after their original.
-            for prior in result[-4:]:
-                if (
-                    prior.text == pos.text
-                    and abs(prior.x - pos.x) <= x_tol
-                    and abs(prior.y - pos.y) <= y_tol
+                # Lite-only: no width metric — see docstring.
+                tol = max(pos.font_size, 0.1) * 0.25
+            same_text = seen.setdefault(text, {})
+            suppress = False
+            x_lo = pos.x - tol
+            x_hi = pos.x + tol
+            y_lo = pos.y - tol
+            y_hi = pos.y + tol
+            for x_key, y_values in same_text.items():
+                if x_lo <= x_key < x_hi and any(
+                    y_lo <= y_val < y_hi for y_val in y_values
                 ):
-                    duplicate = True
+                    suppress = True
                     break
-            if not duplicate:
+            if not suppress:
+                same_text.setdefault(pos.x, []).append(pos.y)
                 result.append(pos)
         return result
 

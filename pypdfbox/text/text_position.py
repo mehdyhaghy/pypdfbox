@@ -128,6 +128,14 @@ class TextPosition:
     # subdivided sub-run). Mirrors upstream's per-glyph displacement array;
     # consumed by :meth:`get_individual_widths` and the by-area splitter.
     individual_widths: list[float] | None = None
+    # True when this run was emitted while an ``/ActualText`` span was open.
+    # Lite plumbing (upstream keeps the equivalent ``actualText`` state on
+    # the stripper itself): upstream ``PDFTextStripper.processTextPosition``
+    # bypasses the duplicate-overlapping-text filter for such glyphs — they
+    # are always shown and never recorded in ``characterListMapping`` — and
+    # the lite dedup pass needs the span membership on the position because
+    # it runs after the page walk.
+    from_actual_text: bool = False
 
     # ------------------------------------------------------------------
     # Decoded text

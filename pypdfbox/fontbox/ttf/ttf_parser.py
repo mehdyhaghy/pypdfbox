@@ -213,6 +213,14 @@ class TTFParser:
         """
         stream = self._coerce_to_data_stream(source)
         font = self._parse_data_stream(stream)
+        # Upstream ``parseTables`` eagerly reads every directory entry, so a
+        # malformed ``name`` table (e.g. a record whose string bytes run past
+        # EOF) fails the parse itself — ``NamingTable.read`` propagates the
+        # IOException out of ``TTFParser.parse``. The fontTools backend
+        # decodes lazily, so force the byte-level naming decode here to keep
+        # the error surfacing at parse time, exactly like upstream.
+        if font.has_table("name"):
+            font.get_naming()
         self._check_tables(font)
         return font
 

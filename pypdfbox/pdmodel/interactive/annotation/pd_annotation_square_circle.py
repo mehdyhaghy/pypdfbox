@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 from pypdfbox.cos import COSArray, COSDictionary, COSFloat, COSName
 from pypdfbox.pdmodel.pd_rectangle import PDRectangle
 
-from .pd_annotation import PDAnnotation
+from .pd_annotation_markup import PDAnnotationMarkup
 
 if TYPE_CHECKING:
     from pypdfbox.pdmodel.pd_document import PDDocument
@@ -20,16 +20,15 @@ _BE: COSName = COSName.get_pdf_name("BE")
 _RD: COSName = COSName.get_pdf_name("RD")
 
 
-class PDAnnotationSquareCircle(PDAnnotation):
+class PDAnnotationSquareCircle(PDAnnotationMarkup):
     """
     Shared base for Square (``/Subtype /Square``) and Circle
     (``/Subtype /Circle``) annotations. Mirrors upstream's
-    ``PDAnnotationSquareCircle`` which is also a single shared class.
-
-    Upstream extends ``PDAnnotationMarkup``; cluster #5 lite skips the
-    Markup intermediary and inherits straight from :class:`PDAnnotation`
-    because the markup-specific accessors (``Popup``, ``RC``, ``CA``, …)
-    aren't ported yet. See ``CHANGES.md``.
+    ``PDAnnotationSquareCircle`` which is also a single shared class and,
+    like upstream, extends ``PDAnnotationMarkup`` — squares and circles
+    carry the full markup review-workflow surface (``/Popup``, ``/IRT``,
+    ``/RT``, ``/CA``, …). (An earlier lite cluster inherited straight from
+    ``PDAnnotation``; wave 1598 restored the upstream hierarchy.)
     """
 
     # Subtype constants — convenient when matching annotations by name

@@ -5202,23 +5202,30 @@ class PDFRenderer(PDFStreamEngine):
         """
         if self._image is None:
             return
-        # Domain — 4 floats; default [0 1 0 1] per spec.
+        # Domain — 4 floats; default [0 1 0 1] per spec. A degenerate /Domain
+        # (xmax <= xmin) is NOT an early-out: upstream Type1ShadingContext
+        # has no such guard — every pixel simply fails the domain check and
+        # gets the /Background colour (or stays untouched without one).
         domain_xmin, domain_xmax, domain_ymin, domain_ymax = (
             self._shading_domain_2d(shading)
         )
-        if domain_xmax <= domain_xmin or domain_ymax <= domain_ymin:
-            return
         # Optional /Matrix maps domain → pattern user space; identity by default.
         mtx = self._shading_matrix(shading)
         # Inverse so we can go pattern user → domain at each pixel.
         mtx_inv = self._invert_matrix(mtx)
-        if mtx_inv is None:
-            _log.debug("rendering: PDShadingType1 /Matrix is singular")
-            return
-
         inv = self._invert_matrix(self._full_ctm())
-        if inv is None:
-            return
+        if mtx_inv is None or inv is None:
+            # Upstream Type1ShadingContext catches the
+            # NoninvertibleTransformException from building ``rat`` (the
+            # inverse of shading-/Matrix ∘ CTM ∘ device transform) and falls
+            # back to the *identity* transform — raw device pixel coords are
+            # then checked against /Domain — rather than skipping the fill.
+            _log.debug(
+                "rendering: PDShadingType1 transform not invertible; "
+                "using identity (matches upstream rat fallback)"
+            )
+            inv = _IDENTITY
+            mtx_inv = _IDENTITY
         ia, ib, ic, id_, ie, if_ = inv
         ma, mb, mc, md, me, mf = mtx_inv
 
@@ -5248,17 +5255,23 @@ class PDFRenderer(PDFStreamEngine):
                     sub_fns.append(None)
 
             def evaluate(x: float, y: float) -> list[float]:
+                # Mirrors upstream PDShading.evalFunction over a function
+                # array: each entry contributes one output component, and a
+                # failure in ANY entry aborts the whole evaluation (upstream
+                # lets the IOException propagate so Type1ShadingContext's
+                # getRaster skips the pixel). Outputs are clamped to [0, 1]
+                # (evalFunction's "adjusted to the nearest valid value").
                 out_vals: list[float] = []
                 for sf in sub_fns:
                     if sf is None:
-                        out_vals.append(0.0)
-                        continue
+                        return []
                     try:
                         r = sf.eval([x, y])
                     except Exception:  # noqa: BLE001
-                        out_vals.append(0.0)
-                        continue
-                    out_vals.append(float(r[0]) if r else 0.0)
+                        return []
+                    if not r:
+                        return []
+                    out_vals.append(min(1.0, max(0.0, float(r[0]))))
                 return out_vals
         else:
             if not hasattr(fn, "eval"):
@@ -5271,9 +5284,12 @@ class PDFRenderer(PDFStreamEngine):
 
             def evaluate(x: float, y: float) -> list[float]:
                 try:
-                    return list(fn.eval([x, y]))
+                    out_vals = list(fn.eval([x, y]))
                 except Exception:  # noqa: BLE001
                     return []
+                # Upstream PDShading.evalFunction clamps every output
+                # component to [0, 1] before colour-space conversion.
+                return [min(1.0, max(0.0, float(v))) for v in out_vals]
 
         cs_obj = None
         try:
@@ -5282,24 +5298,33 @@ class PDFRenderer(PDFStreamEngine):
             cs_obj = None
         cs_name = cs_obj.name if isinstance(cs_obj, COSName) else None
 
+        # /Background — painted for pixels whose domain coordinates fall
+        # outside /Domain (upstream Type1ShadingContext.getRaster's
+        # useBackground branch). Without a /Background such pixels stay
+        # UNPAINTED — the raster is transparent there and the destination
+        # shows through (upstream's bare ``continue``).
+        bg_rgb = self._shading_background_rgb(shading)
+
         canvas_w, canvas_h = self._image.size
         pixels = bytearray(canvas_w * canvas_h * 3)
+        # Per-pixel coverage: 0 = leave destination untouched; otherwise the
+        # region mask's own (anti-aliased) coverage value.
+        alpha = bytearray(canvas_w * canvas_h)
         mask_data = region_mask.tobytes()
+        span_x = domain_xmax - domain_xmin
+        span_y = domain_ymax - domain_ymin
 
         # Sample colours through a small cache keyed by quantised (x,y) so
         # adjacent pixels don't all re-pay the function eval.
         cache_grid = 256
-        cache: dict[tuple[int, int], tuple[int, int, int]] = {}
-        bg = (255, 255, 255)
+        cache: dict[tuple[int, int], tuple[int, int, int] | None] = {}
         for py in range(canvas_h):
             row_off = py * canvas_w
             for px in range(canvas_w):
-                base = (row_off + px) * 3
-                if mask_data[row_off + px] == 0:
-                    pixels[base] = bg[0]
-                    pixels[base + 1] = bg[1]
-                    pixels[base + 2] = bg[2]
+                coverage = mask_data[row_off + px]
+                if coverage == 0:
                     continue
+                base = (row_off + px) * 3
                 # device → pattern user
                 ux = ia * px + ic * py + ie
                 uy = ib * px + id_ * py + if_
@@ -5312,37 +5337,56 @@ class PDFRenderer(PDFStreamEngine):
                     or dy < domain_ymin
                     or dy > domain_ymax
                 ):
-                    pixels[base] = bg[0]
-                    pixels[base + 1] = bg[1]
-                    pixels[base + 2] = bg[2]
+                    if bg_rgb is None:
+                        continue
+                    pixels[base] = bg_rgb[0]
+                    pixels[base + 1] = bg_rgb[1]
+                    pixels[base + 2] = bg_rgb[2]
+                    alpha[row_off + px] = coverage
                     continue
-                # Quantise to a per-domain grid for caching.
-                qx = int(
-                    (dx - domain_xmin)
-                    / (domain_xmax - domain_xmin)
-                    * (cache_grid - 1)
+                # Quantise to a per-domain grid for caching. A degenerate
+                # axis (span == 0) admits only boundary-exact hits; they all
+                # share cell 0.
+                qx = (
+                    int((dx - domain_xmin) / span_x * (cache_grid - 1))
+                    if span_x > 0.0
+                    else 0
                 )
-                qy = int(
-                    (dy - domain_ymin)
-                    / (domain_ymax - domain_ymin)
-                    * (cache_grid - 1)
+                qy = (
+                    int((dy - domain_ymin) / span_y * (cache_grid - 1))
+                    if span_y > 0.0
+                    else 0
                 )
                 key = (qx, qy)
-                rgb = cache.get(key)
-                if rgb is None:
+                if key in cache:
+                    rgb = cache[key]
+                else:
                     out = evaluate(dx, dy)
-                    rgb = self._function_output_to_rgb(out, cs_name) if out else bg
+                    rgb = (
+                        self._function_output_to_rgb(out, cs_name)
+                        if out
+                        else None
+                    )
                     cache[key] = rgb
+                if rgb is None:
+                    # Function evaluation failed — upstream logs and skips
+                    # the pixel (destination untouched), it does NOT
+                    # substitute a fallback colour.
+                    continue
                 pixels[base] = rgb[0]
                 pixels[base + 1] = rgb[1]
                 pixels[base + 2] = rgb[2]
+                alpha[row_off + px] = coverage
 
         gradient = Image.frombytes(
             "RGB", (canvas_w, canvas_h), bytes(pixels)
         )
+        paint_mask = Image.frombytes(
+            "L", (canvas_w, canvas_h), bytes(alpha)
+        )
         if self._draw is not None:
             self._draw.flush()
-        self._image.paste(gradient, (0, 0), region_mask)
+        self._image.paste(gradient, (0, 0), paint_mask)
         self._draw = aggdraw.Draw(self._image)
         self._draw.setantialias(True)
 

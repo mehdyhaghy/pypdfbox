@@ -178,7 +178,9 @@ def test_markup_external_data_round_trip_and_clear() -> None:
 
     ann.set_external_data(ex_data)
 
-    assert ann.get_external_data() is ex_data
+    wrapped = ann.get_external_data()
+    assert wrapped is not None
+    assert wrapped.get_cos_object() is ex_data
 
     ann.set_external_data(None)
     assert ann.get_external_data() is None

@@ -84,7 +84,12 @@ def test_wave540_ignore_space_glyphs_all_spaces_advances_without_positions() -> 
         doc.close()
 
 
-def test_wave540_drop_overlapping_duplicates_uses_recent_window_only() -> None:
+def test_wave540_drop_overlapping_duplicates_is_page_global() -> None:
+    # Upstream ``processTextPosition`` keeps ``characterListMapping`` for the
+    # whole page, so a re-paint of the same text near the original origin is
+    # suppressed no matter how many other runs were emitted in between —
+    # there is no "recent window" (fixed in wave 1598; the lite dedup used
+    # to look only at the four most recent kept runs).
     original = TextPosition(text="same", x=10.0, y=10.0, font_size=8.0)
     duplicate = TextPosition(text="same", x=11.0, y=11.0, font_size=8.0)
     later_same_text = TextPosition(text="same", x=10.5, y=10.5, font_size=8.0)
@@ -104,7 +109,6 @@ def test_wave540_drop_overlapping_duplicates_uses_recent_window_only() -> None:
         positions[3],
         positions[4],
         positions[5],
-        later_same_text,
     ]
 
 

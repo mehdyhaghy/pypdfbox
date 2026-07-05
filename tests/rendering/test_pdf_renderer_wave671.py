@@ -78,7 +78,7 @@ class _EmptyEval:
         return []
 
 
-def test_function_shading_array_zeroes_bad_subfunctions_and_coerces_cmyk(
+def test_function_shading_array_bad_subfunctions_skip_pixel(
     monkeypatch: Any,
 ) -> None:
     class _Shading:
@@ -120,7 +120,11 @@ def test_function_shading_array_zeroes_bad_subfunctions_and_coerces_cmyk(
         _finish(renderer)
 
         assert renderer._image is not None  # noqa: SLF001
-        assert renderer._image.getpixel((0, 0)) == (128, 128, 128)  # noqa: SLF001
+        # Wave 1598: any bad array entry (create failure / eval failure /
+        # empty output) aborts the pixel's evaluation — upstream
+        # PDShading.evalFunction propagates the IOException and
+        # Type1ShadingContext.getRaster skips the pixel. Canvas preserved.
+        assert renderer._image.getpixel((0, 0)) == (255, 255, 255)  # noqa: SLF001
     finally:
         doc.close()
 

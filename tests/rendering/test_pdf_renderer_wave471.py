@@ -116,7 +116,10 @@ def test_function_shading_logs_singular_matrix_and_missing_function(
             region_mask=mask,
         )
 
-        assert "PDShadingType1 /Matrix is singular" in caplog.text
+        # Wave 1598: a singular /Matrix no longer skips the fill — upstream
+        # Type1ShadingContext catches the NoninvertibleTransformException
+        # and falls back to the identity transform, so we log that instead.
+        assert "PDShadingType1 transform not invertible" in caplog.text
         assert "PDShadingType1 missing /Function" in caplog.text
     finally:
         _finish(renderer)

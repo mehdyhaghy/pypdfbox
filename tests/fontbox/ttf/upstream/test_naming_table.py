@@ -148,18 +148,24 @@ def test_get_charset_matches_upstream_dispatch() -> None:
         nr.set_platform_encoding_id(enc)
         return nr
 
-    # Windows symbol + unicode BMP → utf-16-be (Java StandardCharsets.UTF_16,
-    # but the table is big-endian and our pypdfbox decoder strips the BOM).
+    # Windows symbol + unicode BMP → "utf-16" (Java StandardCharsets.UTF_16:
+    # BOM-aware, defaults to big-endian without a BOM — _decode_string
+    # implements the Java default; Python's bare codec would pick LE).
     assert NamingTable.get_charset(
         _nr(NameRecord.PLATFORM_WINDOWS, NameRecord.ENCODING_WINDOWS_SYMBOL)
-    ) == "utf-16-be"
+    ) == "utf-16"
     assert NamingTable.get_charset(
         _nr(NameRecord.PLATFORM_WINDOWS, NameRecord.ENCODING_WINDOWS_UNICODE_BMP)
-    ) == "utf-16-be"
-    # Unicode platform → utf-16-be regardless of encoding.
-    assert NamingTable.get_charset(_nr(NameRecord.PLATFORM_UNICODE, 0)) == "utf-16-be"
-    assert NamingTable.get_charset(_nr(NameRecord.PLATFORM_UNICODE, 4)) == "utf-16-be"
-    # ISO encoding 0 → US-ASCII, encoding 1 → UTF-16BE.
+    ) == "utf-16"
+    # Windows UCS-4 (encoding 10) is NOT special-cased upstream (only
+    # encodings 0 and 1 are, NamingTable.java line 115) → Latin-1 default.
+    assert NamingTable.get_charset(
+        _nr(NameRecord.PLATFORM_WINDOWS, NameRecord.ENCODING_WINDOWS_UNICODE_UCS4)
+    ) == "iso-8859-1"
+    # Unicode platform → "utf-16" regardless of encoding.
+    assert NamingTable.get_charset(_nr(NameRecord.PLATFORM_UNICODE, 0)) == "utf-16"
+    assert NamingTable.get_charset(_nr(NameRecord.PLATFORM_UNICODE, 4)) == "utf-16"
+    # ISO encoding 0 → US-ASCII, encoding 1 → strict UTF-16BE (BOM retained).
     assert NamingTable.get_charset(_nr(NameRecord.PLATFORM_ISO, 0)) == "us-ascii"
     assert NamingTable.get_charset(_nr(NameRecord.PLATFORM_ISO, 1)) == "utf-16-be"
     # Default → ISO-8859-1 (matches StandardCharsets.ISO_8859_1).

@@ -2,15 +2,18 @@ from __future__ import annotations
 
 from pypdfbox.cos import COSDictionary, COSName
 
-from .pd_annotation import PDAnnotation
+from .pd_annotation_markup import PDAnnotationMarkup
 
 _NAME: COSName = COSName.get_pdf_name("Name")
 
 
-class PDAnnotationRubberStamp(PDAnnotation):
+class PDAnnotationRubberStamp(PDAnnotationMarkup):
     """
     Rubber stamp annotation — ``/Subtype /Stamp``. Mirrors
-    ``org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationRubberStamp``.
+    ``org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationRubberStamp``
+    which extends ``PDAnnotationMarkup`` (rubber stamps carry the full
+    markup review-workflow surface: ``/Popup``, ``/IRT``, ``/RT``, ``/CA``,
+    …).
 
     Displays text or graphics intended to look as if it had been stamped
     on the page with a rubber stamp (PDF 32000-1:2008 §12.5.6.14). The
