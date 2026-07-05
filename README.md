@@ -84,17 +84,8 @@ Run the test suite:
 (`--no-cov` is the fast pass; drop it to refresh coverage at
 `coverage.json`.)
 
-Lint:
-
-```sh
-uv run ruff check --fix
-uv run ruff check
-```
-
-A local `.git/hooks/pre-push` (not versioned, recreated per-clone)
-runs `ruff` and an Apache-2.0 / MIT / BSD license allow-list against
-the dependency tree before every push — full recipe in
-[`docs/build.md`](docs/build.md).
+The full developer workflow (lint, coverage, checks that run before
+a push) is documented in [`docs/build.md`](docs/build.md).
 
 ## Contribute
 
@@ -204,9 +195,8 @@ Apache License, Version 2.0 — same as upstream PDFBox. See
 [`LICENSE`](LICENSE) for the full text and [`NOTICE`](NOTICE) for the
 required attribution that downstream redistributors must propagate.
 
-Dependency policy: Apache-2.0 / MIT / BSD only. GPL, LGPL, AGPL, MPL,
-EPL, CDDL, SSPL, BUSL are forbidden, and the local pre-push hook
-hard-fails if any forbidden license appears in the resolved tree.
+All runtime dependencies are permissively licensed (Apache-2.0 /
+MIT / BSD family).
 
 Ported files are tracked centrally in [`PROVENANCE.md`](PROVENANCE.md)
 (pypdfbox path → upstream PDFBox version → upstream Java path), which
