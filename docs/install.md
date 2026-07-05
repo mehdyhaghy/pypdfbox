@@ -129,7 +129,7 @@ hook), see [`build.md`](build.md).
 | Linux (glibc)       | aarch64 / arm64 | supported     | Wheels published for all native deps.  |
 | Linux (musl/Alpine) | x86_64 / arm64  | not supported | `pip install pypdfbox` **fails** — `skia-python` and `imagecodecs` (hard deps) publish no musllinux wheels. Use a glibc image; see the Alpine note below. |
 | macOS               | arm64           | supported     | M-series Macs. Primary dev platform.   |
-| macOS               | x86_64          | supported     | Intel Macs.                            |
+| macOS               | x86_64          | supported (source build) | Intel Macs. `cryptography` publishes no macOS x86_64 wheel, so pip compiles it from source — a Rust toolchain is required (see the `cryptography` note below). |
 | Windows             | x86_64          | supported     | Cross-platform issues called out below. |
 | Windows             | ARM64           | not supported | `cryptography` does not publish `win_arm64` wheels (dropped upstream in 46.0.4); out of scope. |
 | Windows             | x86 (32-bit)    | not supported | `cryptography` removed 32-bit Windows support in 49.0; out of scope. |
@@ -191,10 +191,12 @@ minimal repro.
 ### `cryptography`
 
 Modern `cryptography` (≥42, what we require) ships pre-built wheels
-for all standard platforms. A source install needs a Rust toolchain.
-On macOS, `xcode-select --install` plus `rustup` is enough. On
-Linux, `pkg-config`, OpenSSL headers, and a Rust toolchain. On
-Windows, the Rust MSVC toolchain.
+for all standard platforms **except Intel (x86_64) macOS** — upstream
+dropped that wheel target, so on an Intel Mac pip falls back to a
+source build. A source install needs a Rust toolchain. On macOS,
+`xcode-select --install` plus `rustup` is enough. On Linux,
+`pkg-config`, OpenSSL headers, and a Rust toolchain. On Windows, the
+Rust MSVC toolchain.
 
 ### `Pillow`
 

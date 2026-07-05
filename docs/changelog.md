@@ -8,10 +8,9 @@ root. Use this page as the dispatcher.
   Read this when you want to know how the Python port
   deliberately deviates from the Java reference, or what landed
   most recently.
-- **[`RELEASE_NOTES_v0.9.0rc1.md`](../RELEASE_NOTES_v0.9.0rc1.md)**
-  — *release-specific notes* for the 0.9.0rc1 cut. Status, major
-  features, active divergences, migration pointer, known open
-  items.
+- **[`RELEASE_NOTES_v1.0.0rc1.md`](../RELEASE_NOTES_v1.0.0rc1.md)**
+  — *release-specific notes* for the 1.0.0rc1 cut. Status, major
+  features since 0.9.0, active divergences, migration pointer.
 
 For *open follow-up items* (fixable, not yet done) see the
 [issue tracker](https://github.com/mehdyhaghy/pypdfbox/issues).

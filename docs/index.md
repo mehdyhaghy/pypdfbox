@@ -74,7 +74,7 @@ break down by audience:
 
 ## Release information
 
-- [Release notes for the current release](../RELEASE_NOTES_v0.9.0rc1.md)
+- [Release notes for the current release](../RELEASE_NOTES_v1.0.0rc1.md)
   — what shipped, known issues at release.
 - [`CHANGES.md`](../CHANGES.md) — substantive deviations from
   upstream, organised under "Project-wide deviations" and

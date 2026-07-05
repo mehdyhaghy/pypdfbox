@@ -1,9 +1,10 @@
 name: Release
 
-# Skeleton release workflow. Triggers on a v* tag, builds a wheel + sdist
-# via uv, and publishes to TestPyPI. Switch to production PyPI after the
-# first successful TestPyPI run by changing the `repository-url` and
-# secret name.
+# Release workflow. Triggers on a v* tag, builds a wheel + sdist via uv,
+# rehearses the upload on TestPyPI, then publishes to production PyPI.
+# Both publish jobs use PyPA trusted publishing (OIDC) — each needs its
+# trusted publisher registered on the respective index (environment
+# "testpypi" on test.pypi.org, environment "pypi" on pypi.org).
 
 on:
   push:
@@ -63,3 +64,23 @@ jobs:
         with:
           repository-url: https://test.pypi.org/legacy/
           skip-existing: true
+
+  publish-pypi:
+    name: publish to PyPI
+    needs: publish-testpypi
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    environment:
+      name: pypi
+      url: https://pypi.org/p/pypdfbox
+    steps:
+      - name: Download dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: pypdfbox-dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
