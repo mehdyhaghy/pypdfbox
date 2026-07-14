@@ -1,14 +1,13 @@
 """Encrypt-on-write coverage for xref-stream output.
 
-Step-1 audit (see ``COSWriter.__doc__``) confirms that the cluster #1
-writer always emits a *traditional* ``xref`` table + ``trailer`` pair —
-xref-stream output (``writeXrefStream`` upstream) is explicitly stubbed
-and slated for pdfwriter cluster #3. Until that cluster lands there is
-no xref-stream body to encrypt on write, so the integration test is
-skipped with a marker. We *do* keep one regression check that asserts
-encrypted documents currently round-trip through the traditional xref
-path (catches the day xref-stream output sneaks in without wiring the
-encryption pipeline through it).
+``PDDocument.save`` now defaults to ``CompressParameters.DEFAULT_COMPRESSION``
+(upstream PDFBox 3.0 parity): the writer packs non-stream objects into
+``/Type /ObjStm`` streams addressed by a ``/Type /XRef`` cross-reference
+stream, and the encryption pipeline runs through that path. These tests
+pin the encrypted round-trip in both output modes:
+
+* default (compressed) save — xref stream + ObjStm, no classic trailer;
+* explicit ``NO_COMPRESSION`` save — classic ``xref`` table + ``trailer``.
 """
 
 from __future__ import annotations
@@ -21,8 +20,9 @@ import pytest
 pytest.importorskip("pypdfbox.pdmodel.encryption.standard_security_handler")
 pytest.importorskip("pypdfbox.pdmodel.encryption.standard_protection_policy")
 
-from pypdfbox import Loader, PDDocument  # noqa: E402
+from pypdfbox import PDDocument  # noqa: E402
 from pypdfbox.cos import COSStream  # noqa: E402
+from pypdfbox.pdfwriter.compress import CompressParameters  # noqa: E402
 from pypdfbox.pdmodel import PDPage  # noqa: E402
 from pypdfbox.pdmodel.encryption.access_permission import (  # noqa: E402
     AccessPermission,
@@ -51,64 +51,64 @@ def _build_protected_document() -> PDDocument:
     return pd
 
 
-def _save_to_bytes(pd: PDDocument) -> bytes:
+def _save_to_bytes(pd: PDDocument, *args) -> bytes:
     sink = io.BytesIO()
-    pd.save(sink)
+    pd.save(sink, *args)
     return sink.getvalue()
 
 
-# ---------------------------------------------------------------------------
-# Step-1 finding: traditional xref only — no xref-stream emit path exists.
-# ---------------------------------------------------------------------------
-
-
-def test_encrypted_document_uses_traditional_xref_table() -> None:
-    """Regression check: today's writer must emit a classic ``xref`` /
-    ``trailer`` pair even when the document is encrypted. The day xref-
-    stream output lands in ``COSWriter`` (pdfwriter cluster #3), this
-    test will fail and remind us to wire ``encrypt_stream`` through the
-    xref-stream body before declaring the cluster done."""
+def test_encrypted_default_save_uses_xref_stream() -> None:
+    """Default (compressed) save of an encrypted document emits an xref
+    stream + ObjStm, not a classic ``xref`` table."""
     pd = _build_protected_document()
     saved = _save_to_bytes(pd)
 
-    # Traditional xref section header + trailer keyword must both be
-    # present. ISO 32000-1 §7.5.4 / §7.5.5.
+    assert b"/ObjStm" in saved, "expected /Type /ObjStm packing by default"
+    assert b"/Type /XRef" in saved or b"/Type/XRef" in saved, (
+        "expected a /Type /XRef cross-reference stream by default"
+    )
+    assert b"\nxref\n" not in saved and b"\ntrailer" not in saved, (
+        "classic xref/trailer must not appear in compressed output"
+    )
+
+    with PDDocument.load(saved, password="user") as reloaded:
+        assert reloaded.is_encrypted()
+        assert reloaded.get_number_of_pages() == 1
+
+
+def test_encrypted_no_compression_save_uses_traditional_xref_table() -> None:
+    """``CompressParameters.NO_COMPRESSION`` keeps the classic ``xref``
+    table + ``trailer`` pair for encrypted documents."""
+    pd = _build_protected_document()
+    saved = _save_to_bytes(pd, CompressParameters.NO_COMPRESSION)
+
     assert b"\nxref\n" in saved or b"\rxref\r" in saved or b"\nxref\r" in saved, (
         "expected a traditional 'xref' section in the saved bytes"
     )
     assert b"trailer" in saved, "expected a 'trailer' keyword in the saved bytes"
+    assert b"/ObjStm" not in saved
 
-    # The xref-stream type marker must NOT appear in the trailer's xref
-    # object — its presence would mean the writer started emitting xref
-    # streams without this test being updated.
-    assert b"/Type /XRef" not in saved and b"/Type/XRef" not in saved, (
-        "writer unexpectedly emitted an xref stream — wire the encryption "
-        "pipeline through it (see pdfwriter cluster #3) and update this test"
-    )
-
-    # Sanity: the saved bytes still parse back as an encrypted document.
     with PDDocument.load(saved, password="user") as reloaded:
         assert reloaded.is_encrypted()
         assert reloaded.get_number_of_pages() == 1
 
 
-def test_xref_stream_encrypt_on_write_round_trip() -> None:
-    """Full round-trip: protect, save with xref-stream output, parse back,
-    verify object table. The xref-stream output surface
-    (``COSWriter._do_write_xref_stream``) has landed; this is the real
-    round-trip.
-    """
+@pytest.mark.parametrize(
+    "compress_parameters",
+    [None, CompressParameters.NO_COMPRESSION],
+    ids=["default-compression", "no-compression"],
+)
+def test_xref_stream_encrypt_on_write_round_trip(compress_parameters) -> None:
+    """Full round-trip in both output modes: protect, save, parse back,
+    verify the recovered content stream matches the seed."""
     pd = _build_protected_document()
-    saved = _save_to_bytes(pd)
+    args = () if compress_parameters is None else (compress_parameters,)
+    saved = _save_to_bytes(pd, *args)
     with PDDocument.load(saved, password="user") as reloaded:
         assert reloaded.is_encrypted()
         assert reloaded.get_number_of_pages() == 1
-        # Verify the recovered content stream matches the seed.
         page = reloaded.get_pages()[0]
         contents = page.get_cos_object().get_dictionary_object("Contents")
         assert isinstance(contents, COSStream)
         with contents.create_input_stream() as src:
             assert src.read() == _CONTENT_PAYLOAD
-
-    # Silence unused-import lints for the Loader helper.
-    _ = Loader

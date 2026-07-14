@@ -52,7 +52,18 @@ def test_wave375_process_page_copies_inherited_resources_and_removes_beads() -> 
     chunks = Splitter().split(src)
 
     imported_dict = chunks[0].get_page(0).get_cos_object()
-    assert imported_dict.get_dictionary_object(_RESOURCES) is resources
+    # The inherited resources are materialized onto the imported page.
+    # The splitter's pruning pass rebuilds the dictionary (so the source
+    # document's shared instance is never installed directly), keeping
+    # non-name-keyed categories like /ProcSet wholesale.
+    imported_res = imported_dict.get_dictionary_object(_RESOURCES)
+    assert isinstance(imported_res, COSDictionary)
+    assert imported_res is not resources
+    imported_proc_set = imported_res.get_dictionary_object(
+        COSName.get_pdf_name("ProcSet")
+    )
+    assert isinstance(imported_proc_set, COSArray)
+    assert imported_proc_set.get_object(0) == COSName.get_pdf_name("PDF")
     assert not imported_dict.contains_key(_B)
     _close_all(src, chunks)
 

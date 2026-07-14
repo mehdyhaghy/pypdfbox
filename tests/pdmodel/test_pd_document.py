@@ -24,7 +24,9 @@ def test_default_constructor_empty_saveable() -> None:
     assert isinstance(doc.get_pages(), PDPageTree)
     assert doc.get_number_of_pages() == 0
     out = _save_to_bytes(doc)
-    assert out.startswith(b"%PDF-1.4\n")
+    # The compressed default save (upstream 3.0 parity) bumps the header
+    # to 1.6 — object streams require PDF 1.5+.
+    assert out.startswith(b"%PDF-1.6\n")
     assert b"%%EOF" in out
     doc.close()
 
@@ -414,15 +416,22 @@ def test_document_id_seed_rejects_non_int() -> None:
 
 
 def test_save_accepts_compress_parameters_kwarg(tmp_path: Path) -> None:
-    """``save`` accepts (and currently ignores) the upstream
-    ``CompressParameters`` argument so direct ports compile."""
+    """``save`` honours the upstream ``CompressParameters`` argument
+    (PDFBox 3.0 parity) and rejects non-``CompressParameters`` values."""
+    from pypdfbox.pdfwriter.compress import CompressParameters
+
     out = tmp_path / "compress.pdf"
     with PDDocument() as doc:
         doc.add_page(PDPage())
-        doc.save(out, compress_parameters=object())
+        doc.save(out, compress_parameters=CompressParameters.NO_COMPRESSION)
     data = out.read_bytes()
     assert data.startswith(b"%PDF-")
     assert data.rstrip().endswith(b"%%EOF")
+
+    with PDDocument() as doc:
+        doc.add_page(PDPage())
+        with pytest.raises(TypeError):
+            doc.save(out, compress_parameters=object())
 
 
 # ---------- multi-page round trip ----------

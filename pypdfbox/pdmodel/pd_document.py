@@ -483,17 +483,27 @@ class PDDocument:
         overloads upstream — including the trailing ``CompressParameters``
         argument introduced in PDFBox 3.0.
 
-        ``compress_parameters`` is accepted for API parity but currently
-        ignored: pypdfbox always writes uncompressed object streams (the
-        compression toggle lands with the pdfwriter cluster). Callers may
-        pass ``CompressParameters.NO_COMPRESSION`` to be explicit; any
-        truthy compression request is silently downgraded to no-compression
-        and recorded in CHANGES.md."""
+        ``compress_parameters`` defaults to
+        ``CompressParameters.DEFAULT_COMPRESSION`` (upstream parity): the
+        output packs non-stream indirect objects into ``/Type /ObjStm``
+        object streams addressed by a compressed cross-reference stream.
+        Pass ``CompressParameters.NO_COMPRESSION`` for a traditional
+        uncompressed xref-table save."""
         if self._closed:
             raise OSError("Cannot save a document which has been closed")
         # Local import — pdfwriter depends on cos and we want the loader-style
         # late binding to keep import-time cycles impossible.
         from pypdfbox.pdfwriter import COSWriter
+        from pypdfbox.pdfwriter.compress import CompressParameters
+
+        if compress_parameters is None:
+            compress_parameters = CompressParameters.DEFAULT_COMPRESSION
+        elif not isinstance(compress_parameters, CompressParameters):
+            raise TypeError(
+                "compress_parameters must be a CompressParameters instance "
+                f"or None, got {type(compress_parameters).__name__}"
+            )
+        compress = compress_parameters.is_compress()
 
         # Honour ``set_all_security_to_be_removed``: drop /Encrypt from the
         # trailer (and force any decrypted streams to be re-emitted as
@@ -528,7 +538,16 @@ class PDDocument:
         else:
             sink = target
         try:
-            with COSWriter(sink) as writer:
+            with COSWriter(
+                sink,
+                xref_stream=compress,
+                object_stream=compress,
+                object_stream_size=(
+                    compress_parameters.get_object_stream_size()
+                    if compress
+                    else None
+                ),
+            ) as writer:
                 # Pass the PDDocument so the writer can drive the
                 # encryption pipeline — ``_protection_policy`` and
                 # ``_security_handler`` live on this wrapper, not on the

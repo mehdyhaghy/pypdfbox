@@ -92,14 +92,15 @@ def test_trailer_size_grows_with_pages() -> None:
 
 def test_version_roundtrip_via_cos_document() -> None:
     """PDF version reported by the reloaded COSDocument matches the
-    source's catalog/header decision. Default for a synthesised
-    document is 1.4 per pypdfbox cluster #1's writer."""
+    source's catalog/header decision. The compressed default save
+    (upstream 3.0 parity) bumps a synthesised document to 1.6 —
+    object streams require PDF 1.5+."""
     with PDDocument() as src:
         src.add_page(PDPage())
         pdf = _save(src)
     cos = Loader.load_pdf(pdf)
     try:
-        assert cos.get_version() == 1.4
+        assert cos.get_version() == 1.6
     finally:
         cos.close()
 
@@ -160,13 +161,12 @@ def test_loaded_then_full_save_uses_fresh_xref(tmp_path) -> None:
         loaded.save(target)
 
     # The freshly saved file must NOT carry a /Prev entry in its
-    # primary trailer — full save resets the xref chain.
+    # primary trailer — full save resets the xref chain. The compressed
+    # default save emits the trailer entries in the /Type /XRef stream
+    # dictionary rather than a classic ``trailer`` block, so locate the
+    # final xref object and check its dictionary for /Prev.
     final = target.read_bytes()
-    # Quick byte-level sanity: no "/Prev " token in the final trailer.
-    # (A /Prev token would only appear if the writer accidentally took
-    # the incremental path.)
-    # Locate the final trailer.
-    last_trailer_idx = final.rfind(b"trailer")
-    assert last_trailer_idx > 0
-    trailer_blob = final[last_trailer_idx : final.rfind(b"startxref")]
-    assert b"/Prev" not in trailer_blob
+    last_xref_idx = final.rfind(b"/Type /XRef")
+    assert last_xref_idx > 0
+    xref_dict_blob = final[last_xref_idx : final.index(b"stream", last_xref_idx)]
+    assert b"/Prev" not in xref_dict_blob

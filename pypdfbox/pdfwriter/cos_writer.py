@@ -290,6 +290,7 @@ class COSWriter(ICOSVisitor):
         incremental_input: RandomAccessRead | None = None,
         xref_stream: bool = False,
         object_stream: bool = False,
+        object_stream_size: int | None = None,
         hybrid_xref: bool = False,
         allow_signing_placeholders: bool = False,
         fdf: bool = False,
@@ -319,7 +320,17 @@ class COSWriter(ICOSVisitor):
         # reference stream), pack non-stream indirect objects into ObjStm
         # streams to shrink the output.
         self._object_stream: bool = object_stream
-        self._object_stream_size: int = _OBJSTM_DEFAULT_MAX
+        # Cap on objects per packed ObjStm. ``None`` keeps the PDFBox
+        # default (``CompressParameters.DEFAULT_OBJECT_STREAM_SIZE``);
+        # ``PDDocument.save`` threads the caller's ``CompressParameters``
+        # value through here.
+        if object_stream_size is not None and object_stream_size <= 0:
+            raise ValueError("object_stream_size must be positive")
+        self._object_stream_size: int = (
+            object_stream_size
+            if object_stream_size is not None
+            else _OBJSTM_DEFAULT_MAX
+        )
         # PDF 32000-1 §7.5.8.4 hybrid layout — emit BOTH a traditional
         # ``xref`` table and a parallel ``/Type /XRef`` stream, with the
         # trailer announcing the latter via ``/XRefStm <offset>``. Old
@@ -351,6 +362,12 @@ class COSWriter(ICOSVisitor):
         # (set in ``_pack_object_streams``). Mirrors upstream's top-level
         # forcing of ``trailer.getCOSDictionary(ROOT)``.
         self._root_dict_id: int | None = None
+        # ids of every object reachable from the trailer's /Encrypt dict
+        # (populated in ``_pack_object_streams``) — the whole subtree must
+        # stay out of ObjStm packing because the reader needs the complete
+        # encryption dictionary (including e.g. an indirect /CF crypt-
+        # filter dict) before it can decrypt any object stream.
+        self._encrypt_subtree_ids: set[int] = set()
         # Value-keyed pool of indirect scalars (string / integer / float /
         # name / boolean) — populated in ``_pack_object_streams`` and consulted
         # by ``_ObjStmPoolShim`` so a direct scalar value-equal to a registered
@@ -1728,6 +1745,13 @@ class COSWriter(ICOSVisitor):
         w1 = _xref_field_width(max_field1)
         w2 = _xref_field_width(max_field2)
         w3 = _xref_field_width(max_field3)
+        if w1 + w2 + w3 == 0:
+            # Degenerate increment: no object was rewritten, so the stream
+            # body holds only the implicit object-0 free-head row. All-zero
+            # widths would make that row (and the stream) unparseable —
+            # readers reject ``/W [0 0 0]``. Give the type and offset
+            # columns one byte each so the mandatory row survives.
+            w1, w2 = 1, 1
 
         # /Index — upstream ``getIndexEntry`` always seeds object 0 into the
         # index range (so a fresh reader sees the free-list head), then the
@@ -2507,6 +2531,18 @@ class COSWriter(ICOSVisitor):
             if root is not None:
                 self._root_dict_id = id(root)
 
+        # Exclude the complete /Encrypt subtree from packing. The reader
+        # must be able to construct the security handler (which may need
+        # indirect children of the encryption dictionary, e.g. /CF) before
+        # it can decrypt an ObjStm body.
+        self._encrypt_subtree_ids = set()
+        if trailer is not None:
+            encrypt_entry = trailer.get_item(COSName.ENCRYPT)  # type: ignore[attr-defined]
+            if encrypt_entry is not None:
+                self._collect_reachable_ids(
+                    encrypt_entry, self._encrypt_subtree_ids
+                )
+
         # Build the VALUE-keyed pool of indirect scalars. Upstream's
         # ``COSObjectPool`` registers every pooled object in a
         # ``HashMap<COSBase, COSObjectKey>``; for the value-hashed scalar types
@@ -2554,18 +2590,38 @@ class COSWriter(ICOSVisitor):
             ]
             self._emit_one_object_stream(chunk)
 
+    def _collect_reachable_ids(self, value: Any, out: set[int]) -> None:
+        """Record ``id()`` of every ``COSBase`` reachable from ``value``
+        (resolving indirect references, cycle-safe). Used to keep the
+        /Encrypt subtree out of ObjStm packing."""
+        if isinstance(value, COSObject):
+            value = value.get_object()
+        if value is None or id(value) in out:
+            return
+        out.add(id(value))
+        if isinstance(value, COSDictionary):
+            for key in list(value.key_set()):
+                self._collect_reachable_ids(value.get_item(key), out)
+        elif isinstance(value, COSArray):
+            for item in value:
+                self._collect_reachable_ids(item, out)
+
     def _is_packable(self, actual: COSBase, key: COSObjectKey) -> bool:
         """Per ISO 32000-1 §7.5.7: streams cannot be inside another
-        stream, the /Encrypt dict can never be packed (the reader needs
-        it before it can decrypt anything), and signature dictionaries
-        rely on the on-disk byte range so packing would invalidate the
-        signature."""
+        stream, the /Encrypt dict — and every indirect object reachable
+        from it, e.g. an indirect ``/CF`` crypt-filter dictionary — can
+        never be packed (the reader needs the complete encryption
+        dictionary before it can decrypt anything, and an ObjStm body is
+        itself encrypted), and signature dictionaries rely on the
+        on-disk byte range so packing would invalidate the signature."""
         if isinstance(actual, COSStream):
             return False
         if (
             self._encrypt_dict_id is not None
             and id(actual) == self._encrypt_dict_id
         ):
+            return False
+        if id(actual) in self._encrypt_subtree_ids:
             return False
         if (
             getattr(self, "_root_dict_id", None) is not None

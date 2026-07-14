@@ -136,9 +136,13 @@ def write_decoded(
 
         # Force a classic xref table (object streams are themselves
         # filtered streams; emitting an xref-stream after we've stripped
-        # filters would re-encode them, defeating the point).
+        # filters would re-encode them, defeating the point). Upstream
+        # WriteDecodedDoc likewise saves with
+        # ``CompressParameters.NO_COMPRESSION``.
+        from pypdfbox.pdfwriter.compress import CompressParameters
+
         cos_doc.set_xref_stream(False)
-        doc.save(output_path)
+        doc.save(output_path, CompressParameters.NO_COMPRESSION)
     finally:
         doc.close()
 

@@ -1,5 +1,7 @@
 # pypdfbox
 
+**Source, issues, and documentation: [github.com/mehdyhaghy/pypdfbox](https://github.com/mehdyhaghy/pypdfbox)**
+
 `pypdfbox` is an Apache 2.0-licensed, Python-native port of
 [Apache PDFBox](https://pdfbox.apache.org/) 3.0.x. It mirrors PDFBox's
 package layout (`org.apache.pdfbox.cos` → `pypdfbox.cos`), preserves

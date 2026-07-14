@@ -14,6 +14,7 @@ import pytest
 
 from pypdfbox import PDDocument, PDPage
 from pypdfbox.loader import Loader
+from pypdfbox.pdfwriter.compress import CompressParameters
 
 # Mirrors upstream's ``static private final File TESTRESULTSDIR``.
 # Pytest's ``tmp_path`` fixture replaces it cleanly.
@@ -24,10 +25,10 @@ def test_save_load_stream(tmp_path: Path) -> None:
     baos = io.BytesIO()
     with PDDocument() as document:
         document.add_page(PDPage())
-        # Upstream uses ``CompressParameters.NO_COMPRESSION`` — pypdfbox
-        # cluster #1 always saves uncompressed (compression lands with
-        # pdfwriter cluster #3), so the bare save is equivalent.
-        document.save(baos)
+        # Upstream passes ``CompressParameters.NO_COMPRESSION`` here —
+        # the default save compresses (ObjStm + xref stream) and would
+        # bump the header to 1.6.
+        document.save(baos, CompressParameters.NO_COMPRESSION)
 
     pdf = baos.getvalue()
     assert len(pdf) > 200
@@ -46,7 +47,9 @@ def test_save_load_file(tmp_path: Path) -> None:
 
     with PDDocument() as document:
         document.add_page(PDPage())
-        document.save(target)
+        # Upstream passes ``CompressParameters.NO_COMPRESSION`` (the
+        # default compressed save would emit a 1.6 header).
+        document.save(target, CompressParameters.NO_COMPRESSION)
 
     assert target.stat().st_size > 200
 

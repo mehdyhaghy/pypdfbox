@@ -102,7 +102,7 @@ def test_wave731_write_decoded_removes_security_when_document_is_encrypted(
         def get_document(self) -> _CosDoc:
             return _CosDoc()
 
-        def save(self, output_path: str) -> None:
+        def save(self, output_path: str, compress_parameters: object = None) -> None:
             calls.append(f"save={output_path}")
 
         def close(self) -> None:

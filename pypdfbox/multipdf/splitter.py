@@ -50,6 +50,21 @@ _ANNOTS: COSName = COSName.get_pdf_name("Annots")
 _ROLE_MAP: COSName = COSName.get_pdf_name("RoleMap")
 _CLASS_MAP: COSName = COSName.get_pdf_name("ClassMap")
 
+# resource-pruning helpers
+_AP: COSName = COSName.get_pdf_name("AP")
+_CHAR_PROCS: COSName = COSName.get_pdf_name("CharProcs")
+#: Name-keyed resource categories the pruner may narrow; everything else
+#: (``/ProcSet``, exotic keys) is copied through untouched.
+_PRUNABLE_CATEGORIES: tuple[str, ...] = (
+    "Font",
+    "XObject",
+    "ExtGState",
+    "ColorSpace",
+    "Pattern",
+    "Shading",
+    "Properties",
+)
+
 
 class Splitter:
     """
@@ -562,6 +577,15 @@ class Splitter:
 
         self._process_annotations(page, imported)
 
+        try:
+            self._prune_page_resources(imported)
+        except Exception:  # noqa: BLE001 - pruning must never break a split
+            _LOG.exception(
+                "resource pruning failed for page %d; full resource "
+                "dictionary kept",
+                self._current_page_number + 1,
+            )
+
         self._page_dict_map[id(page.get_cos_object())] = imported.get_cos_object()
 
     def get_source_document(self) -> PDDocument:
@@ -968,6 +992,186 @@ class Splitter:
         ]
         if not remaining_keys:
             cos_catalog.remove_item(_ACROFORM)
+
+    # ---------- unused-resource pruning (pypdfbox extension) ----------
+
+    def _prune_page_resources(self, imported: PDPage) -> None:
+        """Rebuild ``imported``'s ``/Resources`` with only the entries its
+        content actually references.
+
+        pypdfbox divergence from upstream ``Splitter`` (see CHANGES.md),
+        applied unconditionally: upstream copies the page's — possibly
+        inherited, document-wide — resource dictionary wholesale, so a
+        one-page split of a document whose pages share a page-tree-level
+        ``/Resources`` weighs as much as the whole source. Pruning keeps
+        only the ``/Font``, ``/XObject``, ``/ExtGState``, ``/ColorSpace``,
+        ``/Pattern``, ``/Shading``, and ``/Properties`` entries the page
+        can actually reach.
+
+        The used-name sets are gathered by tokenizing the page's content
+        streams and every dependent stream that can (or, per fallback
+        behaviour in real-world viewers, may) resolve names against the
+        page's resource dictionary: form XObjects, tiling patterns,
+        Type 3 ``/CharProcs``, and annotation appearance streams that
+        lack their own ``/Resources``. Discovery runs to a fixpoint so a
+        form XObject referenced only from another form still keeps its
+        dependencies. Any tokenization failure propagates to the caller,
+        which keeps the full dictionary (conservative default).
+
+        A fresh ``COSDictionary`` is always installed — the incoming
+        ``/Resources`` may be the *source document's* shared dictionary
+        (inherited-resources path), which must not be mutated.
+        """
+        from pypdfbox.cos import COSStream
+        from pypdfbox.pdfparser.pdf_stream_parser import (
+            Operator,
+            PDFStreamParser,
+        )
+
+        page_dict = imported.get_cos_object()
+        res_dict = page_dict.get_dictionary_object(_RESOURCES)
+        if not isinstance(res_dict, COSDictionary):
+            return
+
+        used: dict[str, set[str]] = {c: set() for c in _PRUNABLE_CATEGORIES}
+
+        def scan(data: bytes) -> None:
+            operands: list[Any] = []
+            for token in PDFStreamParser.from_bytes(data).parse():
+                if not isinstance(token, Operator):
+                    operands.append(token)
+                    continue
+                op = token.get_name()
+                if op == "Tf" and operands and isinstance(operands[0], COSName):
+                    used["Font"].add(operands[0].get_name())
+                elif op == "Do" and operands and isinstance(operands[0], COSName):
+                    used["XObject"].add(operands[0].get_name())
+                elif op == "gs" and operands and isinstance(operands[0], COSName):
+                    used["ExtGState"].add(operands[0].get_name())
+                elif op in ("CS", "cs") and operands and isinstance(
+                    operands[0], COSName
+                ):
+                    used["ColorSpace"].add(operands[0].get_name())
+                elif op in ("SCN", "scn") and operands and isinstance(
+                    operands[-1], COSName
+                ):
+                    used["Pattern"].add(operands[-1].get_name())
+                elif op == "sh" and operands and isinstance(operands[0], COSName):
+                    used["Shading"].add(operands[0].get_name())
+                elif op in ("BDC", "DP") and len(operands) >= 2 and isinstance(
+                    operands[1], COSName
+                ):
+                    used["Properties"].add(operands[1].get_name())
+                elif op in ("BI", "ID") and token.image_parameters is not None:
+                    # Inline image: a named (non-device) colour space
+                    # resolves against the page's /ColorSpace resources.
+                    for cs_key in ("CS", "ColorSpace"):
+                        cs_value = token.image_parameters.get_dictionary_object(
+                            COSName.get_pdf_name(cs_key)
+                        )
+                        if isinstance(cs_value, COSName):
+                            used["ColorSpace"].add(cs_value.get_name())
+                operands = []
+
+        def resolve(category: str, name: str) -> COSBase | None:
+            sub = res_dict.get_dictionary_object(COSName.get_pdf_name(category))
+            if isinstance(sub, COSDictionary):
+                return sub.get_dictionary_object(COSName.get_pdf_name(name))
+            return None
+
+        scan(imported.get_contents())
+        for ap_stream in self._iter_appearance_streams(page_dict):
+            if not ap_stream.contains_key(_RESOURCES):
+                scan(ap_stream.to_byte_array())
+
+        # Fixpoint walk: streams reachable through used resources may pull
+        # further names from the page dictionary.
+        scanned: set[tuple[str, str]] = set()
+        progress = True
+        while progress:
+            progress = False
+            for name in list(used["XObject"]):
+                if ("XObject", name) in scanned:
+                    continue
+                scanned.add(("XObject", name))
+                progress = True
+                xobj = resolve("XObject", name)
+                if (
+                    isinstance(xobj, COSStream)
+                    and xobj.get_name(_SUBTYPE) == "Form"
+                ):
+                    scan(xobj.to_byte_array())
+            for name in list(used["Pattern"]):
+                if ("Pattern", name) in scanned:
+                    continue
+                scanned.add(("Pattern", name))
+                progress = True
+                pattern = resolve("Pattern", name)
+                if isinstance(pattern, COSStream):
+                    scan(pattern.to_byte_array())
+            for name in list(used["Font"]):
+                if ("Font", name) in scanned:
+                    continue
+                scanned.add(("Font", name))
+                progress = True
+                font = resolve("Font", name)
+                if (
+                    isinstance(font, COSDictionary)
+                    and font.get_name(_SUBTYPE) == "Type3"
+                ):
+                    char_procs = font.get_dictionary_object(_CHAR_PROCS)
+                    if isinstance(char_procs, COSDictionary):
+                        for glyph_key in list(char_procs.key_set()):
+                            proc = char_procs.get_dictionary_object(glyph_key)
+                            if isinstance(proc, COSStream):
+                                scan(proc.to_byte_array())
+
+        pruned = COSDictionary()
+        for key in list(res_dict.key_set()):
+            category = key.get_name()
+            if category in used:
+                sub = res_dict.get_dictionary_object(key)
+                if isinstance(sub, COSDictionary):
+                    kept = COSDictionary()
+                    for sub_key in list(sub.key_set()):
+                        if sub_key.get_name() in used[category]:
+                            kept.set_item(sub_key, sub.get_item(sub_key))
+                    if kept.size() > 0:
+                        pruned.set_item(key, kept)
+                    continue
+            # ProcSet, unknown categories, and non-dictionary values are
+            # kept wholesale — pruning only what we can prove is name-keyed.
+            pruned.set_item(key, res_dict.get_item(key))
+        page_dict.set_item(_RESOURCES, pruned)
+
+    @staticmethod
+    def _iter_appearance_streams(page_dict: COSDictionary) -> list[Any]:
+        """Collect every appearance-stream ``COSStream`` reachable via the
+        page's ``/Annots`` → ``/AP`` entries (both direct streams and
+        state-keyed sub-dictionary streams)."""
+        from pypdfbox.cos import COSStream
+
+        streams: list[Any] = []
+        annots = page_dict.get_dictionary_object(_ANNOTS)
+        if not isinstance(annots, COSArray):
+            return streams
+        for i in range(annots.size()):
+            annot = annots.get_object(i)
+            if not isinstance(annot, COSDictionary):
+                continue
+            ap = annot.get_dictionary_object(_AP)
+            if not isinstance(ap, COSDictionary):
+                continue
+            for ap_key in list(ap.key_set()):
+                value = ap.get_dictionary_object(ap_key)
+                if isinstance(value, COSStream):
+                    streams.append(value)
+                elif isinstance(value, COSDictionary):
+                    for state_key in list(value.key_set()):
+                        state = value.get_dictionary_object(state_key)
+                        if isinstance(state, COSStream):
+                            streams.append(state)
+        return streams
 
     def _stage_link_destination(
         self,

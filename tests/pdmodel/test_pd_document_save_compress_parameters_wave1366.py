@@ -2,15 +2,14 @@
 
 Verifies that the trailing ``compress_parameters`` argument introduced on
 ``PDDocument.save`` in PDFBox 3.0 is accepted in all the spelling shapes
-upstream code uses, that the output stays a valid PDF, and that the value
-is currently a no-op (pypdfbox always writes uncompressed object streams —
-see ``CompressParameters.NO_COMPRESSION`` in
-``pypdfbox/pdfwriter/compress/compress_parameters.py``).
+upstream code uses and that the output stays a valid PDF. Since wave 1599
+the argument is honoured (upstream parity): ``None`` /
+``DEFAULT_COMPRESSION`` produce ObjStm + xref-stream output,
+``NO_COMPRESSION`` the classic layout, and non-``CompressParameters``
+values raise ``TypeError``.
 
 No upstream JUnit counterpart — pypdfbox-specific hand-written suite
-covering the boundary that direct PDFBox ports compile against. The
-behaviour pypdfbox guarantees here is documented in CHANGES.md under
-"compression toggle accepted but no-op".
+covering the boundary that direct PDFBox ports compile against.
 """
 
 from __future__ import annotations
@@ -33,9 +32,8 @@ from pypdfbox.pdfwriter.compress.compress_parameters import CompressParameters
         CompressParameters(0),
         CompressParameters(200),
         CompressParameters(1),
-        object(),  # opaque truthy value — upstream parity only
     ],
-    ids=["none", "no_compression", "default", "size0", "size200", "size1", "opaque"],
+    ids=["none", "no_compression", "default", "size0", "size200", "size1"],
 )
 def test_save_accepts_compress_parameters(params: object) -> None:
     """All supported (and parity-pass-through) shapes for the trailing
@@ -50,6 +48,17 @@ def test_save_accepts_compress_parameters(params: object) -> None:
     # Reload to confirm the bytes parse back into the same page count.
     with PDDocument.load(out) as reloaded:
         assert reloaded.get_number_of_pages() == 1
+
+
+def test_save_rejects_opaque_compress_parameters() -> None:
+    """A non-``CompressParameters`` value fails loudly — silently
+    ignoring it would mask the caller's intent (the pre-wave-1599
+    no-op behaviour)."""
+    sink = io.BytesIO()
+    with PDDocument() as doc:
+        doc.add_page(PDPage())
+        with pytest.raises(TypeError):
+            doc.save(sink, compress_parameters=object())
 
 
 def test_save_no_compression_roundtrip_file(tmp_path: Path) -> None:

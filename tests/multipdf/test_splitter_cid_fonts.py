@@ -27,6 +27,16 @@ _LENGTH1 = COSName.get_pdf_name("Length1")
 _CIDSYSTEMINFO = COSName.get_pdf_name("CIDSystemInfo")
 
 
+def _attach_f1_content(page: PDPage) -> None:
+    """Give ``page`` a content stream that uses ``/F1`` — the splitter
+    prunes resource entries its content never references, so a page whose
+    font should survive the split must actually select it."""
+    stream = COSStream()
+    with stream.create_raw_output_stream() as out:
+        out.write(b"BT /F1 12 Tf (x) Tj ET")
+    page.set_contents(stream)
+
+
 # Synthetic TTF subset payload — non-trivial bytes to verify no
 # truncation. Real TrueType subsets start with `\x00\x01\x00\x00` (sfnt
 # version) but the splitter doesn't introspect contents, so any
@@ -120,6 +130,7 @@ def _extract_font_file2(page_dict: COSDictionary) -> bytes | None:
 def test_cid_subset_program_preserved_in_split_chunk() -> None:
     page = PDPage()
     page.get_cos_object().set_item(_RESOURCES, _make_cid_font_resources())
+    _attach_f1_content(page)
 
     src = PDDocument()
     src.add_page(page)
@@ -141,8 +152,10 @@ def test_cid_subset_program_preserved_across_multi_chunk_split() -> None:
     separate chunks. Both subsets must arrive intact."""
     page1 = PDPage()
     page1.get_cos_object().set_item(_RESOURCES, _make_cid_font_resources())
+    _attach_f1_content(page1)
     page2 = PDPage()
     page2.get_cos_object().set_item(_RESOURCES, _make_cid_font_resources())
+    _attach_f1_content(page2)
 
     src = PDDocument()
     src.add_page(page1)
@@ -161,6 +174,7 @@ def test_cid_subset_round_trips_through_save_load() -> None:
     """The subset program survives the full save → reload cycle."""
     page = PDPage()
     page.get_cos_object().set_item(_RESOURCES, _make_cid_font_resources())
+    _attach_f1_content(page)
     src = PDDocument()
     src.add_page(page)
 
@@ -187,6 +201,7 @@ def test_split_chunk_font_dict_is_independent_of_source() -> None:
     chain."""
     page = PDPage()
     page.get_cos_object().set_item(_RESOURCES, _make_cid_font_resources())
+    _attach_f1_content(page)
     src = PDDocument()
     src.add_page(page)
 
