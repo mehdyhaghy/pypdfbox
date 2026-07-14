@@ -479,7 +479,7 @@ def test_prepend_puts_new_first() -> None:
     contents = page.get_cos_object().get_dictionary_object(_CONTENTS)
     assert isinstance(contents, COSArray)
     first = contents.get(0)
-    assert first.get_raw_data() == b"2 2 m\n"
+    assert first.to_byte_array() == b"2 2 m\n"
 
 
 def test_append_mode_string_coercion() -> None:
@@ -513,7 +513,7 @@ def test_close_flushes_buffer_into_stream() -> None:
     # Nothing committed before close.
     assert cs.get_target_stream().get_raw_data() == b""
     cs.close()
-    assert cs.get_target_stream().get_raw_data() == b"7 8 m\n"
+    assert cs.get_target_stream().to_byte_array() == b"7 8 m\n"
 
 
 def test_close_is_idempotent() -> None:

@@ -490,7 +490,7 @@ def test_context_manager_flushes_on_exit() -> None:
     # On exit, the page's /Contents should be set with the buffered bytes.
     contents = page.get_cos_object().get_dictionary_object(_CONTENTS)
     assert isinstance(contents, COSStream)
-    assert contents.get_raw_data() == b"0 0 m\n"
+    assert contents.to_byte_array() == b"0 0 m\n"
 
 
 def test_close_is_idempotent() -> None:
@@ -521,7 +521,7 @@ def test_appending_to_existing_contents_promotes_to_array() -> None:
     assert contents.get(0) is initial
     second = contents.get(1)
     assert isinstance(second, COSStream)
-    assert second.get_raw_data() == b"0 0 m\n"
+    assert second.to_byte_array() == b"0 0 m\n"
 
 
 def test_appending_to_existing_contents_array_extends_it() -> None:
@@ -576,7 +576,7 @@ def test_prepending_to_existing_contents_preserves_order() -> None:
     assert contents.size() == 2
     first = contents.get(0)
     assert isinstance(first, COSStream)
-    assert first.get_raw_data() == b"3 4 m\n"
+    assert first.to_byte_array() == b"3 4 m\n"
     assert contents.get(1) is initial
     assert page.get_contents() == b"3 4 m\n\nold\n"
 
@@ -603,9 +603,9 @@ def test_append_reset_context_wraps_existing_graphics_state() -> None:
     appended = contents.get(2)
     assert isinstance(prefix, COSStream)
     assert isinstance(appended, COSStream)
-    assert prefix.get_raw_data() == b"q\n"
+    assert prefix.to_byte_array() == b"q\n"
     assert contents.get(1) is initial
-    assert appended.get_raw_data() == b"Q\n1 2 m\n"
+    assert appended.to_byte_array() == b"Q\n1 2 m\n"
     assert page.get_contents() == b"q\n\n2 0 0 2 0 0 cm\n\nQ\n1 2 m\n"
 
 
@@ -623,7 +623,7 @@ def test_append_reset_context_is_ignored_without_existing_contents() -> None:
 
     contents = page.get_cos_object().get_dictionary_object(_CONTENTS)
     assert isinstance(contents, COSStream)
-    assert contents.get_raw_data() == b"1 2 m\n"
+    assert contents.to_byte_array() == b"1 2 m\n"
     assert page.get_contents() == b"1 2 m\n"
 
 

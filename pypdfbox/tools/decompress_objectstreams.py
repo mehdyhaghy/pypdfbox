@@ -47,8 +47,12 @@ class DecompressObjectstreams:
             with _open_doc(self.infile) as doc:
                 # overwrite inputfile if no outputfile was specified
                 outfile = self.outfile if self.outfile is not None else self.infile
-                # CompressParameters.NO_COMPRESSION → no-op object-stream behaviour.
-                doc.save(outfile)
+                # NO_COMPRESSION, like upstream — the whole point of this
+                # tool is an output without object streams; the default
+                # compressed save would immediately re-pack them.
+                from pypdfbox.pdfwriter.compress import CompressParameters
+
+                doc.save(outfile, CompressParameters.NO_COMPRESSION)
         except OSError as ioe:
             import sys
             sys.stderr.write(

@@ -69,9 +69,9 @@ def test_wave438_append_reset_context_wraps_existing_contents() -> None:
     appended = contents.get(2)
     assert isinstance(prefix, COSStream)
     assert isinstance(appended, COSStream)
-    assert prefix.get_raw_data() == b"q\n"
+    assert prefix.to_byte_array() == b"q\n"
     assert contents.get(1) is existing
-    assert appended.get_raw_data() == b"Q\n3 4 m\n"
+    assert appended.to_byte_array() == b"Q\n3 4 m\n"
     doc.close()
 
 

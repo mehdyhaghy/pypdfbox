@@ -67,7 +67,12 @@ class WriteDecodedDoc:
             doc.get_document_catalog()
             with contextlib.suppress(AttributeError):
                 cos_doc.set_is_xref_stream(False)
-            doc.save(out_path)
+            # NO_COMPRESSION, like upstream WriteDecodedDoc — re-packing
+            # the freshly decoded streams into (Flate-compressed) object
+            # streams would defeat the tool's purpose.
+            from pypdfbox.pdfwriter.compress import CompressParameters
+
+            doc.save(out_path, CompressParameters.NO_COMPRESSION)
 
     def process_object(self, cos_object, skip_images: bool) -> None:
         """Mirror of upstream private ``processObject``."""

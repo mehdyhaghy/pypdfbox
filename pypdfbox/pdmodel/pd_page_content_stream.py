@@ -81,12 +81,20 @@ class PDPageContentStream:
         document: PDDocument,
         source_page: PDPage | PDFormXObject | None = None,
         append_mode: AppendMode | str | bool | None = None,
-        compress: bool = False,
+        compress: bool | None = None,
         reset_context: bool = False,
     ) -> None:
         self._document = document
         self._closed: bool = False
         self._buffer: bytearray = bytearray()
+        # Upstream parity: the page-target constructors default to
+        # ``compress = true`` (the 2-arg Java constructor delegates with
+        # ``AppendMode.OVERWRITE, true, false``), so freshly authored page
+        # content is Flate-encoded. The appearance/form-XObject shape
+        # mirrors upstream's ``PDAppearanceStream`` constructor, which
+        # opens a bare (uncompressed) output stream.
+        if compress is None:
+            compress = isinstance(source_page, PDPage)
         self._compress = bool(compress)
         self._reset_context = bool(reset_context)
         # Maximum fractional digits for numeric operands. Upstream's

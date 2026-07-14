@@ -1,5 +1,9 @@
 # pypdfbox
 
+[![PyPI](https://img.shields.io/pypi/v/pypdfbox)](https://pypi.org/project/pypdfbox/)
+[![Downloads](https://img.shields.io/pypi/dm/pypdfbox)](https://pypistats.org/packages/pypdfbox)
+[![License](https://img.shields.io/pypi/l/pypdfbox)](https://github.com/mehdyhaghy/pypdfbox/blob/main/LICENSE)
+
 **Source, issues, and documentation: [github.com/mehdyhaghy/pypdfbox](https://github.com/mehdyhaghy/pypdfbox)**
 
 `pypdfbox` is an Apache 2.0-licensed, Python-native port of

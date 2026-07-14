@@ -67,7 +67,7 @@ def test_wave396_prepend_to_existing_contents_array_inserts_at_zero() -> None:
     assert contents.size() == 3
     prepended = contents.get(0)
     assert isinstance(prepended, COSStream)
-    assert prepended.get_raw_data() == b"3 4 m\n"
+    assert prepended.to_byte_array() == b"3 4 m\n"
     assert contents.get(1) is first
     assert contents.get(2) is second
 

@@ -138,7 +138,7 @@ def test_do_it_swallows_attribute_error_when_xref_table_missing(
         def get_document_catalog(self) -> object:
             return object()
 
-        def save(self, path: Any) -> None:
+        def save(self, path: Any, compress_parameters: Any = None) -> None:
             self.saved_to = Path(path)
 
         def __enter__(self) -> _FakePD:
