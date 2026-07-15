@@ -1726,9 +1726,23 @@ class PDDocument:
         merging, ``/Dest`` resolution, and font / image resource
         deduplication are deferred — see ``CHANGES.md``."""
         src_dict = page.get_cos_object()
-        new_dict = self._deep_copy_cos(src_dict, set())
-        # Drop /Parent — re-set when added to our page tree.
-        new_dict.remove_item(COSName.get_pdf_name("Parent"))
+        # Copy key-by-key, skipping /Parent BEFORE the deep copy — the
+        # parent chain reaches the source page tree and therefore every
+        # page in the source document, so copy-then-strip deep-copied the
+        # whole document per imported page (O(n^2) across a full
+        # ``Splitter.split``). Seeding ``seen`` with the page dict itself
+        # preserves the old cycle behaviour: a subtree reference back to
+        # the page resolves to the shared original, exactly as it did when
+        # ``_deep_copy_cos`` visited ``src_dict`` first.
+        parent_key = COSName.get_pdf_name("Parent")
+        seen: set[int] = {id(src_dict)}
+        new_dict = COSDictionary()
+        for key in list(src_dict.key_set()):
+            if key == parent_key:
+                continue
+            new_dict.set_item(
+                key, self._deep_copy_cos(src_dict.get_item(key), seen)
+            )
         new_page = PDPage(new_dict)
         self._import_page_acroform_fixup(new_dict)
         self.get_pages().add(new_page)
@@ -1804,23 +1818,42 @@ class PDDocument:
         if not isinstance(fields_array, COSArray):
             fields_array = COSArray()
             form_dict.set_item(COSName.get_pdf_name("Fields"), fields_array)
-        existing_names: set[str] = set()
-        for i in range(fields_array.size()):
-            entry = fields_array.get_object(i)
-            if isinstance(entry, COSDictionary):
-                t = entry.get_string(COSName.get_pdf_name("T"))
-                if t is not None:
-                    existing_names.add(t)
         if not hasattr(self, "_import_field_counter"):
             self._import_field_counter = 1
+        # Incremental state persisted on the destination document so a long
+        # import_page loop doesn't rescan the whole /Fields array on every
+        # page (the naive rebuild-per-page was O(n^2) — 6.6s for 3200 pages).
+        #   _import_field_names     — set[str] of known /T field names
+        #   _import_field_root_ids  — set[int] of id() of appended field roots
+        #   _import_fields_array_id — id() of the tracked /Fields COSArray
+        #   _import_fields_count    — entries tracked in that array
+        # The cache is rebuilt from scratch only when the /Fields array
+        # identity changed (a swap) or its size no longer matches the tracked
+        # count (an external mutation) — otherwise it is trusted verbatim.
+        needs_rebuild = (
+            not hasattr(self, "_import_fields_array_id")
+            or self._import_fields_array_id != id(fields_array)
+            or self._import_fields_count != fields_array.size()
+        )
+        if needs_rebuild:
+            existing_names: set[str] = set()
+            root_ids: set[int] = set()
+            for i in range(fields_array.size()):
+                entry = fields_array.get_object(i)
+                root_ids.add(id(entry))
+                if isinstance(entry, COSDictionary):
+                    t = entry.get_string(COSName.get_pdf_name("T"))
+                    if t is not None:
+                        existing_names.add(t)
+            self._import_field_names = existing_names
+            self._import_field_root_ids = root_ids
+            self._import_fields_array_id = id(fields_array)
+            self._import_fields_count = fields_array.size()
+        existing_names = self._import_field_names
+        root_ids = self._import_field_root_ids
         prefix = "dummyFieldName"
         for root in roots:
-            already = False
-            for i in range(fields_array.size()):
-                if fields_array.get_object(i) is root:
-                    already = True
-                    break
-            if already:
+            if id(root) in root_ids:
                 continue
             t = root.get_string(COSName.get_pdf_name("T"))
             if t is not None and t in existing_names:
@@ -1832,6 +1865,8 @@ class PDDocument:
             elif t is not None:
                 existing_names.add(t)
             fields_array.add(root)
+            root_ids.add(id(root))
+            self._import_fields_count += 1
 
     def _deep_copy_cos(self, value: Any, seen: set[int]) -> Any:
         """Recursive deep copy of a ``COSBase`` tree. Cycles are broken via

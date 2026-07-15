@@ -1354,26 +1354,22 @@ def _unpremultiply_matte(
     if not matte or len(matte) < 3:
         return rgba
     m = [max(0.0, min(255.0, float(c) * 255.0)) for c in matte[:3]]
-    px = rgba.load()
-    apx = alpha.load()
-    width, height = rgba.size
-    for y in range(height):
-        for x in range(width):
-            a = apx[x, y]
-            if a == 0:
-                continue
-            r, g, b, _ = px[x, y]
-            scale = 255.0 / a
-            nr = m[0] + (r - m[0]) * scale
-            ng = m[1] + (g - m[1]) * scale
-            nb = m[2] + (b - m[2]) * scale
-            px[x, y] = (
-                0 if nr < 0 else 255 if nr > 255 else int(round(nr)),
-                0 if ng < 0 else 255 if ng > 255 else int(round(ng)),
-                0 if nb < 0 else 255 if nb > 255 else int(round(nb)),
-                a,
-            )
-    return rgba
+    import numpy as np  # noqa: PLC0415
+
+    # Vectorised equivalent of the former per-pixel loop:
+    #   c = m + (c' - m) * (255 / a)   (alpha 0 left untouched; every
+    # recovered component clamped to [0, 255] with round-half-to-even,
+    # matching ``int(round(...))``).
+    arr = np.array(rgba)  # writable (H, W, 4) uint8 copy
+    av = np.asarray(alpha, dtype=np.float64)
+    nonzero = av > 0
+    scale = 255.0 / np.where(nonzero, av, 1.0)
+    for ch in range(3):
+        c = arr[:, :, ch].astype(np.float64)
+        new = m[ch] + (c - m[ch]) * scale
+        new = np.clip(np.rint(new), 0, 255).astype(np.uint8)
+        arr[:, :, ch] = np.where(nonzero, new, arr[:, :, ch])
+    return Image.fromarray(arr, "RGBA")
 
 
 def _apply_explicit_mask(image: Image.Image, mask: PDImageXObject) -> Image.Image:
@@ -1460,25 +1456,23 @@ def _apply_color_key_mask(
     if len(samples) < width * height * components:
         return image
 
-    rgba = image.convert("RGBA")
-    apx = rgba.load()
+    import numpy as np  # noqa: PLC0415
+
     pair_lo = ranges[0::2]
     pair_hi = ranges[1::2]
-    pixel = 0
-    for y in range(height):
-        for x in range(width):
-            base = pixel * components
-            keyed = True
-            for c in range(components):
-                s = samples[base + c]
-                if not (pair_lo[c] <= s <= pair_hi[c]):
-                    keyed = False
-                    break
-            if keyed:
-                r, g, b, _ = apx[x, y]
-                apx[x, y] = (r, g, b, 0)
-            pixel += 1
-    return rgba
+    # Vectorised equivalent of the per-pixel loop: a pixel is keyed out
+    # (alpha 0) when *every* raw component sample falls inside its
+    # inclusive ``[lo, hi]`` range; all other pixels stay opaque.
+    samp = np.asarray(
+        samples[: width * height * components], dtype=np.int64
+    ).reshape(height, width, components)
+    keyed = np.ones((height, width), dtype=bool)
+    for c in range(components):
+        band = samp[:, :, c]
+        keyed &= (band >= pair_lo[c]) & (band <= pair_hi[c])
+    arr = np.array(image.convert("RGBA"))  # writable (H, W, 4) copy
+    arr[keyed, 3] = 0
+    return Image.fromarray(arr, "RGBA")
 
 
 def _rgb_pixels_as_samples(image: Image.Image) -> list[int]:

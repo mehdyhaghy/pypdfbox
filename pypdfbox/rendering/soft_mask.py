@@ -200,38 +200,48 @@ class SoftPaintContext:
             transfer_cache[g] = val
             return val
 
-        in_pixels = inner_image.load()
-        out_image = Image.new("RGBA", (w, h))
-        out_pixels = out_image.load()
+        import numpy as np  # noqa: PLC0415
 
-        for y in range(h):
-            for x in range(w):
-                src = in_pixels[x, y]
-                r = src[0]
-                g_c = src[1]
-                b_c = src[2]
-                a = src[3] if len(src) > 3 else 255
-                mx = mx0 + x
-                my = my0 + y
-                if mask_pixels is not None and 0 <= mx < mask_w and 0 <= my < mask_h:
-                    g_mask = mask_pixels[mx, my]
-                    if isinstance(g_mask, tuple):
-                        g_mask = g_mask[0]
-                    g_val = int(g_mask)
-                else:
-                    # Outside the mask bounds the backdrop luminance ``bc``
-                    # is the sample (upstream sets ``g = bc``). It still
-                    # goes through the same transfer-function ``map`` as an
-                    # in-bounds sample — upstream builds one 256-entry
-                    # ``map`` table and indexes it with ``bc`` here too — so
-                    # a non-identity ``/TR`` remaps the out-of-bounds region
-                    # exactly like the covered region.
-                    g_val = bc
-                factor = _transfer(g_val)
-                new_alpha = int(round(a * factor))
-                out_pixels[x, y] = (r, g_c, b_c, max(0, min(255, new_alpha)))
+        # Vectorised equivalent of the former per-pixel loop. The RGB
+        # bands pass through untouched; only the alpha band is scaled by
+        # the transfer-mapped mask sample.
+        inner_arr = np.asarray(inner_image)  # (h, w, 4) uint8, RGBA
 
-        return out_image
+        # Per-pixel mask sample ``g_val``. Default is the backdrop
+        # luminance ``bc`` (out-of-mask-bounds regions); in-bounds pixels
+        # take the mask's gray sample. Out-of-bounds pixels still go
+        # through the same transfer ``map`` as in-bounds ones.
+        g_val = np.full((h, w), bc, dtype=np.int64)
+        if mask_pixels is not None and mask_w > 0 and mask_h > 0:
+            mask_arr = np.asarray(mask_l)  # (mask_h, mask_w[, bands]) uint8
+            if mask_arr.ndim == 3:
+                # LA / multi-band mask: sample the first (luma) band,
+                # mirroring the former ``g_mask[0]`` tuple unwrap.
+                mask_arr = mask_arr[:, :, 0]
+            xs = mx0 + np.arange(w)
+            ys = my0 + np.arange(h)
+            vx = (xs >= 0) & (xs < mask_w)
+            vy = (ys >= 0) & (ys < mask_h)
+            if vx.any() and vy.any():
+                iy = np.nonzero(vy)[0]
+                ix = np.nonzero(vx)[0]
+                g_val[np.ix_(iy, ix)] = mask_arr[
+                    np.ix_(ys[vy], xs[vx])
+                ].astype(np.int64)
+
+        # Build a 256-entry factor LUT, evaluating ``_transfer`` only for
+        # the gray values actually present (mirrors the loop's per-value
+        # ``transfer_cache``; results are identical regardless of order).
+        factor_lut = np.zeros(256, dtype=np.float64)
+        for gv in np.unique(g_val).tolist():
+            factor_lut[gv] = _transfer(int(gv))
+        factor_grid = factor_lut[g_val]
+
+        a = inner_arr[:, :, 3].astype(np.float64)
+        new_alpha = np.clip(np.rint(a * factor_grid), 0, 255).astype(np.uint8)
+        out_arr = inner_arr.copy()
+        out_arr[:, :, 3] = new_alpha
+        return Image.fromarray(out_arr, "RGBA")
 
 
 __all__ = ["SoftMask", "SoftPaintContext"]

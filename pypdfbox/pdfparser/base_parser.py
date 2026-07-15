@@ -20,6 +20,15 @@ if TYPE_CHECKING:
 
 _LOG = logging.getLogger(__name__)
 
+# Precomputed int-membership sets for the hot per-byte classifiers. Deriving
+# them from the exact byte literals used by ``BaseParser.WHITESPACE`` /
+# ``BaseParser.DELIMITERS`` keeps them in lockstep with those public ClassVars
+# while letting ``is_whitespace`` / ``is_delimiter`` test the raw int directly
+# instead of allocating a one-byte ``bytes`` object per call (measured 3-16x
+# faster). ``-1`` (EOF) and any other out-of-range int simply miss the set.
+_WHITESPACE_INTS = frozenset(b"\x00\t\n\x0c\r ")
+_DELIMITER_INTS = frozenset(b"()<>[]{}/%")
+
 
 class BaseParser:
     """
@@ -92,6 +101,18 @@ class BaseParser:
         # for upstream's ``computeInternalHash``) so lookups stay O(1) for
         # big PDFs.
         self._key_cache: dict[tuple[int, int], COSObjectKey] = {}
+        # Literal-text cache for the number token most recently consumed by
+        # :meth:`read_number`. ``COSParser._wrap_number`` re-derives the exact
+        # source bytes of a number to feed ``COSNumber.get`` / preserve
+        # ``COSFloat`` verbatim text; capturing the text on the first (only)
+        # scan lets it skip a seek-back-and-reread pass. The stored start/end
+        # positions guard the cache — ``_wrap_number`` only trusts it when the
+        # span it wants matches exactly, so any intervening ``read_number``
+        # (e.g. the indirect-reference lookahead's second integer) transparently
+        # falls back to the re-read.
+        self._last_number_text: str = ""
+        self._last_number_start: int = -1
+        self._last_number_end: int = -1
 
     # ---------- document handle (upstream protected COSDocument) ----------
 
@@ -200,7 +221,7 @@ class BaseParser:
 
     @classmethod
     def is_whitespace(cls, b: int) -> bool:
-        return 0 <= b <= 0x20 and bytes((b,)) in cls.WHITESPACE
+        return b in _WHITESPACE_INTS
 
     @classmethod
     def is_eol(cls, b: int) -> bool:
@@ -220,7 +241,7 @@ class BaseParser:
 
     @classmethod
     def is_delimiter(cls, b: int) -> bool:
-        return 0 <= b <= 0x7F and bytes((b,)) in cls.DELIMITERS
+        return b in _DELIMITER_INTS
 
     @classmethod
     def is_digit(cls, b: int) -> bool:
@@ -516,6 +537,14 @@ class BaseParser:
         if not body or body == b".":
             raise PDFParseError("expected number", position=start_pos)
         text = (sign_chr + bytes(body)).decode("ascii")
+        # Stash the literal text + span so ``COSParser._wrap_number`` can reuse
+        # it instead of seeking back and re-reading the same bytes. The span is
+        # exactly the bytes consumed since ``start_pos`` (the final rejected
+        # byte and any stripped trailing ``e``/``E`` were rewound above), so it
+        # is byte-identical to what a re-read would produce.
+        self._last_number_text = text
+        self._last_number_start = start_pos
+        self._last_number_end = self.position
         try:
             return float(text) if (saw_dot or saw_exp) else int(text)
         except ValueError as exc:

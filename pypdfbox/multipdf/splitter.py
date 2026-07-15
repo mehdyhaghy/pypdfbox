@@ -133,6 +133,20 @@ class Splitter:
         self._struct_dict_map: dict[int, COSDictionary] = {}
         self._id_set: set[str] = set()
         self._role_set: set[str] = set()
+        # {id(dst_page_dict): page_index} for the chunk currently being
+        # struct-cloned. Rebuilt once per chunk in clone_structure_tree so
+        # _k_clone_dictionary can test chunk membership in O(1) instead of
+        # walking the page tree per struct element. Only trusted when the
+        # page_tree threaded into the clone matches the one the map was
+        # built from (``_page_index_tree_id``); direct callers that pass a
+        # foreign / mock page tree fall back to ``page_tree.index_of``.
+        self._page_index_by_id: dict[int, int] = {}
+        self._page_index_tree_id: int | None = None
+        # Flattened source /ParentTree number map. The source document is
+        # immutable during split(); flatten it once (lazily on first chunk)
+        # and share the read-only map across every chunk instead of
+        # re-flattening per chunk. Reset at split() start, cleared at end.
+        self._src_number_tree_map: dict[int, COSBase] | None = None
         # destToFixMap mirror — list of (cloned_dest_array, source_host_page_dict,
         # source_target_page_dict) per chunk. Deferred to after the page walk
         # so we can decide whether each destination's target page lives in
@@ -368,6 +382,9 @@ class Splitter:
         self._pending_annot_passes_per_chunk = []
         self._id_set = set()
         self._role_set = set()
+        # Flattened source /ParentTree cache — populated lazily on the
+        # first tagged chunk, shared read-only across the rest of the run.
+        self._src_number_tree_map = None
         # Track whether any chunk dropped a signature widget; clear
         # /SigFlags + scrub /AcroForm in destination catalogs at the end.
         self._signatures_dropped: bool = False
@@ -421,6 +438,9 @@ class Splitter:
                     "may persist in chunk catalog",
                     index,
                 )
+        # Release the shared source-/ParentTree flatten (can be large) once
+        # every chunk has been cloned.
+        self._src_number_tree_map = None
         return self._destination_documents
 
     # ---------- pagination loop ----------
@@ -1538,6 +1558,36 @@ class Splitter:
         dst_struct_root_cos = dst_struct_root.get_cos_object()
         page_tree = destination_document.get_pages()
 
+        # Snapshot the chunk's pages once and, when the page tree is a real
+        # iterable/mappable tree, precompute a {id(page_dict): index} map so
+        # _k_clone_dictionary can test chunk membership in O(1) rather than
+        # re-walking the tree per struct element (the old page_tree.index_of
+        # scan was O(chunk)). Foreign / mock page trees (used by direct unit
+        # tests) that aren't iterable — or whose pages don't expose
+        # get_cos_object — fall back to the upstream index_of path.
+        pages: list[Any] | None
+        try:
+            pages = list(page_tree)
+        except TypeError:
+            pages = None
+        page_index_map: dict[int, int] | None = None
+        if pages is not None:
+            try:
+                page_index_map = {
+                    id(page.get_cos_object()): idx
+                    for idx, page in enumerate(pages)
+                }
+            except Exception:  # noqa: BLE001 - foreign page object; use index_of
+                page_index_map = None
+        if page_index_map is not None:
+            self._page_index_by_id = page_index_map
+            self._page_index_tree_id = id(page_tree)
+        else:
+            self._page_index_by_id = {}
+            self._page_index_tree_id = None
+            if pages is None:
+                pages = [page_tree.get(i) for i in range(len(page_tree))]
+
         # Clone /K, also fills _struct_dict_map.
         src_k = src_struct_root.get_cos_object().get_dictionary_object(_K)
         cloned_k = self._k_create_clone(
@@ -1547,16 +1597,21 @@ class Splitter:
             dst_struct_root_cos.set_item(_K, cloned_k)
 
         # Build a fresh /ParentTree containing only entries referenced by
-        # this chunk's pages.
+        # this chunk's pages. The source /ParentTree is immutable during
+        # split(), so flatten it exactly once and share the read-only map
+        # across every chunk (was re-flattened per chunk — O(chunks * n)).
         src_parent_tree = src_struct_root.get_parent_tree()
         if src_parent_tree is not None:
-            src_numbers = self._get_number_tree_as_map(src_parent_tree)
+            if self._src_number_tree_map is None:
+                self._src_number_tree_map = self._get_number_tree_as_map(
+                    src_parent_tree
+                )
+            src_numbers = self._src_number_tree_map
         else:
             src_numbers = {}
         dst_numbers: dict[int, COSBase] = {}
 
-        for page_index in range(len(page_tree)):
-            page = page_tree.get(page_index)
+        for page in pages:
             try:
                 sp1 = page.get_struct_parents()
             except Exception:  # noqa: BLE001
@@ -1700,7 +1755,17 @@ class Splitter:
         if src_page_dict is not None:
             dst_page_dict = self._page_dict_map.get(id(src_page_dict))
             if dst_page_dict is not None:
-                if page_tree.index_of(dst_page_dict) == -1:
+                # O(1) chunk-membership test via the precomputed
+                # {id(page_dict): index} map (equivalent to the upstream
+                # page_tree.index_of(...) == -1 check, which walked the
+                # tree). Only trusted when ``page_tree`` is the exact object
+                # the map was built from in clone_structure_tree; direct
+                # callers passing a foreign page tree fall back to index_of.
+                if id(page_tree) == self._page_index_tree_id:
+                    not_in_chunk = id(dst_page_dict) not in self._page_index_by_id
+                else:
+                    not_in_chunk = page_tree.index_of(dst_page_dict) == -1
+                if not_in_chunk:
                     return None
             else:
                 # PDFBOX-6009: src has /Pg pointing somewhere not in this

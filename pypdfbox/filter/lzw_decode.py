@@ -328,14 +328,44 @@ class LZWDecode(Filter):
     def _do_lzw_decode(
         encoded: BinaryIO, decoded: BinaryIO, early_change: bool
     ) -> None:
-        reader = _BitReader(encoded)
+        # Slurp the whole encoded stream once and drive an inline MSB-first bit
+        # reader off a local cursor. This avoids a ``read(1)`` syscall-shaped
+        # method call per input byte and a ``write`` call per decoded code:
+        # output accumulates in a local ``bytearray`` and is written once at
+        # the end. Behaviour is bit-for-bit identical to the ``_BitReader`` /
+        # per-code ``decoded.write`` version — EarlyChange handling, 9→12-bit
+        # width transitions, ClearTable(256)/EOD(257), KwKwK, and the lenient
+        # premature-EOF / corrupt-code exit are all preserved exactly.
+        src = encoded.read()
+        src_len = len(src)
+        pos = 0
+        buffer = 0
+        bits_in_buffer = 0
+
         code_table: list[bytes | None] = _initial_code_table()
         chunk = 9
         prev: bytes | None = None
+        out = bytearray()
+        # EarlyChange offset, inlined from ``_calculate_chunk`` (bit-identical):
+        # width grows one entry sooner when EarlyChange is on (PDF default).
+        ec_add = 1 if early_change else 0
 
         try:
             while True:
-                next_command = reader.read_bits(chunk)
+                # Inline ``_BitReader.read_bits(chunk)``: refill the bit buffer
+                # from the local byte cursor (no per-byte method call), then
+                # slice ``chunk`` bits off the high end.
+                while bits_in_buffer < chunk:
+                    if pos >= src_len:
+                        raise EOFError("unexpected EOF in LZW bit stream")
+                    buffer = (buffer << 8) | src[pos]
+                    pos += 1
+                    bits_in_buffer += 8
+                shift = bits_in_buffer - chunk
+                next_command = (buffer >> shift) & ((1 << chunk) - 1)
+                buffer &= (1 << shift) - 1
+                bits_in_buffer = shift
+
                 if next_command == EOD:
                     break
                 if next_command == CLEAR_TABLE:
@@ -358,7 +388,7 @@ class LZWDecode(Filter):
                             f"invalid LZW code references reserved entry: {next_command}"
                         )
                     curr = entry
-                    decoded.write(curr)
+                    out += curr
                     if prev is not None:
                         new_entry = prev + curr[:1]
                         code_table.append(new_entry)
@@ -366,7 +396,7 @@ class LZWDecode(Filter):
                     # KwKwK case: code points to the entry that's about
                     # to be created. The output is prev + first(prev).
                     curr = prev + prev[:1]
-                    decoded.write(curr)
+                    out += curr
                     code_table.append(curr)
                 else:
                     # Corrupt stream: code out of range, or KwKwK with no
@@ -383,11 +413,22 @@ class LZWDecode(Filter):
                     )
 
                 prev = curr
-                chunk = _calculate_chunk(len(code_table), early_change)
+                # Inlined ``_calculate_chunk(len(code_table), early_change)``.
+                _sz = len(code_table) + ec_add
+                if _sz >= 2048:
+                    chunk = 12
+                elif _sz >= 1024:
+                    chunk = 11
+                elif _sz >= 512:
+                    chunk = 10
+                else:
+                    chunk = 9
         except EOFError:
             # PDFBox logs a warning and stops when the stream ends before EOD
             # OR when a corrupt code is hit (both are EOFException upstream).
-            return
+            pass
+
+        decoded.write(bytes(out))
 
 
 # Register at import time so ``FilterFactory.get("LZWDecode")`` works as

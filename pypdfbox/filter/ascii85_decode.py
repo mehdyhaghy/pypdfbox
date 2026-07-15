@@ -68,10 +68,19 @@ from .filter_factory import FilterFactory
 _EOD: Final[int] = 0x7E  # b'~' — end-of-data byte (the b'>' that follows is incidental)
 # Upstream ASCII85InputStream skips only LF, CR and SPACE — NOT NUL/TAB/FF/VT.
 _WHITESPACE: Final[frozenset[int]] = frozenset(b"\n\r ")
+# Same set as ``_WHITESPACE`` but as a ``bytes`` deletion set for
+# ``bytes.translate`` — the fast path strips these three bytes in one C-level
+# pass instead of testing each byte for set membership in a Python loop.
+_WHITESPACE_BYTES: Final[bytes] = b"\n\r "
 _Z: Final[int] = 0x7A  # b'z' — 4-zero-byte shortcut at a group boundary
 _DIGIT_OFFSET: Final[int] = 0x21  # b'!' — base-85 digit zero
 _DIGIT_MAX: Final[int] = 93  # c - '!' must be in 0..93 (b'!'..b'~'); else invalid
 _U32_MASK: Final[int] = 0xFFFFFFFF
+# Translation table mapping each digit byte to its base-85 value (byte - '!').
+# Only bytes in b'!'..b'~' (the validated digit range) are ever looked up; the
+# rest are placeholders. Used by the fast path to convert a whole whitespace-
+# free buffer to raw digit values in one C-level pass.
+_SUB_OFFSET: Final[bytes] = bytes((i - _DIGIT_OFFSET) & 0xFF for i in range(256))
 
 
 class ASCII85Decode(Filter):
@@ -142,34 +151,94 @@ class ASCII85Decode(Filter):
         if eod >= 0:
             data = data[:eod]
 
+        # Strip ignored whitespace in one C-level pass. This is the EXACT set
+        # upstream skips (LF, CR, SPACE — NOT NUL/TAB/FF/VT); dropping it up
+        # front is behaviourally identical to the old per-byte skip because
+        # whitespace never affects group boundaries.
+        data = data.translate(None, _WHITESPACE_BYTES)
+        if not data:
+            return b""
+
+        # The b'z' 4-zero shortcut only fires at a group boundary, so its
+        # effect depends on the running digit count — that path stays
+        # sequential. When no b'z' is present anywhere (the common case,
+        # including all encoder output for non-zero data) the buffer is a pure
+        # base-85 digit stream and can be processed in bulk.
+        if _Z in data:
+            return ASCII85Decode._decode_with_z(data)
+
+        # Fast path: every remaining byte must be a base-85 digit in
+        # b'!'..b'~'. Upstream raises on the first out-of-range byte and
+        # discards all output on raise, so validating the whole buffer up front
+        # (min/max in C) is behaviourally identical.
+        if min(data) < _DIGIT_OFFSET or max(data) > _DIGIT_OFFSET + _DIGIT_MAX:
+            raise OSError("Invalid data in Ascii85 stream")
+
+        digits = data.translate(_SUB_OFFSET)  # each byte -> value 0..93
+        total = len(digits)
+        full = total - (total % 5)
+        # Full 5-digit groups -> 4 bytes each, 32-bit-masked big-endian.
+        out = bytearray(
+            b"".join(
+                (
+                    (
+                        (
+                            (
+                                (digits[i] * 85 + digits[i + 1]) * 85 + digits[i + 2]
+                            )
+                            * 85
+                            + digits[i + 3]
+                        )
+                        * 85
+                        + digits[i + 4]
+                    )
+                    & _U32_MASK
+                ).to_bytes(4, "big")
+                for i in range(0, full, 5)
+            )
+        )
+
+        # Trailing partial group of n digits yields n-1 output bytes; a lone
+        # single digit (n == 1) yields nothing and is silently dropped. Pad
+        # with b'u' (digit value 84) exactly as upstream does.
+        n = total - full
+        if n >= 2:
+            value = 0
+            for j in range(full, total):
+                value = value * 85 + digits[j]
+            for _ in range(5 - n):
+                value = value * 85 + 84  # ord('u') - '!' == 84
+            value &= _U32_MASK
+            out += value.to_bytes(4, "big")[: n - 1]
+
+        return bytes(out)
+
+    @staticmethod
+    def _decode_with_z(data: bytes) -> bytes:
+        # Slow path for buffers containing b'z': the shortcut's meaning depends
+        # on whether the current group is empty, so digits must be consumed in
+        # order. ``data`` is already whitespace-stripped and truncated at the
+        # first EOD. Behaviour matches the original per-byte loop exactly.
         out = bytearray()
         group: list[int] = []  # base-85 digits buffered for the current group
 
-        def flush_full() -> None:
-            value = 0
-            for digit in group:
-                value = value * 85 + (digit - _DIGIT_OFFSET)
-            value &= _U32_MASK
-            out.extend(
-                ((value >> 24) & 0xFF, (value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF)
-            )
-            group.clear()
-
         for byte in data:
-            if byte in _WHITESPACE:
-                continue
             if byte == _Z and not group:
                 # b'z' shortcut: four zero bytes — but only at a group
-                # boundary. Mid-group it is an ordinary digit (see below).
-                out.extend(b"\x00\x00\x00\x00")
+                # boundary. Mid-group it is an ordinary digit (below).
+                out += b"\x00\x00\x00\x00"
                 continue
-            # Upstream's range check: (byte - '!') must be in 0..93. Bytes
-            # below b'!' (and not whitespace) or above b'~' are rejected.
+            # Upstream's range check: (byte - '!') must be in 0..93.
             if byte - _DIGIT_OFFSET < 0 or byte - _DIGIT_OFFSET > _DIGIT_MAX:
                 raise OSError("Invalid data in Ascii85 stream")
             group.append(byte)
             if len(group) == 5:
-                flush_full()
+                value = 0
+                for digit in group:
+                    value = value * 85 + (digit - _DIGIT_OFFSET)
+                value &= _U32_MASK
+                out += value.to_bytes(4, "big")
+                group = []
 
         # Trailing partial group of n digits yields n-1 output bytes. A lone
         # single digit (n == 1) yields nothing and is silently dropped.
@@ -180,8 +249,7 @@ class ASCII85Decode(Filter):
             for digit in padded:
                 value = value * 85 + (digit - _DIGIT_OFFSET)
             value &= _U32_MASK
-            for shift in (24, 16, 8, 0)[: n - 1]:
-                out.append((value >> shift) & 0xFF)
+            out += value.to_bytes(4, "big")[: n - 1]
 
         return bytes(out)
 

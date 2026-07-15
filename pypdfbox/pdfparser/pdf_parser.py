@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+from collections import OrderedDict
 from typing import Any
 
 from pypdfbox.cos import (
@@ -53,6 +54,29 @@ class _HeaderNotFoundError(PDFParseError):
 # pypdfbox bumps the floor to 4096 to absorb noisier tails). Per-instance
 # overrides go through :meth:`PDFParser.set_eof_lookup_range`.
 _TAIL_SCAN_BYTES: int = 4096
+
+# Upper bound on how many decoded object streams the per-parser
+# ``_objstm_offsets_cache`` retains (LRU eviction). Pypdfbox-specific
+# performance knob — upstream re-parses the owning ObjStm on every
+# compressed-member resolve. Compressed members resolve with strong
+# stream locality (a page's objects share an ObjStm), so a small window
+# captures nearly all repeat hits while bounding retained decoded bytes.
+_OBJSTM_CACHE_MAX: int = 16
+
+# Bytes pulled in a single bulk read when validating an ``n g obj`` header at
+# an xref offset (see :meth:`PDFParser._object_header_matches`). Comfortably
+# larger than any real header (``999999 65535 obj`` is 18 bytes); when the
+# window is fully consumed without a verdict — a pathological header longer
+# than this, a ``%``-comment, or a signed integer — the check falls back to
+# the byte-exact slow scanner so behaviour stays identical to upstream.
+_OBJ_HEADER_SCAN_WINDOW: int = 64
+
+# PDF whitespace bytes (PDF 32000-1 §7.2.3) — mirrors BaseParser's set. Used
+# by the fast header scanner to avoid per-byte method-call overhead.
+_HEADER_WHITESPACE_INTS = frozenset(b"\x00\t\n\x0c\r ")
+# Delimiter bytes (§7.2.3); a regular character is neither whitespace nor
+# delimiter. Used to find the end of the ``obj`` keyword token.
+_HEADER_DELIMITER_INTS = frozenset(b"()<>[]{}/%")
 
 # Upstream system-property name that lets callers override the EOF lookup
 # range without code changes (``-Dorg.apache.pdfbox.pdfparser…``). Exposed
@@ -147,6 +171,32 @@ class PDFParser:
         # ``COSParser.bfCOSObjectKeyOffsets``). ``None`` until the first
         # dangling reference forces a ``bf_search_for_objects`` scan.
         self._bf_offsets_cache: dict[COSObjectKey, int] | None = None
+        # LRU cache of decoded object-stream headers keyed by the ObjStm's
+        # object number: ``objstm_obj_num -> (decoded_bytes, pairs, first)``.
+        # Every compressed-member resolve needs the owning ObjStm decoded
+        # and its /N header pairs parsed; without this cache each of the
+        # M members of a stream re-inflated and re-scanned the whole
+        # header (O(M^2) per stream — dominant cost when splitting or
+        # walking documents whose objects live in object streams). Bounded
+        # so pathological documents with many large ObjStms don't pin
+        # every decoded body in memory for the parser's lifetime.
+        # Cached entry is a 4-tuple ``(decoded, pairs, first, num_index)``.
+        # ``num_index`` maps a stored object number to the list of
+        # ``(pair_index, byte_offset)`` header pairs carrying that number, in
+        # header order. It is built once when the ObjStm is first decoded so a
+        # per-member resolve is an O(1) dict lookup instead of an O(N) linear
+        # scan of all header pairs (the scan made resolve-all O(N^2) per
+        # stream). Duplicate object numbers keep every occurrence so the
+        # upstream stream-index tiebreak below still applies.
+        self._objstm_offsets_cache: OrderedDict[
+            int,
+            tuple[
+                bytes,
+                list[tuple[int, int]],
+                int,
+                dict[int, list[tuple[int, int]]],
+            ],
+        ] = OrderedDict()
         # Lazy ``PDDocument`` wrapper around the parsed ``COSDocument``.
         # Built on first call to :meth:`get_pd_document`; mirrors upstream
         # ``PDFParser.getPDDocument()``.
@@ -2223,7 +2273,132 @@ class PDFParser:
         whose object number matches ``key``. Cursor position is restored.
 
         Used by :meth:`_check_xref_offsets_lenient` to decide whether an
-        xref entry's byte offset is trustworthy before resolving it."""
+        xref entry's byte offset is trustworthy before resolving it.
+
+        Fast path: a single bulk read of :data:`_OBJ_HEADER_SCAN_WINDOW`
+        bytes at ``offset`` is scanned in-memory by
+        :meth:`_scan_object_header`, replacing ~15 per-byte reader calls per
+        xref entry (this check dominated pure load time on large documents).
+        The scanner returns ``None`` for the rare inputs it cannot decide
+        byte-for-byte identically to the reader (a header longer than the
+        window, a ``%``-comment, or a ``+``/``-`` signed integer), in which
+        case we defer to :meth:`_object_header_matches_slow` — the original
+        byte-exact logic — so accept/reject decisions are unchanged."""
+        if offset < 0 or offset >= self._src.length():
+            return False
+        buf = bytearray(_OBJ_HEADER_SCAN_WINDOW)
+        saved = self._src.get_position()
+        try:
+            self._src.seek(offset)
+            n = 0
+            while n < _OBJ_HEADER_SCAN_WINDOW:
+                r = self._src.read_into(
+                    buf, n, _OBJ_HEADER_SCAN_WINDOW - n
+                )
+                if r <= 0:
+                    break
+                n += r
+        finally:
+            self._src.seek(saved)
+        # ``truncated`` is True iff bytes remain in the file past our window —
+        # i.e. the reader could read further than we buffered. When False, the
+        # window ends exactly at EOF and the scanner can decide every case.
+        truncated = offset + n < self._src.length()
+        verdict = self._scan_object_header(
+            buf, n, truncated, key.object_number
+        )
+        if verdict is not None:
+            return verdict
+        return self._object_header_matches_slow(offset, key)
+
+    @staticmethod
+    def _scan_object_header(
+        buf: bytearray, n: int, truncated: bool, object_number: int
+    ) -> bool | None:
+        """Decide whether ``buf[:n]`` opens with an ``<int> <int> obj`` header
+        whose first integer equals ``object_number``, mirroring the reader
+        sequence ``skip_whitespace / read_int / skip_whitespace / read_int /
+        skip_whitespace / read_keyword`` used by
+        :meth:`_object_header_matches_slow`.
+
+        Returns ``True``/``False`` for a definitive verdict, or ``None`` when
+        the answer would depend on bytes beyond the buffered window or on a
+        code path this fast scanner deliberately does not replicate
+        (``%``-comments, ``+``/``-`` signed integers) — the caller then falls
+        back to the byte-exact slow scanner.
+
+        ``truncated`` signals that more bytes exist past ``buf[:n]``; whenever a
+        scan step reaches the window end while ``truncated`` is set, the reader
+        might read further, so we return ``None`` rather than guess."""
+        ws = _HEADER_WHITESPACE_INTS
+        i = 0
+
+        # read_int() #1 — object number. Leading whitespace is skipped by the
+        # explicit skip_whitespace() and again inside read_int(); comments and
+        # signs divert to the slow path.
+        while i < n and buf[i] in ws:
+            i += 1
+        if i >= n:
+            # Reader hits EOF (or more whitespace) here: at EOF read_int raises
+            # -> False; if truncated we cannot tell -> defer.
+            return None if truncated else False
+        if buf[i] == 0x25:  # '%' comment — slow path handles it
+            return None
+        if buf[i] in (0x2B, 0x2D):  # '+'/'-' signed int — slow path
+            return None
+        if not (0x30 <= buf[i] <= 0x39):
+            return False  # read_int: non-digit where a digit is required
+        start = i
+        while i < n and 0x30 <= buf[i] <= 0x39:
+            i += 1
+        if i >= n and truncated:
+            return None  # digit run may continue past the window
+        on = int(buf[start:i])
+
+        # read_int() #2 — generation number (value discarded).
+        while i < n and buf[i] in ws:
+            i += 1
+        if i >= n:
+            return None if truncated else False
+        if buf[i] == 0x25:
+            return None
+        if buf[i] in (0x2B, 0x2D):
+            return None
+        if not (0x30 <= buf[i] <= 0x39):
+            return False
+        while i < n and 0x30 <= buf[i] <= 0x39:
+            i += 1
+        if i >= n and truncated:
+            return None
+
+        # read_keyword() — must be ``obj``.
+        while i < n and buf[i] in ws:
+            i += 1
+        if i >= n:
+            return None if truncated else False  # read_keyword at EOF -> False
+        if buf[i] == 0x25:
+            return None
+        b0 = buf[i]
+        if not ((0x41 <= b0 <= 0x5A) or (0x61 <= b0 <= 0x7A)):
+            return False  # read_keyword: non-alpha start raises -> False
+        kstart = i
+        i += 1
+        while (
+            i < n
+            and buf[i] not in ws
+            and buf[i] not in _HEADER_DELIMITER_INTS
+        ):
+            i += 1
+        if i >= n and truncated:
+            return None  # keyword token may continue past the window
+        return buf[kstart:i] == b"obj" and on == object_number
+
+    def _object_header_matches_slow(
+        self, offset: int, key: COSObjectKey
+    ) -> bool:
+        """Byte-exact fallback for :meth:`_object_header_matches` — the
+        original per-byte reader logic, retained verbatim for the inputs the
+        fast scanner defers on. Cursor position is restored."""
         if offset < 0 or offset >= self._src.length():
             return False
         saved = self._src.get_position()
@@ -2303,9 +2478,33 @@ class PDFParser:
         # PDFBox returns null (wave 1516 fuzz divergence — every malformed
         # case below now resolves to None at parity).
         try:
-            decoded, pairs, first = _read_object_stream_offsets(
-                objstm_body, objstm_obj_num
-            )
+            # Decode + header-scan once per ObjStm and serve subsequent
+            # member resolves from the LRU cache — every member of the
+            # stream needs the same ``(decoded, pairs, first)`` triple, and
+            # recomputing it per member made resolution quadratic in the
+            # stream's /N. Parse failures are deliberately NOT cached so
+            # lenient-mode logging fires per member exactly as before.
+            cached = self._objstm_offsets_cache.get(objstm_obj_num)
+            if cached is None:
+                decoded, pairs, first = _read_object_stream_offsets(
+                    objstm_body, objstm_obj_num
+                )
+                # Prebuild the stored-number -> header-pair index once so
+                # every subsequent member resolves in O(1) rather than
+                # rescanning all N pairs (the linear scan below made
+                # resolve-all quadratic in the stream's /N).
+                num_index: dict[int, list[tuple[int, int]]] = {}
+                for pair_index, (stored_num, off) in enumerate(pairs):
+                    num_index.setdefault(stored_num, []).append(
+                        (pair_index, off)
+                    )
+                cached = (decoded, pairs, first, num_index)
+                self._objstm_offsets_cache[objstm_obj_num] = cached
+                if len(self._objstm_offsets_cache) > _OBJSTM_CACHE_MAX:
+                    self._objstm_offsets_cache.popitem(last=False)
+            else:
+                self._objstm_offsets_cache.move_to_end(objstm_obj_num)
+            decoded, pairs, first, num_index = cached
             # Resolve the member by its STORED OBJECT NUMBER, not by the xref's
             # positional ``inner_index``. Upstream
             # ``PDFObjectStreamParser.parseAllObjects`` (Apache PDFBox 3.0.7)
@@ -2320,11 +2519,7 @@ class PDFParser:
             # ``header_offset_unordered``). We mirror the by-number lookup and
             # use ``inner_index`` only to disambiguate genuine DUPLICATE object
             # numbers (the upstream ``getStreamIndex`` tiebreak).
-            matches = [
-                (pair_index, off)
-                for pair_index, (stored_num, off) in enumerate(pairs)
-                if stored_num == obj.object_number
-            ]
+            matches = num_index.get(obj.object_number)
             if not matches:
                 # The requested object is not among the header pairs that were
                 # actually read — upstream's ``objects.remove(key)`` returns
@@ -2341,7 +2536,16 @@ class PDFParser:
             else:
                 target_byte_offset = matches[0][1]
             # Parse the requested direct object from the decoded payload.
-            body_view = RandomAccessReadBuffer(decoded[first + target_byte_offset:])
+            # Wrap the SHARED cached ``decoded`` bytes and seek to the member's
+            # start rather than slicing ``decoded[start:]`` — the slice copied
+            # the whole tail per member (O(N) each, O(N^2) for the stream).
+            # ``RandomAccessReadBuffer`` wraps the bytes in a read-only BytesIO
+            # that shares the buffer (no copy); a fresh buffer per member keeps
+            # parser state isolated. Byte-level parse behaviour is identical:
+            # the object starts at ``first + target_byte_offset`` and
+            # ``parse_direct_object`` reads from the current position.
+            body_view = RandomAccessReadBuffer(decoded)
+            body_view.seek(first + target_byte_offset)
             body_parser = COSParser(body_view, document=self._document)
             try:
                 obj_body = body_parser.parse_direct_object()

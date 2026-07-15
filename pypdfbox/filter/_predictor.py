@@ -19,6 +19,74 @@ Predictor values:
 
 from __future__ import annotations
 
+try:
+    import numpy as _np
+
+    _HAS_NP = True
+except ImportError:  # pragma: no cover - numpy is a hard dependency
+    _HAS_NP = False
+
+
+# ---------------------------------------------------------------------
+# numpy fast-path helpers (byte-identical to the pure-Python fallbacks)
+# ---------------------------------------------------------------------
+
+
+def _png_sub_decode_np(row: bytes | bytearray, bpp: int) -> bytes:
+    """PNG Sub decode via per-``bpp``-lane running sum (vectorised).
+
+    PNG filtering is byte-oriented, so this is exact for every bit depth:
+    ``decoded[i] = (raw[i] + decoded[i - bpp]) & 0xFF`` per byte lane, which
+    equals the mod-256 cumulative sum of the raw bytes down each lane.
+    """
+    n = len(row)
+    arr = _np.frombuffer(bytes(row), dtype=_np.uint8).astype(_np.int64)
+    pad = (-n) % bpp
+    if pad:
+        arr = _np.concatenate([arr, _np.zeros(pad, dtype=_np.int64)])
+    arr = arr.reshape(-1, bpp)
+    _np.cumsum(arr, axis=0, out=arr)
+    return (arr & 0xFF).astype(_np.uint8).reshape(-1)[:n].tobytes()
+
+
+def _png_up_decode_np(row: bytes | bytearray, prev: bytes | bytearray) -> bytes:
+    """PNG Up decode via a vectorised byte-wise add of the previous row."""
+    cur = _np.frombuffer(bytes(row), dtype=_np.uint8).astype(_np.uint16)
+    up = _np.frombuffer(bytes(prev), dtype=_np.uint8)[: len(cur)].astype(_np.uint16)
+    return ((cur + up) & 0xFF).astype(_np.uint8).tobytes()
+
+
+def _untiff_np8(data: bytes, columns: int, colors: int, row_bytes: int) -> bytes:
+    """TIFF Predictor 2 decode, ``bpc == 8`` — cumsum per colour lane per row."""
+    n = len(data)
+    nrows = (n + row_bytes - 1) // row_bytes
+    total = nrows * row_bytes
+    buf = _np.frombuffer(data, dtype=_np.uint8)
+    if n < total:
+        buf = _np.concatenate([buf, _np.zeros(total - n, dtype=_np.uint8)])
+    arr = buf.reshape(nrows, columns, colors).astype(_np.int64)
+    _np.cumsum(arr, axis=1, out=arr)
+    return (arr & 0xFF).astype(_np.uint8).tobytes()
+
+
+def _untiff_np16(data: bytes, columns: int, colors: int, row_bytes: int) -> bytes:
+    """TIFF Predictor 2 decode, ``bpc == 16`` — cumsum per big-endian sample."""
+    n = len(data)
+    nrows = (n + row_bytes - 1) // row_bytes
+    total = nrows * row_bytes
+    buf = _np.frombuffer(data, dtype=_np.uint8)
+    if n < total:
+        buf = _np.concatenate([buf, _np.zeros(total - n, dtype=_np.uint8)])
+    arr = buf.reshape(nrows, columns, colors, 2).astype(_np.int64)
+    vals = (arr[..., 0] << 8) | arr[..., 1]
+    _np.cumsum(vals, axis=1, out=vals)
+    vals &= 0xFFFF
+    out = _np.empty((nrows, columns, colors, 2), dtype=_np.uint8)
+    out[..., 0] = (vals >> 8) & 0xFF
+    out[..., 1] = vals & 0xFF
+    return out.tobytes()
+
+
 # ---------------------------------------------------------------------
 # Geometry helpers
 # ---------------------------------------------------------------------
@@ -106,12 +174,18 @@ def decode_predictor_row(
         # None — no transformation.
         return
     if predictor == 11:
-        for p in range(bpp, rowlength):
-            actline[p] = (actline[p] + actline[p - bpp]) & 0xFF
+        if _HAS_NP:
+            actline[:] = _png_sub_decode_np(actline, bpp)
+        else:
+            for p in range(bpp, rowlength):
+                actline[p] = (actline[p] + actline[p - bpp]) & 0xFF
         return
     if predictor == 12:
-        for p in range(rowlength):
-            actline[p] = (actline[p] + lastline[p]) & 0xFF
+        if _HAS_NP:
+            actline[:] = _png_up_decode_np(actline, lastline)
+        else:
+            for p in range(rowlength):
+                actline[p] = (actline[p] + lastline[p]) & 0xFF
         return
     if predictor == 13:
         for p in range(rowlength):
@@ -188,12 +262,18 @@ def _unpng(data: bytes, row_bytes: int, bytes_per_pixel: int) -> bytes:
         elif filter_type == 1:
             # Sub - each byte is the previous byte (in the same row,
             # ``bytes_per_pixel`` to the left) added back.
-            for i in range(bytes_per_pixel, row_bytes):
-                cur[i] = (cur[i] + cur[i - bytes_per_pixel]) & 0xFF
+            if _HAS_NP:
+                cur[:] = _png_sub_decode_np(cur, bytes_per_pixel)
+            else:
+                for i in range(bytes_per_pixel, row_bytes):
+                    cur[i] = (cur[i] + cur[i - bytes_per_pixel]) & 0xFF
         elif filter_type == 2:
             # Up - add the byte from the row above.
-            for i in range(row_bytes):
-                cur[i] = (cur[i] + prev_row[i]) & 0xFF
+            if _HAS_NP:
+                cur[:] = _png_up_decode_np(cur, prev_row)
+            else:
+                for i in range(row_bytes):
+                    cur[i] = (cur[i] + prev_row[i]) & 0xFF
         elif filter_type == 3:
             # Average - add floor((left + up) / 2).
             for i in range(row_bytes):
@@ -242,6 +322,11 @@ def _untiff(data: bytes, columns: int, colors: int, bits_per_component: int) -> 
     row_bytes = (columns * bits_per_pixel + 7) // 8
     if row_bytes == 0 or not data:
         return b""
+
+    if _HAS_NP and bits_per_component == 8:
+        return _untiff_np8(data, columns, colors, row_bytes)
+    if _HAS_NP and bits_per_component == 16:
+        return _untiff_np16(data, columns, colors, row_bytes)
 
     out = bytearray()
     for row_start in range(0, len(data), row_bytes):

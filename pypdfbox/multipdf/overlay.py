@@ -388,7 +388,9 @@ class Overlay:
         number_of_pages = len(page_tree)
         for i, page in enumerate(page_tree):
             page_counter = i + 1
-            layout_page = self._get_layout_page(page_counter, number_of_pages)
+            layout_page = self._get_layout_page(
+                page_counter, number_of_pages, page.get_rotation()
+            )
             if layout_page is None:
                 continue
             page_dict = page.get_cos_object()
@@ -472,7 +474,10 @@ class Overlay:
         array.add(self._create_overlay_stream(page, layout_page, form_id))
 
     def _get_layout_page(
-        self, page_number: int, number_of_pages: int
+        self,
+        page_number: int,
+        number_of_pages: int,
+        page_rotation: int | None = None,
     ) -> _LayoutPage | None:
         if (
             not self._use_all_overlay_pages
@@ -494,9 +499,16 @@ class Overlay:
             layout = self._default_overlay_page
             if self._adjust_rotation:
                 # PDFBOX-6049: consider the rotation of the document page.
-                assert self._input_pdf is not None
-                page = self._input_pdf.get_page(page_number - 1)
-                rotation = page.get_rotation()
+                # The caller (``_process_pages``) already holds the current
+                # page and passes its rotation in, avoiding an O(n) re-fetch by
+                # index on every page; fall back to the by-index lookup only
+                # when a caller invokes this helper without the rotation.
+                rotation = page_rotation
+                if rotation is None:
+                    assert self._input_pdf is not None
+                    rotation = self._input_pdf.get_page(
+                        page_number - 1
+                    ).get_rotation()
                 if rotation != 0:
                     return self._create_adjusted_layout_page(rotation)
             return layout

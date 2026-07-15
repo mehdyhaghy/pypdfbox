@@ -147,6 +147,72 @@ class COSStream(COSDictionary):
         # not double-decipher (or, worse, decipher already-plaintext
         # bytes as if they were ciphertext).
         self._skip_encryption: bool = False
+        # ---- decoded-bytes memo (perf) ----
+        # ``create_input_stream`` re-runs the whole /Filter decode chain on
+        # every call; form XObjects / tiling patterns / annotation
+        # appearances re-decode on every ``Do``. We memoise the fully
+        # decoded bytes and serve them only when EVERY input to the decode
+        # is provably unchanged (see :meth:`create_input_stream`):
+        #   * ``_raw_gen`` — bumped by :meth:`_set_raw_data_internal`, the
+        #     single choke point for every raw-body write (set_raw_data,
+        #     the output-stream close callbacks, in-place decrypt).
+        #   * ``_dict_gen`` — bumped by the overridden dictionary mutators
+        #     (:meth:`set_item` / :meth:`remove_item` / :meth:`clear` /
+        #     ``__delitem__`` / :meth:`_set_item_quiet`) so ANY top-level
+        #     dict change (/Filter, /DecodeParms, and image-dimension keys
+        #     like /Height, /Width that CCITT/JPX read straight off the
+        #     stream dict) invalidates the memo.
+        #   * ``_decode_cache_sig`` — repr of the resolved /Filter and
+        #     /DecodeParms|/DP objects, which catches *in-place* nested
+        #     mutation (e.g. ``get_decode_parms().set_int("Predictor", …)``)
+        #     that bypasses the stream's own mutators.
+        # Only the full-decode (no ``stop_filters``) case is cached — the
+        # hot repeat callers (to_byte_array / create_view / to_text_string /
+        # form-XObject Do) all pass no stop filters.
+        self._decode_cache: bytes | None = None
+        self._decode_cache_raw_gen: int = -1
+        self._decode_cache_dict_gen: int = -1
+        self._decode_cache_sig: tuple[str, str] | None = None
+
+    # ---------- decode-cache invalidation ----------
+
+    # ``_raw_gen`` / ``_dict_gen`` are class-level defaults so the mutator
+    # overrides below stay safe when ``COSDictionary.__init__`` populates
+    # the initial items *before* ``COSStream.__init__`` assigns them.
+    _raw_gen: int = 0
+    _dict_gen: int = 0
+
+    def set_item(self, key: COSName | str, value: COSBase | None) -> None:
+        super().set_item(key, value)
+        self._dict_gen += 1
+
+    def _set_item_quiet(self, key: COSName | str, value: COSBase) -> None:
+        super()._set_item_quiet(key, value)
+        self._dict_gen += 1
+
+    def remove_item(self, key: COSName | str) -> COSBase | None:
+        item = super().remove_item(key)
+        self._dict_gen += 1
+        return item
+
+    def clear(self) -> None:
+        super().clear()
+        self._dict_gen += 1
+
+    def __delitem__(self, key: COSName | str) -> None:
+        super().__delitem__(key)
+        self._dict_gen += 1
+
+    def _decode_cache_signature(self) -> tuple[str, str]:
+        """Cheap content signature of the decode-affecting container
+        entries. ``repr`` of the *resolved* /Filter and /DecodeParms
+        (falling back to /DP) reflects in-place nested mutation of those
+        small structures — the one decode input the ``_dict_gen`` counter
+        cannot see, because a nested ``set_item`` fires on the parms dict,
+        not on this stream."""
+        filt = self.get_dictionary_object(_FILTER)
+        parms = self.get_dictionary_object(_DECODE_PARMS, _DP)
+        return (repr(filt), repr(parms))
 
     # ---------- raw bytes I/O ----------
 
@@ -255,6 +321,14 @@ class COSStream(COSDictionary):
             self._buffer.clear()
         self._buffer.write_bytes(data)
         self._buffer.seek(0)
+        # Every raw-body write invalidates the decoded memo. Bump the
+        # generation AND drop the bytes so we never hold both the old
+        # decode and the new raw body (memory bound). This is the single
+        # choke point for raw writes — set_raw_data, the output-stream
+        # close callbacks, and the in-place decrypt all route through here.
+        self._raw_gen += 1
+        self._decode_cache = None
+        self._decode_cache_sig = None
 
     def create_raw_input_stream(self) -> BinaryIO:
         """Return a fresh ``BytesIO`` snapshot of the current raw bytes.
@@ -445,6 +519,22 @@ class COSStream(COSDictionary):
 
         stop_set = _coerce_stop_filter_names(stop_filters)
 
+        # Serve the decoded memo only for the full-decode case (no early
+        # stop) and only when every decode input matches what was cached:
+        # the raw-body generation, the top-level dict generation, and the
+        # filter/decode-parms content signature. Any mismatch → re-decode.
+        use_cache = not stop_set
+        sig: tuple[str, str] | None = None
+        if use_cache:
+            sig = self._decode_cache_signature()
+            if (
+                self._decode_cache is not None
+                and self._decode_cache_raw_gen == self._raw_gen
+                and self._decode_cache_dict_gen == self._dict_gen
+                and self._decode_cache_sig == sig
+            ):
+                return io.BytesIO(self._decode_cache)
+
         data = self.get_raw_data()
         for index, name in enumerate(chain):
             if _canonical_filter_name(name.name) in stop_set:
@@ -462,6 +552,13 @@ class COSStream(COSDictionary):
             dst = io.BytesIO()
             f.decode(src, dst, self, index)
             data = dst.getvalue()
+
+        if use_cache:
+            # Full decode (loop never broke on a stop filter) — memoise.
+            self._decode_cache = data
+            self._decode_cache_raw_gen = self._raw_gen
+            self._decode_cache_dict_gen = self._dict_gen
+            self._decode_cache_sig = sig
         return io.BytesIO(data)
 
     def create_output_stream(
@@ -699,6 +796,10 @@ class COSStream(COSDictionary):
         if self._closed:
             return
         self._closed = True
+        # Release the decoded memo alongside the raw buffer so a closed
+        # stream never pins decoded bytes.
+        self._decode_cache = None
+        self._decode_cache_sig = None
         if self._buffer is not None:
             self._buffer.close()
             self._buffer = None

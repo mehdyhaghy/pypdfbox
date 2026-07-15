@@ -504,9 +504,15 @@ def _create_from_indexed(
         # Per-index alpha table.
         alpha_table = bytes(transparency)
         # 8-bit alpha SMask: lookup palette[index] for each sample.
-        smask_bytes = bytearray(len(raw_indices))
-        for i, idx in enumerate(raw_indices):
-            smask_bytes[i] = alpha_table[idx] if idx < len(alpha_table) else 0xFF
+        # Vectorised 256-entry LUT equivalent of the per-sample loop:
+        # index i maps to ``alpha_table[i]``, or 0xFF when the index is
+        # past the end of the (possibly short) transparency table.
+        import numpy as np  # noqa: PLC0415
+
+        _lut = np.full(256, 0xFF, dtype=np.uint8)
+        _n = min(256, len(alpha_table))
+        _lut[:_n] = np.frombuffer(alpha_table, dtype=np.uint8)[:_n]
+        smask_bytes = _lut[np.frombuffer(raw_indices, dtype=np.uint8)].tobytes()
         smask = _prepare_image_x_object(
             document,
             bytes(smask_bytes),
@@ -518,13 +524,15 @@ def _create_from_indexed(
         img.get_cos_object().set_item(_SMASK, smask.get_cos_object())
     elif isinstance(transparency, int):
         # Single transparent index → 1-bit binary mask.
-        row_bytes = (width + 7) // 8
-        packed = bytearray(row_bytes * height)
-        for y in range(height):
-            for x in range(width):
-                idx = raw_indices[y * width + x]
-                if idx != transparency:
-                    packed[y * row_bytes + (x >> 3)] |= 0x80 >> (x & 7)
+        # Vectorised equivalent of the per-pixel bit-packing loop:
+        # a sample equal to the transparent index becomes bit 0
+        # (transparent), every other sample bit 1 (opaque). ``packbits``
+        # packs MSB-first per row with the same right-zero-padding as
+        # ``0x80 >> (x & 7)``.
+        import numpy as np  # noqa: PLC0415
+
+        _idx = np.frombuffer(raw_indices, dtype=np.uint8).reshape(height, width)
+        packed = np.packbits(_idx != transparency, axis=1).tobytes()
         smask = _prepare_image_x_object(
             document,
             bytes(packed),

@@ -40,6 +40,15 @@ class ScratchFileBuffer(RandomAccessRead, RandomAccessWrite):
         self._length: int = 0
         # Lazy single-page scratch used to amortise byte-granular reads.
         self._scratch: bytearray = bytearray(self._page_size)
+        # page_id whose bytes currently populate ``self._scratch`` (read cache).
+        # ``None`` means the scratch holds no trustworthy page. The cache is
+        # keyed by page_id — not by chain index or position — so a seek that
+        # stays within the same page keeps it valid (page contents are
+        # unchanged), while a read that crosses into a different page misses
+        # and refetches. It is invalidated whenever the page bytes could have
+        # changed or the scratch was clobbered: any write (which reuses the
+        # scratch as a read-modify-write buffer) and :meth:`clear`.
+        self._cached_page_id: int | None = None
         self._closed = False
         # Eagerly allocate the first page (matches upstream ctor calling addPage()).
         self.add_page()
@@ -122,7 +131,13 @@ class ScratchFileBuffer(RandomAccessRead, RandomAccessWrite):
         while copied < to_read:
             page_idx_in_chain, off = divmod(self._position, self._page_size)
             page_id = self._page_indices[page_idx_in_chain]
-            self._owner.read_page(page_id, self._scratch, 0, self._page_size)
+            # Serve from the single-page read cache when the scratch already
+            # holds this page; otherwise fetch it once and record which page it
+            # now holds. This collapses the full-page copy that byte-granular
+            # reads would otherwise pay on every read() call.
+            if page_id != self._cached_page_id:
+                self._owner.read_page(page_id, self._scratch, 0, self._page_size)
+                self._cached_page_id = page_id
             chunk = min(self._page_size - off, to_read - copied)
             view[copied : copied + chunk] = self._scratch[off : off + chunk]
             copied += chunk
@@ -132,6 +147,10 @@ class ScratchFileBuffer(RandomAccessRead, RandomAccessWrite):
     def _write_from_view(self, view: memoryview, length: int) -> None:
         if length == 0:
             return
+        # The write path reuses ``self._scratch`` as a read-modify-write buffer
+        # and mutates stored page bytes, so any previously cached page is now
+        # stale. Invalidate before touching the scratch.
+        self._cached_page_id = None
         end_pos = self._position + length
         needed_pages = (end_pos + self._page_size - 1) // self._page_size
         self._ensure_capacity(needed_pages)
@@ -265,6 +284,9 @@ class ScratchFileBuffer(RandomAccessRead, RandomAccessWrite):
         if self._page_indices:
             self._owner.mark_pages_as_free(self._page_indices)
             self._page_indices.clear()
+        # The page chain (and thus every page_id) is being replaced; drop the
+        # read cache so it can't serve bytes from a now-freed page.
+        self._cached_page_id = None
         self._position = 0
         self._length = 0
         # Upstream keeps the first page allocated after clear(); mirror that.

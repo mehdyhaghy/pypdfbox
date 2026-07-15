@@ -100,8 +100,17 @@ class PDSimpleFont(PDFont):
         self._no_unicode: set[int] = set()
         # Glyph-list flavour used by ``to_unicode``; populated by
         # ``read_encoding`` / ``assign_glyph_list`` (mirrors upstream's
-        # protected ``glyphList`` field).
+        # protected ``glyphList`` field). ``None`` here specifically means
+        # "not explicitly assigned" — ``get_glyph_list`` keys off that — so
+        # the *derived* memo (below) lives in a separate field to preserve
+        # the distinction.
         self._glyph_list: GlyphList | None = None
+        # Memo for the value ``get_glyph_list`` derives when ``_glyph_list``
+        # was never explicitly assigned. Upstream stores the assignGlyphList
+        # result once and never recomputes; the derived branch here is called
+        # per glyph from ``to_unicode``, so cache it too. ``None`` = not yet
+        # derived.
+        self._derived_glyph_list: GlyphList | None = None
 
     # ---------- char-range / widths ----------
 
@@ -543,15 +552,24 @@ class PDSimpleFont(PDFont):
         # the result on the instance and never recomputes).
         if self._glyph_list is not None:
             return self._glyph_list
+        # Reuse the previously-derived value — this branch is hit per glyph
+        # from ``to_unicode`` and the inputs (font name + typed encoding)
+        # never change after load, so the result is stable.
+        if self._derived_glyph_list is not None:
+            return self._derived_glyph_list
         # Standard 14 ZapfDingbats wins regardless of /Encoding (matches
         # upstream's name-based ``assignGlyphList``).
         mapped = Standard14Fonts.get_mapped_font_name(self.get_name())
         if mapped == Standard14Fonts.ZAPF_DINGBATS:
-            return GlyphList.ZAPF_DINGBATS
-        encoding = self.get_encoding_typed()
-        if isinstance(encoding, ZapfDingbatsEncoding):
-            return GlyphList.ZAPF_DINGBATS
-        return GlyphList.DEFAULT
+            derived = GlyphList.ZAPF_DINGBATS
+        else:
+            encoding = self.get_encoding_typed()
+            if isinstance(encoding, ZapfDingbatsEncoding):
+                derived = GlyphList.ZAPF_DINGBATS
+            else:
+                derived = GlyphList.DEFAULT
+        self._derived_glyph_list = derived
+        return derived
 
     # ---------- symbolic detection ----------
 
@@ -626,15 +644,32 @@ class PDSimpleFont(PDFont):
         upstream's "don't break Zapf Dingbats" guard). Returns ``None``
         when no mapping can be produced.
         """
-        # /ToUnicode CMap wins when present. Delegate the CMap step to the
-        # base ``PDFont.to_unicode`` rather than calling ``cmap.to_unicode``
-        # directly: the base carries upstream's Identity-as-ToUnicode fixup
-        # (PDFBOX-3123 / PDFBOX-4322 / PDFBOX-3550) where a ``/ToUnicode`` that
-        # is an Identity CMap — a ``COSName`` /Identity-H or a stream whose CMap
-        # has no Unicode mappings — maps each code to itself (``chr(code)``)
-        # rather than falling through to the encoding. Upstream
-        # ``PDSimpleFont.toUnicode`` likewise starts with ``super.toUnicode``.
-        mapped = super().to_unicode(code)
+        # Per-code memo for the default (no custom glyph list) path — the
+        # hot text-extraction case. ``custom_glyph_list`` changes the result
+        # and is not part of the key, so only the default call is cached;
+        # ``None`` is a real result so membership distinguishes miss from
+        # cached-None (mirrors ``PDFont._code_to_unicode`` / ``_code_to_width``).
+        if custom_glyph_list is None and code in self._code_to_unicode:
+            return self._code_to_unicode[code]
+        result = self._resolve_unicode(code, custom_glyph_list)
+        if custom_glyph_list is None:
+            self._code_to_unicode[code] = result
+        return result
+
+    def _resolve_unicode(
+        self, code: int, custom_glyph_list: GlyphList | None
+    ) -> str | None:
+        """Uncached body of :meth:`to_unicode` — factored out so the cache
+        wrapper stays trivial and the default path shares one code walk."""
+        # /ToUnicode CMap wins when present. Reuse the base font's uncached
+        # CMap resolver rather than calling ``cmap.to_unicode`` directly: it
+        # carries upstream's Identity-as-ToUnicode fixup (PDFBOX-3123 /
+        # PDFBOX-4322 / PDFBOX-3550) where a ``/ToUnicode`` that is an Identity
+        # CMap — a ``COSName`` /Identity-H or a stream whose CMap has no Unicode
+        # mappings — maps each code to itself (``chr(code)``) rather than
+        # falling through to the encoding. Upstream ``PDSimpleFont.toUnicode``
+        # likewise starts with ``super.toUnicode``.
+        mapped = self._compute_to_unicode(code)
         if mapped is not None:
             return mapped
         # Don't override Zapf's glyph list — upstream guard.

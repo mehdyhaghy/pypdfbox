@@ -13,7 +13,7 @@ from pypdfbox.cos import COSArray, COSDictionary, COSName, COSNumber, COSStream,
 from pypdfbox.fontbox.cmap import CMap, CMapParser
 from pypdfbox.io import RandomAccessReadBuffer
 from pypdfbox.pdfparser.pdf_stream_parser import Operator, PDFStreamParser
-from pypdfbox.util.matrix import Matrix
+from pypdfbox.util.matrix import Matrix, f32
 
 from .bidi import BidiResolver, get_paragraph_direction
 from .bidi import _reorder_indices as _bidi_reorder_indices
@@ -86,6 +86,26 @@ if TYPE_CHECKING:
 
 class _TextWriter(Protocol):
     def write(self, text: str) -> object: ...
+
+
+def _dup_window_hit(
+    points: list[tuple[float, float]],
+    x_lo: float,
+    x_hi: float,
+    y_lo: float,
+    y_hi: float,
+) -> bool:
+    """Return ``True`` if any ``(x, y)`` in ``points`` falls inside the
+    half-open window ``[x_lo, x_hi) x [y_lo, y_hi)``.
+
+    The exact predicate the duplicate-overlap suppressor applies to every
+    recorded origin — factored out so the spatial-grid candidate probe and
+    the linear-scan fallbacks in :meth:`PDFTextStripper._drop_overlapping_duplicates`
+    share identical comparison semantics.
+    """
+    return any(
+        x_lo <= x_key < x_hi and y_lo <= y_val < y_hi for x_key, y_val in points
+    )
 
 
 class PDFTextStripper:
@@ -946,6 +966,9 @@ class PDFTextStripper:
             state.tm_b = 0.0
             state.tm_c = 0.0
             state.tm_d = 1.0
+            # Text matrix reset — drop the derived-scale/dir cache (see
+            # _scale_and_dir); it is a function of tm_a..tm_d + CTM + rise.
+            state._trm_cache = None
             # Mark the text object open — text matrix + line matrix are now
             # non-null, so the show/move operators are permitted (upstream
             # ``BeginText`` sets both matrices to identity).
@@ -1029,6 +1052,8 @@ class PDFTextStripper:
                 state.tm_b = b
                 state.tm_c = c
                 state.tm_d = d
+                # Text matrix scale/shear changed → invalidate derived cache.
+                state._trm_cache = None
                 state.line_x = e
                 state.line_y = f
                 state.text_x = e
@@ -1111,6 +1136,10 @@ class PDFTextStripper:
             # not affect the cursor advance; a later ``0 Ts`` resets it.
             if operands and isinstance(operands[0], COSNumber):
                 state.text_rise = operands[0].float_value()
+                # Rise feeds the text-rendering matrix; invalidate the derived
+                # cache (conservative — rise shifts only translation, but the
+                # cache key treats it as an input).
+                state._trm_cache = None
         elif op == "q":
             # Save graphics state — push a copy of the current CTM so a
             # later ``Q`` restores it (PDF 1.7 §8.4.2). Text state itself
@@ -1123,6 +1152,8 @@ class PDFTextStripper:
             # unchanged rather than raising.
             if state.gs_stack:
                 state.ctm = state.gs_stack.pop()
+                # CTM restored → derived scale/dir cache is stale.
+                state._trm_cache = None
         elif op == "cm":
             # Concatenate the operand matrix onto the CTM (PDF 1.7 §8.3.4).
             # Upstream applies ``newCTM = operandMatrix × CTM``; with the
@@ -1132,6 +1163,8 @@ class PDFTextStripper:
             if values is not None:
                 a, b, c, d, e, f = values
                 state.ctm = Matrix(a, b, c, d, e, f).multiply(state.ctm)
+                # CTM concatenated → derived scale/dir cache is stale.
+                state._trm_cache = None
         elif op == "BMC":
             # Begin marked content with a bare tag (no property list).
             # Upstream ``BeginMarkedContentSequence.process`` iterates the
@@ -1393,6 +1426,93 @@ class PDFTextStripper:
         quadrant = round(angle / 90.0) * 90
         return float(quadrant % 360)
 
+    def _scale_and_dir(self, state: _TextState) -> tuple[float, float, float]:
+        """Run-invariant ``(x_scale, y_scale, text_dir)`` for the current run.
+
+        These are the only values every show-text emitter consumes from the
+        full text-rendering matrix (:meth:`_text_rendering_matrix`): the X/Y
+        scaling factors (effective font size / point size) and the text
+        direction. All three read only the matrix's scale/shear cells
+        (slots 0, 1, 3, 4), which — because the text matrix's third column is
+        ``[0, 0, 1]`` — are a function of ``tm_a``..``tm_d`` and the CTM alone,
+        **independent of the translation** (``text_x``/``text_y``) and of the
+        text rise. So the value is stable across the frequent ``Tj``/``TJ``/
+        ``Td`` cursor moves and only the rare ``BT``/``Tm``/``Ts``/``Q``/``cm``
+        operators invalidate it (the dispatcher drops ``state._trm_cache`` at
+        those). Caching it avoids a full 3x3 ``Matrix.multiply`` (and its ~45
+        ``f32`` narrowings) per show-text run while returning a value that is
+        bit-identical to recomputing ``_text_rendering_matrix(state)`` — the
+        cached tuple *is* the result of that computation from unchanged inputs.
+        """
+        cached = getattr(state, "_trm_cache", None)
+        if cached is not None:
+            return cached
+        trm = self._text_rendering_matrix(state)
+        value = (
+            trm.get_scaling_factor_x(),
+            trm.get_scaling_factor_y(),
+            self._text_dir(trm),
+        )
+        state._trm_cache = value
+        return value
+
+    def _origin_translate(
+        self, state: _TextState, text_x: float, text_y: float
+    ) -> tuple[float, float]:
+        """Device-space glyph origin ``(tx, ty)`` for a text-space cursor.
+
+        Every caller of :meth:`_origin_matrix` consumes only the composed
+        matrix's translation row (``get_translate_x``/``get_translate_y``), so
+        the eight non-translation cells of the 3x3 multiply are pure waste. In
+        the common no-rise case we compute the two translation cells directly,
+        reproducing ``Matrix(tm_a, tm_b, tm_c, tm_d, text_x, text_y)
+        .multiply(ctm)``'s slots 6 and 7 exactly — every product and partial
+        sum is narrowed through :func:`f32` in the same left-to-right order as
+        ``util.matrix._multiply_arrays`` (which those cells depend on only
+        through ``tm[6]=f32(text_x)``, ``tm[7]=f32(text_y)``, ``tm[8]=1`` and
+        the CTM cells; ``tm_a``..``tm_d`` do not enter the translation row), so
+        the result is bit-for-bit identical to the full multiply.
+
+        ``multiply`` also runs ``checkFloatValues`` over all nine result cells
+        and raises on a non-finite one. The eight cells we skip are already
+        known finite: this method is only reached after
+        :meth:`_text_rendering_matrix` has multiplied the *same* ``tm``/``ctm``
+        (differing only in translation, which cannot change the finite
+        scale/shear cells) and would have raised first; the third column is a
+        structural ``[0, 0, 1]``. So checking only the two translation cells
+        reproduces the exact same raise-or-not behaviour.
+
+        The text-rise path stays on the full :meth:`_origin_matrix` (two
+        chained multiplies) rather than hand-inline both — rise is 0.0 by
+        default and set only by the rare ``Ts`` operator, so this keeps the
+        risky arithmetic on the already-proven path with no measurable cost.
+        """
+        if getattr(state, "text_rise", 0.0):
+            origin = self._origin_matrix(state, text_x, text_y)
+            return origin.get_translate_x(), origin.get_translate_y()
+        ctm = state.ctm
+        # CTM cells (already float32): scaleX, shearY, shearX, scaleY, transX,
+        # transY at flat slots 0, 1, 3, 4, 6, 7.
+        c0 = ctm.get_scale_x()
+        c1 = ctm.get_shear_y()
+        c3 = ctm.get_shear_x()
+        c4 = ctm.get_scale_y()
+        c6 = ctm.get_translate_x()
+        c7 = ctm.get_translate_y()
+        # The Matrix ctor narrows the translation operands to float32 before
+        # they become tm[6]/tm[7]; mirror that first.
+        e = f32(text_x)
+        g = f32(text_y)
+        # slot 6 = f32(f32(tm[6]*ctm[0]) + f32(tm[7]*ctm[3])) + f32(tm[8]*ctm[6])
+        #        with tm[8]=1.0, so f32(1.0*ctm[6]) == ctm[6] (already float32).
+        tx = f32(f32(f32(e * c0) + f32(g * c3)) + c6)
+        ty = f32(f32(f32(e * c1) + f32(g * c4)) + c7)
+        if not (math.isfinite(tx) and math.isfinite(ty)):
+            # Matches util.matrix._check_float_values raising on a non-finite
+            # product (the only cells that can be non-finite here).
+            raise ValueError("Multiplying two matrices produces illegal values")
+        return tx, ty
+
     def _glyph_segments(
         self,
         text_bytes: bytes,
@@ -1569,9 +1689,7 @@ class PDFTextStripper:
         # Effective font size / glyph height / direction are matrix-scaled the
         # same way the horizontal path does (the run's scale comes from the
         # text-rendering matrix, independent of the per-glyph translation).
-        trm = self._text_rendering_matrix(state)
-        y_scale = trm.get_scaling_factor_y()
-        x_scale = trm.get_scaling_factor_x()
+        x_scale, y_scale, text_dir = self._scale_and_dir(state)
         effective_font_size = font_size * y_scale
         font_size_in_pt = font_size * x_scale
         font_height_fraction = self._active_font_height
@@ -1579,7 +1697,6 @@ class PDFTextStripper:
             0.0 if font_height_fraction is None
             else font_height_fraction * effective_font_size
         )
-        text_dir = self._text_dir(trm)
         # ``/ActualText`` substitution still applies per show-text run: inside
         # an ``/ActualText`` span the whole replacement string is emitted once
         # (at the span's first glyph), and every later glyph's text is
@@ -1643,12 +1760,12 @@ class PDFTextStripper:
             else:
                 glyph_text = piece
             if glyph_text:
-                origin = self._origin_matrix(state, origin_x, origin_y)
+                origin_dx, origin_dy = self._origin_translate(state, origin_x, origin_y)
                 positions.append(
                     TextPosition(
                         text=glyph_text,
-                        x=origin.get_translate_x(),
-                        y=origin.get_translate_y(),
+                        x=origin_dx,
+                        y=origin_dy,
                         font_size=effective_font_size,
                         font_size_in_pt=font_size_in_pt,
                         font_name=state.font_name,
@@ -1683,12 +1800,14 @@ class PDFTextStripper:
         if not emitted_any:
             fallback_text = actual_text if has_actual_text else text
             if fallback_text:
-                origin = self._origin_matrix(state, state.text_x, state.text_y)
+                origin_dx, origin_dy = self._origin_translate(
+                    state, state.text_x, state.text_y
+                )
                 positions.append(
                     TextPosition(
                         text=fallback_text,
-                        x=origin.get_translate_x(),
-                        y=origin.get_translate_y(),
+                        x=origin_dx,
+                        y=origin_dy,
                         font_size=effective_font_size,
                         font_size_in_pt=font_size_in_pt,
                         font_name=state.font_name,
@@ -1777,12 +1896,11 @@ class PDFTextStripper:
         # the run width (computed in text space) is scaled by the X
         # scaling so it lands in the same device-space units as the
         # origin.
-        trm = self._text_rendering_matrix(state)
         # The device-space origin per (sub-)run is computed from the run's own
-        # cursor via ``_origin_matrix`` below; here we only need the matrix's
-        # scaling factors and rotation for the effective font size and dir.
-        y_scale = trm.get_scaling_factor_y()
-        x_scale = trm.get_scaling_factor_x()
+        # cursor via ``_origin_translate`` below; here we only need the text-
+        # rendering matrix's scaling factors and rotation for the effective
+        # font size and dir (all translation-invariant, hence cached).
+        x_scale, y_scale, text_dir = self._scale_and_dir(state)
         effective_font_size = state.font_size * y_scale
         # Device-space glyph height — upstream ``maxHeight``: the font's
         # text-space height fraction (``_compute_font_height``) times the
@@ -1795,7 +1913,6 @@ class PDFTextStripper:
             run_height = 0.0
         else:
             run_height = font_height_fraction * effective_font_size
-        text_dir = self._text_dir(trm)
         # ``/ActualText`` substitution (PDF §14.9.4): inside a marked-content
         # span carrying ``/ActualText``, the glyph-derived text is replaced
         # and the ``/ActualText`` string is emitted *once* (at the origin of
@@ -1897,12 +2014,12 @@ class PDFTextStripper:
             for sub_text, start_offset, _sub_advance, sub_width in sub_runs:
                 sub_text_x = state.text_x + start_offset * state.tm_a
                 sub_text_y = state.text_y + start_offset * state.tm_b
-                sub_trm = self._origin_matrix(state, sub_text_x, sub_text_y)
+                sub_dx, sub_dy = self._origin_translate(state, sub_text_x, sub_text_y)
                 positions.append(
                     TextPosition(
                         text=sub_text,
-                        x=sub_trm.get_translate_x(),
-                        y=sub_trm.get_translate_y(),
+                        x=sub_dx,
+                        y=sub_dy,
                         font_size=effective_font_size,
                         font_size_in_pt=state.font_size * x_scale,
                         font_name=state.font_name,
@@ -1981,12 +2098,12 @@ class PDFTextStripper:
             if piece:
                 glyph_x = state.text_x + offset * state.tm_a
                 glyph_y = state.text_y + offset * state.tm_b
-                origin = self._origin_matrix(state, glyph_x, glyph_y)
+                glyph_dx, glyph_dy = self._origin_translate(state, glyph_x, glyph_y)
                 positions.append(
                     TextPosition(
                         text=piece,
-                        x=origin.get_translate_x(),
-                        y=origin.get_translate_y(),
+                        x=glyph_dx,
+                        y=glyph_dy,
                         font_size=effective_font_size,
                         font_size_in_pt=state.font_size * x_scale,
                         font_name=state.font_name,
@@ -3566,7 +3683,30 @@ class PDFTextStripper:
         vertical text that Java collapses would survive here.
         """
         result: list[TextPosition] = []
-        seen: dict[str, dict[float, list[float]]] = {}
+        # Page-global dedup map keyed on decoded text (upstream
+        # ``characterListMapping``). Each bucket carries a spatial hash grid
+        # of recorded run origins so a re-paint is located in O(1) expected
+        # time rather than by scanning every prior same-text origin — the
+        # former inner loop was O(n^2) per page and turned quadratic on pages
+        # that stamp thousands of same-text runs (fake bold / drop shadow).
+        #
+        # The grid is *only* a candidate index: the exact half-open
+        # ``[v - tol, v + tol)`` predicate (:func:`_dup_window_hit`) is still
+        # evaluated on every candidate, and because ``floor(v / cell)`` is
+        # monotonic in ``v`` for a fixed positive ``cell`` the probed 3x3
+        # (grown when a run's tolerance exceeds the cell) neighbourhood always
+        # contains every origin the window could match. The suppression
+        # decision is therefore byte-for-byte identical to the linear scan for
+        # every input. Each bucket is ``{"cell", "grid", "overflow"}``:
+        #   * ``cell``     — grid cell size, fixed to the first finite positive
+        #                    tolerance recorded for the text (constant in the
+        #                    common fake-bold case → exact 3x3 probes);
+        #   * ``grid``     — ``{(cx, cy): [(x, y), ...]}`` cell buckets;
+        #   * ``overflow`` — origins that predate a grid cell (empty-text
+        #                    buckets, whose tolerance is always inf/NaN) or
+        #                    carry a non-finite coordinate; always scanned so
+        #                    the result stays exact for those edge cases.
+        seen: dict[str, dict] = {}
         for pos in positions:
             if pos.from_actual_text:
                 result.append(pos)
@@ -3584,20 +3724,65 @@ class PDFTextStripper:
             else:
                 # Lite-only: no width metric — see docstring.
                 tol = max(pos.font_size, 0.1) * 0.25
-            same_text = seen.setdefault(text, {})
-            suppress = False
+            bucket = seen.get(text)
+            if bucket is None:
+                bucket = seen[text] = {"cell": 0.0, "grid": {}, "overflow": []}
+            grid: dict = bucket["grid"]
+            cell: float = bucket["cell"]
+            overflow: list = bucket["overflow"]
             x_lo = pos.x - tol
             x_hi = pos.x + tol
             y_lo = pos.y - tol
             y_hi = pos.y + tol
-            for x_key, y_values in same_text.items():
-                if x_lo <= x_key < x_hi and any(
-                    y_lo <= y_val < y_hi for y_val in y_values
-                ):
-                    suppress = True
-                    break
+
+            suppress = _dup_window_hit(overflow, x_lo, x_hi, y_lo, y_hi)
+            if not suppress and grid:
+                use_grid = (
+                    cell > 0.0
+                    and math.isfinite(x_lo)
+                    and math.isfinite(x_hi)
+                    and math.isfinite(y_lo)
+                    and math.isfinite(y_hi)
+                )
+                if use_grid:
+                    cx0 = math.floor(x_lo / cell)
+                    cx1 = math.floor(x_hi / cell)
+                    cy0 = math.floor(y_lo / cell)
+                    cy1 = math.floor(y_hi / cell)
+                    if (cx1 - cx0 + 1) * (cy1 - cy0 + 1) > 128:
+                        # Degenerate: this run's tolerance spans a huge multiple
+                        # of the grid cell (widely varying per-run tol). Scanning
+                        # every recorded origin is still exact and never slower
+                        # than the original linear scan.
+                        for cell_pts in grid.values():
+                            if _dup_window_hit(cell_pts, x_lo, x_hi, y_lo, y_hi):
+                                suppress = True
+                                break
+                    else:
+                        for cx in range(cx0, cx1 + 1):
+                            for cy in range(cy0, cy1 + 1):
+                                if _dup_window_hit(
+                                    grid.get((cx, cy), ()), x_lo, x_hi, y_lo, y_hi
+                                ):
+                                    suppress = True
+                                    break
+                            if suppress:
+                                break
+                else:
+                    # Non-finite window (inf tolerance) or no cell yet: exact
+                    # scan of every recorded origin in the grid.
+                    for cell_pts in grid.values():
+                        if _dup_window_hit(cell_pts, x_lo, x_hi, y_lo, y_hi):
+                            suppress = True
+                            break
             if not suppress:
-                same_text.setdefault(pos.x, []).append(pos.y)
+                if cell <= 0.0 and math.isfinite(tol) and tol > 0.0:
+                    cell = bucket["cell"] = tol
+                if cell > 0.0 and math.isfinite(pos.x) and math.isfinite(pos.y):
+                    key = (math.floor(pos.x / cell), math.floor(pos.y / cell))
+                    grid.setdefault(key, []).append((pos.x, pos.y))
+                else:
+                    overflow.append((pos.x, pos.y))
                 result.append(pos)
         return result
 
@@ -3960,7 +4145,15 @@ class PDFTextStripper:
         self._start_bookmark_page_number = start_pg
         self._end_bookmark_page_number = end_pg
         for page in pages:
-            if page.get_contents():
+            # ``has_contents()`` is O(1) (a ``/Contents`` presence + non-empty
+            # check) and mirrors upstream ``PDFTextStripper.processPages``,
+            # which gates on ``page.hasContents()``. The prior
+            # ``if page.get_contents():`` fully decoded (and discarded) the
+            # content stream here, then ``process_page`` decoded it a second
+            # time — a redundant per-page decode. ``process_page`` re-checks
+            # the decoded body and emits the empty-article wrap for the
+            # decodes-to-empty edge case, so output is unchanged.
+            if page.has_contents():
                 chunks.append(self.process_page(page))
             self._current_page_no += 1
         return "".join(chunks)
@@ -4380,6 +4573,7 @@ class _TextState:
         "ctm",
         "gs_stack",
         "in_text_object",
+        "_trm_cache",
     )
 
     def __init__(self) -> None:
@@ -4440,6 +4634,17 @@ class _TextState:
         # ``BT`` … ``ET`` pair (e.g. after a truncated stream drops the ``BT``),
         # diverging from Apache PDFBox which silently ignores them.
         self.in_text_object: bool = False
+        # Cache of the text-rendering matrix's *derived* run-invariant values
+        # ``(x_scale, y_scale, text_dir)`` — see
+        # ``PDFTextStripper._scale_and_dir``. These depend only on the text
+        # matrix scale/shear (``tm_a``..``tm_d``), the CTM and (conservatively)
+        # the text rise, none of which change on the frequent show-text /
+        # ``Td`` path; the cursor translation (``text_x``/``text_y``) does not
+        # affect them. Dropped to ``None`` by the dispatcher whenever
+        # ``BT``/``Tm``/``Ts``/``Q``/``cm`` mutate an input, so a stale value
+        # can never be observed. ``q`` needs no invalidation: it clones the CTM
+        # onto the stack without reassigning ``self.ctm``.
+        self._trm_cache: tuple[float, float, float] | None = None
 
 
 def _two_numbers(operands: list[COSBase]) -> tuple[float, float]:

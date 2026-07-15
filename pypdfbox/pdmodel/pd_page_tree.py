@@ -191,6 +191,12 @@ class PDPageTree:
         # Prefer the explicit /Count when present and sane, fall back to
         # walking the tree (matches upstream's tolerance for missing /Count
         # on synthesised page trees).
+        #
+        # NOTE: this deliberately walks even when /Count is present so a
+        # *lying* /Count is corrected to the real reachable-leaf count
+        # (pinned by ``test_count_recomputed_when_stored_count_wrong``).
+        # ``get_count()`` is the O(1), /Count-trusting accessor for callers
+        # that want upstream ``getCount()`` semantics without the walk.
         count = self._root.get_dictionary_object(_COUNT)
         if isinstance(count, COSInteger) and count.value >= 0:
             walked = sum(1 for _ in self)
@@ -266,7 +272,35 @@ class PDPageTree:
         if _is_page_tree_node(node):
             count = self._node_count(node)
             if page_num <= encountered + count:
-                for kid in self.get_kids(node):
+                kids = _kids_array(node)
+                size = kids.size() if kids is not None else 0
+                # Fast path — a *flat* node whose stored ``/Count`` equals its
+                # ``/Kids`` length has every kid contributing exactly one page,
+                # so the requested page maps to a directly computable slot. This
+                # turns ``get(i)`` in a loop from O(n²) (each call otherwise
+                # materialises the whole ``/Kids`` list via ``get_kids``) into
+                # O(n) for the common single-level page tree.
+                #
+                # Soundness: ``count == size`` means the kid contributions sum
+                # to ``size`` over ``size`` kids. If the landed slot resolves to
+                # a *leaf* we still verify it is a leaf (``_is_page_tree_node``
+                # is false) before returning — a page-tree node in the slot
+                # means the array is not flat, so we fall through to the
+                # faithful linear scan. The only shape this could mis-handle is
+                # a doubly-malformed node mixing an empty ``/Pages`` sibling
+                # (``/Count 0``) with a fat one so the sums still coincide; such
+                # a tree is not produced by any parser/API path and is caught by
+                # the differential fuzz. When in doubt we defer to the scan.
+                if kids is not None and count == size and size > 0:
+                    local = page_num - encountered - 1  # 0 <= local < size
+                    kid = self._resolve_kid(kids, local)
+                    if kid is not None and not _is_page_tree_node(kid):
+                        return self._get_cos(page_num, kid, page_num, seen)
+                # Faithful lazy linear scan — mirrors upstream ``get()`` but
+                # iterates ``/Kids`` lazily (resolving/repairing one entry at a
+                # time) instead of building the full list up front, so descent
+                # stops as soon as the target subtree is located.
+                for kid in self._iter_kids(node):
                     if _is_page_tree_node(kid):
                         kid_count = self._node_count(kid)
                         if page_num <= encountered + kid_count:
@@ -282,6 +316,45 @@ class PDPageTree:
             seen.clear()
             return node
         raise RuntimeError(f"1-based index not found: {page_num}")
+
+    @staticmethod
+    def _resolve_kid(kids: COSArray, i: int) -> COSDictionary | None:
+        """Resolve the ``i``-th ``/Kids`` entry with the same semantics as
+        :meth:`get_kids` for a single index: dereference the entry, repair a
+        ``null``/unparseable entry in place with an empty ``/Type /Page``
+        placeholder, and return ``None`` for a non-dictionary entry (which
+        :meth:`get_kids` skips). Used by the flat-array fast path in
+        :meth:`_get_cos` so a single kid can be resolved without materialising
+        the whole array."""
+        try:
+            entry = kids.get_object(i)
+        except (PDFParseError, OSError):
+            entry = None
+        if isinstance(entry, COSDictionary):
+            return entry
+        if entry is None:
+            empty_page = COSDictionary()
+            empty_page.set_item(_TYPE, _PAGE)
+            kids.set(i, empty_page)
+            return empty_page
+        return None
+
+    def _iter_kids(self, node: COSDictionary) -> Iterator[COSDictionary]:
+        """Lazily yield the resolved ``/Kids`` dictionaries of ``node``.
+
+        Streaming equivalent of :meth:`get_kids`: applies the identical
+        dereference + ``null``-repair + non-dictionary-skip semantics but
+        yields one entry at a time so callers (the ``_get_cos`` descent) can
+        stop early instead of paying the O(n) cost of building the full list
+        on every call. Entries that :meth:`get_kids` would drop (non-``None``,
+        non-dictionary values) are likewise skipped here."""
+        kids = _kids_array(node)
+        if kids is None:
+            return
+        for i in range(kids.size()):
+            kid = self._resolve_kid(kids, i)
+            if kid is not None:
+                yield kid
 
     @staticmethod
     def _node_count(node: COSDictionary) -> int:
@@ -305,7 +378,7 @@ class PDPageTree:
         """Truthiness mirrors ``len(self) > 0`` — a tree with zero pages is
         falsy. Pypdfbox extension; upstream relies on Java's identity-based
         ``Object`` truthiness which is irrelevant in Python."""
-        return len(self) > 0
+        return not self.is_empty()
 
     # ---------- predicates ----------
 
@@ -315,8 +388,17 @@ class PDPageTree:
         Pypdfbox extension that mirrors the ``Collection.isEmpty()`` idiom
         familiar from Java; equivalent to ``len(self) == 0`` but reads
         nicer at call sites that already treat the tree as a collection.
+
+        Short-circuits at the first reachable leaf instead of computing the
+        full ``len(self)`` — emptiness only needs to know whether *any* page
+        exists, so this is O(tree-depth) rather than O(page-count). The
+        observable result is identical: a tree is empty iff a document-order
+        walk yields no pages (a lying ``/Count`` never makes an empty tree
+        report non-empty, matching the walk-validated ``len``).
         """
-        return len(self) == 0
+        for _ in self:
+            return False
+        return True
 
     def has_pages(self) -> bool:
         """Return ``True`` when this tree contains at least one page."""

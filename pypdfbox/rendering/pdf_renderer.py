@@ -1423,14 +1423,19 @@ class PDFRenderer(PDFStreamEngine):
                 # Make any pixel that's still pure white fully
                 # transparent so the alpha channel matches what
                 # upstream's transparent-canvas render produced.
-                pixels = cast(Any, rgba.load())
-                w, h = rgba.size
-                for y in range(h):
-                    for x in range(w):
-                        r, g, b, _a = pixels[x, y]
-                        if r == 255 and g == 255 and b == 255:
-                            pixels[x, y] = (r, g, b, 0)
-                image = rgba
+                # Vectorised equivalent of the former per-pixel loop:
+                # any pixel whose R, G and B are all exactly 255 has its
+                # alpha forced to 0; every other pixel keeps its alpha.
+                import numpy as np  # noqa: PLC0415
+
+                arr = np.array(rgba)  # writable (H, W, 4) uint8 copy
+                white = (
+                    (arr[:, :, 0] == 255)
+                    & (arr[:, :, 1] == 255)
+                    & (arr[:, :, 2] == 255)
+                )
+                arr[white, 3] = 0
+                image = Image.fromarray(arr, "RGBA")
             else:
                 image = image.convert(target_mode)
         # Cache the freshly-rendered page so callers can recover it via
@@ -6865,6 +6870,70 @@ class PDFRenderer(PDFStreamEngine):
         ``SoftLight``); unknown names leave the backdrop unchanged."""
         if mode_name is None:
             return backdrop
+        import numpy as np  # noqa: PLC0415
+
+        # Fast path — the five hot separable modes are elementwise and
+        # are vectorised in float64 below. Each ``np.where`` reproduces
+        # the corresponding ``_blend_scalar`` branch structure exactly
+        # (same arithmetic, same clamp, same round-half-to-even via
+        # ``np.rint``), so the 8-bit output is byte-identical to the
+        # former per-pixel loop. Any other name (Exclusion / Multiply /
+        # Screen / Darken / Lighten / Difference, or an unknown /
+        # monkeypatched mode) falls through to the exact scalar loop so
+        # its behaviour — including delegation to ``_blend_scalar`` — is
+        # preserved verbatim.
+        if mode_name in {
+            "HardLight",
+            "Overlay",
+            "ColorDodge",
+            "ColorBurn",
+            "SoftLight",
+        }:
+            b = np.asarray(backdrop, dtype=np.float64) / 255.0
+            s = np.asarray(source, dtype=np.float64) / 255.0
+            with np.errstate(divide="ignore", invalid="ignore"):
+                if mode_name == "HardLight":
+                    v = np.where(
+                        s <= 0.5,
+                        2.0 * b * s,
+                        1.0 - 2.0 * (1.0 - b) * (1.0 - s),
+                    )
+                elif mode_name == "Overlay":
+                    # Overlay(b, s) = HardLight(s, b): swap the roles.
+                    v = np.where(
+                        b <= 0.5,
+                        2.0 * s * b,
+                        1.0 - 2.0 * (1.0 - s) * (1.0 - b),
+                    )
+                elif mode_name == "ColorDodge":
+                    denom = 1.0 - s
+                    safe = np.where(denom == 0.0, 1.0, denom)
+                    div = b / safe
+                    v = np.where(
+                        b == 0.0, 0.0, np.where(b >= 1.0 - s, 1.0, div)
+                    )
+                elif mode_name == "ColorBurn":
+                    safe_s = np.where(s == 0.0, 1.0, s)
+                    div = 1.0 - (1.0 - b) / safe_s
+                    v = np.where(
+                        b == 1.0, 1.0, np.where(1.0 - b >= s, 0.0, div)
+                    )
+                else:  # SoftLight
+                    d = np.where(
+                        b <= 0.25,
+                        ((16.0 * b - 12.0) * b + 4.0) * b,
+                        np.sqrt(b),
+                    )
+                    v = np.where(
+                        s <= 0.5,
+                        b - (1.0 - 2.0 * s) * b * (1.0 - b),
+                        b + (2.0 * s - 1.0) * (d - b),
+                    )
+            v = np.clip(v, 0.0, 1.0)
+            out_arr = np.rint(v * 255.0).astype(np.uint8)
+            return Image.fromarray(out_arr, "L")
+
+        # Fallback — exact per-pixel scalar loop for every other mode.
         bd = cast(Any, backdrop.load())
         sd = cast(Any, source.load())
         w, h = backdrop.size
@@ -6872,14 +6941,14 @@ class PDFRenderer(PDFStreamEngine):
         od = cast(Any, out.load())
         for y in range(h):
             for x in range(w):
-                b = bd[x, y] / 255.0
-                s = sd[x, y] / 255.0
-                v = PDFRenderer._blend_scalar(b, s, mode_name)
-                if v < 0.0:
-                    v = 0.0
-                elif v > 1.0:
-                    v = 1.0
-                od[x, y] = int(round(v * 255.0))
+                b_s = bd[x, y] / 255.0
+                s_s = sd[x, y] / 255.0
+                v_s = PDFRenderer._blend_scalar(b_s, s_s, mode_name)
+                if v_s < 0.0:
+                    v_s = 0.0
+                elif v_s > 1.0:
+                    v_s = 1.0
+                od[x, y] = int(round(v_s * 255.0))
         return out
 
     @staticmethod
@@ -7259,26 +7328,22 @@ class PDFRenderer(PDFStreamEngine):
         if not matte or len(matte) < 3:
             return rgba
         m = [max(0.0, min(255.0, float(c) * 255.0)) for c in matte[:3]]
-        px = rgba.load()
-        apx = alpha.load()
-        width, height = rgba.size
-        for y in range(height):
-            for x in range(width):
-                a = apx[x, y]
-                if a == 0:
-                    continue
-                r, g, b, _ = px[x, y]
-                scale = 255.0 / a
-                nr = m[0] + (r - m[0]) * scale
-                ng = m[1] + (g - m[1]) * scale
-                nb = m[2] + (b - m[2]) * scale
-                px[x, y] = (
-                    0 if nr < 0 else 255 if nr > 255 else int(round(nr)),
-                    0 if ng < 0 else 255 if ng > 255 else int(round(ng)),
-                    0 if nb < 0 else 255 if nb > 255 else int(round(nb)),
-                    a,
-                )
-        return rgba
+        import numpy as np  # noqa: PLC0415
+
+        # Vectorised equivalent of the former per-pixel loop:
+        #   c = m + (c' - m) * (255 / a)   (alpha 0 left untouched;
+        # every recovered component clamped to [0, 255] with
+        # round-half-to-even, matching ``int(round(...))``).
+        arr = np.array(rgba)  # writable (H, W, 4) uint8 copy
+        av = np.asarray(alpha, dtype=np.float64)
+        nonzero = av > 0
+        scale = 255.0 / np.where(nonzero, av, 1.0)
+        for ch in range(3):
+            c = arr[:, :, ch].astype(np.float64)
+            new = m[ch] + (c - m[ch]) * scale
+            new = np.clip(np.rint(new), 0, 255).astype(np.uint8)
+            arr[:, :, ch] = np.where(nonzero, new, arr[:, :, ch])
+        return Image.fromarray(arr, "RGBA")
 
     def _apply_explicit_mask(self, image: Image.Image, mask: Any) -> Image.Image:
         """Return ``image`` with an explicit-mask ``/Mask`` stencil applied.
@@ -7373,22 +7438,27 @@ class PDFRenderer(PDFStreamEngine):
             )
             return image
 
-        alpha = Image.new("L", rgb.size, 255)
-        a_px = alpha.load()
-        rgb_px = rgb.load()
+        import numpy as np  # noqa: PLC0415
+
         (r_lo, r_hi), (g_lo, g_hi), (b_lo, b_hi) = pairs
-        w, h = rgb.size
-        for y in range(h):
-            for x in range(w):
-                r, g, b = rgb_px[x, y]
-                if (
-                    r_lo <= r <= r_hi
-                    and g_lo <= g <= g_hi
-                    and b_lo <= b <= b_hi
-                ):
-                    a_px[x, y] = 0
+        # Vectorised equivalent of the per-pixel loop: a pixel whose
+        # every component falls inside its inclusive range is masked
+        # out (alpha 0); all others stay opaque (alpha 255).
+        rgb_arr = np.asarray(rgb)
+        r = rgb_arr[:, :, 0]
+        g = rgb_arr[:, :, 1]
+        b = rgb_arr[:, :, 2]
+        keyed = (
+            (r >= r_lo)
+            & (r <= r_hi)
+            & (g >= g_lo)
+            & (g <= g_hi)
+            & (b >= b_lo)
+            & (b <= b_hi)
+        )
+        alpha_arr = np.where(keyed, 0, 255).astype(np.uint8)
         rgba = rgb.convert("RGBA")
-        rgba.putalpha(alpha)
+        rgba.putalpha(Image.fromarray(alpha_arr, "L"))
         return rgba
 
     def _render_soft_mask_alpha(

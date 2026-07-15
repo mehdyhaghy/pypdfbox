@@ -73,6 +73,14 @@ class PDFont:
         # Per-code width cache — mirrors upstream's ``codeToWidthMap``.
         # Populated on first call to :meth:`get_width` per code.
         self._code_to_width: dict[int, float] = {}
+        # Per-code ``to_unicode`` cache — same shape as ``_code_to_width``
+        # but keyed only for the default (``custom_glyph_list is None``)
+        # call so the common per-glyph text-extraction path does not
+        # re-walk the /ToUnicode CMap + encoding + glyph list on every
+        # occurrence of a code. ``None`` is a legitimate result (no
+        # mapping), so membership (``code in ...``) — not a ``None``
+        # sentinel — distinguishes "cached miss" from "not yet computed".
+        self._code_to_unicode: dict[int, str | None] = {}
         # Memoised average font width (mirrors upstream ``avgFontWidth``).
         self._avg_font_width_cached: float | None = None
         # Memoised space width (mirrors upstream ``fontWidthOfSpace``).
@@ -744,6 +752,21 @@ class PDFont:
         pattern keeps working (PDFBOX-3123 / PDFBOX-4322).
         """
         del custom_glyph_list  # base impl ignores; subclasses use it
+        # The base resolver ignores ``custom_glyph_list``, so its result is a
+        # pure function of ``code`` and the (immutable-after-load) CMap —
+        # safe to memoise per code. ``None`` is a real result, so test
+        # membership rather than truthiness (mirrors ``_code_to_width`` but
+        # caches the miss too).
+        if code in self._code_to_unicode:
+            return self._code_to_unicode[code]
+        result = self._compute_to_unicode(code)
+        self._code_to_unicode[code] = result
+        return result
+
+    def _compute_to_unicode(self, code: int) -> str | None:
+        """Uncached ``/ToUnicode`` CMap resolution for ``code`` — the body of
+        the base :meth:`to_unicode`, split out so the cache wrapper stays
+        trivial (and so subclasses can reuse it without the cache)."""
         cmap = self.get_to_unicode_cmap()
         if cmap is None:
             return None

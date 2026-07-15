@@ -266,6 +266,46 @@ class _ObjStmPoolShim:
         return None
 
 
+class _WriteQueue(deque):
+    """FIFO of objects awaiting their indirect-object frame, carrying a
+    parallel ``id()`` set (:attr:`ids`) so the duplicate-enqueue guard in
+    ``COSWriter._add_object_to_write`` is O(1) instead of an O(queue) ``is``
+    scan (the latter cost ~74% of a 4000-page uncompressed save).
+
+    The set is kept in lockstep by overriding every mutator the writer uses.
+    Objects in the queue are strongly referenced by the deque, so their
+    ``id()`` cannot be recycled while queued — the set faithfully mirrors
+    membership. (Each object is enqueued at most once thanks to the guard, so
+    the set needs no multiplicity bookkeeping.)
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.ids: set[int] = set()
+
+    def append(self, obj: COSBase) -> None:  # type: ignore[override]
+        super().append(obj)
+        self.ids.add(id(obj))
+
+    def appendleft(self, obj: COSBase) -> None:  # type: ignore[override]
+        super().appendleft(obj)
+        self.ids.add(id(obj))
+
+    def popleft(self) -> COSBase:  # type: ignore[override]
+        obj = super().popleft()
+        self.ids.discard(id(obj))
+        return obj
+
+    def pop(self) -> COSBase:  # type: ignore[override]
+        obj = super().pop()
+        self.ids.discard(id(obj))
+        return obj
+
+    def clear(self) -> None:
+        super().clear()
+        self.ids.clear()
+
+
 class COSWriter(ICOSVisitor):
     """
     Serialize a ``COSDocument`` or ``PDDocument`` back to PDF bytes.
@@ -413,8 +453,10 @@ class COSWriter(ICOSVisitor):
         # ``key_object``: COSObjectKey → COSBase (target of indirect ref).
         self._key_object: dict[COSObjectKey, COSBase] = {}
         self._xref_entries: list[COSWriterXRefEntry] = []
-        # FIFO queue of objects awaiting their indirect-object frame.
-        self._objects_to_write: deque[COSBase] = deque()
+        # FIFO queue of objects awaiting their indirect-object frame. The
+        # ``_WriteQueue`` subclass maintains a parallel ``id()`` set so the
+        # duplicate-enqueue guard in ``_add_object_to_write`` is O(1).
+        self._objects_to_write: _WriteQueue = _WriteQueue()
         # identity-set of objects already emitted.
         self._written_objects: set[int] = set()
         # identity-set of "actuals" (target of any COSObject in the queue).
@@ -1562,6 +1604,15 @@ class COSWriter(ICOSVisitor):
         to existing keys instead of minting fresh ones."""
         for key in doc.get_object_keys():
             cos_obj = doc.get_object_from_pool(key)
+            if not cos_obj.is_dereferenced():
+                # Never loaded: cannot be dirty and its actual is unreachable
+                # from the dirty graph, so skip the force-parse. Still reserve
+                # the wrapper's KEY so a reference emitted from the dirty graph
+                # to this COSObject resolves to the existing key instead of
+                # minting a fresh one (and so /Size accounting stays correct).
+                self._object_keys[id(cos_obj)] = key
+                self._key_holders[id(cos_obj)] = cos_obj
+                continue
             actual = cos_obj.get_object()
             if actual is None:
                 continue
@@ -1577,6 +1628,11 @@ class COSWriter(ICOSVisitor):
         """Queue every indirect object in the pool whose resolved value is
         marked ``needs_to_be_updated``."""
         for cos_obj in doc.get_objects():
+            # A never-dereferenced lazy object cannot be dirty (marking it
+            # dirty requires first resolving it), so it cannot appear in the
+            # appended revision — skip the force-parse.
+            if not cos_obj.is_dereferenced():
+                continue
             actual = cos_obj.get_object()
             if actual is None:
                 continue
@@ -1600,11 +1656,16 @@ class COSWriter(ICOSVisitor):
         out.write(XREF)
         out.write_eol()
 
+        # ``entries`` is sorted and ``_build_ranges`` groups it into
+        # contiguous runs, so each range consumes exactly the next ``count``
+        # entries — a single running index avoids the O(ranges × entries)
+        # rescan the per-range filter would incur.
+        idx = 0
         for first, count in self._build_ranges(entries):
             self._write_xref_range(first, count)
-            for entry in entries:
-                if first <= entry.key.object_number < first + count:
-                    self._write_xref_entry_incremental(entry)
+            for entry in entries[idx : idx + count]:
+                self._write_xref_entry_incremental(entry)
+            idx += count
 
     def _write_xref_entry_incremental(self, entry: COSWriterXRefEntry) -> None:
         """Same wire format as the full-save xref entry."""
@@ -2026,7 +2087,7 @@ class COSWriter(ICOSVisitor):
             return
         if actual is not None and id(actual) in self._actuals_added:
             return
-        if any(o is obj for o in self._objects_to_write):
+        if id(obj) in self._objects_to_write.ids:
             return
 
         # In **incremental** mode upstream filters out un-dirtied objects
@@ -2282,11 +2343,16 @@ class COSWriter(ICOSVisitor):
         out.write(XREF)
         out.write_eol()
 
+        # ``entries`` is sorted and ``_build_ranges`` groups it into
+        # contiguous runs, so each range consumes exactly the next ``count``
+        # entries — a single running index avoids the O(ranges × entries)
+        # rescan the per-range filter would incur.
+        idx = 0
         for first, count in self._build_ranges(entries):
             self._write_xref_range(first, count)
-            for entry in entries:
-                if first <= entry.key.object_number < first + count:
-                    self._write_xref_entry(entry)
+            for entry in entries[idx : idx + count]:
+                self._write_xref_entry(entry)
+            idx += count
 
     def _fill_gaps_with_free_entries(self) -> None:
         # Collect normal entries (matches upstream's ``NormalXReference``

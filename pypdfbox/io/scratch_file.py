@@ -64,14 +64,25 @@ class ScratchFile:
         # None entries indicate the page is currently free / spilled.
         self._mem_pages: list[bytearray | None] = []
 
+        # Running count of non-None entries in ``_mem_pages`` (i.e. pages
+        # actually held in RAM). Maintained incrementally so the MIXED-mode
+        # spill check does not rescan the whole page list on every
+        # allocation (that scan made a large write O(pages^2)).
+        self._mem_page_count: int = 0
+
         # Page indices >= len(_mem_pages) live on the temp file.
         # Mapping: page_index -> file offset in self._tmp.
         self._file_pages: dict[int, int] = {}
         self._tmp: IO[bytes] | None = None
         self._tmp_next_offset: int = 0
 
-        # Free-page LIFO queue (reused by get_new_page).
+        # Free-page LIFO queue (reused by get_new_page). ``_free_pages`` is the
+        # ordering authority (LIFO pop); ``_free_pages_set`` is a parallel
+        # membership index kept in lockstep so the duplicate check in
+        # ``mark_pages_as_free`` is O(1) instead of scanning the list per freed
+        # page (which made freeing many pages O(pages^2)).
         self._free_pages: list[int] = []
+        self._free_pages_set: set[int] = set()
 
         # Total pages ever allocated (highest index + 1, ignoring frees).
         self._page_count: int = 0
@@ -137,6 +148,7 @@ class ScratchFile:
             self._check_open()
             if self._free_pages:
                 idx = self._free_pages.pop()
+                self._free_pages_set.discard(idx)
                 self._reset_page(idx)
                 return idx
             return self._allocate_new_page()
@@ -201,9 +213,10 @@ class ScratchFile:
             for idx in indices:
                 if idx < 0 or idx >= self._page_count:
                     continue
-                if idx in self._free_pages:
+                if idx in self._free_pages_set:
                     continue
                 self._free_pages.append(idx)
+                self._free_pages_set.add(idx)
 
     def enqueue_page(self, page: int) -> None:
         """Mark a single page as free (upstream API)."""
@@ -218,7 +231,9 @@ class ScratchFile:
             self._check_open()
             if not self._free_pages:
                 return NO_FREE_PAGE
-            return self._free_pages.pop()
+            idx = self._free_pages.pop()
+            self._free_pages_set.discard(idx)
+            return idx
 
     def get_main_memory_max_pages(self) -> int:
         """
@@ -327,8 +342,10 @@ class ScratchFile:
                 buf.close()
             self._open_buffers.clear()
             self._mem_pages.clear()
+            self._mem_page_count = 0
             self._file_pages.clear()
             self._free_pages.clear()
+            self._free_pages_set.clear()
             if self._tmp is not None:
                 try:
                     self._tmp.close()
@@ -445,6 +462,7 @@ class ScratchFile:
         self._page_count += 1
         if self._should_use_main_memory():
             self._mem_pages.append(bytearray(self._page_size))
+            self._mem_page_count += 1
         else:
             tmp = self._ensure_tmp()
             self._file_pages[idx] = self._tmp_next_offset
@@ -476,7 +494,7 @@ class ScratchFile:
         cap = self.get_max_main_memory_bytes()
         if cap == UNLIMITED:
             return True
-        used = sum(1 for p in self._mem_pages if p is not None) * self._page_size
+        used = self._mem_page_count * self._page_size
         return used + self._page_size <= cap
 
     def _fetch_page_bytes(self, page_index: int) -> bytes:

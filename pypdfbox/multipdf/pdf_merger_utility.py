@@ -304,6 +304,16 @@ class PDFMergerUtility:
         # Compression parameters — same advisory-only treatment as the
         # stream-cache function above.
         self._compress_parameters: Any = None
+        # Cache of the destination /ParentTree flattened map across successive
+        # append_document() calls. Stored as ``(dest_struct_root_cos, map)``.
+        # After _finish_struct_tree_merge writes the rebuilt tree, the very map
+        # it wrote is the next append's starting map, so we avoid re-flattening
+        # the growing tree on every append (which was O(M^2) across M sources).
+        # Keyed by the *identity* of the destination StructTreeRoot COS dict;
+        # a different destination invalidates the cache automatically.
+        self._parent_tree_map_cache: tuple[COSBase, dict[int, COSBase]] | None = (
+            None
+        )
 
     # ---------- properties / config ----------
 
@@ -595,6 +605,12 @@ class PDFMergerUtility:
             # have different ``id()`` (e.g. two source PDFs each
             # carrying a copy of the same Type1 font).
             resource_hash_cache: dict[bytes, COSBase] = {}
+            # id(cloned COS object) -> canonical digest. The clone utility
+            # memoises objects, so a font shared across pages is the SAME
+            # object every time; this skips re-hashing its whole subgraph
+            # per page. Object identity is stable for the merge's lifetime
+            # (the destination keeps every clone alive), so keys never alias.
+            hash_memo: dict[int, bytes | None] = {}
 
             for source in self._sources:
                 source_doc, owns = self._open_source(source)
@@ -618,7 +634,7 @@ class PDFMergerUtility:
                         # reference the same font / image don't bloat
                         # the destination with duplicate clones.
                         self._dedup_page_resources(
-                            new_page_dict, resource_hash_cache
+                            new_page_dict, resource_hash_cache, hash_memo
                         )
                         destination.get_pages().add(PDPage(new_page_dict))
                     # AcroForm fields: optimize mode still carries them
@@ -681,6 +697,7 @@ class PDFMergerUtility:
         self,
         page_dict: COSDictionary,
         resource_hash_cache: dict[bytes, COSBase],
+        hash_memo: dict[int, bytes | None] | None = None,
     ) -> None:
         """Walk ``page_dict``'s ``/Resources`` and coalesce each entry
         under the canonical resource sub-dicts (``/Font``, ``/XObject``,
@@ -703,7 +720,7 @@ class PDFMergerUtility:
                 value = sub.get_dictionary_object(name)
                 if value is None:
                     continue
-                key = self._canonical_resource_hash(value)
+                key = self._canonical_resource_hash(value, hash_memo)
                 if key is None:
                     continue
                 existing = resource_hash_cache.get(key)
@@ -713,7 +730,9 @@ class PDFMergerUtility:
                     resource_hash_cache[key] = value
 
     @staticmethod
-    def _canonical_resource_hash(value: COSBase) -> bytes | None:
+    def _canonical_resource_hash(
+        value: COSBase, hash_memo: dict[int, bytes | None] | None = None
+    ) -> bytes | None:
         """Return a stable SHA-256 over ``value``'s canonical COS
         representation, or ``None`` when the object isn't safe to hash
         (cycles, unsupported leaves).
@@ -724,15 +743,31 @@ class PDFMergerUtility:
         bytes. Two resources that serialise byte-for-byte the same way
         produce the same digest regardless of which source document
         produced them.
+
+        When ``hash_memo`` is supplied it caches ``id(value) -> digest`` so a
+        resource shared across pages (same clone object) is hashed once rather
+        than per page. The memo stores ``None`` for unhashable objects too, so
+        those are not re-walked either. Digests are identical with or without
+        the memo.
         """
         import hashlib
+
+        if hash_memo is not None:
+            memo_key = id(value)
+            if memo_key in hash_memo:
+                return hash_memo[memo_key]
 
         hasher = hashlib.sha256()
         try:
             _hash_cos(value, hasher, set())
         except _HashAbort:
-            return None
-        return hasher.digest()
+            digest: bytes | None = None
+        else:
+            digest = hasher.digest()
+
+        if hash_memo is not None:
+            hash_memo[id(value)] = digest
+        return digest
 
     def _legacy_merge_documents_impl(self) -> None:
         if not self._sources:
@@ -1121,9 +1156,31 @@ class PDFMergerUtility:
         prefix = "dummyFieldName"
         prefix_len = len(prefix)
 
-        # Bring _next_field_num up to "1 above the highest existing
-        # dummyFieldNameN suffix already in dest" so we never collide.
+        # For the real :class:`PDAcroForm`, ``get_field`` re-walks the growing
+        # /Fields tree and allocates a fresh ``PDField`` wrapper per destination
+        # field per probe — O(F^2) with a huge constant across F source fields.
+        # We replace that per-field probe with a ``set[str]`` of existing
+        # fully-qualified names, built once here and grown incrementally as
+        # fields are appended (below). For the real form this yields
+        # byte-identical collision/rename decisions — the set holds exactly the
+        # FQNs ``get_field`` could have matched (initial tree plus every
+        # appended subtree). A foreign / duck-typed form (whose ``get_field``
+        # may be decoupled from ``get_field_tree``) keeps the original
+        # ``get_field`` probe so its semantics are preserved verbatim.
+        from pypdfbox.pdmodel.interactive.form.pd_acro_form import PDAcroForm
+
+        use_fqn_set = isinstance(dest_form, PDAcroForm)
+
+        # Single walk of the destination field tree does double duty:
+        #   (a) bring _next_field_num to "1 above the highest existing
+        #       dummyFieldNameN suffix already in dest" so we never collide;
+        #   (b) snapshot every existing fully-qualified name into a set.
+        existing_fqns: set[str] = set()
         for dest_field in dest_form.get_field_tree():
+            if use_fqn_set:
+                fqn = dest_field.get_fully_qualified_name()
+                if fqn is not None:
+                    existing_fqns.add(fqn)
             partial = dest_field.get_partial_name()
             if partial is not None and partial.startswith(prefix):
                 suffix = partial[prefix_len:]
@@ -1159,10 +1216,21 @@ class PDFMergerUtility:
                 fqn = src_field.get_fully_qualified_name()
             except Exception:  # noqa: BLE001
                 fqn = None
-            if fqn is not None and dest_form.get_field(fqn) is not None:
+            if use_fqn_set:
+                collides = fqn is not None and fqn in existing_fqns
+            else:
+                collides = fqn is not None and dest_form.get_field(fqn) is not None
+            if collides:
                 cloned.set_string(_T, f"{prefix}{self._next_field_num}")
                 self._next_field_num += 1
             dest_fields_array.add(cloned)
+            if use_fqn_set:
+                # Record every FQN the just-appended field subtree now
+                # contributes to the destination so a later same-named source
+                # field collides exactly as it would have under the original
+                # ``get_field`` probe (which re-walked the full tree,
+                # descendants included).
+                self._collect_field_fqns(dest_form, cloned, existing_fqns)
 
     def _acro_form_join_fields_mode(
         self,
@@ -1179,6 +1247,51 @@ class PDFMergerUtility:
         the two modes are byte-for-byte identical, matching upstream.
         """
         self._acro_form_legacy_mode(cloner, dest_form, src_form)
+
+    @staticmethod
+    def _collect_field_fqns(
+        dest_form: Any, field_cos: COSDictionary, out: set[str]
+    ) -> None:
+        """Add to ``out`` the fully-qualified names of every field in the
+        subtree rooted at ``field_cos`` (a freshly appended top-level
+        destination field).
+
+        Wraps ``field_cos`` the same way :meth:`PDAcroForm.get_fields`
+        does (parent = ``None``) so the FQNs computed here are identical to
+        the ones ``dest_form.get_field`` would have derived when re-walking the
+        tree. Best-effort: a malformed clone that cannot be wrapped simply
+        contributes nothing (mirroring the source ``get_fully_qualified_name``
+        guard).
+        """
+        from pypdfbox.pdmodel.interactive.form.pd_field_factory import (
+            PDFieldFactory,
+        )
+        from pypdfbox.pdmodel.interactive.form.pd_non_terminal_field import (
+            PDNonTerminalField,
+        )
+
+        try:
+            root = PDFieldFactory.create_field(dest_form, field_cos, None)
+        except Exception:  # noqa: BLE001
+            return
+        if root is None:
+            return
+        stack = [root]
+        seen: set[int] = set()
+        while stack:
+            field = stack.pop()
+            key = id(field.get_cos_object())
+            if key in seen:
+                continue
+            seen.add(key)
+            try:
+                fqn = field.get_fully_qualified_name()
+            except Exception:  # noqa: BLE001
+                fqn = None
+            if fqn is not None:
+                out.add(fqn)
+            if not field.is_terminal() and isinstance(field, PDNonTerminalField):
+                stack.extend(field.get_children())
 
     def _merge_threads(
         self,
@@ -1487,6 +1600,29 @@ class PDFMergerUtility:
                     names.update(PDFMergerUtility.get_id_tree_as_map(kid))
         return names
 
+    def _cached_dest_parent_tree_map(
+        self, dest_struct_tree: Any, dest_parent_tree: Any
+    ) -> dict[int, COSBase]:
+        """Return the destination ``/ParentTree`` flattened map, reusing the
+        cache populated by :meth:`_finish_struct_tree_merge` when the
+        destination structure tree is unchanged.
+
+        Without the cache, a multi-source merge re-flattens the whole (growing)
+        destination parent tree on every ``append_document`` — quadratic across
+        M sources. After a finish, the in-memory map we just wrote IS the
+        current tree, so a subsequent append can start from it directly. The
+        cache is keyed by the *identity* of the destination StructTreeRoot COS
+        dict; a different destination (or the very first append) falls through
+        to a single full flatten. Single-append behaviour is unchanged.
+        """
+        root_cos = dest_struct_tree.get_cos_object()
+        cache = self._parent_tree_map_cache
+        if cache is not None and cache[0] is root_cos:
+            return cache[1]
+        flattened = self.get_number_tree_as_map(dest_parent_tree)
+        self._parent_tree_map_cache = (root_cos, flattened)
+        return flattened
+
     def _prepare_struct_tree_merge(
         self,
         src_catalog: Any,
@@ -1542,7 +1678,9 @@ class PDFMergerUtility:
             dest_parent_tree = dest_struct_tree.get_parent_tree()
             dest_parent_tree_next_key = dest_struct_tree.get_parent_tree_next_key()
             if dest_parent_tree is not None:
-                dest_map = self.get_number_tree_as_map(dest_parent_tree)
+                dest_map = self._cached_dest_parent_tree_map(
+                    dest_struct_tree, dest_parent_tree
+                )
                 if dest_parent_tree_next_key < 0:
                     dest_parent_tree_next_key = (
                         0 if not dest_map else max(dest_map.keys()) + 1
@@ -1624,6 +1762,14 @@ class PDFMergerUtility:
         self._stamp_parent_tree_limits(new_parent_tree, dest_number_tree_as_map)
         dest_struct_tree.set_parent_tree(new_parent_tree)
         dest_struct_tree.set_parent_tree_next_key(dest_parent_tree_next_key)
+
+        # The map we just wrote is the destination's current /ParentTree state.
+        # Cache it (keyed by the destination StructTreeRoot COS identity) so the
+        # next append_document reuses it instead of re-flattening the tree.
+        self._parent_tree_map_cache = (
+            dest_struct_tree.get_cos_object(),
+            dest_number_tree_as_map,
+        )
 
         self._merge_k_entries(cloner, src_struct_tree, dest_struct_tree)
         self._merge_role_map(cloner, src_struct_tree, dest_struct_tree)

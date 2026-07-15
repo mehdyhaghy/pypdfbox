@@ -134,6 +134,16 @@ class COSParser(BaseParser):
         self._missing_object_resolver: (
             Callable[[COSObjectKey], COSBase | None] | None
         ) = None
+        # Brute-force recovery latches. Upstream's ``BruteForceParser`` computes
+        # the ``n g obj`` offset map and the raw-source snapshot once and reuses
+        # them (``bfSearchForObjectsFound`` / the shared ``source``); the scan is
+        # a pure function of the source bytes, which are immutable for a parser's
+        # lifetime (repairs mutate the in-memory pool / xref table, never the
+        # source). Both are computed lazily on first brute-force scan and reused,
+        # so a missing key or a repeated recovery no longer re-sweeps the whole
+        # file. ``None`` means "not yet computed".
+        self._bf_objects_cache: dict[COSObjectKey, int] | None = None
+        self._all_bytes_cache: bytes | None = None
 
     def set_missing_object_resolver(
         self, resolver: Callable[[COSObjectKey], COSBase | None] | None
@@ -335,13 +345,21 @@ class COSParser(BaseParser):
         # round-trip preservation. Routing both branches through
         # ``COSNumber.get`` keeps us byte-for-byte with upstream.
         end = self.position
-        cur = self.position
-        self.seek(start)
-        text_bytes = bytearray()
-        while self.position < end:
-            text_bytes.append(self.read_byte())
-        self.seek(cur)
-        text = text_bytes.decode("ascii")
+        # Fast path: ``read_number`` just consumed exactly this span and cached
+        # its literal text — reuse it instead of seeking back and re-reading the
+        # bytes. The start/end guard makes this byte-identical to the re-read
+        # (and falls back automatically when an intervening ``read_number`` — the
+        # indirect-reference lookahead's second integer — moved the cache).
+        if self._last_number_start == start and self._last_number_end == end:
+            text = self._last_number_text
+        else:
+            cur = self.position
+            self.seek(start)
+            text_bytes = bytearray()
+            while self.position < end:
+                text_bytes.append(self.read_byte())
+            self.seek(cur)
+            text = text_bytes.decode("ascii")
         if isinstance(value, int):
             # Integer literal: dispatch via COSNumber.get so Long-overflow maps
             # to the OUT_OF_RANGE sentinel exactly as upstream does. A leading
@@ -1184,7 +1202,14 @@ class COSParser(BaseParser):
         """Snapshot the entire source as a ``bytes`` blob. Position is
         preserved. Used by the brute-force scanners below — they are
         whole-file linear sweeps and a single ``bytes`` view is the
-        simplest fast path."""
+        simplest fast path.
+
+        The snapshot is cached on first use and reused: the source bytes are
+        immutable for the parser's lifetime, so re-reading the whole file on
+        each brute-force scan is pure waste. Cached reads leave the position
+        untouched (they never seek)."""
+        if self._all_bytes_cache is not None:
+            return self._all_bytes_cache
         saved = self.position
         try:
             length = self._src.length()
@@ -1196,7 +1221,8 @@ class COSParser(BaseParser):
                 if n <= 0:
                     break
                 read += n
-            return bytes(buf[:read])
+            self._all_bytes_cache = bytes(buf[:read])
+            return self._all_bytes_cache
         finally:
             self._src.seek(saved)
 
@@ -1209,7 +1235,17 @@ class COSParser(BaseParser):
         keyword ``obj`` preceded by two unsigned integers separated by
         whitespace. The recorded offset points at the start of the
         leading object number — the same offset format that an xref
-        entry would carry."""
+        entry would carry.
+
+        The recovered offset map is cached on the parser after the first scan
+        and reused (mirrors upstream ``BruteForceParser.bfSearchForObjectsFound``):
+        the map is a pure function of the immutable source bytes, so callers
+        that repeatedly probe for objects — notably ``get_object_offset`` for a
+        key that is absent from the file — no longer trigger a fresh whole-file
+        sweep every call. The same dict instance is returned; callers treat it
+        as read-only (upstream reuses the same map too)."""
+        if self._bf_objects_cache is not None:
+            return self._bf_objects_cache
         data = self._read_all_bytes()
         offsets: dict[COSObjectKey, int] = {}
         n = len(data)
@@ -1279,6 +1315,7 @@ class COSParser(BaseParser):
             # the most recent revision).
             offsets[key] = num_start
             i = j + 3
+        self._bf_objects_cache = offsets
         return offsets
 
     def bf_search_for_obj_stream_members(
