@@ -6,26 +6,118 @@
 
 **Source, issues, and documentation: [github.com/mehdyhaghy/pypdfbox](https://github.com/mehdyhaghy/pypdfbox)**
 
-`pypdfbox` is an Apache 2.0-licensed, Python-native port of
-[Apache PDFBox](https://pdfbox.apache.org/) 3.0.x. It mirrors PDFBox's
-package layout (`org.apache.pdfbox.cos` → `pypdfbox.cos`), preserves
-class names verbatim (`COSDictionary`, `PDDocument`, `PDFParser`,
-`PDFRenderer`, `PDStructureTreeRoot`, …), keeps inheritance hierarchies
-intact, and maps Java `camelCase` methods one-for-one to Python
-`snake_case` — so the API a PDFBox developer already knows is the API
-you call here. No JVM, no JPype, no Java subprocess: parser, writer,
-content-stream engine, font subsystem, renderer, tagged-PDF model,
-signature pipeline, XMP, and CLI tools are all reimplemented in pure
-Python. This project is a community port, not an official Apache
-release; the underlying design and the test corpus that drives it are
-the work of the Apache PDFBox project, tracked centrally in
-[`PROVENANCE.md`](PROVENANCE.md).
+`pypdfbox` is a pure-Python PDF library and command-line toolbox. It
+reads, writes, and edits PDF files: split, merge, extract text and
+images, render pages to images, fill forms, add and verify digital
+signatures, encrypt and decrypt, create tagged/accessible PDFs, and
+generate PDFs from text or images — with no JVM, no external
+binaries, and permissively licensed (Apache 2.0) dependencies only.
 
-## Quick start
+It is a Python-native port of [Apache PDFBox](https://pdfbox.apache.org/)
+3.0.x, which means you get a battle-tested API surface: the same
+classes (`PDDocument`, `PDPage`, `PDFRenderer`, `PDFTextStripper`, …)
+and the same behavior, with Java `camelCase` mapped to Python
+`snake_case`. Answers written for PDFBox usually translate directly.
+This project is a community port, not an official Apache release.
+
+## Install
 
 ```sh
 pip install pypdfbox
 ```
+
+Wheels cover CPython 3.12–3.14 on macOS (x86_64 + arm64), Linux/glibc
+(x86_64 + aarch64), and Windows (x86_64). See
+[`docs/install.md`](docs/install.md) for source builds, the optional
+`pypdfbox[cjk]` extra (opt-in CJK font auto-download), and
+troubleshooting.
+
+## Command line: the 10 most common operations
+
+Installing the package puts a `pypdfbox` command on your `PATH`.
+Every command below is copy-paste runnable; use
+`pypdfbox <command> --help` for all options.
+
+**1. Split a PDF** — one file per page by default; `-split N` makes
+N-page chunks; `-startPage`/`-endPage` limit the range:
+
+```sh
+pypdfbox split -i report.pdf
+pypdfbox split -i report.pdf -split 10 -outputPrefix chunk
+```
+
+**2. Merge PDFs** — pages are concatenated in the order given
+(bookmarks, forms, and links are carried over):
+
+```sh
+pypdfbox merge -i part-a.pdf part-b.pdf part-c.pdf -o combined.pdf
+```
+
+**3. Extract text** — writes `report.txt` next to the input; `-console`
+prints to stdout, `-html`/`-md` switch the output format, `-sort`
+orders text by position on the page:
+
+```sh
+pypdfbox extracttext -i report.pdf
+pypdfbox extracttext -i report.pdf -console -startPage 2 -endPage 5
+```
+
+**4. Inspect a PDF** — page count, PDF version, encryption status, and
+the document info (title, author, dates); `-output json` for scripts:
+
+```sh
+pypdfbox info report.pdf
+pypdfbox info report.pdf -metadata -output json
+```
+
+**5. Convert pages to images** — one image per page (JPEG by default;
+`-format png` for PNG), at the DPI you choose:
+
+```sh
+python -m pypdfbox.tools.pdf_to_image -i report.pdf -dpi 150 -format png
+```
+
+**6. Extract embedded images** — pulls every image out of the PDF into
+separate files:
+
+```sh
+python -m pypdfbox.tools.extract_images -i report.pdf -prefix figure
+```
+
+**7. Encrypt (password-protect)** — set an owner password and an
+optional user password; `-can*` flags tune permissions like printing:
+
+```sh
+pypdfbox encrypt -i report.pdf -o locked.pdf -O ownerpass -U userpass
+pypdfbox encrypt -i report.pdf -o locked.pdf -O ownerpass --no-canPrint
+```
+
+**8. Decrypt** — remove password protection (requires a password that
+unlocks the document):
+
+```sh
+pypdfbox decrypt -i locked.pdf -o unlocked.pdf -password ownerpass
+```
+
+**9. Images to PDF** — one page per image, sized to the image or a
+standard page:
+
+```sh
+pypdfbox imagetopdf -i scan-1.png scan-2.png -o scans.pdf
+```
+
+**10. Text file to PDF** — plain text in, paginated PDF out:
+
+```sh
+pypdfbox texttopdf -i notes.txt -o notes.pdf
+```
+
+More tools: `listbookmarks` (print the outline tree), `pdfdebugger`
+(interactive structure viewer), `writedecodedstream` (decompress all
+streams for inspection), `version`. The full CLI reference lives in
+[`docs/guides/cli.md`](docs/guides/cli.md).
+
+## Python quick start
 
 ```python
 from pypdfbox import PDDocument
@@ -38,103 +130,30 @@ with PDDocument.load("input.pdf") as doc:
     doc.save("output.pdf")
 ```
 
-The CLI dispatcher (`pypdfbox info|merge|split|decrypt|version|...`,
-mirroring upstream's `org.apache.pdfbox.tools.PDFBox` suite) is
-installed alongside.
+Extract text:
 
-## Installation
+```python
+from pypdfbox import PDDocument
+from pypdfbox.text import PDFTextStripper
 
-From PyPI:
-
-```sh
-pip install pypdfbox
+with PDDocument.load("input.pdf") as doc:
+    text = PDFTextStripper().get_text(doc)
 ```
 
-Extras:
+Task-oriented guides with complete examples:
 
-- `pypdfbox[cjk]` — opt-in marker that consents to network fetches of
-  Noto Sans CJK (SIL OFL 1.1) as a last-resort fallback for PDFs that
-  reference an unembedded CJK font. The extra carries no Python deps;
-  it is only the consent gate. Auto-download is still inert unless you
-  also export `PYPDFBOX_CJK_AUTODOWNLOAD=1`. See
-  [`docs/install.md`](docs/install.md) for the full matrix.
+- [Text extraction](docs/guides/text-extraction.md)
+- [Merging and splitting](docs/guides/merging-splitting.md)
+- [Rendering pages to images](docs/guides/rendering.md)
+- [Forms (AcroForm)](docs/guides/forms.md)
+- [Encryption and passwords](docs/guides/encryption.md)
+- [Digital signatures](docs/guides/signing.md)
+- [Tagged PDF and accessibility](docs/guides/tagged-pdf.md)
+- [Embedded files and attachments](docs/guides/embedded-files.md)
 
-Native wheels are published for CPython 3.12–3.14 on macOS (x86_64 +
-arm64), Linux/glibc (x86_64 + aarch64), and Windows (x86_64). Source
-installs require a working C / Rust toolchain for the transitive deps
-(`cryptography`, `Pillow`, `skia-python`, `imagecodecs`, `numpy`).
-JBIG2 decoding (`/JBIG2Decode`) is supported by a first-party
-pure-Python decoder (ported from the Apache-2.0 `apache/pdfbox-jbig2`),
-which replaced the GPL-licensed `jbig2-parser` under the
-permissive-license policy — no dependency, no native code. See
-[`docs/install.md`](docs/install.md) for platform-specific
-troubleshooting.
-
-## Build
-
-Source builds use [`uv`](https://docs.astral.sh/uv/) as the package
-manager.
-
-```sh
-git clone https://github.com/mehdyhaghy/pypdfbox.git
-cd pypdfbox
-uv sync --all-groups
-```
-
-Run the test suite:
-
-```sh
-.venv/bin/pytest -q --no-cov
-```
-
-(`--no-cov` is the fast pass; drop it to refresh coverage at
-`coverage.json`.)
-
-The full developer workflow (lint, coverage, checks that run before
-a push) is documented in [`docs/build.md`](docs/build.md).
-
-## Contribute
-
-PRs are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the
-contribution workflow, the parity test layering (hand-written +
-ported upstream tests), and the bookkeeping rules around
-[`PROVENANCE.md`](PROVENANCE.md) and [`CHANGES.md`](CHANGES.md).
-
-In short, every change should:
-
-- Match upstream PDFBox class names, package layout, and inheritance.
-- Translate `camelCase` to `snake_case`. Nothing else moves.
-- For ported files, add a row to `PROVENANCE.md` (pypdfbox path →
-  upstream version → upstream Java path).
-- For behavioural deviation, add a one-line entry to `CHANGES.md`.
-- Ship parity tests in `tests/<module>/test_<class>.py` plus, where
-  applicable, ported upstream tests in
-  `tests/<module>/upstream/test_<class>.py`.
-
-## Support
-
-This is a community fork-style port, not the upstream Apache project,
-so the Apache Jira issue tracker and PDFBox mailing lists are not
-appropriate for pypdfbox-specific questions or bugs. Use:
-
-- The GitHub
-  [issue tracker](https://github.com/mehdyhaghy/pypdfbox/issues) for
-  bug reports and feature requests against pypdfbox.
-- The upstream
-  [Apache PDFBox project](https://pdfbox.apache.org/) for questions
-  about PDF / PDFBox concepts in general, including the
-  [PDFBox users mailing list](https://pdfbox.apache.org/mailinglists.html)
-  and Stack Overflow's
-  [`pdfbox` tag](https://stackoverflow.com/questions/tagged/pdfbox)
-  for design-level Q&A — pypdfbox's surface is close enough that
-  PDFBox answers usually translate directly.
-
-If you have found a clear pypdfbox-specific bug (parity mismatch,
-crash, byte-level divergence), please open a GitHub issue and include
-a minimal PDF that reproduces it.
-
-See [`docs/support.md`](docs/support.md) for a longer breakdown of
-where to ask which kind of question.
+Coming from Java PDFBox, or from `pypdf` / `pdfminer.six` /
+`reportlab`? [`docs/migration.md`](docs/migration.md) maps the idioms
+side by side.
 
 ## Known Limitations and Problems
 
@@ -194,6 +213,43 @@ The full active-divergences list lives in
 [`CHANGES.md` → Active divergences](CHANGES.md#active-divergences-vs-upstream).
 Open in-flight gaps that are *fixable but not yet done* are tracked on
 the [issue tracker](https://github.com/mehdyhaghy/pypdfbox/issues).
+
+## Support
+
+Use the GitHub
+[issue tracker](https://github.com/mehdyhaghy/pypdfbox/issues) for
+bug reports and feature requests. If you have found a clear bug
+(crash, wrong output, parity mismatch with PDFBox), please attach a
+minimal PDF that reproduces it.
+
+Because the API mirrors Apache PDFBox, general "how do I do X with
+PDFBox" answers — the
+[PDFBox users mailing list](https://pdfbox.apache.org/mailinglists.html)
+archives and Stack Overflow's
+[`pdfbox` tag](https://stackoverflow.com/questions/tagged/pdfbox) —
+usually translate directly (rename `camelCase` methods to
+`snake_case`). pypdfbox is a community port, so please don't file
+pypdfbox bugs with the Apache project. See
+[`docs/support.md`](docs/support.md) for the full breakdown.
+
+## Contributing and development
+
+PRs are welcome. Source builds use
+[`uv`](https://docs.astral.sh/uv/):
+
+```sh
+git clone https://github.com/mehdyhaghy/pypdfbox.git
+cd pypdfbox
+uv sync --all-groups
+.venv/bin/pytest -q --no-cov   # run the test suite
+```
+
+[`docs/build.md`](docs/build.md) covers the developer workflow (lint,
+coverage, pre-push checks), and [`CONTRIBUTING.md`](CONTRIBUTING.md)
+covers the contribution rules — in particular that changes must match
+upstream PDFBox naming and behavior, and how ported code is tracked
+in [`PROVENANCE.md`](PROVENANCE.md) and behavioral deviations in
+[`CHANGES.md`](CHANGES.md).
 
 ## License
 

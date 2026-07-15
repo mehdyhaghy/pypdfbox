@@ -1,104 +1,84 @@
 # pypdfbox documentation
 
-`pypdfbox` is a Python-native port of
-[Apache PDFBox](https://pdfbox.apache.org/) 3.0.x. It exposes the same
-class names, package layout, and method semantics PDFBox developers
-already know, with Java `camelCase` translated to Python `snake_case`.
-For the project overview, status, license, and known limitations, see
-the repository [`README.md`](../README.md).
+`pypdfbox` is a pure-Python PDF library and command-line toolbox:
+read, write, and edit PDFs — split, merge, extract text and images,
+render pages, fill forms, sign, encrypt — with no JVM and no external
+binaries. It is a Python-native port of
+[Apache PDFBox](https://pdfbox.apache.org/) 3.0.x, so the classes and
+behavior match the PDFBox API you may already know, with Java
+`camelCase` translated to Python `snake_case`.
 
-This `docs/` tree is the longer-form user guide. The pages below
-break down by audience:
+New here? Start with the repository [`README.md`](../README.md) — it
+has the install one-liner, the ten most common command-line
+operations, and a Python quick start.
 
-## For users
+## Getting started
 
-- [Install guide](install.md) — PyPI install, the `pypdfbox[cjk]`
-  extra, source install via `uv`, supported Python versions, the
-  platform-support matrix, native-dep build notes, and
-  troubleshooting for the common `cryptography` / `skia-python` /
-  `imagecodecs` install failures.
+- [Install guide](install.md) — `pip install pypdfbox`, supported
+  Python versions and platforms, the optional `pypdfbox[cjk]` extra,
+  source installs, and troubleshooting for the common
+  `cryptography` / `skia-python` / `imagecodecs` install failures.
 
-- [Support](support.md) — where to ask which kind of question (this
-  project's GitHub issue tracker for pypdfbox-specific bugs; the
-  upstream Apache PDFBox project for general PDF / PDFBox design
-  questions).
+- [Command-line tools](guides/cli.md) — the `pypdfbox` command:
+  `split`, `merge`, `extracttext`, `info`, `encrypt`, `decrypt`,
+  `imagetopdf`, `texttopdf`, `listbookmarks`, `pdfdebugger`, and
+  friends, with all options.
 
-- User guides:
-  - [Rendering](guides/rendering.md) — `PDFRenderer` usage,
-    DPI / scaling, page-image extraction, soft-mask + blend-mode
-    notes, structural-parity caveat vs Java AWT.
-  - [Text extraction](guides/text-extraction.md) —
-    `PDFTextStripper` and `PDFTextStripperByArea`, sorting,
-    region masks, ToUnicode handling, the documented bidi
-    divergence.
-  - [Editing](guides/editing.md) — page-tree manipulation,
-    incremental save, xref preservation, no-reflow text editing.
-  - [Forms](guides/forms.md) — AcroForm, field types, choice /
-    text / checkbox / signature, flattening.
-  - [Signatures](guides/signatures.md) — PDSignature, PKCS#7,
-    RFC 3161 timestamps, PAdES-LTV `/DSS`+`/VRI` bundling,
-    external signing.
-  - [Tagged PDF and accessibility](guides/tagged-pdf.md) —
-    `PDStructureTreeRoot`, MCID, role map, attribute objects.
-  - [Fonts](guides/fonts.md) — Standard 14 substitution, the
-    bundled Liberation TTFs, opt-in Noto Sans CJK auto-download,
-    Type0 / CID, embedded subsets.
-  - [CLI tools](guides/cli.md) — `pypdfbox info|merge|split|
-    decrypt|version|texttopdf|overlay|extract`.
+## Guides by task
 
-## For developers
+- [Text extraction](guides/text-extraction.md) —
+  `PDFTextStripper` and `PDFTextStripperByArea`, positional
+  sorting, region masks, ToUnicode handling, and the documented
+  bidi divergence.
+- [Merging and splitting](guides/merging-splitting.md) —
+  `PDFMergerUtility` and `Splitter`, what carries over (forms,
+  bookmarks, links), and page-range extraction.
+- [Rendering](guides/rendering.md) — `PDFRenderer` usage,
+  DPI / scaling, page-image extraction, soft-mask + blend-mode
+  notes.
+- [Forms](guides/forms.md) — AcroForm, field types (text,
+  checkbox, choice, signature), filling and flattening.
+- [Encryption](guides/encryption.md) — password protection,
+  permissions, AES/RC4 handlers, opening encrypted documents.
+- [Digital signatures](guides/signing.md) — PDSignature, PKCS#7,
+  RFC 3161 timestamps, PAdES-LTV `/DSS`+`/VRI` bundling, external
+  signing.
+- [Tagged PDF and accessibility](guides/tagged-pdf.md) —
+  `PDStructureTreeRoot`, MCID, role map, attribute objects.
+- [Embedded files and attachments](guides/embedded-files.md) —
+  the `/Names` embedded-file tree, attaching and extracting files.
 
-- [Build guide](build.md) — clone, `uv sync`, the pytest /
-  ruff / license-allow-list pre-push hook, coverage refresh
-  workflow, provenance protocol.
+## Coming from another library
 
-- [Contributing](../CONTRIBUTING.md) — class-cluster scoping, the
-  two-layer test rule (hand-written + ported-upstream),
-  `PROVENANCE.md` row format, and the `CHANGES.md` bookkeeping.
+- [Migration guide](migration.md) — side-by-side examples for
+  developers arriving from Apache PDFBox (Java) — including the
+  `camelCase` → `snake_case` cheat sheet — and idiom maps from
+  `pypdf`, `reportlab`, `pdfminer.six`, and `pdfplumber`.
+
+## Help and support
+
+- [Support](support.md) — where to ask which kind of question:
+  the [issue tracker](https://github.com/mehdyhaghy/pypdfbox/issues)
+  for pypdfbox bugs; upstream PDFBox resources for general PDF /
+  API design questions (answers usually translate directly).
+- [`README.md` → Known limitations](../README.md#known-limitations-and-problems)
+  — the stable-state divergences (Symbol glyph coverage, bidi,
+  pixel-exact rendering, PDF/A validation scope).
+
+## Reference
 
 - [API reference](api/index.md) — module-by-module surface,
-  generated from in-source docstrings. Useful when you want to
-  confirm the snake_case spelling of a specific upstream
-  method.
+  generated from in-source docstrings. Useful to confirm the
+  snake_case spelling of a specific upstream method.
+- [Changelog index](changelog.md) — release notes and the log of
+  deliberate behavioral deviations from upstream
+  ([`CHANGES.md`](../CHANGES.md)).
 
-## Migration
+## For contributors
 
-- [Migrating from Apache PDFBox (Java)](migration-from-pdfbox.md) —
-  side-by-side examples, the `camelCase` → `snake_case` cheat
-  sheet, behavioural-divergence callouts, the `preflight`-
-  shaped hole and what to plug into it.
-
-- [Migrating from other Python PDF libraries](migration-from-python-pdfs.md)
-  — `pypdf`, `reportlab`, `pdfminer.six`, `pdfplumber` →
-  pypdfbox idiom maps.
-
-## Release information
-
-- [Release notes for the current release](../RELEASE_NOTES_v1.0.0rc1.md)
-  — what shipped, known issues at release.
-- [`CHANGES.md`](../CHANGES.md) — substantive deviations from
-  upstream, organised under "Project-wide deviations" and
-  "Active divergences".
-- [Issue tracker](https://github.com/mehdyhaghy/pypdfbox/issues) —
-  open in-flight gaps that are fixable but not yet closed.
-- [`PROVENANCE.md`](../PROVENANCE.md) — one row per ported source
-  / test / fixture file, recording the upstream PDFBox version
-  and Java path.
-
-## Reading order recommendation
-
-If you are new to pypdfbox and arrived from PDFBox:
-[`install.md`](install.md) →
-[`migration-from-pdfbox.md`](migration-from-pdfbox.md) →
-whichever user guide matches your task.
-
-If you are new to pypdfbox and arrived from another Python PDF
-library: [`install.md`](install.md) →
-[`migration-from-python-pdfs.md`](migration-from-python-pdfs.md) →
-the user guide for your task.
-
-If you intend to contribute: [`build.md`](build.md) →
-[`contributing.md`](../CONTRIBUTING.md) (the contribution guide
-covers the package layout, the parity rules, the
-dependency-ordered implementation, and the test porting
-conventions).
+- [Build guide](build.md) — clone, `uv sync`, running the tests,
+  lint and the pre-push checks.
+- [Contributing](../CONTRIBUTING.md) — contribution rules: match
+  upstream PDFBox naming and behavior, the two-layer test rule,
+  and the [`PROVENANCE.md`](../PROVENANCE.md) /
+  [`CHANGES.md`](../CHANGES.md) bookkeeping.
