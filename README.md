@@ -278,41 +278,11 @@ Substantive behavioural deviations from upstream are recorded in
 
 ## Export control
 
-This distribution includes cryptographic software. The country in
-which you currently reside may have restrictions on the import,
-possession, use, and/or re-export to another country of encryption
-software. BEFORE using any encryption software, please check your
-country's laws, regulations and policies concerning the import,
-possession, or use, and re-export of encryption software, to see if
-this is permitted. See <https://www.wassenaar.org/> for more
-information.
-
-The U.S. Government Department of Commerce, Bureau of Industry and
-Security (BIS) has classified this software as Export Commodity
-Control Number (ECCN) 5D002.C.1, which includes information security
-software using or performing cryptographic functions with asymmetric
-algorithms. The form and manner of this open-source distribution
-makes it eligible for export under the License Exception ENC
-Technology Software Unrestricted (TSU) exception (see the BIS Export
-Administration Regulations, Section 740.13) for both object code and
-source code.
-
-The cryptographic surfaces in pypdfbox are:
-
-- PDF Standard Security Handlers (r2–r6: RC4 40/128, AES-128/256
-  CBC) and the public-key security handler, implemented in
-  `pypdfbox.pdmodel.encryption` on top of the
-  [`cryptography`](https://pypi.org/project/cryptography/) library
-  (Apache-2.0 / BSD).
-- Digital signature read + write (PKCS#7 / CAdES / PAdES, RFC 3161
-  timestamps, PAdES-LTV `/DSS`+`/VRI` revocation-info bundling),
-  implemented in `pypdfbox.pdmodel.interactive.digitalsignature` on
-  top of `cryptography`'s PKCS#7 builders.
-
-Upstream PDFBox uses the Java Cryptography Architecture (JCA) and
-Bouncy Castle for the same surfaces; pypdfbox uses PyCA
-`cryptography`. Functionally equivalent; the export classification is
-unchanged.
+This software contains cryptographic functionality (PDF encryption
+and digital signatures, via the PyCA `cryptography` library). Your
+country may restrict the import, possession, use, or re-export of
+encryption software — check your local laws. Details in
+[`docs/export-control.md`](docs/export-control.md).
 
 ## Acknowledgement of upstream
 

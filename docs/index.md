@@ -73,6 +73,9 @@ operations, and a Python quick start.
 - [Changelog index](changelog.md) — release notes and the log of
   deliberate behavioral deviations from upstream
   ([`CHANGES.md`](../CHANGES.md)).
+- [Export control](export-control.md) — cryptographic functionality
+  notice (encryption + signing surfaces, upstream ECCN
+  classification, PyCA `cryptography`).
 
 ## For contributors
 
