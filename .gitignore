@@ -63,6 +63,7 @@ credentials.*
 
 # Project artifacts
 corpus/
+target/
 archive/oracle/cache/
 archive/oracle/jars/
 archive/oracle/build/

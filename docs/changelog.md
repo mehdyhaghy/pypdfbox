@@ -1,16 +1,16 @@
 # Changelog index
 
-pypdfbox keeps its changelog and release notes at the repository
-root. Use this page as the dispatcher.
+pypdfbox keeps its changelog at the repository root. Use this
+page as the dispatcher.
 
 - **[`CHANGES.md`](../CHANGES.md)** — *active behavioural
   divergences* from upstream Apache PDFBox, plus the delta log.
   Read this when you want to know how the Python port
   deliberately deviates from the Java reference, or what landed
   most recently.
-- **[`RELEASE_NOTES_v1.0.0rc1.md`](../RELEASE_NOTES_v1.0.0rc1.md)**
-  — *release-specific notes* for the 1.0.0rc1 cut. Status, major
-  features since 0.9.0, active divergences, migration pointer.
+- **[GitHub Releases](https://github.com/mehdyhaghy/pypdfbox/releases)**
+  — *release-specific notes* per tagged cut. Status, major
+  features, active divergences, migration pointers.
 
 For *open follow-up items* (fixable, not yet done) see the
 [issue tracker](https://github.com/mehdyhaghy/pypdfbox/issues).
