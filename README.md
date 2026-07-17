@@ -26,6 +26,14 @@ This project is a community port, not an official Apache release.
 pip install pypdfbox
 ```
 
+Using it only from the command line? Install it as an isolated tool
+instead — same package, and it keeps the `pypdfbox` command out of
+your project environments:
+
+```sh
+uv tool install pypdfbox    # or: pipx install pypdfbox
+```
+
 Wheels cover CPython 3.12–3.14 on macOS (x86_64 + arm64), Linux/glibc
 (x86_64 + aarch64), and Windows (x86_64). See
 [`docs/install.md`](docs/install.md) for source builds, the optional

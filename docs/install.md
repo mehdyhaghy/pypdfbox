@@ -61,6 +61,22 @@ A fresh install pulls roughly 90–110 MB of wheels (mostly Skia
 binaries and imagecodecs's native blobs). Steady-state disk
 footprint after install is around 130 MB.
 
+### CLI-only install (uv tool / pipx)
+
+If you only want the `pypdfbox` command — not the library importable
+in your projects — install it as an isolated tool. Both commands
+pull the same package from PyPI and put `pypdfbox` on your `PATH`
+without touching any project environment:
+
+```sh
+uv tool install pypdfbox
+# or
+pipx install pypdfbox
+```
+
+Upgrade later with `uv tool upgrade pypdfbox` /
+`pipx upgrade pypdfbox`.
+
 ## Extras
 
 ### `pypdfbox[cjk]`
