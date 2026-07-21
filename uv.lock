@@ -575,7 +575,7 @@ wheels = [
 
 [[package]]
 name = "pypdfbox"
-version = "1.0.0rc5"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "cryptography" },
