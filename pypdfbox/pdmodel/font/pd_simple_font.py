@@ -128,13 +128,16 @@ class PDSimpleFont(PDFont):
         arr = self._dict.get_dictionary_object(_WIDTHS)
         if not isinstance(arr, COSArray):
             return []
-        widths: list[float | None] = []
-        for item in arr:
-            if isinstance(item, (COSInteger, COSFloat)):
-                widths.append(float(item.value))
-            else:
-                widths.append(None)
-        return widths
+        if arr is not self._widths_source:
+            widths: list[float | None] = []
+            for item in arr:
+                if isinstance(item, (COSInteger, COSFloat)):
+                    widths.append(float(item.value))
+                else:
+                    widths.append(None)
+            self._widths_source = arr
+            self._widths_memo = widths
+        return self._widths_memo
 
     def set_first_char(self, value: int | None) -> None:
         """Set or clear ``/FirstChar`` on the font dictionary."""

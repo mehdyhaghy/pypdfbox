@@ -101,6 +101,13 @@ class PDFont:
         # mapping), so membership (``code in ...``) — not a ``None``
         # sentinel — distinguishes "cached miss" from "not yet computed".
         self._code_to_unicode: dict[int, str | None] = {}
+        # Converted-/Widths memo, keyed on the resolved COSArray's identity
+        # (upstream ``PDFont.getWidths`` converts once and keeps the list).
+        # Replacing the array (``set_widths`` / ``set_item``) installs a new
+        # COSArray object and so re-converts; in-place element mutation of a
+        # live array goes stale exactly like upstream's cached list.
+        self._widths_source: COSArray | None = None
+        self._widths_memo: list[float | None] = []
         # Memoised average font width (mirrors upstream ``avgFontWidth``).
         self._avg_font_width_cached: float | None = None
         # Memoised space width (mirrors upstream ``fontWidthOfSpace``).
@@ -255,13 +262,16 @@ class PDFont:
         arr = self._dict.get_dictionary_object(_WIDTHS)
         if not isinstance(arr, COSArray):
             return []
-        widths: list[float | None] = []
-        for item in arr:
-            if isinstance(item, (COSInteger, COSFloat)):
-                widths.append(float(item.value))
-            else:
-                widths.append(None)
-        return widths
+        if arr is not self._widths_source:
+            widths: list[float | None] = []
+            for item in arr:
+                if isinstance(item, (COSInteger, COSFloat)):
+                    widths.append(float(item.value))
+                else:
+                    widths.append(None)
+            self._widths_source = arr
+            self._widths_memo = widths
+        return self._widths_memo
 
     def get_first_char(self) -> int:
         """``/FirstChar`` — first character code in ``/Widths``. Default ``-1``."""

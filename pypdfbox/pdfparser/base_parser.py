@@ -311,24 +311,33 @@ class BaseParser:
 
     def skip_whitespace(self) -> None:
         """Skip whitespace bytes and ``%``-comments. Comments run to EOL."""
+        # Hot loop: hoist attribute lookups out of the per-byte iteration.
+        src = self._src
+        read = src.read
+        whitespace = _WHITESPACE_INTS
+        eof = RandomAccessRead.EOF
         while True:
-            b = self._src.read()
-            if b == RandomAccessRead.EOF:
+            b = read()
+            if b == eof:
                 return
             if b == 0x25:  # '%' — comment to EOL
                 self._skip_to_eol()
                 continue
-            if not self.is_whitespace(b):
-                self._src.rewind(1)
+            if b not in whitespace:
+                src.rewind(1)
                 return
 
     def _skip_to_eol(self) -> None:
+        # Hot loop (runs per comment byte): hoist attribute lookups.
+        src = self._src
+        read = src.read
+        eof = RandomAccessRead.EOF
         while True:
-            b = self._src.read()
-            if b == RandomAccessRead.EOF or self.is_eol(b):
+            b = read()
+            if b == eof or b == 0x0A or b == 0x0D:
                 # Consume CRLF as a unit — the LF after CR is part of the EOL.
-                if b == 0x0D and self._src.peek() == 0x0A:
-                    self._src.read()
+                if b == 0x0D and src.peek() == 0x0A:
+                    read()
                 return
 
     def skip_eol(self) -> None:

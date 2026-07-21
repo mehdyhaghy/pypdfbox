@@ -183,15 +183,56 @@ class RandomAccessReadBuffer(RandomAccessRead):
     # Public API
     # ------------------------------------------------------------------
 
+    # NOTE on the repeated inline ``if self._closed: raise OSError(...)``
+    # guards below: ``read`` / ``peek`` / ``seek`` / ``get_position`` /
+    # ``rewind`` are the per-byte hot path of the tokenizer (millions of
+    # calls per parse). Inlining the guard avoids two extra Python frames
+    # (``_check_open`` -> ``check_closed``) per call. The exception type and
+    # message are identical to ``check_closed``; the helper methods above are
+    # kept for external callers and subclasses.
+
     def read(self) -> int:
-        self._check_open()
+        if self._closed:
+            raise OSError("RandomAccessBuffer already closed")
         b = self._buf.read(1)
         return b[0] if b else self.EOF
+
+    def peek(self) -> int:
+        """Read one byte without advancing position. Returns 0..255 or -1.
+
+        Overrides the base ``read()``+``rewind(1)`` round-trip with a direct
+        buffer access; observable behavior (closed-check error, EOF result,
+        unchanged position) is identical.
+        """
+        if self._closed:
+            raise OSError("RandomAccessBuffer already closed")
+        buf = self._buf
+        pos = buf.tell()
+        if pos >= self._length:
+            return self.EOF
+        b = buf.read(1)
+        buf.seek(pos)
+        return b[0]
+
+    def rewind(self, n: int) -> None:
+        """Move position back by ``n`` bytes (negative ``n`` seeks forward).
+
+        Overrides the base ``seek(get_position() - n)`` chain with a direct
+        buffer seek; validation and clamping match ``seek`` exactly.
+        """
+        if self._closed:
+            raise OSError("RandomAccessBuffer already closed")
+        buf = self._buf
+        position = buf.tell() - n
+        if position < 0:
+            raise OSError(f"Invalid position {position}")
+        buf.seek(min(position, self._length))
 
     def read_into(
         self, buf: bytearray, offset: int = 0, length: int | None = None
     ) -> int:
-        self._check_open()
+        if self._closed:
+            raise OSError("RandomAccessBuffer already closed")
         if length is None:
             length = len(buf) - offset
         if length < 0:
@@ -204,11 +245,13 @@ class RandomAccessReadBuffer(RandomAccessRead):
         return self._buf.readinto(view)
 
     def get_position(self) -> int:
-        self._check_open()
+        if self._closed:
+            raise OSError("RandomAccessBuffer already closed")
         return self._buf.tell()
 
     def seek(self, position: int) -> None:
-        self._check_open()
+        if self._closed:
+            raise OSError("RandomAccessBuffer already closed")
         if position < 0:
             raise OSError(f"Invalid position {position}")
         # PDFBox semantics: seeking past end clamps to end, leaving stream at EOF.
@@ -228,7 +271,8 @@ class RandomAccessReadBuffer(RandomAccessRead):
         ``RandomAccessReadBuffer.isEOF()`` which compares the pointer
         against ``size`` directly.
         """
-        self._check_open()
+        if self._closed:
+            raise OSError("RandomAccessBuffer already closed")
         return self._buf.tell() >= self._length
 
     def close(self) -> None:

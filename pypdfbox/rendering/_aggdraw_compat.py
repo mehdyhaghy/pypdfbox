@@ -103,6 +103,7 @@ class Pen:
     """
 
     __slots__ = (
+        "_paint_cache",
         "color",
         "dash",
         "line_cap",
@@ -130,6 +131,12 @@ class Pen:
         self.line_join: int = int(line_join)
         self.miter_limit: float = float(miter_limit)
         self.dash: tuple[tuple[float, ...], float] | None = dash
+        # Memoised (antialias_flag, skia.Paint) built from this pen —
+        # see Draw._make_stroke_paint_from_pen. Pens are value objects
+        # (never mutated after construction anywhere in pypdfbox), so a
+        # long-lived pen reused across many draws skips the per-draw
+        # Paint construction.
+        self._paint_cache: tuple[bool, Any] | None = None
 
 
 class Brush:
@@ -439,7 +446,16 @@ class Draw:
         element array applies the same length to gaps. Degenerate dash
         arrays (sum <= 0) are skipped so the line stays solid rather than
         vanishing.
+
+        The built Paint is memoised on the pen (pens are immutable value
+        objects in practice) keyed on the antialias flag, so re-drawing
+        with the same pen skips the Paint + DashPathEffect rebuild.
+        skia Paints are not mutated by ``drawPath``, so sharing one
+        across draws (and canvases) is safe.
         """
+        cached = pen._paint_cache
+        if cached is not None and cached[0] == self._antialias:
+            return cached[1]
         paint = skia.Paint(
             Color=pen.color,
             StrokeWidth=pen.width,
@@ -461,6 +477,7 @@ class Draw:
                 effect = skia.DashPathEffect.Make(ivals, float(phase))
                 if effect is not None:
                     paint.setPathEffect(effect)
+        pen._paint_cache = (self._antialias, paint)
         return paint
 
     def path(
@@ -496,6 +513,86 @@ class Draw:
         if pen is not None:
             canvas.drawPath(sk_path, self._make_stroke_paint_from_pen(pen))
             self._dirty = True
+
+    def path_region_bytes(
+        self,
+        path: Path,
+        bbox: tuple[int, int, int, int],
+        pen: Pen | None = None,
+        brush: Brush | None = None,
+        *,
+        transform: tuple[float, ...] | None = None,
+    ) -> bytes:
+        """Draw ``path`` restricted to the integer-aligned device-space
+        ``bbox`` = ``(x0, y0, x1, y1)``, return the region's raw RGBA
+        bytes, then clear the region back to transparent.
+
+        Specialised scratch-layer helper (no aggdraw counterpart) for the
+        renderer's through-clip glyph paint: the :class:`Draw` must wrap
+        an all-transparent scratch image whose canvas matrix is identity
+        on entry.  ``transform`` is applied (as in :meth:`settransform`)
+        *after* the clip so the clip rectangle is interpreted in device
+        pixels.  The pixel-aligned non-antialiased ``clipRect`` does not
+        alter anti-aliased coverage for pixels inside the region and
+        guarantees no pixel outside it is touched, so drawing at absolute
+        device coordinates stays bit-identical to a full-canvas layer
+        while only the region is ever read or written — and the final
+        ``clear`` (which skia restricts to the active clip) restores the
+        scratch to fully transparent for the next call.
+        """
+        x0, y0, x1, y1 = bbox
+        canvas = self._canvas
+        state = self._state
+        canvas.save()
+        try:
+            canvas.clipRect(
+                skia.Rect.MakeLTRB(float(x0), float(y0), float(x1), float(y1))
+            )
+            if transform is not None:
+                self.settransform(transform)
+            self.path(path, pen, brush)
+            self._surface.flushAndSubmit()
+            pixels = state.pixels
+            row_bytes = state.row_bytes
+            width4 = (x1 - x0) * 4
+            region = bytearray((y1 - y0) * width4)
+            for i, y in enumerate(range(y0, y1)):
+                offset = y * row_bytes + x0 * 4
+                region[i * width4 : (i + 1) * width4] = pixels[
+                    offset : offset + width4
+                ]
+            return bytes(region)
+        finally:
+            canvas.clear(skia.ColorTRANSPARENT)
+            canvas.restore()
+
+    def reseed_region(self, bbox: tuple[int, int, int, int]) -> None:
+        """Re-seed the backing pixel buffer from the wrapped PIL image
+        for the integer-aligned region ``bbox`` = ``(x0, y0, x1, y1)``
+        only.
+
+        Specialised helper (no aggdraw counterpart): valid when the
+        buffer already reflects the image everywhere else — i.e. after a
+        ``flush()`` followed by an external mutation (``Image.paste``)
+        restricted to ``bbox``.  Equivalent to rebinding a fresh
+        ``Draw(image)`` (which re-seeds the *whole* buffer) but O(region)
+        instead of O(canvas); the renderer's per-glyph through-clip paint
+        is the hot caller.
+        """
+        x0, y0, x1, y1 = bbox
+        region = self._pil.crop((x0, y0, x1, y1))
+        if region.mode != "RGBA":
+            region = region.convert("RGBA")
+        data = region.tobytes()
+        state = self._state
+        pixels = state.pixels
+        row_bytes = state.row_bytes
+        width4 = (x1 - x0) * 4
+        for i, y in enumerate(range(y0, y1)):
+            offset = y * row_bytes + x0 * 4
+            pixels[offset : offset + width4] = data[
+                i * width4 : (i + 1) * width4
+            ]
 
     # The remaining methods below are NOT exercised by the renderer at
     # the time of porting (the audit in wave 1329 confirmed it), but

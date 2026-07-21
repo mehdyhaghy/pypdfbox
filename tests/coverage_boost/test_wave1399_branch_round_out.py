@@ -195,6 +195,8 @@ def test_pdfont_get_widths_skips_non_number_entries() -> None:
             self._dict = d  # bypass abstract initialiser
             self._avg_font_width_cached = None
             self._font_width_of_space = None
+            self._widths_source = None
+            self._widths_memo = []
 
     arr = COSArray()
     arr.add(COSInteger.get(100))

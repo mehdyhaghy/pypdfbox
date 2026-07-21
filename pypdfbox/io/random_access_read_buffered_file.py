@@ -43,10 +43,57 @@ class RandomAccessReadBufferedFile(RandomAccessRead):
                 "org.apache.pdfbox.io.RandomAccessReadBufferedFile already closed"
             )
 
+    # NOTE on the repeated inline ``if self._closed: raise OSError(...)``
+    # guards below: ``read`` / ``peek`` / ``seek`` / ``get_position`` /
+    # ``rewind`` are the tokenizer's per-byte hot path (millions of calls
+    # per parse). Inlining the guard avoids two extra Python frames
+    # (``_check_open`` -> ``check_closed``) per call. The exception type and
+    # message are identical to ``check_closed``, which is kept for external
+    # callers.
+
     def read(self) -> int:
-        self._check_open()
+        if self._closed:
+            raise OSError(
+                "org.apache.pdfbox.io.RandomAccessReadBufferedFile already closed"
+            )
         b = self._buf.read(1)
         return b[0] if b else self.EOF
+
+    def peek(self) -> int:
+        """Read one byte without advancing position. Returns 0..255 or -1.
+
+        Overrides the base ``read()``+``rewind(1)`` round-trip with a
+        direct buffered read and an in-buffer relative seek back;
+        observable behavior (closed-check error, EOF result, unchanged
+        position) is identical.
+        """
+        if self._closed:
+            raise OSError(
+                "org.apache.pdfbox.io.RandomAccessReadBufferedFile already closed"
+            )
+        buf = self._buf
+        b = buf.read(1)
+        if b:
+            buf.seek(-1, io.SEEK_CUR)
+            return b[0]
+        return self.EOF
+
+    def rewind(self, n: int) -> None:
+        """Move position back by ``n`` bytes (negative ``n`` seeks forward).
+
+        Overrides the base ``seek(get_position() - n)`` chain with a
+        direct buffered seek; validation and clamping match ``seek``
+        exactly.
+        """
+        if self._closed:
+            raise OSError(
+                "org.apache.pdfbox.io.RandomAccessReadBufferedFile already closed"
+            )
+        buf = self._buf
+        position = buf.tell() - n
+        if position < 0:
+            raise OSError(f"Invalid position {position}")
+        buf.seek(min(position, self._length))
 
     def read_into(
         self, buf: bytearray, offset: int = 0, length: int | None = None
@@ -65,11 +112,17 @@ class RandomAccessReadBufferedFile(RandomAccessRead):
         return n if n is not None else 0
 
     def get_position(self) -> int:
-        self._check_open()
+        if self._closed:
+            raise OSError(
+                "org.apache.pdfbox.io.RandomAccessReadBufferedFile already closed"
+            )
         return self._buf.tell()
 
     def seek(self, position: int) -> None:
-        self._check_open()
+        if self._closed:
+            raise OSError(
+                "org.apache.pdfbox.io.RandomAccessReadBufferedFile already closed"
+            )
         if position < 0:
             raise OSError(f"Invalid position {position}")
         # PDFBox semantics: seeking past end clamps to end, leaving stream at EOF.

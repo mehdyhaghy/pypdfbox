@@ -1090,6 +1090,17 @@ class PDFRenderer(PDFStreamEngine):
         # PDFont instances pointing at the same dict still warrant separate
         # warnings (different content streams may have referenced them).
         self._warned_standard14_fonts: set[int] = set()
+        # Memoised per-font decisions for ``_maybe_warn_standard14`` (the
+        # check runs per glyph; its outcome is fixed per font instance).
+        self._standard14_warn_decided: set[int] = set()
+        # Cached constant pen for ``_draw_placeholder_box`` (per-glyph
+        # path; the pen never varies).
+        self._placeholder_pen: aggdraw.Pen | None = None
+        # Persistent transparent scratch surfaces for the through-clip
+        # glyph paint, keyed by canvas size (the canvas swaps for
+        # transparency groups / tiling / text knockout). See
+        # ``_acquire_glyph_clip_scratch``.
+        self._glyph_clip_scratch: dict[tuple[int, int], aggdraw.Draw] = {}
         # Cache of resolved fallback FontBoxFont programs (Standard 14 /
         # system substitutes) for fonts whose own program isn't embedded.
         # Keyed by ``id(font)``; ``None`` means "we tried and the mapper
@@ -1522,7 +1533,9 @@ class PDFRenderer(PDFStreamEngine):
         self._pending_clip = None
         self._font_cache = {}
         self._warned_standard14_fonts = set()
+        self._standard14_warn_decided = set()
         self._font_program_cache = {}
+        self._glyph_clip_scratch = {}
         # Reset text-knockout sub-canvas state (wave 1387) — defensive
         # in case a previous render aborted mid-BT/ET.
         self._text_knockout_layer = None
@@ -9574,8 +9587,18 @@ class PDFRenderer(PDFStreamEngine):
         branch indicates either a substitute resource missing from the
         installed package or a Type 1 draw path that bypassed the
         upstream-symmetric outline branch — both worth a debug breadcrumb.
+
+        Perf: the decision is memoised per font instance (keyed by
+        ``id(font)``, like :attr:`_warned_standard14_fonts`) — the body
+        runs once per font instead of once per glyph. Warning semantics
+        are unchanged: the log was already emitted at most once per font,
+        and none of the inputs (font name, Standard 14 membership,
+        substitute availability) can change for a given instance.
         """
         key = id(font)
+        if key in self._standard14_warn_decided:
+            return
+        self._standard14_warn_decided.add(key)
         if key in self._warned_standard14_fonts:
             return
         try:
@@ -9788,29 +9811,99 @@ class PDFRenderer(PDFStreamEngine):
         do_stroke: bool,
         clip_mask: Any,
     ) -> None:
-        """Paint ``path`` onto a fresh transparent layer then composite
-        through the active GS clip mask."""
+        """Paint ``path`` onto a transparent scratch layer then composite
+        through the active GS clip mask.
+
+        Perf: the layer draw / composite / paste is restricted to the
+        glyph's device-space bounding box (path bounds through ``ctm``,
+        inflated by the device stroke extent plus an anti-aliasing
+        margin) instead of the full canvas — a per-glyph full-canvas
+        RGBA allocation + multiply + paste was the dominant
+        text-through-clip cost. The scratch layer itself is a persistent
+        canvas-sized surface (see :meth:`_acquire_glyph_clip_scratch`)
+        so the glyph is rasterised at the *same absolute device
+        coordinates* as before — bit-identical anti-aliased coverage —
+        while :meth:`~pypdfbox.rendering._aggdraw_compat.Draw.
+        path_region_bytes` uses a pixel-aligned skia clip to guarantee
+        only the bbox region is touched (and re-cleared) per glyph. All
+        pixels outside the bbox received zero layer alpha under the old
+        full-canvas code, so the masked paste never changed them.
+        """
         assert self._image is not None
         assert self._draw is not None
-        self._draw.flush()
-        layer = Image.new("RGBA", self._image.size, (0, 0, 0, 0))
-        layer_draw = aggdraw.Draw(layer)
-        layer_draw.setantialias(True)
-        layer_draw.settransform(_to_pil_affine(ctm))
         # Wave 1386 — glyph fill/stroke alpha now honours /CA + /ca from
         # the active ExtGState (previously stored on GS but ignored at
         # glyph paint time).
         brush = self._build_glyph_brush(fill_rgb) if do_fill else None
         pen = self._build_stroke_pen(ctm) if do_stroke else None
-        layer_draw.path(path, pen, brush)
-        layer_draw.settransform()
-        layer_draw.flush()
+        # Device-space bbox: transform the path's (conservative,
+        # control-point) glyph-local bounds through the affine.
+        affine = _to_pil_affine(ctm)
+        a, b, c, d, e, f = affine
+        bounds = path._sk.getBounds()  # noqa: SLF001
+        gx0, gy0 = bounds.left(), bounds.top()
+        gx1, gy1 = bounds.right(), bounds.bottom()
+        corners = ((gx0, gy0), (gx1, gy0), (gx0, gy1), (gx1, gy1))
+        xs = tuple(a * gx + b * gy + c for gx, gy in corners)
+        ys = tuple(d * gx + e * gy + f for gx, gy in corners)
+        # Anti-aliasing safety margin; a stroke additionally extends the
+        # geometry by the device stroke width (pen widths are glyph-local
+        # — skia applies them before ``ctm``), with miter joins spiking
+        # up to ``miter_limit * width / 2`` beyond the joint.
+        margin = 4.0
+        if pen is not None:
+            device_stroke = pen.width * self._approx_scale(ctm)
+            margin += device_stroke * (max(1.0, pen.miter_limit) * 0.5 + 1.0)
+        canvas_w, canvas_h = self._image.size
+        x0 = max(0, math.floor(min(xs) - margin))
+        y0 = max(0, math.floor(min(ys) - margin))
+        x1 = min(canvas_w, math.ceil(max(xs) + margin))
+        y1 = min(canvas_h, math.ceil(max(ys) + margin))
+        if x0 >= x1 or y0 >= y1:
+            # Entirely off-canvas — the full-canvas paint would not have
+            # changed a pixel either (zero alpha everywhere on canvas).
+            return
+        self._draw.flush()
+        scratch = self._acquire_glyph_clip_scratch()
+        region = scratch.path_region_bytes(
+            path, (x0, y0, x1, y1), pen, brush, transform=affine,
+        )
+        layer = Image.frombytes("RGBA", (x1 - x0, y1 - y0), region)
         layer_alpha = layer.split()[3]
-        combined = ImageChops.multiply(layer_alpha, clip_mask)
+        combined = ImageChops.multiply(
+            layer_alpha, clip_mask.crop((x0, y0, x1, y1))
+        )
         rgb_layer = layer.convert("RGB")
-        self._image.paste(rgb_layer, (0, 0), combined)
-        self._draw = aggdraw.Draw(self._image)
-        self._draw.setantialias(True)
+        self._image.paste(rgb_layer, (x0, y0), combined)
+        # The flush above synchronised the draw's pixel buffer with the
+        # image, and the paste only touched the bbox — so a region-sized
+        # reseed replaces the old full-canvas ``aggdraw.Draw(self._image)``
+        # rebind. (Fall back to the rebind if the draw wraps another
+        # image — defensive; the renderer keeps them paired.)
+        if self._draw._pil is self._image:  # noqa: SLF001
+            self._draw.reseed_region((x0, y0, x1, y1))
+        else:  # pragma: no cover - draw/image are always rebound together
+            self._draw = aggdraw.Draw(self._image)
+            self._draw.setantialias(True)
+
+    def _acquire_glyph_clip_scratch(self) -> aggdraw.Draw:
+        """Return the persistent transparent scratch :class:`aggdraw.Draw`
+        matching the current canvas size, creating it on first use.
+
+        Keyed by canvas size because the active canvas swaps during a
+        render (transparency groups, tiling patterns, text knockout).
+        The scratch is kept fully transparent between uses — its only
+        consumer, ``path_region_bytes``, re-clears the region it drew.
+        The cache is reset per page render.
+        """
+        assert self._image is not None
+        size = self._image.size
+        scratch = self._glyph_clip_scratch.get(size)
+        if scratch is None:
+            scratch = aggdraw.Draw(Image.new("RGBA", size, (0, 0, 0, 0)))
+            scratch.setantialias(True)
+            self._glyph_clip_scratch[size] = scratch
+        return scratch
 
     def _build_stroke_pen(self, ctm: _Matrix) -> aggdraw.Pen:
         """Return an :class:`aggdraw.Pen` configured from the current GS
@@ -9932,9 +10025,18 @@ class PDFRenderer(PDFStreamEngine):
         Used when the font has no embedded outline we can rasterise (e.g.
         Type1 / Standard 14 in v1). The advance is used as the box width
         in 1/1000 em — same scale fontTools glyphs are normalised to.
+
+        Perf: the pen is constant (colour / width / opacity never vary),
+        so one cached instance serves every call — combined with the
+        pen-level Paint memoisation in the aggdraw shim, the per-call
+        Pen + skia.Paint rebuild disappears from this per-glyph path.
         """
         if self._draw is None:
             return
+        pen = self._placeholder_pen
+        if pen is None:
+            pen = aggdraw.Pen((200, 200, 200), width=1.0)
+            self._placeholder_pen = pen
         path = aggdraw.Path()
         # Box 0..advance × 0..1 in em-units after the pen scale of 1/1000.
         w = advance_units / 1000.0
@@ -9946,11 +10048,7 @@ class PDFRenderer(PDFStreamEngine):
         path.close()
         self._draw.settransform(_to_pil_affine(ctm))
         try:
-            self._draw.path(
-                path,
-                aggdraw.Pen((200, 200, 200), width=1.0),
-                None,
-            )
+            self._draw.path(path, pen, None)
         finally:
             self._draw.settransform()
 
