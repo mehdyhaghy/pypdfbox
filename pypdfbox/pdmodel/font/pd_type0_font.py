@@ -7,7 +7,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, BinaryIO
 
-from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName, COSStream
+from pypdfbox.cos import COSArray, COSBase, COSDictionary, COSName, COSObject, COSStream
 
 from .pd_font import PDFont
 
@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from pypdfbox.fontbox.cmap import CMap
     from pypdfbox.pdmodel.pd_document import PDDocument
     from pypdfbox.pdmodel.pd_rectangle import PDRectangle
+    from pypdfbox.pdmodel.pd_resource_cache import PDResourceCache
 
     from .pd_cid_font import PDCIDFont
     from .pd_cid_system_info import PDCIDSystemInfo
@@ -74,8 +75,18 @@ class PDType0Font(PDFont):
 
     SUB_TYPE = "Type0"
 
-    def __init__(self, font_dict: COSDictionary | None = None) -> None:
-        super().__init__(font_dict)
+    def __init__(
+        self,
+        font_dict: COSDictionary | None = None,
+        resource_cache: PDResourceCache | None = None,
+    ) -> None:
+        # ``resource_cache`` mirrors the upstream PDFBOX-6175
+        # ``PDType0Font(COSDictionary, ResourceCache)`` constructor: when
+        # supplied, the descendant ``PDCIDFont`` wrapper (and its indirect
+        # ``/FontDescriptor``) is pooled through the cache instead of being
+        # rebuilt per call. Perf/memory only — observable output is
+        # identical with or without a cache.
+        super().__init__(font_dict, resource_cache)
         # Lazy caches — populated on first lookup, dropped only by
         # constructing a fresh wrapper. Mutating ``/Encoding`` /
         # ``/ToUnicode`` after parsing requires a new instance.
@@ -114,14 +125,37 @@ class PDType0Font(PDFont):
     def get_descendant_font(self) -> PDCIDFont | None:
         """Return the typed ``PDCIDFont`` wrapper for the first
         ``/DescendantFonts`` entry, or ``None`` when absent / malformed.
+
+        When a resource cache was supplied at construction time and the
+        descendant entry is an *indirect* reference, the cached wrapper is
+        reused (and a freshly built one is registered on first call) —
+        mirrors the upstream ``PDType0Font`` descendant pooling added for
+        PDFBOX-6175. Without a cache the historical build-per-call
+        behavior is unchanged.
         """
         arr = self._dict.get_dictionary_object(_DESCENDANT_FONTS)
         if not isinstance(arr, COSArray) or arr.size() == 0:
             return None
         first = arr.get_object(0)
-        if isinstance(first, COSDictionary):
+        if not isinstance(first, COSDictionary):
+            return None
+        cache = self._resource_cache
+        raw = arr.get(0)
+        if cache is None or not isinstance(raw, COSObject):
             return PDType0Font._wrap_descendant(first, self)
-        return None
+        cached = cache.get_cid_font(raw)
+        if cached is not None:
+            return cached
+        font = PDType0Font._wrap_descendant(first, self)
+        if font is not None:
+            # Thread the cache through so the descendant's indirect
+            # /FontDescriptor wrapper is pooled as well (upstream passes
+            # the ResourceCache into the descendant constructor; pypdfbox
+            # assigns the PDFont-level slot post-construction to keep the
+            # PDCIDFont constructor signature upstream-identical).
+            font._resource_cache = cache
+            cache.put_cid_font(raw, font)
+        return font
 
     def get_cid_font(self) -> PDCIDFont | None:
         """Alias for :meth:`get_descendant_font`. Mirrors PDFBox's

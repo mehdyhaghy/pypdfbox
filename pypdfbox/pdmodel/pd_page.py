@@ -1127,6 +1127,12 @@ class PDPage:
         early-return guard. Indirect entries (``COSObject``) are forwarded
         to the cache's typed remover; direct entries (inline COS values)
         are not cached upstream and are silently skipped.
+
+        For ``/Font`` entries whose removed wrapper is a composite
+        :class:`PDType0Font`, the descendant ``PDCIDFont`` and its indirect
+        ``/FontDescriptor`` cache entries are evicted as well — mirrors the
+        descendant eviction upstream ``PDPage.removeResources`` gained for
+        PDFBOX-6175.
         """
         if resources is None or not isinstance(resources, COSDictionary):
             return
@@ -1152,7 +1158,36 @@ class PDPage:
             for entry in list(kind_dict.values()):
                 # Only indirect objects are cached upstream.
                 if isinstance(entry, COSObject):
-                    remover(entry)
+                    removed = remover(entry)
+                    if kind == "Font" and removed is not None:
+                        self._remove_descendant_font_entries(cache, removed)
+
+    @staticmethod
+    def _remove_descendant_font_entries(cache: Any, font: Any) -> None:
+        """Evict a removed composite font's descendant ``PDCIDFont`` and
+        that descendant's indirect ``/FontDescriptor`` from ``cache``.
+
+        Mirrors the descendant eviction upstream ``PDPage.removeResources``
+        gained for PDFBOX-6175. No-op for non-Type0 fonts and for direct
+        (inline) descendant / descriptor entries, which are never cached.
+        """
+        from .font.pd_type0_font import PDType0Font
+
+        if not isinstance(font, PDType0Font):
+            return
+        arr = font.get_cos_object().get_dictionary_object(
+            COSName.get_pdf_name("DescendantFonts")
+        )
+        if not isinstance(arr, COSArray) or arr.size() == 0:
+            return
+        raw = arr.get(0)
+        if isinstance(raw, COSObject):
+            cache.remove_cid_font(raw)
+        descendant = arr.get_object(0)
+        if isinstance(descendant, COSDictionary):
+            fd_raw = descendant.get_item(COSName.get_pdf_name("FontDescriptor"))
+            if isinstance(fd_raw, COSObject):
+                cache.remove_font_descriptor(fd_raw)
 
     def get_indirect_resource_objects(
         self,

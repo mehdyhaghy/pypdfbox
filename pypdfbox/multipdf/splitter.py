@@ -533,6 +533,13 @@ class Splitter:
             dst_catalog.set_mark_info(src_catalog.get_mark_info())
         with contextlib.suppress(AttributeError, NotImplementedError):
             dst_catalog.set_metadata(src_catalog.get_metadata())
+        # PDFBOX-6203: reset the object keys of everything imported from the
+        # source catalog (viewer preferences, metadata, ...) so the writer
+        # mints fresh contiguous keys for the split output instead of reusing
+        # the source document's object numbers, which would leave gaps in the
+        # chunk's cross-reference table. Mirrors upstream
+        # ``Splitter.createNewDocument``.
+        dst_catalog.get_cos_object().reset_imported_object_keys()
         return document
 
     def process_page(self, page: PDPage) -> None:

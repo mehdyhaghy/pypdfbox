@@ -5,6 +5,7 @@ from collections.abc import Callable
 from typing import Any
 
 from .cos_base import COSBase
+from .cos_object_key import COSObjectKey
 from .cos_update_state import COSUpdateState
 from .i_cos_visitor import ICOSVisitor
 
@@ -58,6 +59,26 @@ class COSObject(COSBase):
 
     def get_generation_number(self) -> int:
         return self._generation_number
+
+    def set_key(self, key: COSObjectKey | None) -> None:
+        """Stamp (or, with ``None``, clear) this reference's key.
+
+        Mirrors the observable effect of upstream ``COSBase.setKey`` on a
+        ``COSObject``: after ``setKey(null)`` upstream's
+        ``getObjectNumber()`` / ``getGenerationNumber()`` report 0, so
+        clearing the key also zeroes the declared
+        ``object_number``/``generation_number`` pair and a subsequent
+        save mints a fresh contiguous key instead of reusing an imported
+        one (PDFBOX-6203, ``COSDictionary.resetImportedObjectKeys``).
+        Stamping a non-``None`` key keeps the ``COSBase`` behaviour
+        (records the key without touching the declared pair — the
+        pair/``_key`` split is the port's remap channel for the
+        compression pool).
+        """
+        super().set_key(key)
+        if key is None:
+            self._object_number = 0
+            self._generation_number = 0
 
     def get_object(self) -> COSBase | None:
         """Resolve and cache the referenced object, invoking the loader on

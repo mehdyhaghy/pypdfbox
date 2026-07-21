@@ -417,29 +417,35 @@ class COSArray(COSBase):
     ) -> Collection[COSObjectKey] | None:
         """Walk the array graph clearing indirect-object keys.
 
-        Mirrors PDFBox ``COSArray.resetObjectKeys`` (Java line 835). Returns
+        Mirrors PDFBox ``COSArray.resetObjectKeys`` (Java line 835,
+        PDFBOX-6203): clears this array's own parser-stamped key first
+        (short-circuiting when it was already visited), then every
+        reachable ``COSObject`` reference key, so a subsequent save mints
+        fresh contiguous keys instead of reusing imported ones. Returns
         ``indirect_objects`` (the same collection that was passed in) so
         callers can chain ``.clear()``.
-
-        Note: pypdfbox's ``COSObject`` does not currently expose a public
-        ``set_key(None)`` mutator (its identity is constructor-set), so this
-        implementation walks the graph and records each visited
-        ``COSObjectKey`` for accounting, but the underlying
-        ``object_number/generation_number`` pairs are not cleared. See
-        ``CHANGES.md`` for the divergence note.
         """
         if indirect_objects is None:
             return None
         from .cos_dictionary import COSDictionary  # noqa: PLC0415
 
+        self_key = self.get_key()
+        if self_key is not None:
+            if self_key in indirect_objects:
+                return indirect_objects
+            _add_to_collection(indirect_objects, self_key)
+            self.set_key(None)
         for value in self._items:
             child: COSBase | None = value
             indirect_key: COSObjectKey | None = None
-            if isinstance(child, COSObject):
+            # An already-cleared reference reports object number 0 —
+            # upstream's null-key wrappers are skipped the same way.
+            if isinstance(child, COSObject) and child.object_number > 0:
                 indirect_key = COSObjectKey(child.object_number, child.generation_number)
                 if indirect_key in indirect_objects:
                     continue
                 child = child.get_object()
+                value.set_key(None)
             if isinstance(child, (COSDictionary, COSArray)):
                 child.reset_object_keys(indirect_objects)
             elif indirect_key is not None:

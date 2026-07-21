@@ -73,12 +73,20 @@ class COSWriterCompressionPool:
         """Classify ``base`` and route it into the top-level or object-stream
         bucket. Mirrors upstream private ``addObjectToPool``."""
         current = base.get_object() if isinstance(base, COSObject) else base
-        if current is None:
-            return None
-        if (key is not None and self._object_pool.contains_key(key)) or (
+        # To avoid mixing up indirect objects holding the same value we have
+        # to check that the given key is the one stored for the "same" base
+        # object within the object pool (PDFBOX-6203).
+        if current is None or (
             key is None and self._object_pool.contains_object(current)
         ):
             return current
+        if key is not None and self._object_pool.contains_key(key):
+            pooled = self._object_pool.get_object(key)
+            # Only skip when the key really belongs to this object;
+            # otherwise the key is mixed up — pool the object anyway
+            # (``put`` mints a fresh key).
+            if pooled is current or pooled is base:
+                return current
 
         encryption = getattr(self._document, "get_encryption", lambda: None)()
         trailer_root = (
@@ -119,11 +127,10 @@ class COSWriterCompressionPool:
         """Visit a COS structural node, register indirect children, and
         return the next-frontier list. Mirrors upstream private ``addStructure``."""
         base: COSBase | None = current
-        if (
-            isinstance(current, COSStream)
-            or (isinstance(current, COSDictionary) and not current.is_direct())
-            or (isinstance(current, COSArray) and not current.is_direct())
-        ):
+        # PDFBOX-6203 / PDFBOX-5660 net shape: pool only indirect containers.
+        # COSStream is a COSDictionary subclass, so the direct-check applies
+        # to streams too (no unconditional COSStream branch any more).
+        if not current.is_direct() and isinstance(current, (COSDictionary, COSArray)):
             base = self.add_object_to_pool(current.get_key(), current)
         elif isinstance(current, COSObject):
             inner = current.get_object()

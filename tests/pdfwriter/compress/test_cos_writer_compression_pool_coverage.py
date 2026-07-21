@@ -285,18 +285,23 @@ def test_add_object_to_pool_compressible_duplicate_returns_current() -> None:
     assert again is d
 
 
-def test_add_object_to_pool_short_circuits_when_key_already_present() -> None:
+def test_add_object_to_pool_repools_foreign_object_under_taken_key() -> None:
     cos_doc = _empty_doc()
     pool = COSWriterCompressionPool(_StubDoc(cos_doc))
     first = COSDictionary()
     pool.add_object_to_pool(COSObjectKey(60, 0), first)
-    # Adding a different object under the same key short-circuits at the
-    # ``contains_key(key)`` guard — returns the new object unchanged
-    # without inserting it.
+    # PDFBOX-6203: adding a *different* object under the same key no longer
+    # short-circuits — the mixed-up key is detected (pooled entry is not the
+    # same object) and the foreign object is pooled under a freshly minted
+    # key, while the original key keeps its original object.
     foreign = COSDictionary()
     result = pool.add_object_to_pool(COSObjectKey(60, 0), foreign)
     assert result is foreign
     assert pool.get_object(COSObjectKey(60, 0)) is first
+    foreign_key = pool.get_key(foreign)
+    assert foreign_key is not None
+    assert foreign_key != COSObjectKey(60, 0)
+    assert pool.get_object(foreign_key) is foreign
 
 
 # ---------------------------------------------------------------------

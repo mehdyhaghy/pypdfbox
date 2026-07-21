@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import contextlib
 import logging
-import tempfile
 import threading
 from collections.abc import Iterable
+from pathlib import Path
 from typing import IO
 
+from .io_utils import _register_for_deletion, create_protected_temp_file
 from .memory_usage_setting import UNLIMITED, MemoryUsageSetting, StorageMode
 from .random_access_read import RandomAccessRead
 
@@ -74,6 +76,7 @@ class ScratchFile:
         # Mapping: page_index -> file offset in self._tmp.
         self._file_pages: dict[int, int] = {}
         self._tmp: IO[bytes] | None = None
+        self._tmp_path: Path | None = None
         self._tmp_next_offset: int = 0
 
         # Free-page LIFO queue (reused by get_new_page). ``_free_pages`` is the
@@ -352,6 +355,20 @@ class ScratchFile:
                 except OSError as exc:  # pragma: no cover - extremely unlikely
                     _log.debug("ScratchFile temp file close failed: %s", exc)
                 self._tmp = None
+            if self._tmp_path is not None:
+                # Windows-safe ordering: the handle above is closed before
+                # the backing file is unlinked. Upstream ScratchFile.close
+                # (line 496) raises when the delete attempt leaves the file
+                # behind; mirror that.
+                path = self._tmp_path
+                self._tmp_path = None
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError as exc:
+                    if path.exists():
+                        raise OSError(
+                            f"Error deleting scratch file: {path}"
+                        ) from exc
 
     def __enter__(self) -> ScratchFile:
         return self
@@ -450,11 +467,33 @@ class ScratchFile:
             raise IndexError(f"page index {idx} out of range [0, {self._page_count})")
 
     def _ensure_tmp(self) -> IO[bytes]:
+        """Open (creating on first use) the backing scratch file.
+
+        Mirrors upstream ``ScratchFile.enlarge`` (line 236) after
+        PDFBOX-6185: the backing file is created via
+        :func:`pypdfbox.io.io_utils.create_protected_temp_file` with the
+        upstream ``"PDFBox"`` / ``".tmp"`` prefix/suffix, so owner-only
+        permissions (0600) apply at creation time on POSIX (Windows keeps
+        platform-default ACLs; the helper feature-detects). Should opening
+        the fresh file fail, it is deleted before the error propagates —
+        same as upstream's ``RandomAccessFile`` failure path. The file
+        stays on disk until :meth:`close` unlinks it (handle closed first,
+        which Windows requires); as a safety net it is also registered for
+        interpreter-shutdown deletion, preserving the no-leak guarantee the
+        previous ``tempfile.TemporaryFile`` backing provided.
+        """
         if self._tmp is None:
-            self._tmp = tempfile.TemporaryFile(  # noqa: SIM115
-                mode="w+b",
-                dir=self._setting.temp_dir,
+            path = create_protected_temp_file(
+                self._setting.temp_dir, "PDFBox", ".tmp"
             )
+            _register_for_deletion(path)
+            try:
+                self._tmp = path.open("r+b")  # noqa: SIM115
+            except OSError:
+                with contextlib.suppress(OSError):
+                    path.unlink()
+                raise
+            self._tmp_path = path
         return self._tmp
 
     def _allocate_new_page(self) -> int:

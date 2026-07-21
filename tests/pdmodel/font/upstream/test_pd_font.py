@@ -20,6 +20,14 @@ Listed below are the upstream methods and the per-test disposition:
   ``tests/pdmodel/font/upstream/test_pd_type0_font.py``,
   ``tests/pdmodel/font/upstream/test_pd_type1_font.py``).
 
+- ``testPDFBox6172`` (added by PDFBOX-6211 on the upstream ``3.0``
+  branch, post-3.0.7) — regression test + PDF fixture for PDFBOX-6172.
+  Both the Java test body and its fixture postdate the pinned 3.0.7
+  snapshot and are unavailable offline (no upstream source clone, no
+  network); tracked below as a skip until the 3.0.8 re-sync (see
+  ``archive/migration-docs/UPSTREAM_3.0.8_WATCHLIST.md``, PDFBOX-6211
+  row).
+
 The cases in this file are the *base-class invariants* the upstream
 suite implies but does not assert directly: the COS surface of the
 abstract ``PDFont`` (type / subtype / descriptor / ``/ToUnicode`` cmap
@@ -29,6 +37,8 @@ plumbing). Hand-written counterparts live in
 """
 
 from __future__ import annotations
+
+import pytest
 
 from pypdfbox.cos import COSDictionary, COSName
 from pypdfbox.pdmodel.font import PDType1Font
@@ -133,3 +143,19 @@ def test_pd_font_to_string_java_spelling_matches_str() -> None:
     font.get_cos_object().set_name(COSName.get_pdf_name("BaseFont"), "Helvetica")
     assert font.to_string() == "PDType1Font Helvetica"
     assert font.to_string() == str(font)
+
+
+# Upstream ``testPDFBox6172`` was added to PDFontTest.java by PDFBOX-6211 on
+# the ``3.0`` maintenance branch (post-3.0.7, unreleased 3.0.8). Neither the
+# Java test body nor its PDF fixture exists in this repo's offline archive
+# (archive/ holds only compiled 3.0.7 jars; the /tmp/pdfbox source clone was
+# cleaned up), and the ticket postdates the pinned 3.0.7 baseline, so the
+# regression cannot be recreated faithfully without guessing at PDFBOX-6172's
+# behavior. Placeholder skip per the porting conventions; fill in the real
+# test + fixture (with PROVENANCE.md rows) at the 3.0.8 re-sync.
+@pytest.mark.skip(
+    reason="PDFBOX-6211 upstream test source + fixture unavailable offline; port at 3.0.8 re-sync"
+)
+def test_pdfbox6172() -> None:
+    """Regression test for PDFBOX-6172 (fixture-driven; see skip reason)."""
+    raise NotImplementedError("port upstream testPDFBox6172 at 3.0.8 re-sync")

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io
 from pathlib import Path
 
 import pytest
@@ -325,20 +324,28 @@ def test_temp_file_only_pages_round_trip() -> None:
 def test_temp_file_uses_configured_temp_dir(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    seen_dirs: list[object] = []
+    seen: list[tuple[object, object, object]] = []
 
-    def fake_temporary_file(*, mode: str, dir: object | None = None) -> io.BytesIO:
-        assert mode == "w+b"
-        seen_dirs.append(dir)
-        return io.BytesIO()
+    def fake_create_protected_temp_file(
+        directory: object, prefix: object, suffix: object
+    ) -> Path:
+        seen.append((directory, prefix, suffix))
+        path = tmp_path / f"{prefix}fake{suffix}"
+        path.write_bytes(b"")
+        return path
 
     setting = MemoryUsageSetting.setup_temp_file_only().set_temp_dir(tmp_path)
-    monkeypatch.setattr("pypdfbox.io.scratch_file.tempfile.TemporaryFile", fake_temporary_file)
+    monkeypatch.setattr(
+        "pypdfbox.io.scratch_file.create_protected_temp_file",
+        fake_create_protected_temp_file,
+    )
 
     with ScratchFile(setting):
         pass
 
-    assert seen_dirs == [tmp_path]
+    # Upstream ScratchFile.enlarge passes the configured scratch dir plus
+    # the "PDFBox"/".tmp" prefix/suffix to IOUtils.createProtectedTempFile.
+    assert seen == [(tmp_path, "PDFBox", ".tmp")]
 
 
 def test_mixed_mode_spills_pages_above_cap() -> None:

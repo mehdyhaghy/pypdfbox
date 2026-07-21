@@ -139,21 +139,11 @@ def _array_get_indirect_object_keys(
 def _array_reset_object_keys(
     array: COSArray, indirect_objects: Collection[COSObjectKey]
 ) -> None:
-    """Inline traversal of a ``COSArray`` for ``reset_object_keys``."""
-    for value in array:
-        child: COSBase | None = value
-        indirect_key: COSObjectKey | None = None
-        if isinstance(child, COSObject):
-            indirect_key = COSObjectKey(child.object_number, child.generation_number)
-            if indirect_key in indirect_objects:
-                continue
-            child = child.get_object()
-        if isinstance(child, COSDictionary):
-            child.reset_object_keys(indirect_objects)
-        elif isinstance(child, COSArray):
-            _array_reset_object_keys(child, indirect_objects)
-        elif indirect_key is not None:
-            _add_to_collection(indirect_objects, indirect_key)
+    """Inline dispatch to ``COSArray.reset_object_keys`` for the
+    dictionary-side walk. Kept as a helper (historic wave-lock shape) but
+    delegating so the array traversal — including the PDFBOX-6203 key
+    clearing — has a single implementation."""
+    array.reset_object_keys(indirect_objects)
 
 
 def _get_dictionary_string(base: COSBase | None, objs: list[COSBase]) -> str:
@@ -787,28 +777,34 @@ class COSDictionary(COSBase):
     ) -> Collection[COSObjectKey] | None:
         """Walk the dictionary graph clearing indirect-object keys.
 
-        Mirrors PDFBox ``COSDictionary.resetObjectKeys`` (Java line 1529).
-        Returns ``indirect_objects`` (the same collection that was passed
-        in) so callers can chain ``.clear()``.
-
-        Note: pypdfbox's ``COSObject`` does not currently expose a public
-        ``set_key(None)`` mutator (its identity is constructor-set), so
-        this implementation walks the graph and records each visited
-        ``COSObjectKey`` for accounting, but the underlying
-        ``object_number/generation_number`` pairs are not cleared. See
-        ``CHANGES.md`` for the divergence note.
+        Mirrors PDFBox ``COSDictionary.resetObjectKeys`` (Java line 1529,
+        PDFBOX-6203): clears this dictionary's own parser-stamped key
+        first (short-circuiting when it was already visited), then every
+        reachable ``COSObject`` reference key, so a subsequent save mints
+        fresh contiguous keys instead of reusing imported ones. Returns
+        ``indirect_objects`` (the same collection that was passed in) so
+        callers can chain ``.clear()``.
         """
         if indirect_objects is None:
             return None
+        self_key = self.get_key()
+        if self_key is not None:
+            if self_key in indirect_objects:
+                return indirect_objects
+            _add_to_collection(indirect_objects, self_key)
+            self.set_key(None)
         parent_skip = (COSName.PARENT, COSName.get_pdf_name("P"))
         for entry_key, value in self._items.items():
             child: COSBase | None = value
             indirect_key: COSObjectKey | None = None
-            if isinstance(child, COSObject):
+            # An already-cleared reference reports object number 0 —
+            # upstream's null-key wrappers are skipped the same way.
+            if isinstance(child, COSObject) and child.object_number > 0:
                 indirect_key = COSObjectKey(child.object_number, child.generation_number)
                 if indirect_key in indirect_objects:
                     continue
                 child = child.get_object()
+                value.set_key(None)
             if isinstance(child, COSDictionary):
                 if entry_key not in parent_skip:
                     child.reset_object_keys(indirect_objects)

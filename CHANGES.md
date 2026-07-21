@@ -5011,6 +5011,25 @@ than "False arm missing".
   upstream: PDFBox 3.0.8 `org.apache.pdfbox.pdmodel.font.TrueTypeEmbedder` / `PDCIDFontType2Embedder#buildToUnicodeCMap` (PDFBOX-6210)
   reason: forward-port from the 3.0.8 watchlist.
 
+- **Compression pool no longer drops objects whose indirect key is mixed up** — `COSWriterCompressionPool.add_object_to_pool` skips a pooled key only when the pooled entry is identically the same object (resolved object or wrapper); a different object under a taken key is re-pooled under a freshly minted key. `add_structure` now pools exactly the indirect COSDictionary/COSArray nodes (`not is_direct()`); COSStream, as a COSDictionary subclass, is subject to the same direct-check instead of being pooled unconditionally. Matches upstream 3.0.8 PDFBOX-6203 (commits `139fa725`/`f02a510a` as amended by the PDFBOX-5660 follow-ups, final `513aa3ed`).
+  upstream: PDFBox 3.0.8 `org.apache.pdfbox.pdfwriter.compress.COSWriterCompressionPool#addObjectToPool` / `#addStructure` (PDFBOX-6203 parts 1–2)
+  reason: forward-port from the 3.0.8 watchlist.
+
+- **`ScratchFile`'s spill file is now created via `IOUtils.create_protected_temp_file` (`PDFBox*.tmp`, owner-only 0600 on POSIX)** and stays on disk until `close()` unlinks it (handle closed first, atexit safety net), instead of an anonymous immediately-unlinked `tempfile.TemporaryFile`; `close()` now raises `OSError("Error deleting scratch file: …")` when the backing file cannot be removed, matching upstream `ScratchFile.close`. Matches upstream 3.0.8 PDFBOX-6185.
+  upstream: PDFBox 3.0.8 `org.apache.pdfbox.io.ScratchFile#enlarge` / `#close` (PDFBOX-6185)
+  reason: forward-port from the 3.0.8 watchlist (owner-only temp-file hardening; open-failure deletes the fresh file).
+
+- **CIDFont / FontDescriptor resource-cache consumers wired (perf/memory only)** — `PDFont` constructor takes an optional `resource_cache` and pools an *indirect* `/FontDescriptor` wrapper through it; `PDFontFactory.create_font` forwards the cache on the /Type0 arm instead of dropping it; `PDType0Font.get_descendant_font` reuses / registers the cached descendant `PDCIDFont` for indirect `/DescendantFonts` entries; `PDPage.remove_resources` evicts the descendant CIDFont + FontDescriptor cache entries when a cached composite font is removed. No cache supplied → behavior unchanged; observable parsing/rendering output identical either way. Matches upstream 3.0.8 PDFBOX-6175 (commits `68f652f4`/`f6ed8ab0`, part b; part a — compact /W2 ranges — was already covered).
+  upstream: PDFBox 3.0.8 `org.apache.pdfbox.pdmodel.font.PDFont` / `PDFontFactory` / `PDType0Font`, `org.apache.pdfbox.pdmodel.PDPage#removeResources` (PDFBOX-6175)
+  reason: forward-port from the 3.0.8 watchlist.
+
+- **`Splitter.create_new_document` now calls `reset_imported_object_keys()` on the destination catalog, and `COSDictionary`/`COSArray.reset_object_keys` really clear keys** — own parser-stamped key plus reachable `COSObject` reference keys (`COSObject.set_key(None)` zeroes the declared num/gen pair, mirroring upstream `setKey(null)`), removing the previous partial-no-op divergence; split chunks no longer inherit source object numbers into their xref (gap-free contiguous numbering, qpdf-clean). Matches upstream 3.0.8 PDFBOX-6203 part 3.
+  upstream: PDFBox 3.0.8 `org.apache.pdfbox.multipdf.Splitter#createNewDocument`, `org.apache.pdfbox.cos.COSDictionary`/`COSArray#resetObjectKeys`, `COSBase#setKey` (PDFBOX-6203)
+  reason: forward-port from the 3.0.8 watchlist.
+- **Port note vs upstream: `COSObject.get_key()` still returns the `COSBase`-stamped key** (the port's compression-pool remap channel), not the declared reference pair as in Java; `reset_object_keys` derives wrapper keys from the declared pair, so observable reset behavior matches upstream.
+  upstream: PDFBox 3.0.x `org.apache.pdfbox.cos.COSObject#getKey`
+  reason: internal-representation divergence only; documented so a future refactor doesn't "fix" it blind (see `cos_writer_object_stream.py` remap usage).
+
 ## See also
 
 - [`PROVENANCE.md`](PROVENANCE.md) — per-file upstream porting provenance (Apache 2.0 §4(b)).
