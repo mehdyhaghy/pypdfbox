@@ -4989,6 +4989,28 @@ than "False arm missing".
   upstream: PDFBox 3.0.7 `org.apache.fontbox.ttf.NamingTable#read` (storage base `getOffset() + 2*3 + numberOfNameRecords*2*6 + stringOffset`; guard `nr.getStringOffset() > getLength()` only), `#getCharset` (Windows enc 0/1 + Unicode platform -> `StandardCharsets.UTF_16`; ISO enc 0 -> US-ASCII, enc 1 -> `UTF_16BE`; all else ISO-8859-1), `#readInterestingStrings` (`psName.trim()`), `org.apache.fontbox.ttf.TTFParser#parseTables` (eager per-table read -> parse-time IOException)
   reason: pypdfbox honoured the declared string-storage offset, nulled records on any end-crossing read instead of reading on / failing the parse, decoded Windows UCS-4 records as UTF-16 and consumed ISO-enc-1 BOMs, replaced malformed surrogates with Python-codec granularity, trimmed the PostScript name with Python whitespace semantics, and (via the fontTools projection) dropped malformed records entirely — all now byte-aligned with the live 3.0.7 oracle across the 55-case adversarial corpus.
 
+- **`PDPage.get_annotations`: malformed (non-dict) `/Annots` members are now logged and skipped instead of raising.** Matches upstream 3.0.8 PDFBOX-6206 (commit `5c83719b`): each item is wrapped per-item (`OSError` ↔ Java `IOException` caught, `_LOG.error`, continue) so one bad member no longer aborts the whole call as in 3.0.7.
+  upstream: PDFBox 3.0.8 `org.apache.pdfbox.pdmodel.PDPage#getAnnotations` (PDFBOX-6206)
+  reason: forward-port from the 3.0.8 watchlist — tolerant per-item handling is the released upstream direction.
+
+- **`CCITTFaxDecode`: non-positive `/Columns` or reconciled row count now raises `OSError` (`Invalid CCITT image dimensions: cols=…, rows=…`) instead of returning zero-filled/empty output, and decode-buffer allocation is capped at 256 MB (overridable via the `org.apache.pdfbox.filter.ccittmaxbytes` env var, same convention as the deflate-level sysprop).** Matches upstream 3.0.8 PDFBOX-6189 (commit `6fc67f50`).
+  upstream: PDFBox 3.0.8 `org.apache.pdfbox.filter.CCITTFaxFilter#decode` (PDFBOX-6189)
+  reason: forward-port from the 3.0.8 watchlist; the 3.0.7 live oracle will disagree on these degenerate-geometry cases until the oracle jars swap to 3.0.8.
+
+- **`PDFMergerUtility`: output-intent merge now ports upstream 3.0.8 `mergeOutputIntents` (PDFBOX-6173 operand order).** Source intents whose non-null, non-"Custom" `/OutputConditionIdentifier` already exists in the destination are skipped (dedup); the destination `/OutputIntents` array is created on demand and per-entry copies go through `add_output_intent` — the source array is never installed wholesale.
+  upstream: PDFBox 3.0.8 `org.apache.pdfbox.multipdf.PDFMergerUtility#mergeOutputIntents` (PDFBOX-6173)
+  reason: forward-port from the 3.0.8 watchlist; oracle probe `archive/oracle/probes/MergeOutputIntentsProbe.java` pins the semantics.
+- **Lenient divergence: non-dictionary `/OutputIntents` entries are silently skipped during merge**, where upstream `PDDocumentCatalog.getOutputIntents` would raise `ClassCastException`.
+  upstream: PDFBox 3.0.x `org.apache.pdfbox.pdmodel.PDDocumentCatalog#getOutputIntents`
+  reason: Python port favors tolerant skip over an uncatchable cast error for malformed input; behavior covered by `tests/multipdf/test_merge_output_intent_dedup_wave1602.py`.
+
+- **`TTFParser.parse_table_headers` now rejects OTF PostScript fonts whose only outline table is CFF2** ("OpenType fonts using CFF2 outlines are not supported") instead of accepting them; every parsed font gets its SFNT scaler version seeded (`set_version`) as the check's prerequisite. Matches upstream 3.0.8 PDFBOX-6216 (commit `498c4a01`).
+  upstream: PDFBox 3.0.8 `org.apache.fontbox.ttf.TTFParser#parseTableHeaders` / `#isSupportedOTF` (PDFBOX-6216)
+  reason: forward-port from the 3.0.8 watchlist.
+- **ToUnicode CMap for embedded TrueType subsets now maps each glyph to the code point actually used in the document (first occurrence wins)** rather than the cmap's lowest code point; subset code points are insertion-ordered and exposed via `TrueTypeEmbedder.get_subset_code_points()`. Matches upstream 3.0.8 PDFBOX-6210 (commit `74458715`).
+  upstream: PDFBox 3.0.8 `org.apache.pdfbox.pdmodel.font.TrueTypeEmbedder` / `PDCIDFontType2Embedder#buildToUnicodeCMap` (PDFBOX-6210)
+  reason: forward-port from the 3.0.8 watchlist.
+
 ## See also
 
 - [`PROVENANCE.md`](PROVENANCE.md) — per-file upstream porting provenance (Apache 2.0 §4(b)).

@@ -1734,37 +1734,43 @@ class COSWriter(ICOSVisitor):
         feeds it ``getXRefEntries()``, copies the trailer info, and writes
         the stream as a regular object).
 
-        The appended stream lists ONLY the objects this increment rewrote
-        (already accumulated in ``self._xref_entries`` by the body pass)
-        plus the mandatory free-list head (object 0). Crucially the xref
-        stream's OWN entry is NOT added to its ``/Index`` — upstream's
-        ``PDFXRefStream.getIndexEntry`` only knows about object 0 and the
-        entries fed via ``addEntry``; the reader locates the stream through
-        ``startxref``, not through a self-reference (oracle-confirmed:
-        ``/Index [0 1 33 1]`` for a one-page edit, no self-entry).
+        The appended stream lists the objects this increment rewrote
+        (already accumulated in ``self._xref_entries`` by the body pass),
+        the mandatory free-list head (object 0), AND — since PDFBox 3.0.8
+        (PDFBOX-6176, commit c827ba96) — the xref stream's OWN entry at its
+        own byte offset. Upstream now pre-assigns the stream's object key
+        (``++number``), calls ``addEntry(new NormalXReference(
+        xrefStreamOffset, xrefStreamKey, null))`` BEFORE ``getStream()``
+        serialises the body, and sets ``setSize(number + 1)``, so the
+        self-row lands in the stream data, its number in ``/Index``, and
+        its columns in the ``/W`` width scan. (3.0.7 omitted the self-row,
+        leaving an xref gap at the stream's own number; this method used to
+        mirror that bug for oracle parity — it now matches 3.0.8.)
 
-        ``/Size`` is the document-wide highest object number + 1 (covering
-        the freshly-minted xref stream object), ``/Prev`` points at the
-        source's previous ``startxref``, and ``/ID[1]`` is refreshed while
-        ``/ID[0]`` is preserved (PDF 32000-1 §14.4)."""
+        ``/Size`` is the document-wide highest object number + 1 (i.e. the
+        xref stream's own number + 1, upstream's ``number + 1``), ``/Prev``
+        points at the source's previous ``startxref``, and ``/ID[1]`` is
+        refreshed while ``/ID[0]`` is preserved (PDF 32000-1 §14.4)."""
         out = self._standard_output
 
-        # Mint the xref stream's own number FIRST so /Size can account for
-        # it. It is deliberately kept out of the entry/index set below.
+        # Mint the xref stream's own number FIRST (upstream's ``++number``)
+        # so its self-entry and /Size can account for it.
         xref_key = self._mint_fresh_object_key()
+
+        # The xref stream's own byte offset. Nothing else is written between
+        # here and the stream emit, so the current position IS the stream's
+        # offset — upstream reads ``getStandardOutput().getPos()`` at the
+        # same point and both seeds ``startxref`` and the self-entry with it.
+        xref_offset = out.get_position()
 
         # The changed entries fed into the stream (``streamData`` upstream).
         # This list mirrors exactly what ``COSWriter.doWriteXRefInc`` passes to
-        # ``PDFXRefStream.addEntry`` — only the objects this increment rewrote.
-        # We deliberately do NOT prepend object 0's free head here and do NOT
-        # add the xref stream's OWN self-entry: upstream
-        # ``PDFXRefStream.writeStreamData`` emits the object-0 ``NULL_ENTRY``
-        # row implicitly (always, as a single leading row) and the self
-        # ``NormalXReference`` is only registered on ``COSWriter`` *after*
-        # ``getStream()`` already serialised the body, so it never lands in the
-        # stream data nor the ``/Index`` (oracle-confirmed against PDFBox
-        # 3.0.7: a one-field edit emits ``/Index [0 1 30 1 32 1]`` with three
-        # rows and no self-row). We do NOT run ``_fill_gaps_with_free_entries``
+        # ``PDFXRefStream.addEntry`` — the objects this increment rewrote plus
+        # (since 3.0.8, PDFBOX-6176) the xref stream's own self-row, appended
+        # after the loop below. We deliberately do NOT prepend object 0's free
+        # head here: upstream ``PDFXRefStream.writeStreamData`` emits the
+        # object-0 ``NULL_ENTRY`` row implicitly (always, as a single leading
+        # row). We do NOT run ``_fill_gaps_with_free_entries``
         # — that would re-declare every untouched object number as free.
         entries: list[tuple[int, int, int, int]] = []
         for entry in self._xref_entries:
@@ -1788,6 +1794,15 @@ class COSWriter(ICOSVisitor):
             else:
                 entries.append((objnum, 1, entry.offset, entry.key.generation_number))
 
+        # PDFBOX-6176 (3.0.8): the xref stream's OWN NormalXReference — a
+        # type-1 row at the stream's byte offset, generation 0. Mirrors
+        # ``pdfxRefStream.addEntry(new NormalXReference(xrefStreamOffset,
+        # xrefStreamKey, null))``, called before ``getStream()`` so the row
+        # participates in the stream data, the /Index ranges, and the /W
+        # width scan below. (3.0.7 registered it only after serialisation,
+        # producing an xref gap at the stream's own number.)
+        entries.append((xref_key.object_number, 1, xref_offset, 0))
+
         # ``streamData`` is sorted by object number before width computation
         # (upstream sorts it in ``writeStreamData``); sort here so the body and
         # the /Index ranges agree.
@@ -1795,28 +1810,26 @@ class COSWriter(ICOSVisitor):
 
         # /W widths — mirror ``PDFXRefStream.getWEntry``: each field width is
         # the byte count of the MAX value in that column ACROSS ``streamData``
-        # ONLY (the implicit object-0 NULL_ENTRY row and the self-entry are
-        # both excluded from the width scan). A column whose max is 0 yields
-        # width 0 — so a pure offset-only increment (all generations 0, no
-        # object-stream rows) correctly produces ``/W [1 3 0]`` rather than the
-        # over-wide ``[1 3 2]`` that injecting the 65535 free-head gen forced.
-        max_field1 = max((t for _n, t, _f2, _f3 in entries), default=0)
-        max_field2 = max((f2 for _n, _t, f2, _f3 in entries), default=0)
-        max_field3 = max((f3 for _n, _t, _f2, f3 in entries), default=0)
+        # ONLY (the implicit object-0 NULL_ENTRY row is excluded from the
+        # width scan; since 3.0.8 the self-row IS in streamData and thus in
+        # the scan). A column whose max is 0 yields width 0 — so a pure
+        # offset-only increment (all generations 0, no object-stream rows)
+        # correctly produces ``/W [1 3 0]`` rather than the over-wide
+        # ``[1 3 2]`` that injecting the 65535 free-head gen would force.
+        # The self-row (type 1, offset > 0) guarantees w1 >= 1 and w2 >= 1,
+        # so the previously-needed all-zero-width fallback is gone — as
+        # upstream, which never had one.
+        max_field1 = max(t for _n, t, _f2, _f3 in entries)
+        max_field2 = max(f2 for _n, _t, f2, _f3 in entries)
+        max_field3 = max(f3 for _n, _t, _f2, f3 in entries)
         w1 = _xref_field_width(max_field1)
         w2 = _xref_field_width(max_field2)
         w3 = _xref_field_width(max_field3)
-        if w1 + w2 + w3 == 0:
-            # Degenerate increment: no object was rewritten, so the stream
-            # body holds only the implicit object-0 free-head row. All-zero
-            # widths would make that row (and the stream) unparseable —
-            # readers reject ``/W [0 0 0]``. Give the type and offset
-            # columns one byte each so the mandatory row survives.
-            w1, w2 = 1, 1
 
         # /Index — upstream ``getIndexEntry`` always seeds object 0 into the
-        # index range (so a fresh reader sees the free-list head), then the
-        # changed object numbers. The self-entry's number is excluded.
+        # index range (so a fresh reader sees the free-list head), then every
+        # streamData object number — including, since 3.0.8 (PDFBOX-6176),
+        # the xref stream's own number.
         index_numbers = sorted({0, *(n for n, _t, _f2, _f3 in entries)})
 
         # Body: leading object-0 row from the NULL_ENTRY (type 0, next-free 0,
@@ -1831,8 +1844,6 @@ class COSWriter(ICOSVisitor):
             body.extend(_pack_unsigned(t, w1))
             body.extend(_pack_unsigned(f2, w2))
             body.extend(_pack_unsigned(f3, w3))
-
-        xref_offset = out.get_position()
 
         index_arr = COSArray()
         index_arr.set_direct(True)
@@ -1866,9 +1877,10 @@ class COSWriter(ICOSVisitor):
         xref_stream.set_int(COSName.LENGTH, 0)  # type: ignore[attr-defined]
 
         # /Size = document-wide highest object number + 1, including the new
-        # xref stream object. Mirrors upstream ``setSize(number + 2)`` where
-        # ``number`` is the highest source object number. Computed up front but
-        # inserted in step (3) below.
+        # xref stream object. Mirrors upstream ``setSize(number + 1)`` where
+        # ``number`` was pre-incremented to the xref stream's own object
+        # number (PDFBOX-6176). Computed up front but inserted in step (3)
+        # below.
         doc_keys = {k.object_number for k in doc.get_object_keys()}
         doc_keys.update(k.object_number for k in self._key_object)
         size_value = max(doc_keys | {xref_key.object_number}, default=0) + 1

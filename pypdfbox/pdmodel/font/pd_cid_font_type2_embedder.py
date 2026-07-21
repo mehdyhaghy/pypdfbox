@@ -295,8 +295,18 @@ class PDCIDFontType2Embedder(TrueTypeEmbedder):
     ) -> None:
         """Write the ToUnicode CMap stream.
 
-        Mirrors upstream ``buildToUnicodeCMap`` (Java line 129-184).
+        Mirrors upstream ``buildToUnicodeCMap`` (Java line 131-201).
         """
+        # PDFBOX-6210: when several code points map to one glyph, prefer
+        # the one actually used in the document (first occurrence wins)
+        # instead of the cmap's lowest entry, which is often an unexpected
+        # compatibility character.
+        input_code_point_by_gid: dict[int, int] = {}
+        for code_point in self.get_subset_code_points():
+            input_gid = self._get_glyph_id(code_point)
+            if input_gid > 0:
+                input_code_point_by_gid.setdefault(input_gid, code_point)
+
         writer = ToUnicodeWriter()
         has_surrogates = False
         cmap = self._get_unicode_cmap_reverse()
@@ -312,8 +322,14 @@ class PDCIDFontType2Embedder(TrueTypeEmbedder):
             else:
                 cid = gid
             codes = cmap.get(cid)
-            if codes:
-                code_point = codes[0]
+            # PDFBOX-6210: use the code point actually typed in the
+            # document when one was recorded for this glyph; fall back to
+            # the cmap's first (lowest) entry otherwise.
+            input_code_point = input_code_point_by_gid.get(cid)
+            if input_code_point is not None or codes:
+                code_point = (
+                    input_code_point if input_code_point is not None else codes[0]
+                )
                 if code_point > 0xFFFF:
                     has_surrogates = True
                 writer.add(cid, chr(code_point))
@@ -513,7 +529,13 @@ class PDCIDFontType2Embedder(TrueTypeEmbedder):
         self._cid_font.set_name(COSName.BASE_FONT, new_name)
 
     def _get_unicode_cmap_reverse(self) -> dict[int, list[int]]:
-        """Return CID -> [code_point, ...] from the TTF cmap."""
+        """Return CID -> [code_point, ...] from the TTF cmap.
+
+        Each list is sorted ascending, mirroring upstream
+        ``CmapSubtable.getCharCodes`` whose first entry (the lowest code
+        point) is the PDFBOX-6210 fallback for glyphs with no recorded
+        input code point.
+        """
         try:
             cmap_table = self._ttf["cmap"]
             best_cmap = cmap_table.getBestCmap()
@@ -528,7 +550,30 @@ class PDCIDFontType2Embedder(TrueTypeEmbedder):
             except (AttributeError, TypeError):
                 continue
             result.setdefault(gid, []).append(cp)
+        for codes in result.values():
+            codes.sort()
         return result
+
+    def _get_glyph_id(self, code_point: int) -> int:
+        """Return the glyph id for *code_point*, or ``0`` when unmapped.
+
+        Mirrors upstream ``cmapLookup.getGlyphId(codePoint)`` as used by
+        the PDFBOX-6210 used-code-point preference in
+        ``buildToUnicodeCMap`` (Java line 137-145).
+        """
+        try:
+            best_cmap = self._ttf["cmap"].getBestCmap()
+        except (KeyError, AttributeError):
+            return 0
+        if not best_cmap:
+            return 0
+        name = best_cmap.get(code_point)
+        if name is None:
+            return 0
+        try:
+            return int(self._ttf.getGlyphID(name) or 0)
+        except (AttributeError, TypeError):
+            return 0
 
     def get_cid_font(self) -> Any:
         """Return the descendant :class:`PDCIDFontType2`.

@@ -232,3 +232,23 @@ def test_surrogate_pair_character_exception_is_valid_code_point() -> None: ...
     " until the text-extraction pipeline is in scope."
 )
 def test_embedded_font_with_zero_width_chars() -> None: ...
+
+
+@pytest.mark.skip(
+    reason="PDFBOX-6210 testToUnicodePrefersUsedCodePoint needs"
+    " NotoSansCJKkr-VF.ttf (maven-downloaded from googlefonts, not"
+    " bundled), and no bundled font has a glyph shared between two"
+    " printable code points; the used-code-point preference is covered"
+    " synthetically in"
+    " tests/pdmodel/font/test_to_unicode_used_codepoint_wave1602.py."
+)
+def test_to_unicode_prefers_used_code_point() -> None: ...
+
+
+@pytest.mark.skip(
+    reason="PDFBOX-6210 testToUnicodeCjkAndRadicalLookAlike needs"
+    " NotoSansCJKkr-VF.ttf (CJK ideograph U+98DF and radical U+2EDD"
+    " share one glyph), not bundled; covered synthetically in"
+    " tests/pdmodel/font/test_to_unicode_used_codepoint_wave1602.py."
+)
+def test_to_unicode_cjk_and_radical_look_alike() -> None: ...

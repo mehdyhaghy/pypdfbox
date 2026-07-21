@@ -2,6 +2,13 @@
 
 Source: ``pdfbox/src/test/java/org/apache/pdfbox/pdmodel/interactive/form/TestCheckBox.java``
 (PDFBox 3.0.x).
+
+Skipped upstream cases:
+- ``testPDFBox6207`` (3.0.8) — depends on the external ``PDFBOX-6207.pdf``
+  regression fixture fetched by the upstream Maven harness from
+  ``target/pdfs/``. The behavior (empty ``COSString`` /Opt yields an empty
+  export-value list) is covered in-memory by
+  ``tests/pdmodel/interactive/form/test_button_empty_opt_wave1602.py``.
 """
 
 from __future__ import annotations

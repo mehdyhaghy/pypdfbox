@@ -347,7 +347,8 @@ def test_merge_oc_properties_cloner_none_skips_install() -> None:
 
 def test_merge_output_intents_cloner_none_skips_install() -> None:
     """Source /OutputIntents present, dest missing, cloner returns None
-    → branch 1346->1348 false path."""
+    → no install. (PDFBOX-6173, wave 1602: cloning is now per-intent with
+    dedup, but a None clone result still installs nothing.)"""
     util = PDFMergerUtility()
     src = _SimpleCatalog()
     arr = COSArray()
@@ -359,8 +360,9 @@ def test_merge_output_intents_cloner_none_skips_install() -> None:
 
 
 def test_merge_output_intents_appends_when_dest_array_present() -> None:
-    """When dest already has /OutputIntents (array), cloned entries
-    are appended → exercises line 1349-1352."""
+    """When dest already has /OutputIntents (array), cloned entries are
+    appended. (PDFBOX-6173, wave 1602: intents without an
+    /OutputConditionIdentifier are always appended — no dedup possible.)"""
     util = PDFMergerUtility()
     src = _SimpleCatalog()
     src_arr = COSArray()
@@ -1338,8 +1340,9 @@ def test_merge_threads_when_cloned_src_not_array() -> None:
 
 
 def test_merge_output_intents_when_cloned_not_array() -> None:
-    """Dest has /OutputIntents, source clone result is a dict (not
-    array) → skip append loop (branch 1350->exit false path)."""
+    """Dest has /OutputIntents, source array empty → nothing appended.
+    (PDFBOX-6173, wave 1602: the whole-array clone was replaced by a
+    per-intent dedup loop; an empty source array appends nothing.)"""
 
     class _DictCloner:
         def clone_for_new_document(self, value: object) -> object:

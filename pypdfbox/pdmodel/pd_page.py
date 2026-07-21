@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import math
 from typing import Any
 
@@ -14,6 +15,8 @@ from pypdfbox.cos import (
 
 from .pd_rectangle import PDRectangle
 from .pd_resources import PDResources
+
+_LOG = logging.getLogger(__name__)
 
 # Names referenced by PDPage. Upstream uses constants from COSName but
 # many of these aren't pre-interned in our COSName module yet — we do it
@@ -743,14 +746,15 @@ class PDPage:
 
         Returns an empty list when ``/Annots`` is absent or not an array.
         Each non-``null`` entry is dispatched to the appropriate subclass
-        via :meth:`PDAnnotation.create`. Mirroring upstream's
-        ``getAnnotations`` loop exactly (PDFBox 3.0.7), only ``null`` array
-        members are skipped (``if (item == null) continue;``); a non-``null``
-        member that is **not** a dictionary is passed to
-        ``PDAnnotation.createAnnotation``, which raises (upstream throws
-        ``IOException("Error: Unknown annotation type ...")`` — pypdfbox's
-        ``PDAnnotation.create`` raises ``TypeError`` for the same case).
-        pypdfbox does NOT silently swallow a non-dict annotation member.
+        via :meth:`PDAnnotation.create_annotation`. Mirroring upstream's
+        ``getAnnotations`` loop (PDFBox 3.0.8, PDFBOX-6206), ``null`` array
+        members are skipped (``if (item == null) continue;``) and a member
+        that ``createAnnotation`` rejects (upstream throws
+        ``IOException("Error: Unknown annotation type ...")`` for a
+        non-dictionary — pypdfbox's ``PDAnnotation.create_annotation``
+        raises :class:`OSError` for the same case) is logged and skipped
+        instead of failing the whole call. Before 3.0.8 one malformed
+        annotation aborted ``getAnnotations`` for the entire page.
 
         ``annotation_filter`` mirrors upstream's
         ``getAnnotations(AnnotationFilter)``: a ``Callable[[PDAnnotation],
@@ -773,10 +777,16 @@ class PDPage:
             if entry is None:
                 # Match upstream's ``if (item == null) continue;`` defensive skip.
                 continue
-            # A non-null, non-dict member reaches createAnnotation upstream,
-            # which raises. We do the same (no silent skip) so a malformed
-            # /Annots member fails loudly, matching PDFBox.
-            created = PDAnnotation.create(entry)
+            # PDFBOX-6206 (3.0.8): a malformed /Annots member no longer
+            # fails the whole call — upstream wraps createAnnotation in
+            # try/catch(IOException), logs, and skips the bad entry.
+            # ``create_annotation`` is the OSError-raising mirror of
+            # ``createAnnotation`` (OSError ↔ IOException).
+            try:
+                created = PDAnnotation.create_annotation(entry)
+            except OSError as exc:
+                _LOG.error(str(exc), exc_info=exc)
+                continue
             if annotation_filter is None or annotation_filter(created):
                 result.append(created)
         return result

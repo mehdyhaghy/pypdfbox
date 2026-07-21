@@ -5,7 +5,7 @@ import logging
 
 import pytest
 
-from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName, COSString
+from pypdfbox.cos import COSArray, COSDictionary, COSInteger, COSName
 from pypdfbox.multipdf import PDFMergerUtility
 from pypdfbox.pdmodel import PDDocument, PDPage
 
@@ -206,7 +206,14 @@ def test_wave504_merge_helpers_append_into_existing_destinations() -> None:
     dest_output_intents = COSArray()
     src_names.set_string(COSName.get_pdf_name("FromSource"), "name")
     src_dests.set_string(COSName.get_pdf_name("Chapter"), "dest")
-    src_output_intents.add(COSString("intent"))
+    # Upstream mergeOutputIntents copies dictionary intents per-entry; a
+    # source intent with a distinct /OutputConditionIdentifier is appended
+    # into the existing destination array.
+    src_intent = COSDictionary()
+    src_intent.set_string(
+        COSName.get_pdf_name("OutputConditionIdentifier"), "intent"
+    )
+    src_output_intents.add(src_intent)
     src_dict.set_item(_NAMES, src_names)
     src_dict.set_item(_DESTS, src_dests)
     src_dict.set_item(_OUTPUT_INTENTS, src_output_intents)
@@ -222,7 +229,12 @@ def test_wave504_merge_helpers_append_into_existing_destinations() -> None:
     assert dest_names.get_string(COSName.get_pdf_name("FromSource")) == "name"
     assert dest_dests.get_string(COSName.get_pdf_name("Chapter")) == "dest"
     assert dest_output_intents.size() == 1
-    assert dest_output_intents.get_object(0).get_string() == "intent"
+    appended = dest_output_intents.get_object(0)
+    assert appended is src_intent
+    assert (
+        appended.get_string(COSName.get_pdf_name("OutputConditionIdentifier"))
+        == "intent"
+    )
 
 
 def test_wave504_page_labels_without_nums_creates_empty_destination_nums() -> None:

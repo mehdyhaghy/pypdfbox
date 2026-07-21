@@ -956,6 +956,10 @@ def test_build_to_unicode_cmap_pdf_version_already_at_least_1_5() -> None:
     embedder._ttf = _TTF()  # noqa: SLF001
     embedder._document_ref = doc  # noqa: SLF001
     embedder._dict = COSDictionary()  # noqa: SLF001
+    # PDFBOX-6210: the builder now consults the insertion-ordered subset
+    # code points (used-code-point preference); seed the empty store the
+    # real __init__ would have created.
+    embedder._subset_code_points = {}  # noqa: SLF001
     embedder._build_to_unicode_cmap(None)  # noqa: SLF001
     # Version must still be ≥ 1.5 (not bumped down, not modified up).
     assert float(doc.get_version()) >= 1.5

@@ -121,6 +121,9 @@ def test_parse_table_headers_naming_raises_handled(ttf_bytes: bytes) -> None:
             return "subfam"
 
     class _FlakyFont:
+        def set_version(self, version_value: float) -> None:
+            """Accept the SFNT scaler version the parser seeds (PDFBOX-6216)."""
+
         def get_naming(self) -> _FlakyNaming:
             return _FlakyNaming()
 
@@ -178,6 +181,9 @@ def test_parse_table_headers_non_otf_with_cff_table_errors() -> None:
     rejected (legacy TTF with CFF outlines, mismatch upstream calls out)."""
 
     class _FontWithCff:
+        def set_version(self, version_value: float) -> None:
+            """Accept the SFNT scaler version the parser seeds (PDFBOX-6216)."""
+
         def get_naming(self):
             return None
 
@@ -202,6 +208,9 @@ def test_parse_table_headers_missing_mandatory_table_errors() -> None:
     set_error fires and the helper short-circuits."""
 
     class _FontMissingHead:
+        def set_version(self, version_value: float) -> None:
+            """Accept the SFNT scaler version the parser seeds (PDFBOX-6216)."""
+
         def get_naming(self):
             return None
 

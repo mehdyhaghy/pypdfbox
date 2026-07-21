@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import io
 
+import pytest
+
 from pypdfbox.cos import COSDictionary
 from pypdfbox.filter import CCITTFaxDecode
 
@@ -120,17 +122,16 @@ def test_ccitt_black_is_1_polarity_flip_round_trip() -> None:
 def test_ccitt_columns_default_is_1728() -> None:
     """When /Columns is omitted the decoder uses 1728 (PDF default).
 
-    We test the read path with an empty body — that's harmless per the
-    contract — but verify that /Columns was resolved (the output params
-    dict gets ``Columns`` set to the actual decoded width).
+    With no /Rows and no /Height the reconciled row count is 0, which
+    PDFBOX-6189 (3.0.8) rejects up front — the error message carries the
+    resolved dimensions, proving /Columns defaulted to 1728.
     """
     f = CCITTFaxDecode()
     # /Columns missing → default 1728 inside the filter.
     params = COSDictionary()
     params.set_int("K", -1)
-    out_buf = io.BytesIO()
-    result = f.decode(io.BytesIO(b""), out_buf, params, 0)
-    assert result.bytes_written == 0
+    with pytest.raises(OSError, match=r"cols=1728, rows=0"):
+        f.decode(io.BytesIO(b""), io.BytesIO(), params, 0)
 
 
 def test_ccitt_encode_rejects_zero_columns() -> None:
@@ -164,7 +165,7 @@ def test_ccitt_encode_rejects_zero_rows() -> None:
 
 
 def test_ccitt_decode_rejects_negative_columns() -> None:
-    """Decode rejects /Columns <= 0."""
+    """Decode rejects /Columns <= 0 (PDFBOX-6189, upstream message shape)."""
     f = CCITTFaxDecode()
     params = COSDictionary()
     params.set_int("K", -1)
@@ -173,6 +174,6 @@ def test_ccitt_decode_rejects_negative_columns() -> None:
     try:
         f.decode(io.BytesIO(b"\x00\x01\x02"), io.BytesIO(), params, 0)
     except OSError as exc:
-        assert "Columns" in str(exc) or "columns" in str(exc).lower()
+        assert "Invalid CCITT image dimensions: cols=-1, rows=4" in str(exc)
     else:
         raise AssertionError("expected OSError on /Columns=-1")

@@ -1428,6 +1428,26 @@ class PDAppearanceGenerator:
         top_index = max(0, field.get_top_index())
         selected_indices = field.get_selected_options_indices()
 
+        # PDFBOX-6150 (3.0.8) — upstream ``PDComboBox.constructAppearances``:
+        # when the field carries separate export and display values, a combo
+        # box renders the DISPLAY value found at the index of the selected
+        # export value within the options export list. When the export value
+        # is not found in the options (or the pair list is too short), the
+        # raw ``/V`` export value is rendered unchanged.
+        combo_lines = selected_values
+        if (
+            not is_listbox
+            and selected_values
+            and field.has_separate_export_and_display_values()
+        ):
+            display_values = field.get_options_display_values()
+            try:
+                index = field.get_options().index(selected_values[0])
+            except ValueError:
+                index = -1
+            if index != -1 and index < len(display_values):
+                combo_lines = [display_values[index]]
+
         for widget in field.get_widgets():
             # Wave 1375 — per-widget font resolution: walks /AP /N /Resources
             # + page /Resources after /DR /Font so custom-embedded /DA fonts
@@ -1452,7 +1472,7 @@ class PDAppearanceGenerator:
                 )
             else:
                 self._regenerate_choice_widget(
-                    widget, selected_values, font, font_name, font_size, color
+                    widget, combo_lines, font, font_name, font_size, color
                 )
 
     def _regenerate_choice_widget(

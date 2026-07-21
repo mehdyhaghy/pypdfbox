@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import os
 import struct
 from typing import Any, BinaryIO, cast
 
@@ -56,6 +57,36 @@ _COMPRESSION_T6 = 4
 #   bit 2 = byte-aligned EOL codes  (PDF /EncodedByteAlign)
 _T4_TWO_DIMENSIONAL = 0x1
 _T4_ENCODED_BYTE_ALIGN = 0x4
+
+# PDFBOX-6189 (3.0.8): default cap on the decode-buffer allocation. A
+# malicious /Columns × /Rows pair can otherwise request a multi-GB
+# zero-filled buffer before a single encoded byte is inspected.
+_DEFAULT_MAX_DECODE_BYTES = 256 * 1024 * 1024
+
+
+def _max_decode_bytes() -> int:
+    """Resolve the CCITT decode-buffer cap (PDFBOX-6189).
+
+    Mirrors ``CCITTFaxFilter.decode``'s read of the
+    ``Filter.SYSPROP_CCITTFAX_MAXBYTES`` system property — consumed as an
+    environment variable on the Python side, same convention as
+    ``SYSPROP_DEFLATELEVEL`` in :meth:`Filter.get_compression_level`.
+    A positive integer overrides the 256 MB default; zero, negative or
+    unparseable values are ignored (default kept), matching upstream.
+    """
+    max_bytes = _DEFAULT_MAX_DECODE_BYTES
+    sys_prop = os.environ.get(Filter.SYSPROP_CCITTFAX_MAXBYTES)
+    if sys_prop is not None:
+        try:
+            parsed = int(sys_prop)
+        except ValueError:
+            # ignore invalid value, keep default
+            pass
+        else:
+            if parsed > 0:
+                max_bytes = parsed
+            # else ignore zero/negative values
+    return max_bytes
 
 
 def _resolve_decode_params(parameters: COSDictionary | None, index: int) -> COSDictionary:
@@ -221,48 +252,46 @@ class CCITTFaxDecode(Filter):
         _ = decode_params.get_boolean(_END_OF_BLOCK, True)
         _ = decode_params.get_int(_DAMAGED_ROWS_BEFORE_ERROR, 0)
 
-        # Mirror ``CCITTFaxFilter.decode`` allocation EXACTLY for the
-        # degenerate-geometry cases. Upstream computes
-        # ``rowBytes = (columns + 7) / 8`` and ``arraySize = rowBytes * rows``
-        # with no bounds check on ``columns``, so:
-        #   * /Columns == 0  -> rowBytes == 0 -> arraySize == 0 -> empty output
-        #     (NOT an error — verified against the live oracle).
-        #   * /Columns < 0   -> Java throws ``NegativeArraySizeException``; we
-        #     surface the same "cannot decode" outcome as an ``OSError``.
-        # Only a negative /Columns is a hard error; a zero /Columns yields the
-        # same empty buffer PDFBox produces.
-        if columns < 0:
-            raise OSError(f"CCITTFaxDecode: invalid /Columns {columns}")
-        if columns == 0:
-            return self._zero_fill_result(
-                decoded, parameters, columns=0, rows=rows, black_is_1=black_is_1
+        # PDFBOX-6189 (3.0.8): non-positive dimensions are a hard error.
+        # Upstream previously allocated ``rowBytes * rows`` unchecked (a
+        # zero /Columns or /Rows silently produced an empty buffer, and a
+        # negative /Columns threw NegativeArraySizeException); 3.0.8 rejects
+        # both up front with an IOException — mapped to OSError here, with
+        # the exact upstream message shape.
+        if columns <= 0 or rows <= 0:
+            raise OSError(
+                f"Invalid CCITT image dimensions: cols={columns}, rows={rows}"
+            )
+
+        # PDFBOX-6189 (3.0.8): cap the decode-buffer allocation. Java does
+        # the multiplication in 64-bit to dodge int overflow; Python ints
+        # are unbounded so the arithmetic is safe by construction, only the
+        # cap itself needs porting. Message matches upstream exactly.
+        array_size = (columns + 7) // 8 * rows
+        max_bytes = _max_decode_bytes()
+        if array_size > max_bytes:
+            raise OSError(
+                f"CCITT decode buffer too large ({array_size} bytes) for "
+                f"cols={columns}, rows={rows}; max allowed={max_bytes}; "
+                f"increase {Filter.SYSPROP_CCITTFAX_MAXBYTES} to override"
             )
 
         encoded_bytes = encoded.read()
-        if not encoded_bytes or rows <= 0:
+        if not encoded_bytes:
             # Mirror ``CCITTFaxFilter.decode`` EXACTLY: it pre-allocates a fixed
-            # ``byte[(cols+7)/8 * max(rows, height)]`` buffer (zero-filled),
-            # decodes whatever scanlines it can, swallows the EOF on the rest,
-            # then inverts the whole buffer when /BlackIs1 is false. The size of
-            # that buffer is determined SOLELY by the reconciled row count
-            # (``rows``), never by the encoded body. So:
-            #   * empty body, rows known  -> ``rows * rowBytes`` of WHITE (0xFF
-            #     default, 0x00 for /BlackIs1) — NOT zero bytes;
-            #   * any body, rows == 0     -> ``arraySize == 0`` -> ZERO bytes
-            #     (no /Rows AND no /Height; for a real image XObject /Height is
-            #     always present on the stream dict, so this is the synthetic
-            #     "neither dimension known" case). pypdfbox formerly invented a
-            #     data-driven row estimate here; upstream emits nothing, and we
-            #     now match byte-for-byte. The standalone row-discovery path
-            #     lives in ``CCITTFaxDecoderStream`` (which is the upstream
-            #     consumer that genuinely needs it), not in the filter contract.
+            # ``byte[(cols+7)/8 * rows]`` buffer (zero-filled), decodes whatever
+            # scanlines it can, swallows the EOF on the rest, then inverts the
+            # whole buffer when /BlackIs1 is false. The size of that buffer is
+            # determined SOLELY by the reconciled row count (``rows``), never by
+            # the encoded body — so an empty body with known geometry yields
+            # ``rows * rowBytes`` of WHITE (0xFF default, 0x00 for /BlackIs1),
+            # NOT zero bytes.
             return self._zero_fill_result(
                 decoded, parameters, columns=columns, rows=rows, black_is_1=black_is_1
             )
 
-        # Past this point ``rows`` is guaranteed > 0 (the rows <= 0 case is
-        # handled by the zero-fill short-circuit above, mirroring upstream's
-        # ``arraySize == 0`` allocation).
+        # Past this point ``columns`` and ``rows`` are both guaranteed > 0
+        # (the dimension guard above raised otherwise, per PDFBOX-6189).
 
         # Polarity must match Apache PDFBox's CCITTFaxFilter, which is the
         # behavioural oracle. PDFBox decodes the fax bitstream into a buffer

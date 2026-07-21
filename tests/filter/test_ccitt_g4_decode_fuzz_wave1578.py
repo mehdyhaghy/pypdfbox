@@ -234,33 +234,32 @@ def test_full_width_1728_round_trip() -> None:
 
 
 def test_columns_default_is_1728_on_empty_body() -> None:
-    """Omitted /Columns resolves to the PDF default 1728; an empty body with
-    no row count writes zero bytes (arraySize == 0), matching upstream."""
+    """Omitted /Columns resolves to the PDF default 1728; with no row count
+    PDFBOX-6189 (3.0.8) rejects the geometry up front, and the error message
+    carries the resolved cols=1728 (proving the default was applied)."""
     f = CCITTFaxDecode()
     params = COSDictionary()
     sub = COSDictionary()
     sub.set_int("K", -1)
     params.set_item("DecodeParms", sub)
-    out = io.BytesIO()
-    result = f.decode(io.BytesIO(b""), out, params, 0)
-    assert result.bytes_written == 0
-    assert result.parameters.get_int("Columns") == 1728
+    with pytest.raises(OSError, match=r"cols=1728, rows=0"):
+        f.decode(io.BytesIO(b""), io.BytesIO(), params, 0)
 
 
-def test_columns_zero_yields_empty_buffer() -> None:
-    """/Columns == 0 -> rowBytes 0 -> arraySize 0 -> empty output (NOT error),
-    mirroring CCITTFaxFilter's unchecked allocation."""
+def test_columns_zero_raises() -> None:
+    """/Columns == 0 -> IOException upstream since PDFBOX-6189 (3.0.8;
+    formerly an unchecked arraySize == 0 allocation) -> OSError here."""
     f = CCITTFaxDecode()
-    out = io.BytesIO()
-    result = f.decode(io.BytesIO(b"\x00\x01"),
-                      out, _params(k=-1, columns=0, rows=4), 0)
-    assert result.bytes_written == 0
+    with pytest.raises(OSError, match=r"Invalid CCITT image dimensions: cols=0, rows=4"):
+        f.decode(io.BytesIO(b"\x00\x01"),
+                 io.BytesIO(), _params(k=-1, columns=0, rows=4), 0)
 
 
 def test_columns_negative_raises() -> None:
-    """/Columns < 0 -> NegativeArraySizeException upstream -> OSError here."""
+    """/Columns < 0 -> IOException upstream since PDFBOX-6189 (3.0.8;
+    formerly NegativeArraySizeException) -> OSError here."""
     f = CCITTFaxDecode()
-    with pytest.raises(OSError, match="(?i)columns"):
+    with pytest.raises(OSError, match=r"Invalid CCITT image dimensions: cols=-1, rows=4"):
         f.decode(io.BytesIO(b"\x00\x01\x02"),
                  io.BytesIO(), _params(k=-1, columns=-1, rows=4), 0)
 

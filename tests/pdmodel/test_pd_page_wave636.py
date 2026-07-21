@@ -72,19 +72,28 @@ def test_wave636_annotations_skip_null_entries() -> None:
     ]
 
 
-def test_wave636_annotations_raise_on_non_dict_member() -> None:
-    """A non-``null``, non-dictionary /Annots member is NOT silently skipped:
-    upstream passes it to ``PDAnnotation.createAnnotation``, which throws
-    ``IOException("Error: Unknown annotation type ...")``. pypdfbox's
-    ``PDAnnotation.create`` raises ``TypeError`` for the same case — wave 1515
-    aligned the page loop to propagate it rather than swallow the member."""
+def test_wave636_annotations_log_and_skip_non_dict_member(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A non-``null``, non-dictionary /Annots member is logged and skipped
+    (PDFBOX-6206, upstream 3.0.8): ``getAnnotations`` wraps
+    ``PDAnnotation.createAnnotation`` per-item in try/catch(IOException),
+    logs the error, and continues — one malformed member no longer aborts
+    the whole call. Well-formed members in the same array still dispatch."""
     page = PDPage()
     text = PDAnnotationText()
     annots = COSArray([COSName.get_pdf_name("Bad"), text.get_cos_object()])
     page.get_cos_object().set_item("Annots", annots)
 
-    with pytest.raises(TypeError):
-        page.get_annotations()
+    with caplog.at_level("ERROR", logger="pypdfbox.pdmodel.pd_page"):
+        result = page.get_annotations()
+
+    assert [annotation.get_cos_object() for annotation in result] == [
+        text.get_cos_object()
+    ]
+    assert any(
+        "Unknown annotation type" in record.getMessage() for record in caplog.records
+    )
 
 
 def test_wave636_box_fallbacks_and_clipping_are_independent() -> None:

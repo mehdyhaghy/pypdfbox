@@ -1497,19 +1497,53 @@ class PDFMergerUtility:
         src_catalog: Any,
         dest_catalog: Any,
     ) -> None:
+        # Upstream ``mergeOutputIntents`` (net 3.0.8 shape, PDFBOX-6173):
+        # copy output intents to the destination, but skip source intents
+        # whose /OutputConditionIdentifier already exists in the destination
+        # — except when the identifier is missing or is named "Custom".
+        # The 3.0.8 operand order compares the *source* identifier against
+        # each destination identifier so a destination intent lacking the
+        # identifier is survived rather than crashed on.
+        from pypdfbox.pdmodel.graphics.color import PDOutputIntent
+
         src_oi = src_catalog.get_cos_object().get_dictionary_object(_OUTPUT_INTENTS)
         if not isinstance(src_oi, COSArray):
             return
-        dest_oi = dest_catalog.get_cos_object().get_dictionary_object(_OUTPUT_INTENTS)
-        if not isinstance(dest_oi, COSArray):
-            cloned = cloner.clone_for_new_document(src_oi)
-            if cloned is not None:
-                dest_catalog.get_cos_object().set_item(_OUTPUT_INTENTS, cloned)
-            return
-        cloned = cloner.clone_for_new_document(src_oi)
-        if isinstance(cloned, COSArray):
-            for i in range(cloned.size()):
-                dest_oi.add(cloned.get(i))
+        dest_cos = dest_catalog.get_cos_object()
+        dest_oi = dest_cos.get_dictionary_object(_OUTPUT_INTENTS)
+        # Mirror ``destCatalog.getOutputIntents()`` — dictionary entries only.
+        dest_intents: list[PDOutputIntent] = []
+        if isinstance(dest_oi, COSArray):
+            for i in range(dest_oi.size()):
+                entry = dest_oi.get_object(i)
+                if isinstance(entry, COSDictionary):
+                    dest_intents.append(PDOutputIntent(entry))
+        for i in range(src_oi.size()):
+            entry = src_oi.get_object(i)
+            if not isinstance(entry, COSDictionary):
+                continue
+            src_intent = PDOutputIntent(entry)
+            src_oci = src_intent.get_output_condition_identifier()
+            if (
+                src_oci is not None
+                and src_oci != "Custom"
+                and any(
+                    src_oci == dst_intent.get_output_condition_identifier()
+                    for dst_intent in dest_intents
+                )
+            ):
+                continue
+            cloned = cloner.clone_for_new_document(entry)
+            if not isinstance(cloned, COSDictionary):
+                continue
+            if not isinstance(dest_oi, COSArray):
+                # Mirror ``destCatalog.addOutputIntent`` creating the array.
+                dest_oi = COSArray()
+                dest_cos.set_item(_OUTPUT_INTENTS, dest_oi)
+            dest_oi.add(cloned)
+            # Upstream tracks the *source* intent in its local dst list so
+            # later duplicates within the same source are also skipped.
+            dest_intents.append(src_intent)
 
     def _merge_open_action(
         self,

@@ -201,8 +201,13 @@ class PDButton(PDTerminalField):
     def get_export_values(self) -> list[str]:
         item = self.get_inheritable_attribute(_OPT)
         if isinstance(item, COSString):
-            # Upstream: ``Collections.singletonList(((COSString) value).getString())``.
-            return [item.get_string()]
+            # Upstream: ``Collections.singletonList(((COSString) value).getString())``,
+            # except an empty COSString yields ``Collections.emptyList()``
+            # (PDFBOX-6207, 3.0.8).
+            string_value = item.get_string()
+            if not string_value:
+                return []
+            return [string_value]
         if not isinstance(item, COSArray):
             return []
         out: list[str] = []

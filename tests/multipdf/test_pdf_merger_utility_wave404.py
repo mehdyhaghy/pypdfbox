@@ -199,7 +199,14 @@ def test_wave404_merge_helpers_install_missing_catalog_arrays_and_dicts() -> Non
     assert merged.get_dictionary_object(_THREADS) is threads
     assert merged.get_dictionary_object(_DESTS) is dests
     assert merged.get_dictionary_object(_OC_PROPERTIES) is oc_properties
-    assert merged.get_dictionary_object(_OUTPUT_INTENTS) is output_intents
+    # Upstream mergeOutputIntents copies intents per-entry (creating the
+    # destination array on demand) — it never installs the source array
+    # wholesale. The identifier-less source intent is always copied.
+    installed_intents = merged.get_dictionary_object(_OUTPUT_INTENTS)
+    assert isinstance(installed_intents, COSArray)
+    assert installed_intents is not output_intents
+    assert installed_intents.size() == 1
+    assert installed_intents.get_object(0) is output_intents.get_object(0)
 
 
 def test_wave404_metadata_is_copied_only_when_destination_is_missing() -> None:

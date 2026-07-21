@@ -369,6 +369,14 @@ class TTFParser:
             out.set_error(f"could not load font: {exc}")
             return out
 
+        # Seed the SFNT scaler-type version the same way the full ``parse``
+        # path does (upstream ``createFontWithTables`` calls
+        # ``font.setVersion(raf.read32Fixed())`` before anything else). An
+        # ``OpenTypeFont`` flips its ``hasPostScriptTag`` fingerprint off
+        # this value, which :meth:`OpenTypeFont.is_supported_otf` needs to
+        # detect the OTTO + CFF2-only combination below (PDFBOX-6216).
+        font.set_version(((scaler >> 16) & 0xFFFF) + (scaler & 0xFFFF) / 65536.0)
+
         # name + family/sub-family from the 'name' table
         naming = font.get_naming() if hasattr(font, "get_naming") else None
         if naming is not None:
@@ -399,12 +407,22 @@ class TTFParser:
         from .open_type_font import OpenTypeFont  # noqa: PLC0415
 
         is_otf_and_post_script = False
+        is_post_script = False
         if isinstance(font, OpenTypeFont):
             try:
-                is_otf_and_post_script = bool(font.is_post_script())
+                is_post_script = bool(font.is_post_script())
             except AttributeError:
-                is_otf_and_post_script = False
-        elif font.has_table("CFF "):
+                is_post_script = False
+        if is_post_script:
+            # PDFBOX-6216: an OTF PostScript font whose only outline table
+            # is CFF2 is unsupported — flag it via set_error and stop, same
+            # as upstream ``parseTableHeaders`` (TTFParser.java 3.0.8).
+            if font.is_supported_otf():
+                is_otf_and_post_script = True
+            else:
+                out.set_error("OpenType fonts using CFF2 outlines are not supported")
+                return out
+        elif not isinstance(font, OpenTypeFont) and font.has_table("CFF "):
             out.set_error("True Type fonts using CFF outlines are not supported")
             return out
         out.set_is_otf_and_post_script(is_otf_and_post_script)

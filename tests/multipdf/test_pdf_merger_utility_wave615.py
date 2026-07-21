@@ -11,6 +11,7 @@ _ACRO_FORM = COSName.get_pdf_name("AcroForm")
 _DESTS = COSName.get_pdf_name("Dests")
 _ID_TREE = COSName.get_pdf_name("IDTree")
 _OPEN_ACTION = COSName.get_pdf_name("OpenAction")
+_OUTPUT_CONDITION_IDENTIFIER = COSName.get_pdf_name("OutputConditionIdentifier")
 _OUTPUT_INTENTS = COSName.get_pdf_name("OutputIntents")
 _STRUCT_PARENT = COSName.get_pdf_name("StructParent")
 
@@ -153,7 +154,12 @@ def test_wave615_legacy_dests_are_installed_then_merged() -> None:
 
 
 def test_wave615_output_intents_install_and_append() -> None:
-    first = COSArray([COSString("first")])
+    # Upstream mergeOutputIntents copies dictionary intents per-entry,
+    # creating the destination /OutputIntents array on demand; a second
+    # source with a distinct /OutputConditionIdentifier appends into it.
+    first_intent = COSDictionary()
+    first_intent.set_string(_OUTPUT_CONDITION_IDENTIFIER, "first")
+    first = COSArray([first_intent])
     src_catalog = _Catalog()
     src_catalog.get_cos_object().set_item(_OUTPUT_INTENTS, first)
     dest_catalog = _Catalog()
@@ -162,16 +168,26 @@ def test_wave615_output_intents_install_and_append() -> None:
     util._merge_output_intents(_IdentityCloner(), src_catalog, dest_catalog)  # noqa: SLF001
 
     installed = dest_catalog.get_cos_object().get_dictionary_object(_OUTPUT_INTENTS)
-    assert installed is first
+    assert isinstance(installed, COSArray)
+    assert installed is not first
+    assert installed.size() == 1
+    assert installed.get_object(0) is first_intent
 
-    second = COSArray([COSString("second")])
+    second_intent = COSDictionary()
+    second_intent.set_string(_OUTPUT_CONDITION_IDENTIFIER, "second")
+    second = COSArray([second_intent])
     second_source = _Catalog()
     second_source.get_cos_object().set_item(_OUTPUT_INTENTS, second)
 
     util._merge_output_intents(_IdentityCloner(), second_source, dest_catalog)  # noqa: SLF001
 
-    assert first.size() == 2
-    assert first.get_object(1).get_string() == "second"
+    assert installed.size() == 2
+    assert installed.get_object(1) is second_intent
+
+    # Merging a source whose identifier already exists in the destination
+    # is deduped (PDFBOX-6173 net shape).
+    util._merge_output_intents(_IdentityCloner(), src_catalog, dest_catalog)  # noqa: SLF001
+    assert installed.size() == 2
 
 
 def test_wave615_open_action_is_first_source_wins() -> None:

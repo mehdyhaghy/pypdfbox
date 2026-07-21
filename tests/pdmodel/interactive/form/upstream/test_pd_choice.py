@@ -5,7 +5,10 @@ Source: ``pdfbox/src/test/java/org/apache/pdfbox/pdmodel/interactive/form/PDChoi
 Skipped upstream cases:
 - ``PDFBox6150`` — depends on the external ``PDFBOX-6150.pdf`` regression
   fixture (see PDFBOX-6150) which is fetched by the upstream Maven harness
-  from ``target/pdfs/``. Out of scope for this in-memory port.
+  from ``target/pdfs/``. Out of scope for this in-memory port. The behavior
+  (combo appearance renders the DISPLAY value when export and display values
+  differ, 3.0.8) is covered in-memory by
+  ``tests/pdmodel/interactive/form/test_combo_display_value_wave1602.py``.
 """
 from __future__ import annotations
 

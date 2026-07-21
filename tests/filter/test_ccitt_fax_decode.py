@@ -119,17 +119,15 @@ def test_g4_round_trip_alternating_pattern() -> None:
     assert decoded == b"\xaa\xaa\xaa\xaa"
 
 
-def test_g4_omitted_rows_no_height_emits_zero_bytes() -> None:
-    """Rows omitted AND no /Height → upstream ``CCITTFaxFilter.decode``
-    allocates ``(cols+7)/8 * max(rows, height) == 0`` bytes and emits NOTHING
-    (wave 1507, closes the ``_estimate_rows`` filter-contract divergence).
+def test_g4_omitted_rows_no_height_raises() -> None:
+    """Rows omitted AND no /Height → reconciled rows == 0 → PDFBOX-6189
+    (3.0.8) rejects the geometry up front with an IOException (OSError here).
 
-    pypdfbox formerly invented a data-driven row estimate inside the filter;
-    upstream's filter does no such thing — the buffer size comes solely from
-    the reconciled row count, which is 0 when neither dimension is known. For
-    a real image XObject the stream dict always carries /Height, so this
-    "neither dimension known" case is synthetic. The standalone row-discovery
-    path now lives in ``CCITTFaxDecoderStream`` (exercised separately)."""
+    Formerly (3.0.7 parity) upstream allocated ``(cols+7)/8 * 0 == 0`` bytes
+    and emitted nothing; 3.0.8's dimension guard turns that silent empty
+    decode into a hard error before any body byte is read. For a real image
+    XObject the stream dict always carries /Height, so this "neither
+    dimension known" case is synthetic."""
     img = Image.new("1", (8, 4), 0)
     for x in range(0, 8, 2):
         for y in range(4):
@@ -137,8 +135,8 @@ def test_g4_omitted_rows_no_height_emits_zero_bytes() -> None:
     encoded = _g4_strip(img)
 
     params = _decode_params(K=-1, Columns=8)  # /Rows omitted, no /Height
-    decoded = _decode(encoded, params)
-    assert decoded == b""
+    with pytest.raises(OSError, match=r"Invalid CCITT image dimensions: cols=8, rows=0"):
+        _decode(encoded, params)
 
 
 def test_g4_omitted_rows_uses_height_from_stream_dict() -> None:
@@ -231,21 +229,22 @@ def test_g3_encoded_byte_align_flag_passes_through() -> None:
 # ---------- error handling --------------------------------------------
 
 
-def test_zero_columns_returns_empty() -> None:
-    # Upstream CCITTFaxFilter.decode computes ``rowBytes = (columns + 7) / 8``
-    # with no bounds check, so /Columns == 0 gives rowBytes == 0 and an
-    # ``arraySize == 0`` buffer — i.e. an EMPTY decode, NOT an error. (Pinned
-    # against the live oracle in test_ccitt_fax_fuzz_wave1550.py.)
+def test_zero_columns_raises() -> None:
+    # PDFBOX-6189 (3.0.8): /Columns == 0 is rejected up front with an
+    # IOException (OSError here). Formerly upstream's unchecked
+    # ``rowBytes = (columns + 7) / 8`` allocation silently produced an
+    # empty buffer; the 3.0.8 dimension guard makes it a hard error.
     params = _decode_params(K=-1, Columns=0, Rows=4)
-    assert _decode(b"\x00\x01", params) == b""
+    with pytest.raises(OSError, match=r"Invalid CCITT image dimensions: cols=0, rows=4"):
+        _decode(b"\x00\x01", params)
 
 
 def test_negative_columns_raises() -> None:
-    # /Columns < 0 cannot allocate a buffer; upstream throws
-    # NegativeArraySizeException, we surface the same "cannot decode" outcome
-    # as an OSError.
+    # /Columns < 0: PDFBOX-6189 (3.0.8) rejects non-positive dimensions with
+    # an IOException (OSError here); formerly upstream threw
+    # NegativeArraySizeException from the unchecked allocation.
     params = _decode_params(K=-1, Columns=-4, Rows=4)
-    with pytest.raises(OSError):
+    with pytest.raises(OSError, match=r"Invalid CCITT image dimensions"):
         _decode(b"\x00\x01", params)
 
 
@@ -259,11 +258,13 @@ def test_empty_body_zero_fills_to_row_footprint() -> None:
     assert _decode(b"", params) == b"\xff\xff\xff\xff"
 
 
-def test_empty_body_no_rows_returns_empty() -> None:
-    # With no /Rows (and no /Height) the upstream allocation is empty, so an
-    # empty body decodes to zero bytes (matches PDFBox arraySize == 0).
+def test_empty_body_no_rows_raises() -> None:
+    # With no /Rows (and no /Height) the reconciled row count is 0, which
+    # PDFBOX-6189 (3.0.8) rejects before the body is even read (formerly an
+    # arraySize == 0 allocation yielding zero bytes).
     params = _decode_params(K=-1, Columns=8)  # /Rows omitted
-    assert _decode(b"", params) == b""
+    with pytest.raises(OSError, match=r"Invalid CCITT image dimensions: cols=8, rows=0"):
+        _decode(b"", params)
 
 
 def test_empty_body_black_is_1_zero_fills_black() -> None:

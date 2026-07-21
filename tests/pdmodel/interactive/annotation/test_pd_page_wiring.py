@@ -40,22 +40,30 @@ def test_page_get_annotations_dispatches_per_subtype() -> None:
     assert isinstance(result[5], PDAnnotationUnknown)
 
 
-def test_page_get_annotations_raises_on_non_dict_entry() -> None:
-    """A non-``null``, non-dict /Annots member is NOT silently skipped:
-    upstream ``getAnnotations`` passes it to ``createAnnotation``, which
-    throws ``IOException``. pypdfbox propagates the equivalent ``TypeError``
-    (wave 1515 aligned the page loop to upstream — only ``null`` is skipped)."""
+def test_page_get_annotations_logs_and_skips_non_dict_entry(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A non-``null``, non-dict /Annots member is logged and skipped
+    (PDFBOX-6206, upstream 3.0.8): ``getAnnotations`` wraps
+    ``createAnnotation`` per-item in try/catch(IOException), logs, and
+    continues, so one malformed member no longer fails the whole page."""
     page = PDPage()
     annots = COSArray()
-    # A stray name in /Annots is illegal; upstream raises rather than skip.
+    # A stray name in /Annots is illegal; upstream logs + skips it (3.0.8).
     annots.add(COSName.get_pdf_name("garbage"))
     d = COSDictionary()
     d.set_name(COSName.SUBTYPE, "Text")  # type: ignore[attr-defined]
     annots.add(d)
     page.get_cos_object().set_item(COSName.get_pdf_name("Annots"), annots)
 
-    with pytest.raises(TypeError):
-        page.get_annotations()
+    with caplog.at_level("ERROR", logger="pypdfbox.pdmodel.pd_page"):
+        result = page.get_annotations()
+
+    assert len(result) == 1
+    assert isinstance(result[0], PDAnnotationText)
+    assert any(
+        "Unknown annotation type" in record.getMessage() for record in caplog.records
+    )
 
 
 def test_page_set_annotations_round_trip() -> None:

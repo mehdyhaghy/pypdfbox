@@ -14,8 +14,9 @@ xref-STREAM source:
 
 2. **Writer** (``COSWriter._do_write_increment``): an incremental save over
    an xref-stream source now appends an xref *stream* (``/Type /XRef`` with
-   ``/Prev``, ``/Index`` covering only the changed objects + the free head,
-   refreshed ``/ID[1]``), mirroring upstream ``COSWriter.doWriteXRefInc``.
+   ``/Prev``, ``/Index`` covering the changed objects + the free head + —
+   since 3.0.8, PDFBOX-6176 — the xref stream's own self-entry, refreshed
+   ``/ID[1]``), mirroring upstream ``COSWriter.doWriteXRefInc``.
    Previously the increment emitted a classic ``xref`` table while the
    appended trailer still claimed ``/Type /XRef`` (with leftover ``/W`` /
    ``/Index`` / ``/Filter`` keys) — a malformed mix.
@@ -69,12 +70,28 @@ def _appended(out: bytes, src: bytes) -> bytes:
     return out[len(src) :]
 
 
+def _xref_stream_own_number(tail: bytes) -> int | None:
+    """Object number of the appended ``/Type /XRef`` stream itself (the
+    ``N 0 obj`` frame that carries it), or None if absent."""
+    type_at = tail.find(b"/Type /XRef")
+    if type_at == -1:
+        type_at = tail.find(b"/Type/XRef")
+    if type_at == -1:
+        return None
+    frames = re.findall(rb"(\d+)\s+\d+\s+obj\b", tail[:type_at])
+    return int(frames[-1]) if frames else None
+
+
 def _index_data_numbers(tail: bytes) -> list[int]:
     """Object numbers the appended xref stream's ``/Index`` references,
-    minus the free-list head (0). Per upstream ``PDFXRefStream`` the xref
-    stream's OWN object is reached via ``startxref`` and is NOT listed in
-    its own ``/Index`` — so this is exactly the application objects the
-    increment rewrote."""
+    minus the free-list head (0) and the xref stream's OWN object number —
+    so this is exactly the application objects the increment rewrote.
+
+    Since PDFBox 3.0.8 (PDFBOX-6176) the xref stream lists ITSELF in its
+    own ``/Index`` / stream data (3.0.7 left an xref gap at its own
+    number); the self-entry is excluded here (mirroring the oracle probe's
+    ``used.remove(xrefOwn)``) so the application-object comparison stays
+    engine-version-independent."""
     nums: set[int] = set()
     for m in re.finditer(rb"/Index ?\[([^\]]*)\]", tail):
         ints = [int(x) for x in m.group(1).split()]
@@ -82,6 +99,9 @@ def _index_data_numbers(tail: bytes) -> list[int]:
             first, count = ints[i], ints[i + 1]
             nums.update(range(first, first + count))
     nums.discard(0)
+    own = _xref_stream_own_number(tail)
+    if own is not None:
+        nums.discard(own)
     return sorted(nums)
 
 
@@ -402,6 +422,13 @@ def test_increment_object_set_matches_pdfbox(
     finally:
         doc.close()
 
+    # NOTE (PDFBOX-6176): the live oracle jars are still 3.0.7, whose xref
+    # stream omits its own self-entry, while pypdfbox now follows 3.0.8 and
+    # includes it. Both `_index_data_numbers` (Python side) and the probe
+    # (`used.remove(xrefOwn)`, Java side) strip the xref stream's own number,
+    # so this application-object comparison holds under either jar version;
+    # the self-entry itself is pinned by
+    # tests/pdfwriter/test_xref_stream_self_entry_wave1602.py.
     assert _index_data_numbers(_appended(py_out, src)) == pdfbox_objs
     # Both engines emit an xref stream increment for this xref-stream source.
     assert fields["incr_xref_stream"] == "true"

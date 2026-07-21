@@ -112,7 +112,11 @@ class TrueTypeEmbedder(Subsetter):
         self.font_descriptor: PDFontDescriptor = self._create_font_descriptor(ttf)
         if not self.is_embedding_permitted(ttf):
             raise OSError("This font does not permit embedding")
-        self._subset_code_points: set[int] = set()
+        # PDFBOX-6210: insertion-ordered (upstream switched ``HashSet`` ->
+        # ``LinkedHashSet``) so the ToUnicode builder can prefer the code
+        # point actually used first in the document when several code
+        # points share one glyph. A plain dict is Python's ordered set.
+        self._subset_code_points: dict[int, None] = {}
         self._all_glyph_ids: set[int] = set()
         # Tables whose bytes should be preserved verbatim through the
         # fontTools subsetter (mirrors ``TTFSubsetter.no_subset_tables``).
@@ -147,9 +151,19 @@ class TrueTypeEmbedder(Subsetter):
     def add_to_subset(self, code_point: int) -> None:
         """Register *code_point* for inclusion in the subset.
 
-        Mirrors upstream ``addToSubset`` (Java line 298-301).
+        Mirrors upstream ``addToSubset`` (Java line 299-302).
         """
-        self._subset_code_points.add(code_point)
+        self._subset_code_points[code_point] = None
+
+    def get_subset_code_points(self) -> tuple[int, ...]:
+        """Return the code points passed to :meth:`add_to_subset`, i.e. the
+        code points actually used in the document, in first-occurrence order.
+
+        Used when building the ToUnicode CMap to map a glyph back to the
+        code point that was really typed (PDFBOX-6210). Mirrors upstream
+        ``getSubsetCodePoints`` (Java line 311-314).
+        """
+        return tuple(self._subset_code_points)
 
     def add_glyph_ids(self, glyph_ids: set[int]) -> None:
         """Register glyph IDs for inclusion in the subset.
